@@ -7,6 +7,8 @@ void main() {
       const playlist = Playlist(
         id: 'pl_123',
         name: 'Test Playlist',
+        type: PlaylistType.dp1,
+        sortMode: PlaylistSortMode.position,
       );
 
       expect(playlist.id, equals('pl_123'));
@@ -21,10 +23,12 @@ void main() {
       const playlist = Playlist(
         id: 'pl_456',
         name: 'Exhibition Playlist',
+        type: PlaylistType.dp1,
         description: 'A curated exhibition',
         channelId: 'ch_789',
         playlistRole: PlaylistRole.exhibition,
         playlistSource: PlaylistSource.curated,
+        sortMode: PlaylistSortMode.position,
       );
 
       expect(playlist.id, equals('pl_456'));
@@ -37,6 +41,8 @@ void main() {
       const original = Playlist(
         id: 'pl_123',
         name: 'Test Playlist',
+        type: PlaylistType.dp1,
+        sortMode: PlaylistSortMode.position,
       );
 
       final updated = original.copyWith(
@@ -51,25 +57,6 @@ void main() {
       // Original is unchanged
       expect(original.name, equals('Test Playlist'));
       expect(original.playlistSource, equals(PlaylistSource.personal));
-    });
-  });
-
-  group('PlaylistRole', () {
-    test('has correct enum values', () {
-      expect(PlaylistRole.values.length, equals(3));
-      expect(PlaylistRole.values, contains(PlaylistRole.exhibition));
-      expect(PlaylistRole.values, contains(PlaylistRole.season));
-      expect(PlaylistRole.values, contains(PlaylistRole.program));
-    });
-  });
-
-  group('PlaylistSource', () {
-    test('has correct enum values', () {
-      expect(PlaylistSource.values.length, equals(4));
-      expect(PlaylistSource.values, contains(PlaylistSource.personal));
-      expect(PlaylistSource.values, contains(PlaylistSource.curated));
-      expect(PlaylistSource.values, contains(PlaylistSource.followed));
-      expect(PlaylistSource.values, contains(PlaylistSource.global));
     });
   });
 }

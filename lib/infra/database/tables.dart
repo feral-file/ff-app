@@ -1,0 +1,178 @@
+import 'package:drift/drift.dart';
+
+/// Channels table.
+/// Stores DP1 channels and local virtual channels.
+@DataClassName('ChannelData')
+class Channels extends Table {
+  /// Channel identifier (DP-1 ID like ch_*).
+  TextColumn get id => text()();
+
+  /// Channel type: 0 = DP1, 1 = local virtual.
+  IntColumn get type => integer()();
+
+  /// Feed server base URL for DP1 channels.
+  TextColumn get baseUrl => text().nullable()();
+
+  /// URL-friendly identifier.
+  TextColumn get slug => text().nullable()();
+
+  /// Channel title.
+  TextColumn get title => text()();
+
+  /// Curator name.
+  TextColumn get curator => text().nullable()();
+
+  /// Channel description.
+  TextColumn get summary => text().nullable()();
+
+  /// Cover image URL.
+  TextColumn get coverImageUri => text().nullable()();
+
+  /// Creation timestamp in microseconds.
+  Int64Column get createdAtUs => int64()();
+
+  /// Last update timestamp in microseconds.
+  Int64Column get updatedAtUs => int64()();
+
+  /// Display order.
+  IntColumn get sortOrder => integer().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Playlists table.
+/// Stores DP1 playlists and address-based playlists.
+@DataClassName('PlaylistData')
+class Playlists extends Table {
+  /// Playlist identifier (DP-1 ID like pl_*).
+  TextColumn get id => text()();
+
+  /// Reference to Channels table.
+  TextColumn get channelId => text().nullable()();
+
+  /// Playlist type: 0 = DP1, 1 = address-based.
+  IntColumn get type => integer()();
+
+  /// Feed server base URL for DP1 playlists.
+  TextColumn get baseUrl => text().nullable()();
+
+  /// DP1 protocol version.
+  TextColumn get dpVersion => text().nullable()();
+
+  /// URL-friendly identifier.
+  TextColumn get slug => text().nullable()();
+
+  /// Playlist title.
+  TextColumn get title => text()();
+
+  /// Creation timestamp in microseconds.
+  Int64Column get createdAtUs => int64()();
+
+  /// Last update timestamp in microseconds.
+  Int64Column get updatedAtUs => int64()();
+
+  /// DP1 signatures stored as JSON array.
+  TextColumn get signaturesJson => text()();
+
+  /// DP1 defaults configuration.
+  TextColumn get defaultsJson => text().nullable()();
+
+  /// Dynamic query configuration for fetching tokens.
+  TextColumn get dynamicQueriesJson => text().nullable()();
+
+  /// Owner address for address-based playlists (uppercase).
+  TextColumn get ownerAddress => text().nullable()();
+
+  /// Blockchain type (e.g., "ETH", "BTC").
+  TextColumn get ownerChain => text().nullable()();
+
+  /// Sort mode: 0 = position-based, 1 = provenance-based.
+  IntColumn get sortMode => integer()();
+
+  /// Number of items in the playlist.
+  IntColumn get itemCount => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Items table.
+/// Stores unique playlist items (DP1 items and indexer tokens).
+/// This corresponds to "Works" in the domain layer.
+@DataClassName('ItemData')
+class Items extends Table {
+  /// Item identifier (CID for tokens, DP1 item ID for DP1 items).
+  TextColumn get id => text()();
+
+  /// Item kind: 0 = DP1 item, 1 = indexer token.
+  IntColumn get kind => integer()();
+
+  // Lite UI fields for quick display
+  /// Display title.
+  TextColumn get title => text().nullable()();
+
+  /// Artists string (subtitle).
+  TextColumn get subtitle => text().nullable()();
+
+  /// Thumbnail image URL.
+  TextColumn get thumbnailUri => text().nullable()();
+
+  /// Duration in seconds.
+  IntColumn get durationSec => integer().nullable()();
+
+  /// Provenance data as JSON.
+  TextColumn get provenanceJson => text().nullable()();
+
+  // DP1 fields
+  /// Source URI.
+  TextColumn get sourceUri => text().nullable()();
+
+  /// Reference URI.
+  TextColumn get refUri => text().nullable()();
+
+  /// License information.
+  TextColumn get license => text().nullable()();
+
+  /// Reproduction data as JSON.
+  TextColumn get reproJson => text().nullable()();
+
+  /// Override configuration as JSON.
+  TextColumn get overrideJson => text().nullable()();
+
+  /// Display configuration as JSON.
+  TextColumn get displayJson => text().nullable()();
+
+  // Token data
+  /// Complete token JSON for reconstruction (indexer tokens).
+  TextColumn get tokenDataJson => text().nullable()();
+
+  /// Last update timestamp in microseconds.
+  Int64Column get updatedAtUs => int64()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// PlaylistEntries table.
+/// Join table for playlist membership with per-playlist ordering.
+@DataClassName('PlaylistEntryData')
+class PlaylistEntries extends Table {
+  /// Reference to Playlists table.
+  TextColumn get playlistId => text()();
+
+  /// Reference to Items table.
+  TextColumn get itemId => text()();
+
+  /// Position in playlist (for position-based sorting).
+  IntColumn get position => integer().nullable()();
+
+  /// Sort key in microseconds (for provenance-based sorting).
+  Int64Column get sortKeyUs => int64()();
+
+  /// Last update timestamp in microseconds.
+  Int64Column get updatedAtUs => int64()();
+
+  @override
+  Set<Column> get primaryKey => {playlistId, itemId};
+}

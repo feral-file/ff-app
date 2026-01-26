@@ -7,10 +7,23 @@ class Playlist {
   const Playlist({
     required this.id,
     required this.name,
+    required this.type,
     this.description,
     this.channelId,
     this.playlistRole,
     this.playlistSource = PlaylistSource.personal,
+    this.baseUrl,
+    this.dpVersion,
+    this.slug,
+    this.createdAt,
+    this.updatedAt,
+    this.signatures,
+    this.defaults,
+    this.dynamicQueries,
+    this.ownerAddress,
+    this.ownerChain,
+    this.sortMode = PlaylistSortMode.position,
+    this.itemCount = 0,
   });
 
   /// DP-1 playlist ID (e.g., pl_*)
@@ -18,6 +31,9 @@ class Playlist {
 
   /// Playlist name.
   final String name;
+
+  /// Playlist type (DP1 or address-based).
+  final PlaylistType type;
 
   /// Optional playlist description.
   final String? description;
@@ -31,24 +47,95 @@ class Playlist {
   /// Source type for distinguishing personal vs curated.
   final PlaylistSource playlistSource;
 
+  /// Feed server base URL for DP1 playlists.
+  final String? baseUrl;
+
+  /// DP1 protocol version.
+  final String? dpVersion;
+
+  /// URL-friendly identifier.
+  final String? slug;
+
+  /// Creation timestamp.
+  final DateTime? createdAt;
+
+  /// Last update timestamp.
+  final DateTime? updatedAt;
+
+  /// DP1 signatures as JSON array.
+  final List<String>? signatures;
+
+  /// DP1 defaults configuration.
+  final Map<String, dynamic>? defaults;
+
+  /// Dynamic query configuration for fetching tokens.
+  final Map<String, dynamic>? dynamicQueries;
+
+  /// Owner address for address-based playlists (uppercase).
+  final String? ownerAddress;
+
+  /// Blockchain type (e.g., "ETH", "BTC").
+  final String? ownerChain;
+
+  /// Sort mode for playlist entries.
+  final PlaylistSortMode sortMode;
+
+  /// Number of items in the playlist.
+  final int itemCount;
+
   /// Creates a copy with updated values.
   Playlist copyWith({
     String? id,
     String? name,
+    PlaylistType? type,
     String? description,
     String? channelId,
     PlaylistRole? playlistRole,
     PlaylistSource? playlistSource,
+    String? baseUrl,
+    String? dpVersion,
+    String? slug,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    List<String>? signatures,
+    Map<String, dynamic>? defaults,
+    Map<String, dynamic>? dynamicQueries,
+    String? ownerAddress,
+    String? ownerChain,
+    PlaylistSortMode? sortMode,
+    int? itemCount,
   }) {
     return Playlist(
       id: id ?? this.id,
       name: name ?? this.name,
+      type: type ?? this.type,
       description: description ?? this.description,
       channelId: channelId ?? this.channelId,
       playlistRole: playlistRole ?? this.playlistRole,
       playlistSource: playlistSource ?? this.playlistSource,
+      baseUrl: baseUrl ?? this.baseUrl,
+      dpVersion: dpVersion ?? this.dpVersion,
+      slug: slug ?? this.slug,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      signatures: signatures ?? this.signatures,
+      defaults: defaults ?? this.defaults,
+      dynamicQueries: dynamicQueries ?? this.dynamicQueries,
+      ownerAddress: ownerAddress ?? this.ownerAddress,
+      ownerChain: ownerChain ?? this.ownerChain,
+      sortMode: sortMode ?? this.sortMode,
+      itemCount: itemCount ?? this.itemCount,
     );
   }
+}
+
+/// Playlist type enumeration.
+enum PlaylistType {
+  /// DP1 playlist from feed server.
+  dp1,
+
+  /// Address-based playlist (user's collection).
+  addressBased,
 }
 
 /// Playlist role for UI chrome (not a separate domain object).
@@ -76,4 +163,13 @@ enum PlaylistSource {
 
   /// Global playlist.
   global,
+}
+
+/// Sort mode for playlist entries.
+enum PlaylistSortMode {
+  /// Position-based sorting (static order).
+  position,
+
+  /// Provenance-based sorting (chronological by acquisition).
+  provenance,
 }

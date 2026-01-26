@@ -7,6 +7,7 @@ void main() {
       const channel = Channel(
         id: 'ch_123',
         name: 'Test Channel',
+        type: ChannelType.dp1,
       );
 
       expect(channel.id, equals('ch_123'));
@@ -17,15 +18,17 @@ void main() {
 
     test('creates channel with all fields', () {
       const channel = Channel(
-        id: 'ch_123',
-        name: 'My Collection',
-        description: 'Personal collection',
+        id: 'ch_456',
+        name: 'Complete Channel',
+        type: ChannelType.localVirtual,
+        description: 'A test channel',
         isPinned: true,
       );
 
-      expect(channel.id, equals('ch_123'));
-      expect(channel.name, equals('My Collection'));
-      expect(channel.description, equals('Personal collection'));
+      expect(channel.id, equals('ch_456'));
+      expect(channel.name, equals('Complete Channel'));
+      expect(channel.type, equals(ChannelType.localVirtual));
+      expect(channel.description, equals('A test channel'));
       expect(channel.isPinned, isTrue);
     });
 
@@ -33,6 +36,7 @@ void main() {
       const original = Channel(
         id: 'ch_123',
         name: 'Test Channel',
+        type: ChannelType.dp1,
       );
 
       final updated = original.copyWith(

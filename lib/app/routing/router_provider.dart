@@ -4,6 +4,7 @@ import 'package:app/ui/screens/channels_screen.dart';
 import 'package:app/ui/screens/home_screen.dart';
 import 'package:app/ui/screens/playlist_detail_screen.dart';
 import 'package:app/ui/screens/work_detail_screen.dart';
+import 'package:app/ui/screens/works_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -59,12 +60,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.works,
         name: RouteNames.works,
-        builder: (context, state) {
-          // Placeholder - can be replaced with WorksScreen
-          return const Scaffold(
-            body: Center(child: Text('Works')),
-          );
-        },
+        builder: (context, state) => const WorksScreen(),
         routes: [
           GoRoute(
             path: ':workId',
