@@ -45,5 +45,18 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>feralfile</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>com.feralfile.app</string>
+		</dict>
+	</array>
 </dict>
 </plist>

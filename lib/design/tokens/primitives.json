@@ -1,0 +1,204 @@
+{
+  "primitives": {
+    "primitives": {
+      "colors": {
+        "inactive": {
+          "$type": "color",
+          "$value": "#999999"
+        },
+        "grey": {
+          "$type": "color",
+          "$value": "#a0a0a0"
+        },
+        "lightGrey": {
+          "$type": "color",
+          "$value": "#e3e3e3"
+        },
+        "white": {
+          "$type": "color",
+          "$value": "#ffffff"
+        },
+        "black": {
+          "$type": "color",
+          "$value": "#000000"
+        },
+        "darkGrey": {
+          "$type": "color",
+          "$value": "#2e2e2e"
+        },
+        "error": {
+          "$type": "color",
+          "$value": "#d10000"
+        },
+        "lightBlue": {
+          "$type": "color",
+          "$value": "#b9e5ff"
+        },
+        "highlight": {
+          "$type": "color",
+          "$value": "#ecff0c"
+        },
+        "lightRed": {
+          "$type": "color",
+          "$value": "#f44336"
+        }
+      },
+      "fontFamilies": {
+        "ppMori": {
+          "$type": "text",
+          "$value": "PP Mori"
+        },
+        "ibmPlexMono": {
+          "$type": "text",
+          "$value": "IBMPlexMono"
+        }
+      },
+      "fontWeights": {
+        "bold": {
+          "$type": "text",
+          "$value": "Bold"
+        },
+        "regular": {
+          "$type": "text",
+          "$value": "Regular"
+        }
+      },
+      "fontSizes": {
+        "display": {
+          "$type": "dimension",
+          "$value": "40px"
+        },
+        "h1": {
+          "$type": "dimension",
+          "$value": "28px"
+        },
+        "h2": {
+          "$type": "dimension",
+          "$value": "22px"
+        },
+        "h3": {
+          "$type": "dimension",
+          "$value": "18px"
+        },
+        "h4": {
+          "$type": "dimension",
+          "$value": "16px"
+        },
+        "body": {
+          "$type": "dimension",
+          "$value": "16px"
+        },
+        "bodySmall": {
+          "$type": "dimension",
+          "$value": "14px"
+        },
+        "caption": {
+          "$type": "dimension",
+          "$value": "12px"
+        },
+        "verySmall": {
+          "$type": "dimension",
+          "$value": "8px"
+        }
+      },
+      "letterSpacings": {
+        "0": {
+          "$type": "dimension",
+          "$value": "0px"
+        }
+      },
+      "paragraphSpacings": {
+        "0": {
+          "$type": "dimension",
+          "$value": "8px"
+        },
+        "1": {
+          "$type": "dimension",
+          "$value": "24px"
+        }
+      },
+      "paragraphIndents": {
+        "0": {
+          "$type": "dimension",
+          "$value": "0px"
+        }
+      },
+      "spacing": {
+        "space1": {
+          "$type": "dimension",
+          "$value": "4px"
+        },
+        "space2": {
+          "$type": "dimension",
+          "$value": "8px"
+        },
+        "space3": {
+          "$type": "dimension",
+          "$value": "12px"
+        },
+        "space4": {
+          "$type": "dimension",
+          "$value": "16px"
+        },
+        "space5": {
+          "$type": "dimension",
+          "$value": "20px"
+        },
+        "space6": {
+          "$type": "dimension",
+          "$value": "24px"
+        },
+        "space8": {
+          "$type": "dimension",
+          "$value": "32px"
+        },
+        "space10": {
+          "$type": "dimension",
+          "$value": "40px"
+        },
+        "space12": {
+          "$type": "dimension",
+          "$value": "48px"
+        },
+        "space16": {
+          "$type": "dimension",
+          "$value": "64px"
+        },
+        "space20": {
+          "$type": "dimension",
+          "$value": "80px"
+        },
+        "setupPageHorizontal": {
+          "$type": "dimension",
+          "$value": "44px"
+        },
+        "pageHorizontalDefault": {
+          "$type": "dimension",
+          "$value": "16px"
+        },
+        "minTouchTarget": {
+          "$type": "dimension",
+          "$value": "44px"
+        }
+      },
+      "iconSizes": {
+        "small": {
+          "$type": "dimension",
+          "$value": "12px"
+        },
+        "default": {
+          "$type": "dimension",
+          "$value": "16px"
+        },
+        "medium": {
+          "$type": "dimension",
+          "$value": "20px"
+        },
+        "large": {
+          "$type": "dimension",
+          "$value": "24px"
+        }
+      }
+    }
+  }
+}
