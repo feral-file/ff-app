@@ -1,0 +1,85 @@
+---
+description: Feral File Flutter master design (DP-1 + Riverpod flow + comms layering + tokens)
+globs:
+  - "lib/**"
+  - "test/**"
+  - "pubspec.yaml"
+alwaysApply: true
+---
+
+# Cursor Project Rule — Feral File Mobile (Flutter)
+
+You are working in a **Flutter** codebase. Follow these rules **by default** unless the user explicitly overrides.
+
+## 1) Master constraints (do not violate)
+- **Riverpod is mandatory** as the master flow driver (global state, app events, orchestration).
+- **DP-1 terminology lock:** only **Channel / Playlist / Work** as domain objects. “Exhibition/Season/Program” are *playlist roles* (UI chrome), never new types.
+- **Deletion-first:** prefer removing legacy/duplicate concepts over extending them.
+- **OSS-first posture:** keep protocol/data surfaces portable and auditable.
+
+(Background: Strategy + app spec + trust constraints.) 
+
+## 2) Architecture (Flutter layering)
+Hard layering:
+- `ui/` (widgets, screens)  
+- `app/` (Riverpod providers/notifiers; flow orchestration; navigation intents)  
+- `domain/` (DP-1 models, normalization, pure logic)  
+- `infra/` (storage, transports, protocol implementation)
+
+Rules:
+- UI never calls transports directly.
+- Side effects live behind providers (repositories/services).
+- Domain is pure and testable (no Flutter imports).
+
+## 3) Riverpod usage rules (flow driver)
+- All cross-screen state and external device events must enter via Riverpod providers.
+- Prefer `Notifier/AsyncNotifier` patterns for state machines.
+- Use provider overrides for tests; never require a real FF1 in unit tests.
+
+## 4) Offline-first DP-1 data design
+- Persist DP-1 entities (Channel/Playlist/Work) and relationships.
+- Personal playlists and curated playlists are both DP-1 **Playlists** (no custom “CuratedPlaylist”).
+- Use DP-1 IDs (`ch_*`, `pl_*`, `wk_*`) consistently.
+
+## 5) FF1 comms: transport/protocol/control split (required)
+Implement three distinct layers:
+1) **Transport**: Bluetooth / Wi-Fi adapters (LAN + relayer). Handles connection lifecycle.
+2) **Protocol**: message formats + versioning + serialization.
+3) **Control**: command/state machine using protocol interfaces.
+
+Rule: changing protocol must not force rewriting control logic.
+
+## 6) Global external events
+External events (disconnect, FF1 internet down, pairing required) must:
+- propagate through Riverpod
+- render via a shared global notice component
+- work on any screen without special-case hacks
+
+## 7) Master Theme / Figma token readiness
+- Centralize tokens (typography scale, spacing, radii, colors).
+- Do not scatter literal sizes/colors across widgets.
+- Prefer token references so updating from Figma exports is low-friction.
+
+## 8) Default behavior when implementing
+- Produce the **smallest coherent change**.
+- If asked to add a feature, first ask: “What can be deleted or simplified?”
+- If a new concept is proposed, map it to DP-1 terms or refuse it.
+- **Write testable code when applicable**: keep `domain/` pure, inject side-effect dependencies via providers, and avoid hidden singleton state.
+
+## 9) Out of scope (do not add)
+- Auth / passkeys / wallets
+- Localization
+- Performance benchmarks
+- Per-exhibition hacks or one-off object types
+
+## 10) Definition of Done (DoD)
+A task is considered complete when:
+1. **Buildable** — `flutter build` succeeds without errors on both Android and iOS targets.
+2. **Code lint passes** — `flutter analyze` reports zero lint violations (must pass `very_good_analysis` rules).
+3. **Unit tests pass** — `flutter test` succeeds (no failing tests).
+4. **No pre-existing lints introduced** — New code does not add additional lints; fixes existing ones if trivial.
+5. **Architecture respected** — Follows layering (ui/ → app/ → domain/ → infra/), no violations of separation rules.
+6. **DP-1 terminology locked** — Only Channel/Playlist/Work as domain objects; playlist roles expressed via fields/enums.
+7. **Riverpod flow maintained** — All side effects routed through providers; no hidden singleton state.
+8. **Testable code (if applicable)** — Dependencies are injectable (providers/constructors), critical logic has unit tests (use fakes via overrides).
+9. **Commit message clear** — Describes the *why*, not just the *what*; references task/issue if applicable.

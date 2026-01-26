@@ -1,0 +1,132 @@
+---
+description: Mobile app vocabulary + DP-1 term locks for naming variables, types, tables, columns, events, and protocols. Prevents legacy/zombie terms.
+alwaysApply: true
+globs:
+  - "**/*.{swift,kt,java,dart}"
+  - "**/*.{sql}"
+---
+
+# Vocabulary Rules (DP-1-first) — DO NOT DRIFT
+
+## 0) Canonical domain nouns
+Only these are first-class domain objects in code and storage:
+
+- **Channel**
+- **Playlist**
+- **Work**
+- **Play** (an action; not a persisted entity)
+
+### Hard lock: "Exhibition / Season / Program"
+- These are **playlist roles** (UI/curation chrome), **NOT new object types**.
+- Never create `Exhibition`, `Season`, `Program` classes/tables as domain entities.
+- Represent as `playlistRole` (enum/string) on `Playlist`, or UI-only metadata.
+
+---
+
+## 1) Naming for code: variables, types, functions
+### Use canonical nouns
+- Variables: `channel`, `playlist`, `work`, pluralized `channels`, `playlists`, `works`
+- IDs: `channelId`, `playlistId`, `workId`
+- Refs: `channelRef`, `playlistRef`, `workRef` (or `channelURI` if it’s a URI)
+
+### Avoid legacy/ambiguous nouns as domain identifiers
+Disallowed as *domain nouns* (allowed only in UI copy strings):
+- `artwork` (use `work`)
+- `show` / `season` / `program` (use `playlist` + `playlistRole`)
+- `feed` (use `channel`)
+- Generic `collection` buckets (except “My Collection” concept; see below)
+
+### Function verbs
+- Use explicit intent: `playOnFF1(...)`, `queueOnFF1(...)`, `stopOnFF1(...)`, `pauseOnFF1(...)`
+- Saving/following: `saveWork(...)`, `savePlaylist(...)`, `followChannel(...)`, `followPlaylist(...)`
+
+---
+
+## 2) Storage naming (offline-first) — no DP-1 prefixes
+### Tables / collections
+Use canonical nouns directly:
+- `channel`
+- `playlist`
+- `work`
+
+Relationship tables:
+- `playlist_work` (ordered membership)
+- `channel_playlist`
+
+User-specific state (still DP-1-shaped):
+- `saved_channel`, `saved_playlist`, `saved_work`
+- `pinned_channel` (e.g., My Collection)
+
+### Columns / fields
+- SQL columns: `snake_case`; in-code fields: `camelCase` (unless platform convention dictates otherwise)
+- IDs: `channel_id`, `playlist_id`, `work_id`
+- Foreign keys must match target IDs, never generic `item_id`
+- Avoid vague polymorphic columns (`item_type`, `thing_id`) unless strictly DP-1 refs and documented.
+
+### “My Collection”
+- Model as a **Channel** (pinned personal channel), not a separate “Collection” entity.
+- If you need a constant ID: `myCollectionChannelId` (or `MY_COLLECTION_CHANNEL_ID`).
+- Do **not** create `collection` table/model.
+
+---
+
+## 3) Personal vs curated playlists (still just Playlists)
+- Both personal and curated are **Playlist**.
+- Distinguish via fields like:
+  - `playlistSource`: `personal | curated | followed | global`
+  - and/or `channelId` ownership (personal channel vs external channel)
+- Do NOT invent `CuratedPlaylist` / `UserPlaylist` domain objects.
+  - UI wrappers are okay if explicitly UI-scoped: `PlaylistRowModel`, `PlaylistScreenState`, etc.
+
+---
+
+## 4) FF1 communications: protocol vs control vs transport (naming + separation)
+### Protocol layer (message defs + codec + versioning)
+- Names should include: `Protocol`, `Message`, `Codec`, `Schema`, `Version`
+- Examples:
+  - `FF1Protocol`, `FF1Message`, `FF1Codec`, `FF1ProtocolVersion`
+
+### Control layer (intent + state + orchestration)
+- Names should include: `Control`, `Controller`, `Coordinator`, `StateMachine`
+- Examples:
+  - `FF1Control`, `FF1PlaybackController`, `FF1ConnectionCoordinator`
+
+### Transport layer (Bluetooth/Wi-Fi adapters)
+- Names should include: `Transport` or `Adapter`
+- Examples:
+  - `FF1TransportBluetooth`, `FF1TransportWifiLan`, `FF1TransportWifiRelayer`, `FF1Transport` (interface)
+
+### Separation rule
+- Changing **protocol** must not force renaming or rewriting **control**.
+- Changing **transport** must not require changing **protocol message types**.
+
+---
+
+## 5) External events (FF1 → app) must be global and explicit
+Event naming must be FF1-scoped and screen-agnostic:
+- `FF1ConnectionStateChanged`
+- `FF1InternetConnectivityChanged`
+- `FF1TransportDisconnected`
+
+Avoid screen-scoped event names like `HomeDisconnectedToast`.
+
+---
+
+## 6) Introducing new nouns: escalation path
+If you think a new domain noun is needed:
+1) Try expressing it as:
+   - a field on `Channel/Playlist/Work` (`role`, `metadata`, `publisher`, etc.)
+   - a UI-only concept (ViewModel / screen state)
+   - an adapter name (transport/control/protocol)
+2) If still needed, add:
+   - `// VOCAB: why not Channel/Playlist/Work`
+   - a short ADR entry (or a README section) mapping it to DP-1.
+
+---
+
+## 7) Quick “bad → good” mappings
+- `Artwork` → `Work`
+- `Show/Season/Program` → `Playlist` + `playlistRole`
+- `Feed` → `Channel`
+- `Collection` entity → pinned personal **Channel** (“My Collection”)
+- `BluetoothManager` doing everything → `FF1TransportBluetooth` + `FF1Protocol` + `FF1Control`
