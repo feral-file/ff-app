@@ -1,6 +1,3 @@
-import 'dart:convert';
-
-import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
 
 import '../../domain/models/channel.dart';
@@ -43,6 +40,9 @@ class DatabaseService {
           .toList();
       await _db.upsertChannels(companions);
       _log.info('Ingested ${channels.length} channels');
+
+      // Checkpoint WAL to ensure data is written to main database
+      await _db.checkpoint();
     } catch (e, stack) {
       _log.severe('Failed to ingest channels', e, stack);
       rethrow;
@@ -79,7 +79,9 @@ class DatabaseService {
     try {
       final companion = DatabaseConverters.playlistToCompanion(playlist);
       await _db.upsertPlaylist(companion);
-      _log.info('Ingested playlist: ${playlist.id}');
+      _log.info(
+        'Ingested playlist: ${playlist.id} | name: ${playlist.name} | type: ${playlist.type}',
+      );
     } catch (e, stack) {
       _log.severe('Failed to ingest playlist ${playlist.id}', e, stack);
       rethrow;
@@ -94,6 +96,9 @@ class DatabaseService {
           .toList();
       await _db.upsertPlaylists(companions);
       _log.info('Ingested ${playlists.length} playlists');
+
+      // Checkpoint WAL to ensure data is written to main database
+      await _db.checkpoint();
     } catch (e, stack) {
       _log.severe('Failed to ingest playlists', e, stack);
       rethrow;
@@ -120,6 +125,30 @@ class DatabaseService {
           : null;
     } catch (e, stack) {
       _log.severe('Failed to get playlist $id', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Get all playlists.
+  Future<List<Playlist>> getAllPlaylists() async {
+    try {
+      final data = await _db.getAllPlaylists();
+      final playlists = data
+          .map(DatabaseConverters.playlistDataToDomain)
+          .toList();
+      _log.info('Retrieved ${playlists.length} playlists from database');
+      if (playlists.isNotEmpty) {
+        _log.info('Sample playlists from database:');
+        for (var i = 0; i < playlists.length.clamp(0, 3); i++) {
+          final p = playlists[i];
+          _log.info(
+            '  - ${p.name} | id: ${p.id} | type: ${p.type} | items: ${p.itemCount}',
+          );
+        }
+      }
+      return playlists;
+    } catch (e, stack) {
+      _log.severe('Failed to get all playlists', e, stack);
       rethrow;
     }
   }
@@ -273,6 +302,9 @@ class DatabaseService {
       await _db.upsertPlaylistEntries(entries);
       await _db.updatePlaylistItemCount(addressPlaylist.id);
 
+      // Checkpoint WAL to ensure data is written to main database
+      await _db.checkpoint();
+
       _log.info(
         'Ingested ${items.length} tokens for address $address',
       );
@@ -312,10 +344,11 @@ class DatabaseService {
 
       for (var i = 0; i < items.length; i++) {
         final item = items[i];
-        final itemId = item['id'] as String;
+        final itemId = item['id'] as String; // DP1 item UUID
+        final itemCid = item['cid'] as String?; // IPFS CID for token lookup
 
-        // Check if we have enrichment data
-        final tokenData = tokensByCID[itemId];
+        // Check if we have enrichment data (lookup by CID, not ID)
+        final tokenData = itemCid != null ? tokensByCID[itemCid] : null;
 
         PlaylistItem playlistItem;
         if (tokenData != null) {
@@ -362,6 +395,9 @@ class DatabaseService {
       await ingestPlaylistItems(playlistItems);
       await _db.upsertPlaylistEntries(entries);
       await _db.updatePlaylistItemCount(playlist.id);
+
+      // Checkpoint WAL to ensure data is written to main database
+      await _db.checkpoint();
 
       _log.info(
         'Ingested DP1 playlist ${playlist.id} with ${playlistItems.length} items',

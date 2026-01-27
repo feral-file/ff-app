@@ -15,10 +15,10 @@ class DP1FeedService {
     required IndexerService indexerService,
     required String apiKey,
     Dio? dio,
-  })  : _databaseService = databaseService,
-        _indexerService = indexerService,
-        _apiKey = apiKey,
-        _dio = dio ?? Dio() {
+  }) : _databaseService = databaseService,
+       _indexerService = indexerService,
+       _apiKey = apiKey,
+       _dio = dio ?? Dio() {
     _log = Logger('DP1FeedService');
   }
 
@@ -71,13 +71,16 @@ class DP1FeedService {
       _log.info('Fetched ${items.length} playlists from feed');
 
       // Ingest each playlist
+      var ingestedCount = 0;
       for (final playlistJson in items) {
         await ingestPlaylistFromFeed(
           baseUrl: baseUrl,
           playlistJson: playlistJson as Map<String, dynamic>,
         );
+        ingestedCount++;
       }
 
+      _log.info('Successfully ingested $ingestedCount playlists into database');
       return items.length;
     } catch (e, stack) {
       _log.severe('Failed to fetch playlists from $baseUrl', e, stack);
@@ -102,9 +105,7 @@ class DP1FeedService {
 
       // Parse signatures
       final signaturesJson = playlistJson['signatures'] as List?;
-      final signatures = signaturesJson
-          ?.map((s) => s.toString())
-          .toList();
+      final signatures = signaturesJson?.map((s) => s.toString()).toList();
 
       // Parse defaults
       final defaults = playlistJson['defaults'] as Map<String, dynamic>?;
@@ -145,15 +146,14 @@ class DP1FeedService {
 
       // Extract items (may be empty for dynamic playlists)
       final itemsJson = playlistJson['items'] as List?;
-      final items = itemsJson
-              ?.map((item) => item as Map<String, dynamic>)
-              .toList() ??
-          [];
+      final items =
+          itemsJson?.map((item) => item as Map<String, dynamic>).toList() ?? [];
 
-      // Extract CIDs for token enrichment
+      // Extract CIDs for token enrichment (use 'cid' field, not 'id')
+      // DP1 items have both 'id' (UUID) and 'cid' (IPFS CID)
       final cids = items
-          .map((item) => item['id'] as String?)
-          .where((id) => id != null)
+          .map((item) => item['cid'] as String?)
+          .where((cid) => cid != null)
           .cast<String>()
           .toList();
 
@@ -187,6 +187,79 @@ class DP1FeedService {
       }
     } catch (e, stack) {
       _log.severe('Failed to ingest playlist from feed', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Fetch and ingest all channels from a feed server.
+  Future<int> fetchChannels({
+    required String baseUrl,
+    int? limit,
+    String? cursor,
+  }) async {
+    try {
+      _log.info('Fetching channels from $baseUrl');
+
+      // Build request URL
+      final uri = Uri.parse('$baseUrl/api/v1/channels');
+      final queryParams = <String, String>{};
+      if (limit != null) queryParams['limit'] = limit.toString();
+      if (cursor != null) queryParams['cursor'] = cursor;
+
+      final finalUri = uri.replace(queryParameters: queryParams);
+      _log.info('Requesting: $finalUri');
+
+      // Fetch channels with authentication
+      final response = await _dio.getUri(
+        finalUri,
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $_apiKey',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to fetch channels: ${response.statusCode}');
+      }
+
+      final data = response.data as Map<String, dynamic>;
+      final items = (data['items'] as List?) ?? [];
+
+      _log.info('Fetched ${items.length} channels from feed');
+
+      // Ingest each channel
+      final channels = <Channel>[];
+      for (final channelJson in items) {
+        final json = channelJson as Map<String, dynamic>;
+        final channelId = json['id'] as String;
+
+        final channel = Channel(
+          id: channelId,
+          name: json['title'] as String,
+          type: ChannelType.dp1,
+          description: json['summary'] as String?,
+          baseUrl: baseUrl,
+          slug: json['slug'] as String?,
+          curator: json['curator'] as String?,
+          coverImageUrl: json['coverImageUri'] as String?,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+
+        channels.add(channel);
+      }
+
+      // Batch ingest
+      await _databaseService.ingestChannels(channels);
+      _log.info(
+        'Successfully ingested ${channels.length} channels into database',
+      );
+
+      return channels.length;
+    } catch (e, stack) {
+      _log.severe('Failed to fetch channels from $baseUrl', e, stack);
       rethrow;
     }
   }

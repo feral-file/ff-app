@@ -44,6 +44,26 @@ final fetchChannelProvider = FutureProvider.autoDispose.family<
   retry: apiRetryStrategy,
 );
 
+/// Provider for fetching channels from the feed server.
+/// 
+/// Uses automatic retry with custom strategy.
+/// 
+/// Returns the number of channels fetched.
+final fetchChannelsProvider = FutureProvider.autoDispose<int>(
+  (ref) async {
+    final service = ref.watch(dp1FeedServiceProvider);
+    
+    final count = await service.fetchChannels(
+      baseUrl: AppConfig.dp1FeedUrl,
+      limit: 100,
+    );
+    
+    return count;
+  },
+  // Apply custom retry strategy for network errors
+  retry: apiRetryStrategy,
+);
+
 /// Provider for fetching playlists from the feed server.
 /// 
 /// Uses automatic retry with custom strategy.

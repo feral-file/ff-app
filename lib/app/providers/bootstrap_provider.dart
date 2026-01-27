@@ -78,25 +78,38 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       _log.info('Starting bootstrap');
 
       // Check configuration
+      _log.info('Checking configuration validity...');
       if (!AppConfig.isValid) {
+        _log.severe('Invalid configuration: missing required keys');
         throw Exception('Invalid configuration: missing required keys');
       }
+      _log.info('Configuration is valid');
 
       // Step 1: Create "My Collection" channel
       state = state.copyWith(message: 'Setting up collection...');
+      _log.info('Creating My Collection channel...');
       final bootstrapService = ref.read(bootstrapServiceProvider);
       await bootstrapService.bootstrap();
+      _log.info('My Collection channel created');
 
-      // Step 2: Fetch playlists from feed server
+      // Step 2: Fetch channels from feed server
       // Using retryable provider for automatic retry on network errors
+      state = state.copyWith(message: 'Fetching channels...');
+      _log.info('Fetching channels from feed server...');
+      final channelCount = await ref.read(fetchChannelsProvider.future);
+
+      _log.info('✓ Fetched and saved $channelCount channels to database');
+
+      // Step 3: Fetch playlists from feed server
       state = state.copyWith(message: 'Fetching playlists...');
+      _log.info('Fetching playlists from feed server...');
       final playlistCount = await ref.read(fetchPlaylistsProvider.future);
 
-      _log.info('Fetched $playlistCount playlists');
+      _log.info('✓ Fetched and saved $playlistCount playlists to database');
 
       state = BootstrapStatus(
         state: BootstrapState.success,
-        message: 'Bootstrap completed: $playlistCount playlists loaded',
+        message: 'Bootstrap completed: $channelCount channels, $playlistCount playlists loaded',
       );
 
       _log.info('Bootstrap completed successfully');

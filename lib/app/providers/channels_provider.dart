@@ -3,19 +3,23 @@ import 'package:logging/logging.dart';
 
 import '../../domain/models/channel.dart';
 import '../../infra/database/database_provider.dart';
-import 'services_provider.dart';
+import 'mutations.dart';
 
-/// State for channels list.
+/// Enhanced state for channels with curated vs personal separation.
 class ChannelsState {
   /// Creates a ChannelsState.
   const ChannelsState({
-    required this.channels,
+    required this.curatedChannels,
+    required this.personalChannels,
     required this.isLoading,
     this.error,
   });
 
-  /// List of channels.
-  final List<Channel> channels;
+  /// Curated channels from DP1 feeds.
+  final List<Channel> curatedChannels;
+
+  /// Personal channels (e.g., My Collection).
+  final List<Channel> personalChannels;
 
   /// Whether channels are being loaded.
   final bool isLoading;
@@ -26,7 +30,8 @@ class ChannelsState {
   /// Initial state.
   factory ChannelsState.initial() {
     return const ChannelsState(
-      channels: [],
+      curatedChannels: [],
+      personalChannels: [],
       isLoading: false,
     );
   }
@@ -34,15 +39,20 @@ class ChannelsState {
   /// Loading state.
   factory ChannelsState.loading() {
     return const ChannelsState(
-      channels: [],
+      curatedChannels: [],
+      personalChannels: [],
       isLoading: true,
     );
   }
 
   /// Loaded state.
-  factory ChannelsState.loaded(List<Channel> channels) {
+  factory ChannelsState.loaded({
+    required List<Channel> curated,
+    required List<Channel> personal,
+  }) {
     return ChannelsState(
-      channels: channels,
+      curatedChannels: curated,
+      personalChannels: personal,
       isLoading: false,
     );
   }
@@ -50,8 +60,24 @@ class ChannelsState {
   /// Error state.
   factory ChannelsState.error(String error) {
     return ChannelsState(
-      channels: [],
+      curatedChannels: [],
+      personalChannels: [],
       isLoading: false,
+      error: error,
+    );
+  }
+
+  /// Copy with new values.
+  ChannelsState copyWith({
+    List<Channel>? curatedChannels,
+    List<Channel>? personalChannels,
+    bool? isLoading,
+    String? error,
+  }) {
+    return ChannelsState(
+      curatedChannels: curatedChannels ?? this.curatedChannels,
+      personalChannels: personalChannels ?? this.personalChannels,
+      isLoading: isLoading ?? this.isLoading,
       error: error,
     );
   }
@@ -71,12 +97,22 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
   /// Load channels from database.
   Future<void> loadChannels() async {
     try {
+      _log.info('Loading channels from database...');
       state = ChannelsState.loading();
 
       final databaseService = ref.read(databaseServiceProvider);
-      final channels = await databaseService.getChannels();
+      final allChannels = await databaseService.getChannels();
 
-      state = ChannelsState.loaded(channels);
+      _log.info('Loaded ${allChannels.length} total channels from database');
+
+      // Separate curated vs personal
+      // Personal channels are pinned (like "My Collection")
+      final curated = allChannels.where((c) => !c.isPinned).toList();
+      final personal = allChannels.where((c) => c.isPinned).toList();
+
+      _log.info('Curated channels: ${curated.length}, Personal channels: ${personal.length}');
+
+      state = ChannelsState.loaded(curated: curated, personal: personal);
     } catch (e, stack) {
       _log.severe('Failed to load channels', e, stack);
       state = ChannelsState.error(e.toString());
@@ -92,6 +128,24 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 /// Provider for channels list.
 final channelsProvider = NotifierProvider<ChannelsNotifier, ChannelsState>(
   ChannelsNotifier.new,
+);
+
+/// Mutation for loading channels.
+final loadChannelsMutationProvider =
+    NotifierProvider<MutationNotifier<void>, MutationState<void>>(
+  MutationNotifier.new,
+);
+
+/// Mutation for refreshing channels.
+final refreshChannelsMutationProvider =
+    NotifierProvider<MutationNotifier<void>, MutationState<void>>(
+  MutationNotifier.new,
+);
+
+/// Mutation for loading more channels.
+final loadMoreChannelsMutationProvider =
+    NotifierProvider<MutationNotifier<void>, MutationState<void>>(
+  MutationNotifier.new,
 );
 
 /// Provider for a specific channel by ID.
