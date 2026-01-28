@@ -1,5 +1,9 @@
-import 'package:app/app/app.dart';
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
+import 'package:app/infra/database/objectbox_models.dart';
+import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/config/app_config.dart';
+import 'package:app/app/app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -31,9 +35,23 @@ Future<void> main() async {
   // Load configuration
   await AppConfig.initialize();
 
+  // Initialize ObjectBox store for Bluetooth device storage
+  final store = await initializeObjectBox();
+  final bluetoothDeviceBox = store.box<FF1BluetoothDeviceEntity>();
+  final bluetoothDeviceService = FF1BluetoothDeviceService(bluetoothDeviceBox);
+
   runApp(
-    const ProviderScope(
-      child: App(),
+    ProviderScope(
+      // Override the ff1BluetoothDeviceServiceProvider with the initialized
+      // service
+      overrides: [
+        ff1BluetoothDeviceServiceProvider
+            .overrideWithValue(bluetoothDeviceService),
+      ],
+      child: const App(),
     ),
   );
 }
+
+
+

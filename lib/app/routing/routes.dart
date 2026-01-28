@@ -12,6 +12,18 @@ abstract class Routes {
 
   /// Works list route path.
   static const works = '/works';
+
+  /// FF1 test route path (for development/testing).
+  static const ff1Test = '/ff1-test';
+
+  /// Connected devices route path.
+  static const connectedDevices = '/connected-devices';
+
+  /// Scan WiFi networks route path (step 1-3 of WiFi connection).
+  static const scanWifiNetworks = '/scan-wifi-networks';
+
+  /// Enter WiFi password route path (step 4-6 of WiFi connection).
+  static const enterWifiPassword = '/enter-wifi-password';
 }
 
 /// Named routes for type-safe navigation.
@@ -36,4 +48,16 @@ abstract class RouteNames {
 
   /// Work detail route name.
   static const workDetail = 'work-detail';
+
+  /// FF1 test route name (for development/testing).
+  static const ff1Test = 'ff1-test';
+
+  /// Connected devices route name.
+  static const connectedDevices = 'connected-devices';
+
+  /// Scan WiFi networks route name (step 1-3 of WiFi connection).
+  static const scanWifiNetworks = 'scan-wifi-networks';
+
+  /// Enter WiFi password route name (step 4-6 of WiFi connection).
+  static const enterWifiPassword = 'enter-wifi-password';
 }

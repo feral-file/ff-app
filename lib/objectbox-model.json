@@ -1,0 +1,92 @@
+{
+  "_note1": "KEEP THIS FILE! Check it into a version control system (VCS) like git.",
+  "_note2": "ObjectBox manages crucial IDs for your object model. See docs for details.",
+  "_note3": "If you have VCS merge conflicts, you must resolve them according to ObjectBox docs.",
+  "entities": [
+    {
+      "id": "1:2853626907365117643",
+      "lastPropertyId": "13:8737347528951916824",
+      "name": "FF1BluetoothDeviceEntity",
+      "properties": [
+        {
+          "id": "1:8217879004984645775",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:6048094844959998607",
+          "name": "deviceId",
+          "type": 9
+        },
+        {
+          "id": "3:4976057546862378122",
+          "name": "remoteId",
+          "type": 9
+        },
+        {
+          "id": "4:1518878938718945078",
+          "name": "name",
+          "type": 9
+        },
+        {
+          "id": "5:8170522507265156275",
+          "name": "topicId",
+          "type": 9
+        },
+        {
+          "id": "6:6196593455555021706",
+          "name": "branchName",
+          "type": 9
+        },
+        {
+          "id": "7:4760008805664162387",
+          "name": "createdAtUs",
+          "type": 6
+        },
+        {
+          "id": "8:1644365094948404863",
+          "name": "updatedAtUs",
+          "type": 6
+        },
+        {
+          "id": "9:7253589737666510649",
+          "name": "isActive",
+          "type": 1
+        },
+        {
+          "id": "10:7653660604562504774",
+          "name": "connectionState",
+          "type": 6
+        },
+        {
+          "id": "11:6871174439474867832",
+          "name": "lastConnectionAttemptUs",
+          "type": 6
+        },
+        {
+          "id": "12:7901243151262088886",
+          "name": "failedConnectionAttempts",
+          "type": 6
+        },
+        {
+          "id": "13:8737347528951916824",
+          "name": "metadataJson",
+          "type": 9
+        }
+      ],
+      "relations": []
+    }
+  ],
+  "lastEntityId": "1:2853626907365117643",
+  "lastIndexId": "0:0",
+  "lastRelationId": "0:0",
+  "lastSequenceId": "0:0",
+  "modelVersion": 5,
+  "modelVersionParserMinimum": 5,
+  "retiredEntityUids": [],
+  "retiredIndexUids": [],
+  "retiredPropertyUids": [],
+  "retiredRelationUids": [],
+  "version": 1
+}

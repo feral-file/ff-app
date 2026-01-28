@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 
 /// Unit test to verify DP1 CID extraction fix
-/// 
+///
 /// This test verifies that we correctly extract 'cid' (not 'id') from DP1 items
 /// when fetching token enrichment data from the indexer.
-/// 
+///
 /// Background: DP1 items have two identifiers:
 /// - 'id': UUID like 'dbdcf0e1-999c-48ed-85e1-26e7d9ff74c5' (DP1 internal)
 /// - 'cid': IPFS CID like 'bafybeic...' (token content identifier)
-/// 
+///
 /// The indexer API only accepts IPFS CIDs, not UUIDs.
 ///
 /// Run with: flutter test test/infra/services/dp1_feed_service_test.dart
@@ -19,14 +19,16 @@ void main() {
       final dp1Items = [
         {
           'id': 'dbdcf0e1-999c-48ed-85e1-26e7d9ff74c5', // DP1 UUID
-          'cid': 'bafybeicwht4apx567l6gq6tyge4enijdczkn6s42qh6cvdlphmmyxwibmu', // Token CID
+          'cid':
+              'bafybeicwht4apx567l6gq6tyge4enijdczkn6s42qh6cvdlphmmyxwibmu', // Token CID
           'source': 'https://example.com/token1',
           'ref': 'https://example.com/token1',
           'license': 'CC0',
         },
         {
           'id': 'e8956d16-7e09-41be-b625-9b7435145a67', // DP1 UUID
-          'cid': 'bafkreif6ujsly5rz4etkeqkr3wgwfvhrmnynjb7jsjezh6skmhgvcwapby', // Token CID
+          'cid':
+              'bafkreif6ujsly5rz4etkeqkr3wgwfvhrmnynjb7jsjezh6skmhgvcwapby', // Token CID
           'source': 'https://example.com/token2',
           'ref': 'https://example.com/token2',
         },
@@ -47,15 +49,24 @@ void main() {
 
       print('\n=== Correct CID Extraction (FIXED) ===');
       print('Extracted CIDs: $correctCids');
-      
-      expect(correctCids.length, equals(2), 
-          reason: 'Should extract 2 CIDs (third item has no cid)');
-      
-      expect(correctCids[0], startsWith('bafybeic'),
-          reason: 'First CID should be valid IPFS CID');
-      
-      expect(correctCids[1], startsWith('bafkreif'),
-          reason: 'Second CID should be valid IPFS CID');
+
+      expect(
+        correctCids.length,
+        equals(2),
+        reason: 'Should extract 2 CIDs (third item has no cid)',
+      );
+
+      expect(
+        correctCids[0],
+        startsWith('bafybeic'),
+        reason: 'First CID should be valid IPFS CID',
+      );
+
+      expect(
+        correctCids[1],
+        startsWith('bafkreif'),
+        reason: 'Second CID should be valid IPFS CID',
+      );
 
       // Show what the WRONG way would do (the bug)
       final wrongIds = dp1Items
@@ -68,13 +79,23 @@ void main() {
       print('Extracted IDs: $wrongIds');
       print('❌ These are UUIDs, not CIDs!');
       print('❌ Indexer API will reject these with:');
-      print('   "invalid token CID: ${wrongIds[0]}. Must be a valid token CID"');
+      print(
+        '   "invalid token CID: ${wrongIds[0]}. Must be a valid token CID"',
+      );
 
-      expect(wrongIds.length, equals(3),
-          reason: 'Wrong way extracts all 3 IDs');
-      
-      expect(wrongIds[0], matches(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'),
-          reason: 'Wrong way extracts UUID, not CID');
+      expect(
+        wrongIds.length,
+        equals(3),
+        reason: 'Wrong way extracts all 3 IDs',
+      );
+
+      expect(
+        wrongIds[0],
+        matches(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+        ),
+        reason: 'Wrong way extracts UUID, not CID',
+      );
 
       print('\n✅ Test verifies the fix:');
       print('   - BEFORE fix: used item["id"] → UUIDs → indexer error');
@@ -86,14 +107,18 @@ void main() {
       final enrichmentTokens = [
         {
           'id': '12345', // Token internal ID
-          'token_cid': 'bafybeicwht4apx567l6gq6tyge4enijdczkn6s42qh6cvdlphmmyxwibmu',
-          'thumbnailUrl': 'https://media.feral file.com/images/token1-thumbnail.jpg',
+          'token_cid':
+              'bafybeicwht4apx567l6gq6tyge4enijdczkn6s42qh6cvdlphmmyxwibmu',
+          'thumbnailUrl':
+              'https://media.feral file.com/images/token1-thumbnail.jpg',
           'title': 'Artwork #1',
         },
         {
           'id': '67890', // Token internal ID
-          'token_cid': 'bafkreif6ujsly5rz4etkeqkr3wgwfvhrmnynjb7jsjezh6skmhgvcwapby',
-          'thumbnailUrl': 'https://media.feralfile.com/images/token2-thumbnail.jpg',
+          'token_cid':
+              'bafkreif6ujsly5rz4etkeqkr3wgwfvhrmnynjb7jsjezh6skmhgvcwapby',
+          'thumbnailUrl':
+              'https://media.feralfile.com/images/token2-thumbnail.jpg',
           'title': 'Artwork #2',
         },
       ];
@@ -101,7 +126,8 @@ void main() {
       // Simulate DP1 items
       final dp1Item = {
         'id': 'dbdcf0e1-999c-48ed-85e1-26e7d9ff74c5', // DP1 UUID
-        'cid': 'bafybeicwht4apx567l6gq6tyge4enijdczkn6s42qh6cvdlphmmyxwibmu', // Token CID
+        'cid':
+            'bafybeicwht4apx567l6gq6tyge4enijdczkn6s42qh6cvdlphmmyxwibmu', // Token CID
       };
 
       // Build the CID lookup map (as in database_service.dart)
@@ -126,8 +152,11 @@ void main() {
       print('   Found: ${correctToken?['title']}');
       print('   Thumbnail: ${correctToken?['thumbnailUrl']}');
 
-      expect(correctToken, isNotNull,
-          reason: 'Should find token when looking up by CID');
+      expect(
+        correctToken,
+        isNotNull,
+        reason: 'Should find token when looking up by CID',
+      );
       expect(correctToken?['title'], equals('Artwork #1'));
 
       // WRONG way (THE BUG): lookup by item['id']
@@ -138,12 +167,17 @@ void main() {
       print('   ID: $itemId');
       print('   Found: ${wrongToken ?? "null (not found!)"}');
 
-      expect(wrongToken, isNull,
-          reason: 'Should NOT find token when looking up by UUID');
+      expect(
+        wrongToken,
+        isNull,
+        reason: 'Should NOT find token when looking up by UUID',
+      );
 
       print('\n✅ Test verifies database_service.dart fix:');
       print('   - BEFORE fix: tokensByCID[itemId] → null → no enrichment');
-      print('   - AFTER fix:  tokensByCID[itemCid] → token data → thumbnails work!');
+      print(
+        '   - AFTER fix:  tokensByCID[itemCid] → token data → thumbnails work!',
+      );
     });
   });
 }

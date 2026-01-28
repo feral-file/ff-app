@@ -30,11 +30,14 @@ void main() {
         print('\n=== Response ===');
         print('Number of tokens: ${tokens.length}');
 
-        expect(tokens, isNotEmpty, 
-            reason: 'Should fetch at least one token for CID: $testCid');
+        expect(
+          tokens,
+          isNotEmpty,
+          reason: 'Should fetch at least one token for CID: $testCid',
+        );
 
         final token = tokens.first;
-        
+
         print('\n=== Token Data ===');
         print('Token ID: ${token['id']}');
         print('Token CID: ${token['token_cid']}');
@@ -42,7 +45,7 @@ void main() {
         print('Chain: ${token['chain']}');
         print('Contract: ${token['contract_address']}');
         print('Token Number: ${token['token_number']}');
-        
+
         print('\n=== Metadata ===');
         final metadata = token['metadata'] as Map<String, dynamic>?;
         if (metadata != null) {
@@ -50,9 +53,11 @@ void main() {
           print('Image URL: ${metadata['image_url']}');
           print('Animation URL: ${metadata['animation_url']}');
           print('Mime Type: ${metadata['mime_type']}');
-          print('Description: ${metadata['description']?.toString().substring(0, metadata['description'].toString().length > 100 ? 100 : metadata['description'].toString().length)}...');
+          print(
+            'Description: ${metadata['description']?.toString().substring(0, metadata['description'].toString().length > 100 ? 100 : metadata['description'].toString().length)}...',
+          );
         }
-        
+
         print('\n=== Enrichment Source ===');
         final enrichment = token['enrichment_source'] as Map<String, dynamic>?;
         if (enrichment != null) {
@@ -62,7 +67,7 @@ void main() {
           print('Animation URL: ${enrichment['animation_url']}');
           print('Mime Type: ${enrichment['mime_type']}');
         }
-        
+
         print('\n=== Media Assets ===');
         final metadataAssets = token['metadata_media_assets'] as List?;
         print('Metadata Assets: ${metadataAssets?.length ?? 0}');
@@ -72,8 +77,9 @@ void main() {
           print('  Mime Type: ${asset['mime_type']}');
           print('  Variants: ${asset['variant_urls']}');
         }
-        
-        final enrichmentAssets = token['enrichment_source_media_assets'] as List?;
+
+        final enrichmentAssets =
+            token['enrichment_source_media_assets'] as List?;
         print('Enrichment Assets: ${enrichmentAssets?.length ?? 0}');
         if (enrichmentAssets != null && enrichmentAssets.isNotEmpty) {
           final asset = enrichmentAssets.first as Map<String, dynamic>;
@@ -81,7 +87,7 @@ void main() {
           print('  Mime Type: ${asset['mime_type']}');
           print('  Variants: ${asset['variant_urls']}');
         }
-        
+
         print('\n=== Final Thumbnail ===');
         print('Thumbnail URL: ${token['thumbnailUrl']}');
         print('Preview URL: ${token['previewUrl']}');
@@ -92,20 +98,20 @@ void main() {
           isNotNull,
           reason: 'Thumbnail URL should be extracted from token data',
         );
-        
+
         expect(
           token['thumbnailUrl'],
           isA<String>(),
           reason: 'Thumbnail URL should be a string',
         );
-        
+
         final thumbnailUrl = token['thumbnailUrl'] as String;
         expect(
           thumbnailUrl.isNotEmpty,
           isTrue,
           reason: 'Thumbnail URL should not be empty',
         );
-        
+
         // Verify it's a valid URL
         final uri = Uri.tryParse(thumbnailUrl);
         expect(
@@ -113,13 +119,13 @@ void main() {
           isNotNull,
           reason: 'Thumbnail URL should be a valid URI: $thumbnailUrl',
         );
-        
+
         expect(
           uri?.scheme,
           isIn(['http', 'https', 'ipfs']),
           reason: 'Thumbnail URL should have a valid scheme',
         );
-        
+
         print('\n✅ SUCCESS: Thumbnail URL is valid: $thumbnailUrl');
       } catch (e, stack) {
         print('\n❌ ERROR: $e');
@@ -154,8 +160,11 @@ void main() {
           print('Title: ${token['title']}');
           print('Thumbnail URL: ${token['thumbnailUrl']}');
 
-          expect(token['thumbnailUrl'], isNotNull,
-              reason: 'Thumbnail URL should not be null');
+          expect(
+            token['thumbnailUrl'],
+            isNotNull,
+            reason: 'Thumbnail URL should not be null',
+          );
         } else {
           print('\n⚠️  No tokens returned for addresses: $addresses');
         }
