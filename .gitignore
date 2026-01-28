@@ -124,3 +124,6 @@ old_ff_app
 
 .DS_Store
 .idea/
+
+# Cursor
+.cursor/codebase-rule.mdc
