@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
-/// FF1 Protocol: message encoding/decoding with varint length prefixes
+/// FF1 BLE Protocol: message encoding/decoding with varint length prefixes
 ///
 /// This implements the wire protocol for FF1 device communication:
 /// - Commands: [varint][command][varint][replyId][varint][param1]...[varint][paramN]
@@ -11,9 +11,9 @@ import 'dart:typed_data';
 /// Separation: Protocol layer only deals with encoding/decoding. Transport layer
 /// handles BLE characteristic reads/writes. Control layer orchestrates commands.
 
-/// FF1 protocol codec for encoding commands and decoding responses
-class FF1Protocol {
-  const FF1Protocol();
+/// FF1 BLE protocol codec for encoding commands and decoding responses
+class FF1BleProtocol {
+  const FF1BleProtocol();
 
   /// Build a command message
   ///
@@ -53,8 +53,8 @@ class FF1Protocol {
   ///
   /// Format: [varint len][topic][varint+byte][errorCode][varint len][data1]...
   ///
-  /// Returns a [FF1Response] with topic, errorCode, and data list
-  FF1Response parseResponse(List<int> bytes) {
+  /// Returns a [FF1BleResponse] with topic, errorCode, and data list
+  FF1BleResponse parseResponse(List<int> bytes) {
     final reader = _VarintReader(bytes);
 
     // Read topic (reply ID)
@@ -81,7 +81,7 @@ class FF1Protocol {
       // End of data
     }
 
-    return FF1Response(
+    return FF1BleResponse(
       topic: topic,
       errorCode: errorCode,
       data: data,
@@ -106,9 +106,9 @@ class FF1Protocol {
   }
 }
 
-/// Parsed FF1 response
-class FF1Response {
-  const FF1Response({
+/// Parsed FF1 BLE response
+class FF1BleResponse {
+  const FF1BleResponse({
     required this.topic,
     required this.errorCode,
     required this.data,
@@ -128,10 +128,10 @@ class FF1Response {
 
   @override
   String toString() =>
-      'FF1Response(topic: $topic, errorCode: $errorCode, data: $data)';
+      'FF1BleResponse(topic: $topic, errorCode: $errorCode, data: $data)';
 }
 
-/// Varint reader for parsing FF1 responses
+/// Varint reader for parsing FF1 BLE responses
 class _VarintReader {
   _VarintReader(this._data);
 

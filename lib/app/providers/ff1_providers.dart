@@ -1,8 +1,8 @@
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_error.dart';
-import 'package:app/infra/ff1/protocol/ff1_commands.dart';
-import 'package:app/infra/ff1/protocol/ff1_protocol.dart';
-import 'package:app/infra/ff1/transport/ff1_transport.dart';
+import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
+import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
+import 'package:app/infra/ff1/ble_transport/ff1_ble_transport.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -11,17 +11,17 @@ import 'package:logging/logging.dart';
 // Transport and Protocol providers (infrastructure)
 // ============================================================================
 
-/// FF1 protocol codec provider (singleton)
-final ff1ProtocolProvider = Provider<FF1Protocol>((ref) {
-  return const FF1Protocol();
+/// FF1 BLE protocol codec provider (singleton)
+final ff1ProtocolProvider = Provider<FF1BleProtocol>((ref) {
+  return const FF1BleProtocol();
 });
 
-/// FF1 transport provider (singleton)
-final ff1TransportProvider = Provider<FF1Transport>((ref) {
+/// FF1 BLE transport provider (singleton)
+final ff1TransportProvider = Provider<FF1BleTransport>((ref) {
   final protocol = ref.watch(ff1ProtocolProvider);
-  return FF1Transport(
+  return FF1BleTransport(
     protocol: protocol,
-    logger: Logger('FF1Transport'),
+    logger: Logger('FF1BleTransport'),
   );
 });
 
@@ -46,26 +46,26 @@ final bluetoothSupportedProvider = FutureProvider<bool>((ref) {
 // FF1 Control provider (orchestration)
 // ============================================================================
 
-/// FF1 control provider: orchestrates commands and connection lifecycle
+/// FF1 BLE control provider: orchestrates commands and connection lifecycle
 ///
-/// This is the main interface for interacting with FF1 devices.
+/// This is the main interface for interacting with FF1 devices over BLE.
 /// Use this provider to:
 /// - Connect/disconnect devices
 /// - Scan for devices
 /// - Send commands (WiFi, info, logs, etc.)
-final ff1ControlProvider = Provider<FF1Control>((ref) {
+final ff1ControlProvider = Provider<FF1BleControl>((ref) {
   final transport = ref.watch(ff1TransportProvider);
-  return FF1Control(transport: transport);
+  return FF1BleControl(transport: transport);
 });
 
-/// FF1 Control: high-level orchestration of FF1 commands
+/// FF1 BLE Control: high-level orchestration of FF1 BLE commands
 ///
-/// This class provides typed methods for all FF1 operations.
+/// This class provides typed methods for all FF1 BLE operations.
 /// It uses the transport layer to send commands and parse responses.
-class FF1Control {
-  FF1Control({required FF1Transport transport}) : _transport = transport;
+class FF1BleControl {
+  FF1BleControl({required FF1BleTransport transport}) : _transport = transport;
 
-  final FF1Transport _transport;
+  final FF1BleTransport _transport;
 
   /// Connect to an FF1 device
   Future<void> connect({
@@ -120,7 +120,7 @@ class FF1Control {
   }) async {
     final response = await _transport.sendCommand(
       device: device,
-      command: FF1Command.sendWifiCredentials,
+      command: FF1BleCommand.sendWifiCredentials,
       request: SendWifiCredentialsRequest(ssid: ssid, password: password),
       timeout: const Duration(seconds: 30),
     );
@@ -142,7 +142,7 @@ class FF1Control {
   }) async {
     final response = await _transport.sendCommand(
       device: device,
-      command: FF1Command.scanWifi,
+      command: FF1BleCommand.scanWifi,
       request: const ScanWifiRequest(),
     );
 
@@ -159,7 +159,7 @@ class FF1Control {
   }) async {
     final response = await _transport.sendCommand(
       device: device,
-      command: FF1Command.keepWifi,
+      command: FF1BleCommand.keepWifi,
       request: const KeepWifiRequest(),
     );
 
@@ -185,7 +185,7 @@ class FF1Control {
       try {
         final response = await _transport.sendCommand(
           device: device,
-          command: FF1Command.getInfo,
+          command: FF1BleCommand.getInfo,
           request: const GetInfoRequest(),
         );
 
@@ -216,7 +216,7 @@ class FF1Control {
   }) async {
     final response = await _transport.sendCommand(
       device: device,
-      command: FF1Command.factoryReset,
+      command: FF1BleCommand.factoryReset,
       request: const FactoryResetRequest(),
       timeout: const Duration(seconds: 30),
     );
@@ -235,7 +235,7 @@ class FF1Control {
   }) async {
     final response = await _transport.sendCommand(
       device: device,
-      command: FF1Command.sendLog,
+      command: FF1BleCommand.sendLog,
       request: SendLogRequest(
         userId: userId,
         title: title,
@@ -257,7 +257,7 @@ class FF1Control {
   }) async {
     await _transport.sendCommand(
       device: device,
-      command: FF1Command.setTimezone,
+      command: FF1BleCommand.setTimezone,
       request: SetTimezoneRequest(timezone: timezone, time: time),
       timeout: const Duration(seconds: 5),
     );
@@ -294,11 +294,11 @@ class FF1ScanState {
   }
 }
 
-/// FF1 scan state notifier
+/// FF1 BLE scan state notifier
 class FF1ScanNotifier extends Notifier<FF1ScanState> {
   FF1ScanNotifier();
 
-  FF1Control get _control => ref.read(ff1ControlProvider);
+  FF1BleControl get _control => ref.read(ff1ControlProvider);
 
   @override
   FF1ScanState build() {

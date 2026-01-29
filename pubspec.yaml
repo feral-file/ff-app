@@ -72,6 +72,7 @@ dependencies:
   app_links: 7.0.0
   url_launcher: 6.3.2
   uuid:
+  web_socket_channel: 3.0.1
   easy_localization: 3.0.8
   flutter_widget_from_html: 0.17.1
   sentry: 9.10.0

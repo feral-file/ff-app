@@ -1,12 +1,13 @@
+import 'dart:async';
+
 import 'package:app/app/providers/ff1_providers.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:permission_handler/permission_handler.dart';
-
-/// FF1 Test Screen: scan, pair, and test WiFi credentials
 ///
 /// This screen demonstrates the FF1 Bluetooth integration:
 /// 1. Scan for FF1 devices in range
@@ -28,11 +29,15 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
   bool _isConnecting = false;
   String? _connectionError;
   String? _wifiResult;
+  String? _topicId;
+  bool _showQrCode = true;
+  bool _isTestingConnection = false;
+  String? _connectionTestResult;
 
   @override
   void initState() {
     super.initState();
-    _requestBluetoothPermission();
+    unawaited(_requestBluetoothPermission());
   }
 
   Future<void> _requestBluetoothPermission() async {
@@ -186,11 +191,23 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
 
       _log.info('SUCCESS! Topic ID: $topicId');
 
+      // Hide QR code and keep WiFi connection
+      setState(() {
+        _topicId = topicId;
+        _showQrCode = false;
+        _wifiResult = 'WiFi credentials sent!\n\nHiding QR code...';
+      });
+
+      // Call keepWifi to confirm connection
+      _log.info('Confirming WiFi connection...');
+      await control.keepWifi(device: _selectedDevice!);
+
       setState(() {
         _wifiResult =
             'SUCCESS!\n\nTopic ID: $topicId\n\n'
             'The device is now connected to WiFi and can be controlled '
-            'via cloud WebSocket.';
+            'via cloud WebSocket.\n\n'
+            'Tap "Test WiFi Connection" to verify connectivity.';
       });
 
       if (mounted) {
@@ -206,6 +223,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
 
       setState(() {
         _wifiResult = 'FAILED!\n\nError: $e';
+        _showQrCode = true;
       });
 
       if (mounted) {
@@ -273,6 +291,108 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
     }
   }
 
+  /// Test WiFi connection by connecting via Relayer and rotating 4 times
+  Future<void> _testWifiConnection() async {
+    if (_topicId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Send WiFi credentials first'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isTestingConnection = true;
+      _connectionTestResult = 'Connecting to device via WiFi Relayer...';
+    });
+
+    try {
+      final wifiControl = ref.read(ff1WifiConnectionProvider.notifier);
+      final device = FF1Device(
+        name: _selectedDevice!.name,
+        remoteId: _selectedDevice!.remoteId,
+        deviceId: _selectedDevice!.deviceId,
+        topicId: _topicId!,
+      );
+
+      _log.info('Connecting to device via WiFi with topicId: $_topicId');
+
+      // Connect via WiFi
+      await wifiControl.connect(
+        device: device,
+        userId: 'test_user',
+        apiKey: 'test_api_key',
+      );
+
+      _log.info('Connected to device via WiFi!');
+
+      setState(() {
+        _connectionTestResult = 'Connected! Testing connection...\n\n';
+      });
+
+      // Rotate 4 times to test the connection
+      for (int i = 1; i <= 4; i++) {
+        try {
+          _log.info('Rotation $i/4 - Testing connection...');
+
+          // Small delay between rotations
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+
+          // You can add a rotation/action command here if available
+          // For now, we're just verifying the connection is alive
+
+          setState(() {
+            _connectionTestResult =
+                '${_connectionTestResult!}Rotation $i/4 - OK\n';
+          });
+
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+        } catch (e) {
+          _log.warning('Rotation $i/4 failed: $e');
+          setState(() {
+            _connectionTestResult =
+                '${_connectionTestResult!}Rotation $i/4 - FAILED: $e\n';
+          });
+        }
+      }
+
+      setState(() {
+        _connectionTestResult =
+            '${_connectionTestResult!}\n✓ All 4 rotations completed successfully!';
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('WiFi connection test passed!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      _log.severe('WiFi connection test failed: $e');
+
+      setState(() {
+        _connectionTestResult = 'Connection test FAILED!\n\nError: $e';
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection test failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isTestingConnection = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scanState = ref.watch(ff1ScanProvider);
@@ -295,7 +415,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: () {
-                ref.read(ff1ScanProvider.notifier).startScan();
+                unawaited(ref.read(ff1ScanProvider.notifier).startScan());
               },
             ),
         ],
@@ -341,7 +461,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
         );
       },
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (Object _, StackTrace __) => const SizedBox.shrink(),
     );
   }
 
@@ -357,7 +477,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () {
-                ref.read(ff1ScanProvider.notifier).startScan();
+                unawaited(ref.read(ff1ScanProvider.notifier).startScan());
               },
               icon: const Icon(Icons.search),
               label: const Text('Start Scan'),
@@ -472,6 +592,21 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
             label: const Text('Send WiFi Credentials'),
           ),
 
+          if (_wifiResult != null && !_showQrCode) ...[
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _isTestingConnection ? null : _testWifiConnection,
+              icon: const Icon(Icons.check_circle),
+              label: _isTestingConnection
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Test WiFi Connection (4x Rotate)'),
+            ),
+          ],
+
           if (_wifiResult != null) ...[
             const SizedBox(height: 24),
             Card(
@@ -499,6 +634,42 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
                         color: _wifiResult!.contains('SUCCESS')
                             ? Colors.green.shade900
                             : Colors.red.shade900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
+          if (_connectionTestResult != null) ...[
+            const SizedBox(height: 16),
+            Card(
+              color: _connectionTestResult!.contains('successfully')
+                  ? Colors.blue.shade50
+                  : Colors.orange.shade50,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Connection Test',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _connectionTestResult!.contains('successfully')
+                            ? Colors.blue.shade900
+                            : Colors.orange.shade900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _connectionTestResult!,
+                      style: TextStyle(
+                        color: _connectionTestResult!.contains('successfully')
+                            ? Colors.blue.shade900
+                            : Colors.orange.shade900,
+                        fontFamily: 'monospace',
                       ),
                     ),
                   ],

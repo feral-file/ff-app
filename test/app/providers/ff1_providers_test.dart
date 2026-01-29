@@ -3,19 +3,19 @@ import 'dart:async';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_error.dart';
-import 'package:app/infra/ff1/protocol/ff1_commands.dart';
-import 'package:app/infra/ff1/protocol/ff1_protocol.dart';
-import 'package:app/infra/ff1/transport/ff1_transport.dart';
+import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
+import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
+import 'package:app/infra/ff1/ble_transport/ff1_ble_transport.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('FF1 Providers', () {
-    group('FF1Control.sendWifiCredentials', () {
+    group('FF1BleControl.sendWifiCredentials', () {
       test('returns topicId on success', () async {
-        final fakeTransport = FakeFF1Transport(
-          sendCommandResponse: const FF1Response(
+        final fakeTransport = FakeFF1BleTransport(
+          sendCommandResponse: const FF1BleResponse(
             topic: 'test',
             errorCode: 0,
             data: ['topic_12345'],
@@ -43,12 +43,12 @@ void main() {
         );
 
         expect(topicId, 'topic_12345');
-        expect(fakeTransport.lastCommand, FF1Command.sendWifiCredentials);
+        expect(fakeTransport.lastCommand, FF1BleCommand.sendWifiCredentials);
       });
 
       test('throws error on wrong password', () async {
-        final fakeTransport = FakeFF1Transport(
-          sendCommandResponse: const FF1Response(
+        final fakeTransport = FakeFF1BleTransport(
+          sendCommandResponse: const FF1BleResponse(
             topic: 'test',
             errorCode: 1, // Wrong password
             data: [],
@@ -80,8 +80,8 @@ void main() {
       });
 
       test('throws error when topicId is missing', () async {
-        final fakeTransport = FakeFF1Transport(
-          sendCommandResponse: const FF1Response(
+        final fakeTransport = FakeFF1BleTransport(
+          sendCommandResponse: const FF1BleResponse(
             topic: 'test',
             errorCode: 0,
             data: [], // No topicId!
@@ -113,10 +113,10 @@ void main() {
       });
     });
 
-    group('FF1Control.scanWifi', () {
+    group('FF1BleControl.scanWifi', () {
       test('returns list of SSIDs', () async {
-        final fakeTransport = FakeFF1Transport(
-          sendCommandResponse: const FF1Response(
+        final fakeTransport = FakeFF1BleTransport(
+          sendCommandResponse: const FF1BleResponse(
             topic: 'scan',
             errorCode: 0,
             data: ['Network1', 'Network2', 'Network3'],
@@ -140,12 +140,12 @@ void main() {
         final ssids = await control.scanWifi(device: device);
 
         expect(ssids, ['Network1', 'Network2', 'Network3']);
-        expect(fakeTransport.lastCommand, FF1Command.scanWifi);
+        expect(fakeTransport.lastCommand, FF1BleCommand.scanWifi);
       });
 
       test('returns empty list when no networks found', () async {
-        final fakeTransport = FakeFF1Transport(
-          sendCommandResponse: const FF1Response(
+        final fakeTransport = FakeFF1BleTransport(
+          sendCommandResponse: const FF1BleResponse(
             topic: 'scan',
             errorCode: 0,
             data: [],
@@ -172,10 +172,10 @@ void main() {
       });
     });
 
-    group('FF1Control.keepWifi', () {
+    group('FF1BleControl.keepWifi', () {
       test('returns topicId on success', () async {
-        final fakeTransport = FakeFF1Transport(
-          sendCommandResponse: const FF1Response(
+        final fakeTransport = FakeFF1BleTransport(
+          sendCommandResponse: const FF1BleResponse(
             topic: 'keep',
             errorCode: 0,
             data: ['topic_existing'],
@@ -199,12 +199,12 @@ void main() {
         final topicId = await control.keepWifi(device: device);
 
         expect(topicId, 'topic_existing');
-        expect(fakeTransport.lastCommand, FF1Command.keepWifi);
+        expect(fakeTransport.lastCommand, FF1BleCommand.keepWifi);
       });
 
       test('throws WifiRequiredError when not connected', () async {
-        final fakeTransport = FakeFF1Transport(
-          sendCommandResponse: const FF1Response(
+        final fakeTransport = FakeFF1BleTransport(
+          sendCommandResponse: const FF1BleResponse(
             topic: 'keep',
             errorCode: 4, // WiFi required
             data: [],
@@ -232,10 +232,10 @@ void main() {
       });
     });
 
-    group('FF1Control.getInfo', () {
+    group('FF1BleControl.getInfo', () {
       test('returns device info string', () async {
-        final fakeTransport = FakeFF1Transport(
-          sendCommandResponse: const FF1Response(
+        final fakeTransport = FakeFF1BleTransport(
+          sendCommandResponse: const FF1BleResponse(
             topic: 'info',
             errorCode: 0,
             data: ['{"version":"1.0.0","deviceId":"FF1_12345"}'],
@@ -264,14 +264,14 @@ void main() {
 
       test('retries on failure', () async {
         var callCount = 0;
-        final fakeTransport = FakeFF1Transport(
+        final fakeTransport = FakeFF1BleTransport(
           sendCommandCallback: (device, command, request, timeout) {
             callCount++;
             if (callCount < 2) {
               throw Exception('Network error');
             }
             return Future.value(
-              const FF1Response(
+              const FF1BleResponse(
                 topic: 'info',
                 errorCode: 0,
                 data: ['success'],
@@ -294,7 +294,7 @@ void main() {
           deviceId: 'FF1_TEST',
         );
 
-        final info = await control.getInfo(device: device, maxRetries: 3);
+        final info = await control.getInfo(device: device);
 
         expect(info, 'success');
         expect(callCount, 2); // Failed once, succeeded on second attempt
@@ -303,7 +303,7 @@ void main() {
 
     group('FF1ScanNotifier', () {
       test('starts scan and updates state', () async {
-        final fakeTransport = FakeFF1Transport(
+        final fakeTransport = FakeFF1BleTransport(
           scanDevices: [
             BluetoothDevice.fromId('00:11:22:33:44:55'),
             BluetoothDevice.fromId('AA:BB:CC:DD:EE:FF'),
@@ -329,7 +329,7 @@ void main() {
       });
 
       test('handles scan error', () async {
-        final fakeTransport = FakeFF1Transport(
+        final fakeTransport = FakeFF1BleTransport(
           scanError: Exception('Bluetooth not enabled'),
         );
 
@@ -377,26 +377,26 @@ void main() {
 // Fake Transport for testing
 // ============================================================================
 
-class FakeFF1Transport implements FF1Transport {
-  FakeFF1Transport({
+class FakeFF1BleTransport implements FF1BleTransport {
+  FakeFF1BleTransport({
     this.sendCommandResponse,
     this.sendCommandCallback,
     this.scanDevices = const [],
     this.scanError,
   });
 
-  final FF1Response? sendCommandResponse;
-  final Future<FF1Response> Function(
+  final FF1BleResponse? sendCommandResponse;
+  final Future<FF1BleResponse> Function(
     FF1Device device,
-    FF1Command command,
-    FF1Request request,
+    FF1BleCommand command,
+    FF1BleRequest request,
     Duration timeout,
   )? sendCommandCallback;
   final List<BluetoothDevice> scanDevices;
   final Object? scanError;
 
-  FF1Command? lastCommand;
-  FF1Request? lastRequest;
+  FF1BleCommand? lastCommand;
+  FF1BleRequest? lastRequest;
 
   @override
   BluetoothAdapterState get adapterState => BluetoothAdapterState.on;
@@ -409,10 +409,10 @@ class FakeFF1Transport implements FF1Transport {
   Future<bool> get isSupported => Future.value(true);
 
   @override
-  Future<FF1Response> sendCommand({
+  Future<FF1BleResponse> sendCommand({
     required FF1Device device,
-    required FF1Command command,
-    required FF1Request request,
+    required FF1BleCommand command,
+    required FF1BleRequest request,
     Duration timeout = const Duration(seconds: 10),
   }) async {
     lastCommand = command;
@@ -431,11 +431,11 @@ class FakeFF1Transport implements FF1Transport {
 
   @override
   Future<void> scan({
-    Duration timeout = const Duration(seconds: 30),
     required FutureOr<bool> Function(List<BluetoothDevice> devices) onDevice,
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     if (scanError != null) {
-      throw scanError!;
+      throw scanError! as Exception;
     }
 
     await onDevice(scanDevices);
@@ -447,7 +447,7 @@ class FakeFF1Transport implements FF1Transport {
     Duration timeout = const Duration(seconds: 15),
   }) async {
     if (scanError != null) {
-      throw scanError!;
+      throw scanError! as Exception;
     }
 
     for (final device in scanDevices) {

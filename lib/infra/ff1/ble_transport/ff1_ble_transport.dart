@@ -3,15 +3,15 @@ import 'dart:io';
 
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_error.dart';
-import 'package:app/infra/ff1/protocol/ff1_commands.dart';
-import 'package:app/infra/ff1/protocol/ff1_protocol.dart';
+import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
+import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:logging/logging.dart';
 
-/// FF1 Bluetooth Transport: handles BLE connection, scanning, and I/O
+/// FF1 Bluetooth Low Energy Transport: handles BLE connection, scanning, and I/O
 ///
-/// This is the transport layer for FF1 communication. It:
+/// This is the transport layer for FF1 BLE communication. It:
 /// - Manages BLE connection lifecycle (connect, disconnect, scan)
 /// - Discovers GATT services and characteristics
 /// - Sends commands and receives notifications
@@ -19,16 +19,16 @@ import 'package:logging/logging.dart';
 ///
 /// Separation: Transport handles BLE operations. Protocol handles encoding/decoding.
 /// Control layer (in app/) orchestrates commands using this transport.
-class FF1Transport {
-  FF1Transport({
-    FF1Protocol? protocol,
+class FF1BleTransport {
+  FF1BleTransport({
+    FF1BleProtocol? protocol,
     Logger? logger,
-  })  : _protocol = protocol ?? const FF1Protocol(),
-        _log = logger ?? Logger('FF1Transport') {
+  })  : _protocol = protocol ?? const FF1BleProtocol(),
+        _log = logger ?? Logger('FF1BleTransport') {
     _startListening();
   }
 
-  final FF1Protocol _protocol;
+  final FF1BleProtocol _protocol;
   final Logger _log;
 
   // FF1 Service UUID
@@ -41,7 +41,7 @@ class FF1Transport {
   final Map<String, BluetoothCharacteristic> _characteristics = {};
 
   // Response callbacks (replyId -> callback)
-  final Map<String, void Function(FF1Response)> _responseCallbacks = {};
+  final Map<String, void Function(FF1BleResponse)> _responseCallbacks = {};
 
   // Connection completer (for waiting on connection + service discovery)
   Completer<void>? _connectCompleter;
@@ -341,10 +341,10 @@ class FF1Transport {
   /// [command] - command to send
   /// [request] - request parameters
   /// [timeout] - response timeout
-  Future<FF1Response> sendCommand({
+  Future<FF1BleResponse> sendCommand({
     required FF1Device device,
-    required FF1Command command,
-    required FF1Request request,
+    required FF1BleCommand command,
+    required FF1BleRequest request,
     Duration timeout = const Duration(seconds: 10),
   }) async {
     final blDevice = device.toBluetoothDevice();
@@ -361,7 +361,7 @@ class FF1Transport {
     );
 
     // Subscribe to response
-    final completer = Completer<FF1Response>();
+    final completer = Completer<FF1BleResponse>();
     _responseCallbacks[replyId] = completer.complete;
 
     try {
