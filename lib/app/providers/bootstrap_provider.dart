@@ -1,3 +1,4 @@
+import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/api_providers.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
@@ -107,9 +108,25 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
 
       _log.info('✓ Fetched and saved $playlistCount playlists to database');
 
+      // Step 4: Bootstrap curated channels and custom feed servers.
+      // This is intentionally additive to the default DP1_FEED_URL bootstrap.
+      state = state.copyWith(message: 'Syncing curated feeds...');
+      _log.info('Bootstrapping curated feeds and custom feed servers...');
+      final feedResult = await ref.read(feedRegistryProvider.notifier).bootstrap(
+            skipPlaylistsBaseUrls: <String>{AppConfig.dp1FeedUrl},
+          );
+      _log.info(
+        '✓ Feed registry bootstrap: '
+        '${feedResult.channelsFetched} curated channels, '
+        '${feedResult.playlistsFetched} playlists, '
+        '${feedResult.feedServersTouched} feed servers',
+      );
+
       state = BootstrapStatus(
         state: BootstrapState.success,
-        message: 'Bootstrap completed: $channelCount channels, $playlistCount playlists loaded',
+        message: 'Bootstrap completed: '
+            '$channelCount channels, '
+            '$playlistCount playlists loaded',
       );
 
       _log.info('Bootstrap completed successfully');
