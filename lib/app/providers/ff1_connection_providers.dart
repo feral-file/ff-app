@@ -97,7 +97,7 @@ enum WiFiConnectionStatus {
 // ============================================================================
 
 /// Notifier for managing complete WiFi connection flow
-/// 
+///
 /// Steps:
 /// 1. Connect to device via BLE
 /// 2. Scan for available WiFi networks
@@ -285,30 +285,30 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
 // ============================================================================
 
 /// Provider for WiFi connection management
-final wifiConnectionProvider = NotifierProvider<
-    WiFiConnectionNotifier,
-    WiFiConnectionState
->(WiFiConnectionNotifier.new);
+final wifiConnectionProvider =
+    NotifierProvider<WiFiConnectionNotifier, WiFiConnectionState>(
+      WiFiConnectionNotifier.new,
+    );
 
 // ============================================================================
 // Connected Devices List
 // ============================================================================
 
 /// Get all devices that have successfully connected to WiFi (have topicId)
-final connectedFF1DevicesProvider =
-    FutureProvider<List<FF1Device>>((ref) async {
-  final allDevices =
-      await ref.watch(allFF1BluetoothDevicesProvider.future);
+final connectedFF1DevicesProvider = FutureProvider<List<FF1Device>>((
+  ref,
+) async {
+  final allDevices = await ref.watch(allFF1BluetoothDevicesProvider.future);
   return allDevices
       .where((device) => device.topicId != null && device.topicId!.isNotEmpty)
       .toList();
 });
 
 /// Get only disconnected devices (no topicId yet)
-final disconnectedFF1DevicesProvider =
-    FutureProvider<List<FF1Device>>((ref) async {
-  final allDevices =
-      await ref.watch(allFF1BluetoothDevicesProvider.future);
+final disconnectedFF1DevicesProvider = FutureProvider<List<FF1Device>>((
+  ref,
+) async {
+  final allDevices = await ref.watch(allFF1BluetoothDevicesProvider.future);
   return allDevices
       .where((device) => device.topicId == null || device.topicId!.isEmpty)
       .toList();
@@ -319,8 +319,10 @@ final disconnectedFF1DevicesProvider =
 // ============================================================================
 
 /// Forget (remove) a connected device
-final forgetFF1DeviceProvider =
-    FutureProvider.family<void, String>((ref, deviceId) async {
+final forgetFF1DeviceProvider = FutureProvider.family<void, String>((
+  ref,
+  deviceId,
+) async {
   final deviceService = ref.read(ff1BluetoothDeviceServiceProvider);
   await deviceService.removeDevice(deviceId);
   ref.invalidate(allFF1BluetoothDevicesProvider);
@@ -330,8 +332,10 @@ final forgetFF1DeviceProvider =
 });
 
 /// Disconnect device (remove topicId but keep device in storage)
-final disconnectFF1DeviceProvider =
-    FutureProvider.family<void, String>((ref, deviceId) async {
+final disconnectFF1DeviceProvider = FutureProvider.family<void, String>((
+  ref,
+  deviceId,
+) async {
   final deviceService = ref.read(ff1BluetoothDeviceServiceProvider);
   await deviceService.updateTopicId(deviceId, '');
   await deviceService.updateConnectionState(deviceId, 0);

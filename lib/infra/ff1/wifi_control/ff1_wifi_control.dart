@@ -30,17 +30,21 @@ import 'package:logging/logging.dart';
 /// - Maintains device state (player status, device status)
 /// - Exposes streams for state changes
 /// - Handles auto-reconnect on app lifecycle changes
+/// - Sends commands to devices via REST API
 class FF1WifiControl {
-  /// Creates FF1 WiFi control with given transport adapter.
+  /// Creates FF1 WiFi control with given transport adapter and optional REST client.
   FF1WifiControl({
     required FF1WifiTransport transport,
+    dynamic restClient,
     Logger? logger,
   })  : _transport = transport,
+        _restClient = restClient,
         _log = logger ?? Logger('FF1WifiControl') {
     _startListening();
   }
 
   final FF1WifiTransport _transport;
+  final dynamic _restClient;
   final Logger _log;
 
   // Stream controllers for state changes
@@ -236,6 +240,170 @@ class FF1WifiControl {
     unawaited(_connectionStatusController.close());
 
     _transport.dispose();
+  }
+
+  // =========================================================================
+  // Command Methods (send commands to device via REST API)
+  // =========================================================================
+
+  /// Send rotate command to the device.
+  ///
+  /// [topicId] — device identifier on the relayer
+  /// [angle] — rotation angle in degrees (default 90)
+  Future<FF1CommandResponse> rotate({
+    required String topicId,
+    int angle = 90,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending rotate command (angle: $angle) to device');
+
+      final request = FF1WifiRotateRequest(angle: angle);
+      final response = await _restClient.sendCommand(
+        topicId: topicId,
+        command: request.command,
+        params: request.params,
+      ) as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send rotate command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send pause command to the device.
+  ///
+  /// [topicId] — device identifier on the relayer
+  Future<FF1CommandResponse> pause({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending pause command to device');
+
+      final request = const FF1WifiPauseRequest();
+      final response = await _restClient.sendCommand(
+        topicId: topicId,
+        command: request.command,
+        params: request.params,
+      ) as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send pause command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send play/resume command to the device.
+  ///
+  /// [topicId] — device identifier on the relayer
+  Future<FF1CommandResponse> play({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending play command to device');
+
+      final request = const FF1WifiPlayRequest();
+      final response = await _restClient.sendCommand(
+        topicId: topicId,
+        command: request.command,
+        params: request.params,
+      ) as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send play command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send next artwork command to the device.
+  ///
+  /// [topicId] — device identifier on the relayer
+  Future<FF1CommandResponse> nextArtwork({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending nextArtwork command to device');
+
+      final request = const FF1WifiNextArtworkRequest();
+      final response = await _restClient.sendCommand(
+        topicId: topicId,
+        command: request.command,
+        params: request.params,
+      ) as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send nextArtwork command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send previous artwork command to the device.
+  ///
+  /// [topicId] — device identifier on the relayer
+  Future<FF1CommandResponse> previousArtwork({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending previousArtwork command to device');
+
+      final request = const FF1WifiPreviousArtworkRequest();
+      final response = await _restClient.sendCommand(
+        topicId: topicId,
+        command: request.command,
+        params: request.params,
+      ) as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send previousArtwork command: $e');
+      rethrow;
+    }
+  }
+
+  /// Show or hide pairing QR code on device.
+  ///
+  /// [topicId] — device topic ID
+  /// [show] — true to show QR code, false to hide it
+  ///
+  /// Returns command response.
+  Future<FF1CommandResponse> showPairingQRCode({
+    required String topicId,
+    required bool show,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending showPairingQRCode($show) command to device');
+
+      final request = FF1WifiShowPairingQRCodeRequest(show: show);
+      final response = await _restClient.sendCommand(
+        topicId: topicId,
+        command: request.command,
+        params: request.params,
+      ) as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send showPairingQRCode command: $e');
+      rethrow;
+    }
   }
 }
 

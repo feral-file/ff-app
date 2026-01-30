@@ -24,7 +24,9 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
     super.initState();
     // Start scanning for networks
     Future.microtask(() {
-      ref.read(wifiConnectionProvider.notifier).connectAndScanNetworks(
+      ref
+          .read(wifiConnectionProvider.notifier)
+          .connectAndScanNetworks(
             device: widget.device,
           );
     });
@@ -39,7 +41,8 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
         title: const Text('Select WiFi Network'),
         elevation: 0,
       ),
-      body: connectionState.status == WiFiConnectionStatus.selectingNetwork &&
+      body:
+          connectionState.status == WiFiConnectionStatus.selectingNetwork &&
               connectionState.scannedNetworks != null
           ? _buildNetworkList(context, connectionState, ref)
           : _buildLoadingOrError(context, connectionState),
@@ -71,10 +74,9 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
             const SizedBox(height: 8),
             Text(
               'Make sure your WiFi network is visible',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: Colors.grey[600]),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
             ),
             const SizedBox(height: 24),
             ElevatedButton(

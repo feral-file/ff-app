@@ -1,6 +1,7 @@
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_rest_client.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_relayer_transport.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
@@ -24,6 +25,18 @@ final ff1WifiTransportProvider = Provider<FF1WifiTransport>((ref) {
   );
 });
 
+/// FF1 WiFi REST client provider (for sending commands)
+///
+/// This provides the HTTP client for sending commands to FF1 devices
+/// via the Relayer's REST API endpoint.
+final ff1WifiRestClientProvider = Provider<FF1WifiRestClient>((ref) {
+  return FF1WifiRestClient(
+    castApiUrl: AppConfig.ff1CastApiUrl,
+    apiKey: AppConfig.ff1RelayerApiKey,
+    logger: Logger('FF1WifiRestClient'),
+  );
+});
+
 /// FF1 WiFi control provider (orchestration)
 ///
 /// This provides the control layer for WiFi communication.
@@ -32,10 +45,14 @@ final ff1WifiTransportProvider = Provider<FF1WifiTransport>((ref) {
 /// - Subscribe to player status updates
 /// - Subscribe to device status updates
 /// - Subscribe to connection status updates
+/// - Send commands to devices (rotate, pause, play, etc.)
 final ff1WifiControlProvider = Provider<FF1WifiControl>((ref) {
   final transport = ref.watch(ff1WifiTransportProvider);
+  final restClient = ref.watch(ff1WifiRestClientProvider);
+  
   final control = FF1WifiControl(
     transport: transport,
+    restClient: restClient,
     logger: Logger('FF1WifiControl'),
   );
 

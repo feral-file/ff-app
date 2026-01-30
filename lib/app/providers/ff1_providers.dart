@@ -91,15 +91,19 @@ class FF1BleControl {
   Future<List<BluetoothDevice>> scan({
     Duration timeout = const Duration(seconds: 30),
   }) async {
-    final devices = <BluetoothDevice>[];
+    // Use Map to deduplicate devices by remote ID
+    final deviceMap = <String, BluetoothDevice>{};
     await _transport.scan(
       timeout: timeout,
       onDevice: (foundDevices) {
-        devices.addAll(foundDevices);
+        // Add devices to map (automatically deduplicates by key)
+        for (final device in foundDevices) {
+          deviceMap[device.remoteId.str] = device;
+        }
         return false; // Continue scanning
       },
     );
-    return devices;
+    return deviceMap.values.toList();
   }
 
   /// Scan for device by name
@@ -122,7 +126,7 @@ class FF1BleControl {
       device: device,
       command: FF1BleCommand.sendWifiCredentials,
       request: SendWifiCredentialsRequest(ssid: ssid, password: password),
-      timeout: const Duration(seconds: 30),
+      timeout: const Duration(seconds: 60), // Increased timeout for WiFi connection
     );
 
     if (response.isError) {

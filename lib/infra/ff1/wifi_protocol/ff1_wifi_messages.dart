@@ -350,3 +350,140 @@ class FF1ConnectionStatus {
   @override
   String toString() => 'FF1ConnectionStatus(connected: $isConnected)';
 }
+
+// ============================================================================
+// WiFi Command Request/Response Types (App → Device via REST API)
+// ============================================================================
+
+/// Base class for WiFi command requests sent via REST API.
+abstract class FF1WifiCommandRequest {
+  /// Creates a command request.
+  const FF1WifiCommandRequest();
+
+  /// Command name (e.g., 'rotate', 'pause', 'play').
+  String get command;
+
+  /// Command-specific parameters.
+  Map<String, dynamic> get params;
+
+  /// Convert to JSON for sending via API.
+  Map<String, dynamic> toJson() => {
+        'command': command,
+        'params': params,
+      };
+}
+
+/// Rotate device command.
+class FF1WifiRotateRequest extends FF1WifiCommandRequest {
+  /// Creates a rotate request.
+  ///
+  /// [angle] — rotation angle in degrees (optional, default 90)
+  const FF1WifiRotateRequest({this.angle = 90});
+
+  /// Rotation angle in degrees.
+  final int angle;
+
+  @override
+  String get command => 'rotate';
+
+  @override
+  Map<String, dynamic> get params => {'angle': angle};
+}
+
+/// Pause playback command.
+class FF1WifiPauseRequest extends FF1WifiCommandRequest {
+  /// Creates a pause request.
+  const FF1WifiPauseRequest();
+
+  @override
+  String get command => 'pause';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
+/// Resume/play command.
+class FF1WifiPlayRequest extends FF1WifiCommandRequest {
+  /// Creates a play/resume request.
+  const FF1WifiPlayRequest();
+
+  @override
+  String get command => 'play';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
+/// Next artwork command.
+class FF1WifiNextArtworkRequest extends FF1WifiCommandRequest {
+  /// Creates a next artwork request.
+  const FF1WifiNextArtworkRequest();
+
+  @override
+  String get command => 'nextArtwork';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
+/// Previous artwork command.
+class FF1WifiPreviousArtworkRequest extends FF1WifiCommandRequest {
+  /// Creates a previous artwork request.
+  const FF1WifiPreviousArtworkRequest();
+
+  @override
+  String get command => 'previousArtwork';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
+/// Show/hide pairing QR code command.
+class FF1WifiShowPairingQRCodeRequest extends FF1WifiCommandRequest {
+  /// Creates a show/hide pairing QR code request.
+  ///
+  /// [show] — true to show QR code, false to hide it
+  const FF1WifiShowPairingQRCodeRequest({required this.show});
+
+  /// Whether to show (true) or hide (false) the QR code.
+  final bool show;
+
+  @override
+  String get command => 'showPairingQRCode';
+
+  @override
+  Map<String, dynamic> get params => {'show': show};
+}
+
+/// Base class for command responses.
+class FF1CommandResponse {
+  /// Creates a command response.
+  FF1CommandResponse({
+    this.status,
+    this.data,
+  });
+
+  /// Deserialize from JSON response.
+  factory FF1CommandResponse.fromJson(Map<String, dynamic> json) {
+    return FF1CommandResponse(
+      status: json['status'] as String?,
+      data: json['data'] as Map<String, dynamic>?,
+    );
+  }
+
+  /// Response status (e.g., 'ok', 'error').
+  final String? status;
+
+  /// Response data payload.
+  final Map<String, dynamic>? data;
+
+  /// Serialize to JSON.
+  Map<String, dynamic> toJson() => {
+        if (status != null) 'status': status,
+        if (data != null) 'data': data,
+      };
+
+  @override
+  String toString() => 'FF1CommandResponse(status: $status, data: $data)';
+}
+

@@ -58,9 +58,11 @@ class FF1BleTransport {
       if (state == BluetoothConnectionState.connected) {
         try {
           // Wait for connection to stabilize
-          await Future<void>.delayed(const Duration(seconds: 1));
+          _log.info('Connection established, stabilizing...');
+          await Future<void>.delayed(const Duration(seconds: 2));
 
           // Discover characteristics
+          _log.info('Starting service discovery...');
           await _discoverCharacteristics(device);
 
           // Complete connection
@@ -199,30 +201,48 @@ class FF1BleTransport {
 
   /// Discover GATT characteristics for an FF1 device
   Future<void> _discoverCharacteristics(BluetoothDevice device) async {
-    const timeouts = [Duration(seconds: 5)];
+    const timeouts = [
+      Duration(seconds: 10),
+      Duration(seconds: 15),
+      Duration(seconds: 20),
+    ];
 
     for (var i = 0; i < timeouts.length; i++) {
       try {
-        _log.fine('Discovering services (attempt ${i + 1}/${timeouts.length})');
+        _log.info('Discovering services (attempt ${i + 1}/${timeouts.length})');
 
-        await Future<void>.delayed(const Duration(seconds: 1));
+        await Future<void>.delayed(const Duration(seconds: 2));
         final services = await device.discoverServices(
           timeout: timeouts[i].inSeconds,
         );
 
-        // Find primary service
-        final primaryService = services.firstWhereOrNull((s) => s.isPrimary);
-        if (primaryService == null) {
-          throw Exception('Primary service not found');
+        _log.info('Found ${services.length} services on device');
+
+        // Log all available services for debugging
+        for (final service in services) {
+          _log.info(
+            'Service: ${service.uuid} '
+            '(primary: ${service.isPrimary}, '
+            'characteristics: ${service.characteristics.length})',
+          );
         }
 
-        // Find FF1 service
+        // Find FF1 service by UUID
         final ff1Service = services.firstWhereOrNull(
           (s) => s.uuid.toString() == serviceUuid,
         );
         if (ff1Service == null) {
+          _log.warning(
+            'FF1 service not found. Looking for UUID: $serviceUuid',
+          );
+          _log.warning(
+            'Available service UUIDs: '
+            '${services.map((s) => s.uuid.toString()).join(", ")}',
+          );
           throw Exception('FF1 service not found');
         }
+
+        _log.info('Found FF1 service: ${ff1Service.uuid}');
 
         // Find command characteristic
         final commandChar = ff1Service.characteristics.firstWhereOrNull(
@@ -406,9 +426,16 @@ class FF1BleTransport {
       final device = char.device;
       final isDataTooLong = e.toString().contains('data longer than allowed');
 
+      // Wait a bit before retry to let connection stabilize
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+
       if (device.isConnected) {
         if (!isDataTooLong) {
+          _log.info('Rediscovering services after write failure...');
           await device.discoverServices();
+          
+          // Wait for services to be discovered
+          await Future<void>.delayed(const Duration(milliseconds: 500));
         }
 
         try {
@@ -418,8 +445,12 @@ class FF1BleTransport {
             _log.fine('Ignoring error code ${e2.code}');
             return;
           }
+          _log.severe('Write failed after retry: $e2');
           rethrow;
         }
+      } else {
+        _log.severe('Device disconnected, cannot retry write');
+        rethrow;
       }
     }
   }

@@ -8,6 +8,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:permission_handler/permission_handler.dart';
+
 ///
 /// This screen demonstrates the FF1 Bluetooth integration:
 /// 1. Scan for FF1 devices in range
@@ -181,7 +182,33 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
       final ssid = _ssidController.text;
       final password = _passwordController.text;
 
+      // Set device timezone first (required before WiFi setup)
+      try {
+        _log.info('Setting device timezone...');
+        setState(() {
+          _wifiResult = 'Setting device timezone...';
+        });
+
+        // Get system timezone
+        final now = DateTime.now();
+        final timezone = now.timeZoneName;
+
+        await control.setTimezone(
+          device: _selectedDevice!,
+          timezone: timezone,
+          time: now,
+        );
+
+        _log.info('Timezone set successfully: $timezone');
+      } catch (e) {
+        _log.warning('Failed to set timezone (continuing anyway): $e');
+        // Continue even if timezone fails
+      }
+
       _log.info('Sending WiFi credentials: SSID=$ssid');
+      setState(() {
+        _wifiResult = 'Sending WiFi credentials...';
+      });
 
       final topicId = await control.sendWifiCredentials(
         device: _selectedDevice!,
@@ -191,16 +218,40 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
 
       _log.info('SUCCESS! Topic ID: $topicId');
 
-      // Hide QR code and keep WiFi connection
+      // Keep WiFi connection and get topic ID
       setState(() {
         _topicId = topicId;
-        _showQrCode = false;
-        _wifiResult = 'WiFi credentials sent!\n\nHiding QR code...';
+        _wifiResult = 'WiFi credentials sent!\n\nConfirming connection...';
       });
 
       // Call keepWifi to confirm connection
       _log.info('Confirming WiFi connection...');
       await control.keepWifi(device: _selectedDevice!);
+
+      // Hide QR code via WiFi command
+      try {
+        _log.info('Hiding QR code via WiFi...');
+        setState(() {
+          _wifiResult = 'WiFi connected!\n\nHiding QR code...';
+        });
+
+        final wifiControl = ref.read(ff1WifiControlProvider);
+        await wifiControl.showPairingQRCode(
+          topicId: topicId,
+          show: false, // Hide the QR code
+        );
+
+        _log.info('QR code hidden successfully');
+        setState(() {
+          _showQrCode = false;
+        });
+      } catch (e) {
+        _log.warning('Failed to hide QR code (continuing anyway): $e');
+        // Continue even if QR hide fails
+        setState(() {
+          _showQrCode = false;
+        });
+      }
 
       setState(() {
         _wifiResult =
@@ -291,7 +342,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
     }
   }
 
-  /// Test WiFi connection by connecting via Relayer and rotating 4 times
+  /// Test WiFi connection by rotating the device 4 times
   Future<void> _testWifiConnection() async {
     if (_topicId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -305,50 +356,35 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
 
     setState(() {
       _isTestingConnection = true;
-      _connectionTestResult = 'Connecting to device via WiFi Relayer...';
+      _connectionTestResult = 'Testing WiFi connection with rotation...\n\n';
     });
 
     try {
-      final wifiControl = ref.read(ff1WifiConnectionProvider.notifier);
-      final device = FF1Device(
-        name: _selectedDevice!.name,
-        remoteId: _selectedDevice!.remoteId,
-        deviceId: _selectedDevice!.deviceId,
-        topicId: _topicId!,
-      );
+      final wifiControl = ref.read(ff1WifiControlProvider);
 
-      _log.info('Connecting to device via WiFi with topicId: $_topicId');
-
-      // Connect via WiFi
-      await wifiControl.connect(
-        device: device,
-        userId: 'test_user',
-        apiKey: 'test_api_key',
-      );
-
-      _log.info('Connected to device via WiFi!');
-
-      setState(() {
-        _connectionTestResult = 'Connected! Testing connection...\n\n';
-      });
+      _log.info('Testing WiFi connection with topicId: $_topicId');
 
       // Rotate 4 times to test the connection
       for (int i = 1; i <= 4; i++) {
         try {
-          _log.info('Rotation $i/4 - Testing connection...');
+          _log.info('Rotation $i/4 - Sending rotate command...');
 
-          // Small delay between rotations
-          await Future<void>.delayed(const Duration(milliseconds: 500));
+          // Send rotate command via WiFi
+          final response = await wifiControl.rotate(
+            topicId: _topicId!,
+            angle: 90,
+          );
 
-          // You can add a rotation/action command here if available
-          // For now, we're just verifying the connection is alive
+          _log.info('Rotation $i/4 - Response: ${response.status}');
 
           setState(() {
             _connectionTestResult =
-                '${_connectionTestResult!}Rotation $i/4 - OK\n';
+                '${_connectionTestResult!}Rotation $i/4 - OK '
+                '(status: ${response.status})\n';
           });
 
-          await Future<void>.delayed(const Duration(milliseconds: 500));
+          // Delay between rotations
+          await Future<void>.delayed(const Duration(seconds: 2));
         } catch (e) {
           _log.warning('Rotation $i/4 failed: $e');
           setState(() {
@@ -390,6 +426,135 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
       setState(() {
         _isTestingConnection = false;
       });
+    }
+  }
+
+  /// Send a rotate command to the device
+  Future<void> _rotateDevice() async {
+    if (_topicId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Send WiFi credentials first'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final wifiControl = ref.read(ff1WifiControlProvider);
+      _log.info('Sending rotate command...');
+
+      final response = await wifiControl.rotate(
+        topicId: _topicId!,
+        angle: 90,
+      );
+
+      _log.info('Rotate command successful: ${response.status}');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Rotate command sent! Status: ${response.status}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      _log.severe('Rotate command failed: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Rotate failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Send a pause command to the device
+  Future<void> _pauseDevice() async {
+    if (_topicId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Send WiFi credentials first'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final wifiControl = ref.read(ff1WifiControlProvider);
+      _log.info('Sending pause command...');
+
+      final response = await wifiControl.pause(topicId: _topicId!);
+
+      _log.info('Pause command successful: ${response.status}');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Pause command sent! Status: ${response.status}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      _log.severe('Pause command failed: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Pause failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Send a play command to the device
+  Future<void> _playDevice() async {
+    if (_topicId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Send WiFi credentials first'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final wifiControl = ref.read(ff1WifiControlProvider);
+      _log.info('Sending play command...');
+
+      final response = await wifiControl.play(topicId: _topicId!);
+
+      _log.info('Play command successful: ${response.status}');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Play command sent! Status: ${response.status}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      _log.severe('Play command failed: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Play failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -604,6 +769,37 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Text('Test WiFi Connection (4x Rotate)'),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'WiFi Commands',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: _topicId != null ? _rotateDevice : null,
+              icon: const Icon(Icons.rotate_right),
+              label: const Text('Rotate 90°'),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _topicId != null ? _playDevice : null,
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('Play'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _topicId != null ? _pauseDevice : null,
+                    icon: const Icon(Icons.pause),
+                    label: const Text('Pause'),
+                  ),
+                ),
+              ],
             ),
           ],
 
