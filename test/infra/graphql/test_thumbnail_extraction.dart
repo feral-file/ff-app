@@ -2,12 +2,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 
 /// Comprehensive test for thumbnail extraction from indexer API
-/// 
+///
 /// IMPORTANT: DP1 Items vs Token CIDs
 /// - DP1 items have 'id' (UUID like dbdcf0e1-999c-48ed-85e1-26e7d9ff74c5)
 /// - DP1 items have 'cid' (IPFS CID like bafybeic...)
 /// - Indexer API only accepts IPFS CIDs, not UUIDs
-/// 
+///
 /// Run with: flutter test test/infra/graphql/test_thumbnail_extraction.dart
 void main() {
   group('Thumbnail Extraction Test', () {
@@ -17,7 +17,8 @@ void main() {
       client = IndexerClient(
         endpoint: 'https://indexer-v2.feralfile.com/graphql',
         defaultHeaders: {
-          'Authorization': 'Bearer VU8ccCWdKoJE6B3+bZ9Tw9DcKX2FMml/wphy3aNiTe4=',
+          'Authorization':
+              'Bearer VU8ccCWdKoJE6B3+bZ9Tw9DcKX2FMml/wphy3aNiTe4=',
         },
       );
     });
@@ -46,7 +47,8 @@ void main() {
     test('Fetch token with valid IPFS CID and verify thumbnail', () async {
       // This is a valid IPFS CID from Feral File production
       // Source: Sean's Feral File Classics playlist
-      const validCid = 'bafkreif6ujsly5rz4etkeqkr3wgwfvhrmnynjb7jsjezh6skmhgvcwapby';
+      const validCid =
+          'bafkreif6ujsly5rz4etkeqkr3wgwfvhrmnynjb7jsjezh6skmhgvcwapby';
 
       print('\n✅ Testing with valid IPFS CID:');
       print('CID: $validCid');
@@ -105,7 +107,7 @@ void main() {
       print('\n=== Extracted Thumbnail ===');
       final thumbnailUrl = token['thumbnailUrl'] as String?;
       final previewUrl = token['previewUrl'] as String?;
-      
+
       print('Thumbnail URL: $thumbnailUrl');
       print('Preview URL: $previewUrl');
 
@@ -162,7 +164,7 @@ void main() {
       for (var i = 0; i < tokens.length; i++) {
         final token = tokens[i];
         final thumbnailUrl = token['thumbnailUrl'] as String?;
-        
+
         print('[$i] CID: ${token['token_cid']}');
         print('    Title: ${token['title']}');
         print('    Thumbnail: $thumbnailUrl');

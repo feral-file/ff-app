@@ -1,6 +1,7 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
@@ -11,6 +12,7 @@ import 'package:app/ui/screens/tabs/works_tab_page.dart';
 import 'package:app/widgets/bottom_spacing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 /// Available tabs in the home screen.
 enum HomeIndexTab {
@@ -21,7 +23,8 @@ enum HomeIndexTab {
   channels('Channels'),
 
   /// Works tab.
-  works('Works');
+  works('Works')
+  ;
 
   /// Tab label.
   final String label;
@@ -34,7 +37,8 @@ final GlobalKey<PlaylistsTabPageState> _playlistsPageKey =
     GlobalKey<PlaylistsTabPageState>();
 final GlobalKey<ChannelsTabPageState> _channelsPageKey =
     GlobalKey<ChannelsTabPageState>();
-final GlobalKey<WorksTabPageState> _worksPageKey = GlobalKey<WorksTabPageState>();
+final GlobalKey<WorksTabPageState> _worksPageKey =
+    GlobalKey<WorksTabPageState>();
 
 /// Main home screen with tabbed navigation.
 /// Matches the old app design exactly: NestedScrollView with Stack + Offstage.
@@ -96,7 +100,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         floatHeaderSlivers: true,
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           const height = 43.5;
-          
+
           // Search button - navigates to search screen
           final searchButton = GestureDetector(
             onTap: () {
@@ -225,6 +229,17 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              ListTile(
+                leading: const Icon(Icons.bluetooth, color: AppColor.white),
+                title: Text(
+                  'FF1 Test',
+                  style: AppTypography.body(context).white,
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.go(Routes.ff1Test);
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.settings, color: AppColor.white),
                 title: Text(
