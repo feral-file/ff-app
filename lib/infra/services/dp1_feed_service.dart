@@ -2,8 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 
-import 'package:app/domain/models/channel.dart';
-import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/dp1/dp1_api_responses.dart';
+import 'package:app/domain/models/dp1/dp1_playlist.dart';
+import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/infra/config/feed_config_store.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/base_dp1_feed_service.dart';
@@ -148,18 +149,16 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
         }
 
         final data = response.data as Map<String, dynamic>;
-        final items = (data['items'] as List?) ?? [];
+        final resp = DP1PlaylistResponse.fromJson(data);
 
-        for (final playlistJson in items) {
-          await ingestPlaylistFromFeed(
-            baseUrl: baseUrl,
-            playlistJson: playlistJson as Map<String, dynamic>,
-          );
+        for (final playlist in resp.items) {
+          await ingestPlaylistFromFeedModel(
+              baseUrl: baseUrl, playlist: playlist);
         }
 
-        totalPlaylists += items.length;
-        hasMore = (data['hasMore'] as bool?) ?? false;
-        cursor = data['cursor'] as String?;
+        totalPlaylists += resp.items.length;
+        hasMore = resp.hasMore;
+        cursor = resp.cursor;
       }
 
       log.info(
@@ -199,24 +198,54 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
       }
 
       final data = response.data as Map<String, dynamic>;
-      final items = (data['items'] as List?) ?? [];
+      final resp = DP1PlaylistResponse.fromJson(data);
 
-      log.info('Fetched ${items.length} playlists from feed');
+      log.info('Fetched ${resp.items.length} playlists from feed');
 
       // Ingest each playlist
       var ingestedCount = 0;
-      for (final playlistJson in items) {
-        await ingestPlaylistFromFeed(
-          baseUrl: baseUrl,
-          playlistJson: playlistJson as Map<String, dynamic>,
-        );
+      for (final playlist in resp.items) {
+        await ingestPlaylistFromFeedModel(baseUrl: baseUrl, playlist: playlist);
         ingestedCount++;
       }
 
       log.info('Successfully ingested $ingestedCount playlists into database');
-      return items.length;
+      return resp.items.length;
     } catch (e, stack) {
       log.severe('Failed to fetch playlists from $baseUrl', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Ingest a single DP1 playlist (wire model) into the local database.
+  ///
+  /// This mirrors the legacy mobile app behavior:
+  /// - Parse DP1 playlist/items from the feed response
+  /// - Enrich items with indexer token data (via CID) when available
+  /// - Persist playlist + items + entries
+  @protected
+  Future<void> ingestPlaylistFromFeedModel({
+    required String baseUrl,
+    required DP1Playlist playlist,
+  }) async {
+    try {
+      final cids = databaseService.extractDP1ItemCids(playlist.items);
+      List<AssetToken>? tokens;
+      if (cids.isNotEmpty) {
+        try {
+          tokens = await indexerService.fetchTokensByCIDs(cids: cids);
+        } on Exception catch (e) {
+          log.warning('Failed to fetch enrichment tokens: $e');
+        }
+      }
+
+      await databaseService.ingestDP1PlaylistWire(
+        baseUrl: baseUrl,
+        playlist: playlist,
+        tokens: tokens,
+      );
+    } catch (e, stack) {
+      log.severe('Failed to ingest playlist from feed', e, stack);
       rethrow;
     }
   }
@@ -228,96 +257,17 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
     required Map<String, dynamic> playlistJson,
   }) async {
     try {
-      final playlistId = playlistJson['id'] as String;
-      final title = playlistJson['title'] as String;
-      final slug = playlistJson['slug'] as String?;
-      final dpVersion = playlistJson['dpVersion'] as String?;
-      final channelId = playlistJson['channelId'] as String?;
+      // Keep the legacy Map-based ingestion API for call sites that still use
+      // raw JSON. Internally, normalize to the typed DP1 wire model.
+      final typed = DP1PlaylistResponse.fromJson(
+        <String, dynamic>{
+          'items': [playlistJson],
+          'hasMore': false,
+          'cursor': null,
+        },
+      ).items.single;
 
-      log.info('Ingesting playlist: $playlistId');
-
-      // Parse signatures
-      final signaturesJson = playlistJson['signatures'] as List?;
-      final signatures = signaturesJson?.map((s) => s.toString()).toList();
-
-      // Parse defaults
-      final defaults = playlistJson['defaults'] as Map<String, dynamic>?;
-
-      // Parse dynamic queries
-      final dynamicQueriesJson = playlistJson['dynamicQueries'] as List?;
-      Map<String, dynamic>? dynamicQueries;
-      if (dynamicQueriesJson != null && dynamicQueriesJson.isNotEmpty) {
-        // Store dynamic queries for later resolution
-        dynamicQueries = {
-          'queries': dynamicQueriesJson,
-        };
-      }
-
-      // Determine sort mode based on playlist type
-      // Dynamic playlists use provenance sorting, static use position
-      final sortMode = dynamicQueries != null
-          ? PlaylistSortMode.provenance
-          : PlaylistSortMode.position;
-
-      // Create playlist domain model
-      final playlist = Playlist(
-        id: playlistId,
-        name: title,
-        type: PlaylistType.dp1,
-        playlistSource: PlaylistSource.curated,
-        channelId: channelId,
-        baseUrl: baseUrl,
-        dpVersion: dpVersion,
-        slug: slug,
-        signatures: signatures,
-        defaults: defaults,
-        dynamicQueries: dynamicQueries,
-        sortMode: sortMode,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-
-      // Extract items (may be empty for dynamic playlists)
-      final itemsJson = playlistJson['items'] as List?;
-      final items =
-          itemsJson?.map((item) => item as Map<String, dynamic>).toList() ?? [];
-
-      // Extract CIDs for token enrichment (use 'cid' field, not 'id')
-      // DP1 items have both 'id' (UUID) and 'cid' (IPFS CID)
-      final cids = items
-          .map((item) => item['cid'] as String?)
-          .where((cid) => cid != null)
-          .cast<String>()
-          .toList();
-
-      // Fetch enrichment tokens if CIDs available
-      List<Map<String, dynamic>>? enrichmentTokens;
-      if (cids.isNotEmpty) {
-        try {
-          enrichmentTokens = await indexerService.fetchTokensByCIDs(
-            cids: cids,
-          );
-        } catch (e) {
-          log.warning('Failed to fetch enrichment tokens: $e');
-          // Continue without enrichment
-        }
-      }
-
-      // Ingest playlist with items
-      await databaseService.ingestDP1Playlist(
-        playlist: playlist,
-        items: items,
-        enrichmentTokens: enrichmentTokens,
-      );
-
-      if (dynamicQueries != null) {
-        log.info(
-          'Ingested dynamic playlist $playlistId '
-          '(items will be resolved from indexer)',
-        );
-      } else {
-        log.info('Ingested playlist $playlistId with ${items.length} items');
-      }
+      await ingestPlaylistFromFeedModel(baseUrl: baseUrl, playlist: typed);
     } catch (e, stack) {
       log.severe('Failed to ingest playlist from feed', e, stack);
       rethrow;
@@ -353,39 +303,19 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
       }
 
       final data = response.data as Map<String, dynamic>;
-      final items = (data['items'] as List?) ?? [];
+      final resp = DP1ChannelsResponse.fromJson(data);
 
-      log.info('Fetched ${items.length} channels from feed');
+      log.info('Fetched ${resp.items.length} channels from feed');
 
-      // Ingest each channel
-      final channels = <Channel>[];
-      for (final channelJson in items) {
-        final json = channelJson as Map<String, dynamic>;
-        final channelId = json['id'] as String;
-
-        final channel = Channel(
-          id: channelId,
-          name: json['title'] as String,
-          type: ChannelType.dp1,
-          description: json['summary'] as String?,
-          baseUrl: baseUrl,
-          slug: json['slug'] as String?,
-          curator: json['curator'] as String?,
-          coverImageUrl: json['coverImageUri'] as String?,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-
-        channels.add(channel);
-      }
-
-      // Batch ingest
-      await databaseService.ingestChannels(channels);
+      await databaseService.ingestDP1ChannelsWire(
+        baseUrl: baseUrl,
+        channels: resp.items,
+      );
       log.info(
-        'Successfully ingested ${channels.length} channels into database',
+        'Successfully ingested ${resp.items.length} channels into database',
       );
 
-      return channels.length;
+      return resp.items.length;
     } catch (e, stack) {
       log.severe('Failed to fetch channels from $baseUrl', e, stack);
       rethrow;
@@ -410,22 +340,17 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
         throw Exception('Failed to fetch channel: ${response.statusCode}');
       }
 
-      final channelJson = response.data as Map<String, dynamic>;
+      final json = response.data as Map<String, dynamic>;
+      final dp1 = DP1ChannelsResponse.fromJson(<String, dynamic>{
+        'items': [json],
+        'hasMore': false,
+        'cursor': null,
+      }).items.single;
 
-      final channel = Channel(
-        id: channelId,
-        name: channelJson['title'] as String,
-        type: ChannelType.dp1,
-        description: channelJson['summary'] as String?,
+      await databaseService.ingestDP1ChannelsWire(
         baseUrl: baseUrl,
-        slug: channelJson['slug'] as String?,
-        curator: channelJson['curator'] as String?,
-        coverImageUrl: channelJson['coverImageUri'] as String?,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
+        channels: [dp1],
       );
-
-      await databaseService.ingestChannel(channel);
       log.info('Ingested channel: $channelId');
     } catch (e, stack) {
       log.severe('Failed to fetch channel $channelId', e, stack);

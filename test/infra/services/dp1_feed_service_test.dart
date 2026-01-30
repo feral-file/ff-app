@@ -41,11 +41,8 @@ void main() {
       ];
 
       // Extract CIDs the CORRECT way (as fixed in dp1_feed_service.dart)
-      final correctCids = dp1Items
-          .map((item) => item['cid'] as String?)
-          .where((cid) => cid != null)
-          .map((cid) => cid!)
-          .toList();
+      final correctCids =
+          dp1Items.map((item) => item['cid']).whereType<String>().toList();
 
       print('\n=== Correct CID Extraction (FIXED) ===');
       print('Extracted CIDs: $correctCids');
@@ -69,11 +66,8 @@ void main() {
       );
 
       // Show what the WRONG way would do (the bug)
-      final wrongIds = dp1Items
-          .map((item) => item['id'] as String?)
-          .where((id) => id != null)
-          .map((id) => id!)
-          .toList();
+      final wrongIds =
+          dp1Items.map((item) => item['id']).whereType<String>().toList();
 
       print('\n=== Wrong ID Extraction (THE BUG) ===');
       print('Extracted IDs: $wrongIds');
@@ -144,7 +138,7 @@ void main() {
       });
 
       // CORRECT way (FIXED): lookup by item['cid']
-      final itemCid = dp1Item['cid'] as String?;
+      final itemCid = dp1Item['cid'];
       final correctToken = itemCid != null ? tokensByCID[itemCid] : null;
 
       print('\n✅ CORRECT lookup (using item["cid"]):');

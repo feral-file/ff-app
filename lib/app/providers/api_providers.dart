@@ -1,6 +1,7 @@
 import 'package:app/app/providers/api_retry_strategy.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -83,34 +84,34 @@ final fetchPlaylistsProvider = FutureProvider.autoDispose<int>(
 /// Provider family for fetching tokens by CIDs from the indexer.
 ///
 /// Uses automatic retry with custom strategy.
-final fetchTokensByCIDsProvider = FutureProvider.autoDispose
-    .family<List<Map<String, dynamic>>, List<String>>(
-      (ref, cids) async {
-        final service = ref.watch(indexerServiceProvider);
+final fetchTokensByCIDsProvider =
+    FutureProvider.autoDispose.family<List<AssetToken>, List<String>>(
+  (ref, cids) async {
+    final service = ref.watch(indexerServiceProvider);
 
-        final tokens = await service.fetchTokensByCIDs(cids: cids);
+    final tokens = await service.fetchTokensByCIDs(cids: cids);
 
-        return tokens;
-      },
-      // Apply custom retry strategy for network errors
-      retry: apiRetryStrategy,
-    );
+    return tokens;
+  },
+  // Apply custom retry strategy for network errors
+  retry: apiRetryStrategy,
+);
 
 /// Provider family for fetching tokens by owner addresses.
 ///
 /// Uses aggressive retry strategy due to importance of user data.
-final fetchTokensByAddressesProvider = FutureProvider.autoDispose
-    .family<int, List<String>>(
-      (ref, addresses) async {
-        final service = ref.watch(indexerServiceProvider);
+final fetchTokensByAddressesProvider =
+    FutureProvider.autoDispose.family<int, List<String>>(
+  (ref, addresses) async {
+    final service = ref.watch(indexerServiceProvider);
 
-        final count = await service.fetchTokensForAddresses(
-          addresses: addresses,
-          limit: 100,
-        );
-
-        return count;
-      },
-      // Use aggressive retry for user data
-      retry: aggressiveApiRetry,
+    final count = await service.fetchTokensForAddresses(
+      addresses: addresses,
+      limit: 100,
     );
+
+    return count;
+  },
+  // Use aggressive retry for user data
+  retry: aggressiveApiRetry,
+);

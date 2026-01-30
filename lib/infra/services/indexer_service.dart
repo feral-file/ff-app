@@ -1,7 +1,7 @@
+import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:app/infra/database/database_service.dart';
+import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:logging/logging.dart';
-
-import '../database/database_service.dart';
-import '../graphql/indexer_client.dart';
 
 /// Service for fetching and ingesting tokens from the indexer.
 class IndexerService {
@@ -43,22 +43,19 @@ class IndexerService {
           address: address,
           tokens: tokens,
         );
-        
+
         // Count how many tokens were actually for this address
         final normalizedAddress = address.toUpperCase();
-        final ownedCount = tokens.where((token) {
-          final owners = token['owners'] as List?;
-          if (owners == null || owners.isEmpty) {
-            final currentOwner = token['currentOwner'] as String?;
-            return currentOwner?.toUpperCase() == normalizedAddress;
+        final ownedCount = tokens.where((AssetToken token) {
+          final owners = token.owners?.items ?? const <Owner>[];
+          if (owners.isEmpty) {
+            return token.currentOwner?.toUpperCase() == normalizedAddress;
           }
-          return owners.any((owner) {
-            final ownerAddr = 
-                (owner as Map<String, dynamic>)['address'] as String?;
-            return ownerAddr?.toUpperCase() == normalizedAddress;
-          });
+          return owners.any(
+            (owner) => owner.ownerAddress.toUpperCase() == normalizedAddress,
+          );
         }).length;
-        
+
         totalIngested += ownedCount;
       }
 
@@ -71,7 +68,7 @@ class IndexerService {
   }
 
   /// Fetch tokens by CIDs (for enriching DP1 items).
-  Future<List<Map<String, dynamic>>> fetchTokensByCIDs({
+  Future<List<AssetToken>> fetchTokensByCIDs({
     required List<String> cids,
   }) async {
     try {
@@ -144,7 +141,7 @@ class IndexerService {
         return allSuccessful;
       }
 
-      await Future.delayed(pollInterval);
+      await Future<void>.delayed(pollInterval);
     }
   }
 }

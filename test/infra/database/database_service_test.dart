@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' show Value, BigInt;
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:app/domain/models/channel.dart';
@@ -125,7 +125,8 @@ void main() {
         expect(retrieved[1].channelId, 'ch_test');
       });
 
-      test('getAddressPlaylists returns only address-based playlists', () async {
+      test('getAddressPlaylists returns only address-based playlists',
+          () async {
         final playlists = [
           Playlist(
             id: 'pl_dp1',

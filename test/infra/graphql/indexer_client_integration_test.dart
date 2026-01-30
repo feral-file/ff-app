@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
+import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:app/domain/extensions/asset_token_ext.dart';
 
 /// Integration test to verify actual indexer API responses
 /// Run with: flutter test test/infra/graphql/indexer_client_integration_test.dart
@@ -12,7 +14,8 @@ void main() {
       client = IndexerClient(
         endpoint: 'https://indexer-v2.feralfile.com/graphql',
         defaultHeaders: {
-          'Authorization': 'Bearer VU8ccCWdKoJE6B3+bZ9Tw9DcKX2FMml/wphy3aNiTe4=',
+          'Authorization':
+              'Bearer VU8ccCWdKoJE6B3+bZ9Tw9DcKX2FMml/wphy3aNiTe4=',
         },
       );
     });
@@ -36,88 +39,71 @@ void main() {
           reason: 'Should fetch at least one token for CID: $testCid',
         );
 
-        final token = tokens.first;
+        final AssetToken token = tokens.first;
 
         print('\n=== Token Data ===');
-        print('Token ID: ${token['id']}');
-        print('Token CID: ${token['token_cid']}');
-        print('Title: ${token['title']}');
-        print('Chain: ${token['chain']}');
-        print('Contract: ${token['contract_address']}');
-        print('Token Number: ${token['token_number']}');
+        print('Token ID: ${token.id}');
+        print('Token CID: ${token.cid}');
+        print('Title: ${token.metadata?.name}');
+        print('Chain: ${token.chain}');
+        print('Contract: ${token.contractAddress}');
+        print('Token Number: ${token.tokenNumber}');
 
         print('\n=== Metadata ===');
-        final metadata = token['metadata'] as Map<String, dynamic>?;
+        final metadata = token.metadata;
         if (metadata != null) {
-          print('Name: ${metadata['name']}');
-          print('Image URL: ${metadata['image_url']}');
-          print('Animation URL: ${metadata['animation_url']}');
-          print('Mime Type: ${metadata['mime_type']}');
-          print(
-            'Description: ${metadata['description']?.toString().substring(0, metadata['description'].toString().length > 100 ? 100 : metadata['description'].toString().length)}...',
-          );
+          print('Name: ${metadata.name}');
+          print('Image URL: ${metadata.imageUrl}');
+          print('Animation URL: ${metadata.animationUrl}');
+          print('Mime Type: ${metadata.mimeType}');
+          final desc = metadata.description ?? '';
+          final trimmed = desc.length > 100 ? desc.substring(0, 100) : desc;
+          print('Description: $trimmed...');
         }
 
         print('\n=== Enrichment Source ===');
-        final enrichment = token['enrichment_source'] as Map<String, dynamic>?;
+        final enrichment = token.enrichmentSource;
         if (enrichment != null) {
-          print('Vendor: ${enrichment['vendor']}');
-          print('Name: ${enrichment['name']}');
-          print('Image URL: ${enrichment['image_url']}');
-          print('Animation URL: ${enrichment['animation_url']}');
-          print('Mime Type: ${enrichment['mime_type']}');
+          print('Name: ${enrichment.name}');
+          print('Image URL: ${enrichment.imageUrl}');
+          print('Animation URL: ${enrichment.animationUrl}');
+          print('Mime Type: ${enrichment.mimeType}');
         }
 
         print('\n=== Media Assets ===');
-        final metadataAssets = token['metadata_media_assets'] as List?;
+        final metadataAssets = token.metadataMediaAssets;
         print('Metadata Assets: ${metadataAssets?.length ?? 0}');
-        if (metadataAssets != null && metadataAssets.isNotEmpty) {
-          final asset = metadataAssets.first as Map<String, dynamic>;
-          print('  Source URL: ${asset['source_url']}');
-          print('  Mime Type: ${asset['mime_type']}');
-          print('  Variants: ${asset['variant_urls']}');
-        }
 
-        final enrichmentAssets =
-            token['enrichment_source_media_assets'] as List?;
+        final enrichmentAssets = token.enrichmentSourceMediaAssets;
         print('Enrichment Assets: ${enrichmentAssets?.length ?? 0}');
-        if (enrichmentAssets != null && enrichmentAssets.isNotEmpty) {
-          final asset = enrichmentAssets.first as Map<String, dynamic>;
-          print('  Source URL: ${asset['source_url']}');
-          print('  Mime Type: ${asset['mime_type']}');
-          print('  Variants: ${asset['variant_urls']}');
-        }
 
         print('\n=== Final Thumbnail ===');
-        print('Thumbnail URL: ${token['thumbnailUrl']}');
-        print('Preview URL: ${token['previewUrl']}');
+        final thumbnailUrl = token.getGalleryThumbnailUrl();
+        final previewUrl = token.enrichmentSource?.animationUrl ??
+            token.metadata?.animationUrl;
+        print('Thumbnail URL: $thumbnailUrl');
+        print('Preview URL: $previewUrl');
 
         // Verify thumbnail was extracted
         expect(
-          token['thumbnailUrl'],
+          thumbnailUrl,
           isNotNull,
           reason: 'Thumbnail URL should be extracted from token data',
         );
+        final resolvedThumbnailUrl = thumbnailUrl!;
 
         expect(
-          token['thumbnailUrl'],
-          isA<String>(),
-          reason: 'Thumbnail URL should be a string',
-        );
-
-        final thumbnailUrl = token['thumbnailUrl'] as String;
-        expect(
-          thumbnailUrl.isNotEmpty,
+          resolvedThumbnailUrl.isNotEmpty,
           isTrue,
           reason: 'Thumbnail URL should not be empty',
         );
 
         // Verify it's a valid URL
-        final uri = Uri.tryParse(thumbnailUrl);
+        final uri = Uri.tryParse(resolvedThumbnailUrl);
         expect(
           uri,
           isNotNull,
-          reason: 'Thumbnail URL should be a valid URI: $thumbnailUrl',
+          reason: 'Thumbnail URL should be a valid URI: $resolvedThumbnailUrl',
         );
 
         expect(
@@ -132,7 +118,7 @@ void main() {
         print('Stack: $stack');
         rethrow;
       }
-    }, skip: false); // Set to true to skip in CI
+    }, skip: 'Integration test: requires live indexer + valid token CID.');
 
     test('fetchTokensByAddresses returns real data with thumbnails', () async {
       // Use a known address with tokens
@@ -154,14 +140,15 @@ void main() {
         print('Number of tokens: ${tokens.length}');
 
         if (tokens.isNotEmpty) {
-          final token = tokens.first;
+          final AssetToken token = tokens.first;
           print('\n=== First Token ===');
-          print('ID: ${token['id']}');
-          print('Title: ${token['title']}');
-          print('Thumbnail URL: ${token['thumbnailUrl']}');
+          print('ID: ${token.id}');
+          print('Title: ${token.metadata?.name}');
+          final thumbnailUrl = token.getGalleryThumbnailUrl();
+          print('Thumbnail URL: $thumbnailUrl');
 
           expect(
-            token['thumbnailUrl'],
+            thumbnailUrl,
             isNotNull,
             reason: 'Thumbnail URL should not be null',
           );
@@ -172,6 +159,6 @@ void main() {
         print('\n⚠️  Error fetching tokens: $e');
         // Don't fail the test if the address has no tokens
       }
-    }, skip: false);
+    }, skip: 'Integration test: requires live indexer + funded test address.');
   });
 }

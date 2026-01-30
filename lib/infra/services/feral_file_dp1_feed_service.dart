@@ -1,8 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
 
-import '../../domain/models/channel.dart';
-import 'dp1_feed_service.dart';
+import 'package:app/domain/models/dp1/dp1_api_responses.dart';
+import 'package:app/domain/models/dp1/dp1_channel.dart';
+import 'package:app/domain/models/dp1/dp1_playlist.dart';
+import 'package:app/infra/services/dp1_feed_service.dart';
 
 /// DP1 feed service with remote config channel support.
 ///
@@ -66,12 +68,10 @@ class FeralFileDP1FeedService extends DP1FeedServiceImpl {
     _log.info('Fetched ${playlists.length} playlists');
 
     // 3. Ingest to DB
-    await databaseService.ingestChannels(channels);
-    for (final playlistJson in playlists) {
-      await ingestPlaylistFromFeed(
-        baseUrl: baseUrl,
-        playlistJson: playlistJson,
-      );
+    await databaseService.ingestDP1ChannelsWire(
+        baseUrl: baseUrl, channels: channels);
+    for (final playlist in playlists) {
+      await ingestPlaylistFromFeedModel(baseUrl: baseUrl, playlist: playlist);
     }
 
     _log.info(
@@ -81,8 +81,8 @@ class FeralFileDP1FeedService extends DP1FeedServiceImpl {
   }
 
   /// Fetch channels by IDs.
-  Future<List<Channel>> _fetchChannelsByIds(List<String> channelIds) async {
-    final channels = <Channel>[];
+  Future<List<DP1Channel>> _fetchChannelsByIds(List<String> channelIds) async {
+    final channels = <DP1Channel>[];
 
     for (final channelId in channelIds) {
       try {
@@ -99,21 +99,17 @@ class FeralFileDP1FeedService extends DP1FeedServiceImpl {
           continue;
         }
 
-        final json = response.data as Map<String, dynamic>;
-        final channel = Channel(
-          id: channelId,
-          name: json['title'] as String,
-          type: ChannelType.dp1,
-          description: json['summary'] as String?,
-          baseUrl: baseUrl,
-          slug: json['slug'] as String?,
-          curator: json['curator'] as String?,
-          coverImageUrl: json['coverImageUri'] as String?,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-
-        channels.add(channel);
+        final jsonData = response.data;
+        if (jsonData == null) {
+          _log.warning('Empty response for channel $channelId');
+          continue;
+        }
+        final dp1 = DP1ChannelsResponse.fromJson(<String, dynamic>{
+          'items': [jsonData],
+          'hasMore': false,
+          'cursor': null,
+        }).items.single;
+        channels.add(dp1);
       } on Exception catch (e) {
         _log.warning('Error fetching channel $channelId: $e');
       }
@@ -125,10 +121,10 @@ class FeralFileDP1FeedService extends DP1FeedServiceImpl {
   /// Fetch playlists from multiple channels with composite cursor.
   ///
   /// Fetches all playlists across all channels using pagination.
-  Future<List<Map<String, dynamic>>> _fetchPlaylistsFromChannels({
+  Future<List<DP1Playlist>> _fetchPlaylistsFromChannels({
     required List<String> channelIds,
   }) async {
-    final allPlaylists = <Map<String, dynamic>>[];
+    final allPlaylists = <DP1Playlist>[];
     var hasMore = true;
     String? cursor;
     const limit = 20;
@@ -154,14 +150,13 @@ class FeralFileDP1FeedService extends DP1FeedServiceImpl {
   /// - Fetch playlists from channels sequentially until limit reached
   /// - When a channel is exhausted, move to next channel
   /// - Return composite cursor for resuming pagination
-  Future<({List<Map<String, dynamic>> items, bool hasMore, String? cursor})>
-      _fetchPlaylistsFromChannelsWithCursor({
+  Future<DP1PlaylistResponse> _fetchPlaylistsFromChannelsWithCursor({
     required List<String> channelIds,
     String? cursor,
     int? limit,
   }) async {
     if (channelIds.isEmpty) {
-      return (items: <Map<String, dynamic>>[], hasMore: false, cursor: null);
+      return DP1PlaylistResponse(<DP1Playlist>[], false, null);
     }
 
     // Parse composite cursor: "channelIndex:innerCursor"
@@ -177,7 +172,7 @@ class FeralFileDP1FeedService extends DP1FeedServiceImpl {
 
     currentChannelIndex = currentChannelIndex.clamp(0, channelIds.length - 1);
 
-    final allItems = <Map<String, dynamic>>[];
+    final allItems = <DP1Playlist>[];
     var hasMore = false;
     String? nextCursor;
 
@@ -223,16 +218,11 @@ class FeralFileDP1FeedService extends DP1FeedServiceImpl {
       }
     }
 
-    return (items: allItems, hasMore: hasMore, cursor: nextCursor);
+    return DP1PlaylistResponse(allItems, hasMore, nextCursor);
   }
 
   /// Fetch playlists for a single channel.
-  Future<
-      ({
-        List<Map<String, dynamic>> items,
-        bool hasMore,
-        String? cursor,
-      })> _fetchPlaylistsByChannelId({
+  Future<DP1PlaylistResponse> _fetchPlaylistsByChannelId({
     required String channelId,
     String? cursor,
     int? limit,
@@ -258,14 +248,6 @@ class FeralFileDP1FeedService extends DP1FeedServiceImpl {
     }
 
     final data = response.data as Map<String, dynamic>;
-    final items = (data['items'] as List?)
-            ?.map((e) => e as Map<String, dynamic>)
-            .toList() ??
-        [];
-    final hasMore = (data['hasMore'] as bool?) ?? false;
-    final nextCursor = data['cursor'] as String?;
-
-    return (items: items, hasMore: hasMore, cursor: nextCursor);
+    return DP1PlaylistResponse.fromJson(data);
   }
-
 }

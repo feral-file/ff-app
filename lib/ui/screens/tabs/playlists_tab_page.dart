@@ -1,5 +1,4 @@
 import 'package:app/app/providers/playlists_provider.dart';
-import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -8,7 +7,6 @@ import 'package:app/widgets/playlist/playlist_list_row.dart';
 import 'package:app/widgets/playlist/playlist_section_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 /// Playlists tab page with curated and personal playlists.
 class PlaylistsTabPage extends ConsumerStatefulWidget {

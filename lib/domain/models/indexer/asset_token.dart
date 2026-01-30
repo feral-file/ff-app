@@ -115,9 +115,9 @@ class AssetToken {
         id: int.parse(json['id'].toString()),
         cid: json['token_cid'] as String? ?? json['cid'] as String,
         chain: json['chain'] as String,
-        standard: json['standard'] as String,
+        standard: json['standard'] as String? ?? '',
         contractAddress: json['contract_address'] as String,
-        tokenNumber: json['token_number'] as String,
+        tokenNumber: json['token_number'].toString(),
         currentOwner: json['current_owner'] as String?,
         updatedAt: (json['updated_at'] != null)
             ? DateTime.tryParse(json['updated_at'] as String)
@@ -162,9 +162,9 @@ class AssetToken {
         id: int.parse(json['id'].toString()),
         cid: json['token_cid'] as String? ?? json['cid'] as String,
         chain: json['chain'] as String,
-        standard: json['standard'] as String,
+        standard: json['standard'] as String? ?? '',
         contractAddress: json['contract_address'] as String,
-        tokenNumber: json['token_number'] as String,
+        tokenNumber: json['token_number'].toString(),
         currentOwner: json['current_owner'] as String?,
         updatedAt: (json['updated_at'] != null)
             ? DateTime.tryParse(json['updated_at'] as String)
@@ -741,5 +741,3 @@ class MediaAsset {
         'variant_urls': variantUrls,
       };
 }
-
-

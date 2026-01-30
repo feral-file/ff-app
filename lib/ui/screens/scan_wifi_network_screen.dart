@@ -3,7 +3,6 @@ import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/ui/screens/send_wifi_credentials_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:logging/logging.dart';
 
 /// Screen for scanning and selecting WiFi networks
 class ScanWiFiNetworkScreen extends ConsumerStatefulWidget {
@@ -17,16 +16,12 @@ class ScanWiFiNetworkScreen extends ConsumerStatefulWidget {
 }
 
 class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
-  final _log = Logger('ScanWiFiNetworkScreen');
-
   @override
   void initState() {
     super.initState();
     // Start scanning for networks
     Future.microtask(() {
-      ref
-          .read(wifiConnectionProvider.notifier)
-          .connectAndScanNetworks(
+      ref.read(wifiConnectionProvider.notifier).connectAndScanNetworks(
             device: widget.device,
           );
     });
@@ -41,8 +36,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
         title: const Text('Select WiFi Network'),
         elevation: 0,
       ),
-      body:
-          connectionState.status == WiFiConnectionStatus.selectingNetwork &&
+      body: connectionState.status == WiFiConnectionStatus.selectingNetwork &&
               connectionState.scannedNetworks != null
           ? _buildNetworkList(context, connectionState, ref)
           : _buildLoadingOrError(context, connectionState),
@@ -108,7 +102,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
               ref.read(wifiConnectionProvider.notifier).selectNetwork(network);
               // Navigate to password entry screen
               Navigator.of(context).push(
-                MaterialPageRoute(
+                MaterialPageRoute<void>(
                   builder: (context) => EnterWiFiPasswordScreen(
                     device: widget.device,
                     networkSsid: network.ssid,
