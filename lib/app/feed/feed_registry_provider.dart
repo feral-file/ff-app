@@ -1,6 +1,9 @@
 import 'package:app/app/feed/curated_channel_urls.dart';
 import 'package:app/app/providers/services_provider.dart';
-import 'package:app/infra/storage/feed_server_prefs_store.dart';
+import 'package:app/infra/config/app_config.dart';
+import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/database/database_provider.dart';
+import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -67,26 +70,10 @@ class FeedRegistryState {
   /// Creates a [FeedRegistryState].
   const FeedRegistryState({
     required this.curatedChannels,
-    required this.customFeedServerBaseUrls,
   });
 
   /// Curated DP-1 channel refs derived from curated channel URLs.
   final List<CuratedChannelRef> curatedChannels;
-
-  /// Custom feed server baseUrls persisted by the user.
-  final List<String> customFeedServerBaseUrls;
-
-  /// Returns a new [FeedRegistryState] with optional overrides.
-  FeedRegistryState copyWith({
-    List<CuratedChannelRef>? curatedChannels,
-    List<String>? customFeedServerBaseUrls,
-  }) {
-    return FeedRegistryState(
-      curatedChannels: curatedChannels ?? this.curatedChannels,
-      customFeedServerBaseUrls:
-          customFeedServerBaseUrls ?? this.customFeedServerBaseUrls,
-    );
-  }
 }
 
 /// Bootstrap/reload summary for feed orchestration.
@@ -112,11 +99,12 @@ class FeedBootstrapResult {
 /// Riverpod flow-driver for feed orchestration.
 ///
 /// This replaces the legacy `FeedManager` singleton by providing:
-/// - curated channel URL parsing
-/// - persistence for custom feed servers (via [FeedServerPrefsStore])
-/// - bootstrap/reload intents that call into infra services
+/// - Simple 2-step API: setupRemoteConfigChannels() + reloadAllCache()
+/// - Automatic composite cursor pagination for curated channels
+/// - Cache policy support (TTL + remote last-updated)
 class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
   late final Logger _log;
+  final Map<String, FeralFileDP1FeedService> _feedServices = {};
 
   @override
   Future<FeedRegistryState> build() async {
@@ -125,142 +113,109 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
     final curatedUrls = ref.watch(curatedDp1ChannelUrlsProvider);
     final curated = CuratedChannelRef.parseAll(curatedUrls);
 
-    final prefs = ref.watch(feedServerPrefsStoreProvider);
-    final custom = await prefs.readCustomBaseUrls();
-
     return FeedRegistryState(
       curatedChannels: curated,
-      customFeedServerBaseUrls: custom,
     );
   }
 
-  /// Reloads state from storage.
+  /// Setup remote config channels from curated URLs.
+  ///
+  /// This parses channel URLs, groups by baseUrl, and initializes
+  /// FeralFileDP1FeedService instances with remote config channel IDs.
+  ///
+  /// Usage (matches old repo pattern):
+  /// ```dart
+  /// await feedRegistry.setupRemoteConfigChannels(curatedUrls);
+  /// await feedRegistry.reloadAllCache();
+  /// ```
+  Future<void> setupRemoteConfigChannels(List<String> channelUrls) async {
+    _log.info('Setting up remote config channels: ${channelUrls.length} URLs');
+
+    // Parse and group by baseUrl
+    final channelIdsByUrl = <String, List<String>>{};
+    for (final url in channelUrls) {
+      final parsed = CuratedChannelRef.tryParse(url);
+      if (parsed == null) {
+        _log.warning('Failed to parse channel URL: $url');
+        continue;
+      }
+      channelIdsByUrl
+          .putIfAbsent(parsed.baseUrl, () => [])
+          .add(parsed.channelId);
+    }
+
+    _log.info('Grouped into ${channelIdsByUrl.length} feed servers');
+
+    // Initialize or update services
+    for (final entry in channelIdsByUrl.entries) {
+      final baseUrl = entry.key;
+      final channelIds = entry.value;
+
+      var service = _feedServices[baseUrl];
+      if (service == null) {
+        _log.info('Creating new FeralFileDP1FeedService for $baseUrl');
+        service = FeralFileDP1FeedService(
+          baseUrl: baseUrl,
+          databaseService: ref.read(databaseServiceProvider),
+          indexerService: ref.read(indexerServiceProvider),
+          feedConfigStore: ref.read(feedConfigStoreProvider),
+          apiKey: AppConfig.dp1FeedApiKey,
+        );
+        _feedServices[baseUrl] = service;
+      }
+
+      service.setRemoteConfigChannelIds(channelIds);
+      _log.info('Setup $baseUrl with ${channelIds.length} channels');
+    }
+
+    _log.info(
+      'Setup complete: ${_feedServices.length} feed services initialized',
+    );
+  }
+
+  /// Reload cache for all feed services.
+  ///
+  /// Respects cache policy (TTL + remote last-updated) unless force=true.
+  ///
+  /// This matches the old repo's FeedManager.reloadAllCache() behavior.
+  Future<void> reloadAllCache({bool force = false}) async {
+    _log.info(
+      'Reloading all caches, force=$force, services=${_feedServices.length}',
+    );
+
+    if (_feedServices.isEmpty) {
+      _log.warning(
+        'No feed services initialized, '
+        'call setupRemoteConfigChannels first',
+      );
+      return;
+    }
+
+    for (final entry in _feedServices.entries) {
+      final baseUrl = entry.key;
+      final service = entry.value;
+      try {
+        _log.info('Reloading cache for $baseUrl...');
+        await service.reloadCacheIfNeeded(force: force);
+        _log.info('✓ Reloaded cache for $baseUrl');
+      } on Exception catch (e, stack) {
+        _log.warning(
+          'Failed to reload cache for $baseUrl',
+          e,
+          stack,
+        );
+      }
+    }
+
+    _log.info('Cache reload complete');
+  }
+
+  /// Reloads state.
   Future<void> refreshFromStorage() async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(build);
   }
 
-  /// Adds a custom feed server baseUrl (normalized to origin).
-  Future<void> addCustomServer(String baseUrl) async {
-    final trimmed = baseUrl.trim();
-    final normalized = _tryNormalizeOrigin(trimmed);
-    if (normalized == null) {
-      throw ArgumentError.value(baseUrl, 'baseUrl', 'Invalid feed server URL');
-    }
-
-    final prefs = ref.read(feedServerPrefsStoreProvider);
-    await prefs.addCustomBaseUrl(normalized);
-
-    final current = await future;
-    final updated = <String>{...current.customFeedServerBaseUrls, normalized}
-        .toList()
-      ..sort();
-    state = AsyncData(
-      current.copyWith(customFeedServerBaseUrls: updated),
-    );
-  }
-
-  /// Removes a custom feed server baseUrl.
-  Future<void> removeCustomServer(String baseUrl) async {
-    final trimmed = baseUrl.trim();
-    final normalized = _tryNormalizeOrigin(trimmed) ?? trimmed;
-
-    final prefs = ref.read(feedServerPrefsStoreProvider);
-    await prefs.removeCustomBaseUrl(normalized);
-
-    final current = await future;
-    final updated = current.customFeedServerBaseUrls
-        .where((e) => e != normalized)
-        .toList()
-      ..sort();
-    state = AsyncData(
-      current.copyWith(customFeedServerBaseUrls: updated),
-    );
-  }
-
-  /// Bootstrap curated channels and custom feed servers.
-  ///
-  /// This is an orchestration helper: it triggers network fetch+ingest, but
-  /// never reads DB results directly.
-  Future<FeedBootstrapResult> bootstrap({
-    Set<String> skipPlaylistsBaseUrls = const <String>{},
-  }) async {
-    final current = await future;
-    final dp1FeedService = ref.read(dp1FeedServiceProvider);
-
-    final skip = skipPlaylistsBaseUrls.map((e) => _tryNormalizeOrigin(e) ?? e);
-
-    // 1) Curated channels: fetch channel details per (baseUrl, channelId).
-    var channelsFetched = 0;
-    for (final curated in current.curatedChannels) {
-      try {
-        await dp1FeedService.fetchChannel(
-          baseUrl: curated.baseUrl,
-          channelId: curated.channelId,
-        );
-        channelsFetched++;
-      } on Exception catch (e) {
-        _log.warning(
-          'Failed to fetch curated channel ${curated.channelId} '
-          'from ${curated.baseUrl}: $e',
-        );
-      }
-    }
-
-    // 2) Playlists: fetch playlists for each feed server baseUrl
-    // (custom + curated).
-    final baseUrls = <String>{
-      ...current.customFeedServerBaseUrls,
-      ...current.curatedChannels.map((c) => c.baseUrl),
-    }.toList()
-      ..sort();
-
-    var playlistsFetched = 0;
-    for (final baseUrl in baseUrls) {
-      if (skip.contains(baseUrl)) {
-        _log.info('Skipping playlist fetch for baseUrl=$baseUrl');
-        continue;
-      }
-      try {
-        final count = await dp1FeedService.fetchPlaylists(
-          baseUrl: baseUrl,
-          limit: 100,
-        );
-        playlistsFetched += count;
-      } on Exception catch (e) {
-        _log.warning('Failed to fetch playlists from $baseUrl: $e');
-      }
-    }
-
-    return FeedBootstrapResult(
-      channelsFetched: channelsFetched,
-      playlistsFetched: playlistsFetched,
-      feedServersTouched: baseUrls.length,
-    );
-  }
-
-  /// Reloads all curated/custom feeds.
-  ///
-  /// Cache policy is intentionally deferred; for now reload == bootstrap.
-  Future<FeedBootstrapResult> reloadAll({
-    bool force = false,
-    Set<String> skipPlaylistsBaseUrls = const <String>{},
-  }) async {
-    // Cache policy is intentionally deferred; for now, reload is equivalent
-    // to bootstrap.
-    // ignore: avoid_unused_parameters
-    return bootstrap(skipPlaylistsBaseUrls: skipPlaylistsBaseUrls);
-  }
-
-  String? _tryNormalizeOrigin(String raw) {
-    try {
-      final uri = Uri.parse(raw);
-      if (!uri.hasScheme || uri.host.isEmpty) return null;
-      return uri.origin;
-    } on FormatException {
-      return null;
-    }
-  }
 }
 
 /// Provider for [FeedRegistryNotifier].

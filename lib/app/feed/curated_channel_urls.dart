@@ -10,6 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// config source if needed.
 const List<String> curatedDp1ChannelUrls = <String>[
   // TODO(feralfile): Add curated channel URLs here.
+  "https://dp1-feed-operator-api-prod.autonomy-system.workers.dev/api/v1/channels/0fdd0465-217c-4734-9bfd-2d807b414482",
+  "https://dp1-feed-operator-api-dev.objkt-com.workers.dev/api/v1/channels/5b467722-202d-44d2-af77-4c438c7f2258",
 ];
 
 /// Provider wrapper for [curatedDp1ChannelUrls].
