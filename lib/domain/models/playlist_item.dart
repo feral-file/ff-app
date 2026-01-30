@@ -1,7 +1,6 @@
-import 'dart:convert';
-
 /// PlaylistItem (DP-1 domain object).
-/// Represents an item in a playlist (not "Work" or "Item" - use correct terminology).
+/// Represents an item in a playlist (not "Work" or "Item" - use correct
+/// terminology).
 /// This corresponds to "Items" in the database schema.
 /// UI layer can refer to this as "work" when displaying to users.
 class PlaylistItem {
@@ -25,6 +24,31 @@ class PlaylistItem {
     this.tokenData,
     this.updatedAt,
   });
+
+  /// Create from JSON.
+  factory PlaylistItem.fromJson(Map<String, dynamic> json) {
+    return PlaylistItem(
+      id: json['id'] as String,
+      kind: PlaylistItemKind.values[json['kind'] as int],
+      title: json['title'] as String,
+      subtitle: json['subtitle'] as String?,
+      artistName: json['artistName'] as String?,
+      thumbnailUrl: json['thumbnailUrl'] as String?,
+      mediaUrl: json['mediaUrl'] as String?,
+      durationSec: json['durationSec'] as int?,
+      provenance: json['provenance'] as Map<String, dynamic>?,
+      sourceUri: json['sourceUri'] as String?,
+      refUri: json['refUri'] as String?,
+      license: json['license'] as String?,
+      reproduction: json['reproduction'] as Map<String, dynamic>?,
+      override: json['override'] as Map<String, dynamic>?,
+      display: json['display'] as Map<String, dynamic>?,
+      tokenData: json['tokenData'] as Map<String, dynamic>?,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : null,
+    );
+  }
 
   /// Item ID (CID for tokens, DP1 item ID for DP1 items).
   final String id;
@@ -141,31 +165,6 @@ class PlaylistItem {
       'tokenData': tokenData,
       'updatedAt': updatedAt?.toIso8601String(),
     };
-  }
-
-  /// Create from JSON.
-  factory PlaylistItem.fromJson(Map<String, dynamic> json) {
-    return PlaylistItem(
-      id: json['id'] as String,
-      kind: PlaylistItemKind.values[json['kind'] as int],
-      title: json['title'] as String,
-      subtitle: json['subtitle'] as String?,
-      artistName: json['artistName'] as String?,
-      thumbnailUrl: json['thumbnailUrl'] as String?,
-      mediaUrl: json['mediaUrl'] as String?,
-      durationSec: json['durationSec'] as int?,
-      provenance: json['provenance'] as Map<String, dynamic>?,
-      sourceUri: json['sourceUri'] as String?,
-      refUri: json['refUri'] as String?,
-      license: json['license'] as String?,
-      reproduction: json['reproduction'] as Map<String, dynamic>?,
-      override: json['override'] as Map<String, dynamic>?,
-      display: json['display'] as Map<String, dynamic>?,
-      tokenData: json['tokenData'] as Map<String, dynamic>?,
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'] as String)
-          : null,
-    );
   }
 }
 

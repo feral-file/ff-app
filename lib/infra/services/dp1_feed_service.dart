@@ -2,12 +2,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 
-import '../../domain/models/channel.dart';
-import '../../domain/models/playlist.dart';
-import '../config/feed_config_store.dart';
-import '../database/database_service.dart';
-import 'base_dp1_feed_service.dart';
-import 'indexer_service.dart';
+import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/database/database_service.dart';
+import 'package:app/infra/services/base_dp1_feed_service.dart';
+import 'package:app/infra/services/indexer_service.dart';
 
 /// Service for fetching and ingesting DP1 playlists from feed servers.
 ///

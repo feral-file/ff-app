@@ -113,15 +113,15 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       // This is intentionally additive to the default DP1_FEED_URL bootstrap.
       state = state.copyWith(message: 'Syncing curated feeds...');
       _log.info('Setting up curated channels and feed services...');
-      
+
       final curatedUrls = ref.read(curatedDp1ChannelUrlsProvider);
       await ref.read(feedRegistryProvider.notifier).setupRemoteConfigChannels(
-        curatedUrls,
-      );
-      
+            curatedUrls,
+          );
+
       _log.info('Reloading curated feed caches...');
-      await ref.read(feedRegistryProvider.notifier).reloadAllCache();
-      
+      await ref.read(feedRegistryProvider.notifier).reloadAllCache(force: true);
+
       _log.info('✓ Curated feeds setup and reloaded');
 
       state = BootstrapStatus(
@@ -149,7 +149,6 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
 }
 
 /// Provider for the bootstrap notifier.
-final bootstrapProvider =
-    NotifierProvider<BootstrapNotifier, BootstrapStatus>(
+final bootstrapProvider = NotifierProvider<BootstrapNotifier, BootstrapStatus>(
   BootstrapNotifier.new,
 );
