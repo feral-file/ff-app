@@ -46,8 +46,8 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
   void _onScroll() {
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
-      // Trigger load more
-      ref.read(playlistsProvider.notifier).refresh();
+      // Trigger pagination (old repo semantics: load more)
+      ref.read(playlistsProvider.notifier).loadMore();
     }
   }
 

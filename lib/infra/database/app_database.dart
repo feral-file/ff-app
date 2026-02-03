@@ -71,6 +71,140 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  // ===========================================================================
+  // Watch queries (reactive streams)
+  // ===========================================================================
+
+  /// Watch channels ordered by sort order (then id), optionally filtered by
+  /// channel [type] and limited to [limit] rows.
+  ///
+  /// - [type] matches the `channels.type` integer column.
+  /// - [limit] is applied after ordering.
+  Stream<List<ChannelData>> watchChannels({
+    int? type,
+    int? limit,
+  }) {
+    final query = select(channels)
+      ..orderBy([
+        (t) => OrderingTerm(
+              expression: t.sortOrder,
+              mode: OrderingMode.asc,
+              nulls: NullsOrder.last,
+            ),
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+
+    if (type != null) {
+      query.where((t) => t.type.equals(type));
+    }
+
+    if (limit != null) {
+      query.limit(limit);
+    }
+
+    return query.watch();
+  }
+
+  /// Watch playlists ordered by created time (desc, then id), optionally filtered
+  /// by playlist [type], [channelId], and limited to [limit] rows.
+  ///
+  /// - [type] matches the `playlists.type` integer column.
+  /// - [limit] is applied after ordering.
+  Stream<List<PlaylistData>> watchPlaylists({
+    int? type,
+    String? channelId,
+    String? ownerAddress,
+    int? limit,
+  }) {
+    final query = select(playlists)
+      ..orderBy([
+        (t) => OrderingTerm.desc(t.createdAtUs),
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+
+    if (type != null) {
+      query.where((t) => t.type.equals(type));
+    }
+
+    if (channelId != null) {
+      query.where((t) => t.channelId.equals(channelId));
+    }
+
+    if (ownerAddress != null) {
+      query.where((t) => t.ownerAddress.equals(ownerAddress));
+    }
+
+    if (limit != null) {
+      query.limit(limit);
+    }
+
+    return query.watch();
+  }
+
+  /// Watch items for a playlist using position-based ordering.
+  ///
+  /// The results are ordered by:
+  /// - `playlist_entries.position` ascending (nulls last)
+  /// - `playlist_entries.item_id` ascending (stable tiebreaker)
+  Stream<List<ItemData>> watchPlaylistItemsByPosition(
+    String playlistId, {
+    int? limit,
+  }) {
+    final query = select(items).join([
+      innerJoin(
+        playlistEntries,
+        playlistEntries.itemId.equalsExp(items.id),
+      ),
+    ])
+      ..where(playlistEntries.playlistId.equals(playlistId))
+      ..orderBy([
+        OrderingTerm(
+          expression: playlistEntries.position,
+          mode: OrderingMode.asc,
+          nulls: NullsOrder.last,
+        ),
+        OrderingTerm.asc(playlistEntries.itemId),
+      ]);
+
+    if (limit != null) {
+      query.limit(limit);
+    }
+
+    return query.watch().map((rows) {
+      return rows.map((row) => row.readTable(items)).toList();
+    });
+  }
+
+  /// Watch items for a playlist using provenance-based ordering.
+  ///
+  /// The results are ordered by:
+  /// - `playlist_entries.sort_key_us` descending
+  /// - `playlist_entries.item_id` descending (stable tiebreaker)
+  Stream<List<ItemData>> watchPlaylistItemsByProvenance(
+    String playlistId, {
+    int? limit,
+  }) {
+    final query = select(items).join([
+      innerJoin(
+        playlistEntries,
+        playlistEntries.itemId.equalsExp(items.id),
+      ),
+    ])
+      ..where(playlistEntries.playlistId.equals(playlistId))
+      ..orderBy([
+        OrderingTerm.desc(playlistEntries.sortKeyUs),
+        OrderingTerm.desc(playlistEntries.itemId),
+      ]);
+
+    if (limit != null) {
+      query.limit(limit);
+    }
+
+    return query.watch().map((rows) {
+      return rows.map((row) => row.readTable(items)).toList();
+    });
+  }
+
   // Channel queries
   /// Get all channels ordered by sort order.
   Future<List<ChannelData>> getAllChannels() async {
