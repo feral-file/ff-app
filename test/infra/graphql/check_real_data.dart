@@ -2,6 +2,7 @@
 /// Run with: dart run test/infra/graphql/check_real_data.dart
 import 'package:app/domain/extensions/asset_token_ext.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
+import 'package:app/infra/services/indexer_service.dart';
 
 void main() async {
   final client = IndexerClient(
@@ -9,6 +10,9 @@ void main() async {
     defaultHeaders: {
       'Authorization': 'Bearer VU8ccCWdKoJE6B3+bZ9Tw9DcKX2FMml/wphy3aNiTe4=',
     },
+  );
+  final indexerService = IndexerService(
+    client: client,
   );
 
   print('Testing with a known address from Feral File...');
@@ -22,7 +26,7 @@ void main() async {
   print('Addresses: $addresses');
 
   try {
-    final tokens = await client.fetchTokensByAddresses(
+    final tokens = await indexerService.fetchTokensByAddresses(
       addresses: addresses,
       limit: 2,
     );

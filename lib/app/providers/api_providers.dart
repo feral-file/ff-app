@@ -103,9 +103,9 @@ final fetchTokensByCIDsProvider =
 final fetchTokensByAddressesProvider =
     FutureProvider.autoDispose.family<int, List<String>>(
   (ref, addresses) async {
-    final service = ref.watch(indexerServiceProvider);
+    final service = ref.watch(indexerSyncServiceProvider);
 
-    final count = await service.fetchTokensForAddresses(
+    final count = await service.syncTokensForAddresses(
       addresses: addresses,
       limit: 100,
     );

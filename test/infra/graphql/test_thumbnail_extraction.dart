@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/domain/extensions/asset_token_ext.dart';
+import 'package:app/infra/services/indexer_service.dart';
 
 /// Comprehensive test for thumbnail extraction from indexer API
 ///
@@ -13,6 +14,7 @@ import 'package:app/domain/extensions/asset_token_ext.dart';
 void main() {
   group('Thumbnail Extraction Test', () {
     late IndexerClient client;
+    late IndexerService indexerService;
 
     setUp(() {
       client = IndexerClient(
@@ -21,6 +23,9 @@ void main() {
           'Authorization':
               'Bearer VU8ccCWdKoJE6B3+bZ9Tw9DcKX2FMml/wphy3aNiTe4=',
         },
+      );
+      indexerService = IndexerService(
+        client: client,
       );
     });
 
@@ -34,7 +39,7 @@ void main() {
         print('UUID: $dp1ItemUuid');
 
         try {
-          await client.fetchTokensByCIDs(cids: [dp1ItemUuid]);
+          await indexerService.fetchTokensByCIDs(cids: [dp1ItemUuid]);
           fail('Should have thrown an exception for invalid CID');
         } catch (e) {
           print('\n✅ Expected error received:');
@@ -60,7 +65,7 @@ void main() {
         print('\n✅ Testing with valid IPFS CID:');
         print('CID: $validCid');
 
-        final tokens = await client.fetchTokensByCIDs(cids: [validCid]);
+        final tokens = await indexerService.fetchTokensByCIDs(cids: [validCid]);
 
         expect(tokens, isNotEmpty, reason: 'Should return at least one token');
 
@@ -154,7 +159,7 @@ void main() {
         print('\n=== Testing multiple tokens ===');
         print('Fetching ${cids.length} tokens...');
 
-        final tokens = await client.fetchTokensByCIDs(cids: cids);
+        final tokens = await indexerService.fetchTokensByCIDs(cids: cids);
 
         print('Received ${tokens.length} tokens\n');
 

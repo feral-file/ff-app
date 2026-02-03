@@ -246,6 +246,63 @@ class DatabaseService {
     }
   }
 
+  /// Delete tokens by CIDs from a specific address-based playlist.
+  ///
+  /// This is used when processing change journal events (e.g. burn/transfer-out)
+  /// to remove items from the owner's address playlist without touching other
+  /// playlists.
+  Future<void> deleteTokensByCids({
+    required String address,
+    required List<String> cids,
+  }) async {
+    if (cids.isEmpty) return;
+
+    try {
+      final normalizedAddress = address.toUpperCase();
+
+      final playlists = await getAddressPlaylists();
+      final addressPlaylist = playlists.firstWhere(
+        (p) => p.ownerAddress?.toUpperCase() == normalizedAddress,
+        orElse: () => throw Exception(
+          'Address playlist not found for $address',
+        ),
+      );
+
+      for (final cid in cids) {
+        if (cid.isEmpty) continue;
+        await _db.deletePlaylistEntry(
+          playlistId: addressPlaylist.id,
+          itemId: cid,
+        );
+      }
+
+      await _db.updatePlaylistItemCount(addressPlaylist.id);
+      await _db.checkpoint();
+
+      _log.info(
+        'Deleted ${cids.length} tokens from address playlist for $address',
+      );
+    } catch (e, stack) {
+      _log.severe('Failed to delete tokens for address $address', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Get cached token items by their item IDs (CIDs).
+  ///
+  /// This is useful for looking up existing cached items before deciding to
+  /// refetch from the network.
+  Future<List<PlaylistItem>> getTokensByCids(List<String> cids) async {
+    if (cids.isEmpty) return [];
+    try {
+      final data = await _db.getItemsByIds(cids);
+      return data.map(DatabaseConverters.itemDataToDomain).toList();
+    } catch (e, stack) {
+      _log.severe('Failed to get tokens by cids', e, stack);
+      rethrow;
+    }
+  }
+
   // ========== Token Ingestion Operations ==========
 
   /// Ingest tokens from indexer for a specific address.

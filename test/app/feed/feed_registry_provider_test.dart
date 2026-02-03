@@ -57,7 +57,6 @@ ASSET_URL=https://assets.feralfile.com
     final indexerClient = IndexerClient(endpoint: 'http://localhost');
     final indexerService = IndexerService(
       client: indexerClient,
-      databaseService: dbService,
     );
 
     final feedConfigStore = FeedConfigStore(
@@ -98,7 +97,6 @@ ASSET_URL=https://assets.feralfile.com
     final indexerClient = IndexerClient(endpoint: 'http://localhost');
     final indexerService = IndexerService(
       client: indexerClient,
-      databaseService: dbService,
     );
 
     final feedConfigStore = FeedConfigStore(

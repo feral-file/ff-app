@@ -6,16 +6,27 @@ import 'package:app/infra/services/address_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/dp1_feed_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
+import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Provider for the IndexerService.
 /// Handles fetching tokens from the indexer API.
 final indexerServiceProvider = Provider<IndexerService>((ref) {
   final client = ref.watch(indexerClientProvider);
-  final databaseService = ref.watch(databaseServiceProvider);
 
   return IndexerService(
     client: client,
+  );
+});
+
+/// Provider for the IndexerSyncService.
+/// Orchestrates indexer fetch + local ingestion for address playlists.
+final indexerSyncServiceProvider = Provider<IndexerSyncService>((ref) {
+  final databaseService = ref.watch(databaseServiceProvider);
+  final indexerService = ref.watch(indexerServiceProvider);
+
+  return IndexerSyncService(
+    indexerService: indexerService,
     databaseService: databaseService,
   );
 });
@@ -25,10 +36,12 @@ final indexerServiceProvider = Provider<IndexerService>((ref) {
 final addressServiceProvider = Provider<AddressService>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
   final indexerService = ref.watch(indexerServiceProvider);
+  final indexerSyncService = ref.watch(indexerSyncServiceProvider);
 
   return AddressService(
     databaseService: databaseService,
     indexerService: indexerService,
+    indexerSyncService: indexerSyncService,
   );
 });
 

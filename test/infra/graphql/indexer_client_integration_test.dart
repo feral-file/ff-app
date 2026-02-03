@@ -2,12 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/extensions/asset_token_ext.dart';
+import 'package:app/infra/services/indexer_service.dart';
 
 /// Integration test to verify actual indexer API responses
 /// Run with: flutter test test/infra/graphql/indexer_client_integration_test.dart
 void main() {
   group('IndexerClient Integration Test', () {
     late IndexerClient client;
+    late IndexerService indexerService;
 
     setUp(() {
       // Use the actual indexer endpoint
@@ -17,6 +19,9 @@ void main() {
           'Authorization':
               'Bearer VU8ccCWdKoJE6B3+bZ9Tw9DcKX2FMml/wphy3aNiTe4=',
         },
+      );
+      indexerService = IndexerService(
+        client: client,
       );
     });
 
@@ -28,7 +33,7 @@ void main() {
       print('CID: $testCid');
 
       try {
-        final tokens = await client.fetchTokensByCIDs(cids: [testCid]);
+        final tokens = await indexerService.fetchTokensByCIDs(cids: [testCid]);
 
         print('\n=== Response ===');
         print('Number of tokens: ${tokens.length}');
@@ -131,7 +136,7 @@ void main() {
       print('Addresses: $addresses');
 
       try {
-        final tokens = await client.fetchTokensByAddresses(
+        final tokens = await indexerService.fetchTokensByAddresses(
           addresses: addresses,
           limit: 5,
         );

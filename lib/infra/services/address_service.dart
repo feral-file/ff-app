@@ -3,6 +3,7 @@ import 'package:logging/logging.dart';
 import '../../domain/models/playlist.dart';
 import '../database/database_service.dart';
 import 'indexer_service.dart';
+import 'indexer_sync_service.dart';
 
 /// Service for managing user wallet addresses and address-based playlists.
 class AddressService {
@@ -10,13 +11,16 @@ class AddressService {
   AddressService({
     required DatabaseService databaseService,
     required IndexerService indexerService,
+    required IndexerSyncService indexerSyncService,
   })  : _databaseService = databaseService,
         _indexerService = indexerService {
+    _indexerSyncService = indexerSyncService;
     _log = Logger('AddressService');
   }
 
   final DatabaseService _databaseService;
   final IndexerService _indexerService;
+  late final IndexerSyncService _indexerSyncService;
   late final Logger _log;
 
   /// Add a wallet address and create its playlist.
@@ -101,7 +105,7 @@ class AddressService {
       final normalizedAddress = address.toUpperCase();
       _log.info('Refreshing tokens for address: $normalizedAddress');
 
-      final count = await _indexerService.fetchTokensForAddresses(
+      final count = await _indexerSyncService.syncTokensForAddresses(
         addresses: [normalizedAddress],
       );
 
@@ -130,7 +134,7 @@ class AddressService {
         return 0;
       }
 
-      final count = await _indexerService.fetchTokensForAddresses(
+      final count = await _indexerSyncService.syncTokensForAddresses(
         addresses: addresses,
       );
 
