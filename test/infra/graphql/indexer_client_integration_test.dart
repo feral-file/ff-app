@@ -33,7 +33,8 @@ void main() {
       print('CID: $testCid');
 
       try {
-        final tokens = await indexerService.fetchTokensByCIDs(cids: [testCid]);
+        final tokens =
+            await indexerService.fetchTokensByCIDs(tokenCids: [testCid]);
 
         print('\n=== Response ===');
         print('Number of tokens: ${tokens.length}');

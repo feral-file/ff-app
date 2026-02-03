@@ -16,7 +16,7 @@ class TokenTransformer {
         .join(', ');
 
     final normalizedOwner = ownerAddress?.toUpperCase();
-    final sortKeyUs = _computeSortKeyUsFromProvenanceEvents(
+    final sortKeyUs = _computeSortKeyUsFromOwnershipSignals(
       token: token,
       ownerAddress: normalizedOwner,
     );
@@ -35,9 +35,11 @@ class TokenTransformer {
     );
   }
 
-  /// Compute sort key from provenance events.
-  /// Returns the timestamp of the latest event where the owner is the recipient.
-  static int _computeSortKeyUsFromProvenanceEvents({
+  /// Compute sort key from ownership signals.
+  ///
+  /// Prefer `provenance_events` when available; fall back to `owner_provenances`
+  /// (legacy token summary query shape) when provenance events are not present.
+  static int _computeSortKeyUsFromOwnershipSignals({
     required AssetToken token,
     required String? ownerAddress,
   }) {
@@ -46,7 +48,12 @@ class TokenTransformer {
     }
 
     final events = token.provenanceEvents?.items ?? const <ProvenanceEvent>[];
-    if (events.isEmpty) return 0;
+    if (events.isEmpty) {
+      return _computeSortKeyUsFromOwnerProvenances(
+        token: token,
+        ownerAddress: ownerAddress,
+      );
+    }
 
     var latestUs = 0;
     for (final event in events) {
@@ -63,6 +70,24 @@ class TokenTransformer {
     return latestUs;
   }
 
+  static int _computeSortKeyUsFromOwnerProvenances({
+    required AssetToken token,
+    required String ownerAddress,
+  }) {
+    final provenances = token.ownerProvenances?.items ?? const [];
+    if (provenances.isEmpty) return 0;
+
+    var latestUs = 0;
+    for (final p in provenances) {
+      if (p.ownerAddress.toUpperCase() != ownerAddress) continue;
+      final tsUs = p.lastTimestamp.microsecondsSinceEpoch;
+      if (tsUs > latestUs) {
+        latestUs = tsUs;
+      }
+    }
+    return latestUs;
+  }
+
   /// Filter tokens by owner address.
   /// Returns only tokens owned by the specified address.
   static List<AssetToken> filterTokensByOwner({
@@ -73,10 +98,20 @@ class TokenTransformer {
 
     return tokens.where((token) {
       final owners = token.owners?.items ?? const <Owner>[];
-      if (owners.isEmpty) {
-        return token.currentOwner?.toUpperCase() == normalizedOwner;
+      if (owners.isNotEmpty) {
+        return owners.any(
+          (o) => o.ownerAddress.toUpperCase() == normalizedOwner,
+        );
       }
-      return owners.any((o) => o.ownerAddress.toUpperCase() == normalizedOwner);
+
+      final ownerProvenances = token.ownerProvenances?.items ?? const [];
+      if (ownerProvenances.isNotEmpty) {
+        return ownerProvenances.any(
+          (p) => p.ownerAddress.toUpperCase() == normalizedOwner,
+        );
+      }
+
+      return token.currentOwner?.toUpperCase() == normalizedOwner;
     }).toList();
   }
 

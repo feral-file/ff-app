@@ -12,7 +12,7 @@ class IndexerClient {
     this.mutationTimeout = const Duration(seconds: 15),
   }) : _client = GraphQLClient(
           link: HttpLink(
-            endpoint,
+            '${endpoint}/graphql',
             defaultHeaders: defaultHeaders,
           ),
           cache: GraphQLCache(),

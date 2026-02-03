@@ -233,7 +233,7 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
       List<AssetToken>? tokens;
       if (cids.isNotEmpty) {
         try {
-          tokens = await indexerService.fetchTokensByCIDs(cids: cids);
+          tokens = await indexerService.fetchTokensByCIDs(tokenCids: cids);
         } on Exception catch (e) {
           log.warning('Failed to fetch enrichment tokens: $e');
         }

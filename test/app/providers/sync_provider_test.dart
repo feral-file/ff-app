@@ -1,15 +1,115 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/sync_provider.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:app/domain/models/indexer/changes/change.dart';
 import 'package:app/domain/models/playlist.dart';
+import 'package:app/infra/config/indexer_config_store.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
+import 'package:app/infra/indexer/isolate/indexer_tokens_worker.dart';
+import 'package:app/infra/indexer/isolate/worker_messages.dart';
+import 'package:app/infra/indexer/isolate/worker_tasks.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+class FakeTokensWorker implements IndexerTokensWorker {
+  FakeTokensWorker(this._indexerService);
+
+  final IndexerService _indexerService;
+
+  final _controller = StreamController<TokensWorkerMessage>.broadcast();
+
+  @override
+  Stream<TokensWorkerMessage> get messages => _controller.stream;
+
+  @override
+  Future<void> get ready async {}
+
+  @override
+  bool get isRunning => true;
+
+  @override
+  String get endpoint => 'fake';
+
+  @override
+  String get apiKey => 'fake';
+
+  @override
+  Future<void> start() async {}
+
+  @override
+  Future<void> stop() async {
+    await _controller.close();
+  }
+
+  @override
+  void sendRaw(List<Object?> message) {}
+
+  @override
+  void fetchAllTokens({
+    required String uuid,
+    required List<String> addresses,
+    int? offset,
+    int? size,
+  }) {}
+
+  @override
+  void reindexAddressesList({
+    required String uuid,
+    required List<String> addresses,
+  }) {}
+
+  @override
+  void fetchManualTokens({
+    required String uuid,
+    required List<String> tokenCids,
+  }) {}
+
+  @override
+  void updateTokensInIsolate({
+    required String uuid,
+    required List<AddressAnchor> addressAnchors,
+  }) {
+    unawaited(_run(uuid: uuid, addressAnchors: addressAnchors));
+  }
+
+  Future<void> _run({
+    required String uuid,
+    required List<AddressAnchor> addressAnchors,
+  }) async {
+    final addresses = addressAnchors.map((e) => e.address).toList();
+    final anchor = addressAnchors.map((e) => e.anchor).reduce(
+          (a, b) => a < b ? a : b,
+        );
+
+    int? nextAnchor = anchor == 0 ? null : anchor;
+
+    while (true) {
+      final page = await _indexerService.getChanges(
+        QueryChangesRequest(
+          addresses: addresses,
+          anchor: nextAnchor,
+          limit: 50,
+        ),
+      );
+
+      if (page.items.isEmpty) break;
+      _controller.add(UpdateTokensData(uuid, page, addresses));
+      nextAnchor = page.nextAnchor;
+      if (nextAnchor == null) break;
+    }
+
+    _controller.add(UpdateTokensSuccess(uuid));
+  }
+}
 
 class SyncFakeIndexerClient extends IndexerClient {
   SyncFakeIndexerClient({
@@ -50,9 +150,16 @@ class SyncFakeIndexerClient extends IndexerClient {
     String? subKey,
   }) async {
     if (subKey == 'tokens') {
-      final cids = (vars['cids'] as List?)?.whereType<String>().toList() ??
-          const <String>[];
-      if (cids.contains(tokenCid)) {
+      final tokenCids =
+          (vars['token_cids'] as List?)?.whereType<String>().toList() ??
+              const <String>[];
+      final tokenIds =
+          (vars['token_ids'] as List?)?.map((e) => int.tryParse('$e')).toList();
+
+      final matchesByCid = tokenCids.contains(tokenCid);
+      final matchesById = tokenIds?.contains(token.id) ?? false;
+
+      if (matchesByCid || matchesById) {
         return <String, dynamic>{
           'items': <Map<String, dynamic>>[
             _tokenToGraphQl(token),
@@ -114,6 +221,10 @@ void main() {
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(db.close);
     final dbService = DatabaseService(db);
+    final tempDir = Directory.systemTemp.createTempSync('idx_cfg_');
+    addTearDown(() => tempDir.deleteSync(recursive: true));
+    final configStore =
+        IndexerConfigStore(documentsDirFactory: () async => tempDir);
 
     const address = '0x1111111111111111111111111111111111111111';
     const chain = 'eip155:1';
@@ -143,10 +254,10 @@ void main() {
       standard: 'erc721',
       contractAddress: '0xabc',
       tokenNumber: '1',
-      currentOwner: address,
+      currentOwner: address.toUpperCase(),
       owners: PaginatedOwners(
         items: [
-          Owner(ownerAddress: address, quantity: '1'),
+          Owner(ownerAddress: address.toUpperCase(), quantity: '1'),
         ],
         total: 1,
         offset: 0,
@@ -163,10 +274,14 @@ void main() {
       client: client,
     );
 
+    final fakeWorker = FakeTokensWorker(indexerService);
+
     final container = ProviderContainer.test(
       overrides: [
         databaseServiceProvider.overrideWithValue(dbService),
         indexerServiceProvider.overrideWithValue(indexerService),
+        indexerConfigStoreProvider.overrideWithValue(configStore),
+        indexerTokensWorkerProvider.overrideWithValue(fakeWorker),
       ],
     );
     addTearDown(container.dispose);

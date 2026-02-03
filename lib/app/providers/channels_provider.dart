@@ -1,9 +1,8 @@
+import 'package:app/app/providers/mutations.dart';
+import 'package:app/domain/models/channel.dart';
+import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
-
-import '../../domain/models/channel.dart';
-import '../../infra/database/database_provider.dart';
-import 'mutations.dart';
 
 /// Enhanced state for channels with curated vs personal separation.
 class ChannelsState {
@@ -110,7 +109,8 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       final curated = allChannels.where((c) => !c.isPinned).toList();
       final personal = allChannels.where((c) => c.isPinned).toList();
 
-      _log.info('Curated channels: ${curated.length}, Personal channels: ${personal.length}');
+      _log.info(
+          'Curated channels: ${curated.length}, Personal channels: ${personal.length}');
 
       state = ChannelsState.loaded(curated: curated, personal: personal);
     } catch (e, stack) {

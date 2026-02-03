@@ -52,7 +52,7 @@ class AddressService {
       await _databaseService.ingestPlaylist(playlist);
 
       // Trigger reindexing to fetch tokens
-      await _indexerService.reindexAddresses(addresses: [normalizedAddress]);
+      await _indexerService.indexAddressesList([normalizedAddress]);
 
       _log.info('Added address playlist: ${playlist.id}');
       return playlist;

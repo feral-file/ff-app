@@ -1,10 +1,7 @@
 import 'dart:async';
 
-import 'package:app/app/providers/indexer_provider.dart';
-import 'package:app/app/providers/services_provider.dart';
-import 'package:app/domain/models/indexer/changes/change.dart';
-import 'package:app/domain/models/indexer/changes/change_meta.dart';
 import 'package:app/infra/database/database_provider.dart';
+import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -39,9 +36,8 @@ class IncrementalSyncState {
 
 /// Periodically syncs address playlists using indexer change journal entries.
 ///
-/// This is a lightweight, provider-driven alternative to the legacy isolate
-/// tokens service. It prioritizes correctness and auditability over maximal
-/// throughput.
+/// This delegates all heavy lifting to [TokensSyncCoordinatorNotifier], which
+/// wraps the isolate-backed worker and persists anchors/indexing metadata.
 class IncrementalSyncNotifier extends Notifier<IncrementalSyncState> {
   late final Logger _log;
   Timer? _timer;
@@ -95,112 +91,13 @@ class IncrementalSyncNotifier extends Notifier<IncrementalSyncState> {
         return;
       }
 
-      for (final address in addresses) {
-        await _syncAddress(address);
-      }
+      final coordinator = ref.read(tokensSyncCoordinatorProvider.notifier);
+      await coordinator.syncAddresses(addresses);
 
       state = state.copyWith(lastRunAt: DateTime.now(), clearLastError: true);
     } on Object catch (e, stack) {
       _log.warning('Incremental sync failed', e, stack);
       state = state.copyWith(lastRunAt: DateTime.now(), lastError: e);
-    }
-  }
-
-  Future<void> _syncAddress(String address) async {
-    final indexer = ref.read(indexerServiceProvider);
-    final databaseService = ref.read(databaseServiceProvider);
-    final anchorStore = ref.read(changesAnchorProvider.notifier);
-
-    final anchor = anchorStore.getAnchor(address);
-    var nextAnchor = anchor;
-    var latestAnchorSeen = anchor;
-
-    while (true) {
-      final page = await indexer.getChanges(
-        QueryChangesRequest(
-          addresses: [address],
-          anchor: nextAnchor,
-          limit: 50,
-        ),
-      );
-
-      if (page.items.isEmpty) {
-        break;
-      }
-
-      final cidsToUpsert = <String>{};
-      final cidsToDelete = <String>{};
-
-      for (final change in page.items) {
-        final cid = change.tokenCid;
-        if (cid == null || cid.isEmpty) continue;
-
-        final parsed = change.metaParsed;
-        if (parsed is ProvenanceChangeMeta) {
-          final from = parsed.from?.toUpperCase();
-          final to = parsed.to?.toUpperCase();
-
-          if (parsed.isBurn()) {
-            cidsToDelete.add(cid);
-            continue;
-          }
-
-          if (parsed.isTransfer()) {
-            // Remove when token transferred out of the tracked address.
-            if (from == address) {
-              cidsToDelete.add(cid);
-            }
-            // Add/update when token transferred into the tracked address.
-            if (to == address) {
-              cidsToUpsert.add(cid);
-            }
-            continue;
-          }
-
-          if (parsed.isMint()) {
-            cidsToUpsert.add(cid);
-            continue;
-          }
-        }
-
-        // For metadata/enrichment/viewability, refetch and upsert.
-        if (change.isMetadataUpdate() ||
-            change.isEnrichmentSourceUpdate() ||
-            change.subjectType == SubjectType.tokenViewability) {
-          cidsToUpsert.add(cid);
-        }
-      }
-
-      if (cidsToUpsert.isNotEmpty) {
-        final tokens =
-            await indexer.fetchTokensByCIDs(cids: cidsToUpsert.toList());
-        if (tokens.isNotEmpty) {
-          await databaseService.ingestTokensForAddress(
-            address: address,
-            tokens: tokens,
-          );
-        }
-      }
-
-      if (cidsToDelete.isNotEmpty) {
-        await databaseService.deleteTokensByCids(
-          address: address,
-          cids: cidsToDelete.toList(),
-        );
-      }
-
-      nextAnchor = page.nextAnchor;
-      if (nextAnchor != null) {
-        latestAnchorSeen = nextAnchor;
-      }
-      if (nextAnchor == null) {
-        break;
-      }
-    }
-
-    // Persist the latest anchor in-memory.
-    if (latestAnchorSeen != null) {
-      anchorStore.setAnchor(address: address, anchor: latestAnchorSeen);
     }
   }
 

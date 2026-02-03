@@ -22,6 +22,7 @@ const String getChangesQuery = r'''
         subject_id
         changed_at
         meta
+        subject
         created_at
         updated_at
       }

@@ -3,7 +3,6 @@ import 'package:app/domain/models/indexer/changes/change.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/graphql/queries/changes_queries.dart';
-import 'package:app/infra/graphql/queries/indexing_status_queries.dart';
 import 'package:app/infra/graphql/queries/mutations.dart';
 import 'package:app/infra/graphql/queries/token_queries.dart';
 import 'package:app/infra/graphql/queries/workflow_queries.dart';
@@ -22,6 +21,18 @@ class IndexerService {
 
   final IndexerClient _client;
   final Logger _log;
+
+  // The indexer schema uses Uint8 for `limit`, so we must never send > 255.
+  //
+  // The prior app additionally batched some flows more aggressively (e.g.
+  // manual fetch by CID in batches of 40) to avoid overly large payloads.
+  static const int _maxUint8Limit = 255;
+  static const int _manualFetchCidsBatchSize = 40;
+  static const int _defaultTokensPageSize = 50;
+  static const List<String> _defaultChains = <String>[
+    'eip155:1',
+    'tezos:mainnet',
+  ];
 
   /// Fetch change journal entries.
   Future<ChangeList> getChanges(QueryChangesRequest request) async {
@@ -49,11 +60,11 @@ class IndexerService {
 
   /// Fetch tokens by CIDs (for enriching DP1 items).
   Future<List<AssetToken>> fetchTokensByCIDs({
-    required List<String> cids,
+    required List<String> tokenCids,
   }) async {
     try {
-      _log.info('Fetching ${cids.length} tokens by CIDs');
-      final tokens = await _fetchTokensByCids(cids: cids);
+      _log.info('Fetching ${tokenCids.length} tokens by tokenCids');
+      final tokens = await _fetchTokensByCids(tokenCids: tokenCids);
       _log.info('Fetched ${tokens.length} tokens');
       return tokens;
     } catch (e, stack) {
@@ -69,23 +80,14 @@ class IndexerService {
     int? offset,
   }) async {
     try {
-      final data = await _client.query(
-        doc: getTokensByAddressesQuery,
-        vars: {
-          'owners': addresses,
-          'limit': limit,
-          'offset': offset,
-        },
-        subKey: 'tokens',
+      // Default behavior: QueryListTokensRequest page size is 50.
+      final effectiveLimit = limit ?? _defaultTokensPageSize;
+      final tokens = await _fetchTokens(
+        owners: addresses,
+        limit: effectiveLimit,
+        offset: offset,
       );
-
-      final items =
-          (data?['items'] as List?)?.whereType<Map<Object?, Object?>>() ??
-              const [];
-
-      return items
-          .map((e) => AssetToken.fromGraphQL(Map<String, dynamic>.from(e)))
-          .toList();
+      return tokens;
     } catch (e, stack) {
       _log.severe('Failed to fetch tokens by addresses', e, stack);
       rethrow;
@@ -93,13 +95,73 @@ class IndexerService {
   }
 
   Future<List<AssetToken>> _fetchTokensByCids({
-    required List<String> cids,
+    required List<String> tokenCids,
   }) async {
+    if (tokenCids.isEmpty) return const <AssetToken>[];
+
+    // Legacy behavior: fetch manual tokens from indexer in batches of 40.
+    final results = <AssetToken>[];
+    for (final batch in _batchesOf(tokenCids, _manualFetchCidsBatchSize)) {
+      final tokens = await _fetchTokens(
+        tokenCids: batch,
+        limit: batch.length.clamp(1, _maxUint8Limit),
+        offset: 0,
+      );
+      results.addAll(tokens);
+    }
+
+    // Preserve requested order and dedupe by CID.
+    return _orderTokensByCid(results, tokenCids);
+  }
+
+  /// Fetch tokens by indexer token IDs, optionally scoped to owners.
+  ///
+  /// This mirrors the old repo's `QueryListTokensRequest(tokenIds: ..., owners: ...)`
+  /// usage in change-journal incremental sync.
+  Future<List<AssetToken>> fetchTokensByTokenIds({
+    required List<int> tokenIds,
+    List<String> owners = const [],
+    int? limit,
+    int? offset,
+  }) async {
+    if (tokenIds.isEmpty) return const <AssetToken>[];
+
+    // If tokenIds > 255, we must batch. We always fetch the full set then apply
+    // offset/limit on the merged result to keep caller semantics stable.
+    final results = <AssetToken>[];
+    for (final batch in _batchesOf(tokenIds, _maxUint8Limit)) {
+      final tokens = await _fetchTokens(
+        tokenIds: batch,
+        owners: owners.isEmpty ? null : owners,
+        limit: batch.length.clamp(1, _maxUint8Limit),
+        offset: 0,
+      );
+      results.addAll(tokens);
+    }
+
+    final ordered = _orderTokensById(results, tokenIds);
+    return _applyOffsetLimit(ordered, offset: offset, limit: limit);
+  }
+
+  Future<List<AssetToken>> _fetchTokens({
+    List<int>? tokenIds,
+    List<String>? owners,
+    List<String>? tokenCids,
+    List<String>? chains,
+    int? limit,
+    int? offset,
+  }) async {
+    final vars = <String, dynamic>{};
+    if (tokenIds != null) vars['token_ids'] = tokenIds;
+    if (owners != null) vars['owners'] = owners;
+    if (tokenCids != null) vars['token_cids'] = tokenCids;
+    vars['chains'] = chains ?? _defaultChains;
+    if (limit != null) vars['limit'] = limit;
+    if (offset != null) vars['offset'] = offset;
+
     final data = await _client.query(
-      doc: getTokensByCidsQuery,
-      vars: {
-        'cids': cids,
-      },
+      doc: getTokens,
+      vars: vars,
       subKey: 'tokens',
     );
 
@@ -112,91 +174,62 @@ class IndexerService {
         .toList();
   }
 
-  /// Reindex addresses (trigger indexer to scan addresses).
-  /// Returns workflow IDs for tracking progress.
-  Future<List<String>> reindexAddresses({
-    required List<String> addresses,
-  }) async {
-    try {
-      _log.info('Reindexing ${addresses.length} addresses');
-      final data = await _client.mutate(
-        doc: indexAddressesMutation,
-        vars: {'addresses': addresses},
-        subKey: 'indexAddresses',
-      );
+  static Iterable<List<T>> _batchesOf<T>(List<T> items, int batchSize) sync* {
+    if (batchSize <= 0) {
+      throw ArgumentError.value(batchSize, 'batchSize', 'must be > 0');
+    }
 
-      final workflowIds =
-          (data?['workflowIds'] as List?)?.whereType<String>().toList() ??
-              const <String>[];
-      _log.info('Started reindexing with ${workflowIds.length} workflows');
-      return workflowIds;
-    } catch (e, stack) {
-      _log.severe('Failed to reindex addresses', e, stack);
-      rethrow;
+    for (var i = 0; i < items.length; i += batchSize) {
+      final end = (i + batchSize < items.length) ? i + batchSize : items.length;
+      yield items.sublist(i, end);
     }
   }
 
-  /// Check indexing status for workflow IDs.
-  Future<Map<String, String>> getIndexingStatus({
-    required List<String> workflowIds,
-  }) async {
-    try {
-      final data = await _client.query(
-        doc: indexingStatusQuery,
-        vars: {'workflowIds': workflowIds},
-      );
-
-      final statuses = (data?['indexingStatus'] as List?)
-              ?.whereType<Map<Object?, Object?>>()
-              .map(
-                (item) => MapEntry(
-                  (item['workflowId'] as String?) ?? '',
-                  (item['status'] as String?) ?? '',
-                ),
-              )
-              .where((e) => e.key.isNotEmpty)
-              .toList() ??
-          const <MapEntry<String, String>>[];
-
-      return Map<String, String>.fromEntries(statuses);
-    } catch (e, stack) {
-      _log.severe('Failed to get indexing status', e, stack);
-      rethrow;
+  static List<AssetToken> _orderTokensByCid(
+    List<AssetToken> tokens,
+    List<String> requestedCids,
+  ) {
+    final byCid = <String, AssetToken>{};
+    for (final t in tokens) {
+      // Keep the first occurrence to preserve stable behavior under duplicates.
+      byCid.putIfAbsent(t.cid, () => t);
     }
+
+    final ordered = <AssetToken>[];
+    for (final cid in requestedCids) {
+      final token = byCid[cid];
+      if (token != null) ordered.add(token);
+    }
+    return ordered;
   }
 
-  /// Poll indexing status until complete.
-  /// Returns true if all workflows completed successfully.
-  Future<bool> pollIndexingStatus({
-    required List<String> workflowIds,
-    Duration pollInterval = const Duration(seconds: 2),
-    Duration timeout = const Duration(minutes: 5),
-  }) async {
-    final startTime = DateTime.now();
-
-    while (true) {
-      final elapsed = DateTime.now().difference(startTime);
-      if (elapsed > timeout) {
-        _log.warning('Indexing status polling timed out');
-        return false;
-      }
-
-      final status = await getIndexingStatus(workflowIds: workflowIds);
-
-      final allComplete = workflowIds.every((id) {
-        final state = status[id];
-        return state == 'completed' || state == 'failed';
-      });
-
-      if (allComplete) {
-        final allSuccessful = workflowIds.every((id) {
-          return status[id] == 'completed';
-        });
-        return allSuccessful;
-      }
-
-      await Future<void>.delayed(pollInterval);
+  static List<AssetToken> _orderTokensById(
+    List<AssetToken> tokens,
+    List<int> requestedIds,
+  ) {
+    final byId = <int, AssetToken>{};
+    for (final t in tokens) {
+      byId.putIfAbsent(t.id, () => t);
     }
+
+    final ordered = <AssetToken>[];
+    for (final id in requestedIds) {
+      final token = byId[id];
+      if (token != null) ordered.add(token);
+    }
+    return ordered;
+  }
+
+  static List<AssetToken> _applyOffsetLimit(
+    List<AssetToken> items, {
+    int? offset,
+    int? limit,
+  }) {
+    final start = (offset ?? 0).clamp(0, items.length);
+    final afterOffset = items.sublist(start);
+    final lim = limit;
+    if (lim == null) return afterOffset;
+    return afterOffset.take(lim.clamp(0, afterOffset.length)).toList();
   }
 
   /// Index a list of addresses and return per-address workflow IDs.
@@ -209,7 +242,7 @@ class IndexerService {
 
     try {
       final data = await _client.mutate(
-        doc: triggerAddressIndexingList,
+        doc: triggerOwnerIndexingList,
         vars: {
           'addresses': addresses,
         },
@@ -270,7 +303,7 @@ class IndexerService {
   /// surface minimal and auditable.
   Future<AssetToken?> getTokenByCid(String cid) async {
     if (cid.isEmpty) return null;
-    final tokens = await fetchTokensByCIDs(cids: [cid]);
+    final tokens = await fetchTokensByCIDs(tokenCids: [cid]);
     if (tokens.isEmpty) return null;
     return tokens.first;
   }

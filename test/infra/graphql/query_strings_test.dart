@@ -1,9 +1,14 @@
-/// GraphQL queries for the indexer API.
-///
-/// Keep these strings stable and auditable (OSS-first posture).
-///
-/// Source of truth: legacy Feral File app repo (`lib/nft_collection/graphql/queries/*`).
-const String getTokens = r'''
+import 'package:app/infra/graphql/queries/changes_queries.dart';
+import 'package:app/infra/graphql/queries/collection_queries.dart';
+import 'package:app/infra/graphql/queries/identity_queries.dart';
+import 'package:app/infra/graphql/queries/mutations.dart';
+import 'package:app/infra/graphql/queries/token_queries.dart';
+import 'package:app/infra/graphql/queries/workflow_queries.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('GraphQL query strings match the legacy repo (auditable contract)', () {
+    const expectedGetTokens = r'''
   query getTokens(
     $owners: [String!]
     $chains: [String!]
@@ -86,7 +91,7 @@ const String getTokens = r'''
   }
 ''';
 
-const String getTokenByCidQuery = r'''
+    const expectedGetTokenByCidQuery = r'''
   query getToken(
     $cid: String!
     $owners_limit: Uint8 = 10
@@ -167,7 +172,7 @@ const String getTokenByCidQuery = r'''
   }
 ''';
 
-const String getTokenWithOwnersAndProvenanceQuery = r'''
+    const expectedGetTokenWithOwnersAndProvenanceQuery = r'''
   query getToken(
     $cid: String!
     $owners_limit: Uint8 = 255
@@ -209,5 +214,109 @@ const String getTokenWithOwnersAndProvenanceQuery = r'''
     }
   }
 ''';
+
+    const expectedGetChangesQuery = r'''
+  query getChanges(
+    $token_cids: [String!]
+    $addresses: [String!]
+    $limit: Uint8
+    $anchor: Uint64
+  ) {
+    changes(
+      token_cids: $token_cids
+      addresses: $addresses
+      limit: $limit
+      anchor: $anchor
+    ) {
+      items {
+        id
+        subject_type
+        subject_id
+        changed_at
+        meta
+        subject
+        created_at
+        updated_at
+      }
+      offset
+      total
+      next_anchor
+    }
+  }
+''';
+
+    const expectedAddressIndexingJobStatusQuery = r'''
+  query indexingJob($workflow_id: String!) {
+    indexingJob(workflow_id: $workflow_id) {
+      workflow_id
+      address
+      status
+      total_tokens_indexed
+      total_tokens_viewable
+    }
+  }
+''';
+
+    const expectedTriggerOwnerIndexingList = r'''
+  mutation triggerAddressIndexing($addresses: [String!]!) {
+  triggerAddressIndexing(addresses: $addresses) {
+    jobs {
+      address
+      workflow_id
+    }
+  }
+}
+''';
+
+    const expectedIdentity = r'''
+  query identity($account: String!) {
+  identity(account: $account) {
+    blockchain
+    accountNumber
+    name
+  }
+}
+''';
+
+    const expectedCollectionQuery = r'''
+    query GetCollections($creators: [String!]! = [], $offset: Int64! = 0, $size: Int64! = 100) {
+  collections(
+    creators: $creators,
+    offset: $offset,
+    size: $size,
+  ) {
+    id
+    description
+    externalID
+    imageURL
+    items
+    name
+    creators
+    published
+    source
+    createdAt
+  }
+}
+''';
+
+    expect(getTokens, expectedGetTokens);
+    expect(getTokenByCidQuery, expectedGetTokenByCidQuery);
+    expect(
+      getTokenWithOwnersAndProvenanceQuery,
+      expectedGetTokenWithOwnersAndProvenanceQuery,
+    );
+
+    expect(getChangesQuery, expectedGetChangesQuery);
+    expect(
+      addressIndexingJobStatusQuery,
+      expectedAddressIndexingJobStatusQuery,
+    );
+
+    expect(triggerOwnerIndexingList, expectedTriggerOwnerIndexingList);
+
+    expect(identity, expectedIdentity);
+    expect(collectionQuery, expectedCollectionQuery);
+  });
+}
 
 // End of file.
