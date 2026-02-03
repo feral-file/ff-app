@@ -1,0 +1,48 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
+
+/// A Riverpod-backed bridge for app lifecycle events.
+///
+/// This enables non-UI layers (providers/notifiers) to pause/resume background
+/// work when the app goes to background/foreground.
+class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
+  late final Logger _log;
+  late final _Observer _observer;
+
+  @override
+  AppLifecycleState build() {
+    _log = Logger('AppLifecycleNotifier');
+    _observer = _Observer(_onLifecycleChanged);
+    WidgetsBinding.instance.addObserver(_observer);
+
+    ref.onDispose(() {
+      WidgetsBinding.instance.removeObserver(_observer);
+    });
+
+    return WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+  }
+
+  void _onLifecycleChanged(AppLifecycleState state) {
+    this.state = state;
+    _log.fine('Lifecycle changed: $state');
+  }
+}
+
+class _Observer with WidgetsBindingObserver {
+  _Observer(this.onChanged);
+
+  final void Function(AppLifecycleState state) onChanged;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    onChanged(state);
+  }
+}
+
+/// Provider for current app lifecycle state.
+final appLifecycleProvider =
+    NotifierProvider<AppLifecycleNotifier, AppLifecycleState>(
+  AppLifecycleNotifier.new,
+);
+

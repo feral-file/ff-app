@@ -89,7 +89,7 @@ final fetchTokensByCIDsProvider =
   (ref, cids) async {
     final service = ref.watch(indexerServiceProvider);
 
-    final tokens = await service.fetchTokensByCIDs(cids: cids);
+    final tokens = await service.fetchTokensByCIDs(tokenCids: cids);
 
     return tokens;
   },

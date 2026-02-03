@@ -39,7 +39,7 @@ void main() {
         print('UUID: $dp1ItemUuid');
 
         try {
-          await indexerService.fetchTokensByCIDs(cids: [dp1ItemUuid]);
+          await indexerService.fetchTokensByCIDs(tokenCids: [dp1ItemUuid]);
           fail('Should have thrown an exception for invalid CID');
         } catch (e) {
           print('\n✅ Expected error received:');
@@ -65,7 +65,7 @@ void main() {
         print('\n✅ Testing with valid IPFS CID:');
         print('CID: $validCid');
 
-        final tokens = await indexerService.fetchTokensByCIDs(cids: [validCid]);
+        final tokens = await indexerService.fetchTokensByCIDs(tokenCids: [validCid]);
 
         expect(tokens, isNotEmpty, reason: 'Should return at least one token');
 
@@ -159,7 +159,7 @@ void main() {
         print('\n=== Testing multiple tokens ===');
         print('Fetching ${cids.length} tokens...');
 
-        final tokens = await indexerService.fetchTokensByCIDs(cids: cids);
+        final tokens = await indexerService.fetchTokensByCIDs(tokenCids: cids);
 
         print('Received ${tokens.length} tokens\n');
 
