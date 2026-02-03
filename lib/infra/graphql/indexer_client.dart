@@ -1,4 +1,5 @@
 import 'package:graphql/client.dart';
+import 'package:sentry/sentry.dart';
 
 /// GraphQL client for the indexer service.
 /// Handles fetching tokens from the indexer API.
@@ -7,6 +8,8 @@ class IndexerClient {
   IndexerClient({
     required String endpoint,
     this.defaultHeaders = const {},
+    this.queryTimeout = const Duration(seconds: 60),
+    this.mutationTimeout = const Duration(seconds: 15),
   }) : _client = GraphQLClient(
           link: HttpLink(
             endpoint,
@@ -20,428 +23,164 @@ class IndexerClient {
   /// Default headers for requests.
   final Map<String, String> defaultHeaders;
 
-  /// Fetch tokens for a list of owner addresses.
-  /// Uses the actual indexer-v2 API schema.
-  Future<List<Map<String, dynamic>>> fetchTokensByAddresses({
-    required List<String> addresses,
-    int? limit,
-    int? offset,
+  /// Default timeout for GraphQL queries.
+  final Duration queryTimeout;
+
+  /// Default timeout for GraphQL mutations.
+  final Duration mutationTimeout;
+
+  /// Executes a raw GraphQL query.
+  ///
+  /// This is used by higher-level services to implement additional operations
+  /// (e.g. changes/workflow queries) without duplicating client wiring.
+  Future<Map<String, dynamic>?> query({
+    required String doc,
+    Map<String, dynamic> vars = const {},
+    String? subKey,
   }) async {
-    const query = r'''
-      query GetTokensByAddresses(
-        $owners: [String!]
-        $limit: Uint8
-        $offset: Uint64
-      ) {
-        tokens(
-          owners: $owners
-          limit: $limit
-          offset: $offset
-        ) {
-          items {
-            id
-            token_cid
-            chain
-            contract_address
-            token_number
-            current_owner
-            updated_at
-            metadata {
-              name
-              description
-              image_url
-              animation_url
-              mime_type
-              artists {
-                name
-                did
-              }
-            }
-            owners {
-              items {
-                owner_address
-                quantity
-              }
-            }
-            provenance_events {
-              items {
-                event_type
-                from_address
-                to_address
-                tx_hash
-                timestamp
-                chain
-              }
-            }
-            enrichment_source {
-              name
-              description
-              image_url
-              animation_url
-              mime_type
-              artists {
-                name
-                did
-              }
-            }
-            metadata_media_assets {
-              source_url
-              mime_type
-              variant_urls
-            }
-            enrichment_source_media_assets {
-              source_url
-              mime_type
-              variant_urls
-            }
-          }
-          offset
-          total
-        }
+    try {
+      final result = await _client
+          .query(
+            QueryOptions(
+              document: gql(doc),
+              variables: vars,
+              fetchPolicy: FetchPolicy.networkOnly,
+            ),
+          )
+          .timeout(queryTimeout);
+
+      if (result.hasException) {
+        _captureGraphQLError(
+          operation: 'query',
+          doc: doc,
+          vars: vars,
+          exception: result.exception,
+        );
+        throw Exception('GraphQL error: ${result.exception}');
       }
-    ''';
 
-    final result = await _client.query(
-      QueryOptions(
-        document: gql(query),
-        variables: {
-          'owners': addresses,
-          'limit': limit,
-          'offset': offset,
-        },
-      ),
-    );
+      final data = result.data;
+      if (data == null) return null;
+      if (subKey == null) return Map<String, dynamic>.from(data);
 
-    if (result.hasException) {
-      throw Exception('GraphQL error: ${result.exception}');
+      final value = data[subKey];
+      return value is Map<String, dynamic>
+          ? value
+          : Map<String, dynamic>.from(data);
+    } catch (e, stack) {
+      _captureUnhandledError(
+        operation: 'query',
+        doc: doc,
+        vars: vars,
+        error: e,
+        stackTrace: stack,
+      );
+      rethrow;
     }
-
-    final tokensResponse = result.data?['tokens'] as Map<String, dynamic>?;
-    final tokens = (tokensResponse?['items'] as List?)
-            ?.map((token) => token as Map<String, dynamic>)
-            .toList() ??
-        [];
-
-    // Transform to match expected format
-    return tokens.map((token) {
-      final metadata = token['metadata'] as Map<String, dynamic>?;
-      final enrichmentSource =
-          token['enrichment_source'] as Map<String, dynamic>?;
-      final metadataMediaAssets = token['metadata_media_assets'] as List?;
-      final enrichmentSourceMediaAssets =
-          token['enrichment_source_media_assets'] as List?;
-
-      // Get thumbnail URL - enrichment source takes priority
-      String? thumbnailUrl = enrichmentSource?['image_url'] as String? ??
-          metadata?['image_url'] as String?;
-
-      // Try to get variant URLs for 'xs' size
-      if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
-        // Check enrichment source media assets first
-        final enrichmentAsset =
-            enrichmentSourceMediaAssets?.cast<Map<String, dynamic>>().firstWhere(
-                  (asset) => asset['source_url'] == thumbnailUrl,
-                  orElse: () => <String, dynamic>{},
-                );
-        if (enrichmentAsset != null && enrichmentAsset.isNotEmpty) {
-          final variantUrls = enrichmentAsset['variant_urls'] as Map?;
-          if (variantUrls != null) {
-            final xsUrl = variantUrls['xs'] ?? variantUrls.values.firstOrNull;
-            if (xsUrl != null) thumbnailUrl = xsUrl as String;
-          }
-        } else {
-          // Fallback to metadata media assets
-          final metadataAsset =
-              metadataMediaAssets?.cast<Map<String, dynamic>>().firstWhere(
-                    (asset) => asset['source_url'] == thumbnailUrl,
-                    orElse: () => <String, dynamic>{},
-                  );
-          if (metadataAsset != null && metadataAsset.isNotEmpty) {
-            final variantUrls = metadataAsset['variant_urls'] as Map?;
-            if (variantUrls != null) {
-              final xsUrl =
-                  variantUrls['xs'] ?? variantUrls.values.firstOrNull;
-              if (xsUrl != null) thumbnailUrl = xsUrl as String;
-            }
-          }
-        }
-      }
-
-      return {
-        'id': token['token_cid'] ?? token['id'],
-        'contractAddress': token['contract_address'],
-        'tokenId': token['token_number']?.toString(),
-        'blockchain': token['chain'],
-        'title': enrichmentSource?['name'] ?? metadata?['name'],
-        'description':
-            enrichmentSource?['description'] ?? metadata?['description'],
-        'thumbnailUrl': thumbnailUrl,
-        'previewUrl': enrichmentSource?['animation_url'] ??
-            metadata?['animation_url'],
-        'owners': ((token['owners'] as Map?)?['items'] as List?)
-                ?.map((o) => {
-                      'address': (o as Map)['owner_address'],
-                      'blockchain': o['blockchain'],
-                    })
-                .toList() ??
-            [],
-        'provenance': ((token['provenance_events'] as Map?)?['items'] as List?)
-                ?.map((p) => {
-                      'txHash': (p as Map)['tx_hash'],
-                      'fromAddress': p['from_address'],
-                      'toAddress': p['to_address'],
-                      'timestamp': p['timestamp'],
-                      'type': p['event_type'],
-                    })
-                .toList() ??
-            [],
-        'metadata': metadata,
-      };
-    }).toList();
   }
 
-  /// Fetch tokens by CIDs.
-  /// Uses the actual indexer-v2 API schema.
-  Future<List<Map<String, dynamic>>> fetchTokensByCIDs({
-    required List<String> cids,
+  /// Executes a raw GraphQL mutation.
+  Future<Map<String, dynamic>?> mutate({
+    required String doc,
+    Map<String, dynamic> vars = const {},
+    String? subKey,
   }) async {
-    const query = r'''
-      query GetTokensByCIDs($cids: [String!]!) {
-        tokens(
-          token_cids: $cids
-        ) {
-          items {
-            id
-            token_cid
-            chain
-            contract_address
-            token_number
-            current_owner
-            updated_at
-            metadata {
-              name
-              description
-              image_url
-              animation_url
-              mime_type
-              artists {
-                name
-                did
-              }
-            }
-            owners {
-              items {
-                owner_address
-                quantity
-              }
-            }
-            provenance_events {
-              items {
-                event_type
-                from_address
-                to_address
-                tx_hash
-                timestamp
-                chain
-              }
-            }
-            enrichment_source {
-              name
-              description
-              image_url
-              animation_url
-              mime_type
-              artists {
-                name
-                did
-              }
-            }
-            metadata_media_assets {
-              source_url
-              mime_type
-              variant_urls
-            }
-            enrichment_source_media_assets {
-              source_url
-              mime_type
-              variant_urls
-            }
-          }
-          offset
-          total
-        }
+    try {
+      final result = await _client
+          .mutate(
+            MutationOptions(
+              document: gql(doc),
+              variables: vars,
+              fetchPolicy: FetchPolicy.networkOnly,
+            ),
+          )
+          .timeout(mutationTimeout);
+
+      if (result.hasException) {
+        _captureGraphQLError(
+          operation: 'mutation',
+          doc: doc,
+          vars: vars,
+          exception: result.exception,
+        );
+        throw Exception('GraphQL error: ${result.exception}');
       }
-    ''';
 
-    final result = await _client.query(
-      QueryOptions(
-        document: gql(query),
-        variables: {
-          'cids': cids,
-        },
-      ),
-    );
+      final data = result.data;
+      if (data == null) return null;
+      if (subKey == null) return Map<String, dynamic>.from(data);
 
-    if (result.hasException) {
-      throw Exception('GraphQL error: ${result.exception}');
+      final value = data[subKey];
+      return value is Map<String, dynamic>
+          ? value
+          : Map<String, dynamic>.from(data);
+    } catch (e, stack) {
+      _captureUnhandledError(
+        operation: 'mutation',
+        doc: doc,
+        vars: vars,
+        error: e,
+        stackTrace: stack,
+      );
+      rethrow;
     }
-
-    final tokensResponse = result.data?['tokens'] as Map<String, dynamic>?;
-    final tokens = (tokensResponse?['items'] as List?)
-            ?.map((token) => token as Map<String, dynamic>)
-            .toList() ??
-        [];
-
-    // Transform to match expected format
-    return tokens.map((token) {
-      final metadata = token['metadata'] as Map<String, dynamic>?;
-      final enrichmentSource =
-          token['enrichment_source'] as Map<String, dynamic>?;
-      final metadataMediaAssets = token['metadata_media_assets'] as List?;
-      final enrichmentSourceMediaAssets =
-          token['enrichment_source_media_assets'] as List?;
-
-      // Get thumbnail URL - enrichment source takes priority
-      String? thumbnailUrl = enrichmentSource?['image_url'] as String? ??
-          metadata?['image_url'] as String?;
-
-      // Try to get variant URLs for 'xs' size
-      if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
-        // Check enrichment source media assets first
-        final enrichmentAsset =
-            enrichmentSourceMediaAssets?.cast<Map<String, dynamic>>().firstWhere(
-                  (asset) => asset['source_url'] == thumbnailUrl,
-                  orElse: () => <String, dynamic>{},
-                );
-        if (enrichmentAsset != null && enrichmentAsset.isNotEmpty) {
-          final variantUrls = enrichmentAsset['variant_urls'] as Map?;
-          if (variantUrls != null) {
-            final xsUrl = variantUrls['xs'] ?? variantUrls.values.firstOrNull;
-            if (xsUrl != null) thumbnailUrl = xsUrl as String;
-          }
-        } else {
-          // Fallback to metadata media assets
-          final metadataAsset =
-              metadataMediaAssets?.cast<Map<String, dynamic>>().firstWhere(
-                    (asset) => asset['source_url'] == thumbnailUrl,
-                    orElse: () => <String, dynamic>{},
-                  );
-          if (metadataAsset != null && metadataAsset.isNotEmpty) {
-            final variantUrls = metadataAsset['variant_urls'] as Map?;
-            if (variantUrls != null) {
-              final xsUrl =
-                  variantUrls['xs'] ?? variantUrls.values.firstOrNull;
-              if (xsUrl != null) thumbnailUrl = xsUrl as String;
-            }
-          }
-        }
-      }
-
-      return {
-        'id': token['token_cid'] ?? token['id'],
-        'contractAddress': token['contract_address'],
-        'tokenId': token['token_number']?.toString(),
-        'blockchain': token['chain'],
-        'title': enrichmentSource?['name'] ?? metadata?['name'],
-        'description':
-            enrichmentSource?['description'] ?? metadata?['description'],
-        'thumbnailUrl': thumbnailUrl,
-        'previewUrl': enrichmentSource?['animation_url'] ??
-            metadata?['animation_url'],
-        'owners': ((token['owners'] as Map?)?['items'] as List?)
-                ?.map((o) => {
-                      'address': (o as Map)['owner_address'],
-                      'blockchain': o['blockchain'],
-                    })
-                .toList() ??
-            [],
-        'provenance': ((token['provenance_events'] as Map?)?['items'] as List?)
-                ?.map((p) => {
-                      'txHash': (p as Map)['tx_hash'],
-                      'fromAddress': p['from_address'],
-                      'toAddress': p['to_address'],
-                      'timestamp': p['timestamp'],
-                      'type': p['event_type'],
-                    })
-                .toList() ??
-            [],
-        'metadata': metadata,
-      };
-    }).toList();
   }
 
-  /// Fetch changes from the indexer (for reindexing).
-  /// Returns workflow IDs for tracking.
-  Future<List<String>> indexAddresses({
-    required List<String> addresses,
-  }) async {
-    const mutation = r'''
-      mutation IndexAddresses($addresses: [String!]!) {
-        indexAddresses(addresses: $addresses) {
-          workflowIds
-        }
-      }
-    ''';
-
-    final result = await _client.mutate(
-      MutationOptions(
-        document: gql(mutation),
-        variables: {'addresses': addresses},
-      ),
-    );
-
-    if (result.hasException) {
-      throw Exception('GraphQL error: ${result.exception}');
+  void _captureGraphQLError({
+    required String operation,
+    required String doc,
+    required Map<String, dynamic> vars,
+    required OperationException? exception,
+  }) {
+    try {
+      Sentry.captureEvent(
+        SentryEvent(
+          message: SentryMessage('IndexerClient $operation GraphQL exception'),
+          level: SentryLevel.error,
+          tags: {
+            'layer': 'infra/graphql',
+            'operation': operation,
+          },
+          extra: {
+            'vars': vars,
+            'doc': doc,
+            'graphqlErrors':
+                exception?.graphqlErrors.map((e) => e.message).toList(),
+            'linkException': exception?.linkException?.toString(),
+          },
+          throwable: exception,
+        ),
+      );
+    } catch (_) {
+      // Avoid cascading failures from error reporting.
     }
-
-    final workflowIds =
-        (result.data?['indexAddresses']?['workflowIds'] as List?)
-                ?.map((id) => id as String)
-                .toList() ??
-            [];
-
-    return workflowIds;
   }
 
-  /// Get indexing status for workflow IDs.
-  Future<Map<String, String>> getIndexingStatus({
-    required List<String> workflowIds,
-  }) async {
-    const query = r'''
-      query GetIndexingStatus($workflowIds: [String!]!) {
-        indexingStatus(workflowIds: $workflowIds) {
-          workflowId
-          status
-        }
-      }
-    ''';
-
-    final result = await _client.query(
-      QueryOptions(
-        document: gql(query),
-        variables: {'workflowIds': workflowIds},
-      ),
-    );
-
-    if (result.hasException) {
-      throw Exception('GraphQL error: ${result.exception}');
+  void _captureUnhandledError({
+    required String operation,
+    required String doc,
+    required Map<String, dynamic> vars,
+    required Object error,
+    required StackTrace stackTrace,
+  }) {
+    try {
+      Sentry.captureEvent(
+        SentryEvent(
+          message: SentryMessage('IndexerClient $operation failed'),
+          level: SentryLevel.error,
+          tags: {
+            'layer': 'infra/graphql',
+            'operation': operation,
+          },
+          extra: {
+            'vars': vars,
+            'doc': doc,
+          },
+          throwable: error,
+        ),
+      );
+    } catch (_) {
+      // Avoid cascading failures from error reporting.
     }
-
-    final statuses = (result.data?['indexingStatus'] as List?)
-            ?.map(
-              (item) => MapEntry(
-                (item as Map<String, dynamic>)['workflowId'] as String,
-                item['status'] as String,
-              ),
-            )
-            .toList() ??
-        [];
-
-    return Map.fromEntries(statuses);
-  }
-
-  /// Dispose the client.
-  void dispose() {
-    // GraphQL client doesn't need explicit disposal
   }
 }

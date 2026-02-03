@@ -1,4 +1,3 @@
-import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -30,16 +29,16 @@ class PlaylistRowItem extends ConsumerStatefulWidget {
 
   /// Playlist to display.
   final Playlist playlist;
-  
+
   /// Optional creator name to display.
   final String? playlistCreator;
-  
+
   /// Callback when a carousel item is tapped.
   final void Function(String workId)? onItemTap;
-  
+
   /// Optional scroll controller for carousel.
   final ScrollController? scrollController;
-  
+
   /// Optional custom header builder.
   final Widget? Function(Playlist playlist, int itemCount)? headerBuilder;
 
@@ -127,7 +126,7 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
                 if (items.isEmpty) {
                   return const SizedBox.shrink();
                 }
-                
+
                 // Convert PlaylistItem to WorkItemData
                 final workItems = items.map((item) {
                   return WorkItemData(

@@ -1,4 +1,6 @@
 import 'package:app/infra/graphql/indexer_client.dart';
+import 'package:app/domain/extensions/asset_token_ext.dart';
+import 'package:app/infra/services/indexer_service.dart';
 
 /// Quick script to find valid CIDs from the indexer
 /// Run with: dart run test/infra/graphql/find_valid_cids.dart
@@ -9,6 +11,9 @@ void main() async {
       'Authorization': 'Bearer VU8ccCWdKoJE6B3+bZ9Tw9DcKX2FMml/wphy3aNiTe4=',
     },
   );
+  final indexerService = IndexerService(
+    client: client,
+  );
 
   print('Fetching tokens from Feral File treasury address...\n');
 
@@ -16,7 +21,7 @@ void main() async {
   final addresses = ['0x4ad9298f8Eb285CC3867E89800c0d668B5d447a0'];
 
   try {
-    final tokens = await client.fetchTokensByAddresses(
+    final tokens = await indexerService.fetchTokensByAddresses(
       addresses: addresses,
       limit: 5,
     );
@@ -26,16 +31,16 @@ void main() async {
     for (var i = 0; i < tokens.length && i < 5; i++) {
       final token = tokens[i];
       print('=== Token $i ===');
-      print('Token CID: ${token['token_cid']}');
-      print('Title: ${token['title']}');
-      print('Thumbnail: ${token['thumbnailUrl']}');
+      print('Token CID: ${token.cid}');
+      print('Title: ${token.displayTitle}');
+      print('Thumbnail: ${token.getGalleryThumbnailUrl()}');
       print('');
     }
 
     if (tokens.isNotEmpty) {
       print('\n✅ Use these CIDs for testing:');
       for (var i = 0; i < tokens.length && i < 3; i++) {
-        print("  '${tokens[i]['token_cid']}',");
+        print("  '${tokens[i].cid}',");
       }
     }
   } catch (e) {

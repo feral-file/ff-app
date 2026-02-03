@@ -5,7 +5,6 @@ import 'app_database.dart';
 import 'database_service.dart';
 import 'ff1_bluetooth_device_service.dart';
 import 'objectbox_init.dart';
-import 'objectbox_models.dart';
 
 /// Provider for the Drift database instance.
 /// Override this in tests with a memory database.
@@ -25,7 +24,7 @@ final databaseServiceProvider = Provider<DatabaseService>((ref) {
 
 /// Initialize ObjectBox store for FF1 Bluetooth devices.
 /// This must be called during app startup.
-/// 
+///
 /// Usage in main.dart:
 /// ```dart
 /// final store = await ref.read(objectBoxStoreProvider.future);
@@ -38,7 +37,7 @@ final objectBoxStoreProvider = FutureProvider<Store>((ref) async {
 
 /// Provider for the FF1 Bluetooth device service.
 /// Depends on ObjectBox being initialized.
-/// 
+///
 /// This provider must be overridden in main.dart after ObjectBox initialization:
 /// ```dart
 /// final container = ProviderContainer(
@@ -49,7 +48,7 @@ final objectBoxStoreProvider = FutureProvider<Store>((ref) async {
 ///   ],
 /// );
 /// ```
-final ff1BluetoothDeviceServiceProvider = 
+final ff1BluetoothDeviceServiceProvider =
     Provider<FF1BluetoothDeviceService>((ref) {
   throw UnimplementedError(
     'FF1BluetoothDeviceService must be initialized after ObjectBox setup. '

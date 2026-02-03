@@ -2,10 +2,9 @@ import 'package:app/app/providers/ff1_connection_providers.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:logging/logging.dart';
 
 /// Screen for entering WiFi password (Step 4 of the flow)
-/// 
+///
 /// User selects a network and enters password here
 class EnterWiFiPasswordScreen extends ConsumerStatefulWidget {
   const EnterWiFiPasswordScreen({
@@ -24,7 +23,6 @@ class EnterWiFiPasswordScreen extends ConsumerStatefulWidget {
 
 class _EnterWiFiPasswordScreenState
     extends ConsumerState<EnterWiFiPasswordScreen> {
-  final _log = Logger('EnterWiFiPasswordScreen');
   final _passwordController = TextEditingController();
   bool _showPassword = false;
 
@@ -46,9 +44,7 @@ class _EnterWiFiPasswordScreenState
     }
 
     // Step 5 & 6: Send credentials and wait for device connection
-    await ref
-        .read(wifiConnectionProvider.notifier)
-        .sendCredentialsAndConnect(
+    await ref.read(wifiConnectionProvider.notifier).sendCredentialsAndConnect(
           device: widget.device,
           ssid: widget.networkSsid,
           password: _passwordController.text,
@@ -198,9 +194,7 @@ class _EnterWiFiPasswordScreenState
                     prefixIcon: const Icon(Icons.lock),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _showPassword
-                            ? Icons.visibility
-                            : Icons.visibility_off,
+                        _showPassword ? Icons.visibility : Icons.visibility_off,
                       ),
                       onPressed: () {
                         setState(() => _showPassword = !_showPassword);
@@ -212,21 +206,22 @@ class _EnterWiFiPasswordScreenState
 
                 // Status message
                 if (connectionState.message != null &&
-                    connectionState.status != WiFiConnectionStatus.selectingNetwork &&
+                    connectionState.status !=
+                        WiFiConnectionStatus.selectingNetwork &&
                     connectionState.status != WiFiConnectionStatus.idle) ...[
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: connectionState.status ==
-                              WiFiConnectionStatus.error
-                          ? Colors.red[50]
-                          : Colors.blue[50],
+                      color:
+                          connectionState.status == WiFiConnectionStatus.error
+                              ? Colors.red[50]
+                              : Colors.blue[50],
                       border: Border.all(
-                        color: connectionState.status ==
-                                WiFiConnectionStatus.error
-                            ? Colors.red[300]!
-                            : Colors.blue[300]!,
+                        color:
+                            connectionState.status == WiFiConnectionStatus.error
+                                ? Colors.red[300]!
+                                : Colors.blue[300]!,
                       ),
                       borderRadius: BorderRadius.circular(8),
                     ),

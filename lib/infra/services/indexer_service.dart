@@ -1,88 +1,115 @@
+import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:app/domain/models/indexer/changes/change.dart';
+import 'package:app/domain/models/indexer/workflow.dart';
+import 'package:app/infra/graphql/indexer_client.dart';
+import 'package:app/infra/graphql/queries/changes_queries.dart';
+import 'package:app/infra/graphql/queries/indexing_status_queries.dart';
+import 'package:app/infra/graphql/queries/mutations.dart';
+import 'package:app/infra/graphql/queries/token_queries.dart';
+import 'package:app/infra/graphql/queries/workflow_queries.dart';
 import 'package:logging/logging.dart';
 
-import '../database/database_service.dart';
-import '../graphql/indexer_client.dart';
-
-/// Service for fetching and ingesting tokens from the indexer.
+/// Network-only service for talking to the indexer API.
+///
+/// This intentionally does NOT persist data. Offline-first persistence lives in
+/// `DatabaseService` and higher-level orchestration services.
 class IndexerService {
   /// Creates an IndexerService.
   IndexerService({
     required IndexerClient client,
-    required DatabaseService databaseService,
   })  : _client = client,
-        _databaseService = databaseService {
-    _log = Logger('IndexerService');
-  }
+        _log = Logger('IndexerService');
 
   final IndexerClient _client;
-  final DatabaseService _databaseService;
-  late final Logger _log;
+  final Logger _log;
 
-  /// Fetch and ingest tokens for a list of addresses.
-  /// Returns the number of tokens ingested.
-  Future<int> fetchTokensForAddresses({
-    required List<String> addresses,
-    int? limit,
-    int? offset,
-  }) async {
+  /// Fetch change journal entries.
+  Future<ChangeList> getChanges(QueryChangesRequest request) async {
     try {
-      _log.info('Fetching tokens for ${addresses.length} addresses');
-
-      final tokens = await _client.fetchTokensByAddresses(
-        addresses: addresses,
-        limit: limit,
-        offset: offset,
+      _log.info(
+        'Fetching changes (addresses: ${request.addresses.length}, tokenCids: ${request.tokenCids.length}, anchor: ${request.anchor})',
       );
 
-      _log.info('Fetched ${tokens.length} tokens from indexer');
+      final data = await _client.query(
+        doc: getChangesQuery,
+        vars: request.toJson(),
+        subKey: 'changes',
+      );
 
-      // Ingest tokens for each address
-      int totalIngested = 0;
-      for (final address in addresses) {
-        await _databaseService.ingestTokensForAddress(
-          address: address,
-          tokens: tokens,
-        );
-        
-        // Count how many tokens were actually for this address
-        final normalizedAddress = address.toUpperCase();
-        final ownedCount = tokens.where((token) {
-          final owners = token['owners'] as List?;
-          if (owners == null || owners.isEmpty) {
-            final currentOwner = token['currentOwner'] as String?;
-            return currentOwner?.toUpperCase() == normalizedAddress;
-          }
-          return owners.any((owner) {
-            final ownerAddr = 
-                (owner as Map<String, dynamic>)['address'] as String?;
-            return ownerAddr?.toUpperCase() == normalizedAddress;
-          });
-        }).length;
-        
-        totalIngested += ownedCount;
+      if (data == null) {
+        throw Exception('Indexer returned null changes payload');
       }
 
-      _log.info('Ingested $totalIngested tokens total');
-      return totalIngested;
+      return ChangeList.fromJson(data);
     } catch (e, stack) {
-      _log.severe('Failed to fetch tokens for addresses', e, stack);
+      _log.severe('Failed to fetch changes', e, stack);
       rethrow;
     }
   }
 
   /// Fetch tokens by CIDs (for enriching DP1 items).
-  Future<List<Map<String, dynamic>>> fetchTokensByCIDs({
+  Future<List<AssetToken>> fetchTokensByCIDs({
     required List<String> cids,
   }) async {
     try {
       _log.info('Fetching ${cids.length} tokens by CIDs');
-      final tokens = await _client.fetchTokensByCIDs(cids: cids);
+      final tokens = await _fetchTokensByCids(cids: cids);
       _log.info('Fetched ${tokens.length} tokens');
       return tokens;
     } catch (e, stack) {
       _log.severe('Failed to fetch tokens by CIDs', e, stack);
       rethrow;
     }
+  }
+
+  /// Fetch tokens by owner addresses without ingesting.
+  Future<List<AssetToken>> fetchTokensByAddresses({
+    required List<String> addresses,
+    int? limit,
+    int? offset,
+  }) async {
+    try {
+      final data = await _client.query(
+        doc: getTokensByAddressesQuery,
+        vars: {
+          'owners': addresses,
+          'limit': limit,
+          'offset': offset,
+        },
+        subKey: 'tokens',
+      );
+
+      final items =
+          (data?['items'] as List?)?.whereType<Map<Object?, Object?>>() ??
+              const [];
+
+      return items
+          .map((e) => AssetToken.fromGraphQL(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (e, stack) {
+      _log.severe('Failed to fetch tokens by addresses', e, stack);
+      rethrow;
+    }
+  }
+
+  Future<List<AssetToken>> _fetchTokensByCids({
+    required List<String> cids,
+  }) async {
+    final data = await _client.query(
+      doc: getTokensByCidsQuery,
+      vars: {
+        'cids': cids,
+      },
+      subKey: 'tokens',
+    );
+
+    final items =
+        (data?['items'] as List?)?.whereType<Map<Object?, Object?>>() ??
+            const [];
+
+    return items
+        .map((e) => AssetToken.fromGraphQL(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
   /// Reindex addresses (trigger indexer to scan addresses).
@@ -92,7 +119,15 @@ class IndexerService {
   }) async {
     try {
       _log.info('Reindexing ${addresses.length} addresses');
-      final workflowIds = await _client.indexAddresses(addresses: addresses);
+      final data = await _client.mutate(
+        doc: indexAddressesMutation,
+        vars: {'addresses': addresses},
+        subKey: 'indexAddresses',
+      );
+
+      final workflowIds =
+          (data?['workflowIds'] as List?)?.whereType<String>().toList() ??
+              const <String>[];
       _log.info('Started reindexing with ${workflowIds.length} workflows');
       return workflowIds;
     } catch (e, stack) {
@@ -106,8 +141,24 @@ class IndexerService {
     required List<String> workflowIds,
   }) async {
     try {
-      final status = await _client.getIndexingStatus(workflowIds: workflowIds);
-      return status;
+      final data = await _client.query(
+        doc: indexingStatusQuery,
+        vars: {'workflowIds': workflowIds},
+      );
+
+      final statuses = (data?['indexingStatus'] as List?)
+              ?.whereType<Map<Object?, Object?>>()
+              .map(
+                (item) => MapEntry(
+                  (item['workflowId'] as String?) ?? '',
+                  (item['status'] as String?) ?? '',
+                ),
+              )
+              .where((e) => e.key.isNotEmpty)
+              .toList() ??
+          const <MapEntry<String, String>>[];
+
+      return Map<String, String>.fromEntries(statuses);
     } catch (e, stack) {
       _log.severe('Failed to get indexing status', e, stack);
       rethrow;
@@ -144,7 +195,83 @@ class IndexerService {
         return allSuccessful;
       }
 
-      await Future.delayed(pollInterval);
+      await Future<void>.delayed(pollInterval);
     }
+  }
+
+  /// Index a list of addresses and return per-address workflow IDs.
+  Future<List<AddressIndexingResult>> indexAddressesList(
+    List<String> addresses,
+  ) async {
+    if (addresses.isEmpty) {
+      throw ArgumentError('addresses must not be empty');
+    }
+
+    try {
+      final data = await _client.mutate(
+        doc: triggerAddressIndexingList,
+        vars: {
+          'addresses': addresses,
+        },
+        subKey: 'triggerAddressIndexing',
+      );
+
+      if (data == null) {
+        throw Exception('Indexer returned null triggerAddressIndexing payload');
+      }
+
+      final jobs = data['jobs'];
+      if (jobs is! List) {
+        throw Exception('Indexer returned invalid jobs payload');
+      }
+
+      return jobs
+          .whereType<Map<Object?, Object?>>()
+          .map((e) =>
+              AddressIndexingResult.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (e, stack) {
+      _log.severe('Failed to trigger address indexing', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Get address indexing job status by workflowId (no runId needed).
+  Future<AddressIndexingJobResponse> getAddressIndexingJobStatus({
+    required String workflowId,
+  }) async {
+    if (workflowId.isEmpty) {
+      throw ArgumentError('workflowId must not be empty');
+    }
+
+    try {
+      final data = await _client.query(
+        doc: addressIndexingJobStatusQuery,
+        vars: {
+          'workflow_id': workflowId,
+        },
+        subKey: 'indexingJob',
+      );
+
+      if (data == null) {
+        throw Exception('Indexer returned null indexingJob payload');
+      }
+
+      return AddressIndexingJobResponse.fromJson(data);
+    } catch (e, stack) {
+      _log.severe('Failed to fetch address indexing job status', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Get a single token by CID.
+  ///
+  /// Note: This uses `fetchTokensByCIDs` under the hood to keep the client
+  /// surface minimal and auditable.
+  Future<AssetToken?> getTokenByCid(String cid) async {
+    if (cid.isEmpty) return null;
+    final tokens = await fetchTokensByCIDs(cids: [cid]);
+    if (tokens.isEmpty) return null;
+    return tokens.first;
   }
 }

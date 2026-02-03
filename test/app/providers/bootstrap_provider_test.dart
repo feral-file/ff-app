@@ -227,9 +227,9 @@ void main() {
   });
 }
 
-/// Mock DP1FeedService for testing.
+/// Mock DP1FeedServiceImpl for testing.
 /// In a real scenario, you would use mockito or mocktail for this.
-class _MockDP1FeedService implements DP1FeedService {
+class _MockDP1FeedService implements DP1FeedServiceImpl {
   @override
   Future<void> fetchChannel({
     required String baseUrl,

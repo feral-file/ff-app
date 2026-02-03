@@ -74,13 +74,14 @@ class AppDatabase extends _$AppDatabase {
   // Channel queries
   /// Get all channels ordered by sort order.
   Future<List<ChannelData>> getAllChannels() async {
-    return (select(channels)..orderBy([
-          (t) => OrderingTerm(
-            expression: t.sortOrder,
-            mode: OrderingMode.asc,
-            nulls: NullsOrder.last,
-          ),
-        ]))
+    return (select(channels)
+          ..orderBy([
+            (t) => OrderingTerm(
+                  expression: t.sortOrder,
+                  mode: OrderingMode.asc,
+                  nulls: NullsOrder.last,
+                ),
+          ]))
         .get();
   }
 
@@ -106,7 +107,8 @@ class AppDatabase extends _$AppDatabase {
   Future<List<PlaylistData>> getPlaylistsByChannel(String channelId) async {
     return (select(
       playlists,
-    )..where((t) => t.channelId.equals(channelId))).get();
+    )..where((t) => t.channelId.equals(channelId)))
+        .get();
   }
 
   /// Get playlist by ID.
@@ -138,12 +140,11 @@ class AppDatabase extends _$AppDatabase {
 
   /// Update playlist item count.
   Future<void> updatePlaylistItemCount(String playlistId) async {
-    final count =
-        await (selectOnly(playlistEntries)
-              ..addColumns([playlistEntries.itemId.count()])
-              ..where(playlistEntries.playlistId.equals(playlistId)))
-            .getSingle()
-            .then((row) => row.read(playlistEntries.itemId.count()) ?? 0);
+    final count = await (selectOnly(playlistEntries)
+          ..addColumns([playlistEntries.itemId.count()])
+          ..where(playlistEntries.playlistId.equals(playlistId)))
+        .getSingle()
+        .then((row) => row.read(playlistEntries.itemId.count()) ?? 0);
 
     await (update(playlists)..where((t) => t.id.equals(playlistId))).write(
       PlaylistsCompanion(itemCount: Value(count)),
@@ -181,22 +182,21 @@ class AppDatabase extends _$AppDatabase {
   // Playlist entry queries
   /// Get items for a playlist (position-based sorting).
   Future<List<ItemData>> getPlaylistItemsByPosition(String playlistId) async {
-    final query =
-        select(items).join([
-            innerJoin(
-              playlistEntries,
-              playlistEntries.itemId.equalsExp(items.id),
-            ),
-          ])
-          ..where(playlistEntries.playlistId.equals(playlistId))
-          ..orderBy([
-            OrderingTerm(
-              expression: playlistEntries.position,
-              mode: OrderingMode.asc,
-              nulls: NullsOrder.last,
-            ),
-            OrderingTerm.asc(playlistEntries.itemId),
-          ]);
+    final query = select(items).join([
+      innerJoin(
+        playlistEntries,
+        playlistEntries.itemId.equalsExp(items.id),
+      ),
+    ])
+      ..where(playlistEntries.playlistId.equals(playlistId))
+      ..orderBy([
+        OrderingTerm(
+          expression: playlistEntries.position,
+          mode: OrderingMode.asc,
+          nulls: NullsOrder.last,
+        ),
+        OrderingTerm.asc(playlistEntries.itemId),
+      ]);
 
     final result = await query.get();
     return result.map((row) => row.readTable(items)).toList();
@@ -206,18 +206,17 @@ class AppDatabase extends _$AppDatabase {
   Future<List<ItemData>> getPlaylistItemsByProvenance(
     String playlistId,
   ) async {
-    final query =
-        select(items).join([
-            innerJoin(
-              playlistEntries,
-              playlistEntries.itemId.equalsExp(items.id),
-            ),
-          ])
-          ..where(playlistEntries.playlistId.equals(playlistId))
-          ..orderBy([
-            OrderingTerm.desc(playlistEntries.sortKeyUs),
-            OrderingTerm.desc(playlistEntries.itemId),
-          ]);
+    final query = select(items).join([
+      innerJoin(
+        playlistEntries,
+        playlistEntries.itemId.equalsExp(items.id),
+      ),
+    ])
+      ..where(playlistEntries.playlistId.equals(playlistId))
+      ..orderBy([
+        OrderingTerm.desc(playlistEntries.sortKeyUs),
+        OrderingTerm.desc(playlistEntries.itemId),
+      ]);
 
     final result = await query.get();
     return result.map((row) => row.readTable(items)).toList();
@@ -246,12 +245,24 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deletePlaylistEntries(String playlistId) async {
     await (delete(
       playlistEntries,
-    )..where((t) => t.playlistId.equals(playlistId))).go();
+    )..where((t) => t.playlistId.equals(playlistId)))
+        .go();
   }
 
   /// Delete playlist entry by item ID (across all playlists).
   Future<void> deletePlaylistEntriesByItem(String itemId) async {
     await (delete(playlistEntries)..where((t) => t.itemId.equals(itemId))).go();
+  }
+
+  /// Delete a single playlist entry by playlist ID and item ID.
+  Future<void> deletePlaylistEntry({
+    required String playlistId,
+    required String itemId,
+  }) async {
+    await (delete(playlistEntries)
+          ..where(
+              (t) => t.playlistId.equals(playlistId) & t.itemId.equals(itemId)))
+        .go();
   }
 
   /// Force WAL checkpoint to write pending changes to main database file.
@@ -279,13 +290,13 @@ LazyDatabase _openConnection() {
       setup: (db) {
         // Set busy timeout first, before enabling WAL
         db.execute('PRAGMA busy_timeout = 5000');
-        
+
         // Enable WAL mode for better concurrency
         db.execute('PRAGMA journal_mode = WAL');
-        
+
         // Set WAL autocheckpoint to happen more frequently (every 1000 pages, ~4MB)
         db.execute('PRAGMA wal_autocheckpoint = 1000');
-        
+
         _log.info('Database opened with WAL mode enabled');
       },
     );

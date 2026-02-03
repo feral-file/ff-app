@@ -1,10 +1,6 @@
-import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
-import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/domain/models/ff1_device.dart';
-import 'package:app/objectbox.g.dart' show FF1BluetoothDeviceEntity_;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:objectbox/objectbox.dart';
 
 /// Service for managing FF1 Bluetooth device persistence.
 ///
@@ -142,8 +138,7 @@ final updateFF1DeviceTopicIdProvider =
 );
 
 /// Update device metadata.
-final updateFF1DeviceMetadataProvider = FutureProvider.family<
-    void,
+final updateFF1DeviceMetadataProvider = FutureProvider.family<void,
     ({String deviceId, Map<String, dynamic> metadata})>(
   (ref, params) async {
     final service = ref.watch(ff1BluetoothDeviceServiceProvider);

@@ -1,11 +1,15 @@
 import 'package:logging/logging.dart';
 
-import '../../domain/models/channel.dart';
-import '../../domain/models/playlist.dart';
-import '../../domain/models/playlist_item.dart';
-import 'app_database.dart';
-import 'converters.dart';
-import 'token_transformer.dart';
+import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/dp1/dp1_channel.dart';
+import 'package:app/domain/models/dp1/dp1_playlist.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/infra/database/app_database.dart';
+import 'package:app/infra/database/converters.dart';
+import 'package:app/infra/database/token_transformer.dart';
 
 /// Database service providing high-level operations for data ingestion.
 /// Handles offline-first storage for DP-1 entities and relationships.
@@ -35,9 +39,8 @@ class DatabaseService {
   /// Ingest multiple channels in a batch.
   Future<void> ingestChannels(List<Channel> channels) async {
     try {
-      final companions = channels
-          .map(DatabaseConverters.channelToCompanion)
-          .toList();
+      final companions =
+          channels.map(DatabaseConverters.channelToCompanion).toList();
       await _db.upsertChannels(companions);
       _log.info('Ingested ${channels.length} channels');
 
@@ -91,9 +94,8 @@ class DatabaseService {
   /// Ingest multiple playlists in a batch.
   Future<void> ingestPlaylists(List<Playlist> playlists) async {
     try {
-      final companions = playlists
-          .map(DatabaseConverters.playlistToCompanion)
-          .toList();
+      final companions =
+          playlists.map(DatabaseConverters.playlistToCompanion).toList();
       await _db.upsertPlaylists(companions);
       _log.info('Ingested ${playlists.length} playlists');
 
@@ -133,9 +135,8 @@ class DatabaseService {
   Future<List<Playlist>> getAllPlaylists() async {
     try {
       final data = await _db.getAllPlaylists();
-      final playlists = data
-          .map(DatabaseConverters.playlistDataToDomain)
-          .toList();
+      final playlists =
+          data.map(DatabaseConverters.playlistDataToDomain).toList();
       _log.info('Retrieved ${playlists.length} playlists from database');
       if (playlists.isNotEmpty) {
         _log.info('Sample playlists from database:');
@@ -181,9 +182,8 @@ class DatabaseService {
   /// Ingest multiple playlist items in a batch.
   Future<void> ingestPlaylistItems(List<PlaylistItem> items) async {
     try {
-      final companions = items
-          .map(DatabaseConverters.playlistItemToCompanion)
-          .toList();
+      final companions =
+          items.map(DatabaseConverters.playlistItemToCompanion).toList();
       await _db.upsertItems(companions);
       _log.info('Ingested ${items.length} playlist items');
     } catch (e, stack) {
@@ -246,13 +246,70 @@ class DatabaseService {
     }
   }
 
+  /// Delete tokens by CIDs from a specific address-based playlist.
+  ///
+  /// This is used when processing change journal events (e.g. burn/transfer-out)
+  /// to remove items from the owner's address playlist without touching other
+  /// playlists.
+  Future<void> deleteTokensByCids({
+    required String address,
+    required List<String> cids,
+  }) async {
+    if (cids.isEmpty) return;
+
+    try {
+      final normalizedAddress = address.toUpperCase();
+
+      final playlists = await getAddressPlaylists();
+      final addressPlaylist = playlists.firstWhere(
+        (p) => p.ownerAddress?.toUpperCase() == normalizedAddress,
+        orElse: () => throw Exception(
+          'Address playlist not found for $address',
+        ),
+      );
+
+      for (final cid in cids) {
+        if (cid.isEmpty) continue;
+        await _db.deletePlaylistEntry(
+          playlistId: addressPlaylist.id,
+          itemId: cid,
+        );
+      }
+
+      await _db.updatePlaylistItemCount(addressPlaylist.id);
+      await _db.checkpoint();
+
+      _log.info(
+        'Deleted ${cids.length} tokens from address playlist for $address',
+      );
+    } catch (e, stack) {
+      _log.severe('Failed to delete tokens for address $address', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Get cached token items by their item IDs (CIDs).
+  ///
+  /// This is useful for looking up existing cached items before deciding to
+  /// refetch from the network.
+  Future<List<PlaylistItem>> getTokensByCids(List<String> cids) async {
+    if (cids.isEmpty) return [];
+    try {
+      final data = await _db.getItemsByIds(cids);
+      return data.map(DatabaseConverters.itemDataToDomain).toList();
+    } catch (e, stack) {
+      _log.severe('Failed to get tokens by cids', e, stack);
+      rethrow;
+    }
+  }
+
   // ========== Token Ingestion Operations ==========
 
   /// Ingest tokens from indexer for a specific address.
   /// This is used for address-based playlists.
   Future<void> ingestTokensForAddress({
     required String address,
-    required List<Map<String, dynamic>> tokens,
+    required List<AssetToken> tokens,
   }) async {
     try {
       final normalizedAddress = address.toUpperCase();
@@ -278,9 +335,9 @@ class DatabaseService {
       }
 
       // Transform tokens to playlist items
-      final items = ownedTokens.map((tokenJson) {
-        return TokenTransformer.tokenToPlaylistItem(
-          tokenJson: tokenJson,
+      final items = ownedTokens.map((token) {
+        return TokenTransformer.assetTokenToPlaylistItem(
+          token: token,
           ownerAddress: normalizedAddress,
         );
       }).toList();
@@ -319,7 +376,7 @@ class DatabaseService {
   Future<void> ingestDP1Playlist({
     required Playlist playlist,
     required List<Map<String, dynamic>> items,
-    List<Map<String, dynamic>>? enrichmentTokens,
+    List<AssetToken>? tokens,
   }) async {
     try {
       // Ingest the playlist
@@ -331,11 +388,10 @@ class DatabaseService {
       }
 
       // Create a map of CID -> token for enrichment
-      final tokensByCID = <String, Map<String, dynamic>>{};
-      if (enrichmentTokens != null) {
-        for (final token in enrichmentTokens) {
-          final cid = token['id'] as String;
-          tokensByCID[cid] = token;
+      final tokensByCID = <String, AssetToken>{};
+      if (tokens != null) {
+        for (final token in tokens) {
+          tokensByCID[token.cid] = token;
         }
       }
 
@@ -353,9 +409,8 @@ class DatabaseService {
         PlaylistItem playlistItem;
         if (tokenData != null) {
           // Use token data for enrichment
-          playlistItem = TokenTransformer.tokenToPlaylistItem(
-            tokenJson: tokenData,
-          );
+          playlistItem =
+              TokenTransformer.assetTokenToPlaylistItem(token: tokenData);
         } else {
           // Create basic playlist item from DP1 item
           // Note: DP1 feed uses 'source' not 'sourceUri', 'ref' not 'refUri'
@@ -427,5 +482,98 @@ class DatabaseService {
   /// Close the database connection.
   Future<void> close() async {
     await _db.close();
+  }
+
+  /// Ingest DP1 channels (wire model) as domain [Channel] rows.
+  ///
+  /// DP1 feed services should only deal with DP1 wire models; conversion and
+  /// persistence belong to the database layer.
+  Future<void> ingestDP1ChannelsWire({
+    required String baseUrl,
+    required List<DP1Channel> channels,
+  }) async {
+    final domainChannels = channels.map((dp1) {
+      return Channel(
+        id: dp1.id,
+        name: dp1.title,
+        type: ChannelType.dp1,
+        description: dp1.summary,
+        baseUrl: baseUrl,
+        slug: dp1.slug,
+        curator: dp1.curator,
+        coverImageUrl: dp1.coverImage,
+        createdAt: dp1.created,
+        updatedAt: dp1.created,
+      );
+    }).toList();
+
+    await ingestChannels(domainChannels);
+  }
+
+  /// Ingest a DP1 playlist wire model into the database.
+  ///
+  /// - Converts DP1 wire models to domain models
+  /// - Enriches playlist items using [tokens] when provided
+  /// - Persists playlist + items + entries
+  Future<void> ingestDP1PlaylistWire({
+    required String baseUrl,
+    required DP1Playlist playlist,
+    List<AssetToken>? tokens,
+  }) async {
+    final dynamicQueries = playlist.dynamicQueries.isNotEmpty
+        ? <String, dynamic>{
+            'queries': playlist.dynamicQueries.map((e) => e.toJson()).toList(),
+          }
+        : null;
+
+    final sortMode = dynamicQueries != null
+        ? PlaylistSortMode.provenance
+        : PlaylistSortMode.position;
+
+    final signatures =
+        playlist.signature.isNotEmpty ? <String>[playlist.signature] : null;
+
+    final playlistModel = Playlist(
+      id: playlist.id,
+      name: playlist.title,
+      type: PlaylistType.dp1,
+      playlistSource: PlaylistSource.curated,
+      baseUrl: baseUrl,
+      dpVersion: playlist.dpVersion,
+      slug: playlist.slug,
+      signatures: signatures,
+      defaults: playlist.defaults,
+      dynamicQueries: dynamicQueries,
+      sortMode: sortMode,
+      createdAt: playlist.created,
+      updatedAt: playlist.created,
+    );
+
+    final itemMaps = playlist.items.map((DP1PlaylistItem item) {
+      final map = item.toJson();
+      final cid = item.cid;
+      if (cid != null) {
+        map['cid'] = cid;
+      }
+      return map;
+    }).toList();
+
+    await ingestDP1Playlist(
+      playlist: playlistModel,
+      items: itemMaps,
+      tokens: tokens,
+    );
+  }
+
+  /// Extract CIDs from DP1 playlist items.
+  ///
+  /// DP1 items do not always contain a `cid` field directly; we compute it from
+  /// provenance when possible.
+  List<String> extractDP1ItemCids(List<DP1PlaylistItem> items) {
+    return items
+        .map((i) => i.cid)
+        .where((cid) => cid != null)
+        .cast<String>()
+        .toList();
   }
 }

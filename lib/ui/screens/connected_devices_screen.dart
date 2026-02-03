@@ -152,7 +152,8 @@ class _ConnectedDeviceCard extends ConsumerWidget {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
-                            color: active ? Colors.green[700] : Colors.grey[700],
+                            color:
+                                active ? Colors.green[700] : Colors.grey[700],
                           ),
                         ),
                       ),
@@ -231,7 +232,7 @@ class _ConnectedDeviceCard extends ConsumerWidget {
   }
 
   void _showDeviceDetails(BuildContext context, FF1Device device) {
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(device.name),
@@ -266,7 +267,7 @@ class _ConnectedDeviceCard extends ConsumerWidget {
     WidgetRef ref,
     FF1Device device,
   ) {
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Disconnect Device?'),
@@ -292,7 +293,7 @@ class _ConnectedDeviceCard extends ConsumerWidget {
                     ),
                   );
                 }
-              }).catchError((error) {
+              }).catchError((Object error) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -311,7 +312,7 @@ class _ConnectedDeviceCard extends ConsumerWidget {
   }
 
   void _confirmForget(BuildContext context, WidgetRef ref, FF1Device device) {
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Forget Device?'),
@@ -337,7 +338,7 @@ class _ConnectedDeviceCard extends ConsumerWidget {
                     ),
                   );
                 }
-              }).catchError((error) {
+              }).catchError((Object error) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(

@@ -1,89 +1,121 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/infra/database/token_transformer.dart';
 
 void main() {
   group('TokenTransformer', () {
-    group('tokenToPlaylistItem', () {
-      test('transforms token JSON to PlaylistItem correctly', () {
-        final tokenJson = {
-          'id': 'cid_test123',
-          'title': 'Test Artwork',
-          'thumbnailUrl': 'https://example.com/thumb.jpg',
-          'metadata': {
-            'artists': [
-              {'name': 'Artist 1'},
-              {'name': 'Artist 2'},
+    group('assetTokenToPlaylistItem', () {
+      test('transforms AssetToken to PlaylistItem correctly', () {
+        final token = AssetToken(
+          id: 1,
+          cid: 'cid_test123',
+          chain: 'eip155:1',
+          standard: 'ERC-721',
+          contractAddress: '0xCONTRACT',
+          tokenNumber: '1',
+          metadata: TokenMetadata(
+            name: 'Test Artwork',
+            imageUrl: 'https://example.com/thumb.jpg',
+            artists: [
+              Artist(did: 'did:1', name: 'Artist 1'),
+              Artist(did: 'did:2', name: 'Artist 2'),
             ],
-            'duration': 120,
-          },
-          'provenance': [],
-        };
+          ),
+        );
 
-        final item = TokenTransformer.tokenToPlaylistItem(tokenJson: tokenJson);
+        final item = TokenTransformer.assetTokenToPlaylistItem(token: token);
 
         expect(item.id, 'cid_test123');
         expect(item.kind, PlaylistItemKind.indexerToken);
         expect(item.title, 'Test Artwork');
         expect(item.subtitle, 'Artist 1, Artist 2');
         expect(item.thumbnailUrl, 'https://example.com/thumb.jpg');
-        expect(item.durationSec, 120);
         expect(item.tokenData, isNotNull);
       });
 
       test('handles missing title', () {
-        final tokenJson = {
-          'id': 'cid_test123',
-        };
+        final token = AssetToken(
+          id: 1,
+          cid: 'cid_test123',
+          chain: 'eip155:1',
+          standard: 'ERC-721',
+          contractAddress: '0xCONTRACT',
+          tokenNumber: '1',
+        );
 
-        final item = TokenTransformer.tokenToPlaylistItem(tokenJson: tokenJson);
+        final item = TokenTransformer.assetTokenToPlaylistItem(token: token);
 
         expect(item.title, 'Untitled');
       });
 
-      test('computes sort key from provenance', () {
-        final tokenJson = {
-          'id': 'cid_test123',
-          'title': 'Test',
-          'provenance': [
-            {
-              'toAddress': '0xABCD',
-              'timestamp': 1000000,
-            },
-            {
-              'toAddress': '0xABCD',
-              'timestamp': 2000000,
-            },
-            {
-              'toAddress': '0xEFGH',
-              'timestamp': 3000000,
-            },
-          ],
-        };
+      test('computes sort key from provenance (microseconds)', () {
+        final token = AssetToken(
+          id: 1,
+          cid: 'cid_test123',
+          chain: 'eip155:1',
+          standard: 'ERC-721',
+          contractAddress: '0xCONTRACT',
+          tokenNumber: '1',
+          provenanceEvents: PaginatedProvenanceEvents(
+            items: [
+              ProvenanceEvent(
+                chain: 'eip155:1',
+                eventType: ProvenanceEventType.transfer,
+                toAddress: '0xABCD',
+                timestamp: DateTime.fromMicrosecondsSinceEpoch(1000000),
+              ),
+              ProvenanceEvent(
+                chain: 'eip155:1',
+                eventType: ProvenanceEventType.transfer,
+                toAddress: '0xABCD',
+                timestamp: DateTime.fromMicrosecondsSinceEpoch(2000000),
+              ),
+              ProvenanceEvent(
+                chain: 'eip155:1',
+                eventType: ProvenanceEventType.transfer,
+                toAddress: '0xEFGH',
+                timestamp: DateTime.fromMicrosecondsSinceEpoch(3000000),
+              ),
+            ],
+            total: 3,
+            offset: 0,
+          ),
+        );
 
-        final item = TokenTransformer.tokenToPlaylistItem(
-          tokenJson: tokenJson,
+        final item = TokenTransformer.assetTokenToPlaylistItem(
+          token: token,
           ownerAddress: '0xABCD',
         );
 
-        // Should use the latest timestamp where toAddress matches owner
+        // Should use the latest timestamp where toAddress matches owner.
         expect(item.provenance?['sortKeyUs'], 2000000);
       });
 
       test('returns 0 sort key when no matching provenance', () {
-        final tokenJson = {
-          'id': 'cid_test123',
-          'title': 'Test',
-          'provenance': [
-            {
-              'toAddress': '0xEFGH',
-              'timestamp': 1000000,
-            },
-          ],
-        };
+        final token = AssetToken(
+          id: 1,
+          cid: 'cid_test123',
+          chain: 'eip155:1',
+          standard: 'ERC-721',
+          contractAddress: '0xCONTRACT',
+          tokenNumber: '1',
+          provenanceEvents: PaginatedProvenanceEvents(
+            items: [
+              ProvenanceEvent(
+                chain: 'eip155:1',
+                eventType: ProvenanceEventType.transfer,
+                toAddress: '0xEFGH',
+                timestamp: DateTime.fromMicrosecondsSinceEpoch(1000000),
+              ),
+            ],
+            total: 1,
+            offset: 0,
+          ),
+        );
 
-        final item = TokenTransformer.tokenToPlaylistItem(
-          tokenJson: tokenJson,
+        final item = TokenTransformer.assetTokenToPlaylistItem(
+          token: token,
           ownerAddress: '0xABCD',
         );
 
@@ -94,24 +126,45 @@ void main() {
     group('filterTokensByOwner', () {
       test('filters tokens by owner address', () {
         final tokens = [
-          {
-            'id': 'token1',
-            'owners': [
-              {'address': '0xABCD'},
-            ],
-          },
-          {
-            'id': 'token2',
-            'owners': [
-              {'address': '0xEFGH'},
-            ],
-          },
-          {
-            'id': 'token3',
-            'owners': [
-              {'address': '0xABCD'},
-            ],
-          },
+          AssetToken(
+            id: 1,
+            cid: 'token1',
+            chain: 'eip155:1',
+            standard: 'ERC-721',
+            contractAddress: '0xCONTRACT',
+            tokenNumber: '1',
+            owners: PaginatedOwners(
+              items: [Owner(ownerAddress: '0xABCD', quantity: '1')],
+              total: 1,
+              offset: 0,
+            ),
+          ),
+          AssetToken(
+            id: 2,
+            cid: 'token2',
+            chain: 'eip155:1',
+            standard: 'ERC-721',
+            contractAddress: '0xCONTRACT',
+            tokenNumber: '2',
+            owners: PaginatedOwners(
+              items: [Owner(ownerAddress: '0xEFGH', quantity: '1')],
+              total: 1,
+              offset: 0,
+            ),
+          ),
+          AssetToken(
+            id: 3,
+            cid: 'token3',
+            chain: 'eip155:1',
+            standard: 'ERC-721',
+            contractAddress: '0xCONTRACT',
+            tokenNumber: '3',
+            owners: PaginatedOwners(
+              items: [Owner(ownerAddress: '0xABCD', quantity: '1')],
+              total: 1,
+              offset: 0,
+            ),
+          ),
         ];
 
         final filtered = TokenTransformer.filterTokensByOwner(
@@ -120,22 +173,32 @@ void main() {
         );
 
         expect(filtered.length, 2);
-        expect(filtered[0]['id'], 'token1');
-        expect(filtered[1]['id'], 'token3');
+        expect(filtered[0].cid, 'token1');
+        expect(filtered[1].cid, 'token3');
       });
 
       test('falls back to currentOwner field', () {
         final tokens = [
-          {
-            'id': 'token1',
-            'owners': [],
-            'currentOwner': '0xABCD',
-          },
-          {
-            'id': 'token2',
-            'owners': [],
-            'currentOwner': '0xEFGH',
-          },
+          AssetToken(
+            id: 1,
+            cid: 'token1',
+            chain: 'eip155:1',
+            standard: 'ERC-721',
+            contractAddress: '0xCONTRACT',
+            tokenNumber: '1',
+            currentOwner: '0xABCD',
+            owners: PaginatedOwners(items: const [], total: 0, offset: 0),
+          ),
+          AssetToken(
+            id: 2,
+            cid: 'token2',
+            chain: 'eip155:1',
+            standard: 'ERC-721',
+            contractAddress: '0xCONTRACT',
+            tokenNumber: '2',
+            currentOwner: '0xEFGH',
+            owners: PaginatedOwners(items: const [], total: 0, offset: 0),
+          ),
         ];
 
         final filtered = TokenTransformer.filterTokensByOwner(
@@ -144,7 +207,7 @@ void main() {
         );
 
         expect(filtered.length, 1);
-        expect(filtered[0]['id'], 'token1');
+        expect(filtered[0].cid, 'token1');
       });
     });
 
@@ -169,10 +232,15 @@ void main() {
 
     group('reconstructPlaylistItemFromTokenData', () {
       test('reconstructs playlist item from valid token data', () {
-        final tokenData = {
-          'id': 'cid_test123',
-          'title': 'Test Artwork',
-        };
+        final tokenData = AssetToken(
+          id: 1,
+          cid: 'cid_test123',
+          chain: 'eip155:1',
+          standard: 'ERC-721',
+          contractAddress: '0xCONTRACT',
+          tokenNumber: '1',
+          metadata: TokenMetadata(name: 'Test Artwork'),
+        ).toRestJson();
 
         final item = TokenTransformer.reconstructPlaylistItemFromTokenData(
           tokenData,
