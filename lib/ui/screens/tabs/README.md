@@ -23,13 +23,11 @@ By default, `ref.watch(provider)` rebuilds the widget whenever **any** property 
 **Example from PlaylistsTabPage:**
 
 ```dart
-// ❌ BAD: Rebuilds when any field in PlaylistsState changes
-final playlistsState = ref.watch(playlistsProvider);
-
-// ✅ GOOD: Only rebuilds when curatedPlaylists list changes
-final curatedPlaylists = ref.watch(
-  playlistsProvider.select((s) => s.curatedPlaylists),
-);
+// Watch per type (curated = dp1, personal = addressBased)
+final curatedState = ref.watch(playlistsProvider(PlaylistType.dp1));
+final personalState = ref.watch(playlistsProvider(PlaylistType.addressBased));
+final curatedPlaylists = curatedState.playlists;
+final personalPlaylists = personalState.playlists;
 ```
 
 ### Benefits

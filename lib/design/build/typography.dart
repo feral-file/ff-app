@@ -8,7 +8,7 @@
 
 class TypographyTokens {
   TypographyTokens._();
-  
+
   // Display
   static const displayFontFamily = 'PP Mori';
   static const displayFontSize = 40;
@@ -17,7 +17,7 @@ class TypographyTokens {
   static const displayLineHeight = 48.0;
   static const displayParagraphIndent = 0;
   static const displayParagraphSpacing = 24;
-  
+
   // H1
   static const h1FontFamily = 'PP Mori';
   static const h1FontSize = 28;
@@ -26,7 +26,7 @@ class TypographyTokens {
   static const h1LineHeight = 33.6;
   static const h1ParagraphIndent = 0;
   static const h1ParagraphSpacing = 24;
-  
+
   // H2
   static const h2FontFamily = 'PP Mori';
   static const h2FontSize = 22;
@@ -35,7 +35,7 @@ class TypographyTokens {
   static const h2LineHeight = 27.5;
   static const h2ParagraphIndent = 0;
   static const h2ParagraphSpacing = 24;
-  
+
   // H3
   static const h3FontFamily = 'PP Mori';
   static const h3FontSize = 18;
@@ -44,7 +44,7 @@ class TypographyTokens {
   static const h3LineHeight = 22.5;
   static const h3ParagraphIndent = 0;
   static const h3ParagraphSpacing = 24;
-  
+
   // H4
   static const h4FontFamily = 'PP Mori';
   static const h4FontSize = 16;
@@ -53,16 +53,16 @@ class TypographyTokens {
   static const h4LineHeight = 20.0;
   static const h4ParagraphIndent = 0;
   static const h4ParagraphSpacing = 8;
-  
+
   // Body
   static const bodyFontFamily = 'PP Mori';
-  static const bodyFontSize = 16;
+  static const bodyFontSize = 14;
   static const bodyFontWeight = 'Regular';
   static const bodyLetterSpacing = 0;
-  static const bodyLineHeight = 22.4;
+  static const bodyLineHeight = 19.6;
   static const bodyParagraphIndent = 0;
   static const bodyParagraphSpacing = 8;
-  
+
   // BodySmall
   static const bodySmallFontFamily = 'PP Mori';
   static const bodySmallFontSize = 14;
@@ -71,7 +71,7 @@ class TypographyTokens {
   static const bodySmallLineHeight = 19.6;
   static const bodySmallParagraphIndent = 0;
   static const bodySmallParagraphSpacing = 8;
-  
+
   // Caption
   static const captionFontFamily = 'PP Mori';
   static const captionFontSize = 12;
@@ -80,7 +80,7 @@ class TypographyTokens {
   static const captionLineHeight = 18.0;
   static const captionParagraphIndent = 0;
   static const captionParagraphSpacing = 8;
-  
+
   // VerySmall
   static const verySmallFontFamily = 'PP Mori';
   static const verySmallFontSize = 8;
@@ -89,7 +89,7 @@ class TypographyTokens {
   static const verySmallLineHeight = 11.2;
   static const verySmallParagraphIndent = 0;
   static const verySmallParagraphSpacing = 8;
-  
+
   // Mono
   static const monoFontFamily = 'IBMPlexMono';
   static const monoFontSize = 16;
@@ -98,7 +98,7 @@ class TypographyTokens {
   static const monoLineHeight = 22.4;
   static const monoParagraphIndent = 0;
   static const monoParagraphSpacing = 8;
-  
+
   // MonoSmall
   static const monoSmallFontFamily = 'IBMPlexMono';
   static const monoSmallFontSize = 14;

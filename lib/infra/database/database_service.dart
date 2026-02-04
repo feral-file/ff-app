@@ -37,6 +37,14 @@ class DatabaseService {
         (rows) => rows.map(DatabaseConverters.channelDataToDomain).toList());
   }
 
+  /// Watch channels as Drift data (for UI that uses only Drift models).
+  Stream<List<ChannelData>> watchChannelsData({
+    ChannelType? type,
+    int? limit,
+  }) {
+    return _db.watchChannels(type: type?.index, limit: limit);
+  }
+
   /// Watch playlists as domain models.
   ///
   /// This is the Drift equivalent of the old repo's `watchPlaylistRows(...)`.
@@ -55,6 +63,21 @@ class DatabaseService {
         )
         .map((rows) =>
             rows.map(DatabaseConverters.playlistDataToDomain).toList());
+  }
+
+  /// Watch playlists as Drift data (for UI that uses only Drift models).
+  Stream<List<PlaylistData>> watchPlaylistsData({
+    PlaylistType? type,
+    String? channelId,
+    String? ownerAddress,
+    int? limit,
+  }) {
+    return _db.watchPlaylists(
+      type: type?.index,
+      channelId: channelId,
+      ownerAddress: ownerAddress,
+      limit: limit,
+    );
   }
 
   /// Watch playlist items as domain models.
@@ -77,6 +100,18 @@ class DatabaseService {
     yield* stream.map(
       (rows) => rows.map(DatabaseConverters.itemDataToDomain).toList(),
     );
+  }
+
+  /// Watch playlist items as Drift data (for UI that uses only Drift models).
+  Stream<List<ItemData>> watchPlaylistItemsData(String playlistId) async* {
+    final playlistData = await _db.getPlaylistById(playlistId);
+    final sortMode = playlistData?.sortMode ?? 0; // 0 = position
+
+    if (sortMode == 1) {
+      yield* _db.watchPlaylistItemsByProvenance(playlistId);
+    } else {
+      yield* _db.watchPlaylistItemsByPosition(playlistId);
+    }
   }
 
   // ========== Channel Operations ==========
@@ -107,6 +142,11 @@ class DatabaseService {
       _log.severe('Failed to ingest channels', e, stack);
       rethrow;
     }
+  }
+
+  /// Get all channels as Drift data (for UI that uses only Drift models).
+  Future<List<ChannelData>> getAllChannelsData() async {
+    return _db.getAllChannels();
   }
 
   /// Get all channels.
@@ -188,22 +228,33 @@ class DatabaseService {
     }
   }
 
+  /// Get playlist by ID as Drift data (for UI that uses only Drift models).
+  Future<PlaylistData?> getPlaylistByIdData(String id) async {
+    return _db.getPlaylistById(id);
+  }
+
   /// Get all playlists.
+  /// Get all playlists as Drift data (for UI that uses only Drift models).
+  Future<List<PlaylistData>> getAllPlaylistsData() async {
+    return _db.getAllPlaylists();
+  }
+
+  /// Get address-based playlists as Drift data.
+  Future<List<PlaylistData>> getAddressPlaylistsData() async {
+    return _db.getAddressPlaylists();
+  }
+
+  /// Get playlists for a channel as Drift data.
+  Future<List<PlaylistData>> getPlaylistsByChannelData(String channelId) async {
+    return _db.getPlaylistsByChannel(channelId);
+  }
+
   Future<List<Playlist>> getAllPlaylists() async {
     try {
       final data = await _db.getAllPlaylists();
       final playlists =
           data.map(DatabaseConverters.playlistDataToDomain).toList();
       _log.info('Retrieved ${playlists.length} playlists from database');
-      if (playlists.isNotEmpty) {
-        _log.info('Sample playlists from database:');
-        for (var i = 0; i < playlists.length.clamp(0, 3); i++) {
-          final p = playlists[i];
-          _log.info(
-            '  - ${p.name} | id: ${p.id} | type: ${p.type} | items: ${p.itemCount}',
-          );
-        }
-      }
       return playlists;
     } catch (e, stack) {
       _log.severe('Failed to get all playlists', e, stack);
@@ -280,6 +331,20 @@ class DatabaseService {
     }
   }
 
+  /// Get items for a playlist as Drift data (for UI that uses only Drift models).
+  Future<List<ItemData>> getPlaylistItemsData(String playlistId) async {
+    final playlistData = await _db.getPlaylistById(playlistId);
+    if (playlistData == null) {
+      _log.warning('Playlist $playlistId not found');
+      return [];
+    }
+    final sortMode = playlistData.sortMode ?? 0;
+    if (sortMode == 1) {
+      return _db.getPlaylistItemsByProvenance(playlistId);
+    }
+    return _db.getPlaylistItemsByPosition(playlistId);
+  }
+
   /// Get all items from the database.
   Future<List<PlaylistItem>> getAllItems() async {
     try {
@@ -289,6 +354,11 @@ class DatabaseService {
       _log.severe('Failed to get all items', e, stack);
       rethrow;
     }
+  }
+
+  /// Get all items as Drift data (for UI that uses only Drift models).
+  Future<List<ItemData>> getAllItemsData() async {
+    return _db.getAllItems();
   }
 
   /// Delete playlist item by ID.

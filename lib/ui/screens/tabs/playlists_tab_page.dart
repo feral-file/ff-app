@@ -1,12 +1,15 @@
 import 'package:app/app/providers/playlists_provider.dart';
-import 'package:app/design/app_typography.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/theme/app_color.dart';
-import 'package:app/widgets/playlist/playlist_list_row.dart';
-import 'package:app/widgets/playlist/playlist_section_header.dart';
+import 'package:app/widgets/error_view.dart';
+import 'package:app/widgets/loading_view.dart';
+import 'package:app/widgets/playlist/playlist_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 
 /// Playlists tab page with curated and personal playlists.
 class PlaylistsTabPage extends ConsumerStatefulWidget {
@@ -20,6 +23,8 @@ class PlaylistsTabPage extends ConsumerStatefulWidget {
 /// State for PlaylistsTabPage.
 class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     with AutomaticKeepAliveClientMixin {
+  static const int _previewCount = 5;
+
   final ScrollController _scrollController = ScrollController();
 
   @override
@@ -30,9 +35,12 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     super.initState();
     _scrollController.addListener(_onScroll);
 
-    // Trigger initial load
+    // Trigger initial load for both curated and personal (old repo semantics).
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(playlistsProvider.notifier).loadPlaylists();
+      ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
+      ref
+          .read(playlistsProvider(PlaylistType.addressBased).notifier)
+          .loadPlaylists();
     });
   }
 
@@ -46,8 +54,8 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
   void _onScroll() {
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
-      // Trigger pagination (old repo semantics: load more)
-      ref.read(playlistsProvider.notifier).loadMore();
+      // Load more curated only (pagination applies to dp1).
+      ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadMore();
     }
   }
 
@@ -55,18 +63,19 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
   Widget build(BuildContext context) {
     super.build(context);
 
-    // Use select to optimize rebuilds - only rebuild when these specific fields change
-    final isLoading = ref.watch(playlistsProvider.select((s) => s.isLoading));
-    final error = ref.watch(playlistsProvider.select((s) => s.error));
-    final curatedPlaylists = ref.watch(
-      playlistsProvider.select((s) => s.curatedPlaylists),
-    );
-    final personalPlaylists = ref.watch(
-      playlistsProvider.select((s) => s.personalPlaylists),
-    );
+    // Watch both providers (curated = dp1, personal = addressBased).
+    final curatedState = ref.watch(playlistsProvider(PlaylistType.dp1));
+    final personalState =
+        ref.watch(playlistsProvider(PlaylistType.addressBased));
+    final curatedPlaylists = curatedState.playlists;
+    final personalPlaylists = personalState.playlists;
+    final isLoading =
+        curatedState.isLoading || personalState.isLoading;
+    final error = curatedState.error ?? personalState.error;
+    final hasMore = curatedState.hasMore;
 
-    // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics
-    // Parent NestedScrollView handles scrolling
+    // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics.
+    // Parent NestedScrollView handles scrolling.
     return CustomScrollView(
       shrinkWrap: true,
       controller: _scrollController,
@@ -74,136 +83,76 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
       slivers: [
         // Loading state
         if (isLoading && curatedPlaylists.isEmpty && personalPlaylists.isEmpty)
-          const SliverToBoxAdapter(child: _LoadingView()),
+          const SliverToBoxAdapter(child: LoadingView()),
 
         // Error state
         if (error != null &&
             curatedPlaylists.isEmpty &&
             personalPlaylists.isEmpty)
           SliverToBoxAdapter(
-            child: _ErrorView(
-              error: 'Error loading playlists: $error',
-              onRetry: () =>
-                  ref.read(playlistsProvider.notifier).loadPlaylists(),
+            child: ErrorView(
+              error:
+                  'We couldn’t load playlists. Check your connection, then Retry.',
+              onRetry: () {
+                ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
+                ref
+                    .read(playlistsProvider(PlaylistType.addressBased).notifier)
+                    .loadPlaylists();
+              },
             ),
           ),
 
-        // Personal playlists section
+        // Personal playlists section (preview).
         if (personalPlaylists.isNotEmpty)
           SliverToBoxAdapter(
-            child: _buildPersonalPlaylistsSection(personalPlaylists),
-          ),
-
-        // Curated playlists section
-        if (curatedPlaylists.isNotEmpty)
-          SliverToBoxAdapter(
-            child: _buildCuratedPlaylistsSection(curatedPlaylists),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildPersonalPlaylistsSection(List<Playlist> playlists) {
-    return Column(
-      children: [
-        ...playlists.map(
-          (playlist) => PlaylistRowItem(
-            playlist: playlist,
-            onItemTap: (workId) {
-              // TODO: Navigate to work detail page
-              // context.go('${Routes.works}/$workId');
-            },
-          ),
-        ),
-        SizedBox(height: LayoutConstants.space12),
-      ],
-    );
-  }
-
-  Widget _buildCuratedPlaylistsSection(List<Playlist> playlists) {
-    // Show max 5 playlists, with "View All" if more exist
-    final displayPlaylists = playlists.take(5).toList();
-    final hasMore = playlists.length > 5;
-
-    return Column(
-      children: [
-        PlaylistSectionHeader(
-          sectionName: 'Curated',
-          hasMore: hasMore,
-          onViewAllTap: hasMore
-              ? () {
-                  // TODO: Navigate to all playlists page
-                }
-              : null,
-        ),
-        const SizedBox(height: 10),
-        ...displayPlaylists.map(
-          (playlist) => PlaylistRowItem(
-            playlist: playlist,
-            onItemTap: (workId) {
-              // TODO: Navigate to work detail page
-              // context.go('${Routes.works}/$workId');
-            },
-          ),
-        ),
-        SizedBox(height: LayoutConstants.space12),
-      ],
-    );
-  }
-}
-
-/// Simple loading widget matching old app design.
-class _LoadingView extends StatelessWidget {
-  const _LoadingView();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: CircularProgressIndicator(
-        color: AppColor.white,
-      ),
-    );
-  }
-}
-
-/// Simple error widget matching old app design.
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({
-    required this.error,
-    this.onRetry,
-  });
-
-  final String error;
-  final VoidCallback? onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: LayoutConstants.pageHorizontalDefault,
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              error,
-              style: AppTypography.body(context).grey,
-              textAlign: TextAlign.center,
-            ),
-            if (onRetry != null) ...[
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: onRetry,
-                child: Text(
-                  'Retry',
-                  style: AppTypography.body(context).white,
+            child: PlaylistSection(
+              sectionName: 'Personal',
+              sectionIcon: SvgPicture.asset(
+                'assets/images/icon_account.svg',
+                width: LayoutConstants.iconSizeDefault,
+                height: LayoutConstants.iconSizeDefault,
+                colorFilter: const ColorFilter.mode(
+                  AppColor.auQuickSilver,
+                  BlendMode.srcIn,
                 ),
               ),
-            ],
-          ],
+              playlists: personalPlaylists.take(_previewCount).toList(),
+              hasMore: personalPlaylists.length > _previewCount,
+              onViewAllTap: personalPlaylists.length > _previewCount
+                  ? () => context.go('${Routes.allPlaylists}?filter=personal')
+                  : null,
+              onPlaylistItemTap: (_) {},
+            ),
+          ),
+
+        // Curated playlists section (preview).
+        if (curatedPlaylists.isNotEmpty)
+          SliverToBoxAdapter(
+            child: PlaylistSection(
+              sectionName: 'Curated',
+              sectionIcon: SvgPicture.asset(
+                'assets/images/D.svg',
+                width: LayoutConstants.iconSizeDefault,
+                height: LayoutConstants.iconSizeDefault,
+                colorFilter: const ColorFilter.mode(
+                  AppColor.auQuickSilver,
+                  BlendMode.srcIn,
+                ),
+              ),
+              playlists: curatedPlaylists.take(_previewCount).toList(),
+              hasMore: hasMore || curatedPlaylists.length > _previewCount,
+              onViewAllTap: (hasMore || curatedPlaylists.length > _previewCount)
+                  ? () => context.go('${Routes.allPlaylists}?filter=curated')
+                  : null,
+              onPlaylistItemTap: (_) {},
+            ),
+          ),
+
+        // Spacing between sections.
+        SliverToBoxAdapter(
+          child: SizedBox(height: LayoutConstants.space12),
         ),
-      ),
+      ],
     );
   }
 }

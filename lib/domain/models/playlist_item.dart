@@ -1,3 +1,5 @@
+import 'package:app/domain/models/dp1/dp1_manifest.dart';
+
 /// PlaylistItem (DP-1 domain object).
 /// Represents an item in a playlist (not "Work" or "Item" - use correct
 /// terminology).
@@ -11,6 +13,7 @@ class PlaylistItem {
     required this.title,
     this.subtitle,
     this.artistName,
+    this.artists,
     this.thumbnailUrl,
     this.mediaUrl,
     this.durationSec,
@@ -27,12 +30,19 @@ class PlaylistItem {
 
   /// Create from JSON.
   factory PlaylistItem.fromJson(Map<String, dynamic> json) {
+    List<DP1Artist>? artists;
+    if (json['artists'] != null && (json['artists'] as List).isNotEmpty) {
+      artists = (json['artists'] as List)
+          .map((e) => DP1Artist.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
     return PlaylistItem(
       id: json['id'] as String,
       kind: PlaylistItemKind.values[json['kind'] as int],
       title: json['title'] as String,
       subtitle: json['subtitle'] as String?,
       artistName: json['artistName'] as String?,
+      artists: artists,
       thumbnailUrl: json['thumbnailUrl'] as String?,
       mediaUrl: json['mediaUrl'] as String?,
       durationSec: json['durationSec'] as int?,
@@ -64,6 +74,9 @@ class PlaylistItem {
 
   /// Optional artist name.
   final String? artistName;
+
+  /// Optional list of artists (DP1 manifest).
+  final List<DP1Artist>? artists;
 
   /// Optional thumbnail URL.
   final String? thumbnailUrl;
@@ -110,6 +123,7 @@ class PlaylistItem {
     String? title,
     String? subtitle,
     String? artistName,
+    List<DP1Artist>? artists,
     String? thumbnailUrl,
     String? mediaUrl,
     int? durationSec,
@@ -129,6 +143,7 @@ class PlaylistItem {
       title: title ?? this.title,
       subtitle: subtitle ?? this.subtitle,
       artistName: artistName ?? this.artistName,
+      artists: artists ?? this.artists,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       durationSec: durationSec ?? this.durationSec,
@@ -152,6 +167,7 @@ class PlaylistItem {
       'title': title,
       'subtitle': subtitle,
       'artistName': artistName,
+      if (artists != null) 'artists': artists!.map((e) => e.toJson()).toList(),
       'thumbnailUrl': thumbnailUrl,
       'mediaUrl': mediaUrl,
       'durationSec': durationSec,

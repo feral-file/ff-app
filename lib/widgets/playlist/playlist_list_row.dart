@@ -1,21 +1,25 @@
 import 'package:app/app/routing/routes.dart';
-import 'package:app/domain/models/playlist.dart';
-import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/design/layout_constants.dart';
+import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/widgets/dp1_carousel.dart';
+import 'package:app/widgets/error_view.dart';
+import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/playlist_title.dart';
+import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-/// Provider for fetching playlist items by playlist ID.
-final playlistItemsProvider =
-    FutureProvider.family<List<PlaylistItem>, String>((ref, playlistId) async {
+/// Stream of playlist items as Drift data (ItemData) for a playlist.
+final playlistItemsDataProvider =
+    StreamProvider.family<List<ItemData>, String>((ref, playlistId) {
   final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService.getPlaylistItems(playlistId);
+  return databaseService.watchPlaylistItemsData(playlistId);
 });
 
-/// Playlist List Row - Combines list item info with carousel content
+/// Playlist List Row - Combines list item info with carousel content.
+/// Uses only Drift models (PlaylistData, ItemData).
 class PlaylistRowItem extends ConsumerStatefulWidget {
   /// Creates a PlaylistRowItem.
   const PlaylistRowItem({
@@ -27,20 +31,20 @@ class PlaylistRowItem extends ConsumerStatefulWidget {
     super.key,
   });
 
-  /// Playlist to display.
-  final Playlist playlist;
+  /// Playlist to display (Drift data).
+  final PlaylistData playlist;
 
   /// Optional creator name to display.
   final String? playlistCreator;
 
   /// Callback when a carousel item is tapped.
-  final void Function(String workId)? onItemTap;
+  final void Function(ItemData item)? onItemTap;
 
   /// Optional scroll controller for carousel.
   final ScrollController? scrollController;
 
   /// Optional custom header builder.
-  final Widget? Function(Playlist playlist, int itemCount)? headerBuilder;
+  final Widget? Function(PlaylistData playlist, int itemCount)? headerBuilder;
 
   @override
   ConsumerState<PlaylistRowItem> createState() => _PlaylistRowItemState();
@@ -77,32 +81,31 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
   @override
   Widget build(BuildContext context) {
     final playlist = widget.playlist;
-    final playlistTitle = playlist.name;
+    final playlistTitle = playlist.title;
     final creator = widget.playlistCreator ?? '';
 
-    // Watch playlist items
-    final playlistItemsAsync = ref.watch(playlistItemsProvider(playlist.id));
+    final itemsAsync = ref.watch(playlistItemsDataProvider(playlist.id));
 
     return GestureDetector(
       onTap: () {
         context.go('${Routes.playlists}/${playlist.id}');
       },
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: Colors.black,
-              width: 1,
+              color: AppColor.primaryBlack,
+              width: LayoutConstants.dividerThickness,
             ),
           ),
         ),
-        padding: const EdgeInsets.only(bottom: 11),
+        padding: EdgeInsets.only(bottom: LayoutConstants.space3),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header
-            playlistItemsAsync.when(
+            itemsAsync.when(
               data: (items) {
                 return widget.headerBuilder?.call(playlist, items.length) ??
                     PlaylistTitle(
@@ -120,45 +123,27 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
                 secondaryText: creator,
               ),
             ),
-            // Carousel
-            playlistItemsAsync.when(
+            itemsAsync.when(
               data: (items) {
                 if (items.isEmpty) {
                   return const SizedBox.shrink();
                 }
-
-                // Convert PlaylistItem to WorkItemData
-                final workItems = items.map((item) {
-                  return WorkItemData(
-                    workId: item.id,
-                    thumbnailUrl: item.thumbnailUrl ?? '',
-                    title: item.title,
-                    artist: item.artistName,
-                  );
-                }).toList();
-
                 return DP1Carousel(
-                  items: workItems,
+                  items: items,
                   onItemTap: widget.onItemTap,
                   scrollController: _carouselScrollController,
                   isLoadingMore: false,
                 );
               },
-              loading: () => const SizedBox(
-                height: 285,
-                child: Center(
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                  ),
-                ),
+              loading: () => SizedBox(
+                height: LayoutConstants.dp1CarouselHeight,
+                child: const LoadingView(),
               ),
-              error: (error, _) => SizedBox(
-                height: 285,
-                child: Center(
-                  child: Text(
-                    'Error loading items',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
+              error: (_, __) => SizedBox(
+                height: LayoutConstants.dp1CarouselHeight,
+                child: ErrorView(
+                  error: 'We couldn’t load works in this playlist.',
+                  onRetry: null,
                 ),
               ),
             ),

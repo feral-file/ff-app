@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import '../../domain/models/channel.dart';
+import '../../domain/models/dp1/dp1_manifest.dart';
 import '../../domain/models/playlist.dart';
 import '../../domain/models/playlist_item.dart';
 import 'app_database.dart';
@@ -186,6 +187,18 @@ class DatabaseConverters {
       }
     }
 
+    List<DP1Artist>? artists;
+    if (data.listArtistJson != null && data.listArtistJson!.isNotEmpty) {
+      try {
+        final list = jsonDecode(data.listArtistJson!) as List;
+        artists = list
+            .map((e) => DP1Artist.fromJson(e as Map<String, dynamic>))
+            .toList();
+      } catch (_) {
+        // Ignore parsing errors
+      }
+    }
+
     return PlaylistItem(
       id: data.id,
       kind: PlaylistItemKind.values[data.kind],
@@ -201,6 +214,7 @@ class DatabaseConverters {
       override: override,
       display: display,
       tokenData: tokenData,
+      artists: artists,
       updatedAt: DateTime.fromMicrosecondsSinceEpoch(data.updatedAtUs.toInt()),
     );
   }
@@ -222,6 +236,10 @@ class DatabaseConverters {
     final tokenDataJson =
         item.tokenData != null ? jsonEncode(item.tokenData) : null;
 
+    final listArtistJson = item.artists != null && item.artists!.isNotEmpty
+        ? jsonEncode(item.artists!.map((e) => e.toJson()).toList())
+        : null;
+
     final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
     return ItemsCompanion.insert(
       id: item.id,
@@ -241,6 +259,7 @@ class DatabaseConverters {
       overrideJson: Value(overrideJson),
       displayJson: Value(displayJson),
       tokenDataJson: Value(tokenDataJson),
+      listArtistJson: Value(listArtistJson),
     );
   }
 

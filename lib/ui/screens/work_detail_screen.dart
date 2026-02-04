@@ -1,7 +1,11 @@
+import 'package:app/design/app_typography.dart';
+import 'package:app/design/layout_constants.dart';
+import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 /// Work detail screen.
-/// Shows details for a specific work (artwork).
+/// Shows details for a specific work.
 class WorkDetailScreen extends StatelessWidget {
   /// Creates a WorkDetailScreen.
   const WorkDetailScreen({
@@ -15,23 +19,34 @@ class WorkDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColor.auGreyBackground,
       appBar: AppBar(
-        title: Text('Work $workId'),
+        backgroundColor: AppColor.auGreyBackground,
+        title: Text(
+          'Work',
+          style: AppTypography.h4(context).white,
+        ),
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.image, size: 64),
-            const SizedBox(height: 16),
+            SvgPicture.asset(
+              'assets/images/artwork_item.svg',
+              width: LayoutConstants.space16,
+              height: LayoutConstants.space16,
+              colorFilter:
+                  const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
+            ),
+            SizedBox(height: LayoutConstants.space4),
             Text(
               'Work Details',
-              style: Theme.of(context).textTheme.headlineMedium,
+              style: AppTypography.h3(context).white,
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: LayoutConstants.space2),
             Text(
               'ID: $workId',
-              style: Theme.of(context).textTheme.bodyLarge,
+              style: AppTypography.body(context).grey,
             ),
           ],
         ),

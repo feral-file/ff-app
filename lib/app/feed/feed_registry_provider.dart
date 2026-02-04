@@ -191,6 +191,8 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
       return;
     }
 
+    // clear the cache
+
     for (final entry in _feedServices.entries) {
       final baseUrl = entry.key;
       final service = entry.value;
@@ -215,7 +217,6 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
     state = const AsyncLoading();
     state = await AsyncValue.guard(build);
   }
-
 }
 
 /// Provider for [FeedRegistryNotifier].
@@ -223,5 +224,5 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
 /// UI should treat this as the single source of truth for feed orchestration.
 final feedRegistryProvider =
     AsyncNotifierProvider<FeedRegistryNotifier, FeedRegistryState>(
-  FeedRegistryNotifier.new,
-);
+      FeedRegistryNotifier.new,
+    );

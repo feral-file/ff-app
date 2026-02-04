@@ -23,7 +23,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration {
@@ -33,7 +33,9 @@ class AppDatabase extends _$AppDatabase {
         await _createIndexes();
       },
       onUpgrade: (Migrator m, int from, int to) async {
-        // Future migrations will be handled here
+        if (from < 2) {
+          await m.addColumn(items, items.listArtistJson);
+        }
       },
     );
   }

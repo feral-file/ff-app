@@ -2,21 +2,7 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
-
-/// Token values for PlaylistSectionHeader layout
-class PlaylistSectionHeaderTokens {
-  /// Horizontal padding for section header.
-  static const double paddingHorizontal = 12.0;
-  
-  /// Width of the "view all" arrow icon.
-  static const double viewAllIconWidth = 9.78;
-  
-  /// Height of the "view all" arrow icon.
-  static const double viewAllIconHeight = 8.0;
-  
-  /// Gap between arrow icon and "All" text.
-  static const double buttonGap = 8.0;
-}
+import 'package:flutter_svg/flutter_svg.dart';
 
 /// Playlist Section Header - Displays section name with view all button
 class PlaylistSectionHeader extends StatelessWidget {
@@ -44,8 +30,8 @@ class PlaylistSectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: PlaylistSectionHeaderTokens.paddingHorizontal,
+      padding: EdgeInsets.symmetric(
+        horizontal: LayoutConstants.pageHorizontalDefault,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -56,13 +42,15 @@ class PlaylistSectionHeader extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              if (sectionIcon != null) 
-                sectionIcon!
-              else
-                Icon(
-                  Icons.playlist_play,
-                  size: LayoutConstants.iconSizeDefault,
-                  color: AppColor.white,
+              sectionIcon ??
+                  SvgPicture.asset(
+                    'assets/images/icon_account.svg',
+                    width: LayoutConstants.iconSizeDefault,
+                    height: LayoutConstants.iconSizeDefault,
+                    colorFilter: const ColorFilter.mode(
+                      AppColor.white,
+                      BlendMode.srcIn,
+                    ),
                 ),
               SizedBox(
                 width: LayoutConstants.space4,
@@ -77,32 +65,34 @@ class PlaylistSectionHeader extends StatelessWidget {
           if (hasMore && onViewAllTap != null)
             GestureDetector(
               onTap: onViewAllTap,
+              behavior: HitTestBehavior.opaque,
               child: Container(
-                constraints: const BoxConstraints(
-                  minWidth: 9.78,
-                  minHeight: 8,
-                ),
                 color: Colors.transparent,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.arrow_back,
-                      size: PlaylistSectionHeaderTokens.viewAllIconWidth,
-                      color: AppColor.auQuickSilver,
-                    ),
-                    const SizedBox(
-                      width: PlaylistSectionHeaderTokens.buttonGap,
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 1),
-                      child: Text(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minWidth: LayoutConstants.minTouchTarget,
+                    minHeight: LayoutConstants.minTouchTarget,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      SvgPicture.asset(
+                        'assets/images/icon_arrow_left.svg',
+                        width: LayoutConstants.iconSizeSmall,
+                        height: LayoutConstants.iconSizeSmall,
+                        colorFilter: const ColorFilter.mode(
+                          AppColor.auQuickSilver,
+                          BlendMode.srcIn,
+                        ),
+                      ),
+                      SizedBox(width: LayoutConstants.space2),
+                      Text(
                         'All',
                         style: AppTypography.body(context).grey,
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

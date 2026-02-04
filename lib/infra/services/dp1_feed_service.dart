@@ -23,11 +23,11 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
     required FeedConfigStore feedConfigStore,
     required String apiKey,
     Dio? dio,
-  })  : databaseService = databaseService,
-        indexerService = indexerService,
-        feedConfigStore = feedConfigStore,
-        apiKey = apiKey,
-        dio = dio ?? Dio() {
+  }) : databaseService = databaseService,
+       indexerService = indexerService,
+       feedConfigStore = feedConfigStore,
+       apiKey = apiKey,
+       dio = dio ?? Dio() {
     log = Logger('DP1FeedServiceImpl[$baseUrl]');
   }
 
@@ -123,6 +123,9 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
     try {
       log.info('Reloading cache for baseUrl=$baseUrl');
 
+      // clear the cache
+      await databaseService.clearAll();
+
       // Fetch all playlists with pagination
       var hasMore = true;
       String? cursor;
@@ -153,7 +156,9 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
 
         for (final playlist in resp.items) {
           await ingestPlaylistFromFeedModel(
-              baseUrl: baseUrl, playlist: playlist);
+            baseUrl: baseUrl,
+            playlist: playlist,
+          );
         }
 
         totalPlaylists += resp.items.length;

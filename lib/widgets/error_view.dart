@@ -1,4 +1,5 @@
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/layout_constants.dart';
 import 'package:flutter/material.dart';
 
 /// Error view widget with retry option
@@ -19,7 +20,7 @@ class ErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: EdgeInsets.symmetric(horizontal: LayoutConstants.pageHorizontalDefault),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -30,7 +31,7 @@ class ErrorView extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             if (onRetry != null) ...[
-              const SizedBox(height: 16),
+              SizedBox(height: LayoutConstants.space4),
               ElevatedButton(
                 onPressed: onRetry,
                 child: Text(

@@ -1,9 +1,11 @@
 import 'package:app/app/providers/works_provider.dart';
 import 'package:app/app/routing/routes.dart';
-import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/widgets/error_view.dart';
+import 'package:app/widgets/load_more_indicator.dart';
+import 'package:app/widgets/loading_view.dart';
+import 'package:app/ui/ui_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -73,9 +75,7 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
       return CustomScrollView(
         physics: const NeverScrollableScrollPhysics(),
         shrinkWrap: true,
-        slivers: const [
-          SliverToBoxAdapter(child: _LoadingView()),
-        ],
+        slivers: const [SliverToBoxAdapter(child: LoadingView())],
       );
     }
 
@@ -85,8 +85,8 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
         shrinkWrap: true,
         slivers: [
           SliverToBoxAdapter(
-            child: _ErrorView(
-              error: 'Error loading works: ${state.error}',
+            child: ErrorView(
+              error: 'We couldn’t load works. Check your connection, then Retry.',
               onRetry: () => ref.read(worksProvider.notifier).loadWorks(),
             ),
           ),
@@ -109,27 +109,18 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
         shrinkWrap: true,
         controller: _scrollController,
         slivers: [
-          // Works grid - matching old app aspect ratio and spacing
-          SliverGrid.builder(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 188 / 307, // Old app ratio
-              crossAxisSpacing: 17,
-            ),
-            itemBuilder: (context, index) => _WorkCard(work: works[index]),
-            itemCount: works.length,
+          // Works grid - Drift ItemData only
+          UIHelper.worksSliverGrid(
+            works: works,
+            onItemTap: (item) => context.go('${Routes.works}/${item.id}'),
           ),
           
-          // Load more indicator
+          // Load more indicator (uses LoadingWidget / GIF)
           if (hasMore || isLoadingMore)
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Center(
-                  child: hasMore && isLoadingMore
-                      ? const CircularProgressIndicator(color: AppColor.white)
-                      : const SizedBox.shrink(),
-                ),
+              child: LoadMoreIndicator(
+                isLoadingMore: hasMore && isLoadingMore,
+                padding: EdgeInsets.symmetric(vertical: LayoutConstants.space4),
               ),
             ),
         ],
@@ -203,152 +194,4 @@ class _LoadMoreListenerState extends State<_LoadMoreListener> {
   Widget build(BuildContext context) => widget.child;
 }
 
-/// Simple loading widget matching old app design.
-class _LoadingView extends StatelessWidget {
-  const _LoadingView();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: CircularProgressIndicator(
-        color: AppColor.white,
-      ),
-    );
-  }
-}
-
-/// Simple error widget matching old app design.
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({
-    required this.error,
-    this.onRetry,
-  });
-
-  final String error;
-  final VoidCallback? onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: LayoutConstants.pageHorizontalDefault,
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              error,
-              style: AppTypography.body(context).grey,
-              textAlign: TextAlign.center,
-            ),
-            if (onRetry != null) ...[
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: onRetry,
-                child: Text(
-                  'Retry',
-                  style: AppTypography.body(context).white,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WorkCard extends StatelessWidget {
-  const _WorkCard({required this.work});
-
-  final PlaylistItem work;
-
-  @override
-  Widget build(BuildContext context) {
-    final title = work.title;
-    final artistName = work.artistName ?? '';
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        context.go('${Routes.works}/${work.id}');
-      },
-      child: Container(
-        color: Colors.transparent,
-        padding: const EdgeInsets.all(12),
-        child: IgnorePointer(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.max,
-            children: [
-              // Thumbnail
-              Flexible(
-                fit: FlexFit.tight,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return ClipRect(
-                      child: SizedBox(
-                        width: constraints.maxWidth,
-                        height: constraints.maxHeight,
-                        child: Center(
-                          child: _buildThumbnail(),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 10),
-              // Title
-              Text(
-                title,
-                style: AppTypography.bodySmall(context).white,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              // Artist
-              if (artistName.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  artistName,
-                  style: AppTypography.bodySmall(context).grey.italic,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildThumbnail() {
-    if (work.thumbnailUrl != null && work.thumbnailUrl!.isNotEmpty) {
-      return Image.network(
-        work.thumbnailUrl!,
-        fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return _buildPlaceholder();
-        },
-      );
-    }
-    return _buildPlaceholder();
-  }
-
-  Widget _buildPlaceholder() {
-    return Container(
-      color: AppColor.auQuickSilver.withValues(alpha: 0.3),
-      child: const Center(
-        child: Icon(
-          Icons.image,
-          color: AppColor.auQuickSilver,
-          size: 48,
-        ),
-      ),
-    );
-  }
-}
+// Work grid cards are built via UIHelper + WorkGridCard.

@@ -1,4 +1,5 @@
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/layout_constants.dart';
 import 'package:flutter/material.dart';
 
 /// Channel Header - displays channel title and summary
@@ -45,9 +46,9 @@ class ChannelHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 16,
+              padding: EdgeInsets.symmetric(
+                horizontal: LayoutConstants.pageHorizontalDefault,
+                vertical: LayoutConstants.space4,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -59,7 +60,7 @@ class ChannelHeader extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (channelSummary != null && channelSummary!.isNotEmpty) ...[
-                    const SizedBox(height: 20),
+                    SizedBox(height: LayoutConstants.space5),
                     Text(
                       channelSummary!,
                       maxLines: maxLines,

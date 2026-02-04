@@ -2,7 +2,11 @@ import 'dart:async';
 
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/design/app_typography.dart';
+import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/theme/app_color.dart';
+import 'package:app/ui/ui_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -568,12 +572,11 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
         title: const Text('FF1 Bluetooth Test'),
         actions: [
           if (scanState.isScanning)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+            Padding(
+              padding: EdgeInsets.all(LayoutConstants.space4),
+              child: loadingIndicator(
+                valueColor: AppColor.white,
+                size: LayoutConstants.iconSizeMedium,
               ),
             )
           else
@@ -610,15 +613,15 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
 
         return Container(
           color: Colors.orange,
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(LayoutConstants.space4),
           child: Row(
             children: [
               const Icon(Icons.bluetooth_disabled, color: Colors.white),
-              const SizedBox(width: 12),
+              SizedBox(width: LayoutConstants.space3),
               Expanded(
                 child: Text(
                   'Bluetooth is ${adapterState.name}',
-                  style: const TextStyle(color: Colors.white),
+                  style: AppTypography.body(context).white,
                 ),
               ),
             ],
@@ -636,16 +639,26 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.bluetooth_searching, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            const Text('No FF1 devices found'),
-            const SizedBox(height: 24),
+            Icon(
+              Icons.bluetooth_searching,
+              size: LayoutConstants.space16,
+              color: AppColor.auQuickSilver,
+            ),
+            SizedBox(height: LayoutConstants.space4),
+            Text(
+              'No FF1 devices found',
+              style: AppTypography.body(context).grey,
+            ),
+            SizedBox(height: LayoutConstants.space6),
             ElevatedButton.icon(
               onPressed: () {
                 unawaited(ref.read(ff1ScanProvider.notifier).startScan());
               },
               icon: const Icon(Icons.search),
-              label: const Text('Start Scan'),
+              label: Text(
+                'Start scan',
+                style: AppTypography.body(context).white,
+              ),
             ),
           ],
         ),
@@ -665,10 +678,9 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
           title: Text(name),
           subtitle: Text(device.remoteId.str),
           trailing: _isConnecting
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+              ? loadingIndicator(
+                  valueColor: AppColor.white,
+                  size: LayoutConstants.iconSizeMedium,
                 )
               : const Icon(Icons.chevron_right),
           onTap: _isConnecting ? null : () => _connectToDevice(device),
@@ -679,24 +691,24 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
 
   Widget _buildDeviceControl() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(LayoutConstants.space4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Connected device info
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(LayoutConstants.space4),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       const Icon(Icons.check_circle, color: Colors.green),
-                      const SizedBox(width: 8),
-                      const Text(
+                      SizedBox(width: LayoutConstants.space2),
+                      Text(
                         'Connected',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        style: AppTypography.bodyBold(context),
                       ),
                       const Spacer(),
                       TextButton(
@@ -706,26 +718,35 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
                             _wifiResult = null;
                           });
                         },
-                        child: const Text('Disconnect'),
+                        child: Text(
+                          'Disconnect',
+                          style: AppTypography.body(context),
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text('Device: ${_selectedDevice!.deviceId}'),
-                  Text('Remote ID: ${_selectedDevice!.remoteId}'),
+                  SizedBox(height: LayoutConstants.space2),
+                  Text(
+                    'Device: ${_selectedDevice!.deviceId}',
+                    style: AppTypography.body(context),
+                  ),
+                  Text(
+                    'Remote ID: ${_selectedDevice!.remoteId}',
+                    style: AppTypography.body(context),
+                  ),
                 ],
               ),
             ),
           ),
 
-          const SizedBox(height: 24),
+          SizedBox(height: LayoutConstants.space6),
 
           // WiFi credentials form
-          const Text(
+          Text(
             'WiFi Credentials',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: AppTypography.h3(context),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: LayoutConstants.space4),
 
           TextField(
             controller: _ssidController,
@@ -739,7 +760,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: LayoutConstants.space3),
 
           TextField(
             controller: _passwordController,
@@ -749,54 +770,68 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
             ),
             obscureText: true,
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: LayoutConstants.space4),
 
           ElevatedButton.icon(
             onPressed: _sendWifiCredentials,
             icon: const Icon(Icons.send),
-            label: const Text('Send WiFi Credentials'),
+            label: Text(
+              'Send WiFi credentials',
+              style: AppTypography.body(context).white,
+            ),
           ),
 
           if (_wifiResult != null && !_showQrCode) ...[
-            const SizedBox(height: 16),
+            SizedBox(height: LayoutConstants.space4),
             ElevatedButton.icon(
               onPressed: _isTestingConnection ? null : _testWifiConnection,
               icon: const Icon(Icons.check_circle),
               label: _isTestingConnection
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                  ? loadingIndicator(
+                      valueColor: AppColor.white,
+                      size: LayoutConstants.iconSizeMedium,
                     )
-                  : const Text('Test WiFi Connection (4x Rotate)'),
+                  : Text(
+                      'Test WiFi connection',
+                      style: AppTypography.body(context).white,
+                    ),
             ),
-            const SizedBox(height: 24),
-            const Text(
+            SizedBox(height: LayoutConstants.space6),
+            Text(
               'WiFi Commands',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: AppTypography.h3(context),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: LayoutConstants.space3),
             ElevatedButton.icon(
               onPressed: _topicId != null ? _rotateDevice : null,
               icon: const Icon(Icons.rotate_right),
-              label: const Text('Rotate 90°'),
+              label: Text(
+                'Rotate 90°',
+                style: AppTypography.body(context).white,
             ),
-            const SizedBox(height: 8),
+            ),
+            SizedBox(height: LayoutConstants.space2),
             Row(
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: _topicId != null ? _playDevice : null,
                     icon: const Icon(Icons.play_arrow),
-                    label: const Text('Play'),
+                    label: Text(
+                      'Play',
+                      style: AppTypography.body(context).white,
                   ),
                 ),
-                const SizedBox(width: 8),
+                ),
+                SizedBox(width: LayoutConstants.space2),
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: _topicId != null ? _pauseDevice : null,
                     icon: const Icon(Icons.pause),
-                    label: const Text('Pause'),
+                    label: Text(
+                      'Pause',
+                      style: AppTypography.body(context).white,
+                    ),
                   ),
                 ),
               ],
@@ -804,29 +839,28 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
           ],
 
           if (_wifiResult != null) ...[
-            const SizedBox(height: 24),
+            SizedBox(height: LayoutConstants.space6),
             Card(
               color: _wifiResult!.contains('SUCCESS')
                   ? Colors.green.shade50
                   : Colors.red.shade50,
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(LayoutConstants.space4),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Result',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
+                      style: AppTypography.bodyBold(context).copyWith(
                         color: _wifiResult!.contains('SUCCESS')
                             ? Colors.green.shade900
                             : Colors.red.shade900,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: LayoutConstants.space2),
                     Text(
                       _wifiResult!,
-                      style: TextStyle(
+                      style: AppTypography.body(context).copyWith(
                         color: _wifiResult!.contains('SUCCESS')
                             ? Colors.green.shade900
                             : Colors.red.shade900,
@@ -839,33 +873,31 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
           ],
 
           if (_connectionTestResult != null) ...[
-            const SizedBox(height: 16),
+            SizedBox(height: LayoutConstants.space4),
             Card(
               color: _connectionTestResult!.contains('successfully')
                   ? Colors.blue.shade50
                   : Colors.orange.shade50,
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(LayoutConstants.space4),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Connection Test',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
+                      style: AppTypography.bodyBold(context).copyWith(
                         color: _connectionTestResult!.contains('successfully')
                             ? Colors.blue.shade900
                             : Colors.orange.shade900,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: LayoutConstants.space2),
                     Text(
                       _connectionTestResult!,
-                      style: TextStyle(
+                      style: AppTypography.monoSmall(context).copyWith(
                         color: _connectionTestResult!.contains('successfully')
                             ? Colors.blue.shade900
                             : Colors.orange.shade900,
-                        fontFamily: 'monospace',
                       ),
                     ),
                   ],
@@ -875,14 +907,16 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
           ],
 
           if (_connectionError != null) ...[
-            const SizedBox(height: 16),
+            SizedBox(height: LayoutConstants.space4),
             Card(
               color: Colors.red.shade50,
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(LayoutConstants.space4),
                 child: Text(
                   'Connection Error: $_connectionError',
-                  style: TextStyle(color: Colors.red.shade900),
+                  style: AppTypography.body(context).copyWith(
+                    color: Colors.red.shade900,
+                  ),
                 ),
               ),
             ),

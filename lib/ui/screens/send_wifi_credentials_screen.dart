@@ -1,5 +1,9 @@
 import 'package:app/app/providers/ff1_connection_providers.dart';
+import 'package:app/design/app_typography.dart';
+import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/theme/app_color.dart';
+import 'package:app/ui/ui_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -35,9 +39,12 @@ class _EnterWiFiPasswordScreenState
   void _handleSendCredentials() async {
     if (_passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter the WiFi password'),
-          backgroundColor: Colors.red,
+        SnackBar(
+          content: Text(
+            'WiFi password is required to connect.',
+            style: AppTypography.body(context).white,
+          ),
+          backgroundColor: AppColor.error,
         ),
       );
       return;
@@ -62,10 +69,13 @@ class _EnterWiFiPasswordScreenState
     ref.listen(wifiConnectionProvider, (previous, next) {
       if (next.status == WiFiConnectionStatus.success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Device connected successfully!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text(
+              'Device connected.',
+              style: AppTypography.body(context).white,
+            ),
+            backgroundColor: AppColor.primaryBlack,
+            duration: const Duration(seconds: 2),
           ),
         );
         // Navigate to connected devices screen
@@ -77,8 +87,11 @@ class _EnterWiFiPasswordScreenState
       } else if (next.status == WiFiConnectionStatus.error) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(next.message ?? 'Connection failed'),
-            backgroundColor: Colors.red,
+            content: Text(
+              next.message ?? 'Connection failed.',
+              style: AppTypography.body(context).white,
+            ),
+            backgroundColor: AppColor.error,
             duration: const Duration(seconds: 3),
           ),
         );
@@ -86,21 +99,26 @@ class _EnterWiFiPasswordScreenState
     });
 
     return Scaffold(
+      backgroundColor: AppColor.auGreyBackground,
       appBar: AppBar(
-        title: const Text('Enter WiFi Password'),
+        backgroundColor: AppColor.auGreyBackground,
+        title: Text(
+          'Enter WiFi password',
+          style: AppTypography.h4(context).white,
+        ),
         elevation: 0,
       ),
       body: Stack(
         children: [
           SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: EdgeInsets.all(LayoutConstants.space6),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Device info card
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.all(LayoutConstants.space4),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -108,28 +126,22 @@ class _EnterWiFiPasswordScreenState
                           children: [
                             Icon(
                               Icons.devices,
-                              color: Colors.blue[600],
-                              size: 28,
+                              color: AppColor.feralFileLightBlue,
+                              size: LayoutConstants.iconSizeLarge,
                             ),
-                            const SizedBox(width: 12),
+                            SizedBox(width: LayoutConstants.space3),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     widget.device.name,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                                    style: AppTypography.h4(context).white,
                                   ),
-                                  const SizedBox(height: 4),
+                                  SizedBox(height: LayoutConstants.space1),
                                   Text(
                                     'ID: ${widget.device.deviceId}',
-                                    style:
-                                        Theme.of(context).textTheme.bodySmall,
+                                    style: AppTypography.bodySmall(context).grey,
                                   ),
                                 ],
                               ),
@@ -140,48 +152,44 @@ class _EnterWiFiPasswordScreenState
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+                SizedBox(height: LayoutConstants.space8),
 
                 // Network name
                 Text(
                   'WiFi Network',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                  style: AppTypography.h4(context).white,
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: LayoutConstants.space2),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(12),
+                  padding: EdgeInsets.all(LayoutConstants.space3),
                   decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    border: Border.all(color: Colors.grey[300]!),
-                    borderRadius: BorderRadius.circular(8),
+                    color: AppColor.auLightGrey,
+                    border: Border.all(color: AppColor.auGrey),
+                    borderRadius: BorderRadius.circular(LayoutConstants.space2),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.wifi, color: Colors.blue[600]),
-                      const SizedBox(width: 12),
+                      const Icon(Icons.wifi, color: AppColor.feralFileLightBlue),
+                      SizedBox(width: LayoutConstants.space3),
                       Expanded(
                         child: Text(
                           widget.networkSsid,
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: AppTypography.body(context).black,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                SizedBox(height: LayoutConstants.space6),
 
                 // Password field
                 Text(
                   'Password',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                  style: AppTypography.h4(context).white,
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: LayoutConstants.space2),
                 TextField(
                   controller: _passwordController,
                   enabled: !isProcessing,
@@ -189,7 +197,8 @@ class _EnterWiFiPasswordScreenState
                   decoration: InputDecoration(
                     hintText: 'Enter WiFi password',
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius:
+                          BorderRadius.circular(LayoutConstants.space2),
                     ),
                     prefixIcon: const Icon(Icons.lock),
                     suffixIcon: IconButton(
@@ -202,7 +211,7 @@ class _EnterWiFiPasswordScreenState
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+                SizedBox(height: LayoutConstants.space8),
 
                 // Status message
                 if (connectionState.message != null &&
@@ -211,19 +220,20 @@ class _EnterWiFiPasswordScreenState
                     connectionState.status != WiFiConnectionStatus.idle) ...[
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.all(LayoutConstants.space4),
                     decoration: BoxDecoration(
                       color:
                           connectionState.status == WiFiConnectionStatus.error
-                              ? Colors.red[50]
-                              : Colors.blue[50],
+                              ? AppColor.lightRed
+                              : AppColor.feralFileLightBlue,
                       border: Border.all(
                         color:
                             connectionState.status == WiFiConnectionStatus.error
-                                ? Colors.red[300]!
-                                : Colors.blue[300]!,
+                                ? AppColor.error
+                                : AppColor.feralFileLightBlue,
                       ),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius:
+                          BorderRadius.circular(LayoutConstants.space2),
                     ),
                     child: Row(
                       children: [
@@ -231,36 +241,30 @@ class _EnterWiFiPasswordScreenState
                             WiFiConnectionStatus.error)
                           Icon(
                             Icons.error_outline,
-                            color: Colors.red[600],
+                            color: AppColor.error,
                           )
                         else if (connectionState.status ==
                             WiFiConnectionStatus.success)
                           Icon(
                             Icons.check_circle_outline,
-                            color: Colors.green[600],
+                            color: AppColor.feralFileHighlight,
                           )
                         else
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.blue[600]!,
-                              ),
-                            ),
+                          loadingIndicator(
+                            valueColor: AppColor.primaryBlack,
+                            size: LayoutConstants.iconSizeMedium,
                           ),
-                        const SizedBox(width: 12),
+                        SizedBox(width: LayoutConstants.space3),
                         Expanded(
                           child: Text(
                             connectionState.message!,
-                            style: Theme.of(context).textTheme.bodySmall,
+                            style: AppTypography.bodySmall(context).black,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  SizedBox(height: LayoutConstants.space6),
                 ],
               ],
             ),
@@ -273,40 +277,28 @@ class _EnterWiFiPasswordScreenState
             right: 0,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
+                color: AppColor.white,
               ),
-              padding: const EdgeInsets.all(24),
+              padding: EdgeInsets.all(LayoutConstants.space6),
               child: SizedBox(
                 width: double.infinity,
-                height: 48,
+                height: LayoutConstants.space12,
                 child: ElevatedButton(
                   onPressed: isProcessing ? null : _handleSendCredentials,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       if (isProcessing)
-                        const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
-                          ),
+                        loadingIndicator(
+                          valueColor: AppColor.white,
+                          size: LayoutConstants.iconSizeMedium,
                         )
                       else
-                        const Icon(Icons.send),
-                      const SizedBox(width: 8),
+                        const Icon(Icons.send, color: AppColor.white),
+                      SizedBox(width: LayoutConstants.space2),
                       Text(
                         isProcessing ? 'Connecting...' : 'Connect to WiFi',
+                        style: AppTypography.body(context).white,
                       ),
                     ],
                   ),

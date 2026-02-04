@@ -1,11 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
-import '../../domain/models/playlist_item.dart';
-import '../../infra/database/database_provider.dart';
-import 'mutations.dart';
+import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/infra/database/app_database.dart';
+import 'package:app/infra/database/database_provider.dart';
+import 'package:app/app/providers/mutations.dart';
 
 /// Enhanced state for works with pagination support.
+/// UI uses only Drift models (ItemData).
 class WorksState {
   /// Creates a WorksState.
   const WorksState({
@@ -15,8 +17,8 @@ class WorksState {
     this.error,
   });
 
-  /// List of works (playlist items).
-  final List<PlaylistItem> works;
+  /// List of works (Drift ItemData).
+  final List<ItemData> works;
 
   /// Whether there are more works to load.
   final bool hasMore;
@@ -47,7 +49,7 @@ class WorksState {
 
   /// Loaded state.
   factory WorksState.loaded({
-    required List<PlaylistItem> works,
+    required List<ItemData> works,
     bool hasMore = false,
   }) {
     return WorksState(
@@ -69,7 +71,7 @@ class WorksState {
 
   /// Copy with new values.
   WorksState copyWith({
-    List<PlaylistItem>? works,
+    List<ItemData>? works,
     bool? hasMore,
     bool? isLoading,
     String? error,
@@ -93,13 +95,13 @@ class WorksNotifier extends Notifier<WorksState> {
     return WorksState.initial();
   }
 
-  /// Load all works from database.
+  /// Load all works from database (Drift ItemData only).
   Future<void> loadWorks() async {
     try {
       state = WorksState.loading();
 
       final databaseService = ref.read(databaseServiceProvider);
-      final works = await databaseService.getAllItems();
+      final works = await databaseService.getAllItemsData();
 
       state = WorksState.loaded(works: works);
     } catch (e, stack) {

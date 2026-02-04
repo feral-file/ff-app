@@ -1,5 +1,7 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
+import 'package:app/app/providers/api_providers.dart';
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/feed/curated_channel_urls.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -66,6 +68,10 @@ void main() {
       final container = ProviderContainer.test(
         overrides: [
           databaseServiceProvider.overrideWith((ref) => dbService),
+          // Avoid network/remote-config work during unit tests.
+          curatedDp1ChannelUrlsProvider.overrideWithValue(const <String>[]),
+          fetchChannelsProvider.overrideWith((ref) async => 0),
+          fetchPlaylistsProvider.overrideWith((ref) async => 0),
         ],
       );
       addTearDown(container.dispose);
@@ -92,6 +98,10 @@ void main() {
       final container = ProviderContainer.test(
         overrides: [
           databaseServiceProvider.overrideWith((ref) => dbService),
+          // Avoid network/remote-config work during unit tests.
+          curatedDp1ChannelUrlsProvider.overrideWithValue(const <String>[]),
+          fetchChannelsProvider.overrideWith((ref) async => 0),
+          fetchPlaylistsProvider.overrideWith((ref) async => 0),
         ],
       );
       addTearDown(container.dispose);

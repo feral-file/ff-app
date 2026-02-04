@@ -1,6 +1,10 @@
 import 'package:app/app/providers/ff1_connection_providers.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/design/app_typography.dart';
+import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/theme/app_color.dart';
+import 'package:app/widgets/loading_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -15,8 +19,13 @@ class ConnectedDevicesScreen extends ConsumerWidget {
     final log = Logger('ConnectedDevicesScreen');
 
     return Scaffold(
+      backgroundColor: AppColor.auGreyBackground,
       appBar: AppBar(
-        title: const Text('Connected FF1 Devices'),
+        backgroundColor: AppColor.auGreyBackground,
+        title: Text(
+          'Connected devices',
+          style: AppTypography.h4(context).white,
+        ),
         elevation: 0,
       ),
       body: connectedDevicesAsync.when(
@@ -28,20 +37,18 @@ class ConnectedDevicesScreen extends ConsumerWidget {
                 children: [
                   Icon(
                     Icons.devices,
-                    size: 64,
-                    color: Colors.grey[400],
+                    size: LayoutConstants.space16,
+                    color: AppColor.auQuickSilver,
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: LayoutConstants.space4),
                   Text(
                     'No Connected Devices',
-                    style: Theme.of(context).textTheme.titleLarge,
+                    style: AppTypography.h3(context).white,
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: LayoutConstants.space2),
                   Text(
                     'Scan and connect a device to get started',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                    style: AppTypography.body(context).grey,
                   ),
                 ],
               ),
@@ -49,7 +56,7 @@ class ConnectedDevicesScreen extends ConsumerWidget {
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(LayoutConstants.space4),
             itemCount: devices.length,
             itemBuilder: (context, index) {
               final device = devices[index];
@@ -57,9 +64,7 @@ class ConnectedDevicesScreen extends ConsumerWidget {
             },
           );
         },
-        loading: () => const Center(
-          child: CircularProgressIndicator(),
-        ),
+        loading: () => const LoadingView(),
         error: (error, stackTrace) {
           log.severe('Error loading devices', error, stackTrace);
           return Center(
@@ -68,21 +73,21 @@ class ConnectedDevicesScreen extends ConsumerWidget {
               children: [
                 Icon(
                   Icons.error_outline,
-                  size: 48,
-                  color: Colors.red[400],
+                  size: LayoutConstants.space12,
+                  color: AppColor.error,
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: LayoutConstants.space4),
                 Text(
                   'Error Loading Devices',
-                  style: Theme.of(context).textTheme.titleLarge,
+                  style: AppTypography.h3(context).white,
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: LayoutConstants.space2),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: EdgeInsets.symmetric(horizontal: LayoutConstants.space6),
                   child: Text(
-                    error.toString(),
+                    'We couldn’t load devices. Try again.',
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium,
+                    style: AppTypography.body(context).grey,
                   ),
                 ),
               ],
@@ -107,12 +112,12 @@ class _ConnectedDeviceCard extends ConsumerWidget {
         );
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: EdgeInsets.only(bottom: LayoutConstants.space3),
       child: Column(
         children: [
           // Header with device name and status
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(LayoutConstants.space4),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -124,36 +129,31 @@ class _ConnectedDeviceCard extends ConsumerWidget {
                         children: [
                           Text(
                             device.name,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
+                            style: AppTypography.h4(context).black,
                           ),
-                          const SizedBox(height: 4),
+                          SizedBox(height: LayoutConstants.space1),
                           Text(
                             'Device ID: ${device.deviceId}',
-                            style: Theme.of(context).textTheme.bodySmall,
+                            style: AppTypography.bodySmall(context).grey,
                           ),
                         ],
                       ),
                     ),
                     isActive.when(
                       data: (active) => Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: LayoutConstants.space3,
+                          vertical: LayoutConstants.space1,
                         ),
                         decoration: BoxDecoration(
                           color: active ? Colors.green[100] : Colors.grey[200],
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius:
+                              BorderRadius.circular(LayoutConstants.space5),
                         ),
                         child: Text(
                           active ? 'Active' : 'Inactive',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color:
-                                active ? Colors.green[700] : Colors.grey[700],
+                          style: AppTypography.captionBold(context).copyWith(
+                            color: active ? Colors.green[700] : Colors.grey[700],
                           ),
                         ),
                       ),
@@ -165,28 +165,31 @@ class _ConnectedDeviceCard extends ConsumerWidget {
               ],
             ),
           ),
-          const Divider(height: 1),
+          Divider(
+            height: LayoutConstants.dividerThickness,
+            thickness: LayoutConstants.dividerThickness,
+          ),
           // Details
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(LayoutConstants.space4),
             child: Column(
               children: [
                 _DetailRow(
                   label: 'Bluetooth Remote ID',
                   value: device.remoteId,
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: LayoutConstants.space3),
                 _DetailRow(
                   label: 'Branch',
                   value: device.branchName,
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: LayoutConstants.space3),
                 _DetailRow(
                   label: 'Topic ID',
                   value: device.topicId ?? 'N/A',
                   isCopyable: true,
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: LayoutConstants.space3),
                 _DetailRow(
                   label: 'Cloud Connected',
                   value: device.hasCloudConnection ? 'Yes' : 'No',
@@ -194,10 +197,13 @@ class _ConnectedDeviceCard extends ConsumerWidget {
               ],
             ),
           ),
-          const Divider(height: 1),
+          Divider(
+            height: LayoutConstants.dividerThickness,
+            thickness: LayoutConstants.dividerThickness,
+          ),
           // Actions
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(LayoutConstants.space3),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -235,7 +241,11 @@ class _ConnectedDeviceCard extends ConsumerWidget {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(device.name),
+        backgroundColor: AppColor.primaryBlack,
+        title: Text(
+          device.name,
+          style: AppTypography.h4(context).white,
+        ),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -255,7 +265,10 @@ class _ConnectedDeviceCard extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: Text(
+              'Close',
+              style: AppTypography.body(context).white,
+            ),
           ),
         ],
       ),
@@ -270,14 +283,22 @@ class _ConnectedDeviceCard extends ConsumerWidget {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Disconnect Device?'),
+        backgroundColor: AppColor.primaryBlack,
+        title: Text(
+          'Disconnect device?',
+          style: AppTypography.h4(context).white,
+        ),
         content: Text(
           'Remove WiFi connection from ${device.name}? The device will remain in your list but will need to reconnect.',
+          style: AppTypography.body(context).grey,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(
+              'Cancel',
+              style: AppTypography.body(context).grey,
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -288,7 +309,10 @@ class _ConnectedDeviceCard extends ConsumerWidget {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('${device.name} disconnected'),
+                      content: Text(
+                        '${device.name} disconnected',
+                        style: AppTypography.body(context).white,
+                      ),
                       duration: const Duration(seconds: 2),
                     ),
                   );
@@ -297,14 +321,20 @@ class _ConnectedDeviceCard extends ConsumerWidget {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Error: $error'),
-                      backgroundColor: Colors.red,
+                      content: Text(
+                        'We couldn’t disconnect the device. Try again.',
+                        style: AppTypography.body(context).white,
+                      ),
+                      backgroundColor: AppColor.error,
                     ),
                   );
                 }
               });
             },
-            child: const Text('Disconnect'),
+            child: Text(
+              'Disconnect',
+              style: AppTypography.body(context).white,
+            ),
           ),
         ],
       ),
@@ -315,14 +345,22 @@ class _ConnectedDeviceCard extends ConsumerWidget {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Forget Device?'),
+        backgroundColor: AppColor.primaryBlack,
+        title: Text(
+          'Forget device?',
+          style: AppTypography.h4(context).white,
+        ),
         content: Text(
           'Remove ${device.name} from your device list? You will need to reconnect it later.',
+          style: AppTypography.body(context).grey,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(
+              'Cancel',
+              style: AppTypography.body(context).grey,
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -333,7 +371,10 @@ class _ConnectedDeviceCard extends ConsumerWidget {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('${device.name} removed'),
+                      content: Text(
+                        '${device.name} removed',
+                        style: AppTypography.body(context).white,
+                      ),
                       duration: const Duration(seconds: 2),
                     ),
                   );
@@ -342,14 +383,20 @@ class _ConnectedDeviceCard extends ConsumerWidget {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Error: $error'),
-                      backgroundColor: Colors.red,
+                      content: Text(
+                        'We couldn’t remove the device. Try again.',
+                        style: AppTypography.body(context).white,
+                      ),
+                      backgroundColor: AppColor.error,
                     ),
                   );
                 }
               });
             },
-            child: const Text('Forget', style: TextStyle(color: Colors.red)),
+            child: Text(
+              'Forget',
+              style: AppTypography.body(context).white,
+            ),
           ),
         ],
       ),
@@ -375,13 +422,10 @@ class _DetailRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 120,
+          width: LayoutConstants.detailLabelWidth,
           child: Text(
             label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ),
+            style: AppTypography.bodySmall(context).grey,
           ),
         ),
         Expanded(
@@ -390,25 +434,28 @@ class _DetailRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   value,
-                  style: Theme.of(context).textTheme.bodySmall,
+                  style: AppTypography.bodySmall(context).black,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               if (isCopyable) ...[
-                const SizedBox(width: 8),
+                SizedBox(width: LayoutConstants.space2),
                 GestureDetector(
                   onTap: () {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Copied to clipboard'),
-                        duration: Duration(seconds: 1),
+                      SnackBar(
+                        content: Text(
+                          'Copied to clipboard',
+                          style: AppTypography.body(context).white,
+                        ),
+                        duration: const Duration(seconds: 1),
                       ),
                     );
                   },
                   child: Icon(
                     Icons.copy,
-                    size: 14,
-                    color: Colors.blue[600],
+                    size: LayoutConstants.iconSizeSmall,
+                    color: AppColor.feralFileLightBlue,
                   ),
                 ),
               ],
@@ -434,17 +481,14 @@ class _DetailText extends StatelessWidget {
       children: [
         Text(
           label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Colors.grey[600],
-                fontWeight: FontWeight.bold,
-              ),
+          style: AppTypography.captionBold(context).grey,
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: LayoutConstants.space1),
         Text(
           value,
-          style: Theme.of(context).textTheme.bodySmall,
+          style: AppTypography.bodySmall(context).white,
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: LayoutConstants.space4),
       ],
     );
   }
@@ -473,11 +517,11 @@ class _ActionButton extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 4),
+          Icon(icon, color: color, size: LayoutConstants.iconSizeLarge),
+          SizedBox(height: LayoutConstants.space1),
           Text(
             label,
-            style: TextStyle(color: color, fontSize: 12),
+            style: AppTypography.caption(context).copyWith(color: color),
           ),
         ],
       ),

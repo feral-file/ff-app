@@ -1,4 +1,5 @@
 import 'package:app/theme/app_color.dart';
+import 'package:app/design/layout_constants.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:flutter/material.dart';
 
@@ -40,7 +41,7 @@ class LoadMoreIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: padding ?? const EdgeInsets.all(16),
+      padding: padding ?? EdgeInsets.all(LayoutConstants.space4),
       alignment: Alignment.center,
       child: isLoadingMore
           ? LoadingWidget(
