@@ -79,6 +79,7 @@ jobs:
           fi
           echo "base64<<CERT_EOF" >> "$GITHUB_OUTPUT"
           base64 -i "$IOS_P12_PATH" | tr -d '\n' >> "$GITHUB_OUTPUT"
+          printf '\n' >> "$GITHUB_OUTPUT"
           echo "CERT_EOF" >> "$GITHUB_OUTPUT"
 
       - name: Import code signing certificates
