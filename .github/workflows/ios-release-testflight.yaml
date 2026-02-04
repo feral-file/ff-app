@@ -1,17 +1,18 @@
 name: Deploy the iOS app for TestFlight
 on:
-  # Enable manual run
-      workflow_dispatch:
-        inputs:
-          version:
-            description: 'App version'
-            required: true
-          build-number:
-            description: 'Build number (CFBundleVersion). Defaults to GitHub run number if omitted.'
-            required: false
-          message:
-            description: Change logs
-            required: false
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'App version'
+        required: true
+      build-number:
+        description: 'Build number (CFBundleVersion). Defaults to GitHub run number if omitted.'
+        required: false
+      message:
+        description: Change logs
+        required: false
 
 jobs:
   build-upload:
