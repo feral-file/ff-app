@@ -19,7 +19,6 @@ jobs:
     runs-on: [self-hosted, macOS]
     env:
       IOS_P12_PATH: mobile-signing-key-vault/ios/autonomy-wallet/appstore/Certificates_FF_Production.p12
-      IOS_PROFILE_PATH: mobile-signing-key-vault/ios/autonomy-wallet/appstore/Feral_File_app__Production.mobileprovision
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -71,65 +70,47 @@ jobs:
         run: |
           git clone git@github.com:bitmark-inc/mobile-signing-key-vault.git --depth 1
 
-      - name: Prepare signing (keychain + provisioning profile)
-        env:
-          APPSTORE_CERTIFICATE_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}
-          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+      - name: Get p12 base64 (from vault)
+        id: p12
         run: |
-          if [[ -z "$APPSTORE_CERTIFICATE_PASSWORD" ]]; then
-            echo "Missing secret: APPSTORE_CERTIFICATE_PASSWORD"
-            exit 1
-          fi
-
           if [[ ! -f "$IOS_P12_PATH" ]]; then
-            echo "Missing signing certificate at '$IOS_P12_PATH'."
-            echo "Ensure the signing vault repo is cloned and the path is correct."
+            echo "Missing signing certificate at '$IOS_P12_PATH'. Ensure the signing vault is cloned."
+            exit 1
+          fi
+          echo "base64<<CERT_EOF" >> "$GITHUB_OUTPUT"
+          base64 -i "$IOS_P12_PATH" | tr -d '\n' >> "$GITHUB_OUTPUT"
+          echo "CERT_EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Import code signing certificates
+        uses: Apple-Actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ steps.p12.outputs.base64 }}
+          p12-password: ${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}
+
+      - name: Download provisioning profiles
+        uses: Apple-Actions/download-provisioning-profiles@v4
+        with:
+          bundle-id: 'com.feralfile.autonomy'
+          profile-type: 'IOS_APP_STORE'
+          issuer-id: ${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}
+          api-key-id: ${{ secrets.FF_TESTFLIGHT_KEY_ID }}
+          api-private-key: ${{ secrets.FF_TESTFLIGHT_API_TOKEN }}
+
+      - name: Extract provisioning profile metadata
+        run: |
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          PROFILE_PATH=$(ls "$PROFILES_DIR"/*.mobileprovision | head -1)
+          
+          if [[ -z "$PROFILE_PATH" ]]; then
+            echo "No provisioning profile found in $PROFILES_DIR"
             exit 1
           fi
 
-          PROFILE_TMP_PATH="$RUNNER_TEMP/profile.mobileprovision"
-          if [[ -f "$IOS_PROFILE_PATH" ]]; then
-            cp "$IOS_PROFILE_PATH" "$PROFILE_TMP_PATH"
-          elif [[ -n "$IOS_PROVISIONING_PROFILE_BASE64" ]]; then
-            PROFILE_TMP_PATH="$PROFILE_TMP_PATH" IOS_PROVISIONING_PROFILE_BASE64="$IOS_PROVISIONING_PROFILE_BASE64" \
-              python3 -c 'import base64,os,pathlib; pathlib.Path(os.environ["PROFILE_TMP_PATH"]).write_bytes(base64.b64decode(os.environ["IOS_PROVISIONING_PROFILE_BASE64"]))'
-          else
-            echo "Missing provisioning profile."
-            echo "Either add it to the signing vault at '$IOS_PROFILE_PATH' or set secret IOS_PROVISIONING_PROFILE_BASE64."
-            exit 1
-          fi
-
-          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
-          KEYCHAIN_PASSWORD="$(uuidgen)"
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security default-keychain -s "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" "$(security default-keychain -d user | tr -d '\"')"
-
-          security import "$IOS_P12_PATH" \
-            -k "$KEYCHAIN_PATH" \
-            -P "$APPSTORE_CERTIFICATE_PASSWORD" \
-            -A \
-            -t cert \
-            -f pkcs12
-
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s \
-            -k "$KEYCHAIN_PASSWORD" \
-            "$KEYCHAIN_PATH"
-
-          PROFILE_UUID="$(security cms -D -i "$PROFILE_TMP_PATH" | /usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin)"
-          TEAM_ID="$(security cms -D -i "$PROFILE_TMP_PATH" | /usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin)"
-          APP_ID="$(security cms -D -i "$PROFILE_TMP_PATH" | /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin)"
+          PROFILE_UUID="$(security cms -D -i "$PROFILE_PATH" | /usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin)"
+          TEAM_ID="$(security cms -D -i "$PROFILE_PATH" | /usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin)"
+          APP_ID="$(security cms -D -i "$PROFILE_PATH" | /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin)"
           BUNDLE_ID="${APP_ID#${TEAM_ID}.}"
 
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          cp "$PROFILE_TMP_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
-
-          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
           echo "TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
           echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
@@ -199,7 +180,7 @@ jobs:
           echo "IOS_IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
 
       - name: Upload to TestFlight
-        uses: apple-actions/upload-testflight-build@v1
+        uses: apple-actions/upload-testflight-build@v3
         with:
           app-path: ${{ env.IOS_IPA_PATH }}
           issuer-id: ${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}
