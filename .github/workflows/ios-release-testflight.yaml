@@ -18,7 +18,7 @@ jobs:
   build-upload:
     runs-on: [self-hosted, macOS]
     env:
-      IOS_P12_PATH: mobile-signing-key-vault/ios/autonomy-wallet/appstore/Certificates_FF_Production.p12
+      IOS_P12_PATH: mobile-signing-key-vault/ios/feralfile/appstore/Certificates.p12
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
