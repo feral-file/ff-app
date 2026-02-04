@@ -40,6 +40,11 @@ jobs:
           ssh-private-key: |
             ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY }}
 
+      - name: Add GitHub to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -t ed25519,rsa github.com >> ~/.ssh/known_hosts
+
       - name: Create env file
         run: |
           touch .env
