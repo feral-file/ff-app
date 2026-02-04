@@ -51,8 +51,8 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
   void _onScroll() {
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
-      // Trigger load more (refresh for now)
-      ref.read(channelsProvider.notifier).refresh();
+      // Trigger pagination (old repo semantics: load more)
+      ref.read(channelsProvider.notifier).loadMore();
     }
   }
 

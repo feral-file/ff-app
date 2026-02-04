@@ -22,6 +22,63 @@ class DatabaseService {
   final AppDatabase _db;
   late final Logger _log;
 
+  // ===========================================================================
+  // Watch operations (reactive streams)
+  // ===========================================================================
+
+  /// Watch channels as domain models.
+  ///
+  /// This is the Drift equivalent of the old repo's `watchChannelRows(...)`.
+  Stream<List<Channel>> watchChannels({
+    ChannelType? type,
+    int? limit,
+  }) {
+    return _db.watchChannels(type: type?.index, limit: limit).map(
+        (rows) => rows.map(DatabaseConverters.channelDataToDomain).toList());
+  }
+
+  /// Watch playlists as domain models.
+  ///
+  /// This is the Drift equivalent of the old repo's `watchPlaylistRows(...)`.
+  Stream<List<Playlist>> watchPlaylists({
+    PlaylistType? type,
+    String? channelId,
+    String? ownerAddress,
+    int? limit,
+  }) {
+    return _db
+        .watchPlaylists(
+          type: type?.index,
+          channelId: channelId,
+          ownerAddress: ownerAddress,
+          limit: limit,
+        )
+        .map((rows) =>
+            rows.map(DatabaseConverters.playlistDataToDomain).toList());
+  }
+
+  /// Watch playlist items as domain models.
+  ///
+  /// This watches the join table (`playlist_entries`) and emits the current
+  /// ordered list of items for [playlistId]. The ordering is chosen based on the
+  /// playlist's `sortMode`.
+  Stream<List<PlaylistItem>> watchPlaylistItems(String playlistId) async* {
+    final playlist = await getPlaylistById(playlistId);
+    final sortMode = playlist?.sortMode ?? PlaylistSortMode.position;
+
+    final Stream<List<ItemData>> stream;
+    switch (sortMode) {
+      case PlaylistSortMode.position:
+        stream = _db.watchPlaylistItemsByPosition(playlistId);
+      case PlaylistSortMode.provenance:
+        stream = _db.watchPlaylistItemsByProvenance(playlistId);
+    }
+
+    yield* stream.map(
+      (rows) => rows.map(DatabaseConverters.itemDataToDomain).toList(),
+    );
+  }
+
   // ========== Channel Operations ==========
 
   /// Ingest a channel into the database.
