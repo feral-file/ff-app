@@ -1,0 +1,223 @@
+name: Deploy the iOS app for TestFlight
+on:
+  # Enable manual run
+      workflow_dispatch:
+        inputs:
+          version:
+            description: 'App version'
+            required: true
+          build-number:
+            description: 'Build number (CFBundleVersion). Defaults to GitHub run number if omitted.'
+            required: false
+          message:
+            description: Change logs
+            required: false
+
+jobs:
+  build-upload:
+    runs-on: macOS-15
+    env:
+      IOS_P12_PATH: mobile-signing-key-vault/ios/autonomy-wallet/appstore/Certificates_FF_Production.p12
+      IOS_PROFILE_PATH: mobile-signing-key-vault/ios/autonomy-wallet/appstore/Feral_File_app__Production.mobileprovision
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set up Flutter.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.3'
+          channel: stable
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4' #latest-stable
+
+      - uses: webfactory/ssh-agent@v0.9.0
+        if: ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY != '' || secrets.SSH_ASSETS_KEY != '' }}
+        with:
+          ssh-private-key: |
+            ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY }}
+            ${{ secrets.SSH_ASSETS_KEY }}
+
+      - name: Create env file
+        if: ${{ secrets.PRODUCTION_ENV_VARS != '' }}
+        run: |
+          touch .env
+          echo -e "${{ secrets.PRODUCTION_ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
+          cat .env
+
+      - name: Flutter doctor
+        run: flutter doctor
+      - name: Submodules update
+        run: git -c submodule.auto-test.update=none submodule update --init --recursive
+
+      - run: flutter pub get
+
+      - name: Cache pods
+        id: cache-pods
+        uses: actions/cache@v3
+        with:
+          path: ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('**/ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      - name: Install CocoaPods
+        run: |
+          if ! command -v pod >/dev/null 2>&1; then
+            gem install cocoapods
+          fi
+
+      - name: Pod install
+        run: |
+          cd ios/
+          pod install --repo-update
+
+      - name: Verify Xcode
+        run: |
+          xcode-select -p
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Clone signing vault (private repo)
+        if: ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY != '' }}
+        run: |
+          git clone git@github.com:bitmark-inc/mobile-signing-key-vault.git --depth 1
+
+      - name: Prepare signing (keychain + provisioning profile)
+        env:
+          APPSTORE_CERTIFICATE_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          if [[ -z "$APPSTORE_CERTIFICATE_PASSWORD" ]]; then
+            echo "Missing secret: APPSTORE_CERTIFICATE_PASSWORD"
+            exit 1
+          fi
+
+          if [[ ! -f "$IOS_P12_PATH" ]]; then
+            echo "Missing signing certificate at '$IOS_P12_PATH'."
+            echo "Ensure the signing vault repo is cloned and the path is correct."
+            exit 1
+          fi
+
+          PROFILE_TMP_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          if [[ -f "$IOS_PROFILE_PATH" ]]; then
+            cp "$IOS_PROFILE_PATH" "$PROFILE_TMP_PATH"
+          elif [[ -n "$IOS_PROVISIONING_PROFILE_BASE64" ]]; then
+            PROFILE_TMP_PATH="$PROFILE_TMP_PATH" IOS_PROVISIONING_PROFILE_BASE64="$IOS_PROVISIONING_PROFILE_BASE64" \
+              python3 -c 'import base64,os,pathlib; pathlib.Path(os.environ["PROFILE_TMP_PATH"]).write_bytes(base64.b64decode(os.environ["IOS_PROVISIONING_PROFILE_BASE64"]))'
+          else
+            echo "Missing provisioning profile."
+            echo "Either add it to the signing vault at '$IOS_PROFILE_PATH' or set secret IOS_PROVISIONING_PROFILE_BASE64."
+            exit 1
+          fi
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "$(security default-keychain -d user | tr -d '\"')"
+
+          security import "$IOS_P12_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$APPSTORE_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          PROFILE_UUID="$(security cms -D -i "$PROFILE_TMP_PATH" | /usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin)"
+          TEAM_ID="$(security cms -D -i "$PROFILE_TMP_PATH" | /usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin)"
+          APP_ID="$(security cms -D -i "$PROFILE_TMP_PATH" | /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin)"
+          BUNDLE_ID="${APP_ID#${TEAM_ID}.}"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_TMP_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
+          echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
+
+      - name: Build archive
+        run: |
+          BUILD_NAME="${{ inputs.version }}"
+          BUILD_NUMBER="${{ inputs['build-number'] }}"
+          if [[ -z "$BUILD_NUMBER" ]]; then
+            BUILD_NUMBER='${{ github.run_number }}'
+          fi
+
+          ARCHIVE_PATH="$RUNNER_TEMP/Runner.xcarchive"
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE="$PROFILE_UUID" \
+            FLUTTER_BUILD_NAME="$BUILD_NAME" \
+            FLUTTER_BUILD_NUMBER="$BUILD_NUMBER" \
+            archive
+
+          echo "ARCHIVE_PATH=$ARCHIVE_PATH" >> "$GITHUB_ENV"
+
+      - name: Export IPA
+        run: |
+          EXPORT_PATH="$RUNNER_TEMP/export"
+          EXPORT_OPTIONS_PLIST="$RUNNER_TEMP/ExportOptions.plist"
+
+          cat > "$EXPORT_OPTIONS_PLIST" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>$TEAM_ID</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key>
+              <string>$PROFILE_UUID</string>
+            </dict>
+            <key>compileBitcode</key>
+            <false/>
+            <key>stripSwiftSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist "$EXPORT_OPTIONS_PLIST"
+
+          IPA_PATH="$(ls "$EXPORT_PATH"/*.ipa | head -1)"
+          echo "IOS_IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
+
+      - name: Upload to TestFlight
+        uses: apple-actions/upload-testflight-build@v1
+        with:
+          app-path: ${{ env.IOS_IPA_PATH }}
+          issuer-id: ${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}
+          api-key-id: ${{ secrets.FF_TESTFLIGHT_KEY_ID }}
+          api-private-key: ${{ secrets.FF_TESTFLIGHT_API_TOKEN }}
