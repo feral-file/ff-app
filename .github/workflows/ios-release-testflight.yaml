@@ -46,11 +46,6 @@ jobs:
           echo -e "${{ secrets.ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
           cat .env
 
-      - name: Flutter doctor
-        run: flutter doctor
-      - name: Submodules update
-        run: git -c submodule.auto-test.update=none submodule update --init --recursive
-
       - run: flutter pub get
 
       - name: Cache pods
@@ -62,22 +57,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pods-
 
-      - name: Install CocoaPods
-        run: |
-          if ! command -v pod >/dev/null 2>&1; then
-            gem install cocoapods
-          fi
-
       - name: Pod install
         run: |
           cd ios/
           pod install --repo-update
-
-      - name: Verify Xcode
-        run: |
-          xcode-select -p
-          xcodebuild -version
-          xcodebuild -showsdks
 
       - name: Clone signing vault (private repo)
         run: |
