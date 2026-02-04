@@ -102,7 +102,8 @@ jobs:
           security list-keychains -s "${{ steps.keychain.outputs.name }}.keychain"
 
       - name: Download provisioning profiles
-        uses: Apple-Actions/download-provisioning-profiles@v4
+        id: profiles
+        uses: Apple-Actions/download-provisioning-profiles@v5
         with:
           bundle-id: 'com.feralfile.app'
           profile-type: 'IOS_APP_STORE'
@@ -112,19 +113,21 @@ jobs:
 
       - name: Extract provisioning profile metadata
         run: |
-          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-          PROFILE_PATH=$(ls "$PROFILES_DIR"/*.mobileprovision | head -1)
+          PROFILES='${{ steps.profiles.outputs.profiles }}'
           
-          if [[ -z "$PROFILE_PATH" ]]; then
-            echo "No provisioning profile found in $PROFILES_DIR"
+          if [[ -z "$PROFILES" ]]; then
+            echo "No provisioning profiles downloaded"
             exit 1
           fi
 
-          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain"
-          PROFILE_UUID="$(security cms -D -i "$PROFILE_PATH" -k "$KEYCHAIN_PATH" | /usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin)"
-          TEAM_ID="$(security cms -D -i "$PROFILE_PATH" -k "$KEYCHAIN_PATH" | /usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin)"
-          APP_ID="$(security cms -D -i "$PROFILE_PATH" -k "$KEYCHAIN_PATH" | /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin)"
-          BUNDLE_ID="${APP_ID#${TEAM_ID}.}"
+          PROFILE_UUID=$(echo "$PROFILES" | jq -r '.[0].uuid')
+          TEAM_ID=$(echo "$PROFILES" | jq -r '.[0].teamId')
+          BUNDLE_ID=$(echo "$PROFILES" | jq -r '.[0].bundleId')
+
+          if [[ -z "$PROFILE_UUID" || -z "$TEAM_ID" || -z "$BUNDLE_ID" ]]; then
+            echo "Failed to extract provisioning profile metadata"
+            exit 1
+          fi
 
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
           echo "TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
