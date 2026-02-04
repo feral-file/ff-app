@@ -1,6 +1,7 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
@@ -260,6 +261,20 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
                   Navigator.pop(context);
                 },
               ),
+              ListTile(
+                leading: const Icon(
+                  Icons.email_outlined,
+                  color: AppColor.white,
+                ),
+                title: Text(
+                  'Contact Support',
+                  style: AppTypography.body(context).white,
+                ),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _contactSupport();
+                },
+              ),
             ],
           ),
         );
@@ -267,12 +282,29 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     );
   }
 
+  Future<void> _contactSupport() async {
+    try {
+      await ref
+          .read(supportEmailServiceProvider)
+          .composeSupportEmail(recipient: 'sang@feralfile.com');
+    } on Exception {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open email client.'),
+        ),
+      );
+    }
+  }
+
   Widget _buildContent() {
     // Use Stack with Offstage instead of IndexedStack (matches old app)
     // Offstage keeps widgets alive (not disposed) while hiding them
     // This allows each page to have independent constraints
-    // Combined with AutomaticKeepAliveClientMixin in each page, state is preserved
-    // Each page can determine its own height (limited or unlimited) independently
+    // Combined with AutomaticKeepAliveClientMixin in each page, state is
+    // preserved. Each page can determine its own height independently.
     return Stack(
       children: [
         Offstage(
