@@ -28,13 +28,12 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.29.3'
           channel: stable
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.4' #latest-stable
+          xcode-version: '26.2' #latest-stable
 
       - uses: webfactory/ssh-agent@v0.9.0
         with:
