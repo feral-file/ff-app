@@ -33,18 +33,17 @@ jobs:
           echo "SIGNATURE_HASH_INHOUSE=${{ secrets.SIGNATURE_HASH_INHOUSE }}" >> $GITHUB_ENV
           echo NAME_SUFFIX=main-${{ inputs['build-number'] }} >> $GITHUB_ENV
 
-      - uses: webfactory/ssh-agent@v0.5.4
-        if: ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY != '' || secrets.SSH_ASSETS_KEY != '' }}
+      - uses: webfactory/ssh-agent@v0.9.0
+        if: ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY != '' }}
         with:
           ssh-private-key: |
             ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY }}
-            ${{ secrets.SSH_ASSETS_KEY }}
 
       - name: Create env file
-        if: ${{ secrets.PRODUCTION_ENV_VARS != '' }}
+        if: ${{ secrets.ENV_VARS != '' }}
         run: |
           touch .env
-          echo -e "${{ secrets.PRODUCTION_ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
+          echo -e "${{ secrets.ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
           cat .env
 
       - name: Submodules update

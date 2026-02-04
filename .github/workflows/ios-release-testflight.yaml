@@ -16,7 +16,7 @@ on:
 
 jobs:
   build-upload:
-    runs-on: macOS-15
+    runs-on: [self-hosted, macOS]
     env:
       IOS_P12_PATH: mobile-signing-key-vault/ios/autonomy-wallet/appstore/Certificates_FF_Production.p12
       IOS_PROFILE_PATH: mobile-signing-key-vault/ios/autonomy-wallet/appstore/Feral_File_app__Production.mobileprovision
@@ -37,17 +37,16 @@ jobs:
           xcode-version: '16.4' #latest-stable
 
       - uses: webfactory/ssh-agent@v0.9.0
-        if: ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY != '' || secrets.SSH_ASSETS_KEY != '' }}
+        if: ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY != '' }}
         with:
           ssh-private-key: |
             ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY }}
-            ${{ secrets.SSH_ASSETS_KEY }}
 
       - name: Create env file
-        if: ${{ secrets.PRODUCTION_ENV_VARS != '' }}
+        if: ${{ secrets.ENV_VARS != '' }}
         run: |
           touch .env
-          echo -e "${{ secrets.PRODUCTION_ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
+          echo -e "${{ secrets.ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
           cat .env
 
       - name: Flutter doctor
@@ -84,7 +83,6 @@ jobs:
           xcodebuild -showsdks
 
       - name: Clone signing vault (private repo)
-        if: ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY != '' }}
         run: |
           git clone git@github.com:bitmark-inc/mobile-signing-key-vault.git --depth 1
 
