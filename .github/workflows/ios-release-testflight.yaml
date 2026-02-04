@@ -37,13 +37,11 @@ jobs:
           xcode-version: '16.4' #latest-stable
 
       - uses: webfactory/ssh-agent@v0.9.0
-        if: ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY != '' }}
         with:
           ssh-private-key: |
             ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY }}
 
       - name: Create env file
-        if: ${{ secrets.ENV_VARS != '' }}
         run: |
           touch .env
           echo -e "${{ secrets.ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
