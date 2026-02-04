@@ -120,9 +120,10 @@ jobs:
             exit 1
           fi
 
-          PROFILE_UUID="$(security cms -D -i "$PROFILE_PATH" | /usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin)"
-          TEAM_ID="$(security cms -D -i "$PROFILE_PATH" | /usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin)"
-          APP_ID="$(security cms -D -i "$PROFILE_PATH" | /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin)"
+          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain"
+          PROFILE_UUID="$(security cms -D -i "$PROFILE_PATH" -k "$KEYCHAIN_PATH" | /usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin)"
+          TEAM_ID="$(security cms -D -i "$PROFILE_PATH" -k "$KEYCHAIN_PATH" | /usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin)"
+          APP_ID="$(security cms -D -i "$PROFILE_PATH" -k "$KEYCHAIN_PATH" | /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin)"
           BUNDLE_ID="${APP_ID#${TEAM_ID}.}"
 
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"

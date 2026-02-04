@@ -86,7 +86,7 @@ jobs:
           cp mobile-signing-key-vault/android/bitmark-autonomy/release.properties android/release.properties
 
       - name: Build appbundle
-        run: flutter build appbundle --release --build-name "${{ inputs.version }}" --build-number "${{ env.FLUTTER_VERSION_CODE }}"
+        run: flutter build appbundle --flavor production --release --build-name "${{ inputs.version }}" --build-number "${{ env.FLUTTER_VERSION_CODE }}"
 
       - name: Release notes
         run: |
@@ -99,8 +99,8 @@ jobs:
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
           packageName: com.feralfile.app
-          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          releaseFiles: build/app/outputs/bundle/productionRelease/app-production-release.aab
           track: internal
-          mappingFile: build/app/outputs/mapping/release/mapping.txt
-          debugSymbols: build/app/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib
+          mappingFile: build/app/outputs/mapping/productionRelease/mapping.txt
+          debugSymbols: build/app/intermediates/merged_native_libs/productionRelease/mergeProductionReleaseNativeLibs/out/lib
           whatsNewDirectory: ./whatsnew
