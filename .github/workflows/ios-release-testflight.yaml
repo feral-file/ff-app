@@ -96,6 +96,11 @@ jobs:
           keychain: ${{ steps.keychain.outputs.name }}
           create-keychain: true
 
+      - name: Unlock keychain for security commands
+        run: |
+          security unlock-keychain -p "${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}" "${{ steps.keychain.outputs.name }}.keychain"
+          security list-keychains -s "${{ steps.keychain.outputs.name }}.keychain"
+
       - name: Download provisioning profiles
         uses: Apple-Actions/download-provisioning-profiles@v4
         with:
