@@ -85,7 +85,7 @@ jobs:
       - name: Generate random keychain name
         id: keychain
         run: |
-          KEYCHAIN_NAME="signing_temp_$(openssl rand -hex 4).keychain"
+          KEYCHAIN_NAME="signing_temp_$(openssl rand -hex 4)"
           echo "name=$KEYCHAIN_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Import code signing certificates
@@ -199,7 +199,7 @@ jobs:
       - name: Clean up keychain
         if: always()
         run: |
-          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}-db"
+          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain-db"
           if [[ -f "$KEYCHAIN_PATH" ]]; then
-            security delete-keychain "${{ steps.keychain.outputs.name }}"
+            security delete-keychain "${{ steps.keychain.outputs.name }}.keychain"
           fi
