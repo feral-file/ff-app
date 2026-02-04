@@ -82,11 +82,19 @@ jobs:
           printf '\n' >> "$GITHUB_OUTPUT"
           echo "CERT_EOF" >> "$GITHUB_OUTPUT"
 
+      - name: Generate random keychain name
+        id: keychain
+        run: |
+          KEYCHAIN_NAME="signing_temp_$(openssl rand -hex 4).keychain"
+          echo "name=$KEYCHAIN_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Import code signing certificates
         uses: Apple-Actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ steps.p12.outputs.base64 }}
           p12-password: ${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}
+          keychain: ${{ steps.keychain.outputs.name }}
+          create-keychain: true
 
       - name: Download provisioning profiles
         uses: Apple-Actions/download-provisioning-profiles@v4
@@ -187,3 +195,11 @@ jobs:
           issuer-id: ${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}
           api-key-id: ${{ secrets.FF_TESTFLIGHT_KEY_ID }}
           api-private-key: ${{ secrets.FF_TESTFLIGHT_API_TOKEN }}
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}-db"
+          if [[ -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "${{ steps.keychain.outputs.name }}"
+          fi
