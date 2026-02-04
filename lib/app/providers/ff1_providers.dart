@@ -8,6 +8,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
 // ============================================================================
+// Custom Retry Logic for BLE Operations
+// ============================================================================
+
+/// Retry logic for BLE operations (scan, connect, commands).
+/// 
+/// Retries up to 3 times with exponential backoff (1s, 2s, 4s).
+/// Does not retry on Errors (programming bugs).
+Duration? _bleRetry(int retryCount, Object error) {
+  // Don't retry errors (programming bugs - indicate code issues)
+  if (error is Error) {
+    return null;
+  }
+  
+  // Max 3 retries
+  if (retryCount >= 3) return null;
+  
+  // Exponential backoff: 1s, 2s, 4s
+  return Duration(seconds: 1 << retryCount);
+}
+
+// ============================================================================
 // Transport and Protocol providers (infrastructure)
 // ============================================================================
 
@@ -179,39 +200,23 @@ class FF1BleControl {
   }
 
   /// Get device information
+  /// 
+  /// Note: When using this method directly, consider using ff1BleSendCommandProvider
+  /// for automatic retry via Riverpod. This method no longer includes manual retry.
   Future<String> getInfo({
     required FF1Device device,
-    int maxRetries = 3,
   }) async {
-    var attempt = 0;
+    final response = await _transport.sendCommand(
+      device: device,
+      command: FF1BleCommand.getInfo,
+      request: const GetInfoRequest(),
+    );
 
-    while (attempt < maxRetries) {
-      try {
-        final response = await _transport.sendCommand(
-          device: device,
-          command: FF1BleCommand.getInfo,
-          request: const GetInfoRequest(),
-        );
-
-        if (response.isError) {
-          throw FF1ResponseError.fromCode(response.errorCode);
-        }
-
-        return response.data.isNotEmpty ? response.data[0] : '';
-      } catch (e) {
-        attempt++;
-        if (attempt >= maxRetries) {
-          rethrow;
-        }
-
-        // Wait before retry
-        await Future<void>.delayed(
-          Duration(milliseconds: attempt == 1 ? 1000 : 1500),
-        );
-      }
+    if (response.isError) {
+      throw FF1ResponseError.fromCode(response.errorCode);
     }
 
-    throw Exception('Failed to get device info after $maxRetries attempts');
+    return response.data.isNotEmpty ? response.data[0] : '';
   }
 
   /// Factory reset device
@@ -339,4 +344,131 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
 /// FF1 scan state provider
 final ff1ScanProvider = NotifierProvider<FF1ScanNotifier, FF1ScanState>(
   FF1ScanNotifier.new,
+);
+
+// ============================================================================
+// Auto-dispose BLE Operation Providers (with automatic retry)
+// ============================================================================
+
+/// Scan for FF1 devices (auto-dispose, with retry).
+/// 
+/// This provider automatically disposes after use (BLE scan is one-time).
+/// Uses Riverpod's automatic retry mechanism (3 attempts with exponential backoff).
+/// 
+/// Usage:
+/// ```dart
+/// final devices = await ref.read(ff1BleScanProvider.future);
+/// ```
+final ff1BleScanProvider = FutureProvider.autoDispose<List<BluetoothDevice>>(
+  retry: _bleRetry,
+  (ref) async {
+    final control = ref.watch(ff1ControlProvider);
+    return control.scan();
+  },
+);
+
+/// Parameters for BLE connection
+class FF1BleConnectParams {
+  const FF1BleConnectParams({
+    required this.device,
+    this.timeout = const Duration(seconds: 30),
+  });
+
+  final FF1Device device;
+  final Duration timeout;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FF1BleConnectParams &&
+          runtimeType == other.runtimeType &&
+          device.deviceId == other.device.deviceId &&
+          timeout == other.timeout;
+
+  @override
+  int get hashCode => device.deviceId.hashCode ^ timeout.hashCode;
+}
+
+/// Connect to FF1 device via BLE (auto-dispose, with retry).
+/// 
+/// This provider automatically disposes after use (BLE connect is one-time).
+/// Uses Riverpod's automatic retry mechanism (3 attempts with exponential backoff).
+/// 
+/// Usage:
+/// ```dart
+/// await ref.read(
+///   ff1BleConnectProvider(FF1BleConnectParams(device: device)).future,
+/// );
+/// ```
+final ff1BleConnectProvider = FutureProvider.autoDispose
+    .family<void, FF1BleConnectParams>(
+  retry: _bleRetry,
+  (ref, params) async {
+    final control = ref.watch(ff1ControlProvider);
+    
+    // Riverpod handles retry, so we set maxRetries to 0 in transport
+    await control.connect(
+      device: params.device,
+      timeout: params.timeout,
+      maxRetries: 0, // Riverpod handles retry
+    );
+  },
+);
+
+/// Parameters for BLE command execution
+class FF1BleCommandParams<T extends FF1BleRequest> {
+  const FF1BleCommandParams({
+    required this.device,
+    required this.command,
+    required this.request,
+    this.timeout = const Duration(seconds: 10),
+  });
+
+  final FF1Device device;
+  final FF1BleCommand command;
+  final T request;
+  final Duration timeout;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FF1BleCommandParams<T> &&
+          runtimeType == other.runtimeType &&
+          device.deviceId == other.device.deviceId &&
+          command == other.command &&
+          timeout == other.timeout;
+
+  @override
+  int get hashCode =>
+      device.deviceId.hashCode ^ command.hashCode ^ timeout.hashCode;
+}
+
+/// Send BLE command to device (auto-dispose, with retry).
+/// 
+/// This provider automatically disposes after use.
+/// Uses Riverpod's automatic retry mechanism.
+/// 
+/// Usage:
+/// ```dart
+/// final topicId = await ref.read(
+///   ff1BleSendCommandProvider(FF1BleCommandParams(
+///     device: device,
+///     command: FF1BleCommand.sendWifiCredentials,
+///     request: SendWifiCredentialsRequest(ssid: ssid, password: password),
+///   )).future,
+/// );
+/// ```
+final ff1BleSendCommandProvider = FutureProvider.autoDispose
+    .family<FF1BleResponse, FF1BleCommandParams>(
+  retry: _bleRetry,
+  (ref, params) async {
+    final transport = ref.watch(ff1TransportProvider);
+    
+    return transport.sendCommand(
+      device: params.device,
+      command: params.command,
+      request: params.request,
+      timeout: params.timeout,
+    );
+  },
 );

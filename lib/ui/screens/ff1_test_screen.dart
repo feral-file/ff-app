@@ -218,40 +218,16 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
 
       _log.info('SUCCESS! Topic ID: $topicId');
 
-      // Keep WiFi connection and get topic ID
+      // Hide QR code and keep WiFi connection
       setState(() {
         _topicId = topicId;
-        _wifiResult = 'WiFi credentials sent!\n\nConfirming connection...';
+        _showQrCode = false;
+        _wifiResult = 'WiFi credentials sent!\n\nHiding QR code...';
       });
 
       // Call keepWifi to confirm connection
       _log.info('Confirming WiFi connection...');
       await control.keepWifi(device: _selectedDevice!);
-
-      // Hide QR code via WiFi command
-      try {
-        _log.info('Hiding QR code via WiFi...');
-        setState(() {
-          _wifiResult = 'WiFi connected!\n\nHiding QR code...';
-        });
-
-        final wifiControl = ref.read(ff1WifiControlProvider);
-        await wifiControl.showPairingQRCode(
-          topicId: topicId,
-          show: false, // Hide the QR code
-        );
-
-        _log.info('QR code hidden successfully');
-        setState(() {
-          _showQrCode = false;
-        });
-      } catch (e) {
-        _log.warning('Failed to hide QR code (continuing anyway): $e');
-        // Continue even if QR hide fails
-        setState(() {
-          _showQrCode = false;
-        });
-      }
 
       setState(() {
         _wifiResult =

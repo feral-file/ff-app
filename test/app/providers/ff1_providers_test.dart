@@ -262,7 +262,7 @@ void main() {
         expect(info, contains('deviceId'));
       });
 
-      test('retries on failure', () async {
+      test('retries on failure (via Riverpod)', () async {
         var callCount = 0;
         final fakeTransport = FakeFF1BleTransport(
           sendCommandCallback: (device, command, request, timeout) {
@@ -287,17 +287,27 @@ void main() {
         );
         addTearDown(container.dispose);
 
-        final control = container.read(ff1ControlProvider);
         final device = const FF1Device(
           name: 'TestFF1',
           remoteId: '00:11:22:33:44:55',
           deviceId: 'FF1_TEST',
         );
 
-        final info = await control.getInfo(device: device);
+        final provider = ff1BleSendCommandProvider(FF1BleCommandParams(
+          device: device,
+          command: FF1BleCommand.getInfo,
+          request: const GetInfoRequest(),
+        ));
 
-        expect(info, 'success');
-        expect(callCount, 2); // Failed once, succeeded on second attempt
+        // Keep provider alive during test to prevent auto-dispose during retry
+        final sub = container.listen(provider, (_, __) {});
+        addTearDown(sub.close);
+
+        // Use provider with automatic retry
+        final response = await container.read(provider.future);
+
+        expect(response.data[0], 'success');
+        expect(callCount, 2); // Failed once, succeeded on second attempt (Riverpod retry)
       });
     });
 
