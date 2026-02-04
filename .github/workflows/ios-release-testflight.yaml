@@ -91,7 +91,7 @@ jobs:
       - name: Download provisioning profiles
         uses: Apple-Actions/download-provisioning-profiles@v4
         with:
-          bundle-id: 'com.feralfile.autonomy'
+          bundle-id: 'com.feralfile.app'
           profile-type: 'IOS_APP_STORE'
           issuer-id: ${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}
           api-key-id: ${{ secrets.FF_TESTFLIGHT_KEY_ID }}
