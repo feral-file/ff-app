@@ -116,57 +116,18 @@ jobs:
         run: |
           PROFILES='${{ steps.profiles.outputs.profiles }}'
           
-          echo "DEBUG: Full profiles output:"
-          echo "$PROFILES" | jq '.'
-          
           if [[ -z "$PROFILES" ]]; then
             echo "No provisioning profiles downloaded"
             exit 1
           fi
 
-          # Extract profile UDID (this is the provisioning profile UUID)
+          # Extract profile UDID
           PROFILE_UUID=$(echo "$PROFILES" | jq -r '.[0].udid // empty')
-
           echo "DEBUG: PROFILE_UUID=$PROFILE_UUID"
 
-          if [[ -z "$PROFILE_UUID" ]]; then
-            echo "ERROR: Failed to extract profile UUID"
-            exit 1
-          fi
-
-          # Set the environment variables
+          # Just store the profile UUID; xcodebuild will automatically find and use 
+          # the provisioning profiles from ~/Library/MobileDevice/Provisioning Profiles
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
-          
-          # For team ID and bundle ID, let xcodebuild determine them from the provisioning profile
-          # We'll extract them by parsing the provisioning profile in the standard location
-          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-          PROFILE_PATH="$PROFILES_DIR/$PROFILE_UUID.mobileprovision"
-
-          echo "DEBUG: Profile path: $PROFILE_PATH"
-          
-          if [[ ! -f "$PROFILE_PATH" ]]; then
-            echo "ERROR: Provisioning profile not found"
-            ls -la "$PROFILES_DIR" 2>/dev/null || echo "Directory does not exist"
-            exit 1
-          fi
-
-          # Use mdls to extract the team identifier without needing security cms
-          TEAM_ID=$(mdls -name kMDItemAppStoreTeamIdentifier -r "$PROFILE_PATH" 2>/dev/null)
-          echo "DEBUG: Extracted TEAM_ID=$TEAM_ID"
-          
-          # If mdls doesn't work, try using grep on the binary plist
-          if [[ -z "$TEAM_ID" || "$TEAM_ID" == "(null)" ]]; then
-            TEAM_ID=$(strings "$PROFILE_PATH" | grep -i "teamidentifier" | head -1)
-            echo "DEBUG: Extracted TEAM_ID via strings=$TEAM_ID"
-          fi
-
-          if [[ -z "$TEAM_ID" || "$TEAM_ID" == "(null)" ]]; then
-            echo "WARNING: Could not extract TEAM_ID, letting xcodebuild handle it"
-            # Use a placeholder; xcodebuild will figure it out from the provisioning profile
-            TEAM_ID="PLACEHOLDER"
-          fi
-
-          echo "TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
           echo "BUNDLE_ID=com.feralfile.app" >> "$GITHUB_ENV"
 
       - name: Build archive
@@ -180,6 +141,8 @@ jobs:
           fi
 
           ARCHIVE_PATH="$RUNNER_TEMP/Runner.xcarchive"
+          # Don't specify DEVELOPMENT_TEAM, CODE_SIGN_STYLE, or PROVISIONING_PROFILE
+          # Let xcodebuild automatically discover and use the downloaded provisioning profiles
           xcodebuild \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -187,10 +150,6 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE_PATH" \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE="$PROFILE_UUID" \
             FLUTTER_BUILD_NAME="$BUILD_NAME" \
             FLUTTER_BUILD_NUMBER="$BUILD_NUMBER" \
             archive
@@ -210,14 +169,7 @@ jobs:
             <key>method</key>
             <string>app-store</string>
             <key>signingStyle</key>
-            <string>manual</string>
-            <key>teamID</key>
-            <string>$TEAM_ID</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>$BUNDLE_ID</key>
-              <string>$PROFILE_UUID</string>
-            </dict>
+            <string>automatic</string>
             <key>compileBitcode</key>
             <false/>
             <key>stripSwiftSymbols</key>
