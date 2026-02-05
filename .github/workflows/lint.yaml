@@ -1,0 +1,96 @@
+name: Lint the code
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'lib/**'
+
+jobs:
+  lint:
+    name: Lint the dart code
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Create env file
+        run: |
+          touch .env
+          echo -e "${{ secrets.ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
+          cat .env
+
+      - run: flutter pub get
+
+      - uses: reviewdog/action-setup@v1.4.0
+        with:
+          reviewdog_version: latest
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          if ${{ github.event_name == 'pull_request' }}; then
+            echo "changed_files=$(git diff --name-only -r HEAD^1 HEAD --diff-filter=ACMRTUXB | xargs)" >> $GITHUB_OUTPUT
+          else
+            echo "changed_files=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }} --diff-filter=ACMRTUXB | xargs)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Code review and auto-fix the changed files
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for file in ${{ steps.changed-files.outputs.changed_files }}; do
+            echo "fixing: $file"
+            if [[ $file == *.dart ]]; then
+              flutter analyze --no-preamble $file | reviewdog -efm="%p%t%r • %m • %f:%l:%c • %s" -name=flutter-analyze -reporter=github-pr-review
+              dart format $file
+              dart fix --apply $file
+            else
+              echo "skipping non-Dart file: $file"
+            fi
+          done
+
+      - name: Check for magic numbers (custom lint)
+        if: ${{ hashFiles('custom_lint.yaml') != '' }}
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔍 Checking for magic numbers in changed Dart files..."
+          for file in ${{ steps.changed-files.outputs.changed_files }}; do
+            if [[ $file == *.dart && $file != *.g.dart ]]; then
+              echo "Checking magic numbers in: $file"
+              dart run custom_lint "$file" 2>&1 | grep "no_magic_number" | reviewdog -efm="  %f:%l:%c • %m • %s • %p" -name=magic-numbers -reporter=github-pr-review -level=warning || true
+            fi
+          done
+
+      - name: suggester / dart fixes
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: dart fix
+          filter_mode: added
+          cleanup: true
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: gitleaks
+        uses: reviewdog/action-gitleaks@v1
+        with:
+          reporter: github-pr-review
+
+  dotenv-linter:
+    name: runner / dotenv-linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run dotenv-linter with code suggestions
+        uses: dotenv-linter/action-dotenv-linter@v2
+        with:
+          reporter: github-code-suggestions
