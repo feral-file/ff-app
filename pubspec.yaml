@@ -126,6 +126,11 @@ dev_dependencies:
   drift_dev: ^2.30.0
   objectbox_generator: 5.1.0
 
+dependency_overrides:
+  # CI currently resolves objective_c 9.2.5 on newer Flutter patch versions,
+  # which fails native asset build hooks on self-hosted macOS runners.
+  objective_c: 9.2.4
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
