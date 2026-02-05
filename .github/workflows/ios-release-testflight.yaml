@@ -138,21 +138,33 @@ jobs:
           PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
           PROFILE_PATH="$PROFILES_DIR/$PROFILE_UUID.mobileprovision"
 
+          echo "DEBUG: Looking for profile at: $PROFILE_PATH"
+          
           if [[ ! -f "$PROFILE_PATH" ]]; then
             echo "ERROR: Provisioning profile not found at $PROFILE_PATH"
+            echo "Available profiles:"
             ls -la "$PROFILES_DIR" 2>/dev/null || echo "Directory does not exist"
             exit 1
           fi
 
-          # Set keychain to search for certificates
-          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain"
-          
+          echo "DEBUG: Profile file found, size: $(stat -f%z "$PROFILE_PATH")"
+
           # Extract team ID and bundle ID from the provisioning profile
-          TEAM_ID=$(security cms -D -i "$PROFILE_PATH" -k "$KEYCHAIN_PATH" 2>/dev/null | /usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin)
-          APP_ID=$(security cms -D -i "$PROFILE_PATH" -k "$KEYCHAIN_PATH" 2>/dev/null | /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin)
+          # Decode without specifying keychain first
+          DECODED=$(security cms -D -i "$PROFILE_PATH" 2>&1)
+          
+          if [[ $? -ne 0 ]]; then
+            echo "ERROR: Failed to decode provisioning profile"
+            echo "Error message: $DECODED"
+            exit 1
+          fi
+
+          TEAM_ID=$(echo "$DECODED" | /usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin 2>/dev/null)
+          APP_ID=$(echo "$DECODED" | /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin 2>/dev/null)
           BUNDLE_ID="${APP_ID#${TEAM_ID}.}"
 
           echo "DEBUG: TEAM_ID=$TEAM_ID"
+          echo "DEBUG: APP_ID=$APP_ID"
           echo "DEBUG: BUNDLE_ID=$BUNDLE_ID"
 
           if [[ -z "$TEAM_ID" || -z "$BUNDLE_ID" ]]; then
