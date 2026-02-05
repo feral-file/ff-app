@@ -40,7 +40,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string></string>
+	<string>Feral File app would like to access bluetooth for scanning nearby FF1 devices</string>
 	<key>NSBluetoothCentralUsageDescription</key>
 	<string>This app needs Bluetooth access to scan and connect to FF1 devices.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
