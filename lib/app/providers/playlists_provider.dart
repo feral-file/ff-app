@@ -183,7 +183,7 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
     final hasChanged = !_samePlaylistIds(current, next);
     if (hasChanged && !state.isLoading && !state.isLoadingMore) {
       if (_type == PlaylistType.dp1) {
-        final size = current.isEmpty ? _pageSize : current.length;
+        final size = current.length < _pageSize ? _pageSize : current.length;
         unawaited(loadPlaylists(size: size));
       } else {
         state = state.copyWith(playlists: next);
@@ -204,7 +204,9 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
   Future<void> loadPlaylists({int? size}) async {
     try {
       final effectiveSize = size ?? _pageSize;
-      _log.info('Loading playlists from database (type: ${_type.name}, size: $effectiveSize)...');
+      _log.info(
+        'Loading playlists from database (type: ${_type.name}, size: $effectiveSize)...',
+      );
       state = state.copyWith(isLoading: true, clearError: true);
 
       final databaseService = ref.read(databaseServiceProvider);
@@ -214,7 +216,9 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
         final allPlaylists = await databaseService.getAllPlaylistsData();
         final duration = DateTime.now().difference(startTime);
         if (duration > _slowQueryThreshold) {
-          _log.warning('Slow getAllPlaylistsData(): ${duration.inMilliseconds}ms');
+          _log.warning(
+            'Slow getAllPlaylistsData(): ${duration.inMilliseconds}ms',
+          );
           unawaited(
             Sentry.captureEvent(
               SentryEvent(
@@ -227,15 +231,14 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
             ),
           );
         }
-        final curatedAll =
-            allPlaylists.where((p) => p.type == 0).toList()
-              ..sort((a, b) {
-                final aUs = a.createdAtUs.toInt();
-                final bUs = b.createdAtUs.toInt();
-                final byTime = bUs.compareTo(aUs);
-                if (byTime != 0) return byTime;
-                return a.id.compareTo(b.id);
-              });
+        final curatedAll = allPlaylists.where((p) => p.type == 0).toList()
+          ..sort((a, b) {
+            final aUs = a.createdAtUs.toInt();
+            final bUs = b.createdAtUs.toInt();
+            final byTime = bUs.compareTo(aUs);
+            if (byTime != 0) return byTime;
+            return a.id.compareTo(b.id);
+          });
         final end = effectiveSize.clamp(0, curatedAll.length);
         final page = curatedAll.take(end).toList();
         final nextCursor = end < curatedAll.length ? end.toString() : null;
@@ -312,15 +315,14 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
         );
       }
 
-      final curatedAll =
-          allPlaylists.where((p) => p.type == 0).toList()
-            ..sort((a, b) {
-              final aUs = a.createdAtUs.toInt();
-              final bUs = b.createdAtUs.toInt();
-              final byTime = bUs.compareTo(aUs);
-              if (byTime != 0) return byTime;
-              return a.id.compareTo(b.id);
-            });
+      final curatedAll = allPlaylists.where((p) => p.type == 0).toList()
+        ..sort((a, b) {
+          final aUs = a.createdAtUs.toInt();
+          final bUs = b.createdAtUs.toInt();
+          final byTime = bUs.compareTo(aUs);
+          if (byTime != 0) return byTime;
+          return a.id.compareTo(b.id);
+        });
 
       final end = (start + _pageSize).clamp(0, curatedAll.length);
       if (start >= end) {
@@ -355,37 +357,39 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
 /// Provider for playlists state by type (dp1 = curated, addressBased = personal).
 final playlistsProvider =
     NotifierProvider.family<PlaylistsNotifier, PlaylistsState, PlaylistType>(
-  PlaylistsNotifier.new,
-);
+      PlaylistsNotifier.new,
+    );
 
 /// Mutation for loading playlists (generic; use with specific type in UI).
 final loadPlaylistsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Mutation for refreshing playlists.
 final refreshPlaylistsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Mutation for loading more playlists.
 final loadMorePlaylistsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Provider for playlists in a specific channel.
 final playlistsByChannelProvider =
     FutureProvider.family<List<Playlist>, String>((ref, channelId) async {
-  final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService.getPlaylistsByChannel(channelId);
-});
+      final databaseService = ref.watch(databaseServiceProvider);
+      return databaseService.getPlaylistsByChannel(channelId);
+    });
 
 /// Provider for a specific playlist by ID.
-final playlistByIdProvider =
-    FutureProvider.family<Playlist?, String>((ref, playlistId) async {
+final playlistByIdProvider = FutureProvider.family<Playlist?, String>((
+  ref,
+  playlistId,
+) async {
   final databaseService = ref.watch(databaseServiceProvider);
   return databaseService.getPlaylistById(playlistId);
 });

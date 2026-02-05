@@ -591,13 +591,19 @@ class DatabaseService {
   }
 
   /// Clear all data from the database (for testing/reset).
+  ///
+  /// Uses a single batch so all deletes run in one transaction and the DB lock
+  /// is held briefly. Using separate [transaction] + multiple [delete].go() can
+  /// trigger "database has been locked" when watch streams (channels/playlists)
+  /// try to read during the transaction.
   Future<void> clearAll() async {
     try {
-      await _db.transaction(() async {
-        await _db.delete(_db.playlistEntries).go();
-        await _db.delete(_db.items).go();
-        await _db.delete(_db.playlists).go();
-        await _db.delete(_db.channels).go();
+      await _db.batch((batch) {
+        // Child tables first (playlist_entries references playlists and items).
+        batch.deleteAll(_db.playlistEntries);
+        batch.deleteAll(_db.items);
+        batch.deleteAll(_db.playlists);
+        batch.deleteAll(_db.channels);
       });
       _log.info('Cleared all database data');
     } catch (e, stack) {
