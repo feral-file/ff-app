@@ -98,8 +98,8 @@ jobs:
       - name: Unlock keychain for security commands
         run: |
           KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain"
-          # Unlock with a long timeout (3600 seconds = 1 hour)
-          security unlock-keychain -p "${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}" -t 3600 "$KEYCHAIN_PATH"
+          # Unlock keychain
+          security unlock-keychain -p "${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}" "$KEYCHAIN_PATH"
           security list-keychains -s "$KEYCHAIN_PATH"
 
       - name: Download provisioning profiles

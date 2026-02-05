@@ -51,7 +51,7 @@ android {
     }
 
     androidResources {
-        localeFilters.addAll(listOf("en", "en-US"))
+        localeFilters.addAll(listOf("en", "US"))
     }
 
     signingConfigs {
