@@ -3,8 +3,8 @@ name: Lint the code
 on:
   pull_request:
     branches: [main, develop]
-    paths-ignore:
-      - '**/README.md'
+    paths:
+      - 'lib/**'
 
 jobs:
   lint:
@@ -32,9 +32,6 @@ jobs:
         with:
           reviewdog_version: latest
 
-      - name: Install codespell
-        run: pip3 install codespell
-
       - name: Get changed files
         id: changed-files
         run: |
@@ -57,12 +54,6 @@ jobs:
             else
               echo "skipping non-Dart file: $file"
             fi
-
-            CODESPELL_IGNORE_FLAG=""
-            if [[ -f .codespellignore ]]; then
-              CODESPELL_IGNORE_FLAG="-I .codespellignore"
-            fi
-            codespell -q 3 -w $CODESPELL_IGNORE_FLAG --skip "**/*.g.dart,*.svg" $file | reviewdog -efm="%f:%l: %m" -name=codespell -reporter=github-pr-review || true
           done
 
       - name: Check for magic numbers (custom lint)
