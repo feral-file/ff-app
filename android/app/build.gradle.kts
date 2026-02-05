@@ -1,3 +1,6 @@
+import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -15,16 +18,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
     packaging {
-        resources {
-            pickFirst("lib/arm64-v8a/libc++_shared.so")
-            pickFirst("lib/armeabi-v7a/libc++_shared.so")
-            pickFirst("lib/x86/libc++_shared.so")
-            pickFirst("lib/x86_64/libc++_shared.so")
+        jniLibs {
+            pickFirsts.add("lib/arm64-v8a/libc++_shared.so")
+            pickFirsts.add("lib/armeabi-v7a/libc++_shared.so")
+            pickFirsts.add("lib/x86/libc++_shared.so")
+            pickFirsts.add("lib/x86_64/libc++_shared.so")
         }
     }
 
@@ -43,7 +42,7 @@ android {
         create("release") {
             val keystoreFile = file("../release.keystore")
             if (keystoreFile.exists()) {
-                val props = java.util.Properties()
+                val props = Properties()
                 val propsFile = file("../release.properties")
                 if (propsFile.exists()) {
                     props.load(propsFile.inputStream())
@@ -67,6 +66,12 @@ android {
         create("production") {
             dimension = "tier"
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
