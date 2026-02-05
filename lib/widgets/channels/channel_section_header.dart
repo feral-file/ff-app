@@ -1,6 +1,8 @@
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 /// Channel Section Header - Displays section name with view all button
 class ChannelSectionHeader extends StatelessWidget {
@@ -28,8 +30,8 @@ class ChannelSectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12,
+      padding: EdgeInsets.symmetric(
+        horizontal: LayoutConstants.pageHorizontalDefault,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -45,6 +47,17 @@ class ChannelSectionHeader extends StatelessWidget {
                 SizedBox(
                   width: LayoutConstants.space4,
                 ),
+              ] else ...[
+                SvgPicture.asset(
+                  'assets/images/icon_account.svg',
+                  width: LayoutConstants.iconSizeDefault,
+                  height: LayoutConstants.iconSizeDefault,
+                  colorFilter: const ColorFilter.mode(
+                    AppColor.white,
+                    BlendMode.srcIn,
+                  ),
+                ),
+                SizedBox(width: LayoutConstants.space4),
               ],
               Text(
                 sectionName,
@@ -56,30 +69,30 @@ class ChannelSectionHeader extends StatelessWidget {
           if (hasMore && onViewAllTap != null)
             GestureDetector(
               onTap: onViewAllTap,
+              behavior: HitTestBehavior.opaque,
               child: Container(
-                constraints: BoxConstraints(
-                  minWidth: LayoutConstants.iconSizeSmall,
-                  minHeight: LayoutConstants.iconSizeSmall,
-                ),
                 color: Colors.transparent,
+                constraints: BoxConstraints(
+                  minWidth: LayoutConstants.minTouchTarget,
+                  minHeight: LayoutConstants.minTouchTarget,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.arrow_back,
-                      size: LayoutConstants.iconSizeSmall,
-                      color: const Color(0xFFA0A0A0),
+                    SvgPicture.asset(
+                      'assets/images/icon_arrow_left.svg',
+                      width: LayoutConstants.iconSizeSmall,
+                      height: LayoutConstants.iconSizeSmall,
+                      colorFilter: const ColorFilter.mode(
+                        AppColor.auQuickSilver,
+                        BlendMode.srcIn,
+                      ),
                     ),
-                    const SizedBox(
-                      width: 8,
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 1),
-                      child: Text(
+                    SizedBox(width: LayoutConstants.space2),
+                    Text(
                         'All',
                         style: AppTypography.body(context).grey,
-                      ),
                     ),
                   ],
                 ),

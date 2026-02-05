@@ -147,6 +147,9 @@ class Items extends Table {
   /// Complete token JSON for reconstruction (indexer tokens).
   TextColumn get tokenDataJson => text().nullable()();
 
+  /// List of artists as JSON (List<DP1Artist>).
+  TextColumn get listArtistJson => text().nullable()();
+
   /// Last update timestamp in microseconds.
   Int64Column get updatedAtUs => int64()();
 

@@ -1,0 +1,11 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Icon / Warning" clip-path="url(#clip0_19_256)">
+<path id="Vector" d="M22.75 22.75H0.75L11.75 0.75L22.75 22.75Z" stroke="black" stroke-width="1.5" stroke-linejoin="round"/>
+<path id="Vector_2" d="M12.57 19.06C12.57 19.57 12.17 19.96 11.66 19.96C11.15 19.96 10.76 19.58 10.76 19.06C10.76 18.54 11.14 18.15 11.66 18.15C12.18 18.15 12.57 18.55 12.57 19.06ZM12.28 8.5V16.28H11.06V8.5H12.28Z" fill="black" stroke="black" stroke-width="0.25" stroke-miterlimit="10"/>
+</g>
+<defs>
+<clipPath id="clip0_19_256">
+<rect width="23.5" height="23.5" fill="white"/>
+</clipPath>
+</defs>
+</svg>

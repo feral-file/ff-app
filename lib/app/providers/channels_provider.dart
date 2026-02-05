@@ -6,24 +6,23 @@ import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
-/// Enhanced state for channels with curated vs personal separation.
+/// State for a single channel type (curated or personal).
+/// Aligns with old repo: one list per ChannelType,
+/// pagination for curated only.
 class ChannelsState {
   /// Creates a ChannelsState.
   const ChannelsState({
-    required this.curatedChannels,
-    required this.personalChannels,
+    required this.channels,
     required this.isLoading,
     required this.isLoadingMore,
     required this.hasMore,
     required this.cursor,
+    this.total,
     this.error,
   });
 
-  /// Curated channels from DP1 feeds.
-  final List<Channel> curatedChannels;
-
-  /// Personal channels (e.g., My Collection).
-  final List<Channel> personalChannels;
+  /// Channels for this type (domain).
+  final List<Channel> channels;
 
   /// Whether channels are being loaded.
   final bool isLoading;
@@ -31,13 +30,14 @@ class ChannelsState {
   /// Whether more channels are being loaded (pagination).
   final bool isLoadingMore;
 
-  /// Whether there are more curated channels to load.
-  ///
-  /// Note: pagination currently applies to curated channels only.
+  /// Whether there are more channels to load (pagination).
   final bool hasMore;
 
-  /// Cursor for curated channels pagination (stringified offset).
+  /// Cursor for pagination (stringified offset).
   final String? cursor;
+
+  /// Total count when known (optional).
+  final int? total;
 
   /// Error if loading failed.
   final String? error;
@@ -45,8 +45,7 @@ class ChannelsState {
   /// Initial state.
   factory ChannelsState.initial() {
     return const ChannelsState(
-      curatedChannels: [],
-      personalChannels: [],
+      channels: [],
       isLoading: false,
       isLoadingMore: false,
       hasMore: true,
@@ -57,8 +56,7 @@ class ChannelsState {
   /// Loading state.
   factory ChannelsState.loading() {
     return const ChannelsState(
-      curatedChannels: [],
-      personalChannels: [],
+      channels: [],
       isLoading: true,
       isLoadingMore: false,
       hasMore: true,
@@ -68,26 +66,25 @@ class ChannelsState {
 
   /// Loaded state.
   factory ChannelsState.loaded({
-    required List<Channel> curated,
-    required List<Channel> personal,
+    required List<Channel> channels,
     required bool hasMore,
     required String? cursor,
+    int? total,
   }) {
     return ChannelsState(
-      curatedChannels: curated,
-      personalChannels: personal,
+      channels: channels,
       isLoading: false,
       isLoadingMore: false,
       hasMore: hasMore,
       cursor: cursor,
+      total: total,
     );
   }
 
   /// Error state.
   factory ChannelsState.error(String error) {
     return ChannelsState(
-      curatedChannels: [],
-      personalChannels: [],
+      channels: [],
       isLoading: false,
       isLoadingMore: false,
       hasMore: false,
@@ -98,104 +95,95 @@ class ChannelsState {
 
   /// Copy with new values.
   ChannelsState copyWith({
-    List<Channel>? curatedChannels,
-    List<Channel>? personalChannels,
+    List<Channel>? channels,
     bool? isLoading,
     bool? isLoadingMore,
     bool? hasMore,
     String? cursor,
     bool clearCursor = false,
+    int? total,
+    bool clearTotal = false,
     String? error,
     bool clearError = false,
   }) {
     return ChannelsState(
-      curatedChannels: curatedChannels ?? this.curatedChannels,
-      personalChannels: personalChannels ?? this.personalChannels,
+      channels: channels ?? this.channels,
       isLoading: isLoading ?? this.isLoading,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       hasMore: hasMore ?? this.hasMore,
       cursor: clearCursor ? null : (cursor ?? this.cursor),
+      total: clearTotal ? null : (total ?? this.total),
       error: clearError ? null : (error ?? this.error),
     );
   }
 }
 
-/// Notifier for channels list.
-/// Provides reactive access to channels from the database.
+/// Notifier for one channel type (curated = dp1, personal = localVirtual).
+/// Aligns with old repo: ChannelsBloc(channelType, total?, pageSize).
 class ChannelsNotifier extends Notifier<ChannelsState> {
+  ChannelsNotifier(this._type);
+
   static const int _pageSize = 5;
 
+  final ChannelType _type;
   late final Logger _log;
-  StreamSubscription<List<Channel>>? _curatedSub;
-  StreamSubscription<List<Channel>>? _personalSub;
-  int? _curatedWatchLimit;
+  StreamSubscription<List<Channel>>? _watchSub;
+  int? _watchLimit;
 
   @override
   ChannelsState build() {
-    _log = Logger('ChannelsNotifier');
+    _log = Logger('ChannelsNotifier(${_type.name})');
     ref.onDispose(() async {
-      _log.info('Disposing ChannelsNotifier, cancelling subscriptions');
-      await _curatedSub?.cancel();
-      await _personalSub?.cancel();
-      _curatedSub = null;
-      _personalSub = null;
+      _log.info('Disposing ChannelsNotifier, cancelling subscription');
+      await _watchSub?.cancel();
+      _watchSub = null;
     });
 
-    // Start watching the database immediately (old repo semantics).
-    _setupDatabaseWatch();
-
+    // _setupDatabaseWatch();
     return ChannelsState.initial();
   }
 
   void _setupDatabaseWatch() {
-    _ensureCuratedWatch(limit: _pageSize);
-
-    // Personal channels are typically small; watch all localVirtual channels.
-    _personalSub?.cancel();
-    final databaseService = ref.read(databaseServiceProvider);
-    _personalSub = databaseService
-        .watchChannels(type: ChannelType.localVirtual)
-        .listen(_onPersonalChannelsChanged, onError: _onWatchError);
+    if (_type == ChannelType.dp1) {
+      _ensureWatch(limit: _pageSize);
+    } else {
+      _watchSub?.cancel();
+      _watchLimit = null;
+      final databaseService = ref.read(databaseServiceProvider);
+      _watchSub = databaseService
+          .watchChannels(type: _type)
+          .listen(_onChannelsChanged, onError: _onWatchError);
+    }
   }
 
-  void _ensureCuratedWatch({required int limit}) {
-    if (_curatedWatchLimit == limit) return;
-    _curatedWatchLimit = limit;
-
-    _curatedSub?.cancel();
+  void _ensureWatch({required int limit}) {
+    if (_type != ChannelType.dp1 || _watchLimit == limit) return;
+    _watchLimit = limit;
+    _watchSub?.cancel();
     final databaseService = ref.read(databaseServiceProvider);
-    _curatedSub = databaseService
-        .watchChannels(type: ChannelType.dp1, limit: limit)
-        .listen(_onCuratedChannelsChanged, onError: _onWatchError);
+    _watchSub = databaseService
+        .watchChannels(type: _type, limit: limit)
+        .listen(_onChannelsChanged, onError: _onWatchError);
   }
 
   void _onWatchError(Object error, StackTrace stack) {
     _log.warning('Database watch error', error, stack);
-    // Do not force an error state here; keep UI usable and rely on explicit loads.
   }
 
-  void _onCuratedChannelsChanged(List<Channel> curated) {
-    // If we haven't loaded yet, do an initial load using page size.
-    if (state.curatedChannels.isEmpty && !state.isLoading) {
+  void _onChannelsChanged(List<Channel> next) {
+    if (state.channels.isEmpty && !state.isLoading) {
       unawaited(loadChannels(size: _pageSize));
       return;
     }
-
-    // If the subset we are watching changed, refresh the currently loaded size.
-    final current = state.curatedChannels;
-    final hasChanged = !_sameChannelIds(current, curated);
+    final current = state.channels;
+    final hasChanged = !_sameChannelIds(current, next);
     if (hasChanged && !state.isLoading && !state.isLoadingMore) {
-      final size = current.isEmpty ? _pageSize : current.length;
-      unawaited(loadChannels(size: size));
-    }
-  }
-
-  void _onPersonalChannelsChanged(List<Channel> personal) {
-    // Personal channels are not paginated; just update if changed.
-    final current = state.personalChannels;
-    final hasChanged = !_sameChannelIds(current, personal);
-    if (hasChanged && !state.isLoading && !state.isLoadingMore) {
-      state = state.copyWith(personalChannels: personal);
+      if (_type == ChannelType.dp1) {
+        final size = current.isEmpty ? _pageSize : current.length;
+        unawaited(loadChannels(size: size));
+      } else {
+        state = state.copyWith(channels: next);
+      }
     }
   }
 
@@ -207,70 +195,74 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
     return true;
   }
 
-  /// Load channels from database.
-  ///
-  /// Pagination applies to curated channels. Personal channels are loaded fully.
-  Future<void> loadChannels({int size = _pageSize}) async {
+  /// Load channels for this type.
+  /// Pagination applies to dp1 (curated); localVirtual loads all.
+  Future<void> loadChannels({int? size}) async {
     try {
-      _log.info('Loading channels from database (size: $size)...');
+      final effectiveSize = size ?? _pageSize;
+      _log.info(
+        'Loading channels from database (type: ${_type.name}, size: $effectiveSize)...',
+      );
       state = state.copyWith(isLoading: true, clearError: true);
 
       final databaseService = ref.read(databaseServiceProvider);
       final allChannels = await databaseService.getChannels();
 
-      _log.info('Loaded ${allChannels.length} total channels from database');
-
-      // Separate curated vs personal.
-      // Old repo semantics: curated = DP1; personal = localVirtual (e.g., My Collection).
-      final curatedAll =
-          allChannels.where((c) => c.type == ChannelType.dp1).toList();
-      final personalAll =
-          allChannels.where((c) => c.type == ChannelType.localVirtual).toList();
-
-      final end = size.clamp(0, curatedAll.length);
-      final curated = curatedAll.take(end).toList();
-
-      final nextCursor = end < curatedAll.length ? end.toString() : null;
-      final hasMore = nextCursor != null;
-
-      _log.info(
-        'Curated channels: ${curated.length}/${curatedAll.length}, '
-        'Personal channels: ${personalAll.length}, hasMore: $hasMore, '
-        'cursor: $nextCursor',
-      );
-
-      _ensureCuratedWatch(
-        limit: curated.length < _pageSize ? _pageSize : curated.length,
-      );
-
-      state = ChannelsState.loaded(
-        curated: curated,
-        personal: personalAll,
-        hasMore: hasMore,
-        cursor: nextCursor,
-      );
+      if (_type == ChannelType.dp1) {
+        final curatedAll = allChannels
+            .where((c) => c.type == ChannelType.dp1)
+            .toList();
+        final end = effectiveSize.clamp(0, curatedAll.length);
+        final page = curatedAll.take(end).toList();
+        final nextCursor = end < curatedAll.length ? end.toString() : null;
+        final hasMore = nextCursor != null;
+        _ensureWatch(
+          limit: page.length < _pageSize ? _pageSize : page.length,
+        );
+        state = ChannelsState.loaded(
+          channels: page,
+          hasMore: hasMore,
+          cursor: nextCursor,
+          total: curatedAll.length,
+        );
+        _log.info(
+          'Curated channels: ${page.length}/${curatedAll.length}, '
+          'hasMore: $hasMore, cursor: $nextCursor',
+        );
+      } else {
+        final personalAll = allChannels
+            .where((c) => c.type == ChannelType.localVirtual)
+            .toList();
+        state = ChannelsState.loaded(
+          channels: personalAll,
+          hasMore: false,
+          cursor: null,
+          total: personalAll.length,
+        );
+        _log.info('Personal channels: ${personalAll.length}');
+      }
     } catch (e, stack) {
       _log.severe('Failed to load channels', e, stack);
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
-  /// Refresh channels (re-load from database).
+  /// Refresh channels.
   Future<void> refresh() async {
-    final size = state.curatedChannels.isEmpty
-        ? _pageSize
-        : state.curatedChannels.length;
-    await loadChannels(size: size);
+    final size = state.channels.isEmpty ? _pageSize : state.channels.length;
+    await loadChannels(size: _type == ChannelType.dp1 ? size : null);
   }
 
-  /// Load more curated channels.
+  /// Load more channels. Only applies to dp1 (curated).
   Future<void> loadMore() async {
-    if (state.isLoading || state.isLoadingMore || !state.hasMore) {
+    if (_type != ChannelType.dp1 ||
+        state.isLoading ||
+        state.isLoadingMore ||
+        !state.hasMore) {
       return;
     }
-
     final cursor = state.cursor;
-    final start = int.tryParse(cursor ?? '') ?? state.curatedChannels.length;
+    final start = int.tryParse(cursor ?? '') ?? state.channels.length;
     if (start < 0) return;
 
     try {
@@ -278,8 +270,9 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 
       final databaseService = ref.read(databaseServiceProvider);
       final allChannels = await databaseService.getChannels();
-      final curatedAll =
-          allChannels.where((c) => c.type == ChannelType.dp1).toList();
+      final curatedAll = allChannels
+          .where((c) => c.type == ChannelType.dp1)
+          .toList();
 
       final end = (start + _pageSize).clamp(0, curatedAll.length);
       if (start >= end) {
@@ -292,14 +285,14 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       }
 
       final page = curatedAll.sublist(start, end);
-      final nextCurated = [...state.curatedChannels, ...page];
+      final nextChannels = [...state.channels, ...page];
       final nextCursor = end < curatedAll.length ? end.toString() : null;
       final hasMore = nextCursor != null;
 
-      _ensureCuratedWatch(limit: nextCurated.length);
+      _ensureWatch(limit: nextChannels.length);
 
       state = state.copyWith(
-        curatedChannels: nextCurated,
+        channels: nextChannels,
         isLoadingMore: false,
         hasMore: hasMore,
         cursor: nextCursor,
@@ -311,32 +304,35 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
   }
 }
 
-/// Provider for channels list.
-final channelsProvider = NotifierProvider<ChannelsNotifier, ChannelsState>(
-  ChannelsNotifier.new,
-);
+/// Provider for channels state by type (dp1 = curated, localVirtual = personal).
+final channelsProvider =
+    NotifierProvider.family<ChannelsNotifier, ChannelsState, ChannelType>(
+      ChannelsNotifier.new,
+    );
 
-/// Mutation for loading channels.
+/// Mutation for loading channels (generic; use with specific type in UI).
 final loadChannelsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Mutation for refreshing channels.
 final refreshChannelsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Mutation for loading more channels.
 final loadMoreChannelsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Provider for a specific channel by ID.
-final channelByIdProvider =
-    FutureProvider.family<Channel?, String>((ref, channelId) async {
+final channelByIdProvider = FutureProvider.family<Channel?, String>((
+  ref,
+  channelId,
+) async {
   final databaseService = ref.watch(databaseServiceProvider);
   return databaseService.getChannelById(channelId);
 });

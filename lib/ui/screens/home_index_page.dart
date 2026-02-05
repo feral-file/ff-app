@@ -3,35 +3,24 @@ import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
+import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/playlist.dart';
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/tabs/channels_tab_page.dart';
 import 'package:app/ui/screens/tabs/playlists_tab_page.dart';
 import 'package:app/ui/screens/tabs/search_tab_page.dart';
 import 'package:app/ui/screens/tabs/works_tab_page.dart';
+import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/bottom_spacing.dart';
+import 'package:app/widgets/home_index_header.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-
-/// Available tabs in the home screen.
-enum HomeIndexTab {
-  /// Playlists tab.
-  playlists('Playlists'),
-
-  /// Channels tab.
-  channels('Channels'),
-
-  /// Works tab.
-  works('Works')
-  ;
-
-  /// Tab label.
-  final String label;
-
-  const HomeIndexTab(this.label);
-}
 
 // Global keys for each page to preserve state
 final GlobalKey<PlaylistsTabPageState> _playlistsPageKey =
@@ -52,9 +41,7 @@ class HomeIndexPage extends ConsumerStatefulWidget {
 }
 
 class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
-  late HomeIndexTab _selectedTab;
-  final TransformationController _transformationController =
-      TransformationController();
+  late HomeIndexHeaderTab _selectedTab;
   late ScrollController _scrollController;
   late final PlaylistsTabPage _playlistsPage;
   late final ChannelsTabPage _channelsPage;
@@ -63,7 +50,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
   @override
   void initState() {
     super.initState();
-    _selectedTab = HomeIndexTab.playlists;
+    _selectedTab = HomeIndexHeaderTab.playlists;
     _scrollController = ScrollController();
     _scrollController.addListener(_onScrollChange);
     _playlistsPage = PlaylistsTabPage(key: _playlistsPageKey);
@@ -74,8 +61,14 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(bootstrapProvider.notifier).bootstrap();
       // Reload channels and playlists after bootstrap completes
-      ref.read(channelsProvider.notifier).loadChannels();
-      ref.read(playlistsProvider.notifier).loadPlaylists();
+      ref.read(channelsProvider(ChannelType.dp1).notifier).loadChannels();
+      ref
+          .read(channelsProvider(ChannelType.localVirtual).notifier)
+          .loadChannels();
+      ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
+      ref
+          .read(playlistsProvider(PlaylistType.addressBased).notifier)
+          .loadPlaylists();
     });
   }
 
@@ -83,7 +76,6 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
   void dispose() {
     _scrollController.removeListener(_onScrollChange);
     _scrollController.dispose();
-    _transformationController.dispose();
     super.dispose();
   }
 
@@ -100,7 +92,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         controller: _scrollController,
         floatHeaderSlivers: true,
         headerSliverBuilder: (context, innerBoxIsScrolled) {
-          const height = 43.5;
+          final height = LayoutConstants.minTouchTarget;
 
           // Search button - navigates to search screen
           final searchButton = GestureDetector(
@@ -116,10 +108,14 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
               width: LayoutConstants.minTouchTarget,
               height: LayoutConstants.minTouchTarget,
               child: Center(
-                child: Icon(
-                  Icons.search,
-                  size: LayoutConstants.iconSizeMedium,
-                  color: AppColor.white,
+                child: SvgPicture.asset(
+                  'assets/images/search.svg',
+                  width: LayoutConstants.iconSizeMedium,
+                  height: LayoutConstants.iconSizeMedium,
+                  colorFilter: const ColorFilter.mode(
+                    AppColor.white,
+                    BlendMode.srcIn,
+                  ),
                 ),
               ),
             ),
@@ -135,10 +131,14 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
               width: LayoutConstants.minTouchTarget,
               height: LayoutConstants.minTouchTarget,
               child: Center(
-                child: Icon(
-                  Icons.menu,
-                  size: LayoutConstants.iconSizeMedium,
-                  color: AppColor.white,
+                child: SvgPicture.asset(
+                  'assets/images/Drawer.svg',
+                  width: LayoutConstants.iconSizeMedium,
+                  height: LayoutConstants.iconSizeMedium,
+                  colorFilter: const ColorFilter.mode(
+                    AppColor.white,
+                    BlendMode.srcIn,
+                  ),
                 ),
               ),
             ),
@@ -163,8 +163,17 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
                         children: [
                           Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.only(top: 15),
-                              child: _buildHomeIndexHeader(),
+                              padding: EdgeInsets.only(
+                                top: LayoutConstants.space4,
+                              ),
+                              child: HomeIndexHeader(
+                                selectedTab: _selectedTab,
+                                onTabChanged: (tab) {
+                                  setState(() {
+                                    _selectedTab = tab;
+                                  });
+                                },
+                              ),
                             ),
                           ),
                           SizedBox(width: LayoutConstants.space3),
@@ -183,7 +192,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         body: SingleChildScrollView(
           child: Column(
             children: [
-              const SizedBox(height: 37),
+              SizedBox(height: LayoutConstants.space10),
               _buildContent(),
               const BottomSpacing(),
             ],
@@ -193,92 +202,124 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     );
   }
 
-  /// Home Index Header - Tab navigation matching old app design.
-  Widget _buildHomeIndexHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: HomeIndexTab.values.map((tab) {
-          final isSelected = tab == _selectedTab;
-          return GestureDetector(
-            onTap: () => setState(() {
-              _selectedTab = tab;
-            }),
-            child: Padding(
-              padding: const EdgeInsets.only(right: 11),
-              child: Text(
-                tab.label,
-                style: isSelected
-                    ? AppTypography.body(context).white
-                    : AppTypography.body(context).grey,
+  List<OptionItem> get _defaultOptions {
+    return [
+      // Scan option for debug only
+      if (kDebugMode)
+        OptionItem(
+          title: 'Scan',
+          icon: const Icon(
+            Icons.qr_code_scanner,
+            color: AppColor.white,
+          ),
+          onTap: () {
+            Navigator.of(context).pop();
+          },
+        ),
+      // FF1 Setting
+      OptionItem(
+        title: 'FF1 Art Computer',
+        icon: SvgPicture.asset(
+          'assets/images/portal_setting.svg',
+          width: LayoutConstants.iconSizeMedium,
+          height: LayoutConstants.iconSizeMedium,
+          colorFilter: const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
+        ),
+        onTap: () {
+          Navigator.of(context).pop();
+          context.go(Routes.connectedDevices);
+        },
+      ),
+      // Personal Preferences & Data, Security Management
+      OptionItem(
+        title: 'Account',
+        icon: SvgPicture.asset(
+          'assets/images/icon_account.svg',
+          width: LayoutConstants.iconSizeMedium,
+          height: LayoutConstants.iconSizeMedium,
+          colorFilter: const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
+        ),
+        onTap: () {
+          Navigator.of(context).pop();
+        },
+      ),
+      // Support & Feedback
+      OptionItem(
+        title: 'Support & Feedback',
+        icon: ValueListenableBuilder<List<int>?>(
+          valueListenable: ValueNotifier<List<int>?>(null),
+          builder:
+              (
+                BuildContext context,
+                List<int>? numberOfIssuesInfo,
+                Widget? child,
+              ) => const Icon(
+                Icons.help_outline,
+                color: AppColor.white,
               ),
+        ),
+        onTap: () async {
+          Navigator.pop(context);
+          await _contactSupport();
+        },
+      ),
+      // Release Notes
+      OptionItem(
+        title: 'Release Notes',
+        icon: SvgPicture.asset(
+          'assets/images/info.svg',
+          width: 22,
+          height: 22,
+          colorFilter: const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
+        ),
+        onTap: () {
+          Navigator.of(context).pop();
+        },
+      ),
+    ];
+  }
+
+  Widget _addAddressButton() {
+    return ElevatedButton(
+      onPressed: () {
+        Navigator.of(context).pop();
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.transparent,
+        side: BorderSide(color: PrimitivesTokens.colorsLightBlue),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(32),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SvgPicture.asset(
+            'assets/images/icon_account.svg',
+            width: LayoutConstants.iconSizeDefault,
+            height: LayoutConstants.iconSizeDefault,
+            colorFilter: const ColorFilter.mode(
+              PrimitivesTokens.colorsLightBlue,
+              BlendMode.srcIn,
             ),
-          );
-        }).toList(),
+          ),
+          SizedBox(width: LayoutConstants.space2),
+          Text(
+            'Add Address',
+            style: AppTypography.body(context).copyWith(
+              color: PrimitivesTokens.colorsLightBlue,
+            ),
+          ),
+        ],
       ),
     );
   }
 
   void _showMenu(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColor.primaryBlack,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.bluetooth, color: AppColor.white),
-                title: Text(
-                  'FF1 Test',
-                  style: AppTypography.body(context).white,
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  context.go(Routes.ff1Test);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.settings, color: AppColor.white),
-                title: Text(
-                  'Settings',
-                  style: AppTypography.body(context).white,
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.info, color: AppColor.white),
-                title: Text(
-                  'About',
-                  style: AppTypography.body(context).white,
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(
-                  Icons.email_outlined,
-                  color: AppColor.white,
-                ),
-                title: Text(
-                  'Contact Support',
-                  style: AppTypography.body(context).white,
-                ),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _contactSupport();
-                },
-              ),
-            ],
-          ),
-        );
-      },
+    UIHelper.showCenterMenu(
+      context,
+      options: _defaultOptions,
+      bottomWidget: _addAddressButton(),
     );
   }
 
@@ -303,21 +344,21 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     // Use Stack with Offstage instead of IndexedStack (matches old app)
     // Offstage keeps widgets alive (not disposed) while hiding them
     // This allows each page to have independent constraints
-    // Combined with AutomaticKeepAliveClientMixin in each page, state is
-    // preserved. Each page can determine its own height independently.
+    // Combined with AutomaticKeepAliveClientMixin in each page, state is preserved
+    // Each page can determine its own height (limited or unlimited) independently
     return Stack(
       children: [
         Offstage(
-          offstage: _selectedTab != HomeIndexTab.playlists,
+          offstage: _selectedTab != HomeIndexHeaderTab.playlists,
           child: _playlistsPage,
         ),
         Offstage(
-          offstage: _selectedTab != HomeIndexTab.channels,
-          child: _channelsPage,
+          offstage: _selectedTab != HomeIndexHeaderTab.channels,
+          child: const Center(child: Text('Channels')),
         ),
         Offstage(
-          offstage: _selectedTab != HomeIndexTab.works,
-          child: _worksPage,
+          offstage: _selectedTab != HomeIndexHeaderTab.works,
+          child: const Center(child: Text('Works')),
         ),
       ],
     );

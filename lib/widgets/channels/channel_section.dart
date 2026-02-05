@@ -1,3 +1,5 @@
+import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/channels/channel_section_header.dart';
 import 'package:flutter/material.dart';
@@ -57,9 +59,7 @@ class ChannelSection extends StatelessWidget {
 
         // Gap
         if (index == 1) {
-          return const SizedBox(
-            height: 10,
-          );
+          return SizedBox(height: LayoutConstants.space2);
         }
 
         // List items
@@ -68,7 +68,9 @@ class ChannelSection extends StatelessWidget {
 
         return ChannelListRow(
           channelData: channelData,
-          onItemTap: onChannelItemTap,
+          onItemTap: onChannelItemTap == null
+              ? null
+              : (PlaylistItem item) => onChannelItemTap!(item.id),
           scrollController: scrollController,
         );
       },

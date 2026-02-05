@@ -6,9 +6,11 @@ import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/widgets/loading_view.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 /// Search tab page with debounced search functionality.
@@ -69,7 +71,13 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
         backgroundColor: AppColor.auGreyBackground,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColor.white),
+          icon: SvgPicture.asset(
+            'assets/images/icon_back.svg',
+            width: LayoutConstants.iconSizeMedium,
+            height: LayoutConstants.iconSizeMedium,
+            colorFilter:
+                const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
@@ -95,18 +103,32 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
               filled: true,
               fillColor: AppColor.darkGrey,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius:
+                    BorderRadius.circular(LayoutConstants.space2),
                 borderSide: BorderSide.none,
               ),
-              prefixIcon: const Icon(
-                Icons.search,
-                color: AppColor.auQuickSilver,
+              prefixIcon: Padding(
+                padding: EdgeInsets.all(LayoutConstants.space3),
+                child: SvgPicture.asset(
+                  'assets/images/search.svg',
+                  width: LayoutConstants.iconSizeMedium,
+                  height: LayoutConstants.iconSizeMedium,
+                  colorFilter: const ColorFilter.mode(
+                    AppColor.auQuickSilver,
+                    BlendMode.srcIn,
+                  ),
+                ),
               ),
               suffixIcon: searchQuery.isNotEmpty
                   ? IconButton(
-                      icon: const Icon(
-                        Icons.clear,
-                        color: AppColor.auQuickSilver,
+                      icon: SvgPicture.asset(
+                        'assets/images/close.svg',
+                        width: LayoutConstants.iconSizeMedium,
+                        height: LayoutConstants.iconSizeMedium,
+                        colorFilter: const ColorFilter.mode(
+                          AppColor.auQuickSilver,
+                          BlendMode.srcIn,
+                        ),
                       ),
                       onPressed: () {
                         _searchController.clear();
@@ -151,10 +173,14 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.search,
-              size: 64,
-              color: AppColor.auQuickSilver,
+            SvgPicture.asset(
+              'assets/images/search.svg',
+              width: LayoutConstants.space16,
+              height: LayoutConstants.space16,
+              colorFilter: const ColorFilter.mode(
+                AppColor.auQuickSilver,
+                BlendMode.srcIn,
+              ),
             ),
             SizedBox(height: LayoutConstants.space4),
             Text(
@@ -180,10 +206,14 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.search_off,
-              size: 64,
-              color: AppColor.auQuickSilver,
+            SvgPicture.asset(
+              'assets/images/search_bold.svg',
+              width: LayoutConstants.space16,
+              height: LayoutConstants.space16,
+              colorFilter: const ColorFilter.mode(
+                AppColor.auQuickSilver,
+                BlendMode.srcIn,
+              ),
             ),
             SizedBox(height: LayoutConstants.space4),
             Text(
@@ -203,19 +233,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
   }
 
   Widget _buildLoading() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const CircularProgressIndicator(color: AppColor.feralFileHighlight),
-          SizedBox(height: LayoutConstants.space4),
-          Text(
-            'Searching...',
-            style: AppTypography.body(context).grey,
-          ),
-        ],
-      ),
-    );
+    return const LoadingView();
   }
 
   Widget _buildError(String error) {
@@ -225,10 +243,14 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: AppColor.error,
+            SvgPicture.asset(
+              'assets/images/warning.svg',
+              width: LayoutConstants.space12,
+              height: LayoutConstants.space12,
+              colorFilter: const ColorFilter.mode(
+                AppColor.error,
+                BlendMode.srcIn,
+              ),
             ),
             SizedBox(height: LayoutConstants.space4),
             Text(
@@ -300,13 +322,20 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
           padding: EdgeInsets.all(LayoutConstants.space3),
           decoration: BoxDecoration(
             color: AppColor.darkGrey,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(LayoutConstants.space2),
           ),
           child: Row(
             children: [
-              Icon(
-                channel.isPinned ? Icons.push_pin : Icons.rss_feed,
-                color: AppColor.feralFileLightBlue,
+              SvgPicture.asset(
+                channel.isPinned
+                    ? 'assets/images/pinned.svg'
+                    : 'assets/images/icon_series.svg',
+                width: LayoutConstants.iconSizeMedium,
+                height: LayoutConstants.iconSizeMedium,
+                colorFilter: const ColorFilter.mode(
+                  AppColor.feralFileLightBlue,
+                  BlendMode.srcIn,
+                ),
               ),
               SizedBox(width: LayoutConstants.space3),
               Expanded(
@@ -335,13 +364,18 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
           padding: EdgeInsets.all(LayoutConstants.space3),
           decoration: BoxDecoration(
             color: AppColor.darkGrey,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(LayoutConstants.space2),
           ),
           child: Row(
             children: [
-              const Icon(
-                Icons.playlist_play,
-                color: AppColor.feralFileLightBlue,
+              SvgPicture.asset(
+                'assets/images/list.svg',
+                width: LayoutConstants.iconSizeMedium,
+                height: LayoutConstants.iconSizeMedium,
+                colorFilter: const ColorFilter.mode(
+                  AppColor.feralFileLightBlue,
+                  BlendMode.srcIn,
+                ),
               ),
               SizedBox(width: LayoutConstants.space3),
               Expanded(
@@ -370,13 +404,18 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
           padding: EdgeInsets.all(LayoutConstants.space3),
           decoration: BoxDecoration(
             color: AppColor.darkGrey,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(LayoutConstants.space2),
           ),
           child: Row(
             children: [
-              const Icon(
-                Icons.image,
-                color: AppColor.feralFileLightBlue,
+              SvgPicture.asset(
+                'assets/images/artwork_item.svg',
+                width: LayoutConstants.iconSizeMedium,
+                height: LayoutConstants.iconSizeMedium,
+                colorFilter: const ColorFilter.mode(
+                  AppColor.feralFileLightBlue,
+                  BlendMode.srcIn,
+                ),
               ),
               SizedBox(width: LayoutConstants.space3),
               Expanded(

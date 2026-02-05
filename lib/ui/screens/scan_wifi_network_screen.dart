@@ -1,6 +1,10 @@
 import 'package:app/app/providers/ff1_connection_providers.dart';
+import 'package:app/design/app_typography.dart';
+import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/send_wifi_credentials_screen.dart';
+import 'package:app/widgets/loading_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -32,8 +36,13 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
     final connectionState = ref.watch(wifiConnectionProvider);
 
     return Scaffold(
+      backgroundColor: AppColor.auGreyBackground,
       appBar: AppBar(
-        title: const Text('Select WiFi Network'),
+        backgroundColor: AppColor.auGreyBackground,
+        title: Text(
+          'Select WiFi network',
+          style: AppTypography.h4(context).white,
+        ),
         elevation: 0,
       ),
       body: connectionState.status == WiFiConnectionStatus.selectingNetwork &&
@@ -57,27 +66,28 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
           children: [
             Icon(
               Icons.wifi_off,
-              size: 64,
-              color: Colors.grey[400],
+              size: LayoutConstants.space16,
+              color: AppColor.auQuickSilver,
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: LayoutConstants.space4),
             Text(
               'No WiFi Networks Found',
-              style: Theme.of(context).textTheme.titleLarge,
+              style: AppTypography.h3(context).white,
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: LayoutConstants.space2),
             Text(
               'Make sure your WiFi network is visible',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+              style: AppTypography.body(context).grey,
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: LayoutConstants.space6),
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
               },
-              child: const Text('Go Back'),
+              child: Text(
+                'Go back',
+                style: AppTypography.body(context).white,
+              ),
             ),
           ],
         ),
@@ -85,19 +95,22 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(LayoutConstants.space4),
       itemCount: networks.length,
       itemBuilder: (context, index) {
         final network = networks[index];
         return Card(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: EdgeInsets.only(bottom: LayoutConstants.space3),
           child: ListTile(
             leading: Icon(
               Icons.wifi,
-              color: Colors.blue[600],
+              color: AppColor.feralFileLightBlue,
             ),
-            title: Text(network.ssid),
-            trailing: const Icon(Icons.arrow_forward),
+            title: Text(
+              network.ssid,
+              style: AppTypography.body(context).white,
+            ),
+            trailing: const Icon(Icons.arrow_forward, color: AppColor.white),
             onTap: () {
               ref.read(wifiConnectionProvider.notifier).selectNetwork(network);
               // Navigate to password entry screen
@@ -123,17 +136,9 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
     if (state.status == WiFiConnectionStatus.connecting ||
         state.status == WiFiConnectionStatus.scanningNetworks) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(
-              state.message ?? 'Scanning networks...',
-              style: Theme.of(context).textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-          ],
+        child: LoadingWidget(
+          backgroundColor: AppColor.auGreyBackground,
+          text: state.message ?? 'Scanning networks...',
         ),
       );
     }
@@ -145,29 +150,34 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
           children: [
             Icon(
               Icons.error_outline,
-              size: 64,
-              color: Colors.red[400],
+              size: LayoutConstants.space16,
+              color: AppColor.error,
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: LayoutConstants.space4),
             Text(
               'Error Scanning Networks',
-              style: Theme.of(context).textTheme.titleLarge,
+              style: AppTypography.h3(context).white,
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: LayoutConstants.space2),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: EdgeInsets.symmetric(
+                horizontal: LayoutConstants.space6,
+              ),
               child: Text(
                 state.message ?? 'An unexpected error occurred',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: AppTypography.body(context).grey,
               ),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: LayoutConstants.space6),
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
               },
-              child: const Text('Go Back'),
+              child: Text(
+                'Go back',
+                style: AppTypography.body(context).white,
+              ),
             ),
           ],
         ),
@@ -175,7 +185,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
     }
 
     return const Center(
-      child: CircularProgressIndicator(),
+      child: LoadingView(),
     );
   }
 }

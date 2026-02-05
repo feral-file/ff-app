@@ -1,43 +1,11 @@
-import 'package:app/widgets/artwork_item.dart';
+import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/load_more_indicator.dart';
+import 'package:app/widgets/work_item_thumbnail.dart';
 import 'package:flutter/material.dart';
 
-/// Token values for DP1Carousel layout
-class DP1CarouselTokens {
-  /// Carousel item height.
-  static const double itemHeight = 285.0;
-  
-  /// Horizontal padding for carousel content.
-  static const double contentPaddingHorizontal = 12.0;
-  
-  /// Vertical padding for carousel content.
-  static const double contentPaddingVertical = 0.0;
-}
-
-/// Work item data for carousel display
-class WorkItemData {
-  /// Creates WorkItemData.
-  const WorkItemData({
-    required this.workId,
-    required this.thumbnailUrl,
-    this.title,
-    this.artist,
-  });
-
-  /// Work ID.
-  final String workId;
-  
-  /// Thumbnail image URL.
-  final String thumbnailUrl;
-  
-  /// Optional work title.
-  final String? title;
-  
-  /// Optional artist name.
-  final String? artist;
-}
-
-/// DP1 Carousel - Horizontal scrollable carousel for displaying work items
+/// DP1 Carousel - Horizontal scrollable carousel for displaying work items.
+/// Uses domain [PlaylistItem] only.
 class DP1Carousel extends StatefulWidget {
   /// Creates a DP1Carousel.
   const DP1Carousel({
@@ -49,18 +17,18 @@ class DP1Carousel extends StatefulWidget {
     super.key,
   });
 
-  /// List of work items to display.
-  final List<WorkItemData> items;
-  
+  /// List of work items to display (domain).
+  final List<PlaylistItem> items;
+
   /// Callback when an item is tapped.
-  final void Function(String workId)? onItemTap;
-  
+  final void Function(PlaylistItem item)? onItemTap;
+
   /// Optional scroll controller.
   final ScrollController? scrollController;
-  
+
   /// Whether more items are currently loading.
   final bool isLoadingMore;
-  
+
   /// Callback to trigger loading more items.
   final VoidCallback? onLoadMore;
 
@@ -99,13 +67,13 @@ class _DP1CarouselState extends State<DP1Carousel> {
 
   void _onScroll() {
     if (!mounted) return;
-    
+
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.position.pixels;
 
     // Trigger onLoadMore when scrolled to 80% of the carousel
-    if (currentScroll >= maxScroll * 0.8 && 
-        !widget.isLoadingMore && 
+    if (currentScroll >= maxScroll * 0.8 &&
+        !widget.isLoadingMore &&
         !_hasTriggeredLoadMore &&
         widget.onLoadMore != null) {
       _hasTriggeredLoadMore = true;
@@ -116,30 +84,37 @@ class _DP1CarouselState extends State<DP1Carousel> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: DP1CarouselTokens.itemHeight,
+      height: LayoutConstants.dp1CarouselHeight,
       child: CustomScrollView(
         controller: _scrollController,
         scrollDirection: Axis.horizontal,
         shrinkWrap: true,
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: DP1CarouselTokens.contentPaddingHorizontal,
-              vertical: DP1CarouselTokens.contentPaddingVertical,
+            padding: EdgeInsets.symmetric(
+              horizontal: LayoutConstants.dp1CarouselContentPaddingHorizontal,
+              vertical: LayoutConstants.dp1CarouselContentPaddingVertical,
             ),
             sliver: SliverList.builder(
               itemCount: widget.items.length,
-              itemBuilder: (context, index) => DP1ItemThumbnail(
-                item: widget.items[index],
-                onTap: () {
-                  widget.onItemTap?.call(widget.items[index].workId);
-                },
+              itemBuilder: (context, index) => Padding(
+                padding: EdgeInsets.only(
+                  right: index < widget.items.length - 1
+                      ? LayoutConstants.workThumbnailGap
+                      : 0,
+                ),
+                child: WorkItemThumbnail(
+                  item: widget.items[index],
+                  onTap: () {
+                    widget.onItemTap?.call(widget.items[index]);
+                  },
+                ),
               ),
             ),
           ),
           if (widget.isLoadingMore)
             SliverPadding(
-              padding: const EdgeInsets.only(right: 12),
+              padding: EdgeInsets.only(right: LayoutConstants.space3),
               sliver: SliverToBoxAdapter(
                 child: LoadMoreIndicator(
                   isLoadingMore: widget.isLoadingMore,

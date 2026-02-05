@@ -7,8 +7,14 @@ abstract class Routes {
   /// Channels list route path.
   static const channels = '/channels';
 
+  /// All channels route path.
+  static const allChannels = '/channels/all';
+
   /// Playlists list route path.
   static const playlists = '/playlists';
+
+  /// All playlists route path.
+  static const allPlaylists = '/playlists/all';
 
   /// Works list route path.
   static const works = '/works';
@@ -34,11 +40,17 @@ abstract class RouteNames {
   /// Channels list route name.
   static const channels = 'channels';
 
+  /// All channels route name.
+  static const allChannels = 'all-channels';
+
   /// Channel detail route name.
   static const channelDetail = 'channel-detail';
 
   /// Playlists list route name.
   static const playlists = 'playlists';
+
+  /// All playlists route name.
+  static const allPlaylists = 'all-playlists';
 
   /// Playlist detail route name.
   static const playlistDetail = 'playlist-detail';

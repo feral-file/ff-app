@@ -1,11 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
-import '../../domain/models/playlist_item.dart';
-import '../../infra/database/database_provider.dart';
-import 'mutations.dart';
+import 'package:app/app/providers/mutations.dart';
+import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/infra/database/database_provider.dart';
 
 /// Enhanced state for works with pagination support.
+/// UI uses domain [PlaylistItem] only.
 class WorksState {
   /// Creates a WorksState.
   const WorksState({
@@ -15,7 +16,7 @@ class WorksState {
     this.error,
   });
 
-  /// List of works (playlist items).
+  /// List of works (domain).
   final List<PlaylistItem> works;
 
   /// Whether there are more works to load.
@@ -93,7 +94,7 @@ class WorksNotifier extends Notifier<WorksState> {
     return WorksState.initial();
   }
 
-  /// Load all works from database.
+  /// Load all works from database (domain only).
   Future<void> loadWorks() async {
     try {
       state = WorksState.loading();

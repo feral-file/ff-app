@@ -1,5 +1,7 @@
 import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/ui/screens/all_channels_screen.dart';
+import 'package:app/ui/screens/all_playlists_screen.dart';
 import 'package:app/ui/screens/channel_detail_screen.dart';
 import 'package:app/ui/screens/connected_devices_screen.dart';
 import 'package:app/ui/screens/ff1_test_screen.dart';
@@ -30,6 +32,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const HomeIndexPage(),
       ),
 
+      // All channels route (must be defined before channel detail so "all" isn't
+      // interpreted as a channelId).
+      GoRoute(
+        path: Routes.allChannels,
+        name: RouteNames.allChannels,
+        builder: (context, state) {
+          final filterParam = state.uri.queryParameters['filter'];
+          final filter = filterParam == 'personal'
+              ? AllChannelsFilter.personal
+              : AllChannelsFilter.curated;
+          return AllChannelsScreen(filter: filter);
+        },
+      ),
+
       // Channel detail route
       GoRoute(
         path: '${Routes.channels}/:channelId',
@@ -37,6 +53,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final channelId = state.pathParameters['channelId']!;
           return ChannelDetailScreen(channelId: channelId);
+        },
+      ),
+
+      // All playlists route (must be defined before playlist detail so "all"
+      // isn't interpreted as a playlistId).
+      GoRoute(
+        path: Routes.allPlaylists,
+        name: RouteNames.allPlaylists,
+        builder: (context, state) {
+          final filterParam = state.uri.queryParameters['filter'];
+          final filter = filterParam == 'personal'
+              ? AllPlaylistsFilter.personal
+              : AllPlaylistsFilter.curated;
+          return AllPlaylistsScreen(filter: filter);
         },
       ),
 

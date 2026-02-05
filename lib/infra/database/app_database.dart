@@ -23,7 +23,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration {
@@ -33,7 +33,9 @@ class AppDatabase extends _$AppDatabase {
         await _createIndexes();
       },
       onUpgrade: (Migrator m, int from, int to) async {
-        // Future migrations will be handled here
+        if (from < 2) {
+          await m.addColumn(items, items.listArtistJson);
+        }
       },
     );
   }
@@ -408,6 +410,74 @@ class AppDatabase extends _$AppDatabase {
     } catch (e) {
       _log.warning('WAL checkpoint failed: $e');
     }
+  }
+
+  /// Get playlists by baseUrls with order (first baseUrl's playlists first),
+  /// then by createdAt ASC within each baseUrl.
+  /// Matches old repo's getPlaylistRowsByBaseUrls query.
+  /// - [baseUrls] order matters.
+  /// - [type] 0 = DP1, 1 = address (null = all).
+  /// - [offset] and [limit] for pagination.
+  Future<List<PlaylistData>> getPlaylistsByBaseUrlsOrdered({
+    required List<String> baseUrls,
+    int? type,
+    int? offset,
+    int? limit,
+  }) async {
+    if (baseUrls.isEmpty) return [];
+
+    final query = select(playlists)
+      ..where((p) =>
+          p.baseUrl.isIn(baseUrls) &
+          (type != null ? p.type.equals(type) : const Constant(true)))
+      ..orderBy([(p) => OrderingTerm.asc(p.createdAtUs)])
+      ..orderBy([(p) => OrderingTerm.asc(p.id)]);
+
+    var rows = await query.get();
+
+    // Order by baseUrls order then createdAt ASC.
+    final orderMap = <String, int>{};
+    for (var i = 0; i < baseUrls.length; i++) {
+      orderMap[baseUrls[i]] = i;
+    }
+    rows.sort((a, b) {
+      final orderA = orderMap[a.baseUrl] ?? baseUrls.length;
+      final orderB = orderMap[b.baseUrl] ?? baseUrls.length;
+      if (orderA != orderB) return orderA.compareTo(orderB);
+      return a.createdAtUs.compareTo(b.createdAtUs);
+    });
+
+    if (offset != null || limit != null) {
+      final start = offset ?? 0;
+      final end = limit != null ? start + limit : rows.length;
+      rows = rows.sublist(
+        start.clamp(0, rows.length),
+        end.clamp(0, rows.length),
+      );
+    }
+    return rows;
+  }
+
+  /// Delete all playlists of given type and baseUrl.
+  /// Matches old repo's deleteAllPlaylists(kind, baseUrl).
+  Future<int> deletePlaylistsByTypeAndBaseUrl({
+    required int type,
+    required String baseUrl,
+  }) async {
+    return (delete(playlists)
+          ..where((p) => p.type.equals(type) & p.baseUrl.equals(baseUrl)))
+        .go();
+  }
+
+  /// Delete all channels of given type and baseUrl.
+  /// Matches old repo's deleteAllChannels(kind, baseUrl).
+  Future<int> deleteChannelsByTypeAndBaseUrl({
+    required int type,
+    required String baseUrl,
+  }) async {
+    return (delete(channels)
+          ..where((c) => c.type.equals(type) & c.baseUrl.equals(baseUrl)))
+        .go();
   }
 }
 

@@ -1,0 +1,73 @@
+---
+description: When to use DP1, domain, or database models
+alwaysApply: true
+---
+
+# Model usage by layer
+
+Use the correct model type for each layer. Do not mix: e.g. do not pass DP1 or DB types into UI, and do not use domain types as wire or table row types.
+
+## 1) DP1 models — wire / feed / FF1 only
+
+**Use for:** Sending and receiving data between the app and the feed server or FF1.
+
+- Types: `DP1Playlist`, `DP1PlaylistItem`, `DP1Channel`, other `dp1_*` / `DP1*` in `domain/models/dp1/`.
+- Used in: `infra/` (feed services, API clients, protocol), and in `domain/` only for parsing/normalization.
+- **Do not:** Pass DP1 types into `ui/` or use them as the primary type in providers that drive UI.
+
+```dart
+// ✅ GOOD: Parse DP1 in infra/service, convert to domain for app/UI
+final dp1Playlist = DP1Playlist.fromJson(json);
+final playlist = convertDp1PlaylistToPlaylist(dp1Playlist);
+
+// ❌ BAD: Exposing DP1 type to UI or playlist provider
+ref.read(playlistDetailProvider(playlistId)); // must yield Playlist, not DP1Playlist
+```
+
+## 2) Domain models — UI and app logic
+
+**Use for:** Rendering UI and driving app/flow logic (Riverpod, navigation, business rules).
+
+- Types: `Channel`, `Playlist`, `PlaylistItem` (and related domain types in `domain/models/`).
+- Used in: `ui/` (widgets, screens), `app/` (providers, notifiers), and as the public type from services/repositories.
+- **Do not:** Use `ChannelData`, `PlaylistData`, `ItemData`, or any Drift row type in UI or in provider state.
+- **Exception — nested DP1:** DP1 types **inside** a domain object are acceptable (e.g. `PlaylistItem.artists` as `List<DP1Artist>?`). The rule forbids DP1 as the **primary** type (provider return type, main widget prop); not as a nested field of a domain model.
+
+```dart
+// ✅ GOOD: UI and providers use domain models
+PlaylistListRow(playlist: playlist);  // Playlist
+ref.watch(channelDetailProvider(channelId));  // AsyncValue<Channel>
+
+// ❌ BAD: Database or DP1 types in UI
+PlaylistListRow(playlistData: playlistData);  // no
+Text(dp1Playlist.title);  // no
+```
+
+## 3) Database data classes — persistence only
+
+**Use for:** Reading/writing the local database only. Do not leak outside `infra/database/` (and converters).
+
+- Types: `ChannelData`, `PlaylistData`, `ItemData` (and other `*Data` from Drift tables).
+- Used in: `infra/database/` (queries, inserts, updates), and in converters that map to/from domain models.
+- **Do not:** Return or accept `*Data` from app/ or ui/; convert to `Channel`/`Playlist`/`PlaylistItem` at the boundary.
+
+```dart
+// ✅ GOOD: DB layer uses *Data; converters produce domain types
+Future<List<Playlist>> getPlaylistsForChannel(String channelId) async {
+  final rows = await db.watchPlaylistsInChannel(channelId).first;
+  return rows.map((PlaylistData d) => playlistFromRow(d)).toList();
+}
+
+// ❌ BAD: Exposing database types to app or UI
+Stream<List<PlaylistData>> watchPlaylistsForChannel(String channelId);  // no
+```
+
+## Quick reference
+
+| Layer / use case        | Use                          | Do not use in that layer   |
+|-------------------------|------------------------------|----------------------------|
+| Feed server / FF1 I/O   | DP1 models (`DP1*`, `dp1_*`) | Domain or `*Data`          |
+| UI, providers, app flow| Domain (`Channel`, `Playlist`, `PlaylistItem`) | DP1, `*Data`   |
+| Database (Drift)        | `ChannelData`, `PlaylistData`, `ItemData`     | Domain or DP1 in table APIs |
+
+Conversion: **DP1 → domain** in infra (or domain) when receiving; **domain → *Data** only inside database/converters when persisting; ***Data → domain** when reading from DB to return to app/UI.

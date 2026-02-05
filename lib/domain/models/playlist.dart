@@ -1,3 +1,5 @@
+import 'package:app/domain/models/dp1/dp1_playlist.dart';
+
 /// Playlist (DP-1 domain object).
 /// Both personal and curated playlists are Playlists.
 /// Exhibition/Season/Program are playlistRole values (UI chrome),
@@ -69,7 +71,7 @@ class Playlist {
   final Map<String, dynamic>? defaults;
 
   /// Dynamic query configuration for fetching tokens.
-  final Map<String, dynamic>? dynamicQueries;
+  final List<DynamicQuery>? dynamicQueries;
 
   /// Owner address for address-based playlists (uppercase).
   final String? ownerAddress;
@@ -99,7 +101,7 @@ class Playlist {
     DateTime? updatedAt,
     List<String>? signatures,
     Map<String, dynamic>? defaults,
-    Map<String, dynamic>? dynamicQueries,
+    List<DynamicQuery>? dynamicQueries,
     String? ownerAddress,
     String? ownerChain,
     PlaylistSortMode? sortMode,

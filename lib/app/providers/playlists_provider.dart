@@ -1,45 +1,45 @@
 import 'dart:async';
 
+import 'package:app/app/feed/feed_registry_provider.dart';
+import 'package:app/app/providers/mutations.dart';
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:sentry/sentry.dart';
 
-import '../../domain/models/playlist.dart';
-import '../../infra/database/database_provider.dart';
-import 'mutations.dart';
-
-/// Enhanced state for playlists with curated vs personal separation.
+/// State for a single playlist type (curated or personal).
+/// Aligns with old repo: one list per PlaylistType,
+/// pagination for curated only.
 class PlaylistsState {
   /// Creates a PlaylistsState.
   const PlaylistsState({
-    required this.curatedPlaylists,
-    required this.personalPlaylists,
+    required this.playlists,
     required this.isLoading,
     required this.isLoadingMore,
     required this.hasMore,
     required this.cursor,
+    this.total,
     this.error,
   });
 
-  /// Curated playlists from DP1 feeds.
-  final List<Playlist> curatedPlaylists;
-
-  /// Personal playlists (address-based).
-  final List<Playlist> personalPlaylists;
+  /// Playlists for this type (domain).
+  final List<Playlist> playlists;
 
   /// Whether playlists are being loaded.
   final bool isLoading;
 
-  /// Whether more curated playlists are being loaded (pagination).
+  /// Whether more playlists are being loaded (pagination).
   final bool isLoadingMore;
 
-  /// Whether there are more curated playlists to load.
-  ///
-  /// Note: pagination currently applies to curated playlists only.
+  /// Whether there are more playlists to load (pagination).
   final bool hasMore;
 
-  /// Cursor for curated playlists pagination (stringified offset).
+  /// Cursor for pagination (stringified offset).
   final String? cursor;
+
+  /// Total count when known (optional, from DB/API).
+  final int? total;
 
   /// Error if loading failed.
   final String? error;
@@ -47,8 +47,7 @@ class PlaylistsState {
   /// Initial state.
   factory PlaylistsState.initial() {
     return const PlaylistsState(
-      curatedPlaylists: [],
-      personalPlaylists: [],
+      playlists: [],
       isLoading: false,
       isLoadingMore: false,
       hasMore: true,
@@ -59,8 +58,7 @@ class PlaylistsState {
   /// Loading state.
   factory PlaylistsState.loading() {
     return const PlaylistsState(
-      curatedPlaylists: [],
-      personalPlaylists: [],
+      playlists: [],
       isLoading: true,
       isLoadingMore: false,
       hasMore: true,
@@ -70,26 +68,25 @@ class PlaylistsState {
 
   /// Loaded state.
   factory PlaylistsState.loaded({
-    required List<Playlist> curated,
-    required List<Playlist> personal,
+    required List<Playlist> playlists,
     required bool hasMore,
     required String? cursor,
+    int? total,
   }) {
     return PlaylistsState(
-      curatedPlaylists: curated,
-      personalPlaylists: personal,
+      playlists: playlists,
       isLoading: false,
       isLoadingMore: false,
       hasMore: hasMore,
       cursor: cursor,
+      total: total,
     );
   }
 
   /// Error state.
   factory PlaylistsState.error(String error) {
     return PlaylistsState(
-      curatedPlaylists: [],
-      personalPlaylists: [],
+      playlists: [],
       isLoading: false,
       isLoadingMore: false,
       hasMore: false,
@@ -100,100 +97,96 @@ class PlaylistsState {
 
   /// Copy with new values.
   PlaylistsState copyWith({
-    List<Playlist>? curatedPlaylists,
-    List<Playlist>? personalPlaylists,
+    List<Playlist>? playlists,
     bool? isLoading,
     bool? isLoadingMore,
     bool? hasMore,
     String? cursor,
     bool clearCursor = false,
+    int? total,
+    bool clearTotal = false,
     String? error,
     bool clearError = false,
   }) {
     return PlaylistsState(
-      curatedPlaylists: curatedPlaylists ?? this.curatedPlaylists,
-      personalPlaylists: personalPlaylists ?? this.personalPlaylists,
+      playlists: playlists ?? this.playlists,
       isLoading: isLoading ?? this.isLoading,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       hasMore: hasMore ?? this.hasMore,
       cursor: clearCursor ? null : (cursor ?? this.cursor),
+      total: clearTotal ? null : (total ?? this.total),
       error: clearError ? null : (error ?? this.error),
     );
   }
 }
 
-/// Notifier for managing playlists state.
+/// Notifier for one playlist type (curated = dp1, personal = addressBased).
+/// Aligns with old repo: PlaylistsBloc(playlistType, total?, pageSize).
 class PlaylistsNotifier extends Notifier<PlaylistsState> {
+  PlaylistsNotifier(this._type);
+
   static const int _pageSize = 10;
   static const Duration _slowQueryThreshold = Duration(seconds: 3);
 
+  final PlaylistType _type;
   late final Logger _log;
-  StreamSubscription<List<Playlist>>? _curatedSub;
-  StreamSubscription<List<Playlist>>? _personalSub;
-  int? _curatedWatchLimit;
+  StreamSubscription<List<Playlist>>? _watchSub;
 
   @override
   PlaylistsState build() {
-    _log = Logger('PlaylistsNotifier');
+    _log = Logger('PlaylistsNotifier(${_type.name})');
     ref.onDispose(() async {
-      _log.info('Disposing PlaylistsNotifier, cancelling subscriptions');
-      await _curatedSub?.cancel();
-      await _personalSub?.cancel();
-      _curatedSub = null;
-      _personalSub = null;
+      _log.info('Disposing PlaylistsNotifier, cancelling subscription');
+      await _watchSub?.cancel();
+      _watchSub = null;
     });
 
-    // Start watching the database immediately (old repo semantics).
     _setupDatabaseWatch();
-
     return PlaylistsState.initial();
   }
 
+  /// Watch full playlist list for this type (no limit). Aligns with old repo
+  /// PlaylistsBloc: watch emits entire list so we detect new data after reload.
   void _setupDatabaseWatch() {
-    _ensureCuratedWatch(limit: _pageSize);
-
-    // Personal (address-based) playlists can change as sync runs.
-    _personalSub?.cancel();
+    _watchSub?.cancel();
     final databaseService = ref.read(databaseServiceProvider);
-    _personalSub = databaseService
-        .watchPlaylists(type: PlaylistType.addressBased)
-        .listen(_onPersonalPlaylistsChanged, onError: _onWatchError);
-  }
-
-  void _ensureCuratedWatch({required int limit}) {
-    if (_curatedWatchLimit == limit) return;
-    _curatedWatchLimit = limit;
-
-    _curatedSub?.cancel();
-    final databaseService = ref.read(databaseServiceProvider);
-    _curatedSub = databaseService
-        .watchPlaylists(type: PlaylistType.dp1, limit: limit)
-        .listen(_onCuratedPlaylistsChanged, onError: _onWatchError);
+    _watchSub = databaseService
+        .watchPlaylists(type: _type)
+        .listen(_onPlaylistsChanged, onError: _onWatchError);
   }
 
   void _onWatchError(Object error, StackTrace stack) {
     _log.warning('Database watch error', error, stack);
   }
 
-  void _onCuratedPlaylistsChanged(List<Playlist> curated) {
-    if (state.curatedPlaylists.isEmpty && !state.isLoading) {
+  /// Reacts to DB changes. [next] is the full list (watch has no limit).
+  /// Aligns with old repo: hasChanged = length/prefix diff or (more in DB and !hasMore).
+  void _onPlaylistsChanged(List<Playlist> next) {
+    if (state.playlists.isEmpty && !state.isLoading) {
       unawaited(loadPlaylists(size: _pageSize));
       return;
     }
+    final current = state.playlists;
+    final loadedLength = current.length;
+    final listenSize = loadedLength > _pageSize ? loadedLength : _pageSize;
 
-    final current = state.curatedPlaylists;
-    final hasChanged = !_samePlaylistIds(current, curated);
-    if (hasChanged && !state.isLoading && !state.isLoadingMore) {
-      final size = current.isEmpty ? _pageSize : current.length;
-      unawaited(loadPlaylists(size: size));
+    bool hasChanged =
+        (current.length != next.length) ||
+        (current.length < next.length && !state.hasMore);
+    if (!hasChanged && current.isNotEmpty && next.isNotEmpty) {
+      final n = current.length < next.length ? current.length : next.length;
+      if (n > 0 &&
+          !_samePlaylistIds(current.sublist(0, n), next.sublist(0, n))) {
+        hasChanged = true;
+      }
     }
-  }
 
-  void _onPersonalPlaylistsChanged(List<Playlist> personal) {
-    final current = state.personalPlaylists;
-    final hasChanged = !_samePlaylistIds(current, personal);
     if (hasChanged && !state.isLoading && !state.isLoadingMore) {
-      state = state.copyWith(personalPlaylists: personal);
+      if (_type == PlaylistType.dp1) {
+        unawaited(loadPlaylists(size: listenSize));
+      } else {
+        state = state.copyWith(playlists: next);
+      }
     }
   }
 
@@ -205,149 +198,127 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
     return true;
   }
 
-  /// Load playlists (curated + personal).
-  ///
-  /// Pagination applies to curated playlists. Personal playlists are loaded fully.
-  Future<void> loadPlaylists({int size = _pageSize}) async {
+  /// Load playlists for this type.
+  /// dp1 (curated): Feed Manager offset/limit. addressBased: database, all.
+  Future<void> loadPlaylists({int? size}) async {
     try {
-      _log.info('Loading playlists from database (size: $size)...');
+      final effectiveSize = size ?? _pageSize;
+      _log.info(
+        'Loading playlists (type: ${_type.name}, size: $effectiveSize)...',
+      );
       state = state.copyWith(isLoading: true, clearError: true);
 
-      final databaseService = ref.read(databaseServiceProvider);
-
-      final startTime = DateTime.now();
-      final allPlaylists = await databaseService.getAllPlaylists();
-      final duration = DateTime.now().difference(startTime);
-      if (duration > _slowQueryThreshold) {
-        _log.warning('Slow getAllPlaylists(): ${duration.inMilliseconds}ms');
-        unawaited(
-          Sentry.captureEvent(
-            SentryEvent(
-              message: SentryMessage(
-                'Slow getAllPlaylists(): ${duration.inMilliseconds}ms '
-                '(size: $size, total: ${allPlaylists.length})',
-              ),
-              level: SentryLevel.warning,
-            ),
-          ),
-        );
+      switch (_type) {
+        case PlaylistType.dp1:
+          final result = await _loadDp1Playlists(
+            offset: 0,
+            limit: effectiveSize,
+          );
+          state = PlaylistsState.loaded(
+            playlists: result.page,
+            hasMore: result.hasMore,
+            cursor: result.cursor,
+            total: null,
+          );
+          _log.info(
+            'Curated playlists: ${result.page.length}, '
+            'hasMore: ${result.hasMore}, cursor: ${result.cursor}',
+          );
+          break;
+        case PlaylistType.addressBased:
+          await _loadAddressBasedPlaylists();
+          break;
       }
-
-      _log.info('Loaded ${allPlaylists.length} total playlists from database');
-
-      // Separate curated vs personal.
-      final curatedAll =
-          allPlaylists.where((p) => p.type == PlaylistType.dp1).toList()
-            ..sort((a, b) {
-              final aUs = (a.createdAt?.microsecondsSinceEpoch) ?? 0;
-              final bUs = (b.createdAt?.microsecondsSinceEpoch) ?? 0;
-              final byTime = bUs.compareTo(aUs);
-              if (byTime != 0) return byTime;
-              return a.id.compareTo(b.id);
-            });
-
-      final end = size.clamp(0, curatedAll.length);
-      final curated = curatedAll.take(end).toList();
-      final nextCursor = end < curatedAll.length ? end.toString() : null;
-      final hasMore = nextCursor != null;
-
-      final personal = await databaseService.getAddressPlaylists();
-
-      _log.info(
-        'Curated playlists: ${curated.length}/${curatedAll.length}, '
-        'Personal playlists: ${personal.length}, hasMore: $hasMore, '
-        'cursor: $nextCursor',
-      );
-
-      _ensureCuratedWatch(
-        limit: curated.length < _pageSize ? _pageSize : curated.length,
-      );
-
-      state = PlaylistsState.loaded(
-        curated: curated,
-        personal: personal,
-        hasMore: hasMore,
-        cursor: nextCursor,
-      );
     } catch (e, stack) {
       _log.severe('Failed to load playlists', e, stack);
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
-  /// Refresh playlists.
-  Future<void> refresh() async {
-    final size = state.curatedPlaylists.isEmpty
-        ? _pageSize
-        : state.curatedPlaylists.length;
-    await loadPlaylists(size: size);
+  /// Load curated (dp1) playlists via Feed Manager with offset/limit.
+  /// Aligns with old repo: getAllCachedPlaylists(offset, limit).
+  /// Returns page and pagination info; caller sets state.
+  Future<({List<Playlist> page, bool hasMore, String? cursor})>
+  _loadDp1Playlists({required int offset, required int limit}) async {
+    final startTime = DateTime.now();
+    final feedManager = ref.read(databaseServiceProvider);
+    final refs = await feedManager.getAllPlaylists(
+      // offset: offset,
+      // limit: limit,
+    );
+    final duration = DateTime.now().difference(startTime);
+    if (duration > _slowQueryThreshold) {
+      _log.warning(
+        'Slow getAllCachedPlaylists(): ${duration.inMilliseconds}ms',
+      );
+      unawaited(
+        Sentry.captureEvent(
+          SentryEvent(
+            message: SentryMessage(
+              'Slow getAllCachedPlaylists(): ${duration.inMilliseconds}ms '
+              '(offset: $offset, limit: $limit, returned: ${refs.length})',
+            ),
+            level: SentryLevel.warning,
+          ),
+        ),
+      );
+    }
+    final page = refs.map((r) => r).toList();
+    final hasMore = page.length >= limit;
+    final nextCursor = hasMore ? (offset + page.length).toString() : null;
+    return (page: page, hasMore: hasMore, cursor: nextCursor);
   }
 
-  /// Load more curated playlists.
+  /// Load address-based (personal) playlists from database; no pagination.
+  Future<void> _loadAddressBasedPlaylists() async {
+    final databaseService = ref.read(databaseServiceProvider);
+    final personal = await databaseService.getAddressPlaylists();
+    state = PlaylistsState.loaded(
+      playlists: personal,
+      hasMore: false,
+      cursor: null,
+      total: personal.length,
+    );
+    _log.info('Personal playlists: ${personal.length}');
+  }
+
+  /// Refresh playlists.
+  Future<void> refresh() async {
+    final size = state.playlists.isEmpty ? _pageSize : state.playlists.length;
+    await loadPlaylists(size: _type == PlaylistType.dp1 ? size : null);
+  }
+
+  /// Load more playlists. Only applies to dp1 (curated); uses Feed Manager.
   Future<void> loadMore() async {
-    if (state.isLoading || state.isLoadingMore || !state.hasMore) {
+    if (_type != PlaylistType.dp1 ||
+        state.isLoading ||
+        state.isLoadingMore ||
+        !state.hasMore) {
       return;
     }
-
     final cursor = state.cursor;
-    final start = int.tryParse(cursor ?? '') ?? state.curatedPlaylists.length;
+    final start = int.tryParse(cursor ?? '') ?? state.playlists.length;
     if (start < 0) return;
 
     try {
       state = state.copyWith(isLoadingMore: true, clearError: true);
 
-      final databaseService = ref.read(databaseServiceProvider);
-      final startTime = DateTime.now();
-      final allPlaylists = await databaseService.getAllPlaylists();
-      final duration = DateTime.now().difference(startTime);
-      if (duration > _slowQueryThreshold) {
-        _log.warning(
-            'Slow getAllPlaylists() for loadMore: ${duration.inMilliseconds}ms');
-        unawaited(
-          Sentry.captureEvent(
-            SentryEvent(
-              message: SentryMessage(
-                'Slow getAllPlaylists() for loadMore: ${duration.inMilliseconds}ms '
-                '(cursor: $cursor, total: ${allPlaylists.length})',
-              ),
-              level: SentryLevel.warning,
-            ),
-          ),
-        );
-      }
-
-      final curatedAll =
-          allPlaylists.where((p) => p.type == PlaylistType.dp1).toList()
-            ..sort((a, b) {
-              final aUs = (a.createdAt?.microsecondsSinceEpoch) ?? 0;
-              final bUs = (b.createdAt?.microsecondsSinceEpoch) ?? 0;
-              final byTime = bUs.compareTo(aUs);
-              if (byTime != 0) return byTime;
-              return a.id.compareTo(b.id);
-            });
-
-      final end = (start + _pageSize).clamp(0, curatedAll.length);
-      if (start >= end) {
+      final result = await _loadDp1Playlists(offset: start, limit: _pageSize);
+      if (result.page.isEmpty) {
         state = state.copyWith(
           isLoadingMore: false,
           hasMore: false,
-          cursor: null,
+          clearCursor: true,
         );
         return;
       }
 
-      final page = curatedAll.sublist(start, end);
-      final nextCurated = [...state.curatedPlaylists, ...page];
-      final nextCursor = end < curatedAll.length ? end.toString() : null;
-      final hasMore = nextCursor != null;
-
-      _ensureCuratedWatch(limit: nextCurated.length);
-
+      final nextPlaylists = [...state.playlists, ...result.page];
       state = state.copyWith(
-        curatedPlaylists: nextCurated,
+        playlists: nextPlaylists,
         isLoadingMore: false,
-        hasMore: hasMore,
-        cursor: nextCursor,
+        hasMore: result.hasMore,
+        cursor: result.cursor,
       );
     } catch (e, stack) {
       _log.severe('Failed to load more playlists', e, stack);
@@ -356,39 +327,42 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
   }
 }
 
-/// Provider for playlists state.
-final playlistsProvider = NotifierProvider<PlaylistsNotifier, PlaylistsState>(
-  PlaylistsNotifier.new,
-);
+/// Provider for playlists state by type (dp1 = curated, addressBased = personal).
+final playlistsProvider =
+    NotifierProvider.family<PlaylistsNotifier, PlaylistsState, PlaylistType>(
+      PlaylistsNotifier.new,
+    );
 
-/// Mutation for loading playlists.
+/// Mutation for loading playlists (generic; use with specific type in UI).
 final loadPlaylistsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Mutation for refreshing playlists.
 final refreshPlaylistsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Mutation for loading more playlists.
 final loadMorePlaylistsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Provider for playlists in a specific channel.
 final playlistsByChannelProvider =
     FutureProvider.family<List<Playlist>, String>((ref, channelId) async {
-  final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService.getPlaylistsByChannel(channelId);
-});
+      final databaseService = ref.watch(databaseServiceProvider);
+      return databaseService.getPlaylistsByChannel(channelId);
+    });
 
 /// Provider for a specific playlist by ID.
-final playlistByIdProvider =
-    FutureProvider.family<Playlist?, String>((ref, playlistId) async {
+final playlistByIdProvider = FutureProvider.family<Playlist?, String>((
+  ref,
+  playlistId,
+) async {
   final databaseService = ref.watch(databaseServiceProvider);
   return databaseService.getPlaylistById(playlistId);
 });
