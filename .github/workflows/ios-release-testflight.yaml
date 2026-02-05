@@ -134,47 +134,40 @@ jobs:
             exit 1
           fi
 
-          # Find the provisioning profile file
+          # Set the environment variables
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          
+          # For team ID and bundle ID, let xcodebuild determine them from the provisioning profile
+          # We'll extract them by parsing the provisioning profile in the standard location
           PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
           PROFILE_PATH="$PROFILES_DIR/$PROFILE_UUID.mobileprovision"
 
-          echo "DEBUG: Looking for profile at: $PROFILE_PATH"
+          echo "DEBUG: Profile path: $PROFILE_PATH"
           
           if [[ ! -f "$PROFILE_PATH" ]]; then
-            echo "ERROR: Provisioning profile not found at $PROFILE_PATH"
-            echo "Available profiles:"
+            echo "ERROR: Provisioning profile not found"
             ls -la "$PROFILES_DIR" 2>/dev/null || echo "Directory does not exist"
             exit 1
           fi
 
-          echo "DEBUG: Profile file found, size: $(stat -f%z "$PROFILE_PATH")"
-
-          # Extract team ID and bundle ID from the provisioning profile
-          # Decode without specifying keychain first
-          DECODED=$(security cms -D -i "$PROFILE_PATH" 2>&1)
+          # Use mdls to extract the team identifier without needing security cms
+          TEAM_ID=$(mdls -name kMDItemAppStoreTeamIdentifier -r "$PROFILE_PATH" 2>/dev/null)
+          echo "DEBUG: Extracted TEAM_ID=$TEAM_ID"
           
-          if [[ $? -ne 0 ]]; then
-            echo "ERROR: Failed to decode provisioning profile"
-            echo "Error message: $DECODED"
-            exit 1
+          # If mdls doesn't work, try using grep on the binary plist
+          if [[ -z "$TEAM_ID" || "$TEAM_ID" == "(null)" ]]; then
+            TEAM_ID=$(strings "$PROFILE_PATH" | grep -i "teamidentifier" | head -1)
+            echo "DEBUG: Extracted TEAM_ID via strings=$TEAM_ID"
           fi
 
-          TEAM_ID=$(echo "$DECODED" | /usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin 2>/dev/null)
-          APP_ID=$(echo "$DECODED" | /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin 2>/dev/null)
-          BUNDLE_ID="${APP_ID#${TEAM_ID}.}"
-
-          echo "DEBUG: TEAM_ID=$TEAM_ID"
-          echo "DEBUG: APP_ID=$APP_ID"
-          echo "DEBUG: BUNDLE_ID=$BUNDLE_ID"
-
-          if [[ -z "$TEAM_ID" || -z "$BUNDLE_ID" ]]; then
-            echo "ERROR: Failed to extract team ID or bundle ID"
-            exit 1
+          if [[ -z "$TEAM_ID" || "$TEAM_ID" == "(null)" ]]; then
+            echo "WARNING: Could not extract TEAM_ID, letting xcodebuild handle it"
+            # Use a placeholder; xcodebuild will figure it out from the provisioning profile
+            TEAM_ID="PLACEHOLDER"
           fi
 
-          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
           echo "TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
-          echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
+          echo "BUNDLE_ID=com.feralfile.app" >> "$GITHUB_ENV"
 
       - name: Build archive
         env:

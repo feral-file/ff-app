@@ -8,9 +8,27 @@ plugins {
 import java.util.Properties
 import java.io.File
 
+// Check if signing credentials are available
+val keystoreFile = File("${rootProject.projectDir}/../release.keystore")
+val propsFile = File("${rootProject.projectDir}/../release.properties")
+var isSigningConfigValid = false
+
+if (keystoreFile.exists() && propsFile.exists()) {
+    val props = Properties()
+    propsFile.inputStream().use { props.load(it) }
+    
+    val storePassword = props.getProperty("key.store.password")
+    val keyAlias = props.getProperty("key.alias")
+    val keyPassword = props.getProperty("key.alias.password")
+    
+    if (storePassword != null && keyAlias != null && keyPassword != null) {
+        isSigningConfigValid = true
+    }
+}
+
 android {
     namespace = "com.feralfile.app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     sourceSets {
@@ -56,23 +74,13 @@ android {
 
     signingConfigs {
         create("release") {
-            val keystoreFile = File("${project.rootDir}/../release.keystore")
-            val propsFile = File("${project.rootDir}/../release.properties")
-            
-            if (keystoreFile.exists() && propsFile.exists()) {
+            if (isSigningConfigValid) {
+                storeFile = keystoreFile
                 val props = Properties()
                 propsFile.inputStream().use { props.load(it) }
-                
-                val storePassword = props.getProperty("key.store.password")
-                val keyAlias = props.getProperty("key.alias")
-                val keyPassword = props.getProperty("key.alias.password")
-                
-                if (storePassword != null && keyAlias != null && keyPassword != null) {
-                    storeFile = keystoreFile
-                    this.storePassword = storePassword
-                    this.keyAlias = keyAlias
-                    this.keyPassword = keyPassword
-                }
+                storePassword = props.getProperty("key.store.password")
+                keyAlias = props.getProperty("key.alias")
+                keyPassword = props.getProperty("key.alias.password")
             }
         }
     }
@@ -85,7 +93,9 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            if (isSigningConfigValid) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
     }
