@@ -4,6 +4,28 @@ abstract class Routes {
   /// Home route path.
   static const home = '/';
 
+  /// Onboarding route path.
+  static const onboarding = '/onboarding';
+
+  /// Onboarding introduce page route path.
+  static const onboardingIntroducePage = '/onboarding/introduce';
+
+  /// Onboarding add address page route path.
+  static const onboardingAddAddressPage = '/onboarding/add-address';
+
+  /// Onboarding setup FF1 page route path.
+  static const onboardingSetupFf1Page = '/onboarding/setup-ff1';
+
+  /// FF1 device picker page route path.
+  static const ff1DevicePickerPage = '/ff1-device-picker';
+
+  /// Handle Bluetooth device scan deeplink screen route path.
+  static const handleBluetoothDeviceScanDeeplinkScreen =
+      '/handle-bluetooth-device-scan-deeplink';
+
+  /// Add address input page route path.
+  static const addAddressInputPage = '/add-address-input';
+
   /// Channels list route path.
   static const channels = '/channels';
 
@@ -36,6 +58,28 @@ abstract class Routes {
 abstract class RouteNames {
   /// Home route name.
   static const home = 'home';
+
+  /// Onboarding route name.
+  static const onboarding = 'onboarding';
+
+  /// Onboarding introduce page route name.
+  static const onboardingIntroduce = 'onboarding-introduce';
+
+  /// Onboarding add address page route name.
+  static const onboardingAddAddress = 'onboarding-add-address';
+
+  /// Onboarding setup FF1 page route name.
+  static const onboardingSetupFf1 = 'onboarding-setup-ff1';
+
+  /// FF1 device picker page route name.
+  static const ff1DevicePicker = 'ff1-device-picker';
+
+  /// Handle Bluetooth device scan deeplink screen route name.
+  static const handleBluetoothDeviceScanDeeplinkScreen =
+      'handle-bluetooth-device-scan-deeplink';
+
+  /// Add address input page route name.
+  static const addAddressInput = 'add-address-input';
 
   /// Channels list route name.
   static const channels = 'channels';

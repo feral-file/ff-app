@@ -27,6 +27,7 @@ class Playlist {
     this.dynamicQueries,
     this.ownerAddress,
     this.ownerChain,
+    this.ownerName,
     this.sortMode = PlaylistSortMode.position,
     this.itemCount = 0,
   });
@@ -81,6 +82,9 @@ class Playlist {
 
   /// Blockchain type (e.g., "ETH", "BTC").
   final String? ownerChain;
+
+  /// Owner name
+  final String? ownerName;
 
   /// Sort mode for playlist entries.
   final PlaylistSortMode sortMode;
@@ -164,6 +168,7 @@ class Playlist {
     List<DynamicQuery>? dynamicQueries,
     String? ownerAddress,
     String? ownerChain,
+    String? ownerName,
     PlaylistSortMode? sortMode,
     int? itemCount,
   }) {
@@ -185,6 +190,7 @@ class Playlist {
       dynamicQueries: dynamicQueries ?? this.dynamicQueries,
       ownerAddress: ownerAddress ?? this.ownerAddress,
       ownerChain: ownerChain ?? this.ownerChain,
+      ownerName: ownerName ?? this.ownerName,
       sortMode: sortMode ?? this.sortMode,
       itemCount: itemCount ?? this.itemCount,
     );

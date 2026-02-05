@@ -1,12 +1,16 @@
 import 'package:app/app/route_observer.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/ui/screens/add_address_input_screen.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
 import 'package:app/ui/screens/all_playlists_screen.dart';
 import 'package:app/ui/screens/channel_detail_screen.dart';
 import 'package:app/ui/screens/connected_devices_screen.dart';
 import 'package:app/ui/screens/ff1_test_screen.dart';
 import 'package:app/ui/screens/home_index_page.dart';
+import 'package:app/ui/screens/onboarding/add_address_page.dart';
+import 'package:app/ui/screens/onboarding/introduce_page.dart';
+import 'package:app/ui/screens/onboarding/setup_ff1_page.dart';
 import 'package:app/ui/screens/playlist_detail_screen.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
 import 'package:app/ui/screens/send_wifi_credentials_screen.dart';
@@ -21,12 +25,56 @@ import 'package:go_router/go_router.dart';
 ///
 /// Note: List views (channels, playlists, works) are now tabs in HomeIndexPage.
 /// Only detail screens have dedicated routes.
-final routerProvider = Provider<GoRouter>((ref) {
+final routerProvider =
+    Provider.family<GoRouter, String>((ref, initialLocation) {
   return GoRouter(
     debugLogDiagnostics: true,
-    initialLocation: Routes.home,
+    initialLocation: initialLocation,
     observers: [routeObserver],
     routes: [
+      // Onboarding routes (multi-step)
+      GoRoute(
+        path: Routes.onboarding,
+        name: RouteNames.onboarding,
+        redirect: (context, state) {
+          // Only redirect if we're exactly at /onboarding, not at a child route
+          if (state.uri.path == Routes.onboarding) {
+            return Routes.onboardingIntroducePage;
+          }
+          return null; // No redirect for child routes
+        },
+        routes: [
+          GoRoute(
+            path: 'introduce',
+            name: RouteNames.onboardingIntroduce,
+            builder: (context, state) => IntroducePage(
+              deeplink: state.uri.queryParameters['deeplink'],
+            ),
+          ),
+          GoRoute(
+            path: 'add-address',
+            name: RouteNames.onboardingAddAddress,
+            builder: (context, state) => OnboardingAddAddressPage(
+              deeplink: state.uri.queryParameters['deeplink'],
+            ),
+          ),
+          GoRoute(
+            path: 'setup-ff1',
+            name: RouteNames.onboardingSetupFf1,
+            builder: (context, state) => OnboardingSetupFf1Page(
+              deeplink: state.uri.queryParameters['deeplink'],
+            ),
+          ),
+        ],
+      ),
+
+      // Add address input page
+      GoRoute(
+        path: Routes.addAddressInputPage,
+        name: RouteNames.addAddressInput,
+        builder: (context, state) => const AddAddressInputScreen(),
+      ),
+
       // Home route with tabs (playlists, channels, works, search)
       GoRoute(
         path: Routes.home,

@@ -1,4 +1,6 @@
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/router_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,13 +13,23 @@ class App extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final router = ref.watch(routerProvider);
+    final onboarding = ref.watch(hasSeenOnboardingProvider);
 
-    return MaterialApp.router(
-      title: 'Feral File',
-      routerConfig: router,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme(),
+    return onboarding.when(
+      loading: Container.new,
+      error: (_, __) => Container(),
+      data: (seen) {
+        final router = ref.watch(
+          routerProvider(seen ? Routes.home : Routes.onboardingIntroducePage),
+        );
+
+        return MaterialApp.router(
+          title: 'Feral File',
+          routerConfig: router,
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme(),
+        );
+      },
     );
   }
 }
