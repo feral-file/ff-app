@@ -134,6 +134,8 @@ jobs:
           echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
 
       - name: Build archive
+        env:
+          DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
         run: |
           BUILD_NAME="${{ inputs.version }}"
           BUILD_NUMBER="${{ inputs['build-number'] }}"

@@ -41,10 +41,18 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("release.keystore")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
-            keyAlias = System.getenv("KEY_ALIAS") ?: ""
-            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            val keystoreFile = file("../release.keystore")
+            if (keystoreFile.exists()) {
+                val props = java.util.Properties()
+                val propsFile = file("../release.properties")
+                if (propsFile.exists()) {
+                    props.load(propsFile.inputStream())
+                }
+                storeFile = keystoreFile
+                storePassword = props.getProperty("storePassword", "") ?: ""
+                keyAlias = props.getProperty("keyAlias", "") ?: ""
+                keyPassword = props.getProperty("keyPassword", "") ?: ""
+            }
         }
     }
 
