@@ -7,6 +7,7 @@ plugins {
 
 import java.util.Properties
 import java.io.File
+import org.gradle.api.GradleException
 
 android {
     namespace = "com.feralfile.app"
@@ -57,18 +58,40 @@ android {
     signingConfigs {
         create("release") {
             try {
-                val propsFile = File("${rootProject.projectDir}/../release.properties")
-                val keystoreFile = File("${rootProject.projectDir}/../release.keystore")
-                
-                if (propsFile.exists() && keystoreFile.exists()) {
-                    val props = Properties()
-                    propsFile.inputStream().use { props.load(it) }
-                    
-                    storeFile = keystoreFile
-                    storePassword = props.getProperty("key.store.password")
-                    keyAlias = props.getProperty("key.alias")
-                    keyPassword = props.getProperty("key.alias.password")
+                val propsFile = File(rootProject.projectDir, "release.properties")
+                val keystoreFile = File(rootProject.projectDir, "release.keystore")
+
+                val isReleaseBuildRequested = gradle.startParameter.taskNames.any {
+                    it.contains("Release", ignoreCase = true)
                 }
+
+                if (!propsFile.exists() || !keystoreFile.exists()) {
+                    val message =
+                        "Release signing files are missing. Expected android/release.properties and android/release.keystore"
+                    if (isReleaseBuildRequested) throw GradleException(message) else println("Warning: $message")
+                    return@create
+                }
+
+                val props = Properties()
+                propsFile.inputStream().use { props.load(it) }
+
+                val storePassword = props.getProperty("key.store.password")
+                val keyAlias = props.getProperty("key.alias")
+                val keyPassword = props.getProperty("key.alias.password")
+
+                if (storePassword.isNullOrBlank() || keyAlias.isNullOrBlank() || keyPassword.isNullOrBlank()) {
+                    val message =
+                        "release.properties is incomplete. Required keys: key.store.password, key.alias, key.alias.password"
+                    if (isReleaseBuildRequested) throw GradleException(message) else println("Warning: $message")
+                    return@create
+                }
+
+                storeFile = keystoreFile
+                this.storePassword = storePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            } catch (e: GradleException) {
+                throw e
             } catch (e: Exception) {
                 println("Warning: Could not load signing config: ${e.message}")
             }

@@ -16,8 +16,6 @@ on:
 jobs:
   build-upload:
     runs-on: [self-hosted, macOS]
-    env:
-      IOS_P12_PATH: mobile-signing-key-vault/ios/feralfile/appstore/Certificates.p12
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -65,70 +63,55 @@ jobs:
           cd ios/
           pod install --repo-update
 
-      - name: Clone signing vault (private repo)
+      - name: Resolve existing App Store provisioning profile
         run: |
-          git clone git@github.com:bitmark-inc/mobile-signing-key-vault.git --depth 1
+          BUNDLE_ID="com.feralfile.app"
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
 
-      - name: Get p12 base64 (from vault)
-        id: p12
-        run: |
-          if [[ ! -f "$IOS_P12_PATH" ]]; then
-            echo "Missing signing certificate at '$IOS_P12_PATH'. Ensure the signing vault is cloned."
-            exit 1
-          fi
-          echo "base64<<CERT_EOF" >> "$GITHUB_OUTPUT"
-          base64 -i "$IOS_P12_PATH" | tr -d '\n' >> "$GITHUB_OUTPUT"
-          printf '\n' >> "$GITHUB_OUTPUT"
-          echo "CERT_EOF" >> "$GITHUB_OUTPUT"
-
-      - name: Generate random keychain name
-        id: keychain
-        run: |
-          KEYCHAIN_NAME="signing_temp_$(openssl rand -hex 4)"
-          echo "name=$KEYCHAIN_NAME" >> "$GITHUB_OUTPUT"
-
-      - name: Import code signing certificates
-        uses: Apple-Actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ steps.p12.outputs.base64 }}
-          p12-password: ${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}
-          keychain: ${{ steps.keychain.outputs.name }}
-          create-keychain: true
-
-      - name: Unlock keychain for security commands
-        run: |
-          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain"
-          # Unlock keychain
-          security unlock-keychain -p "${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}" "$KEYCHAIN_PATH"
-          security list-keychains -s "$KEYCHAIN_PATH"
-
-      - name: Download provisioning profiles
-        id: profiles
-        uses: Apple-Actions/download-provisioning-profiles@v5
-        with:
-          bundle-id: 'com.feralfile.app'
-          profile-type: 'IOS_APP_STORE'
-          issuer-id: ${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}
-          api-key-id: ${{ secrets.FF_TESTFLIGHT_KEY_ID }}
-          api-private-key: ${{ secrets.FF_TESTFLIGHT_API_TOKEN }}
-
-      - name: Extract provisioning profile metadata
-        run: |
-          PROFILES='${{ steps.profiles.outputs.profiles }}'
-          
-          if [[ -z "$PROFILES" ]]; then
-            echo "No provisioning profiles downloaded"
+          if [[ ! -d "$PROFILE_DIR" ]]; then
+            echo "Provisioning profile directory not found: $PROFILE_DIR"
             exit 1
           fi
 
-          # Extract profile UDID
-          PROFILE_UUID=$(echo "$PROFILES" | jq -r '.[0].udid // empty')
-          echo "DEBUG: PROFILE_UUID=$PROFILE_UUID"
+          PROFILE_NAME=""
+          PROFILE_UUID=""
+          TEAM_ID=""
 
-          # Just store the profile UUID; xcodebuild will automatically find and use 
-          # the provisioning profiles from ~/Library/MobileDevice/Provisioning Profiles
+          shopt -s nullglob
+          for profile in "$PROFILE_DIR"/*.mobileprovision; do
+            tmp_plist="$(mktemp)"
+            if ! security cms -D -i "$profile" > "$tmp_plist" 2>/dev/null; then
+              rm -f "$tmp_plist"
+              continue
+            fi
+
+            app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$tmp_plist" 2>/dev/null || true)"
+            get_task_allow="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:get-task-allow' "$tmp_plist" 2>/dev/null || true)"
+            first_device="$(/usr/libexec/PlistBuddy -c 'Print :ProvisionedDevices:0' "$tmp_plist" 2>/dev/null || true)"
+
+            if [[ "$app_id" == *".${BUNDLE_ID}" ]] && [[ "$get_task_allow" == "false" ]] && [[ -z "$first_device" ]]; then
+              PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$tmp_plist" 2>/dev/null || true)"
+              PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$tmp_plist" 2>/dev/null || true)"
+              TEAM_ID="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$tmp_plist" 2>/dev/null || true)"
+              rm -f "$tmp_plist"
+              break
+            fi
+            rm -f "$tmp_plist"
+          done
+          shopt -u nullglob
+
+          if [[ -z "$PROFILE_NAME" || -z "$PROFILE_UUID" || -z "$TEAM_ID" ]]; then
+            echo "No matching App Store profile found for ${BUNDLE_ID} in ${PROFILE_DIR}"
+            exit 1
+          fi
+
+          echo "Using provisioning profile: $PROFILE_NAME ($PROFILE_UUID)"
+          echo "Using team: $TEAM_ID"
+
+          echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
-          echo "BUNDLE_ID=com.feralfile.app" >> "$GITHUB_ENV"
+          echo "DEVELOPMENT_TEAM=$TEAM_ID" >> "$GITHUB_ENV"
 
       - name: Build archive
         env:
@@ -141,8 +124,6 @@ jobs:
           fi
 
           ARCHIVE_PATH="$RUNNER_TEMP/Runner.xcarchive"
-          # Don't specify DEVELOPMENT_TEAM, CODE_SIGN_STYLE, or PROVISIONING_PROFILE
-          # Let xcodebuild automatically discover and use the downloaded provisioning profiles
           xcodebuild \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -152,6 +133,10 @@ jobs:
             -archivePath "$ARCHIVE_PATH" \
             FLUTTER_BUILD_NAME="$BUILD_NAME" \
             FLUTTER_BUILD_NUMBER="$BUILD_NUMBER" \
+            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE="$PROFILE_UUID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
             archive
 
           echo "ARCHIVE_PATH=$ARCHIVE_PATH" >> "$GITHUB_ENV"
@@ -169,7 +154,14 @@ jobs:
             <key>method</key>
             <string>app-store</string>
             <key>signingStyle</key>
-            <string>automatic</string>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${DEVELOPMENT_TEAM}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${BUNDLE_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
             <key>compileBitcode</key>
             <false/>
             <key>stripSwiftSymbols</key>
@@ -194,11 +186,3 @@ jobs:
           issuer-id: ${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}
           api-key-id: ${{ secrets.FF_TESTFLIGHT_KEY_ID }}
           api-private-key: ${{ secrets.FF_TESTFLIGHT_API_TOKEN }}
-
-      - name: Clean up keychain
-        if: always()
-        run: |
-          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain-db"
-          if [[ -f "$KEYCHAIN_PATH" ]]; then
-            security delete-keychain "${{ steps.keychain.outputs.name }}.keychain"
-          fi
