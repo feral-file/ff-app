@@ -4,10 +4,11 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/fetch_latest_play_build.sh <service-account-json> <package-name>
+  scripts/fetch_latest_play_build.sh <service-account-json> <package-name> [version]
 
 Example:
   scripts/fetch_latest_play_build.sh ~/Downloads/service-account.json com.feralfile.app
+  scripts/fetch_latest_play_build.sh ~/Downloads/service-account.json com.feralfile.app 1.0.8
 USAGE
 }
 
@@ -23,6 +24,7 @@ fi
 
 SERVICE_ACCOUNT_JSON="$1"
 PACKAGE_NAME="$2"
+TARGET_VERSION="${3:-}"
 TOKEN_URL="https://oauth2.googleapis.com/token"
 SCOPE="https://www.googleapis.com/auth/androidpublisher"
 
@@ -109,22 +111,53 @@ TRACKS_RESPONSE="$(curl -sS "$BASE_URL/edits/$EDIT_ID/tracks" \
 # best-effort cleanup of edit; ignore failure
 curl -sS -X DELETE "$BASE_URL/edits/$EDIT_ID" -H "Authorization: Bearer $ACCESS_TOKEN" >/dev/null 2>&1 || true
 
-printf '%s' "$TRACKS_RESPONSE" | jq -r '
-  [
-    (.tracks // [])[] as $t
-    | ($t.releases // [])[] as $r
-    | ($r.versionCodes // [])[]? as $vc
-    | {
-        code: ($vc | tonumber?),
-        track: ($t.track // ""),
-        name: ($r.name // ""),
-        status: ($r.status // "")
-      }
-  ]
-  | map(select(.code != null))
-  | if length == 0 then
-      "latest_version_code=0\nlatest_track=\nlatest_release_name=\nlatest_release_status="
+printf '%s' "$TRACKS_RESPONSE" | jq -r --arg targetVersion "$TARGET_VERSION" '
+  def to_release_entries($track):
+    [
+      (($track.releases // [])[]? | {
+        version: (.name // ""),
+        status: (.status // ""),
+        track: ($track.track // ""),
+        codes: [(.versionCodes // [])[]? | tonumber?] | map(select(. != null))
+      })
+      | .max_code = (if (.codes | length) == 0 then null else (.codes | max) end)
+    ];
+
+  def to_code_entries($releases):
+    [
+      $releases[] as $r
+      | $r.codes[]? as $c
+      | {
+          code: $c,
+          track: $r.track,
+          version: $r.version,
+          status: $r.status
+        }
+    ];
+
+  (
+    (.tracks // []) | map(select(.track == "internal")) | .[0]
+  ) as $internal_track
+  | if $internal_track == null then
+      "latest_version=0\nlatest_build_number=0\nlatest_version_code=0\nlatest_track=internal\nlatest_release_status="
     else
-      (max_by(.code) | "latest_version_code=\(.code)\nlatest_track=\(.track)\nlatest_release_name=\(.name)\nlatest_release_status=\(.status)")
+      (to_release_entries($internal_track)) as $releases
+      | if ($targetVersion | length) > 0 then
+          (to_code_entries($releases | map(select(.version == $targetVersion)))) as $entries
+          | if ($entries | length) == 0 then
+              "latest_version=\($targetVersion)\nlatest_build_number=0\nlatest_version_code=0\nlatest_track=internal\nlatest_release_status="
+            else
+              ($entries | max_by(.code)) as $latest
+              | "latest_version=\($targetVersion)\nlatest_build_number=\($latest.code)\nlatest_version_code=\($latest.code)\nlatest_track=\($latest.track)\nlatest_release_status=\($latest.status)"
+            end
+        else
+          ($releases | map(select(.max_code != null))) as $with_codes
+          | if ($with_codes | length) == 0 then
+              "latest_version=0\nlatest_build_number=0\nlatest_version_code=0\nlatest_track=internal\nlatest_release_status="
+            else
+              ($with_codes | max_by(.max_code)) as $latest_release
+              | "latest_version=\(if ($latest_release.version | length) > 0 then $latest_release.version else "0" end)\nlatest_build_number=\($latest_release.max_code)\nlatest_version_code=\($latest_release.max_code)\nlatest_track=\($latest_release.track)\nlatest_release_status=\($latest_release.status)"
+            end
+        end
     end
 '
