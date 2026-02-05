@@ -1,14 +1,12 @@
 name: Release iOS app
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       version:
         description: 'App version'
-        required: true
+        required: false
       build-number:
-        description: 'Build number (CFBundleVersion). Defaults to GitHub run number if omitted.'
+        description: 'Build number (CFBundleVersion). Defaults to latest TestFlight build + 1 if omitted.'
         required: false
       message:
         description: Change logs
@@ -27,7 +25,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: 3.38.9
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -93,13 +91,20 @@ jobs:
         with:
           p12-file-base64: ${{ steps.p12.outputs.base64 }}
           p12-password: ${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}
+          keychain-password: ${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}
           keychain: ${{ steps.keychain.outputs.name }}
           create-keychain: true
 
       - name: Unlock keychain for security commands
         run: |
-          security unlock-keychain -p "${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}" "${{ steps.keychain.outputs.name }}.keychain"
-          security list-keychains -s "${{ steps.keychain.outputs.name }}.keychain"
+          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain-db"
+          LOGIN_KEYCHAIN_PATH="$HOME/Library/Keychains/login.keychain-db"
+          # Unlock keychain
+          security unlock-keychain -p "${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          # Keep login keychain in search list so cert chain/intermediates can resolve.
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "$LOGIN_KEYCHAIN_PATH"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
 
       - name: Download provisioning profiles
         id: profiles
@@ -120,18 +125,21 @@ jobs:
             exit 1
           fi
 
-          PROFILE_UUID=$(echo "$PROFILES" | jq -r '.[0].uuid')
-          TEAM_ID=$(echo "$PROFILES" | jq -r '.[0].teamId')
-          BUNDLE_ID=$(echo "$PROFILES" | jq -r '.[0].bundleId')
+          # Extract profile UDID
+          PROFILE_UUID=$(echo "$PROFILES" | jq -r '.[0].udid // empty')
+          PROFILE_NAME=$(echo "$PROFILES" | jq -r '.[0].name // .[0].profileName // .[0].attributes.name // empty')
+          echo "DEBUG: PROFILE_UUID=$PROFILE_UUID"
+          echo "DEBUG: PROFILE_NAME=$PROFILE_NAME"
 
-          if [[ -z "$PROFILE_UUID" || -z "$TEAM_ID" || -z "$BUNDLE_ID" ]]; then
-            echo "Failed to extract provisioning profile metadata"
+          if [[ -z "$PROFILE_NAME" ]]; then
+            echo "Unable to resolve provisioning profile name from downloaded profiles output"
             exit 1
           fi
 
+          # Store profile data for explicit manual export signing.
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
-          echo "TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
-          echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "BUNDLE_ID=com.feralfile.app" >> "$GITHUB_ENV"
 
       - name: Build archive
         env:
@@ -139,11 +147,46 @@ jobs:
         run: |
           BUILD_NAME="${{ inputs.version }}"
           BUILD_NUMBER="${{ inputs['build-number'] }}"
-          if [[ -z "$BUILD_NUMBER" ]]; then
-            BUILD_NUMBER='${{ github.run_number }}'
+          if [[ -z "$BUILD_NAME" || -z "$BUILD_NUMBER" ]]; then
+            ASC_API_KEY_FILE="$(mktemp)"
+            printf '%s' "${{ secrets.FF_TESTFLIGHT_API_TOKEN }}" > "$ASC_API_KEY_FILE"
+
+            RESULT="$(bash scripts/fetch_latest_testflight_build.sh \
+              com.feralfile.app \
+              "$BUILD_NAME" \
+              "${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}" \
+              "${{ secrets.FF_TESTFLIGHT_KEY_ID }}" \
+              "$ASC_API_KEY_FILE")"
+            LATEST_VERSION="$(printf '%s\n' "$RESULT" | sed -n 's/^latest_version=//p' | head -n 1)"
+            LATEST_BUILD="$(printf '%s\n' "$RESULT" | sed -n 's/^latest_build_number=//p' | head -n 1)"
+            rm -f "$ASC_API_KEY_FILE"
+
+            if [[ -z "$LATEST_VERSION" || -z "$LATEST_BUILD" ]]; then
+              echo "Failed to parse latest_version/latest_build_number from script output:"
+              echo "$RESULT"
+              exit 1
+            fi
+
+            if [[ -z "$BUILD_NAME" ]]; then
+              BUILD_NAME="$LATEST_VERSION"
+            fi
+            if [[ -z "$BUILD_NAME" || "$BUILD_NAME" == "0" ]]; then
+              echo "Failed to resolve iOS version from TestFlight. Pass the version input explicitly."
+              exit 1
+            fi
+
+            if [[ -z "$BUILD_NUMBER" ]]; then
+              BUILD_NUMBER=$((LATEST_BUILD + 1))
+            fi
+
+            echo "Latest iOS version: $LATEST_VERSION, latest build: $LATEST_BUILD"
           fi
+          echo "Using iOS version: $BUILD_NAME"
+          echo "Using iOS build number: $BUILD_NUMBER"
 
           ARCHIVE_PATH="$RUNNER_TEMP/Runner.xcarchive"
+          # Don't specify DEVELOPMENT_TEAM, CODE_SIGN_STYLE, or PROVISIONING_PROFILE
+          # Let xcodebuild automatically discover and use the downloaded provisioning profiles
           xcodebuild \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -151,10 +194,6 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE_PATH" \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE="$PROFILE_UUID" \
             FLUTTER_BUILD_NAME="$BUILD_NAME" \
             FLUTTER_BUILD_NUMBER="$BUILD_NUMBER" \
             archive
@@ -172,15 +211,17 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store</string>
+            <string>app-store-connect</string>
             <key>signingStyle</key>
             <string>manual</string>
             <key>teamID</key>
-            <string>$TEAM_ID</string>
+            <string>X7SR8Q33RS</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
             <key>provisioningProfiles</key>
             <dict>
-              <key>$BUNDLE_ID</key>
-              <string>$PROFILE_UUID</string>
+              <key>com.feralfile.app</key>
+              <string>${PROFILE_NAME}</string>
             </dict>
             <key>compileBitcode</key>
             <false/>
@@ -203,6 +244,7 @@ jobs:
         uses: apple-actions/upload-testflight-build@v3
         with:
           app-path: ${{ env.IOS_IPA_PATH }}
+          app-type: ios
           issuer-id: ${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}
           api-key-id: ${{ secrets.FF_TESTFLIGHT_KEY_ID }}
           api-private-key: ${{ secrets.FF_TESTFLIGHT_API_TOKEN }}
