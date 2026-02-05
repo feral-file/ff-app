@@ -1,4 +1,4 @@
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -7,7 +7,7 @@ import 'package:logging/logging.dart';
 const int channelPreviewPageSize = 10;
 
 /// State for channel preview (works carousel for one channel).
-/// Replaces ChannelPreviewBloc state; uses Drift ItemData only.
+/// Uses domain [PlaylistItem] only.
 class ChannelPreviewState {
   /// Creates ChannelPreviewState.
   const ChannelPreviewState({
@@ -18,8 +18,8 @@ class ChannelPreviewState {
     this.error,
   });
 
-  /// Preview works (Drift ItemData) for the channel.
-  final List<ItemData> works;
+  /// Preview works (domain) for the channel.
+  final List<PlaylistItem> works;
 
   /// Whether there are more works to load.
   final bool hasMore;
@@ -55,7 +55,7 @@ class ChannelPreviewState {
 
   /// Loaded state.
   factory ChannelPreviewState.loaded({
-    required List<ItemData> works,
+    required List<PlaylistItem> works,
     required bool hasMore,
   }) {
     return ChannelPreviewState(
@@ -78,7 +78,7 @@ class ChannelPreviewState {
   }
 
   ChannelPreviewState copyWith({
-    List<ItemData>? works,
+    List<PlaylistItem>? works,
     bool? hasMore,
     bool? isLoading,
     bool? isLoadingMore,
@@ -104,7 +104,7 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
   late final Logger _log;
 
   /// Cached flattened list of all items for the channel (for loadMore).
-  List<ItemData>? _cachedFlattened;
+  List<PlaylistItem>? _cachedFlattened;
 
   @override
   ChannelPreviewState build() {
@@ -124,10 +124,10 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
 
     try {
       final db = ref.read(databaseServiceProvider);
-      final playlists = await db.getPlaylistsByChannelData(id);
-      final flattened = <ItemData>[];
+      final playlists = await db.getPlaylistsByChannel(id);
+      final flattened = <PlaylistItem>[];
       for (final playlist in playlists) {
-        final items = await db.getPlaylistItemsData(playlist.id);
+        final items = await db.getPlaylistItems(playlist.id);
         flattened.addAll(items);
       }
       _cachedFlattened = flattened;

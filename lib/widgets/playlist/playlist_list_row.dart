@@ -1,25 +1,29 @@
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/database_provider.dart';
+import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/dp1_carousel.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/playlist_title.dart';
-import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:riverpod/src/providers/stream_provider.dart';
 
-/// Stream of playlist items as Drift data (ItemData) for a playlist.
-final playlistItemsDataProvider =
-    StreamProvider.family<List<ItemData>, String>((ref, playlistId) {
-  final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService.watchPlaylistItemsData(playlistId);
-});
+/// Stream of playlist items (domain) for a playlist.
+final StreamProviderFamily<List<PlaylistItem>, String>
+playlistItemsStreamProvider = StreamProvider.family<List<PlaylistItem>, String>(
+  (ref, playlistId) {
+    final databaseService = ref.watch(databaseServiceProvider);
+    return databaseService.watchPlaylistItems(playlistId);
+  },
+);
 
 /// Playlist List Row - Combines list item info with carousel content.
-/// Uses only Drift models (PlaylistData, ItemData).
+/// Uses domain models (Playlist, PlaylistItem) only.
 class PlaylistRowItem extends ConsumerStatefulWidget {
   /// Creates a PlaylistRowItem.
   const PlaylistRowItem({
@@ -31,20 +35,20 @@ class PlaylistRowItem extends ConsumerStatefulWidget {
     super.key,
   });
 
-  /// Playlist to display (Drift data).
-  final PlaylistData playlist;
+  /// Playlist to display (domain).
+  final Playlist playlist;
 
   /// Optional creator name to display.
   final String? playlistCreator;
 
   /// Callback when a carousel item is tapped.
-  final void Function(ItemData item)? onItemTap;
+  final void Function(PlaylistItem item)? onItemTap;
 
   /// Optional scroll controller for carousel.
   final ScrollController? scrollController;
 
   /// Optional custom header builder.
-  final Widget? Function(PlaylistData playlist, int itemCount)? headerBuilder;
+  final Widget? Function(Playlist playlist, int itemCount)? headerBuilder;
 
   @override
   ConsumerState<PlaylistRowItem> createState() => _PlaylistRowItemState();
@@ -81,10 +85,10 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
   @override
   Widget build(BuildContext context) {
     final playlist = widget.playlist;
-    final playlistTitle = playlist.title;
+    final playlistTitle = playlist.name;
     final creator = widget.playlistCreator ?? '';
 
-    final itemsAsync = ref.watch(playlistItemsDataProvider(playlist.id));
+    final itemsAsync = ref.watch(playlistItemsStreamProvider(playlist.id));
 
     return GestureDetector(
       onTap: () {

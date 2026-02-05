@@ -2,6 +2,8 @@ import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/dp1/dp1_playlist.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/app_database.dart';
@@ -261,29 +263,23 @@ void main() {
 
     group('DP1 Playlist ingestion', () {
       test('ingestDP1Playlist creates playlist with items', () async {
-        final playlist = Playlist(
+        final dp1Playlist = DP1Playlist(
+          dpVersion: '1.0.0',
           id: 'pl_test',
-          name: 'Test Playlist',
-          type: PlaylistType.dp1,
-          sortMode: PlaylistSortMode.position,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
+          slug: 'test',
+          title: 'Test Playlist',
+          created: DateTime.now(),
+          signature: '',
+          items: [
+            DP1PlaylistItem(id: 'item_1', duration: 0, title: 'Item 1'),
+            DP1PlaylistItem(id: 'item_2', duration: 0, title: 'Item 2'),
+          ],
         );
 
-        final items = [
-          {
-            'id': 'item_1',
-            'title': 'Item 1',
-          },
-          {
-            'id': 'item_2',
-            'title': 'Item 2',
-          },
-        ];
-
         await service.ingestDP1Playlist(
-          playlist: playlist,
-          items: items,
+          playlist: dp1Playlist,
+          baseUrl: 'https://example.com',
+          tokens: null,
         );
 
         final retrievedPlaylist = await service.getPlaylistById('pl_test');

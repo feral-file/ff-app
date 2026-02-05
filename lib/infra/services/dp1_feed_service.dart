@@ -1,19 +1,23 @@
+import 'package:app/domain/models/dp1/dp1_api_responses.dart';
+import 'package:app/domain/models/dp1/dp1_playlist.dart';
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/infra/api/dp1_feed_api.dart';
+import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/database/converters.dart';
+import 'package:app/infra/database/database_service.dart';
+import 'package:app/infra/database/drift_kinds.dart';
+import 'package:app/infra/services/base_dp1_feed_service.dart';
+import 'package:app/infra/services/indexer_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
-
-import 'package:app/domain/models/dp1/dp1_api_responses.dart';
-import 'package:app/domain/models/dp1/dp1_playlist.dart';
-import 'package:app/domain/models/indexer/asset_token.dart';
-import 'package:app/infra/config/feed_config_store.dart';
-import 'package:app/infra/database/database_service.dart';
-import 'package:app/infra/services/base_dp1_feed_service.dart';
-import 'package:app/infra/services/indexer_service.dart';
 
 /// Service for fetching and ingesting DP1 playlists from feed servers.
 ///
 /// This implementation includes cache policy support (TTL + remote last-updated)
 /// and conditional authentication headers (Bearer only for POST/PUT).
+/// Cache methods return domain models; API methods return DP1.
 class DP1FeedServiceImpl extends BaseDP1FeedService {
   /// Creates a DP1FeedServiceImpl.
   DP1FeedServiceImpl({
@@ -27,7 +31,11 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
        indexerService = indexerService,
        feedConfigStore = feedConfigStore,
        apiKey = apiKey,
-       dio = dio ?? Dio() {
+       api = Dp1FeedApiImpl(
+         dio: dio ?? Dio(),
+         baseUrl: baseUrl,
+         apiKey: apiKey,
+       ) {
     log = Logger('DP1FeedServiceImpl[$baseUrl]');
   }
 
@@ -47,28 +55,15 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
   @protected
   final String apiKey;
 
-  /// Dio HTTP client.
+  /// DP1 feed API client.
   @protected
-  final Dio dio;
+  final DP1FeedApi api;
 
   /// Logger instance.
   @protected
   late final Logger log;
 
   bool _isReloadingCache = false;
-
-  /// Build HTTP headers with conditional authentication.
-  ///
-  /// Matches old repo behavior: Bearer token only for POST/PUT requests.
-  @protected
-  Map<String, String> buildHeaders(String method) {
-    final headers = <String, String>{'Content-Type': 'application/json'};
-    final upperMethod = method.toUpperCase();
-    if (upperMethod == 'POST' || upperMethod == 'PUT') {
-      headers['Authorization'] = 'Bearer $apiKey';
-    }
-    return headers;
-  }
 
   /// Check if cache should reload (TTL or remote updated).
   @visibleForTesting
@@ -123,41 +118,22 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
     try {
       log.info('Reloading cache for baseUrl=$baseUrl');
 
-      // clear the cache
       await databaseService.clearAll();
 
-      // Fetch all playlists with pagination
       var hasMore = true;
       String? cursor;
       const limit = 50;
       var totalPlaylists = 0;
 
       while (hasMore) {
-        final uri = Uri.parse('$baseUrl/api/v1/playlists');
-        final queryParams = <String, String>{
-          'limit': limit.toString(),
-          if (cursor != null) 'cursor': cursor,
-        };
-        final finalUri = uri.replace(queryParameters: queryParams);
-
-        final response = await dio.getUri<Map<String, dynamic>>(
-          finalUri,
-          options: Options(headers: buildHeaders('GET')),
-        );
-
-        if (response.statusCode != 200) {
-          throw Exception(
-            'Failed to fetch playlists: ${response.statusCode}',
-          );
-        }
-
-        final data = response.data as Map<String, dynamic>;
-        final resp = DP1PlaylistResponse.fromJson(data);
+        final resp = await api.getPlaylists(cursor: cursor, limit: limit);
 
         for (final playlist in resp.items) {
-          await ingestPlaylistFromFeedModel(
+          await databaseService.ingestDP1PlaylistWire(
             baseUrl: baseUrl,
             playlist: playlist,
+            fetchTokens: (cids) =>
+                indexerService.fetchTokensByCIDs(tokenCids: cids),
           );
         }
 
@@ -174,6 +150,105 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
     }
   }
 
+  @override
+  Future<(Playlist, List<PlaylistItem>)?> getCachedPlaylistById(
+    String id,
+  ) async {
+    final playlist = await databaseService.getPlaylistById(id);
+    if (playlist == null || playlist.baseUrl != baseUrl) return null;
+    final items = await databaseService.getPlaylistItems(id);
+    return (playlist, items);
+  }
+
+  @override
+  Future<DP1Playlist?> getPlaylistById(
+    String playlistId, {
+    bool usingCache = true,
+  }) async {
+    if (usingCache) {
+      final cached = await getCachedPlaylistById(playlistId);
+      if (cached == null) return null;
+      return DatabaseConverters.playlistAndItemsToDP1Playlist(
+        cached.$1,
+        cached.$2,
+      );
+    }
+    try {
+      return await api.getPlaylistById(playlistId);
+    } catch (e) {
+      log.info('Error fetching playlist by ID $playlistId: $e');
+      return null;
+    }
+  }
+
+  @override
+  Future<DP1PlaylistResponse> getPlaylists({
+    String? cursor,
+    int? limit,
+  }) async {
+    final resp = await api.getPlaylists(cursor: cursor, limit: limit);
+    for (final playlist in resp.items) {
+      await databaseService.ingestDP1PlaylistWire(
+        baseUrl: baseUrl,
+        playlist: playlist,
+        fetchTokens: (cids) =>
+            indexerService.fetchTokensByCIDs(tokenCids: cids),
+      );
+    }
+    return resp;
+  }
+
+  @override
+  Future<List<DP1Playlist>> getAllPlaylists() async {
+    final playlists = <DP1Playlist>[];
+    var hasMore = true;
+    String? cursor;
+    const limit = 50;
+    while (hasMore) {
+      final resp = await getPlaylists(cursor: cursor, limit: limit);
+      playlists.addAll(resp.items);
+      hasMore = resp.hasMore;
+      cursor = resp.cursor;
+    }
+    return playlists;
+  }
+
+  @override
+  Future<List<(Playlist, List<PlaylistItem>)>> getAllCachedPlaylists() async {
+    return databaseService.getPlaylistRowsWithItems(
+      kind: DriftPlaylistKind.dp1.value,
+      baseUrl: baseUrl,
+    );
+  }
+
+  @override
+  Future<bool> deletePlaylist(String id) async {
+    await api.deletePlaylist(id);
+    await databaseService.deletePlaylistById(id);
+    return true;
+  }
+
+  @override
+  Future<DP1PlaylistItemsResponse> getPlaylistItems({
+    String? cursor,
+    int? limit,
+  }) async {
+    return api.getPlaylistItems(cursor: cursor, limit: limit);
+  }
+
+  @override
+  Future<void> clearCache() async {
+    await feedConfigStore.deleteLastRefreshTime(baseUrl);
+    await databaseService.deleteAllPlaylistsByKindAndBaseUrl(
+      kind: DriftPlaylistKind.dp1.value,
+      baseUrl: baseUrl,
+    );
+    await databaseService.deleteAllChannelsByKindAndBaseUrl(
+      type: DriftChannelKind.dp1.value,
+      baseUrl: baseUrl,
+    );
+  }
+
   /// Fetch and ingest all playlists from a DP1 feed server.
   Future<int> fetchPlaylists({
     required String baseUrl,
@@ -183,34 +258,18 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
     try {
       log.info('Fetching playlists from $baseUrl');
 
-      // Build request URL
-      final uri = Uri.parse('$baseUrl/api/v1/playlists');
-      final queryParams = <String, String>{};
-      if (limit != null) queryParams['limit'] = limit.toString();
-      if (cursor != null) queryParams['cursor'] = cursor;
-
-      final finalUri = uri.replace(queryParameters: queryParams);
-      log.info('Requesting: $finalUri');
-
-      // Fetch playlists (no Bearer for GET in old repo)
-      final response = await dio.getUri<Map<String, dynamic>>(
-        finalUri,
-        options: Options(headers: buildHeaders('GET')),
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to fetch playlists: ${response.statusCode}');
-      }
-
-      final data = response.data as Map<String, dynamic>;
-      final resp = DP1PlaylistResponse.fromJson(data);
+      final resp = await api.getPlaylists(cursor: cursor, limit: limit);
 
       log.info('Fetched ${resp.items.length} playlists from feed');
 
-      // Ingest each playlist
       var ingestedCount = 0;
       for (final playlist in resp.items) {
-        await ingestPlaylistFromFeedModel(baseUrl: baseUrl, playlist: playlist);
+        await databaseService.ingestDP1PlaylistWire(
+          baseUrl: baseUrl,
+          playlist: playlist,
+          fetchTokens: (cids) =>
+              indexerService.fetchTokensByCIDs(tokenCids: cids),
+        );
         ingestedCount++;
       }
 
@@ -222,39 +281,6 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
     }
   }
 
-  /// Ingest a single DP1 playlist (wire model) into the local database.
-  ///
-  /// This mirrors the legacy mobile app behavior:
-  /// - Parse DP1 playlist/items from the feed response
-  /// - Enrich items with indexer token data (via CID) when available
-  /// - Persist playlist + items + entries
-  @protected
-  Future<void> ingestPlaylistFromFeedModel({
-    required String baseUrl,
-    required DP1Playlist playlist,
-  }) async {
-    try {
-      final cids = databaseService.extractDP1ItemCids(playlist.items);
-      List<AssetToken>? tokens;
-      if (cids.isNotEmpty) {
-        try {
-          tokens = await indexerService.fetchTokensByCIDs(tokenCids: cids);
-        } on Exception catch (e) {
-          log.warning('Failed to fetch enrichment tokens: $e');
-        }
-      }
-
-      await databaseService.ingestDP1PlaylistWire(
-        baseUrl: baseUrl,
-        playlist: playlist,
-        tokens: tokens,
-      );
-    } catch (e, stack) {
-      log.severe('Failed to ingest playlist from feed', e, stack);
-      rethrow;
-    }
-  }
-
   /// Ingest a single playlist from feed data.
   @protected
   Future<void> ingestPlaylistFromFeed({
@@ -262,8 +288,6 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
     required Map<String, dynamic> playlistJson,
   }) async {
     try {
-      // Keep the legacy Map-based ingestion API for call sites that still use
-      // raw JSON. Internally, normalize to the typed DP1 wire model.
       final typed = DP1PlaylistResponse.fromJson(
         <String, dynamic>{
           'items': [playlistJson],
@@ -272,7 +296,12 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
         },
       ).items.single;
 
-      await ingestPlaylistFromFeedModel(baseUrl: baseUrl, playlist: typed);
+      await databaseService.ingestDP1PlaylistWire(
+        baseUrl: baseUrl,
+        playlist: typed,
+        fetchTokens: (cids) =>
+            indexerService.fetchTokensByCIDs(tokenCids: cids),
+      );
     } catch (e, stack) {
       log.severe('Failed to ingest playlist from feed', e, stack);
       rethrow;
@@ -288,27 +317,7 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
     try {
       log.info('Fetching channels from $baseUrl');
 
-      // Build request URL
-      final uri = Uri.parse('$baseUrl/api/v1/channels');
-      final queryParams = <String, String>{};
-      if (limit != null) queryParams['limit'] = limit.toString();
-      if (cursor != null) queryParams['cursor'] = cursor;
-
-      final finalUri = uri.replace(queryParameters: queryParams);
-      log.info('Requesting: $finalUri');
-
-      // Fetch channels (no Bearer for GET in old repo)
-      final response = await dio.getUri<Map<String, dynamic>>(
-        finalUri,
-        options: Options(headers: buildHeaders('GET')),
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to fetch channels: ${response.statusCode}');
-      }
-
-      final data = response.data as Map<String, dynamic>;
-      final resp = DP1ChannelsResponse.fromJson(data);
+      final resp = await api.getAllChannels(cursor: cursor, limit: limit);
 
       log.info('Fetched ${resp.items.length} channels from feed');
 
@@ -335,22 +344,7 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
     try {
       log.info('Fetching channel $channelId from $baseUrl');
 
-      final uri = Uri.parse('$baseUrl/api/v1/channels/$channelId');
-      final response = await dio.getUri<Map<String, dynamic>>(
-        uri,
-        options: Options(headers: buildHeaders('GET')),
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to fetch channel: ${response.statusCode}');
-      }
-
-      final json = response.data as Map<String, dynamic>;
-      final dp1 = DP1ChannelsResponse.fromJson(<String, dynamic>{
-        'items': [json],
-        'hasMore': false,
-        'cursor': null,
-      }).items.single;
+      final dp1 = await api.getChannelById(channelId);
 
       await databaseService.ingestDP1ChannelsWire(
         baseUrl: baseUrl,

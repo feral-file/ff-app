@@ -1,7 +1,12 @@
+import 'package:app/domain/models/dp1/dp1_api_responses.dart';
+import 'package:app/domain/models/dp1/dp1_playlist.dart';
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/playlist_item.dart';
+
 /// Abstract base for DP1 feed services.
 ///
-/// Defines the contract for feed services that fetch and cache DP1 playlists
-/// and channels from feed servers.
+/// Cache methods return domain models ([Playlist], [Channel], [PlaylistItem]).
+/// API methods return DP1 wire models ([DP1Playlist], [DP1Channel], etc.).
 abstract class BaseDP1FeedService {
   /// Creates a base DP1 feed service.
   BaseDP1FeedService({required this.baseUrl});
@@ -12,15 +17,39 @@ abstract class BaseDP1FeedService {
   /// Whether this is an external (user-added) feed service.
   bool get isExternalFeedService => false;
 
+  /// Get playlist by ID (from API only).
+  Future<DP1Playlist?> getPlaylistById(
+    String playlistId, {
+    bool usingCache = true,
+  });
+
+  /// Get cached playlist by ID (domain only).
+  Future<(Playlist, List<PlaylistItem>)?> getCachedPlaylistById(String id);
+
+  /// Get all playlists with pagination.
+  Future<DP1PlaylistResponse> getPlaylists({String? cursor, int? limit});
+
+  /// Get all playlists (full fetch, from API).
+  Future<List<DP1Playlist>> getAllPlaylists();
+
+  /// Get all cached playlists from local storage (domain only).
+  Future<List<(Playlist, List<PlaylistItem>)>> getAllCachedPlaylists();
+
+  /// Delete a playlist.
+  Future<bool> deletePlaylist(String id);
+
+  /// Get playlist items with pagination.
+  Future<DP1PlaylistItemsResponse> getPlaylistItems({
+    String? cursor,
+    int? limit,
+  });
+
+  /// Clear cache for this feed service (last refresh + stored data).
+  Future<void> clearCache();
+
   /// Reload cache if needed based on policy.
-  ///
-  /// When [force] is true, the cache is always reloaded regardless of policy.
-  /// Otherwise, cache policy (TTL + remote last-updated) is evaluated.
   Future<void> reloadCacheIfNeeded({bool force = false});
 
   /// Force reload cache (ignores policy).
-  ///
-  /// Fetches all playlists and channels from the feed server and ingests
-  /// them into the database.
   Future<void> reloadCache();
 }

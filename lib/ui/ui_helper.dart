@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/work_grid_card.dart';
 import 'package:flutter/cupertino.dart';
@@ -17,10 +17,10 @@ class UIHelper {
 
   static String currentDialogTitle = '';
 
-  /// Builds a DP-1 works grid as a sliver (uses Drift ItemData).
+  /// Builds a DP-1 works grid as a sliver (domain [PlaylistItem] only).
   static SliverGrid worksSliverGrid({
-    required List<ItemData> works,
-    required void Function(ItemData item) onItemTap,
+    required List<PlaylistItem> works,
+    required void Function(PlaylistItem item) onItemTap,
   }) {
     return SliverGrid.builder(
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(

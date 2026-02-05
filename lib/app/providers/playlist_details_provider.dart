@@ -1,20 +1,21 @@
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
-/// View model for playlist details (UI uses only Drift models).
+/// View model for playlist details (domain only).
 class PlaylistDetails {
   const PlaylistDetails({
     required this.playlist,
     required this.items,
   });
 
-  /// Playlist being viewed (Drift).
-  final PlaylistData? playlist;
+  /// Playlist being viewed (domain).
+  final Playlist? playlist;
 
-  /// Works in the playlist (Drift).
-  final List<ItemData> items;
+  /// Works in the playlist (domain).
+  final List<PlaylistItem> items;
 }
 
 /// Provider for playlist details state.
@@ -24,8 +25,8 @@ final playlistDetailsProvider =
 
   try {
     final databaseService = ref.read(databaseServiceProvider);
-    final playlist = await databaseService.getPlaylistByIdData(playlistId);
-    final items = await databaseService.getPlaylistItemsData(playlistId);
+    final playlist = await databaseService.getPlaylistById(playlistId);
+    final items = await databaseService.getPlaylistItems(playlistId);
     return PlaylistDetails(playlist: playlist, items: items);
   } catch (e, stack) {
     log.severe('Failed to load playlist details for $playlistId', e, stack);

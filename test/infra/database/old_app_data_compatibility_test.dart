@@ -19,7 +19,7 @@ void main() {
     setUp(() async {
       final tempDir = Directory.systemTemp.createTempSync('drift_test');
       dbPath = p.join(tempDir.path, 'playlist_cache.sqlite');
-      
+
       final executor = NativeDatabase(
         File(dbPath),
         setup: (rawDb) {
@@ -27,7 +27,7 @@ void main() {
           rawDb.execute('PRAGMA busy_timeout = 5000');
         },
       );
-      
+
       db = AppDatabase.forTesting(executor);
       service = DatabaseService(db);
     });
@@ -340,10 +340,12 @@ void main() {
       await service.ingestChannel(channel);
 
       // Read using raw SQL (as old app would)
-      final result = await db.customSelect(
-        'SELECT * FROM channels WHERE id = ?',
-        variables: [Variable.withString('ch_new_test')],
-      ).getSingle();
+      final result = await db
+          .customSelect(
+            'SELECT * FROM channels WHERE id = ?',
+            variables: [Variable.withString('ch_new_test')],
+          )
+          .getSingle();
 
       expect(result.data['id'], equals('ch_new_test'));
       expect(result.data['type'], equals(0)); // DP1
@@ -353,7 +355,7 @@ void main() {
       expect(result.data['curator'], equals('New Curator'));
       expect(result.data['summary'], equals('New summary'));
       expect(result.data['sort_order'], equals(2));
-      
+
       // Verify timestamps are stored as INTEGER (microseconds)
       expect(result.data['created_at_us'], isA<int>());
       expect(result.data['updated_at_us'], isA<int>());
@@ -362,9 +364,9 @@ void main() {
     test('timestamp values are compatible', () async {
       // Old app stored timestamps as INTEGER (microseconds since epoch)
       // New app uses Int64Column which also stores as INTEGER in SQLite
-      
+
       final testTimestamp = DateTime(2024, 1, 1).microsecondsSinceEpoch;
-      
+
       // Write using new app
       await db.customStatement('''
         INSERT INTO channels (
@@ -386,7 +388,7 @@ void main() {
       ''');
 
       final channel = await service.getChannelById('ch_timestamp_test');
-      
+
       expect(channel, isNotNull);
       expect(
         channel!.createdAt?.microsecondsSinceEpoch,
@@ -400,7 +402,7 @@ void main() {
 
     test('composite primary key in playlist_entries works', () async {
       // Old app uses (playlist_id, item_id) as composite primary key
-      
+
       await db.customStatement('''
         INSERT INTO playlists (
           id, channel_id, type, base_url, dp_version, slug, title,
@@ -486,7 +488,7 @@ void main() {
     test('JSON fields are compatible', () async {
       // Old app stored JSON as TEXT
       // Verify we can read and parse correctly
-      
+
       await db.customStatement('''
         INSERT INTO playlists (
           id, channel_id, type, base_url, dp_version, slug, title,
@@ -520,8 +522,8 @@ void main() {
       expect(playlist.defaults?['color'], equals('red'));
       expect(playlist.defaults?['size'], equals(100));
       expect(
-        playlist.dynamicQueries?['query'],
-        equals('SELECT * FROM tokens'),
+        playlist.dynamicQueries?.first.endpoint,
+        equals('https://indexer.com/graphql'),
       );
     });
 

@@ -2,6 +2,7 @@ import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/error_view.dart';
@@ -143,14 +144,13 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
                 );
               }
 
-              // ChannelData (Drift): title, summary
               final rowData = channels
                   .map(
                     (c) => ChannelRowData(
                       channelId: c.id,
-                      channelTitle: c.title,
-                      channelSummary: c.summary,
-                      works: const [],
+                      channelTitle: c.name,
+                      channelSummary: c.description,
+                      works: const <PlaylistItem>[],
                     ),
                   )
                   .toList();

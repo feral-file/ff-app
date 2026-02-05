@@ -1,7 +1,7 @@
 import 'package:app/app/providers/channel_preview_provider.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/channel_item.dart';
 import 'package:app/widgets/dp1_carousel.dart';
@@ -9,8 +9,7 @@ import 'package:app/widgets/loading_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Data model for a channel row.
-/// Uses Drift ItemData for works.
+/// Data model for a channel row (domain only).
 class ChannelRowData {
   /// Creates ChannelRowData.
   const ChannelRowData({
@@ -29,9 +28,9 @@ class ChannelRowData {
   /// Optional channel summary.
   final String? channelSummary;
 
-  /// List of works in this channel (Drift ItemData).
+  /// List of works in this channel (domain).
   /// When empty, [ChannelListRow] loads preview via [channelPreviewProvider].
-  final List<ItemData> works;
+  final List<PlaylistItem> works;
 }
 
 /// Channel List Row - Combines channel info with carousel of works.
@@ -50,7 +49,7 @@ class ChannelListRow extends ConsumerStatefulWidget {
   final ChannelRowData channelData;
 
   /// Callback when a work item is tapped.
-  final void Function(ItemData item)? onItemTap;
+  final void Function(PlaylistItem item)? onItemTap;
 
   /// Optional scroll controller.
   final ScrollController? scrollController;

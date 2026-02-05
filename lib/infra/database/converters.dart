@@ -1,12 +1,17 @@
 import 'dart:convert';
 
+import 'package:app/domain/extensions/asset_token_ext.dart';
+import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/dp1/dp1_channel.dart';
+import 'package:app/domain/models/dp1/dp1_manifest.dart';
+import 'package:app/domain/models/dp1/dp1_playlist.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/dp1/dp1_provenance.dart';
+import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/infra/database/app_database.dart';
 import 'package:drift/drift.dart';
-
-import '../../domain/models/channel.dart';
-import '../../domain/models/dp1/dp1_manifest.dart';
-import '../../domain/models/playlist.dart';
-import '../../domain/models/playlist_item.dart';
-import 'app_database.dart';
 
 /// Converts between domain models and database models.
 class DatabaseConverters {
@@ -71,12 +76,13 @@ class DatabaseConverters {
       }
     }
 
-    Map<String, dynamic>? dynamicQueries;
+    List<DynamicQuery>? dynamicQueries;
     if (data.dynamicQueriesJson != null &&
         data.dynamicQueriesJson!.isNotEmpty) {
       try {
-        dynamicQueries =
-            jsonDecode(data.dynamicQueriesJson!) as Map<String, dynamic>;
+        dynamicQueries = (jsonDecode(data.dynamicQueriesJson!) as List)
+            .map((e) => DynamicQuery.fromJson(e as Map<String, dynamic>))
+            .toList();
       } catch (_) {
         // Ignore parsing errors
       }
@@ -108,8 +114,9 @@ class DatabaseConverters {
         ? jsonEncode(playlist.signatures)
         : jsonEncode([]);
 
-    final defaultsJson =
-        playlist.defaults != null ? jsonEncode(playlist.defaults) : null;
+    final defaultsJson = playlist.defaults != null
+        ? jsonEncode(playlist.defaults)
+        : null;
 
     final dynamicQueriesJson = playlist.dynamicQueries != null
         ? jsonEncode(playlist.dynamicQueries)
@@ -221,20 +228,23 @@ class DatabaseConverters {
 
   /// Convert PlaylistItem domain model to ItemsCompanion.
   static ItemsCompanion playlistItemToCompanion(PlaylistItem item) {
-    final provenanceJson =
-        item.provenance != null ? jsonEncode(item.provenance) : null;
+    final provenanceJson = item.provenance != null
+        ? jsonEncode(item.provenance)
+        : null;
 
-    final reproJson =
-        item.reproduction != null ? jsonEncode(item.reproduction) : null;
+    final reproJson = item.reproduction != null
+        ? jsonEncode(item.reproduction)
+        : null;
 
-    final overrideJson =
-        item.override != null ? jsonEncode(item.override) : null;
+    final overrideJson = item.override != null
+        ? jsonEncode(item.override)
+        : null;
 
-    final displayJson =
-        item.display != null ? jsonEncode(item.display) : null;
+    final displayJson = item.display != null ? jsonEncode(item.display) : null;
 
-    final tokenDataJson =
-        item.tokenData != null ? jsonEncode(item.tokenData) : null;
+    final tokenDataJson = item.tokenData != null
+        ? jsonEncode(item.tokenData)
+        : null;
 
     final listArtistJson = item.artists != null && item.artists!.isNotEmpty
         ? jsonEncode(item.artists!.map((e) => e.toJson()).toList())
@@ -276,6 +286,150 @@ class DatabaseConverters {
       sortKeyUs: BigInt.from(sortKeyUs),
       updatedAtUs: BigInt.from(DateTime.now().microsecondsSinceEpoch),
       position: Value(position),
+    );
+  }
+
+  /// Convert ItemData to DP1PlaylistItem (wire model).
+  /// Matches old repo's DP1ItemExtension.fromItemRow / DP1 playlist item shape.
+  static DP1PlaylistItem itemDataToDP1PlaylistItem(ItemData data) {
+    final playlistItem = itemDataToDomain(data);
+    return playlistItemToDP1PlaylistItem(playlistItem);
+  }
+
+  /// Convert PlaylistItem (domain) to DP1PlaylistItem (wire).
+  static DP1PlaylistItem playlistItemToDP1PlaylistItem(PlaylistItem item) {
+    return DP1PlaylistItem(
+      id: item.id,
+      title: item.title,
+      source: item.sourceUri,
+      duration: item.durationSec ?? 0,
+      license: item.license != null
+          ? ArtworkDisplayLicense.fromString(item.license!)
+          : null,
+      ref: item.refUri,
+      provenance: item.provenance != null
+          ? DP1Provenance.fromJson(item.provenance!)
+          : null,
+      repro: item.reproduction != null
+          ? ReproBlock.fromJson(item.reproduction!)
+          : null,
+      display: item.display != null
+          ? DP1PlaylistDisplay.fromJson(item.display!)
+          : null,
+    );
+  }
+
+  /// Convert Playlist + items (domain) to DP1Playlist (wire).
+  /// Used when feed service returns cached domain and caller needs DP1.
+  static DP1Playlist playlistAndItemsToDP1Playlist(
+    Playlist playlist,
+    List<PlaylistItem> items,
+  ) {
+    final dp1Items = items.map(playlistItemToDP1PlaylistItem).toList();
+    return DP1Playlist(
+      dpVersion: playlist.dpVersion ?? '1.0.0',
+      id: playlist.id,
+      slug: playlist.slug ?? 'slug',
+      title: playlist.name,
+      created: playlist.createdAt ?? DateTime.now(),
+      defaults: playlist.defaults,
+      items: dp1Items,
+      signature: playlist.signatures?.isNotEmpty == true
+          ? playlist.signatures!.first
+          : '',
+      dynamicQueries: const [],
+    );
+  }
+
+  /// Convert PlaylistData + items to DP1Playlist (wire model).
+  /// Matches old repo's _addressPlaylistRowToModel for DP1 playlists.
+  static DP1Playlist playlistDataAndItemsToDP1Playlist(
+    PlaylistData data,
+    List<ItemData> items,
+  ) {
+    final playlistItems = items.map(itemDataToDomain).toList();
+    final playlist = playlistDataToDomain(data);
+    return playlistAndItemsToDP1Playlist(playlist, playlistItems);
+  }
+
+  /// Convert DP1Playlist (wire) to Playlist domain model.
+  /// Used when creating PlaylistReference from API response.
+  static Playlist dp1PlaylistToDomain(DP1Playlist dp1, {String? baseUrl}) {
+    final dynamicQueries = dp1.dynamicQueries;
+    final sortMode = dynamicQueries.isNotEmpty
+        ? PlaylistSortMode.provenance
+        : PlaylistSortMode.position;
+    return Playlist(
+      id: dp1.id,
+      name: dp1.title,
+      type: PlaylistType.dp1,
+      playlistSource: PlaylistSource.curated,
+      baseUrl: baseUrl,
+      dpVersion: dp1.dpVersion,
+      slug: dp1.slug,
+      createdAt: dp1.created,
+      updatedAt: dp1.created,
+      signatures: dp1.signature.isNotEmpty ? <String>[dp1.signature] : null,
+      defaults: dp1.defaults,
+      dynamicQueries: dynamicQueries,
+      sortMode: sortMode,
+      itemCount: dp1.items.length,
+    );
+  }
+
+  /// Convert DP1PlaylistItem (wire) to PlaylistItem domain model.
+  /// When [token] is provided, thumbnail and artists are taken from the token;
+  /// otherwise they are null.
+  static PlaylistItem dp1PlaylistItemToPlaylistItem(
+    DP1PlaylistItem item, {
+    AssetToken? token,
+  }) {
+    final thumbnailUrl = token?.getGalleryThumbnailUrl();
+    final artists = token?.metadata?.artists
+        ?.map((a) => DP1Artist(name: a.name, id: a.did))
+        .toList();
+
+    return PlaylistItem(
+      id: item.id,
+      kind: PlaylistItemKind.dp1Item,
+      title: item.title ?? 'Untitled',
+      sourceUri: item.source,
+      refUri: item.ref,
+      license: item.license?.value,
+      durationSec: item.duration,
+      provenance: item.provenance?.toJson(),
+      reproduction: item.repro?.toJson(),
+      display: item.display?.toJson(),
+      thumbnailUrl: thumbnailUrl,
+      artists: artists,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  /// Convert ChannelData + playlist full URLs to DP1Channel (wire model).
+  /// Matches old repo's Channel in ChannelReference.
+  static DP1Channel channelDataToDP1Channel(
+    ChannelData data,
+    List<String> playlistUrls,
+  ) {
+    final channel = channelDataToDomain(data);
+    return channelToDP1Channel(channel, playlistUrls);
+  }
+
+  /// Convert Channel (domain) to DP1Channel (wire).
+  static DP1Channel channelToDP1Channel(
+    Channel channel,
+    List<String> playlistUrls,
+  ) {
+    return DP1Channel(
+      id: channel.id,
+      slug: channel.slug ?? '',
+      title: channel.name,
+      curator: channel.curator,
+      summary: channel.description,
+      playlists: playlistUrls,
+      created: channel.createdAt ?? DateTime.now(),
+      coverImage: channel.coverImageUrl,
     );
   }
 }

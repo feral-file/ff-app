@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:app/app/providers/mutations.dart';
 import 'package:app/domain/models/channel.dart';
-import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -22,8 +21,8 @@ class ChannelsState {
     this.error,
   });
 
-  /// Channels for this type (Drift data).
-  final List<ChannelData> channels;
+  /// Channels for this type (domain).
+  final List<Channel> channels;
 
   /// Whether channels are being loaded.
   final bool isLoading;
@@ -67,7 +66,7 @@ class ChannelsState {
 
   /// Loaded state.
   factory ChannelsState.loaded({
-    required List<ChannelData> channels,
+    required List<Channel> channels,
     required bool hasMore,
     required String? cursor,
     int? total,
@@ -96,7 +95,7 @@ class ChannelsState {
 
   /// Copy with new values.
   ChannelsState copyWith({
-    List<ChannelData>? channels,
+    List<Channel>? channels,
     bool? isLoading,
     bool? isLoadingMore,
     bool? hasMore,
@@ -128,7 +127,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 
   final ChannelType _type;
   late final Logger _log;
-  StreamSubscription<List<ChannelData>>? _watchSub;
+  StreamSubscription<List<Channel>>? _watchSub;
   int? _watchLimit;
 
   @override
@@ -140,7 +139,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       _watchSub = null;
     });
 
-    _setupDatabaseWatch();
+    // _setupDatabaseWatch();
     return ChannelsState.initial();
   }
 
@@ -152,7 +151,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       _watchLimit = null;
       final databaseService = ref.read(databaseServiceProvider);
       _watchSub = databaseService
-          .watchChannelsData(type: _type)
+          .watchChannels(type: _type)
           .listen(_onChannelsChanged, onError: _onWatchError);
     }
   }
@@ -163,7 +162,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
     _watchSub?.cancel();
     final databaseService = ref.read(databaseServiceProvider);
     _watchSub = databaseService
-        .watchChannelsData(type: _type, limit: limit)
+        .watchChannels(type: _type, limit: limit)
         .listen(_onChannelsChanged, onError: _onWatchError);
   }
 
@@ -171,7 +170,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
     _log.warning('Database watch error', error, stack);
   }
 
-  void _onChannelsChanged(List<ChannelData> next) {
+  void _onChannelsChanged(List<Channel> next) {
     if (state.channels.isEmpty && !state.isLoading) {
       unawaited(loadChannels(size: _pageSize));
       return;
@@ -188,7 +187,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
     }
   }
 
-  bool _sameChannelIds(List<ChannelData> a, List<ChannelData> b) {
+  bool _sameChannelIds(List<Channel> a, List<Channel> b) {
     if (a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
       if (a[i].id != b[i].id) return false;
@@ -207,10 +206,12 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       state = state.copyWith(isLoading: true, clearError: true);
 
       final databaseService = ref.read(databaseServiceProvider);
-      final allChannels = await databaseService.getAllChannelsData();
+      final allChannels = await databaseService.getChannels();
 
       if (_type == ChannelType.dp1) {
-        final curatedAll = allChannels.where((c) => c.type == 0).toList();
+        final curatedAll = allChannels
+            .where((c) => c.type == ChannelType.dp1)
+            .toList();
         final end = effectiveSize.clamp(0, curatedAll.length);
         final page = curatedAll.take(end).toList();
         final nextCursor = end < curatedAll.length ? end.toString() : null;
@@ -229,7 +230,9 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
           'hasMore: $hasMore, cursor: $nextCursor',
         );
       } else {
-        final personalAll = allChannels.where((c) => c.type == 1).toList();
+        final personalAll = allChannels
+            .where((c) => c.type == ChannelType.localVirtual)
+            .toList();
         state = ChannelsState.loaded(
           channels: personalAll,
           hasMore: false,
@@ -266,8 +269,10 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       state = state.copyWith(isLoadingMore: true, clearError: true);
 
       final databaseService = ref.read(databaseServiceProvider);
-      final allChannels = await databaseService.getAllChannelsData();
-      final curatedAll = allChannels.where((c) => c.type == 0).toList();
+      final allChannels = await databaseService.getChannels();
+      final curatedAll = allChannels
+          .where((c) => c.type == ChannelType.dp1)
+          .toList();
 
       final end = (start + _pageSize).clamp(0, curatedAll.length);
       if (start >= end) {
@@ -302,30 +307,32 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 /// Provider for channels state by type (dp1 = curated, localVirtual = personal).
 final channelsProvider =
     NotifierProvider.family<ChannelsNotifier, ChannelsState, ChannelType>(
-  ChannelsNotifier.new,
-);
+      ChannelsNotifier.new,
+    );
 
 /// Mutation for loading channels (generic; use with specific type in UI).
 final loadChannelsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Mutation for refreshing channels.
 final refreshChannelsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Mutation for loading more channels.
 final loadMoreChannelsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Provider for a specific channel by ID.
-final channelByIdProvider =
-    FutureProvider.family<Channel?, String>((ref, channelId) async {
+final channelByIdProvider = FutureProvider.family<Channel?, String>((
+  ref,
+  channelId,
+) async {
   final databaseService = ref.watch(databaseServiceProvider);
   return databaseService.getChannelById(channelId);
 });

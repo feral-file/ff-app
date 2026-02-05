@@ -1,5 +1,5 @@
 import 'package:app/design/layout_constants.dart';
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/gallery_thumbnail_widgets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -10,7 +10,7 @@ import 'package:logging/logging.dart';
 final _log = Logger('WorkItemThumbnail');
 
 /// Work item thumbnail used in DP-1 carousels.
-/// Uses Drift ItemData only.
+/// Uses domain [PlaylistItem] only.
 class WorkItemThumbnail extends StatelessWidget {
   /// Creates a [WorkItemThumbnail].
   const WorkItemThumbnail({
@@ -19,8 +19,8 @@ class WorkItemThumbnail extends StatelessWidget {
     super.key,
   });
 
-  /// Work item (Drift ItemData).
-  final ItemData item;
+  /// Work item (domain).
+  final PlaylistItem item;
 
   /// Optional tap handler.
   final VoidCallback? onTap;
@@ -50,7 +50,7 @@ class WorkItemThumbnail extends StatelessWidget {
   }
 
   Widget _buildThumbnail() {
-    final thumbnailUrl = item.thumbnailUri;
+    final thumbnailUrl = item.thumbnailUrl;
     if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
       _log.info('Thumbnail URL is empty for work: ${item.id}');
       return const _NoThumbnail();

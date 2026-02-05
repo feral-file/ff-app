@@ -33,6 +33,7 @@ class FeedConfigStore {
 
   static const _fileName = 'feed_config.json';
   static const _lastRefreshTimeByUrlKey = 'lastRefreshTimeByUrl';
+  static const _globalLastRefreshEpochKey = '_globalLastRefreshEpoch';
   static const _cacheDurationSecondsKey = 'cacheDurationSeconds';
   static const _lastFeedUpdatedAtKey = 'lastFeedUpdatedAt';
 
@@ -90,9 +91,18 @@ class FeedConfigStore {
 
   /// Gets the last refresh time for a specific baseUrl.
   ///
-  /// Returns [DateTime(1970)] if no refresh time is recorded.
+  /// If [setLastTimeRefreshFeeds] was used (global epoch), that value is
+  /// returned for any baseUrl. Otherwise returns per-url value or 1970.
   Future<DateTime> getLastRefreshTime(String baseUrl) async {
     final config = await _readConfig();
+    final globalStr = config[_globalLastRefreshEpochKey] as String?;
+    if (globalStr != null) {
+      try {
+        return DateTime.parse(globalStr);
+      } on FormatException {
+        // fall through to per-url
+      }
+    }
     final map = config[_lastRefreshTimeByUrlKey] as Map<String, dynamic>?;
     if (map == null) {
       return DateTime(1970);
@@ -108,12 +118,33 @@ class FeedConfigStore {
     }
   }
 
+  /// Sets a global last-refresh epoch so all baseUrls are considered stale.
+  /// Matches old repo's ConfigurationService.setLastTimeRefreshFeeds(DateTime(1970)).
+  Future<void> setLastTimeRefreshFeeds(DateTime time) async {
+    final config = await _readConfig();
+    config[_globalLastRefreshEpochKey] = time.toIso8601String();
+    await _writeConfig(config);
+  }
+
   /// Sets the last refresh time for a specific baseUrl.
+  /// Clears global epoch so per-url values are used again.
   Future<void> setLastRefreshTime(String baseUrl, DateTime time) async {
     final config = await _readConfig();
+    config.remove(_globalLastRefreshEpochKey);
     final map = config[_lastRefreshTimeByUrlKey] as Map<String, dynamic>? ??
         <String, dynamic>{};
     map[baseUrl] = time.toIso8601String();
+    config[_lastRefreshTimeByUrlKey] = map;
+    await _writeConfig(config);
+  }
+
+  /// Deletes the last refresh time for a specific baseUrl.
+  /// Matches old repo's ConfigurationService.deleteDp1LastTimeRefreshFeedByUrl.
+  Future<void> deleteLastRefreshTime(String baseUrl) async {
+    final config = await _readConfig();
+    final map = config[_lastRefreshTimeByUrlKey] as Map<String, dynamic>? ??
+        <String, dynamic>{};
+    map.remove(baseUrl);
     config[_lastRefreshTimeByUrlKey] = map;
     await _writeConfig(config);
   }

@@ -1,11 +1,11 @@
 import 'package:app/design/layout_constants.dart';
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/load_more_indicator.dart';
 import 'package:app/widgets/work_item_thumbnail.dart';
 import 'package:flutter/material.dart';
 
 /// DP1 Carousel - Horizontal scrollable carousel for displaying work items.
-/// Uses Drift ItemData only.
+/// Uses domain [PlaylistItem] only.
 class DP1Carousel extends StatefulWidget {
   /// Creates a DP1Carousel.
   const DP1Carousel({
@@ -17,11 +17,11 @@ class DP1Carousel extends StatefulWidget {
     super.key,
   });
 
-  /// List of work items to display (Drift ItemData).
-  final List<ItemData> items;
+  /// List of work items to display (domain).
+  final List<PlaylistItem> items;
 
   /// Callback when an item is tapped.
-  final void Function(ItemData item)? onItemTap;
+  final void Function(PlaylistItem item)? onItemTap;
 
   /// Optional scroll controller.
   final ScrollController? scrollController;

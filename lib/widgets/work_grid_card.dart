@@ -1,6 +1,6 @@
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/gallery_thumbnail_widgets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +8,7 @@ import 'package:logging/logging.dart';
 
 final _log = Logger('WorkGridCard');
 
-/// Grid card for displaying a work (Drift ItemData).
+/// Grid card for displaying a work (domain [PlaylistItem]).
 class WorkGridCard extends StatelessWidget {
   /// Creates a [WorkGridCard].
   const WorkGridCard({
@@ -17,16 +17,16 @@ class WorkGridCard extends StatelessWidget {
     super.key,
   });
 
-  /// Work to display (Drift model).
-  final ItemData item;
+  /// Work to display (domain).
+  final PlaylistItem item;
 
   /// Tap handler.
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final title = item.title ?? '';
-    final artistName = item.subtitle ?? '';
+    final title = item.title;
+    final artistName = item.subtitle ?? item.artistName ?? '';
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -76,7 +76,7 @@ class WorkGridCard extends StatelessWidget {
   }
 
   Widget _buildThumbnail() {
-    final url = item.thumbnailUri;
+    final url = item.thumbnailUrl;
     if (url == null || url.isEmpty) {
       return const GalleryThumbnailErrorWidget();
     }

@@ -1,10 +1,10 @@
 import 'package:app/domain/models/channel.dart';
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
-/// View model for channel details.
+/// View model for channel details (domain only).
 class ChannelDetails {
   const ChannelDetails({
     required this.channel,
@@ -14,8 +14,8 @@ class ChannelDetails {
   /// Channel being viewed.
   final Channel? channel;
 
-  /// Playlists in the channel (Drift data).
-  final List<PlaylistData> playlists;
+  /// Playlists in the channel (domain).
+  final List<Playlist> playlists;
 }
 
 /// Provider for channel details state.
@@ -27,7 +27,7 @@ final channelDetailsProvider =
     final databaseService = ref.read(databaseServiceProvider);
     final channel = await databaseService.getChannelById(channelId);
     final playlists =
-        await databaseService.getPlaylistsByChannelData(channelId);
+        await databaseService.getPlaylistsByChannel(channelId);
     return ChannelDetails(channel: channel, playlists: playlists);
   } catch (e, stack) {
     log.severe('Failed to load channel details for $channelId', e, stack);

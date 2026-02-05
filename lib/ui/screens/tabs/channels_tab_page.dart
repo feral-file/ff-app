@@ -2,7 +2,7 @@ import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/channels/channel_section.dart';
 import 'package:app/widgets/error_view.dart';
@@ -109,19 +109,18 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
     );
   }
 
-  Widget _buildCuratedChannelsSection(List<ChannelData> channels) {
+  Widget _buildCuratedChannelsSection(List<Channel> channels) {
     // Show max 5 channels, with "View All" if more exist
     final displayChannels = channels.take(5).toList();
     final hasMore = channels.length > 5;
 
-    // Build ChannelRowData from Drift ChannelData (UI uses only Drift models).
-    // Works are loaded per channel by ChannelListRow via channelPreviewProvider.
+    // Build ChannelRowData from domain Channel. Works loaded per channel via channelPreviewProvider.
     final channelRowData = displayChannels.map((channel) {
       return ChannelRowData(
         channelId: channel.id,
-        channelTitle: channel.title,
-        channelSummary: channel.summary,
-        works: const <ItemData>[],
+        channelTitle: channel.name,
+        channelSummary: channel.description,
+        works: const <PlaylistItem>[],
       );
     }).toList();
 

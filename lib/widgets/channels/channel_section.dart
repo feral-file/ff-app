@@ -1,5 +1,5 @@
 import 'package:app/design/layout_constants.dart';
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/channels/channel_section_header.dart';
 import 'package:flutter/material.dart';
@@ -70,7 +70,7 @@ class ChannelSection extends StatelessWidget {
           channelData: channelData,
           onItemTap: onChannelItemTap == null
               ? null
-              : (ItemData item) => onChannelItemTap!(item.id),
+              : (PlaylistItem item) => onChannelItemTap!(item.id),
           scrollController: scrollController,
         );
       },

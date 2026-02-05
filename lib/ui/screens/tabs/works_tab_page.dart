@@ -109,7 +109,7 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
         shrinkWrap: true,
         controller: _scrollController,
         slivers: [
-          // Works grid - Drift ItemData only
+          // Works grid - domain PlaylistItem only
           UIHelper.worksSliverGrid(
             works: works,
             onItemTap: (item) => context.go('${Routes.works}/${item.id}'),

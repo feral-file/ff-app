@@ -1,4 +1,5 @@
 import 'package:app/domain/extensions/asset_token_ext.dart';
+import 'package:app/domain/models/dp1/dp1_manifest.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
 
@@ -15,13 +16,18 @@ class TokenTransformer {
         .where((n) => n.isNotEmpty)
         .join(', ');
 
+    final artists = token.metadata?.artists;
+    final dp1Artists = artists
+        ?.map((a) => DP1Artist(name: a.name, id: a.did))
+        .toList();
+
     final normalizedOwner = ownerAddress?.toUpperCase();
     final sortKeyUs = _computeSortKeyUsFromOwnershipSignals(
       token: token,
       ownerAddress: normalizedOwner,
     );
 
-    return PlaylistItem(
+    final item = PlaylistItem(
       id: token.cid,
       kind: PlaylistItemKind.indexerToken,
       title: title,
@@ -32,7 +38,13 @@ class TokenTransformer {
         'sortKeyUs': sortKeyUs,
       },
       updatedAt: DateTime.now(),
+      artists: dp1Artists,
+      artistName: artists
+          ?.map((a) => a.name)
+          .where((n) => n.isNotEmpty)
+          .join(', '),
     );
+    return item;
   }
 
   /// Compute sort key from ownership signals.

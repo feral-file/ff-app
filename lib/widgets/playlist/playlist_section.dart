@@ -1,11 +1,12 @@
 import 'package:app/design/layout_constants.dart';
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/playlist/playlist_list_row.dart';
 import 'package:app/widgets/playlist/playlist_section_header.dart';
 import 'package:flutter/material.dart';
 
 /// Playlist Section - Combines header with list of playlist rows.
-/// Uses only Drift models (PlaylistData).
+/// Uses domain [Playlist] only.
 class PlaylistSection extends StatefulWidget {
   /// Creates a PlaylistSection.
   const PlaylistSection({
@@ -23,8 +24,8 @@ class PlaylistSection extends StatefulWidget {
   /// Section name to display.
   final String? sectionName;
 
-  /// List of playlists to display (Drift data).
-  final List<PlaylistData> playlists;
+  /// List of playlists to display (domain).
+  final List<Playlist> playlists;
 
   /// Optional icon widget for section header.
   final Widget? sectionIcon;
@@ -42,7 +43,7 @@ class PlaylistSection extends StatefulWidget {
   final bool hasMore;
 
   /// Optional custom header builder for playlist rows.
-  final Widget? Function(PlaylistData playlist, int itemCount)?
+  final Widget? Function(Playlist playlist, int itemCount)?
       playlistHeaderBuilder;
 
   @override
@@ -94,7 +95,7 @@ class _PlaylistSectionState extends State<PlaylistSection> {
           playlistCreator: _getCreatorName(playlist),
           onItemTap: widget.onPlaylistItemTap == null
               ? null
-              : (ItemData item) => widget.onPlaylistItemTap!(item.id),
+              : (PlaylistItem item) => widget.onPlaylistItemTap!(item.id),
           scrollController: widget.scrollController,
           headerBuilder: widget.playlistHeaderBuilder == null
               ? null
@@ -105,10 +106,10 @@ class _PlaylistSectionState extends State<PlaylistSection> {
     );
   }
 
-  /// Get creator name for a playlist (Drift PlaylistData).
-  String _getCreatorName(PlaylistData playlist) {
-    // type 1 = address-based
-    if (playlist.type == 1 && playlist.ownerAddress != null) {
+  /// Get creator name for a playlist (domain).
+  String _getCreatorName(Playlist playlist) {
+    if (playlist.type == PlaylistType.addressBased &&
+        playlist.ownerAddress != null) {
       final address = playlist.ownerAddress!;
       if (address.length > 10) {
         return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';

@@ -1,9 +1,9 @@
 import 'package:app/app/feed/curated_channel_urls.dart';
+import 'package:app/app/feed/feed_manager.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/feed_config_store.dart';
 import 'package:app/infra/database/database_provider.dart';
-import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -96,15 +96,27 @@ class FeedBootstrapResult {
   final int feedServersTouched;
 }
 
+/// Provider for [FeralFileFeedManager].
+///
+/// Holds the single feed manager instance; all setup/reload/cache APIs
+/// delegate to it. Matches old repo's FeralFileFeedManager singleton.
+final feedManagerProvider = Provider<FeralFileFeedManager>((ref) {
+  return FeralFileFeedManager(
+    databaseService: ref.read(databaseServiceProvider),
+    feedConfigStore: ref.read(feedConfigStoreProvider),
+    defaultDp1FeedUrl: AppConfig.dp1FeedUrl,
+    indexerService: ref.read(indexerServiceProvider),
+    apiKey: AppConfig.dp1FeedApiKey,
+  );
+});
+
 /// Riverpod flow-driver for feed orchestration.
 ///
-/// This replaces the legacy `FeedManager` singleton by providing:
-/// - Simple 2-step API: setupRemoteConfigChannels() + reloadAllCache()
-/// - Automatic composite cursor pagination for curated channels
-/// - Cache policy support (TTL + remote last-updated)
+/// Delegates all operations to [FeralFileFeedManager] via [feedManagerProvider]:
+/// - setupRemoteConfigChannels() and reloadAllCache() call into the manager
+/// - State is derived from curated channel URLs for reactivity
 class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
   late final Logger _log;
-  final Map<String, FeralFileDP1FeedService> _feedServices = {};
 
   @override
   Future<FeedRegistryState> build() async {
@@ -120,95 +132,28 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
 
   /// Setup remote config channels from curated URLs.
   ///
-  /// This parses channel URLs, groups by baseUrl, and initializes
-  /// FeralFileDP1FeedService instances with remote config channel IDs.
-  ///
-  /// Usage (matches old repo pattern):
-  /// ```dart
-  /// await feedRegistry.setupRemoteConfigChannels(curatedUrls);
-  /// await feedRegistry.reloadAllCache();
-  /// ```
+  /// Delegates to [FeralFileFeedManager.setupRemoteConfigChannels] (matches
+  /// old repo: parse → group by endpoint → add/update services + custom feeds).
   Future<void> setupRemoteConfigChannels(List<String> channelUrls) async {
     _log.info('Setting up remote config channels: ${channelUrls.length} URLs');
-
-    // Parse and group by baseUrl
-    final channelIdsByUrl = <String, List<String>>{};
-    for (final url in channelUrls) {
-      final parsed = CuratedChannelRef.tryParse(url);
-      if (parsed == null) {
-        _log.warning('Failed to parse channel URL: $url');
-        continue;
-      }
-      channelIdsByUrl
-          .putIfAbsent(parsed.baseUrl, () => [])
-          .add(parsed.channelId);
-    }
-
-    _log.info('Grouped into ${channelIdsByUrl.length} feed servers');
-
-    // Initialize or update services
-    for (final entry in channelIdsByUrl.entries) {
-      final baseUrl = entry.key;
-      final channelIds = entry.value;
-
-      var service = _feedServices[baseUrl];
-      if (service == null) {
-        _log.info('Creating new FeralFileDP1FeedService for $baseUrl');
-        service = FeralFileDP1FeedService(
-          baseUrl: baseUrl,
-          databaseService: ref.read(databaseServiceProvider),
-          indexerService: ref.read(indexerServiceProvider),
-          feedConfigStore: ref.read(feedConfigStoreProvider),
-          apiKey: AppConfig.dp1FeedApiKey,
-        );
-        _feedServices[baseUrl] = service;
-      }
-
-      service.setRemoteConfigChannelIds(channelIds);
-      _log.info('Setup $baseUrl with ${channelIds.length} channels');
-    }
-
-    _log.info(
-      'Setup complete: ${_feedServices.length} feed services initialized',
-    );
+    final manager = ref.read(feedManagerProvider);
+    await manager.setupRemoteConfigChannels(channelUrls);
+    _log.info('Setup complete');
   }
 
   /// Reload cache for all feed services.
   ///
-  /// Respects cache policy (TTL + remote last-updated) unless force=true.
-  ///
-  /// This matches the old repo's FeedManager.reloadAllCache() behavior.
+  /// Delegates to [FeralFileFeedManager.reloadAllCache].
   Future<void> reloadAllCache({bool force = false}) async {
-    _log.info(
-      'Reloading all caches, force=$force, services=${_feedServices.length}',
-    );
-
-    if (_feedServices.isEmpty) {
+    final manager = ref.read(feedManagerProvider);
+    if (manager.feedServices.isEmpty) {
       _log.warning(
-        'No feed services initialized, '
-        'call setupRemoteConfigChannels first',
+        'No feed services initialized, call setupRemoteConfigChannels first',
       );
       return;
     }
-
-    // clear the cache
-
-    for (final entry in _feedServices.entries) {
-      final baseUrl = entry.key;
-      final service = entry.value;
-      try {
-        _log.info('Reloading cache for $baseUrl...');
-        await service.reloadCacheIfNeeded(force: force);
-        _log.info('✓ Reloaded cache for $baseUrl');
-      } on Exception catch (e, stack) {
-        _log.warning(
-          'Failed to reload cache for $baseUrl',
-          e,
-          stack,
-        );
-      }
-    }
-
+    _log.info('Reloading all caches, force=$force');
+    await manager.reloadAllCache(force: force);
     _log.info('Cache reload complete');
   }
 

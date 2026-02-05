@@ -354,11 +354,11 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         ),
         Offstage(
           offstage: _selectedTab != HomeIndexHeaderTab.channels,
-          child: _channelsPage,
+          child: const Center(child: Text('Channels')),
         ),
         Offstage(
           offstage: _selectedTab != HomeIndexHeaderTab.works,
-          child: _worksPage,
+          child: const Center(child: Text('Works')),
         ),
       ],
     );

@@ -325,6 +325,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
 
   /// Display order.
   final int? sortOrder;
+
   const ChannelData({
     required this.id,
     required this.type,

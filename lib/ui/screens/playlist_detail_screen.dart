@@ -59,7 +59,7 @@ class PlaylistDetailScreen extends ConsumerWidget {
               );
             }
 
-            // PlaylistData uses title; channel for subtitle
+            // Playlist (domain) uses name; channel for subtitle
             final channelId = playlist.channelId;
             final AsyncValue<Channel?> channelAsync = channelId == null
                 ? const AsyncValue<Channel?>.data(null)
@@ -70,15 +70,15 @@ class PlaylistDetailScreen extends ConsumerWidget {
                 SliverToBoxAdapter(
                   child: channelAsync.when(
                     loading: () => PlaylistDetailsHeader(
-                      title: playlist.title,
+                      title: playlist.name,
                       total: items.length,
                     ),
                     error: (_, __) => PlaylistDetailsHeader(
-                      title: playlist.title,
+                      title: playlist.name,
                       total: items.length,
                     ),
                     data: (channel) => PlaylistDetailsHeader(
-                      title: playlist.title,
+                      title: playlist.name,
                       total: items.length,
                       subtitle: channel?.name,
                     ),
