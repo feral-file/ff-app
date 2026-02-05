@@ -8,24 +8,6 @@ plugins {
 import java.util.Properties
 import java.io.File
 
-// Check if signing credentials are available
-val keystoreFile = File("${rootProject.projectDir}/../release.keystore")
-val propsFile = File("${rootProject.projectDir}/../release.properties")
-var isSigningConfigValid = false
-
-if (keystoreFile.exists() && propsFile.exists()) {
-    val props = Properties()
-    propsFile.inputStream().use { props.load(it) }
-    
-    val storePassword = props.getProperty("key.store.password")
-    val keyAlias = props.getProperty("key.alias")
-    val keyPassword = props.getProperty("key.alias.password")
-    
-    if (storePassword != null && keyAlias != null && keyPassword != null) {
-        isSigningConfigValid = true
-    }
-}
-
 android {
     namespace = "com.feralfile.app"
     compileSdk = 36
@@ -74,13 +56,21 @@ android {
 
     signingConfigs {
         create("release") {
-            if (isSigningConfigValid) {
-                storeFile = keystoreFile
-                val props = Properties()
-                propsFile.inputStream().use { props.load(it) }
-                storePassword = props.getProperty("key.store.password")
-                keyAlias = props.getProperty("key.alias")
-                keyPassword = props.getProperty("key.alias.password")
+            try {
+                val propsFile = File("${rootProject.projectDir}/../release.properties")
+                val keystoreFile = File("${rootProject.projectDir}/../release.keystore")
+                
+                if (propsFile.exists() && keystoreFile.exists()) {
+                    val props = Properties()
+                    propsFile.inputStream().use { props.load(it) }
+                    
+                    storeFile = keystoreFile
+                    storePassword = props.getProperty("key.store.password")
+                    keyAlias = props.getProperty("key.alias")
+                    keyPassword = props.getProperty("key.alias.password")
+                }
+            } catch (e: Exception) {
+                println("Warning: Could not load signing config: ${e.message}")
             }
         }
     }
@@ -93,9 +83,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            if (isSigningConfigValid) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
     }
