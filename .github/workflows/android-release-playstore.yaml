@@ -1,6 +1,5 @@
 name: Deploy the Android app to Playstore internal track
 on:
-  push:
   workflow_dispatch:
     inputs:
       version:
