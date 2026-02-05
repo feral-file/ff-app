@@ -1,4 +1,4 @@
-name: Deploy the iOS app for TestFlight
+name: Release iOS app
 on:
   push:
     branches: [main]
