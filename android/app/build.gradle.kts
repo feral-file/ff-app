@@ -23,9 +23,7 @@ android {
     }
 
     kotlinOptions {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
+        jvmTarget = "17"
     }
 
     packaging {
@@ -50,7 +48,10 @@ android {
         targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        resourceConfigurations.addAll(listOf("en", "en-US"))
+    }
+
+    androidResources {
+        localeFilters.addAll(listOf("en", "en-US"))
     }
 
     signingConfigs {

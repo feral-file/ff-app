@@ -122,16 +122,35 @@ jobs:
             exit 1
           fi
 
-          PROFILE_UUID=$(echo "$PROFILES" | jq -r '.[0].uuid // .[0].id // empty')
-          TEAM_ID=$(echo "$PROFILES" | jq -r '.[0].teamId // .[0].team_id // empty')
-          BUNDLE_ID=$(echo "$PROFILES" | jq -r '.[0].bundleId // .[0].bundle_id // empty')
+          # Extract profile UDID (this is the provisioning profile UUID)
+          PROFILE_UUID=$(echo "$PROFILES" | jq -r '.[0].udid // empty')
 
           echo "DEBUG: PROFILE_UUID=$PROFILE_UUID"
+
+          if [[ -z "$PROFILE_UUID" ]]; then
+            echo "ERROR: Failed to extract profile UUID"
+            exit 1
+          fi
+
+          # Find the provisioning profile file
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          PROFILE_PATH="$PROFILES_DIR/$PROFILE_UUID.mobileprovision"
+
+          if [[ ! -f "$PROFILE_PATH" ]]; then
+            echo "ERROR: Provisioning profile not found at $PROFILE_PATH"
+            exit 1
+          fi
+
+          # Extract team ID and bundle ID from the provisioning profile
+          TEAM_ID=$(security cms -D -i "$PROFILE_PATH" | /usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin)
+          APP_ID=$(security cms -D -i "$PROFILE_PATH" | /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin)
+          BUNDLE_ID="${APP_ID#${TEAM_ID}.}"
+
           echo "DEBUG: TEAM_ID=$TEAM_ID"
           echo "DEBUG: BUNDLE_ID=$BUNDLE_ID"
 
-          if [[ -z "$PROFILE_UUID" || -z "$TEAM_ID" || -z "$BUNDLE_ID" ]]; then
-            echo "ERROR: Failed to extract provisioning profile metadata"
+          if [[ -z "$TEAM_ID" || -z "$BUNDLE_ID" ]]; then
+            echo "ERROR: Failed to extract team ID or bundle ID"
             exit 1
           fi
 
