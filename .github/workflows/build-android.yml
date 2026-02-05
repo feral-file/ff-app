@@ -2,8 +2,10 @@ name: Build Android app
 
 on:
   pull_request:
-  workflow_dispatch:
-
+    branches: [main, develop]
+    paths:
+      - 'lib/**'
+      - 'android/**'
 jobs:
   build-android:
     runs-on: self-hosted

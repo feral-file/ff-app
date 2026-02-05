@@ -2,7 +2,10 @@ name: Build iOS app
 
 on:
   pull_request:
-  workflow_dispatch:
+    branches: [main, develop]
+    paths:
+      - 'lib/**'
+      - 'ios/**'
 
 jobs:
   build-ios:
