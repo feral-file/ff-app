@@ -97,8 +97,10 @@ jobs:
 
       - name: Unlock keychain for security commands
         run: |
-          security unlock-keychain -p "${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}" "${{ steps.keychain.outputs.name }}.keychain"
-          security list-keychains -s "${{ steps.keychain.outputs.name }}.keychain"
+          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain"
+          # Unlock with a long timeout (3600 seconds = 1 hour)
+          security unlock-keychain -p "${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}" -t 3600 "$KEYCHAIN_PATH"
+          security list-keychains -s "$KEYCHAIN_PATH"
 
       - name: Download provisioning profiles
         id: profiles
@@ -138,12 +140,16 @@ jobs:
 
           if [[ ! -f "$PROFILE_PATH" ]]; then
             echo "ERROR: Provisioning profile not found at $PROFILE_PATH"
+            ls -la "$PROFILES_DIR" 2>/dev/null || echo "Directory does not exist"
             exit 1
           fi
 
+          # Set keychain to search for certificates
+          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain"
+          
           # Extract team ID and bundle ID from the provisioning profile
-          TEAM_ID=$(security cms -D -i "$PROFILE_PATH" | /usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin)
-          APP_ID=$(security cms -D -i "$PROFILE_PATH" | /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin)
+          TEAM_ID=$(security cms -D -i "$PROFILE_PATH" -k "$KEYCHAIN_PATH" 2>/dev/null | /usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' /dev/stdin)
+          APP_ID=$(security cms -D -i "$PROFILE_PATH" -k "$KEYCHAIN_PATH" 2>/dev/null | /usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /dev/stdin)
           BUNDLE_ID="${APP_ID#${TEAM_ID}.}"
 
           echo "DEBUG: TEAM_ID=$TEAM_ID"
