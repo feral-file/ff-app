@@ -1,7 +1,6 @@
 name: Deploy the iOS app for TestFlight
 on:
   push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       version:
@@ -115,17 +114,24 @@ jobs:
         run: |
           PROFILES='${{ steps.profiles.outputs.profiles }}'
           
+          echo "DEBUG: Full profiles output:"
+          echo "$PROFILES" | jq '.'
+          
           if [[ -z "$PROFILES" ]]; then
             echo "No provisioning profiles downloaded"
             exit 1
           fi
 
-          PROFILE_UUID=$(echo "$PROFILES" | jq -r '.[0].uuid')
-          TEAM_ID=$(echo "$PROFILES" | jq -r '.[0].teamId')
-          BUNDLE_ID=$(echo "$PROFILES" | jq -r '.[0].bundleId')
+          PROFILE_UUID=$(echo "$PROFILES" | jq -r '.[0].uuid // .[0].id // empty')
+          TEAM_ID=$(echo "$PROFILES" | jq -r '.[0].teamId // .[0].team_id // empty')
+          BUNDLE_ID=$(echo "$PROFILES" | jq -r '.[0].bundleId // .[0].bundle_id // empty')
+
+          echo "DEBUG: PROFILE_UUID=$PROFILE_UUID"
+          echo "DEBUG: TEAM_ID=$TEAM_ID"
+          echo "DEBUG: BUNDLE_ID=$BUNDLE_ID"
 
           if [[ -z "$PROFILE_UUID" || -z "$TEAM_ID" || -z "$BUNDLE_ID" ]]; then
-            echo "Failed to extract provisioning profile metadata"
+            echo "ERROR: Failed to extract provisioning profile metadata"
             exit 1
           fi
 
