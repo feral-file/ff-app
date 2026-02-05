@@ -1,6 +1,5 @@
 name: Deploy the iOS app for TestFlight
 on:
-  push:
   workflow_dispatch:
     inputs:
       version:
