@@ -9,6 +9,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
 // ============================================================================
+// Custom Retry Logic for WiFi Operations
+// ============================================================================
+
+/// Retry logic for WiFi operations (connect, commands).
+/// 
+/// Retries up to 5 times with exponential backoff (200ms to 3.2s).
+/// Does not retry on Errors (programming bugs).
+Duration? _wifiRetry(int retryCount, Object error) {
+  // Don't retry errors (programming bugs - indicate code issues)
+  if (error is Error) {
+    return null;
+  }
+  
+  // Max 5 retries
+  if (retryCount >= 5) return null;
+  
+  // Exponential backoff: 200ms, 400ms, 800ms, 1.6s, 3.2s
+  return Duration(milliseconds: 200 * (1 << retryCount));
+}
+
+// ============================================================================
 // FF1 WiFi Transport and Control providers (infrastructure)
 // ============================================================================
 
@@ -243,3 +264,105 @@ final ff1DeviceConnectedProvider = Provider<bool>((ref) {
   final control = ref.watch(ff1WifiControlProvider);
   return control.isDeviceConnected;
 });
+
+// ============================================================================
+// Auto-dispose WiFi Operation Providers (with automatic retry)
+// ============================================================================
+
+/// Parameters for WiFi connection
+class FF1WifiConnectParams {
+  const FF1WifiConnectParams({
+    required this.device,
+    required this.userId,
+    required this.apiKey,
+  });
+
+  final FF1Device device;
+  final String userId;
+  final String apiKey;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FF1WifiConnectParams &&
+          runtimeType == other.runtimeType &&
+          device.topicId == other.device.topicId &&
+          userId == other.userId;
+
+  @override
+  int get hashCode => device.topicId.hashCode ^ userId.hashCode;
+}
+
+/// Connect to FF1 device via WiFi (auto-dispose, with retry).
+/// 
+/// This provider automatically disposes after use.
+/// Uses Riverpod's automatic retry mechanism (5 attempts with exponential backoff).
+/// 
+/// Usage:
+/// ```dart
+/// await ref.read(
+///   ff1WifiConnectOperationProvider(FF1WifiConnectParams(
+///     device: device,
+///     userId: userId,
+///     apiKey: apiKey,
+///   )).future,
+/// );
+/// ```
+final ff1WifiConnectOperationProvider = FutureProvider.autoDispose
+    .family<void, FF1WifiConnectParams>(
+  retry: _wifiRetry,
+  (ref, params) async {
+    final control = ref.watch(ff1WifiControlProvider);
+    
+    await control.connect(
+      device: params.device,
+      userId: params.userId,
+      apiKey: params.apiKey,
+    );
+  },
+);
+
+/// Parameters for WiFi command execution
+class FF1WifiCommandParams<T> {
+  const FF1WifiCommandParams({
+    required this.topicId,
+    required this.commandFn,
+  });
+
+  final String topicId;
+  final Future<T> Function(FF1WifiControl control, String topicId) commandFn;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FF1WifiCommandParams<T> &&
+          runtimeType == other.runtimeType &&
+          topicId == other.topicId;
+
+  @override
+  int get hashCode => topicId.hashCode;
+}
+
+/// Send WiFi command to device (auto-dispose, with retry).
+/// 
+/// This provider automatically disposes after use.
+/// Uses Riverpod's automatic retry mechanism.
+/// 
+/// Usage:
+/// ```dart
+/// final response = await ref.read(
+///   ff1WifiSendCommandProvider<FF1CommandResponse>(FF1WifiCommandParams(
+///     topicId: topicId,
+///     commandFn: (control, id) => control.rotate(topicId: id, angle: 90),
+///   )).future,
+/// );
+/// ```
+final ff1WifiSendCommandProvider = FutureProvider.autoDispose
+    .family<dynamic, FF1WifiCommandParams<dynamic>>(
+  retry: _wifiRetry,
+  (ref, params) async {
+    final control = ref.watch(ff1WifiControlProvider);
+    
+    return params.commandFn(control, params.topicId);
+  },
+);

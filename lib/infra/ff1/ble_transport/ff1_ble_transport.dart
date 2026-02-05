@@ -110,45 +110,72 @@ class FF1BleTransport {
   ///
   /// [device] - FF1 device to connect to
   /// [timeout] - connection timeout
-  /// [maxRetries] - max connection attempts
+  /// [maxRetries] - max connection attempts (default 0 when using Riverpod retry)
   /// [shouldContinue] - optional callback to check if connection should continue
+  /// 
+  /// Note: When using Riverpod's automatic retry, set maxRetries to 0.
+  /// Riverpod will handle retries with proper exponential backoff.
   Future<void> connect({
     required FF1Device device,
     Duration timeout = const Duration(seconds: 30),
-    int maxRetries = 3,
+    int maxRetries = 0,
     bool Function()? shouldContinue,
   }) async {
     final blDevice = device.toBluetoothDevice();
 
-    for (var attempt = 0; attempt <= maxRetries; attempt++) {
-      if (shouldContinue != null && !shouldContinue()) {
-        _log.info('Connection cancelled by caller');
-        throw const FF1ConnectionCancelledError();
-      }
+    // Check if operation should continue (for cancellation)
+    if (shouldContinue != null && !shouldContinue()) {
+      _log.info('Connection cancelled by caller');
+      throw const FF1ConnectionCancelledError();
+    }
 
+    if (maxRetries == 0) {
+      // Single attempt - Riverpod handles retry
+      _log.info('Connecting to ${device.deviceId}');
+      
       try {
-        _log.info(
-          'Connecting to ${device.deviceId} (attempt ${attempt + 1}/${maxRetries + 1})',
-        );
-
         await _connectOnce(blDevice, timeout: timeout);
-
         _log.info('Connected to ${device.deviceId}');
-        return;
       } catch (e) {
         if (e is FF1ConnectionCancelledError) {
           rethrow;
         }
-
         await blDevice.disconnect();
-
-        if (attempt >= maxRetries) {
-          _log.severe('Failed after ${attempt + 1} attempts: $e');
-          rethrow;
+        _log.warning('Connection failed: $e');
+        rethrow;
+      }
+    } else {
+      // Manual retry logic (legacy, for backwards compatibility)
+      for (var attempt = 0; attempt <= maxRetries; attempt++) {
+        if (shouldContinue != null && !shouldContinue()) {
+          _log.info('Connection cancelled by caller');
+          throw const FF1ConnectionCancelledError();
         }
 
-        _log.info('Retry ${attempt + 1}/${maxRetries} after 2s...');
-        await Future<void>.delayed(const Duration(seconds: 2));
+        try {
+          _log.info(
+            'Connecting to ${device.deviceId} (attempt ${attempt + 1}/${maxRetries + 1})',
+          );
+
+          await _connectOnce(blDevice, timeout: timeout);
+
+          _log.info('Connected to ${device.deviceId}');
+          return;
+        } catch (e) {
+          if (e is FF1ConnectionCancelledError) {
+            rethrow;
+          }
+
+          await blDevice.disconnect();
+
+          if (attempt >= maxRetries) {
+            _log.severe('Failed after ${attempt + 1} attempts: $e');
+            rethrow;
+          }
+
+          _log.info('Retry ${attempt + 1}/${maxRetries} after 2s...');
+          await Future<void>.delayed(const Duration(seconds: 2));
+        }
       }
     }
   }

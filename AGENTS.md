@@ -6,7 +6,7 @@ This document is the **contract** for humans + AI agents working in this repo.
 - **Deletion before optimization.** Prefer removing surfaces and legacy baggage over “improving” them.  
 - **DP-1 is the spine. Data model must be rooted in DP-1 objects + terms:
   - **Channel / Playlist / Work** (no custom “Exhibition/Season/Program” object types; those are *playlist roles* in UI only).  
-- **OSS-first posture* Data paths: portable, auditable, minimal vendor lock. 
+- **OSS-first posture.** Data paths: portable, auditable, minimal vendor lock. 
 
 ## 1) Architectural boundaries (Flutter)
 ### 1.1 Bands alignment (for reasoning about ownership)
@@ -34,19 +34,36 @@ Guidelines:
 - Provide test seams: override providers in tests; use fakes for transport/protocol layers.
 - **Write testable code when applicable**: favor pure `domain/` logic, dependency injection via providers, and no hidden singletons.
 
+### 2.1 Riverpod usage rules (watch/read/listen)
+- Use `ref.watch(...)` for reactive dependencies in providers and widgets.
+- Use `ref.read(...)` for imperative actions (e.g., button taps calling notifier methods), not build-time reactivity.
+- Use `ref.listen(...)` for side-effects in response to state changes (navigation/snackbars/logging), not for deriving state.
+- Widgets must remain declarative: no IO/network/transport calls from UI.
+
+### 2.2 Provider lifecycle and caching
+- Prefer auto-dispose lifecycles and scoped caching over long-lived singletons.
+- If state must outlive listeners, make that explicit via provider design (not hidden globals).
+- Avoid “manual caching” in widgets; keep caching decisions in `app/` or `infra/`.
+
+### 2.3 Provider design hygiene
+- Prefer small, focused providers over one giant provider.
+- Use provider families for parameterized state; use `select`/`selectAsync` when only a slice should trigger rebuilds.
+- Keep errors and loading states explicit and testable (e.g., model async state as `AsyncValue` where appropriate).
+- Avoid putting ephemeral widget-local state (controllers, focus, transient form inputs) into providers unless it is shared or business-critical.
+
 ## 3) Data model: DP-1 normalization + offline-first
 ### 3.1 DP-1 terminology locks
 Use only:
 - `Channel`, `Playlist`, `Work`
 - IDs like `ch_*`, `pl_*`, `wk_*` (do not introduce parallel ID schemes).  
 
-### 3.2 Offline store -end simple” v1 store:
+### 3.2 Offline store — keep it simple (v1)
 - Local tables/collections reflect DP-1 entities and relationships only.
 - Personal playlists and curated playlists are both **DP-1 Playlists** (no custom “CuratedPlaylist” object).
 - “My Collection” is treated as pinned personal **Channel** (DP-1 concept), not a separate domain object.
 - Other user preferences: Store as a key-value database using Objectbox.
 
-## 4) FF1 communicati protocol/control split)
+## 4) FF1 communication (protocol/control split)
 ### 4.1 Split layers (required)
 - **Transport**: Bluetooth / Wi-Fi (LAN and relayer). Handles connect/retry/disconnect.
 - **Protocol**: message definitions, versioning, serialization.
@@ -69,7 +86,9 @@ Implementation constraint:
 - Structure tokens so we can update from Figma token exports with minimal refactor (no scattered magic numbers).
 - Theme access via Riverpod where appropriate (e.g., runtime theme switching later), but keep primitives in one place.  
 
-## 7) Testing and qua Provider-level unit tests for:
+## 7) Testing and quality
+
+Provider-level unit tests for:
   - DP-1 normalization
   - playlist persistence (personal + curated)
   - comms control state machine (with fake protocol/transport)
@@ -81,6 +100,7 @@ Implementation constraint:
 - **Avoid global state**: no singletons that can’t be swapped in tests; route side effects through providers.
 - **Prefer unit tests first**: test `domain/` and `app/` (notifiers/controllers) without Flutter widgets.
 - **Auto-dispose providers**: when needed, use `container.listen(...)` in tests to keep providers alive while asserting behavior.
+- **Assert transitions**: verify state changes/outputs, not internal implementation details.
 
 ## 8) Out of scope (do not sneak in)
 - Localization
@@ -91,8 +111,8 @@ Implementation constraint:
 
 ## 9) PR checklist (must answer)
 - Did you **delete** something instead of adding another layer?  
-- Are all domain nouns l/Playlist/Work)?  
-- Does Riverpod remain er (no hidden state)?
+- Are all domain nouns locked to (Channel/Playlist/Work)?  
+- Does Riverpod remain the single flow driver (no hidden state)?
 - Are Protocol and Control separated (different modules/interfaces)?
 - Are theme tokens centralized (no scattered constants)?
 

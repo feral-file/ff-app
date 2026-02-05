@@ -1,6 +1,7 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -111,8 +112,10 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
                   'assets/images/search.svg',
                   width: LayoutConstants.iconSizeMedium,
                   height: LayoutConstants.iconSizeMedium,
-                  colorFilter:
-                      const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
+                  colorFilter: const ColorFilter.mode(
+                    AppColor.white,
+                    BlendMode.srcIn,
+                  ),
                 ),
               ),
             ),
@@ -132,8 +135,10 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
                   'assets/images/Drawer.svg',
                   width: LayoutConstants.iconSizeMedium,
                   height: LayoutConstants.iconSizeMedium,
-                  colorFilter:
-                      const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
+                  colorFilter: const ColorFilter.mode(
+                    AppColor.white,
+                    BlendMode.srcIn,
+                  ),
                 ),
               ),
             ),
@@ -158,8 +163,9 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
                         children: [
                           Expanded(
                             child: Padding(
-                              padding:
-                                  EdgeInsets.only(top: LayoutConstants.space4),
+                              padding: EdgeInsets.only(
+                                top: LayoutConstants.space4,
+                              ),
                               child: HomeIndexHeader(
                                 selectedTab: _selectedTab,
                                 onTabChanged: (tab) {
@@ -242,24 +248,19 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         title: 'Support & Feedback',
         icon: ValueListenableBuilder<List<int>?>(
           valueListenable: ValueNotifier<List<int>?>(null),
-          builder: (
-            BuildContext context,
-            List<int>? numberOfIssuesInfo,
-            Widget? child,
-          ) =>
-              iconWithRedDot(
-            icon: const Icon(
-              Icons.help_outline,
-              color: AppColor.white,
-            ),
-            padding: const EdgeInsets.only(right: 2, top: 2),
-            withReddot: numberOfIssuesInfo != null &&
-                numberOfIssuesInfo.length > 1 &&
-                numberOfIssuesInfo[1] > 0,
-          ),
+          builder:
+              (
+                BuildContext context,
+                List<int>? numberOfIssuesInfo,
+                Widget? child,
+              ) => const Icon(
+                Icons.help_outline,
+                color: AppColor.white,
+              ),
         ),
-        onTap: () {
-          Navigator.of(context).pop();
+        onTap: () async {
+          Navigator.pop(context);
+          await _contactSupport();
         },
       ),
       // Release Notes
@@ -320,6 +321,23 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
       options: _defaultOptions,
       bottomWidget: _addAddressButton(),
     );
+  }
+
+  Future<void> _contactSupport() async {
+    try {
+      await ref
+          .read(supportEmailServiceProvider)
+          .composeSupportEmail(recipient: 'sang@feralfile.com');
+    } on Exception {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open email client.'),
+        ),
+      );
+    }
   }
 
   Widget _buildContent() {

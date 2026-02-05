@@ -7,6 +7,7 @@ import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/dp1_feed_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
+import 'package:app/infra/services/support_email_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Provider for the IndexerService.
@@ -73,4 +74,9 @@ final dp1FeedServiceProvider = Provider<DP1FeedServiceImpl>((ref) {
     feedConfigStore: feedConfigStore,
     apiKey: AppConfig.dp1FeedApiKey,
   );
+});
+
+/// Provider for composing support emails from the app.
+final supportEmailServiceProvider = Provider<SupportEmailService>((ref) {
+  return SupportEmailService();
 });

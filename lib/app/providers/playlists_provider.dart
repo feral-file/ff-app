@@ -132,7 +132,6 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
   final PlaylistType _type;
   late final Logger _log;
   StreamSubscription<List<PlaylistData>>? _watchSub;
-  int? _watchLimit;
 
   @override
   PlaylistsState build() {
@@ -147,26 +146,13 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
     return PlaylistsState.initial();
   }
 
+  /// Watch full playlist list for this type (no limit). Aligns with old repo
+  /// PlaylistsBloc: watch emits entire list so we detect new data after reload.
   void _setupDatabaseWatch() {
-    if (_type == PlaylistType.dp1) {
-      _ensureWatch(limit: _pageSize);
-    } else {
-      _watchSub?.cancel();
-      _watchLimit = null;
-      final databaseService = ref.read(databaseServiceProvider);
-      _watchSub = databaseService
-          .watchPlaylistsData(type: _type)
-          .listen(_onPlaylistsChanged, onError: _onWatchError);
-    }
-  }
-
-  void _ensureWatch({required int limit}) {
-    if (_type != PlaylistType.dp1 || _watchLimit == limit) return;
-    _watchLimit = limit;
     _watchSub?.cancel();
     final databaseService = ref.read(databaseServiceProvider);
     _watchSub = databaseService
-        .watchPlaylistsData(type: _type, limit: limit)
+        .watchPlaylistsData(type: _type)
         .listen(_onPlaylistsChanged, onError: _onWatchError);
   }
 
@@ -174,17 +160,30 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
     _log.warning('Database watch error', error, stack);
   }
 
+  /// Reacts to DB changes. [next] is the full list (watch has no limit).
+  /// Aligns with old repo: hasChanged = length/prefix diff or (more in DB and !hasMore).
   void _onPlaylistsChanged(List<PlaylistData> next) {
     if (state.playlists.isEmpty && !state.isLoading) {
       unawaited(loadPlaylists(size: _pageSize));
       return;
     }
     final current = state.playlists;
-    final hasChanged = !_samePlaylistIds(current, next);
+    final loadedLength = current.length;
+    final listenSize = loadedLength > _pageSize ? loadedLength : _pageSize;
+
+    bool hasChanged = (current.length != next.length) ||
+        (current.length < next.length && !state.hasMore);
+    if (!hasChanged && current.isNotEmpty && next.isNotEmpty) {
+      final n = current.length < next.length ? current.length : next.length;
+      if (n > 0 &&
+          !_samePlaylistIds(current.sublist(0, n), next.sublist(0, n))) {
+        hasChanged = true;
+      }
+    }
+
     if (hasChanged && !state.isLoading && !state.isLoadingMore) {
       if (_type == PlaylistType.dp1) {
-        final size = current.length < _pageSize ? _pageSize : current.length;
-        unawaited(loadPlaylists(size: size));
+        unawaited(loadPlaylists(size: listenSize));
       } else {
         state = state.copyWith(playlists: next);
       }
@@ -243,9 +242,6 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
         final page = curatedAll.take(end).toList();
         final nextCursor = end < curatedAll.length ? end.toString() : null;
         final hasMore = nextCursor != null;
-        _ensureWatch(
-          limit: page.length < _pageSize ? _pageSize : page.length,
-        );
         state = PlaylistsState.loaded(
           playlists: page,
           hasMore: hasMore,
@@ -338,8 +334,6 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
       final nextPlaylists = [...state.playlists, ...page];
       final nextCursor = end < curatedAll.length ? end.toString() : null;
       final hasMore = nextCursor != null;
-
-      _ensureWatch(limit: nextPlaylists.length);
 
       state = state.copyWith(
         playlists: nextPlaylists,

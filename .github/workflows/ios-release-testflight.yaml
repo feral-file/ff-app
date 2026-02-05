@@ -1,0 +1,216 @@
+name: Deploy the iOS app for TestFlight
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'App version'
+        required: true
+      build-number:
+        description: 'Build number (CFBundleVersion). Defaults to GitHub run number if omitted.'
+        required: false
+      message:
+        description: Change logs
+        required: false
+
+jobs:
+  build-upload:
+    runs-on: [self-hosted, macOS]
+    env:
+      IOS_P12_PATH: mobile-signing-key-vault/ios/feralfile/appstore/Certificates.p12
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set up Flutter.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.2' #latest-stable
+
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: |
+            ${{ secrets.KEY_VAULT_DEPLOYMENT_KEY }}
+
+      - name: Add GitHub to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -t ed25519,rsa github.com >> ~/.ssh/known_hosts
+
+      - name: Create env file
+        run: |
+          touch .env
+          echo -e "${{ secrets.ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
+          cat .env
+
+      - run: flutter pub get
+
+      - name: Cache pods
+        id: cache-pods
+        uses: actions/cache@v3
+        with:
+          path: ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('**/ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      - name: Pod install
+        run: |
+          cd ios/
+          pod install --repo-update
+
+      - name: Clone signing vault (private repo)
+        run: |
+          git clone git@github.com:bitmark-inc/mobile-signing-key-vault.git --depth 1
+
+      - name: Get p12 base64 (from vault)
+        id: p12
+        run: |
+          if [[ ! -f "$IOS_P12_PATH" ]]; then
+            echo "Missing signing certificate at '$IOS_P12_PATH'. Ensure the signing vault is cloned."
+            exit 1
+          fi
+          echo "base64<<CERT_EOF" >> "$GITHUB_OUTPUT"
+          base64 -i "$IOS_P12_PATH" | tr -d '\n' >> "$GITHUB_OUTPUT"
+          printf '\n' >> "$GITHUB_OUTPUT"
+          echo "CERT_EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Generate random keychain name
+        id: keychain
+        run: |
+          KEYCHAIN_NAME="signing_temp_$(openssl rand -hex 4)"
+          echo "name=$KEYCHAIN_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Import code signing certificates
+        uses: Apple-Actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ steps.p12.outputs.base64 }}
+          p12-password: ${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}
+          keychain: ${{ steps.keychain.outputs.name }}
+          create-keychain: true
+
+      - name: Unlock keychain for security commands
+        run: |
+          security unlock-keychain -p "${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}" "${{ steps.keychain.outputs.name }}.keychain"
+          security list-keychains -s "${{ steps.keychain.outputs.name }}.keychain"
+
+      - name: Download provisioning profiles
+        id: profiles
+        uses: Apple-Actions/download-provisioning-profiles@v5
+        with:
+          bundle-id: 'com.feralfile.app'
+          profile-type: 'IOS_APP_STORE'
+          issuer-id: ${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}
+          api-key-id: ${{ secrets.FF_TESTFLIGHT_KEY_ID }}
+          api-private-key: ${{ secrets.FF_TESTFLIGHT_API_TOKEN }}
+
+      - name: Extract provisioning profile metadata
+        run: |
+          PROFILES='${{ steps.profiles.outputs.profiles }}'
+          
+          if [[ -z "$PROFILES" ]]; then
+            echo "No provisioning profiles downloaded"
+            exit 1
+          fi
+
+          PROFILE_UUID=$(echo "$PROFILES" | jq -r '.[0].uuid')
+          TEAM_ID=$(echo "$PROFILES" | jq -r '.[0].teamId')
+          BUNDLE_ID=$(echo "$PROFILES" | jq -r '.[0].bundleId')
+
+          if [[ -z "$PROFILE_UUID" || -z "$TEAM_ID" || -z "$BUNDLE_ID" ]]; then
+            echo "Failed to extract provisioning profile metadata"
+            exit 1
+          fi
+
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
+          echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
+
+      - name: Build archive
+        env:
+          DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+        run: |
+          BUILD_NAME="${{ inputs.version }}"
+          BUILD_NUMBER="${{ inputs['build-number'] }}"
+          if [[ -z "$BUILD_NUMBER" ]]; then
+            BUILD_NUMBER='${{ github.run_number }}'
+          fi
+
+          ARCHIVE_PATH="$RUNNER_TEMP/Runner.xcarchive"
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE="$PROFILE_UUID" \
+            FLUTTER_BUILD_NAME="$BUILD_NAME" \
+            FLUTTER_BUILD_NUMBER="$BUILD_NUMBER" \
+            archive
+
+          echo "ARCHIVE_PATH=$ARCHIVE_PATH" >> "$GITHUB_ENV"
+
+      - name: Export IPA
+        run: |
+          EXPORT_PATH="$RUNNER_TEMP/export"
+          EXPORT_OPTIONS_PLIST="$RUNNER_TEMP/ExportOptions.plist"
+
+          cat > "$EXPORT_OPTIONS_PLIST" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>$TEAM_ID</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key>
+              <string>$PROFILE_UUID</string>
+            </dict>
+            <key>compileBitcode</key>
+            <false/>
+            <key>stripSwiftSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist "$EXPORT_OPTIONS_PLIST"
+
+          IPA_PATH="$(ls "$EXPORT_PATH"/*.ipa | head -1)"
+          echo "IOS_IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
+
+      - name: Upload to TestFlight
+        uses: apple-actions/upload-testflight-build@v3
+        with:
+          app-path: ${{ env.IOS_IPA_PATH }}
+          issuer-id: ${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}
+          api-key-id: ${{ secrets.FF_TESTFLIGHT_KEY_ID }}
+          api-private-key: ${{ secrets.FF_TESTFLIGHT_API_TOKEN }}
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain-db"
+          if [[ -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "${{ steps.keychain.outputs.name }}.keychain"
+          fi
