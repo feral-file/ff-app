@@ -33,7 +33,7 @@ jobs:
           reviewdog_version: latest
 
       - name: Install codespell
-        run: pip install codespell
+        run: pip3 install codespell
 
       - name: Get changed files
         id: changed-files
