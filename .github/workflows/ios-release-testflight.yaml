@@ -92,15 +92,20 @@ jobs:
         with:
           p12-file-base64: ${{ steps.p12.outputs.base64 }}
           p12-password: ${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}
+          keychain-password: ${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}
           keychain: ${{ steps.keychain.outputs.name }}
           create-keychain: true
 
       - name: Unlock keychain for security commands
         run: |
-          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain"
+          KEYCHAIN_PATH="$HOME/Library/Keychains/${{ steps.keychain.outputs.name }}.keychain-db"
+          LOGIN_KEYCHAIN_PATH="$HOME/Library/Keychains/login.keychain-db"
           # Unlock keychain
           security unlock-keychain -p "${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}" "$KEYCHAIN_PATH"
-          security list-keychains -s "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          # Keep login keychain in search list so cert chain/intermediates can resolve.
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "$LOGIN_KEYCHAIN_PATH"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
 
       - name: Download provisioning profiles
         id: profiles
