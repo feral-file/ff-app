@@ -26,9 +26,6 @@ abstract class BaseDP1FeedService {
   /// Get cached playlist by ID (domain only).
   Future<(Playlist, List<PlaylistItem>)?> getCachedPlaylistById(String id);
 
-  /// Get all playlists with pagination.
-  Future<DP1PlaylistResponse> getPlaylists({String? cursor, int? limit});
-
   /// Get all playlists (full fetch, from API).
   Future<List<DP1Playlist>> getAllPlaylists();
 

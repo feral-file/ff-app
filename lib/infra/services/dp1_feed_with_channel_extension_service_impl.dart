@@ -265,6 +265,7 @@ class DP1FeedWithChannelExtensionServiceImpl extends BaseDP1FeedServiceImpl {
           await databaseService.ingestDP1PlaylistWire(
             baseUrl: baseUrl,
             playlist: playlist,
+            channelId: channel.id,
           );
         }
       }

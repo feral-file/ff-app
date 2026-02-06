@@ -3,8 +3,9 @@ import 'package:app/infra/config/feed_config_store.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
 import 'package:app/infra/services/address_service.dart';
+import 'package:app/infra/services/base_dp1_feed_service_impl.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
-import 'package:app/infra/services/dp1_feed_service.dart';
+import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
@@ -62,17 +63,18 @@ final bootstrapServiceProvider = Provider<BootstrapService>((ref) {
 /// This provider is used by the default bootstrap flow (non-curated feeds).
 /// For curated feeds with remote config channels, use FeralFileDP1FeedService
 /// directly in FeedRegistryNotifier.
-final dp1FeedServiceProvider = Provider<DP1FeedServiceImpl>((ref) {
+final dp1FeedServiceProvider = Provider<FeralFileDP1FeedService>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
   final indexerService = ref.watch(indexerServiceProvider);
   final feedConfigStore = ref.watch(feedConfigStoreProvider);
 
-  return DP1FeedServiceImpl(
+  return FeralFileDP1FeedService(
     baseUrl: AppConfig.dp1FeedUrl,
+    isExternalFeedService: false,
     databaseService: databaseService,
-    indexerService: indexerService,
     feedConfigStore: feedConfigStore,
     apiKey: AppConfig.dp1FeedApiKey,
+    indexerService: indexerService,
   );
 });
 

@@ -87,21 +87,13 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
   }
 
   @override
-  Future<DP1PlaylistResponse> getPlaylists({
-    String? cursor,
-    int? limit,
-  }) async {
-    return api.getPlaylists(cursor: cursor, limit: limit);
-  }
-
-  @override
   Future<List<DP1Playlist>> getAllPlaylists() async {
     final playlists = <DP1Playlist>[];
     var hasMore = true;
     String? cursor;
     const limit = 50;
     while (hasMore) {
-      final resp = await getPlaylists(cursor: cursor, limit: limit);
+      final resp = await api.getPlaylists(cursor: cursor, limit: limit);
       playlists.addAll(resp.items);
       hasMore = resp.hasMore;
       cursor = resp.cursor;
@@ -153,7 +145,7 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
       String? cursor;
       const limit = 50;
       while (hasMore) {
-        final resp = await getPlaylists(cursor: cursor, limit: limit);
+        final resp = await api.getPlaylists(cursor: cursor, limit: limit);
 
         hasMore = resp.hasMore;
         cursor = resp.cursor;

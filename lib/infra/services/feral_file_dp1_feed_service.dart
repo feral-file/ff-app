@@ -66,8 +66,9 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
         cursor = response.cursor;
       }
       return playlists;
+    } else {
+      return super.getAllPlaylists();
     }
-    return super.getAllPlaylists();
   }
 
   @override
@@ -112,9 +113,13 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
       channels: channels,
     );
     for (final playlist in playlists) {
+      final channelId = channels
+          .firstWhere((c) => c.playlists.any((p) => p.contains(playlist.id)))
+          .id;
       await databaseService.ingestDP1PlaylistWire(
         baseUrl: baseUrl,
         playlist: playlist,
+        channelId: channelId,
         fetchTokens: (cids) =>
             indexerService.fetchTokensByCIDs(tokenCids: cids),
       );

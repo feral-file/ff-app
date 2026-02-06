@@ -139,9 +139,7 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
   }
 
   void _onPlaylistItemsChanged(List<PlaylistItem> next) {
-    final page = next.take(channelPreviewPageSize).toList();
-    final hasMore = next.length > channelPreviewPageSize;
-    state = ChannelPreviewState.loaded(works: page, hasMore: hasMore);
+    load();
   }
 
   /// Load first page of preview works.
@@ -162,9 +160,8 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
         offset: 0,
       );
       final hasMore = result.length > channelPreviewPageSize;
-      final pageItems = hasMore
-          ? result.take(channelPreviewPageSize).toList()
-          : result;
+      final pageItems =
+          hasMore ? result.take(channelPreviewPageSize).toList() : result;
 
       state = ChannelPreviewState.loaded(works: pageItems, hasMore: hasMore);
     } catch (e, stack) {
@@ -206,6 +203,6 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
 
 /// Provider for channel preview state (family by channelId).
 /// Auto-dispose when no longer watched.
-final channelPreviewProvider =
-    NotifierProvider.autoDispose.family<ChannelPreviewNotifier,
-        ChannelPreviewState, String>(ChannelPreviewNotifier.new);
+final channelPreviewProvider = NotifierProvider.autoDispose
+    .family<ChannelPreviewNotifier, ChannelPreviewState, String>(
+        ChannelPreviewNotifier.new);

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/mutations.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/database_provider.dart';
