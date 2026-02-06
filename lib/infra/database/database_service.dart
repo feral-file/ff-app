@@ -438,6 +438,9 @@ class DatabaseService {
   /// Items are the main source of truth. When [tokens] is provided, each item
   /// is matched by CID and enriched with [thumbnailUrl] and DP1 [artists] from
   /// the token; when token is null for an item, those two fields remain null.
+  ///
+  /// Wraps all writes in a single transaction to reduce lock churn and stream
+  /// invalidations.
   Future<void> ingestDP1Playlist({
     required DP1Playlist playlist,
     required String baseUrl,
@@ -448,9 +451,10 @@ class DatabaseService {
         playlist,
         baseUrl: baseUrl,
       );
-      await ingestPlaylist(domainPlaylist);
 
       if (playlist.items.isEmpty) {
+        // Single playlist write if no items
+        await ingestPlaylist(domainPlaylist);
         _log.info('No items for DP1 playlist ${playlist.id}');
         return;
       }
@@ -483,9 +487,20 @@ class DatabaseService {
         );
       }
 
-      await ingestPlaylistItems(playlistItems);
-      await _db.upsertPlaylistEntries(entries);
-      await _db.updatePlaylistItemCount(domainPlaylist.id);
+      // Wrap all writes in a single transaction to reduce lock churn.
+      await _db.transaction(() async {
+        final playlistCompanion =
+            DatabaseConverters.playlistToCompanion(domainPlaylist);
+        await _db.upsertPlaylist(playlistCompanion);
+
+        final itemCompanions = playlistItems
+            .map(DatabaseConverters.playlistItemToCompanion)
+            .toList();
+        await _db.upsertItems(itemCompanions);
+
+        await _db.upsertPlaylistEntries(entries);
+        await _db.updatePlaylistItemCount(domainPlaylist.id);
+      });
 
       _log.info(
         'Ingested DP1 playlist ${playlist.id} with ${playlistItems.length} items',
