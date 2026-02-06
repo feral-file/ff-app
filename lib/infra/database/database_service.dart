@@ -360,6 +360,29 @@ class DatabaseService {
     }
   }
 
+  /// Upsert enriched playlist items (thumbnails/artists only).
+  ///
+  /// This is used by the enrichment service to update items with indexer token
+  /// data without touching playlist_entries. Wraps writes in a transaction for
+  /// efficiency.
+  Future<void> upsertPlaylistItemsEnriched(List<PlaylistItem> items) async {
+    if (items.isEmpty) return;
+
+    try {
+      await _db.transaction(() async {
+        final companions = items
+            .map(DatabaseConverters.playlistItemToCompanion)
+            .toList();
+        await _db.upsertItems(companions);
+      });
+
+      _log.info('Upserted ${items.length} enriched playlist items');
+    } catch (e, stack) {
+      _log.severe('Failed to upsert enriched playlist items', e, stack);
+      rethrow;
+    }
+  }
+
   /// Get playlist item by ID.
   Future<PlaylistItem?> getPlaylistItemById(String id) async {
     try {
@@ -562,6 +585,75 @@ class DatabaseService {
       );
     } catch (e, stack) {
       _log.severe('Failed to ingest tokens for address $address', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Ingest DP1 playlist with bare items (no enrichment).
+  ///
+  /// Inserts playlist and playlist items/entries immediately without fetching
+  /// indexer tokens. Items will have null thumbnailUrl/artists until enriched
+  /// separately by the enrichment service.
+  ///
+  /// Wraps all writes in a single transaction.
+  Future<void> ingestDP1PlaylistBare({
+    required DP1Playlist playlist,
+    required String baseUrl,
+  }) async {
+    try {
+      final domainPlaylist = DatabaseConverters.dp1PlaylistToDomain(
+        playlist,
+        baseUrl: baseUrl,
+      );
+
+      if (playlist.items.isEmpty) {
+        // Single playlist write if no items
+        await ingestPlaylist(domainPlaylist);
+        _log.info('No items for DP1 playlist ${playlist.id}');
+        return;
+      }
+
+      final playlistItems = <PlaylistItem>[];
+      final entries = <PlaylistEntriesCompanion>[];
+
+      for (var i = 0; i < playlist.items.length; i++) {
+        final item = playlist.items[i];
+        // Convert without token enrichment (thumbnail/artists will be null)
+        final playlistItem = DatabaseConverters.dp1PlaylistItemToPlaylistItem(
+          item,
+          token: null,
+        );
+        playlistItems.add(playlistItem);
+        entries.add(
+          DatabaseConverters.createPlaylistEntry(
+            playlistId: domainPlaylist.id,
+            itemId: playlistItem.id,
+            position: i,
+            sortKeyUs: 0,
+          ),
+        );
+      }
+
+      // Wrap all writes in a single transaction to reduce lock churn.
+      await _db.transaction(() async {
+        final playlistCompanion =
+            DatabaseConverters.playlistToCompanion(domainPlaylist);
+        await _db.upsertPlaylist(playlistCompanion);
+
+        final itemCompanions = playlistItems
+            .map(DatabaseConverters.playlistItemToCompanion)
+            .toList();
+        await _db.upsertItems(itemCompanions);
+
+        await _db.upsertPlaylistEntries(entries);
+        await _db.updatePlaylistItemCount(domainPlaylist.id);
+      });
+
+      _log.info(
+        'Ingested bare DP1 playlist ${playlist.id} with ${playlistItems.length} items',
+      );
+    } catch (e, stack) {
+      _log.severe('Failed to ingest bare DP1 playlist ${playlist.id}', e, stack);
       rethrow;
     }
   }

@@ -12,6 +12,7 @@ import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/drift_kinds.dart';
 import 'package:app/infra/services/base_dp1_feed_service_impl.dart';
+import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 
@@ -135,14 +136,17 @@ class FeralFileFeedManager extends FeedManager {
     required super.feedConfigStore,
     required this.defaultDp1FeedUrl,
     required IndexerService indexerService,
+    required DP1PlaylistItemsEnrichmentService enrichmentService,
     required String apiKey,
   }) : _indexerService = indexerService,
+       _enrichmentService = enrichmentService,
        _apiKey = apiKey;
 
   @override
   final String defaultDp1FeedUrl;
 
   final IndexerService _indexerService;
+  final DP1PlaylistItemsEnrichmentService _enrichmentService;
   final String _apiKey;
 
   List<RemoteConfigChannel> remoteConfigChannels = [];
@@ -189,6 +193,7 @@ class FeralFileFeedManager extends FeedManager {
         feedConfigStore: feedConfigStore,
         apiKey: _apiKey,
         indexerService: _indexerService,
+        enrichmentService: _enrichmentService,
       );
       Object? error;
       await service.init(

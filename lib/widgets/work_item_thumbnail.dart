@@ -52,8 +52,10 @@ class WorkItemThumbnail extends StatelessWidget {
   Widget _buildThumbnail() {
     final thumbnailUrl = item.thumbnailUrl;
     if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
-      _log.info('Thumbnail URL is empty for work: ${item.id}');
-      return const _NoThumbnail();
+      // Show loading placeholder when thumbnail is missing
+      // (enrichment in progress)
+      _log.fine('Thumbnail URL is empty for work: ${item.id}, showing loading placeholder');
+      return const GalleryThumbnailPlaceholder();
     }
 
     return CachedNetworkImage(

@@ -5,6 +5,7 @@ import 'package:app/infra/graphql/indexer_client_provider.dart';
 import 'package:app/infra/services/address_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/dp1_feed_service.dart';
+import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
@@ -65,12 +66,14 @@ final bootstrapServiceProvider = Provider<BootstrapService>((ref) {
 final dp1FeedServiceProvider = Provider<DP1FeedServiceImpl>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
   final indexerService = ref.watch(indexerServiceProvider);
+  final enrichmentService = ref.watch(dp1PlaylistItemsEnrichmentServiceProvider);
   final feedConfigStore = ref.watch(feedConfigStoreProvider);
 
   return DP1FeedServiceImpl(
     baseUrl: AppConfig.dp1FeedUrl,
     databaseService: databaseService,
     indexerService: indexerService,
+    enrichmentService: enrichmentService,
     feedConfigStore: feedConfigStore,
     apiKey: AppConfig.dp1FeedApiKey,
   );
@@ -79,4 +82,17 @@ final dp1FeedServiceProvider = Provider<DP1FeedServiceImpl>((ref) {
 /// Provider for composing support emails from the app.
 final supportEmailServiceProvider = Provider<SupportEmailService>((ref) {
   return SupportEmailService();
+});
+
+/// Provider for the DP1 playlist items enrichment service.
+/// Handles batch enrichment of playlist items with indexer token data.
+final dp1PlaylistItemsEnrichmentServiceProvider =
+    Provider<DP1PlaylistItemsEnrichmentService>((ref) {
+  final indexerService = ref.watch(indexerServiceProvider);
+  final databaseService = ref.watch(databaseServiceProvider);
+
+  return DP1PlaylistItemsEnrichmentService(
+    indexerService: indexerService,
+    databaseService: databaseService,
+  );
 });

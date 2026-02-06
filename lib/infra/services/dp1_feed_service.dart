@@ -8,6 +8,7 @@ import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/drift_kinds.dart';
 import 'package:app/infra/services/base_dp1_feed_service.dart';
+import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -24,11 +25,13 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
     required super.baseUrl,
     required DatabaseService databaseService,
     required IndexerService indexerService,
+    required DP1PlaylistItemsEnrichmentService enrichmentService,
     required FeedConfigStore feedConfigStore,
     required String apiKey,
     Dio? dio,
   }) : databaseService = databaseService,
        indexerService = indexerService,
+       _enrichmentService = enrichmentService,
        feedConfigStore = feedConfigStore,
        apiKey = apiKey,
        api = Dp1FeedApiImpl(
@@ -46,6 +49,9 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
   /// Indexer service for token enrichment.
   @protected
   final IndexerService indexerService;
+
+  /// Enrichment service for batch token enrichment.
+  final DP1PlaylistItemsEnrichmentService _enrichmentService;
 
   /// Feed config store for cache policy.
   @protected
@@ -125,22 +131,34 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
       const limit = 50;
       var totalPlaylists = 0;
 
+      // Collect all playlists first
+      final allPlaylists = <DP1Playlist>[];
       while (hasMore) {
         final resp = await api.getPlaylists(cursor: cursor, limit: limit);
-
-        for (final playlist in resp.items) {
-          await databaseService.ingestDP1PlaylistWire(
-            baseUrl: baseUrl,
-            playlist: playlist,
-            fetchTokens: (cids) =>
-                indexerService.fetchTokensByCIDs(tokenCids: cids),
-          );
-        }
-
+        allPlaylists.addAll(resp.items);
         totalPlaylists += resp.items.length;
         hasMore = resp.hasMore;
         cursor = resp.cursor;
       }
+
+      // Step 1: Insert bare playlists + items/entries
+      await _enrichmentService.clear();
+      for (final playlist in allPlaylists) {
+        await databaseService.ingestDP1PlaylistBare(
+          baseUrl: baseUrl,
+          playlist: playlist,
+        );
+
+        // Enqueue items for enrichment
+        await _enrichmentService.enqueuePlaylist(
+          playlistId: playlist.id,
+          items: playlist.items,
+        );
+      }
+
+      // Step 2: Process enrichment queues
+      log.info('Starting enrichment for $totalPlaylists playlists');
+      await _enrichmentService.processAll();
 
       log.info(
         'Reloaded cache for baseUrl=$baseUrl: $totalPlaylists playlists',
@@ -187,14 +205,23 @@ class DP1FeedServiceImpl extends BaseDP1FeedService {
     int? limit,
   }) async {
     final resp = await api.getPlaylists(cursor: cursor, limit: limit);
+    
+    // Insert bare playlists + enqueue enrichment
     for (final playlist in resp.items) {
-      await databaseService.ingestDP1PlaylistWire(
+      await databaseService.ingestDP1PlaylistBare(
         baseUrl: baseUrl,
         playlist: playlist,
-        fetchTokens: (cids) =>
-            indexerService.fetchTokensByCIDs(tokenCids: cids),
+      );
+
+      await _enrichmentService.enqueuePlaylist(
+        playlistId: playlist.id,
+        items: playlist.items,
       );
     }
+
+    // Process enrichment for this batch
+    await _enrichmentService.processAll();
+
     return resp;
   }
 

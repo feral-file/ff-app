@@ -1,9 +1,9 @@
-import 'package:logging/logging.dart';
-
 import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/infra/services/dp1_feed_with_channel_extension_service_impl.dart';
+import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
+import 'package:logging/logging.dart';
 
 /// DP1 feed service with remote config channel support.
 ///
@@ -11,21 +11,25 @@ import 'package:app/infra/services/indexer_service.dart';
 /// - [addRemoteConfigChannelIds] adds channel IDs (does not replace).
 /// - When remote config channel IDs are set, [getAllPlaylists] and
 ///   [getAllChannels] use channel-scoped fetch.
-/// - [reloadCache] uses extension flow (channels + playlists + ingest).
+/// - [reloadCache] uses extension flow with queue-based enrichment.
 class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
+  /// Creates a FeralFileDP1FeedService.
   FeralFileDP1FeedService({
     required super.baseUrl,
-    super.isExternalFeedService,
     required super.databaseService,
     required super.feedConfigStore,
     required super.apiKey,
+    required this.indexerService,
+    required DP1PlaylistItemsEnrichmentService enrichmentService,
+    super.isExternalFeedService,
     super.dio,
-    required IndexerService indexerService,
-  }) : indexerService = indexerService {
-    _log = Logger('FeralFileDP1FeedService[$baseUrl]');
-  }
+  })  : _enrichmentService = enrichmentService,
+        _log = Logger('FeralFileDP1FeedService[$baseUrl]');
 
+  /// Indexer service for token enrichment.
   final IndexerService indexerService;
+
+  final DP1PlaylistItemsEnrichmentService _enrichmentService;
   late final Logger _log;
 
   final List<String> _remoteConfigChannelIds = [];
@@ -107,22 +111,36 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
 
     await clearCache();
 
+    // Step 1: Ingest channels first
     await databaseService.ingestDP1ChannelsWire(
       baseUrl: baseUrl,
       channels: channels,
     );
+
+    // Step 2: Ingest playlists and bare items (no enrichment yet)
+    await _enrichmentService.clear();
     for (final playlist in playlists) {
-      await databaseService.ingestDP1PlaylistWire(
+      // Insert playlist + bare items/entries immediately
+      await databaseService.ingestDP1PlaylistBare(
         baseUrl: baseUrl,
         playlist: playlist,
-        fetchTokens: (cids) =>
-            indexerService.fetchTokensByCIDs(tokenCids: cids),
+      );
+
+      // Enqueue items for enrichment
+      await _enrichmentService.enqueuePlaylist(
+        playlistId: playlist.id,
+        items: playlist.items,
       );
     }
 
+    // Step 3: Process enrichment queues
+    _log.info('Starting enrichment for ${playlists.length} playlists');
+    await _enrichmentService.processAll();
+
     _log.info(
       'Reloaded cache with remote config channels: '
-      '${channels.length} channels, ${playlists.length} playlists',
+      '${channels.length} channels, '
+      '${playlists.length} playlists',
     );
   }
 }

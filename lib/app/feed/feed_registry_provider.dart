@@ -106,6 +106,7 @@ final feedManagerProvider = Provider<FeralFileFeedManager>((ref) {
     feedConfigStore: ref.read(feedConfigStoreProvider),
     defaultDp1FeedUrl: AppConfig.dp1FeedUrl,
     indexerService: ref.read(indexerServiceProvider),
+    enrichmentService: ref.read(dp1PlaylistItemsEnrichmentServiceProvider),
     apiKey: AppConfig.dp1FeedApiKey,
   );
 });
