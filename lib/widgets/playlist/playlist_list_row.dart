@@ -11,14 +11,29 @@ import 'package:app/widgets/playlist/playlist_title.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:riverpod/src/providers/stream_provider.dart';
 
-/// Stream of playlist items (domain) for a playlist.
-final StreamProviderFamily<List<PlaylistItem>, String>
-playlistItemsStreamProvider = StreamProvider.family<List<PlaylistItem>, String>(
+/// Aggregated stream of ALL playlist items by playlistId (batched).
+/// 
+/// This provider reduces N separate DB streams (one per row) to a single
+/// aggregated stream. Each row then uses select() to only rebuild when its
+/// specific playlist's items change.
+final StreamProvider<Map<String, List<PlaylistItem>>>
+    allPlaylistItemsStreamProvider =
+    StreamProvider.autoDispose<Map<String, List<PlaylistItem>>>((ref) {
+  final databaseService = ref.watch(databaseServiceProvider);
+  return databaseService.watchAllPlaylistItems();
+});
+
+/// Get items for a specific playlist via select on the aggregated provider.
+/// 
+/// This uses .select() to avoid creating extra streams for each row.
+/// Each row only rebuilds when its specific playlist's items change.
+final Provider<AsyncValue<List<PlaylistItem>>> Function(String)
+    playlistItemsProvider =
+    Provider.autoDispose.family<AsyncValue<List<PlaylistItem>>, String>(
   (ref, playlistId) {
-    final databaseService = ref.watch(databaseServiceProvider);
-    return databaseService.watchPlaylistItems(playlistId);
+    final allItemsAsync = ref.watch(allPlaylistItemsStreamProvider);
+    return allItemsAsync.whenData((map) => map[playlistId] ?? []);
   },
 );
 
@@ -88,7 +103,7 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
     final playlistTitle = playlist.name;
     final creator = widget.playlistCreator ?? '';
 
-    final itemsAsync = ref.watch(playlistItemsStreamProvider(playlist.id));
+    final itemsAsync = ref.watch(playlistItemsProvider(playlist.id));
 
     return GestureDetector(
       onTap: () {

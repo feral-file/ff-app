@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:logging/logging.dart';
 
 import 'package:app/domain/models/channel.dart';
@@ -87,6 +89,72 @@ class DatabaseService {
     yield* stream.map(
       (rows) => rows.map(DatabaseConverters.itemDataToDomainPreview).toList(),
     );
+  }
+
+  /// Watch all playlist items batched by playlistId (performance optimization).
+  ///
+  /// Emits a map of {playlistId: [items]} whenever any item changes in any
+  /// playlist. This is used by [allPlaylistItemsStreamProvider] to provide a
+  /// single aggregated stream that multiple rows can select from, rather than
+  /// creating N separate DB streams for N rows in a list.
+  ///
+  /// Returns a map where each key is a playlistId and the value is the ordered
+  /// list of items for that playlist (sorted by position or provenance based on
+  /// each playlist's sortMode).
+  Stream<Map<String, List<PlaylistItem>>> watchAllPlaylistItems() async* {
+    // Get all playlists (including their sortMode)
+    final allPlaylists = await getAllPlaylists();
+
+    if (allPlaylists.isEmpty) {
+      yield <String, List<PlaylistItem>>{};
+      return;
+    }
+
+    // Build a map of streams for each playlist
+    final playlistStreams = <String, Stream<List<ItemData>>>{};
+    for (final playlist in allPlaylists) {
+      final stream = playlist.sortMode == PlaylistSortMode.position
+          ? _db.watchPlaylistItemsByPosition(playlist.id)
+          : _db.watchPlaylistItemsByProvenance(playlist.id);
+      playlistStreams[playlist.id] = stream;
+    }
+
+    // Use a controller to manually merge all streams
+    final controller = StreamController<Map<String, List<PlaylistItem>>>();
+    final cache = <String, List<PlaylistItem>>{};
+
+    // Subscribe to all playlist streams
+    final subscriptions = <StreamSubscription<List<ItemData>>>[];
+
+    try {
+      for (final entry in playlistStreams.entries) {
+        final sub = entry.value.listen(
+          (itemsData) {
+            cache[entry.key] = itemsData
+                .map(DatabaseConverters.itemDataToDomainPreview)
+                .toList();
+            if (!controller.isClosed) {
+              controller.add(Map.from(cache));
+            }
+          },
+          onError: (Object err) {
+            if (!controller.isClosed) {
+              controller.addError(err);
+            }
+          },
+        );
+        subscriptions.add(sub);
+      }
+
+      // Emit the stream
+      yield* controller.stream;
+    } finally {
+      // Clean up subscriptions
+      for (final sub in subscriptions) {
+        await sub.cancel();
+      }
+      await controller.close();
+    }
   }
 
   /// Watch playlist items for a channel (domain models).
