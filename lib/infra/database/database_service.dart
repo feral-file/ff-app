@@ -89,6 +89,25 @@ class DatabaseService {
     );
   }
 
+  /// Watch playlist items for a channel (domain models).
+  ///
+  /// Emits when playlists, playlist_entries, or items for [channelId] change.
+  Stream<List<PlaylistItem>> watchPlaylistItemsByChannel(
+    String channelId, {
+    int? limit,
+    int? offset,
+  }) {
+    return _db
+        .watchPlaylistItemsByChannel(
+          channelId,
+          limit: limit,
+          offset: offset ?? 0,
+        )
+        .map(
+          (rows) => rows.map(DatabaseConverters.itemDataToDomain).toList(),
+        );
+  }
+
   // ========== Channel Operations ==========
 
   /// Ingest a channel into the database.
@@ -127,6 +146,25 @@ class DatabaseService {
       return data.map(DatabaseConverters.channelDataToDomain).toList();
     } catch (e, stack) {
       _log.severe('Failed to get channels', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Get channels by type with optional pagination.
+  Future<List<Channel>> getChannelsByType(
+    ChannelType type, {
+    int? limit,
+    int offset = 0,
+  }) async {
+    try {
+      final data = await _db.getChannelsByType(
+        type.index,
+        limit: limit,
+        offset: offset,
+      );
+      return data.map(DatabaseConverters.channelDataToDomain).toList();
+    } catch (e, stack) {
+      _log.severe('Failed to get channels by type', e, stack);
       rethrow;
     }
   }
@@ -281,6 +319,30 @@ class DatabaseService {
       return data.map(DatabaseConverters.itemDataToDomain).toList();
     } catch (e, stack) {
       _log.severe('Failed to get items for playlist $playlistId', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Get playlist items for a channel (all playlists in channel, no ordering).
+  /// [limit] null = return all; [offset] null = 0.
+  Future<List<PlaylistItem>> getPlaylistItemsByChannel(
+    String channelId, {
+    int? limit,
+    int? offset,
+  }) async {
+    try {
+      final data = await _db.getPlaylistItemsByChannel(
+        channelId,
+        limit: limit,
+        offset: offset ?? 0,
+      );
+      return data.map(DatabaseConverters.itemDataToDomain).toList();
+    } catch (e, stack) {
+      _log.severe(
+        'Failed to get playlist items for channel $channelId',
+        e,
+        stack,
+      );
       rethrow;
     }
   }

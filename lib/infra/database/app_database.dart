@@ -12,6 +12,9 @@ part 'app_database.g.dart';
 
 final _log = Logger('AppDatabase');
 
+/// Large limit used when only offset is set (skip N rows, return the rest).
+const _maxLimitForOffset = 0x7FFFFFFF;
+
 /// Main application database using Drift.
 /// Implements offline-first storage for DP-1 entities and relationships.
 @DriftDatabase(tables: [Channels, Playlists, Items, PlaylistEntries])
@@ -221,6 +224,31 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
+  /// Get channels by type with optional pagination.
+  /// Order matches [watchChannels] (sort_order asc, id asc) for consistent paging.
+  Future<List<ChannelData>> getChannelsByType(
+    int type, {
+    int? limit,
+    int offset = 0,
+  }) async {
+    final query = select(channels)
+      ..where((t) => t.type.equals(type))
+      ..orderBy([
+        (t) => OrderingTerm(
+              expression: t.sortOrder,
+              mode: OrderingMode.asc,
+              nulls: NullsOrder.last,
+            ),
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+
+    if (limit != null) {
+      query.limit(limit, offset: offset);
+    }
+
+    return query.get();
+  }
+
   /// Get channel by ID.
   Future<ChannelData?> getChannelById(String id) async {
     return (select(channels)..where((t) => t.id.equals(id))).getSingleOrNull();
@@ -358,6 +386,61 @@ class AppDatabase extends _$AppDatabase {
     return result.map((row) => row.readTable(items)).toList();
   }
 
+  /// Get playlist items for a channel (join playlists → playlist_entries → items).
+  /// No ordering. [limit] null = return all; [offset] null = 0.
+  Future<List<ItemData>> getPlaylistItemsByChannel(
+    String channelId, {
+    int? limit,
+    int? offset,
+  }) async {
+    final off = offset ?? 0;
+    final query = select(items).join([
+      innerJoin(
+        playlistEntries,
+        playlistEntries.itemId.equalsExp(items.id),
+      ),
+      innerJoin(
+        playlists,
+        playlists.id.equalsExp(playlistEntries.playlistId),
+      ),
+    ])..where(playlists.channelId.equals(channelId));
+
+    if (limit != null) {
+      query.limit(limit, offset: off);
+    }
+
+    final result = await query.get();
+    return result.map((row) => row.readTable(items)).toList();
+  }
+
+  /// Watch playlist items for a channel (same join as [getPlaylistItemsByChannel]).
+  /// Emits when playlists, playlist_entries, or items matching the channel change.
+  Stream<List<ItemData>> watchPlaylistItemsByChannel(
+    String channelId, {
+    int? limit,
+    int? offset,
+  }) {
+    final off = offset ?? 0;
+    final query = select(items).join([
+      innerJoin(
+        playlistEntries,
+        playlistEntries.itemId.equalsExp(items.id),
+      ),
+      innerJoin(
+        playlists,
+        playlists.id.equalsExp(playlistEntries.playlistId),
+      ),
+    ])..where(playlists.channelId.equals(channelId));
+
+    if (limit != null) {
+      query.limit(limit, offset: off);
+    }
+
+    return query.watch().map(
+          (rows) => rows.map((row) => row.readTable(items)).toList(),
+        );
+  }
+
   /// Get all items from the database.
   Future<List<ItemData>> getAllItems() async {
     return select(items).get();
@@ -415,6 +498,7 @@ class AppDatabase extends _$AppDatabase {
   /// Get playlists by baseUrls with order (first baseUrl's playlists first),
   /// then by createdAt ASC within each baseUrl.
   /// Matches old repo's getPlaylistRowsByBaseUrls query.
+  /// Order, limit and offset are applied in the query (no in-memory sort/slice).
   /// - [baseUrls] order matters.
   /// - [type] 0 = DP1, 1 = address (null = all).
   /// - [offset] and [limit] for pagination.
@@ -426,36 +510,33 @@ class AppDatabase extends _$AppDatabase {
   }) async {
     if (baseUrls.isEmpty) return [];
 
+    // ORDER BY baseUrl order (CASE expression), then created_at_us, then id.
+    final baseUrlOrderExpr = playlists.baseUrl.caseMatch(
+      when: Map.fromEntries(
+        baseUrls.asMap().entries.map(
+          (e) => MapEntry(Variable.withString(e.value), Constant(e.key)),
+        ),
+      ),
+      orElse: Constant(baseUrls.length),
+    );
+
     final query = select(playlists)
       ..where((p) =>
           p.baseUrl.isIn(baseUrls) &
           (type != null ? p.type.equals(type) : const Constant(true)))
-      ..orderBy([(p) => OrderingTerm.asc(p.createdAtUs)])
-      ..orderBy([(p) => OrderingTerm.asc(p.id)]);
+      ..orderBy([
+        (p) => OrderingTerm.asc(baseUrlOrderExpr),
+        (p) => OrderingTerm.asc(p.createdAtUs),
+        (p) => OrderingTerm.asc(p.id),
+      ]);
 
-    var rows = await query.get();
-
-    // Order by baseUrls order then createdAt ASC.
-    final orderMap = <String, int>{};
-    for (var i = 0; i < baseUrls.length; i++) {
-      orderMap[baseUrls[i]] = i;
+    if (limit != null) {
+      query.limit(limit, offset: offset ?? 0);
+    } else if (offset != null && offset > 0) {
+      query.limit(_maxLimitForOffset, offset: offset);
     }
-    rows.sort((a, b) {
-      final orderA = orderMap[a.baseUrl] ?? baseUrls.length;
-      final orderB = orderMap[b.baseUrl] ?? baseUrls.length;
-      if (orderA != orderB) return orderA.compareTo(orderB);
-      return a.createdAtUs.compareTo(b.createdAtUs);
-    });
 
-    if (offset != null || limit != null) {
-      final start = offset ?? 0;
-      final end = limit != null ? start + limit : rows.length;
-      rows = rows.sublist(
-        start.clamp(0, rows.length),
-        end.clamp(0, rows.length),
-      );
-    }
-    return rows;
+    return query.get();
   }
 
   /// Delete all playlists of given type and baseUrl.
