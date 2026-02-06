@@ -545,6 +545,9 @@ class DatabaseService {
   }
 
   /// Get channel by playlist ID (domain only).
+  ///
+  /// Returns a tuple of (channel, playlists list for UI, baseUrl).
+  /// The playlists list uses light projection to skip heavy JSON fields.
   Future<(Channel, List<Playlist>, String)?> getChannelByPlaylistId(
     String playlistId,
   ) async {
@@ -560,7 +563,7 @@ class DatabaseService {
     final channelPlaylistsData = await _db.getPlaylistsByChannel(channelId);
     final channel = DatabaseConverters.channelDataToDomain(channelData);
     final playlists = channelPlaylistsData
-        .map(DatabaseConverters.playlistDataToDomain)
+        .map(DatabaseConverters.playlistDataToDomainPreview)
         .toList();
     return (channel, playlists, baseUrl);
   }
