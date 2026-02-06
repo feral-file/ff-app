@@ -128,7 +128,6 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
   final ChannelType _type;
   late final Logger _log;
   StreamSubscription<List<Channel>>? _watchSub;
-  int? _watchLimit;
 
   @override
   ChannelsState build() {
@@ -139,28 +138,19 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       _watchSub = null;
     });
 
-    // _setupDatabaseWatch();
+    // Best practice: keep build() synchronous; defer subscriptions to the next turn.
+    // Stream.listen() can emit synchronously; if we set up the watch here and the
+    // callback runs before build() returns, Riverpod throws "uninitialized provider".
+    // Future.microtask ensures the notifier is fully initialized before any callback.
+    unawaited(Future.microtask(_setupDatabaseWatch));
     return ChannelsState.initial();
   }
 
   void _setupDatabaseWatch() {
-    if (_type == ChannelType.dp1) {
-      _ensureWatch(limit: _pageSize);
-    } else {
-      _watchSub?.cancel();
-      _watchLimit = null;
-      final databaseService = ref.read(databaseServiceProvider);
-      _watchSub = databaseService
-          .watchChannels(type: _type)
-          .listen(_onChannelsChanged, onError: _onWatchError);
-    }
-  }
-
-  void _ensureWatch({required int limit}) {
-    if (_type != ChannelType.dp1 || _watchLimit == limit) return;
-    _watchLimit = limit;
     _watchSub?.cancel();
     final databaseService = ref.read(databaseServiceProvider);
+    final limit =
+        (_pageSize > state.channels.length) ? _pageSize : state.channels.length;
     _watchSub = databaseService
         .watchChannels(type: _type, limit: limit)
         .listen(_onChannelsChanged, onError: _onWatchError);
@@ -206,33 +196,28 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       state = state.copyWith(isLoading: true, clearError: true);
 
       final databaseService = ref.read(databaseServiceProvider);
-      final allChannels = await databaseService.getChannels();
 
       if (_type == ChannelType.dp1) {
-        final curatedAll = allChannels
-            .where((c) => c.type == ChannelType.dp1)
-            .toList();
-        final end = effectiveSize.clamp(0, curatedAll.length);
-        final page = curatedAll.take(end).toList();
-        final nextCursor = end < curatedAll.length ? end.toString() : null;
-        final hasMore = nextCursor != null;
-        _ensureWatch(
-          limit: page.length < _pageSize ? _pageSize : page.length,
+        final result = await databaseService.getChannelsByType(
+          ChannelType.dp1,
+          limit: effectiveSize + 1,
         );
+        final hasMore = result.length > effectiveSize;
+        final page = hasMore ? result.take(effectiveSize).toList() : result;
+        final nextCursor = hasMore ? effectiveSize.toString() : null;
         state = ChannelsState.loaded(
           channels: page,
           hasMore: hasMore,
           cursor: nextCursor,
-          total: curatedAll.length,
+          total: null,
         );
         _log.info(
-          'Curated channels: ${page.length}/${curatedAll.length}, '
-          'hasMore: $hasMore, cursor: $nextCursor',
+          'Curated channels: ${page.length}, hasMore: $hasMore, cursor: $nextCursor',
         );
       } else {
-        final personalAll = allChannels
-            .where((c) => c.type == ChannelType.localVirtual)
-            .toList();
+        final personalAll = await databaseService.getChannelsByType(
+          ChannelType.localVirtual,
+        );
         state = ChannelsState.loaded(
           channels: personalAll,
           hasMore: false,
@@ -269,27 +254,25 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       state = state.copyWith(isLoadingMore: true, clearError: true);
 
       final databaseService = ref.read(databaseServiceProvider);
-      final allChannels = await databaseService.getChannels();
-      final curatedAll = allChannels
-          .where((c) => c.type == ChannelType.dp1)
-          .toList();
+      final result = await databaseService.getChannelsByType(
+        ChannelType.dp1,
+        limit: _pageSize + 1,
+        offset: start,
+      );
 
-      final end = (start + _pageSize).clamp(0, curatedAll.length);
-      if (start >= end) {
+      if (result.isEmpty) {
         state = state.copyWith(
           isLoadingMore: false,
           hasMore: false,
-          cursor: null,
+          clearCursor: true,
         );
         return;
       }
 
-      final page = curatedAll.sublist(start, end);
+      final hasMore = result.length > _pageSize;
+      final page = hasMore ? result.take(_pageSize).toList() : result;
+      final nextCursor = hasMore ? (start + _pageSize).toString() : null;
       final nextChannels = [...state.channels, ...page];
-      final nextCursor = end < curatedAll.length ? end.toString() : null;
-      final hasMore = nextCursor != null;
-
-      _ensureWatch(limit: nextChannels.length);
 
       state = state.copyWith(
         channels: nextChannels,
@@ -307,26 +290,26 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 /// Provider for channels state by type (dp1 = curated, localVirtual = personal).
 final channelsProvider =
     NotifierProvider.family<ChannelsNotifier, ChannelsState, ChannelType>(
-      ChannelsNotifier.new,
-    );
+  ChannelsNotifier.new,
+);
 
 /// Mutation for loading channels (generic; use with specific type in UI).
 final loadChannelsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-      MutationNotifier.new,
-    );
+  MutationNotifier.new,
+);
 
 /// Mutation for refreshing channels.
 final refreshChannelsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-      MutationNotifier.new,
-    );
+  MutationNotifier.new,
+);
 
 /// Mutation for loading more channels.
 final loadMoreChannelsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-      MutationNotifier.new,
-    );
+  MutationNotifier.new,
+);
 
 /// Provider for a specific channel by ID.
 final channelByIdProvider = FutureProvider.family<Channel?, String>((

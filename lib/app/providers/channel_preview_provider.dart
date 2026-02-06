@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -102,11 +104,44 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
 
   final String _channelId;
   late final Logger _log;
+  StreamSubscription<List<PlaylistItem>>? _watchSub;
 
   @override
   ChannelPreviewState build() {
     _log = Logger('ChannelPreviewNotifier($_channelId)');
+    ref.onDispose(() {
+      _log.info('Disposing ChannelPreviewNotifier, cancelling subscription');
+      unawaited(_watchSub?.cancel());
+      _watchSub = null;
+    });
+
+    _setupDatabaseWatch();
     return ChannelPreviewState.initial();
+  }
+
+  void _setupDatabaseWatch() {
+    unawaited(_watchSub?.cancel());
+    _watchSub = null;
+    if (_channelId.isEmpty) return;
+
+    final databaseService = ref.read(databaseServiceProvider);
+    _watchSub = databaseService
+        .watchPlaylistItemsByChannel(
+          _channelId,
+          limit: channelPreviewPageSize + 1,
+          offset: 0,
+        )
+        .listen(_onPlaylistItemsChanged, onError: _onWatchError);
+  }
+
+  void _onWatchError(Object error, StackTrace stack) {
+    _log.warning('Database watch error', error, stack);
+  }
+
+  void _onPlaylistItemsChanged(List<PlaylistItem> next) {
+    final page = next.take(channelPreviewPageSize).toList();
+    final hasMore = next.length > channelPreviewPageSize;
+    state = ChannelPreviewState.loaded(works: page, hasMore: hasMore);
   }
 
   /// Load first page of preview works.

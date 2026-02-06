@@ -60,27 +60,30 @@ class ChannelListRow extends ConsumerStatefulWidget {
 
 class _ChannelListRowState extends ConsumerState<ChannelListRow> {
   @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(ChannelListRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final channelId = widget.channelData.channelId;
     final previewState = ref.watch(channelPreviewProvider(channelId));
 
-    // Trigger initial load when using provider (works from parent empty and state initial).
-    if (widget.channelData.works.isEmpty &&
-        previewState.works.isEmpty &&
-        !previewState.isLoading &&
-        previewState.error == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!context.mounted) return;
-        ref.read(channelPreviewProvider(channelId).notifier).load();
-      });
-    }
-
     final works = widget.channelData.works.isNotEmpty
         ? widget.channelData.works
         : previewState.works;
-    final hasMore = widget.channelData.works.isNotEmpty
-        ? false
-        : previewState.hasMore;
+    final hasMore =
+        widget.channelData.works.isNotEmpty ? false : previewState.hasMore;
     final isLoadingMore =
         widget.channelData.works.isEmpty && previewState.isLoadingMore;
     final isLoading =
