@@ -1,10 +1,6 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
-import 'package:app/app/providers/channels_provider.dart';
-import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
-import 'package:app/domain/models/channel.dart';
-import 'package:app/domain/models/playlist.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
@@ -60,15 +56,9 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     // Trigger bootstrap to fetch channels and playlists
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(bootstrapProvider.notifier).bootstrap();
-      // Reload channels and playlists after bootstrap completes
-      ref.read(channelsProvider(ChannelType.dp1).notifier).loadChannels();
-      ref
-          .read(channelsProvider(ChannelType.localVirtual).notifier)
-          .loadChannels();
-      ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
-      ref
-          .read(playlistsProvider(PlaylistType.addressBased).notifier)
-          .loadPlaylists();
+      // Tab pages (ChannelsTabPage, PlaylistsTabPage) handle their own data loading
+      // in initState via loadChannels() and loadPlaylists() calls.
+      // No need to reload here—doing so would duplicate notifier emissions and rebuilds.
     });
   }
 
@@ -248,15 +238,15 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         title: 'Support & Feedback',
         icon: ValueListenableBuilder<List<int>?>(
           valueListenable: ValueNotifier<List<int>?>(null),
-          builder: (
-            BuildContext context,
-            List<int>? numberOfIssuesInfo,
-            Widget? child,
-          ) =>
-              const Icon(
-            Icons.help_outline,
-            color: AppColor.white,
-          ),
+          builder:
+              (
+                BuildContext context,
+                List<int>? numberOfIssuesInfo,
+                Widget? child,
+              ) => const Icon(
+                Icons.help_outline,
+                color: AppColor.white,
+              ),
         ),
         onTap: () async {
           Navigator.pop(context);
