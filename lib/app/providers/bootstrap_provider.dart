@@ -94,41 +94,25 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       await bootstrapService.bootstrap();
       _log.info('My Collection channel created');
 
-      // Step 2: Fetch channels from feed server
-      // Using retryable provider for automatic retry on network errors
-      state = state.copyWith(message: 'Fetching channels...');
-      _log.info('Fetching channels from feed server...');
-      final channelCount = await ref.read(fetchChannelsProvider.future);
-
-      _log.info('✓ Fetched and saved $channelCount channels to database');
-
-      // Step 3: Fetch playlists from feed server
-      state = state.copyWith(message: 'Fetching playlists...');
-      _log.info('Fetching playlists from feed server...');
-      final playlistCount = await ref.read(fetchPlaylistsProvider.future);
-
-      _log.info('✓ Fetched and saved $playlistCount playlists to database');
-
-      // Step 4: Setup and reload curated channels (matches old repo pattern).
+      // Step 2: Setup and reload curated channels (matches old repo pattern).
       // This is intentionally additive to the default DP1_FEED_URL bootstrap.
       state = state.copyWith(message: 'Syncing curated feeds...');
       _log.info('Setting up curated channels and feed services...');
 
       final curatedUrls = ref.read(curatedDp1ChannelUrlsProvider);
-      await ref.read(feedRegistryProvider.notifier).setupRemoteConfigChannels(
+      await ref
+          .read(feedRegistryProvider.notifier)
+          .setupRemoteConfigChannels(
             curatedUrls,
           );
-
-      _log.info('Reloading curated feed caches...');
-      await ref.read(feedRegistryProvider.notifier).reloadAllCache(force: true);
 
       _log.info('✓ Curated feeds setup and reloaded');
 
       state = BootstrapStatus(
         state: BootstrapState.success,
-        message: 'Bootstrap completed: '
-            '$channelCount channels, '
-            '$playlistCount playlists loaded',
+        message:
+            'Bootstrap completed: '
+            '${curatedUrls.length} channels',
       );
 
       _log.info('Bootstrap completed successfully');

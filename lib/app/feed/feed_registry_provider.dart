@@ -139,6 +139,7 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
     _log.info('Setting up remote config channels: ${channelUrls.length} URLs');
     final manager = ref.read(feedManagerProvider);
     await manager.setupRemoteConfigChannels(channelUrls);
+    await manager.reloadAllCache(force: true);
     _log.info('Setup complete');
   }
 

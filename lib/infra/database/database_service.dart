@@ -65,7 +65,8 @@ class DatabaseService {
           limit: limit,
         )
         .map(
-          (rows) => rows.map(DatabaseConverters.playlistDataToDomainPreview).toList(),
+          (rows) =>
+              rows.map(DatabaseConverters.playlistDataToDomainPreview).toList(),
         );
   }
 
@@ -599,11 +600,13 @@ class DatabaseService {
   Future<void> ingestDP1PlaylistBare({
     required DP1Playlist playlist,
     required String baseUrl,
+    required String? channelId,
   }) async {
     try {
       final domainPlaylist = DatabaseConverters.dp1PlaylistToDomain(
         playlist,
         baseUrl: baseUrl,
+        channelId: channelId,
       );
 
       if (playlist.items.isEmpty) {
@@ -636,8 +639,9 @@ class DatabaseService {
 
       // Wrap all writes in a single transaction to reduce lock churn.
       await _db.transaction(() async {
-        final playlistCompanion =
-            DatabaseConverters.playlistToCompanion(domainPlaylist);
+        final playlistCompanion = DatabaseConverters.playlistToCompanion(
+          domainPlaylist,
+        );
         await _db.upsertPlaylist(playlistCompanion);
 
         final itemCompanions = playlistItems
@@ -653,7 +657,11 @@ class DatabaseService {
         'Ingested bare DP1 playlist ${playlist.id} with ${playlistItems.length} items',
       );
     } catch (e, stack) {
-      _log.severe('Failed to ingest bare DP1 playlist ${playlist.id}', e, stack);
+      _log.severe(
+        'Failed to ingest bare DP1 playlist ${playlist.id}',
+        e,
+        stack,
+      );
       rethrow;
     }
   }
@@ -664,17 +672,22 @@ class DatabaseService {
   /// is matched by CID and enriched with [thumbnailUrl] and DP1 [artists] from
   /// the token; when token is null for an item, those two fields remain null.
   ///
+  /// [channelId] must be set when ingesting in channel context so
+  /// getPlaylistItemsByChannel returns items.
+  ///
   /// Wraps all writes in a single transaction to reduce lock churn and stream
   /// invalidations.
   Future<void> ingestDP1Playlist({
     required DP1Playlist playlist,
     required String baseUrl,
+    String? channelId,
     List<AssetToken>? tokens,
   }) async {
     try {
       final domainPlaylist = DatabaseConverters.dp1PlaylistToDomain(
         playlist,
         baseUrl: baseUrl,
+        channelId: channelId,
       );
 
       if (playlist.items.isEmpty) {
@@ -714,8 +727,9 @@ class DatabaseService {
 
       // Wrap all writes in a single transaction to reduce lock churn.
       await _db.transaction(() async {
-        final playlistCompanion =
-            DatabaseConverters.playlistToCompanion(domainPlaylist);
+        final playlistCompanion = DatabaseConverters.playlistToCompanion(
+          domainPlaylist,
+        );
         await _db.upsertPlaylist(playlistCompanion);
 
         final itemCompanions = playlistItems
@@ -913,9 +927,12 @@ class DatabaseService {
   /// When [fetchTokens] is provided and playlist items have CIDs, tokens are
   /// fetched and used to enrich items (thumbnail, artists). Otherwise no
   /// enrichment. Delegates to [ingestDP1Playlist].
+  /// [channelId] must be set when ingesting in channel context so
+  /// getPlaylistItemsByChannel returns items (playlists.channel_id in DB).
   Future<void> ingestDP1PlaylistWire({
     required String baseUrl,
     required DP1Playlist playlist,
+    String? channelId,
     Future<List<AssetToken>?> Function(List<String> cids)? fetchTokens,
   }) async {
     List<AssetToken>? tokens;
@@ -932,6 +949,7 @@ class DatabaseService {
     await ingestDP1Playlist(
       playlist: playlist,
       baseUrl: baseUrl,
+      channelId: channelId,
       tokens: tokens,
     );
   }

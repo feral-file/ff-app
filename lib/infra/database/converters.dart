@@ -427,7 +427,10 @@ class DatabaseConverters {
 
   /// Convert DP1Playlist (wire) to Playlist domain model.
   /// Used when creating PlaylistReference from API response.
-  static Playlist dp1PlaylistToDomain(DP1Playlist dp1, {String? baseUrl}) {
+  /// [channelId] must be set when playlist is ingested in channel context so
+  /// [getPlaylistItemsByChannel] can return items (playlists.channel_id in DB).
+  static Playlist dp1PlaylistToDomain(DP1Playlist dp1,
+      {String? baseUrl, String? channelId}) {
     final dynamicQueries = dp1.dynamicQueries;
     final sortMode = dynamicQueries.isNotEmpty
         ? PlaylistSortMode.provenance
@@ -437,6 +440,7 @@ class DatabaseConverters {
       name: dp1.title,
       type: PlaylistType.dp1,
       playlistSource: PlaylistSource.curated,
+      channelId: channelId,
       baseUrl: baseUrl,
       dpVersion: dp1.dpVersion,
       slug: dp1.slug,

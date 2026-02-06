@@ -1,5 +1,4 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
-import 'package:app/app/providers/api_providers.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/feed/curated_channel_urls.dart';
 import 'package:app/infra/config/app_config.dart';
@@ -13,7 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Unit tests for BootstrapProvider using Riverpod testing patterns.
-/// 
+///
 /// Demonstrates proper mocking using provider overrides, following
 /// the Riverpod testing guide: https://riverpod.dev/docs/how_to/testing
 void main() {
@@ -70,8 +69,6 @@ void main() {
           databaseServiceProvider.overrideWith((ref) => dbService),
           // Avoid network/remote-config work during unit tests.
           curatedDp1ChannelUrlsProvider.overrideWithValue(const <String>[]),
-          fetchChannelsProvider.overrideWith((ref) async => 0),
-          fetchPlaylistsProvider.overrideWith((ref) async => 0),
         ],
       );
       addTearDown(container.dispose);
@@ -100,8 +97,6 @@ void main() {
           databaseServiceProvider.overrideWith((ref) => dbService),
           // Avoid network/remote-config work during unit tests.
           curatedDp1ChannelUrlsProvider.overrideWithValue(const <String>[]),
-          fetchChannelsProvider.overrideWith((ref) async => 0),
-          fetchPlaylistsProvider.overrideWith((ref) async => 0),
         ],
       );
       addTearDown(container.dispose);
@@ -244,25 +239,6 @@ class _MockDP1FeedService implements DP1FeedServiceImpl {
   Future<void> fetchChannel({
     required String baseUrl,
     required String channelId,
-  }) async {
-    // Mock implementation
-    return;
-  }
-
-  @override
-  Future<int> fetchPlaylists({
-    required String baseUrl,
-    int? limit = 10,
-    String? cursor,
-  }) async {
-    // Return a predictable number
-    return 3;
-  }
-
-  @override
-  Future<void> ingestPlaylistFromFeed({
-    required String baseUrl,
-    required Map<String, dynamic> playlistJson,
   }) async {
     // Mock implementation
     return;

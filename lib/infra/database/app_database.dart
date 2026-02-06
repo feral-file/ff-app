@@ -388,6 +388,8 @@ class AppDatabase extends _$AppDatabase {
 
   /// Get playlist items for a channel (join playlists → playlist_entries → items).
   /// No ordering. [limit] null = return all; [offset] null = 0.
+  /// Returns empty if playlists have null channel_id; set channelId when
+  /// ingesting DP1 playlists in channel context (e.g. reloadCache with channels).
   Future<List<ItemData>> getPlaylistItemsByChannel(
     String channelId, {
     int? limit,

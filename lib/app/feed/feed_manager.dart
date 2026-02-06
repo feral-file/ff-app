@@ -206,11 +206,6 @@ class FeralFileFeedManager extends FeedManager {
       );
       service.addRemoteConfigChannelIds(channelIdsByUrl[endpoint]!);
       addFeedService(service);
-
-      if (error != null) {
-        _log.info('Error initializing feed service: $error');
-        service.reloadCacheIfNeeded(force: true);
-      }
     }
 
     _log.info(

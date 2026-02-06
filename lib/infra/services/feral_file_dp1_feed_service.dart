@@ -23,13 +23,14 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
     required DP1PlaylistItemsEnrichmentService enrichmentService,
     super.isExternalFeedService,
     super.dio,
-  })  : _enrichmentService = enrichmentService,
-        _log = Logger('FeralFileDP1FeedService[$baseUrl]');
+  }) : _enrichmentService = enrichmentService,
+       _log = Logger('FeralFileDP1FeedService[$baseUrl]');
 
   /// Indexer service for token enrichment.
   final IndexerService indexerService;
 
   final DP1PlaylistItemsEnrichmentService _enrichmentService;
+
   late final Logger _log;
 
   final List<String> _remoteConfigChannelIds = [];
@@ -70,8 +71,9 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
         cursor = response.cursor;
       }
       return playlists;
+    } else {
+      return super.getAllPlaylists();
     }
-    return super.getAllPlaylists();
   }
 
   @override
@@ -120,10 +122,13 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
     // Step 2: Ingest playlists and bare items (no enrichment yet)
     await _enrichmentService.clear();
     for (final playlist in playlists) {
-      // Insert playlist + bare items/entries immediately
+      final channelId = channels
+          .firstWhere((c) => c.playlists.any((p) => p.contains(playlist.id)))
+          .id;
       await databaseService.ingestDP1PlaylistBare(
         baseUrl: baseUrl,
         playlist: playlist,
+        channelId: channelId,
       );
 
       // Enqueue items for enrichment
