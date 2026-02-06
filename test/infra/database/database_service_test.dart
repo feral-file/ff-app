@@ -245,6 +245,120 @@ void main() {
         expect(retrieved[2].id, 'item_3');
       });
 
+      test('getPlaylistItemsByChannel returns items from all playlists in channel', () async {
+        // Channel and two playlists in it
+        await service.ingestChannel(
+          Channel(
+            id: 'ch_test',
+            name: 'Test Channel',
+            type: ChannelType.dp1,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+        );
+        await service.ingestPlaylist(
+          Playlist(
+            id: 'pl_a',
+            name: 'Playlist A',
+            type: PlaylistType.dp1,
+            channelId: 'ch_test',
+            sortMode: PlaylistSortMode.position,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+        );
+        await service.ingestPlaylist(
+          Playlist(
+            id: 'pl_b',
+            name: 'Playlist B',
+            type: PlaylistType.dp1,
+            channelId: 'ch_test',
+            sortMode: PlaylistSortMode.position,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+        );
+        // Items and entries: pl_a has item_1, item_2; pl_b has item_3, item_4
+        final items = [
+          PlaylistItem(
+            id: 'item_1',
+            kind: PlaylistItemKind.indexerToken,
+            title: 'Item 1',
+            updatedAt: DateTime.now(),
+          ),
+          PlaylistItem(
+            id: 'item_2',
+            kind: PlaylistItemKind.indexerToken,
+            title: 'Item 2',
+            updatedAt: DateTime.now(),
+          ),
+          PlaylistItem(
+            id: 'item_3',
+            kind: PlaylistItemKind.indexerToken,
+            title: 'Item 3',
+            updatedAt: DateTime.now(),
+          ),
+          PlaylistItem(
+            id: 'item_4',
+            kind: PlaylistItemKind.indexerToken,
+            title: 'Item 4',
+            updatedAt: DateTime.now(),
+          ),
+        ];
+        await service.ingestPlaylistItems(items);
+        final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+        await db.upsertPlaylistEntries([
+          PlaylistEntriesCompanion.insert(
+            playlistId: 'pl_a',
+            itemId: 'item_1',
+            position: const Value(0),
+            sortKeyUs: BigInt.zero,
+            updatedAtUs: nowUs,
+          ),
+          PlaylistEntriesCompanion.insert(
+            playlistId: 'pl_a',
+            itemId: 'item_2',
+            position: const Value(1),
+            sortKeyUs: BigInt.zero,
+            updatedAtUs: nowUs,
+          ),
+          PlaylistEntriesCompanion.insert(
+            playlistId: 'pl_b',
+            itemId: 'item_3',
+            position: const Value(0),
+            sortKeyUs: BigInt.zero,
+            updatedAtUs: nowUs,
+          ),
+          PlaylistEntriesCompanion.insert(
+            playlistId: 'pl_b',
+            itemId: 'item_4',
+            position: const Value(1),
+            sortKeyUs: BigInt.zero,
+            updatedAtUs: nowUs,
+          ),
+        ]);
+
+        final all = await service.getPlaylistItemsByChannel('ch_test');
+        expect(all.length, 4);
+
+        final page1 = await service.getPlaylistItemsByChannel(
+          'ch_test',
+          limit: 2,
+          offset: 0,
+        );
+        expect(page1.length, 2);
+
+        final page2 = await service.getPlaylistItemsByChannel(
+          'ch_test',
+          limit: 2,
+          offset: 2,
+        );
+        expect(page2.length, 2);
+
+        final empty = await service.getPlaylistItemsByChannel('ch_other');
+        expect(empty, isEmpty);
+      });
+
       test('deletePlaylistItem removes item and entries', () async {
         final item = PlaylistItem(
           id: 'item_test',

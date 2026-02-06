@@ -248,15 +248,15 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         title: 'Support & Feedback',
         icon: ValueListenableBuilder<List<int>?>(
           valueListenable: ValueNotifier<List<int>?>(null),
-          builder:
-              (
-                BuildContext context,
-                List<int>? numberOfIssuesInfo,
-                Widget? child,
-              ) => const Icon(
-                Icons.help_outline,
-                color: AppColor.white,
-              ),
+          builder: (
+            BuildContext context,
+            List<int>? numberOfIssuesInfo,
+            Widget? child,
+          ) =>
+              const Icon(
+            Icons.help_outline,
+            color: AppColor.white,
+          ),
         ),
         onTap: () async {
           Navigator.pop(context);
@@ -354,11 +354,13 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         ),
         Offstage(
           offstage: _selectedTab != HomeIndexHeaderTab.channels,
-          child: const Center(child: Text('Channels')),
+          child: _channelsPage,
         ),
         Offstage(
           offstage: _selectedTab != HomeIndexHeaderTab.works,
-          child: const Center(child: Text('Works')),
+          child: Container(
+            child: Text('Works'),
+          ),
         ),
       ],
     );
