@@ -358,6 +358,33 @@ class AppDatabase extends _$AppDatabase {
     return result.map((row) => row.readTable(items)).toList();
   }
 
+  /// Get playlist items for a channel (join playlists → playlist_entries → items).
+  /// No ordering. [limit] null = return all; [offset] null = 0.
+  Future<List<ItemData>> getPlaylistItemsByChannel(
+    String channelId, {
+    int? limit,
+    int? offset,
+  }) async {
+    final off = offset ?? 0;
+    final query = select(items).join([
+      innerJoin(
+        playlistEntries,
+        playlistEntries.itemId.equalsExp(items.id),
+      ),
+      innerJoin(
+        playlists,
+        playlists.id.equalsExp(playlistEntries.playlistId),
+      ),
+    ])..where(playlists.channelId.equals(channelId));
+
+    if (limit != null) {
+      query.limit(limit, offset: off);
+    }
+
+    final result = await query.get();
+    return result.map((row) => row.readTable(items)).toList();
+  }
+
   /// Get all items from the database.
   Future<List<ItemData>> getAllItems() async {
     return select(items).get();

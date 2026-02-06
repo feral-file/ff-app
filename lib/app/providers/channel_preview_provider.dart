@@ -103,9 +103,6 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
   final String _channelId;
   late final Logger _log;
 
-  /// Cached flattened list of all items for the channel (for loadMore).
-  List<PlaylistItem>? _cachedFlattened;
-
   @override
   ChannelPreviewState build() {
     _log = Logger('ChannelPreviewNotifier($_channelId)');
@@ -113,7 +110,7 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
   }
 
   /// Load first page of preview works.
-  /// Flattens items from all playlists in the channel (playlist order).
+  /// Single join query; requests limit+1 to detect hasMore.
   Future<void> load() async {
     final id = _channelId;
     if (id.isEmpty) return;
@@ -124,16 +121,15 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
 
     try {
       final db = ref.read(databaseServiceProvider);
-      final playlists = await db.getPlaylistsByChannel(id);
-      final flattened = <PlaylistItem>[];
-      for (final playlist in playlists) {
-        final items = await db.getPlaylistItems(playlist.id);
-        flattened.addAll(items);
-      }
-      _cachedFlattened = flattened;
-
-      final pageItems = flattened.take(channelPreviewPageSize).toList();
-      final hasMore = flattened.length > channelPreviewPageSize;
+      final result = await db.getPlaylistItemsByChannel(
+        id,
+        limit: channelPreviewPageSize + 1,
+        offset: 0,
+      );
+      final hasMore = result.length > channelPreviewPageSize;
+      final pageItems = hasMore
+          ? result.take(channelPreviewPageSize).toList()
+          : result;
 
       state = ChannelPreviewState.loaded(works: pageItems, hasMore: hasMore);
     } catch (e, stack) {
@@ -142,34 +138,24 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
     }
   }
 
-  /// Load next page and append to works.
+  /// Load next page and append to works (offset-based query).
   Future<void> loadMore() async {
     final id = _channelId;
     if (id.isEmpty) return;
     if (state.isLoadingMore || !state.hasMore) return;
 
-    final cached = _cachedFlattened;
-    if (cached == null || cached.isEmpty) {
-      state = state.copyWith(hasMore: false);
-      return;
-    }
-
     state = state.copyWith(isLoadingMore: true);
 
     try {
-      final currentLength = state.works.length;
-      if (currentLength >= cached.length) {
-        state = state.copyWith(hasMore: false, isLoadingMore: false);
-        return;
-      }
-
-      final nextStart = currentLength;
-      final nextEnd = (nextStart + channelPreviewPageSize).clamp(0, cached.length);
-      final nextPage = cached.sublist(nextStart, nextEnd);
-      final hasMore = nextEnd < cached.length;
-
+      final db = ref.read(databaseServiceProvider);
+      final result = await db.getPlaylistItemsByChannel(
+        id,
+        limit: channelPreviewPageSize,
+        offset: state.works.length,
+      );
+      final hasMore = result.length >= channelPreviewPageSize;
       state = ChannelPreviewState.loaded(
-        works: [...state.works, ...nextPage],
+        works: [...state.works, ...result],
         hasMore: hasMore,
       );
     } catch (e, stack) {

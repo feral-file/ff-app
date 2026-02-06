@@ -285,6 +285,30 @@ class DatabaseService {
     }
   }
 
+  /// Get playlist items for a channel (all playlists in channel, no ordering).
+  /// [limit] null = return all; [offset] null = 0.
+  Future<List<PlaylistItem>> getPlaylistItemsByChannel(
+    String channelId, {
+    int? limit,
+    int? offset,
+  }) async {
+    try {
+      final data = await _db.getPlaylistItemsByChannel(
+        channelId,
+        limit: limit,
+        offset: offset ?? 0,
+      );
+      return data.map(DatabaseConverters.itemDataToDomain).toList();
+    } catch (e, stack) {
+      _log.severe(
+        'Failed to get playlist items for channel $channelId',
+        e,
+        stack,
+      );
+      rethrow;
+    }
+  }
+
   /// Get all items from the database.
   Future<List<PlaylistItem>> getAllItems() async {
     try {
