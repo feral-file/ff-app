@@ -148,7 +148,6 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
           // Navigate to work detail
           context.go('${Routes.works}/$workId');
         },
-        scrollController: _scrollController,
       ),
     );
   }

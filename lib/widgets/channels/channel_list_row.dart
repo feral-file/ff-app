@@ -41,7 +41,6 @@ class ChannelListRow extends ConsumerStatefulWidget {
   const ChannelListRow({
     required this.channelData,
     this.onItemTap,
-    this.scrollController,
     super.key,
   });
 
@@ -50,9 +49,6 @@ class ChannelListRow extends ConsumerStatefulWidget {
 
   /// Callback when a work item is tapped.
   final void Function(PlaylistItem item)? onItemTap;
-
-  /// Optional scroll controller.
-  final ScrollController? scrollController;
 
   @override
   ConsumerState<ChannelListRow> createState() => _ChannelListRowState();
@@ -140,7 +136,6 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
             DP1Carousel(
               items: works,
               onItemTap: widget.onItemTap,
-              scrollController: widget.scrollController,
               isLoadingMore: isLoadingMore,
               onLoadMore: hasMore
                   ? () {

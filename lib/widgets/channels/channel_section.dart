@@ -13,7 +13,6 @@ class ChannelSection extends StatelessWidget {
     this.sectionIcon,
     this.onViewAllTap,
     this.onChannelItemTap,
-    this.scrollController,
     this.hasMore = true,
     super.key,
   });
@@ -32,9 +31,6 @@ class ChannelSection extends StatelessWidget {
   
   /// Callback when a work item within a channel is tapped.
   final void Function(String workId)? onChannelItemTap;
-  
-  /// Optional scroll controller for the list.
-  final ScrollController? scrollController;
   
   /// Whether there are more items to view.
   final bool hasMore;
@@ -71,7 +67,6 @@ class ChannelSection extends StatelessWidget {
           onItemTap: onChannelItemTap == null
               ? null
               : (PlaylistItem item) => onChannelItemTap!(item.id),
-          scrollController: scrollController,
         );
       },
     );
