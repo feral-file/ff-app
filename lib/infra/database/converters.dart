@@ -14,6 +14,10 @@ import 'package:app/infra/database/app_database.dart';
 import 'package:drift/drift.dart';
 
 /// Converts between domain models and database models.
+/// 
+/// **Performance note:** 
+/// - `*ToDomain()` methods perform full deserialization of all JSON fields.
+/// - `*ToDomainPreview()` methods skip heavy JSON fields for list UI performance.
 class DatabaseConverters {
   /// Convert ChannelData to Channel domain model.
   static Channel channelDataToDomain(ChannelData data) {
@@ -55,7 +59,10 @@ class DatabaseConverters {
     );
   }
 
-  /// Convert PlaylistData to Playlist domain model.
+  /// Convert PlaylistData to Playlist domain model (full deserialization).
+  /// 
+  /// Performs JSON parsing for signatures, defaults, and dynamicQueries.
+  /// Use [playlistDataToDomainPreview] for list UI to skip expensive JSON work.
   static Playlist playlistDataToDomain(PlaylistData data) {
     List<String>? signatures;
     if (data.signaturesJson.isNotEmpty) {
@@ -108,6 +115,31 @@ class DatabaseConverters {
     );
   }
 
+  /// Convert PlaylistData to Playlist (light projection for list UI).
+  /// 
+  /// Skips JSON deserialization of signatures, defaults, and dynamicQueries.
+  /// Use for list queries where only basic fields (id, name, itemCount) are needed.
+  static Playlist playlistDataToDomainPreview(PlaylistData data) {
+    return Playlist(
+      id: data.id,
+      name: data.title,
+      type: PlaylistType.values[data.type],
+      channelId: data.channelId,
+      baseUrl: data.baseUrl,
+      dpVersion: data.dpVersion,
+      slug: data.slug,
+      createdAt: DateTime.fromMicrosecondsSinceEpoch(data.createdAtUs.toInt()),
+      updatedAt: DateTime.fromMicrosecondsSinceEpoch(data.updatedAtUs.toInt()),
+      signatures: null, // Skipped: heavy JSON decode
+      defaults: null, // Skipped: heavy JSON decode
+      dynamicQueries: null, // Skipped: heavy JSON decode
+      ownerAddress: data.ownerAddress,
+      ownerChain: data.ownerChain,
+      sortMode: PlaylistSortMode.values[data.sortMode],
+      itemCount: data.itemCount,
+    );
+  }
+
   /// Convert Playlist domain model to PlaylistsCompanion.
   static PlaylistsCompanion playlistToCompanion(Playlist playlist) {
     final signaturesJson = playlist.signatures != null
@@ -147,7 +179,10 @@ class DatabaseConverters {
     );
   }
 
-  /// Convert ItemData to PlaylistItem domain model.
+  /// Convert ItemData to PlaylistItem domain model (full deserialization).
+  /// 
+  /// Performs JSON parsing for provenance, reproduction, override, display, tokenData, and artists.
+  /// Use [itemDataToDomainPreview] for list UI to skip expensive JSON work.
   static PlaylistItem itemDataToDomain(ItemData data) {
     Map<String, dynamic>? provenance;
     if (data.provenanceJson != null && data.provenanceJson!.isNotEmpty) {
@@ -221,6 +256,44 @@ class DatabaseConverters {
       override: override,
       display: display,
       tokenData: tokenData,
+      artists: artists,
+      updatedAt: DateTime.fromMicrosecondsSinceEpoch(data.updatedAtUs.toInt()),
+    );
+  }
+
+  /// Convert ItemData to PlaylistItem (light projection for list UI).
+  /// 
+  /// Skips JSON deserialization of provenance, reproduction, override, display, and tokenData.
+  /// Keeps artists and basic fields for display, avoiding heavy JSON parsing.
+  /// Use for list queries where only title, thumbnail, and basic metadata are needed.
+  static PlaylistItem itemDataToDomainPreview(ItemData data) {
+    List<DP1Artist>? artists;
+    if (data.listArtistJson != null && data.listArtistJson!.isNotEmpty) {
+      try {
+        final list = jsonDecode(data.listArtistJson!) as List;
+        artists = list
+            .map((e) => DP1Artist.fromJson(e as Map<String, dynamic>))
+            .toList();
+      } catch (_) {
+        // Ignore parsing errors
+      }
+    }
+
+    return PlaylistItem(
+      id: data.id,
+      kind: PlaylistItemKind.values[data.kind],
+      title: data.title ?? '',
+      subtitle: data.subtitle,
+      thumbnailUrl: data.thumbnailUri,
+      durationSec: data.durationSec,
+      provenance: null, // Skipped: heavy JSON decode
+      sourceUri: data.sourceUri,
+      refUri: data.refUri,
+      license: data.license,
+      reproduction: null, // Skipped: heavy JSON decode
+      override: null, // Skipped: heavy JSON decode
+      display: null, // Skipped: heavy JSON decode
+      tokenData: null, // Skipped: heavy JSON decode
       artists: artists,
       updatedAt: DateTime.fromMicrosecondsSinceEpoch(data.updatedAtUs.toInt()),
     );

@@ -63,7 +63,7 @@ class DatabaseService {
           limit: limit,
         )
         .map(
-          (rows) => rows.map(DatabaseConverters.playlistDataToDomain).toList(),
+          (rows) => rows.map(DatabaseConverters.playlistDataToDomainPreview).toList(),
         );
   }
 
@@ -85,7 +85,7 @@ class DatabaseService {
     }
 
     yield* stream.map(
-      (rows) => rows.map(DatabaseConverters.itemDataToDomain).toList(),
+      (rows) => rows.map(DatabaseConverters.itemDataToDomainPreview).toList(),
     );
   }
 
@@ -218,7 +218,7 @@ class DatabaseService {
   Future<List<Playlist>> getPlaylistsByChannel(String channelId) async {
     try {
       final data = await _db.getPlaylistsByChannel(channelId);
-      return data.map(DatabaseConverters.playlistDataToDomain).toList();
+      return data.map(DatabaseConverters.playlistDataToDomainPreview).toList();
     } catch (e, stack) {
       _log.severe('Failed to get playlists for channel $channelId', e, stack);
       rethrow;
@@ -257,7 +257,7 @@ class DatabaseService {
   Future<List<Playlist>> getAddressPlaylists() async {
     try {
       final data = await _db.getAddressPlaylists();
-      return data.map(DatabaseConverters.playlistDataToDomain).toList();
+      return data.map(DatabaseConverters.playlistDataToDomainPreview).toList();
     } catch (e, stack) {
       _log.severe('Failed to get address playlists', e, stack);
       rethrow;
@@ -348,10 +348,13 @@ class DatabaseService {
   }
 
   /// Get all items from the database.
+  ///
+  /// Skips heavy JSON fields (provenance, reproduction, override, display, tokenData)
+  /// to optimize list UI queries.
   Future<List<PlaylistItem>> getAllItems() async {
     try {
       final data = await _db.getAllItems();
-      return data.map(DatabaseConverters.itemDataToDomain).toList();
+      return data.map(DatabaseConverters.itemDataToDomainPreview).toList();
     } catch (e, stack) {
       _log.severe('Failed to get all items', e, stack);
       rethrow;
@@ -500,6 +503,9 @@ class DatabaseService {
   /// Items are the main source of truth. When [tokens] is provided, each item
   /// is matched by CID and enriched with [thumbnailUrl] and DP1 [artists] from
   /// the token; when token is null for an item, those two fields remain null.
+  ///
+  /// Wraps all writes in a single transaction to reduce lock churn and stream
+  /// invalidations.
   Future<void> ingestDP1Playlist({
     required DP1Playlist playlist,
     required String baseUrl,
@@ -510,9 +516,10 @@ class DatabaseService {
         playlist,
         baseUrl: baseUrl,
       );
-      await ingestPlaylist(domainPlaylist);
 
       if (playlist.items.isEmpty) {
+        // Single playlist write if no items
+        await ingestPlaylist(domainPlaylist);
         _log.info('No items for DP1 playlist ${playlist.id}');
         return;
       }
@@ -545,10 +552,20 @@ class DatabaseService {
         );
       }
 
-      await ingestPlaylistItems(playlistItems);
-      await _db.upsertPlaylistEntries(entries);
-      await _db.updatePlaylistItemCount(domainPlaylist.id);
-      await _db.checkpoint();
+      // Wrap all writes in a single transaction to reduce lock churn.
+      await _db.transaction(() async {
+        final playlistCompanion =
+            DatabaseConverters.playlistToCompanion(domainPlaylist);
+        await _db.upsertPlaylist(playlistCompanion);
+
+        final itemCompanions = playlistItems
+            .map(DatabaseConverters.playlistItemToCompanion)
+            .toList();
+        await _db.upsertItems(itemCompanions);
+
+        await _db.upsertPlaylistEntries(entries);
+        await _db.updatePlaylistItemCount(domainPlaylist.id);
+      });
 
       _log.info(
         'Ingested DP1 playlist ${playlist.id} with ${playlistItems.length} items',
@@ -694,6 +711,12 @@ class DatabaseService {
   /// Close the database connection.
   Future<void> close() async {
     await _db.close();
+  }
+
+  /// Force WAL checkpoint to persist pending changes to main database file.
+  /// Useful after batch ingestion operations to ensure durability.
+  Future<void> checkpoint() async {
+    await _db.checkpoint();
   }
 
   /// Ingest DP1 channels (wire model) as domain [Channel] rows.

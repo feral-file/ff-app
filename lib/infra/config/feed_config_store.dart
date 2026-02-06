@@ -57,10 +57,10 @@ class FeedConfigStore {
     return _lock.synchronized(() async {
       try {
         final file = await resolveFile();
-        if (!file.existsSync()) {
+        if (!await file.exists()) {
           return <String, dynamic>{};
         }
-        final raw = file.readAsStringSync();
+        final raw = await file.readAsString();
         if (raw.trim().isEmpty) {
           return <String, dynamic>{};
         }
@@ -84,8 +84,16 @@ class FeedConfigStore {
   /// Writes the config file.
   Future<void> _writeConfig(Map<String, dynamic> config) async {
     return _lock.synchronized(() async {
-      final file = await resolveFile();
-      file.writeAsStringSync(jsonEncode(config));
+      try {
+        final file = await resolveFile();
+        await file.writeAsString(jsonEncode(config));
+      } on Exception catch (e, stack) {
+        _log.warning(
+          'Failed to write $_fileName.',
+          e,
+          stack,
+        );
+      }
     });
   }
 

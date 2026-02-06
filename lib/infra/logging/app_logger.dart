@@ -103,10 +103,14 @@ class AppLogger {
     }
 
     await _rotateIfNeeded(targetFile);
-    await _logFile?.writeAsString(line, mode: FileMode.append, flush: true);
+    await targetFile.writeAsString(line, mode: FileMode.append, flush: true);
   }
 
   static Future<void> _rotateIfNeeded(File file) async {
+    if (!file.existsSync()) {
+      return;
+    }
+
     final size = file.lengthSync();
     if (size < _maxFileSizeBytes) {
       return;
