@@ -3,6 +3,7 @@ import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/infra/services/dp1_feed_with_channel_extension_service_impl.dart';
 import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
+import 'package:collection/collection.dart';
 import 'package:logging/logging.dart';
 
 /// DP1 feed service with remote config channel support.
@@ -123,19 +124,22 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
     await _enrichmentService.clear();
     for (final playlist in playlists) {
       final channelId = channels
-          .firstWhere((c) => c.playlists.any((p) => p.contains(playlist.id)))
-          .id;
-      await databaseService.ingestDP1PlaylistBare(
-        baseUrl: baseUrl,
-        playlist: playlist,
-        channelId: channelId,
-      );
-
-      // Enqueue items for enrichment
-      await _enrichmentService.enqueuePlaylist(
-        playlistId: playlist.id,
-        items: playlist.items,
-      );
+          .firstWhereOrNull(
+            (c) => c.playlists.any((p) => p.contains(playlist.id)),
+          )
+          ?.id;
+      if (channelId != null) {
+        await databaseService.ingestDP1PlaylistBare(
+          baseUrl: baseUrl,
+          playlist: playlist,
+          channelId: channelId,
+        );
+        // Enqueue items for enrichment
+        await _enrichmentService.enqueuePlaylist(
+          playlistId: playlist.id,
+          items: playlist.items,
+        );
+      }
     }
 
     // Step 3: Process enrichment queues

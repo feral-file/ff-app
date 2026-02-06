@@ -1,3 +1,5 @@
+import 'package:app/domain/extensions/playlist_item_ext.dart';
+import 'package:app/domain/models/dp1/dp1_manifest.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,17 +15,17 @@ void main() {
       expect(item.id, equals('item_123'));
       expect(item.kind, equals(PlaylistItemKind.indexerToken));
       expect(item.title, equals('Test Item'));
-      expect(item.artistName, isNull);
+      expect(item.artistName, '');
       expect(item.thumbnailUrl, isNull);
       expect(item.mediaUrl, isNull);
     });
 
     test('creates playlist item with all fields', () {
-      const item = PlaylistItem(
+      final item = PlaylistItem(
         id: 'item_456',
         kind: PlaylistItemKind.dp1Item,
         title: 'Complete Item',
-        artistName: 'Test Artist',
+        artists: [DP1Artist(name: 'Test Artist', id: 'artist_123')],
         thumbnailUrl: 'https://example.com/thumb.jpg',
         mediaUrl: 'https://example.com/media.mp4',
       );
@@ -45,7 +47,7 @@ void main() {
 
       final updated = original.copyWith(
         title: 'Updated Item',
-        artistName: 'New Artist',
+        artists: [DP1Artist(name: 'New Artist', id: 'artist_456')],
       );
 
       expect(updated.id, equals('item_123'));

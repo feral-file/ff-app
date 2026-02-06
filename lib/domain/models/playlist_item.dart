@@ -12,7 +12,6 @@ class PlaylistItem {
     required this.kind,
     required this.title,
     this.subtitle,
-    this.artistName,
     this.artists,
     this.thumbnailUrl,
     this.mediaUrl,
@@ -41,7 +40,6 @@ class PlaylistItem {
       kind: PlaylistItemKind.values[json['kind'] as int],
       title: json['title'] as String,
       subtitle: json['subtitle'] as String?,
-      artistName: json['artistName'] as String?,
       artists: artists,
       thumbnailUrl: json['thumbnailUrl'] as String?,
       mediaUrl: json['mediaUrl'] as String?,
@@ -71,9 +69,6 @@ class PlaylistItem {
 
   /// Optional subtitle (artists string).
   final String? subtitle;
-
-  /// Optional artist name.
-  final String? artistName;
 
   /// Optional list of artists (DP1 manifest).
   final List<DP1Artist>? artists;
@@ -122,7 +117,6 @@ class PlaylistItem {
     PlaylistItemKind? kind,
     String? title,
     String? subtitle,
-    String? artistName,
     List<DP1Artist>? artists,
     String? thumbnailUrl,
     String? mediaUrl,
@@ -142,7 +136,6 @@ class PlaylistItem {
       kind: kind ?? this.kind,
       title: title ?? this.title,
       subtitle: subtitle ?? this.subtitle,
-      artistName: artistName ?? this.artistName,
       artists: artists ?? this.artists,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       mediaUrl: mediaUrl ?? this.mediaUrl,
@@ -166,7 +159,6 @@ class PlaylistItem {
       'kind': kind.index,
       'title': title,
       'subtitle': subtitle,
-      'artistName': artistName,
       if (artists != null) 'artists': artists!.map((e) => e.toJson()).toList(),
       'thumbnailUrl': thumbnailUrl,
       'mediaUrl': mediaUrl,

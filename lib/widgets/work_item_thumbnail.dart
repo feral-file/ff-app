@@ -54,7 +54,7 @@ class WorkItemThumbnail extends StatelessWidget {
     if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
       // Show loading placeholder when thumbnail is missing
       // (enrichment in progress)
-      _log.fine('Thumbnail URL is empty for work: ${item.id}, showing loading placeholder');
+      // _log.fine('Thumbnail URL is empty for work: ${item.id}, showing loading placeholder');
       return const GalleryThumbnailPlaceholder();
     }
 
@@ -91,4 +91,3 @@ class _NoThumbnail extends StatelessWidget {
     );
   }
 }
-

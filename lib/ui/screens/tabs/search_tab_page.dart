@@ -2,6 +2,7 @@ import 'package:app/app/providers/search_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -75,8 +76,10 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
             'assets/images/icon_back.svg',
             width: LayoutConstants.iconSizeMedium,
             height: LayoutConstants.iconSizeMedium,
-            colorFilter:
-                const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
+            colorFilter: const ColorFilter.mode(
+              AppColor.white,
+              BlendMode.srcIn,
+            ),
           ),
           onPressed: () => Navigator.of(context).pop(),
         ),
@@ -94,53 +97,52 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
               vertical: LayoutConstants.space3,
             ),
             child: TextField(
-            controller: _searchController,
-            focusNode: _searchFocusNode,
-            style: AppTypography.body(context).white,
-            decoration: InputDecoration(
-              hintText: 'Search channels, playlists, works...',
-              hintStyle: AppTypography.body(context).grey,
-              filled: true,
-              fillColor: AppColor.darkGrey,
-              border: OutlineInputBorder(
-                borderRadius:
-                    BorderRadius.circular(LayoutConstants.space2),
-                borderSide: BorderSide.none,
-              ),
-              prefixIcon: Padding(
-                padding: EdgeInsets.all(LayoutConstants.space3),
-                child: SvgPicture.asset(
-                  'assets/images/search.svg',
-                  width: LayoutConstants.iconSizeMedium,
-                  height: LayoutConstants.iconSizeMedium,
-                  colorFilter: const ColorFilter.mode(
-                    AppColor.auQuickSilver,
-                    BlendMode.srcIn,
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              style: AppTypography.body(context).white,
+              decoration: InputDecoration(
+                hintText: 'Search channels, playlists, works...',
+                hintStyle: AppTypography.body(context).grey,
+                filled: true,
+                fillColor: AppColor.darkGrey,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(LayoutConstants.space2),
+                  borderSide: BorderSide.none,
+                ),
+                prefixIcon: Padding(
+                  padding: EdgeInsets.all(LayoutConstants.space3),
+                  child: SvgPicture.asset(
+                    'assets/images/search.svg',
+                    width: LayoutConstants.iconSizeMedium,
+                    height: LayoutConstants.iconSizeMedium,
+                    colorFilter: const ColorFilter.mode(
+                      AppColor.auQuickSilver,
+                      BlendMode.srcIn,
+                    ),
                   ),
                 ),
-              ),
-              suffixIcon: searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: SvgPicture.asset(
-                        'assets/images/close.svg',
-                        width: LayoutConstants.iconSizeMedium,
-                        height: LayoutConstants.iconSizeMedium,
-                        colorFilter: const ColorFilter.mode(
-                          AppColor.auQuickSilver,
-                          BlendMode.srcIn,
+                suffixIcon: searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: SvgPicture.asset(
+                          'assets/images/close.svg',
+                          width: LayoutConstants.iconSizeMedium,
+                          height: LayoutConstants.iconSizeMedium,
+                          colorFilter: const ColorFilter.mode(
+                            AppColor.auQuickSilver,
+                            BlendMode.srcIn,
+                          ),
                         ),
-                      ),
-                      onPressed: () {
-                        _searchController.clear();
-                        ref.read(searchQueryProvider.notifier).clear();
-                        EasyDebounce.cancel('search');
-                      },
-                    )
-                  : null,
+                        onPressed: () {
+                          _searchController.clear();
+                          ref.read(searchQueryProvider.notifier).clear();
+                          EasyDebounce.cancel('search');
+                        },
+                      )
+                    : null,
+              ),
+              onChanged: _onSearchChanged,
             ),
-            onChanged: _onSearchChanged,
           ),
-        ),
 
           // Search results
           Expanded(
@@ -316,7 +318,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
       padding: EdgeInsets.only(bottom: LayoutConstants.space2),
       child: InkWell(
         onTap: () {
-          context.go('${Routes.channels}/${channel.id}');
+          context.push('${Routes.channels}/${channel.id}');
         },
         child: Container(
           padding: EdgeInsets.all(LayoutConstants.space3),
@@ -358,7 +360,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
       padding: EdgeInsets.only(bottom: LayoutConstants.space2),
       child: InkWell(
         onTap: () {
-          context.go('${Routes.playlists}/${playlist.id}');
+          context.push('${Routes.playlists}/${playlist.id}');
         },
         child: Container(
           padding: EdgeInsets.all(LayoutConstants.space3),
@@ -398,7 +400,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
       padding: EdgeInsets.only(bottom: LayoutConstants.space2),
       child: InkWell(
         onTap: () {
-          context.go('${Routes.works}/${work.id}');
+          context.push('${Routes.works}/${work.id}');
         },
         child: Container(
           padding: EdgeInsets.all(LayoutConstants.space3),
@@ -428,9 +430,9 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (work.artistName != null && work.artistName!.isNotEmpty)
+                    if (work.artistName.isNotEmpty)
                       Text(
-                        work.artistName!,
+                        work.artistName,
                         style: AppTypography.bodySmall(context).grey,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
