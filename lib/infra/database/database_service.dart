@@ -63,7 +63,7 @@ class DatabaseService {
           limit: limit,
         )
         .map(
-          (rows) => rows.map(DatabaseConverters.playlistDataToDomain).toList(),
+          (rows) => rows.map(DatabaseConverters.playlistDataToDomainPreview).toList(),
         );
   }
 
@@ -85,7 +85,7 @@ class DatabaseService {
     }
 
     yield* stream.map(
-      (rows) => rows.map(DatabaseConverters.itemDataToDomain).toList(),
+      (rows) => rows.map(DatabaseConverters.itemDataToDomainPreview).toList(),
     );
   }
 
@@ -180,7 +180,7 @@ class DatabaseService {
   Future<List<Playlist>> getPlaylistsByChannel(String channelId) async {
     try {
       final data = await _db.getPlaylistsByChannel(channelId);
-      return data.map(DatabaseConverters.playlistDataToDomain).toList();
+      return data.map(DatabaseConverters.playlistDataToDomainPreview).toList();
     } catch (e, stack) {
       _log.severe('Failed to get playlists for channel $channelId', e, stack);
       rethrow;
@@ -219,7 +219,7 @@ class DatabaseService {
   Future<List<Playlist>> getAddressPlaylists() async {
     try {
       final data = await _db.getAddressPlaylists();
-      return data.map(DatabaseConverters.playlistDataToDomain).toList();
+      return data.map(DatabaseConverters.playlistDataToDomainPreview).toList();
     } catch (e, stack) {
       _log.severe('Failed to get address playlists', e, stack);
       rethrow;
@@ -286,10 +286,13 @@ class DatabaseService {
   }
 
   /// Get all items from the database.
+  ///
+  /// Skips heavy JSON fields (provenance, reproduction, override, display, tokenData)
+  /// to optimize list UI queries.
   Future<List<PlaylistItem>> getAllItems() async {
     try {
       final data = await _db.getAllItems();
-      return data.map(DatabaseConverters.itemDataToDomain).toList();
+      return data.map(DatabaseConverters.itemDataToDomainPreview).toList();
     } catch (e, stack) {
       _log.severe('Failed to get all items', e, stack);
       rethrow;
