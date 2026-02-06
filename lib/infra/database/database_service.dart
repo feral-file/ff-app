@@ -486,7 +486,6 @@ class DatabaseService {
       await ingestPlaylistItems(playlistItems);
       await _db.upsertPlaylistEntries(entries);
       await _db.updatePlaylistItemCount(domainPlaylist.id);
-      await _db.checkpoint();
 
       _log.info(
         'Ingested DP1 playlist ${playlist.id} with ${playlistItems.length} items',
@@ -632,6 +631,12 @@ class DatabaseService {
   /// Close the database connection.
   Future<void> close() async {
     await _db.close();
+  }
+
+  /// Force WAL checkpoint to persist pending changes to main database file.
+  /// Useful after batch ingestion operations to ensure durability.
+  Future<void> checkpoint() async {
+    await _db.checkpoint();
   }
 
   /// Ingest DP1 channels (wire model) as domain [Channel] rows.
