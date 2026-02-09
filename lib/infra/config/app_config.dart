@@ -88,4 +88,40 @@ class AppConfig {
       indexerApiKey.isNotEmpty &&
       ff1RelayerUrl.isNotEmpty &&
       ff1RelayerApiKey.isNotEmpty;
+
+  /// Get validation errors for all missing required configuration values.
+  /// Returns a list of error messages for missing variables.
+  static List<String> getValidationErrors() {
+    final errors = <String>[];
+
+    if (dp1FeedUrl.isEmpty) {
+      errors.add('DP1_FEED_URL is missing');
+    }
+    if (indexerApiUrl.isEmpty) {
+      errors.add('INDEXER_API_URL is missing');
+    }
+    if (dp1FeedApiKey.isEmpty) {
+      errors.add('DP1_FEED_API_KEY is missing');
+    }
+    if (indexerApiKey.isEmpty) {
+      errors.add('INDEXER_API_KEY is missing');
+    }
+    if (ff1RelayerUrl.isEmpty) {
+      errors.add('FF1_RELAYER_URL (or TV_NOTIFICATION_URL) is missing');
+    }
+    if (ff1RelayerApiKey.isEmpty) {
+      errors.add('FF1_RELAYER_API_KEY (or TV_API_KEY) is missing');
+    }
+
+    return errors;
+  }
+
+  /// Get a formatted error message for all missing configuration values.
+  static String getValidationErrorMessage() {
+    final errors = getValidationErrors();
+    if (errors.isEmpty) {
+      return 'Configuration is valid';
+    }
+    return 'Missing required configuration:\n${errors.map((e) => '  • $e').join('\n')}';
+  }
 }

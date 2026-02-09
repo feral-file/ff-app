@@ -23,6 +23,74 @@ Future<void> main() async {
   // Load configuration
   await AppConfig.initialize();
 
+  // Validate configuration and fail fast if required values are missing
+  if (!AppConfig.isValid) {
+    final errorMessage = AppConfig.getValidationErrorMessage();
+    debugPrint('❌ CONFIGURATION ERROR:\n$errorMessage');
+    
+    // Show error screen and prevent app from booting
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Colors.red,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Configuration Error',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      border: Border.all(color: Colors.red.shade200),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      errorMessage,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.red.shade900,
+                        fontFamily: 'monospace',
+                      ),
+                      textAlign: TextAlign.left,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'The app cannot start because required environment variables are missing from the .env file. '
+                    'Please ensure the .env file is correctly created with all required configuration values.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.black87,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return;
+  }
+
   // Initialize ObjectBox store for Bluetooth device storage
   final store = await initializeObjectBox();
   final bluetoothDeviceBox = store.box<FF1BluetoothDeviceEntity>();
