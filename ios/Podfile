@@ -42,5 +42,21 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '18.0'
     end
+    
+    # Fix for mobile_scanner PrivacyInfo.xcprivacy missing file
+    if target.name == 'mobile_scanner-mobile_scanner_privacy'
+      target.build_phases.each do |phase|
+        if phase.respond_to?(:files)
+          files_to_remove = []
+          phase.files.each do |build_file|
+            file_ref = build_file.file_ref
+            if file_ref && file_ref.real_path.to_s.include?('PrivacyInfo.xcprivacy')
+              files_to_remove << build_file
+            end
+          end
+          files_to_remove.each { |f| phase.remove_file_reference(f) }
+        end
+      end
+    end
   end
 end

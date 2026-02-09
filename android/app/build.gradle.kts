@@ -1,4 +1,6 @@
 import java.util.Properties
+import java.io.File
+import org.gradle.api.GradleException
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -7,10 +9,6 @@ plugins {
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
-
-import java.util.Properties
-import java.io.File
-import org.gradle.api.GradleException
 
 android {
     namespace = "com.feralfile.app"
