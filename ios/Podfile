@@ -47,11 +47,14 @@ post_install do |installer|
     if target.name == 'mobile_scanner-mobile_scanner_privacy'
       target.build_phases.each do |phase|
         if phase.respond_to?(:files)
-          phase.files.each do |file|
-            if file.real_path.to_s.include?('PrivacyInfo.xcprivacy')
-              phase.remove_file_reference(file)
+          files_to_remove = []
+          phase.files.each do |build_file|
+            file_ref = build_file.file_ref
+            if file_ref && file_ref.real_path.to_s.include?('PrivacyInfo.xcprivacy')
+              files_to_remove << build_file
             end
           end
+          files_to_remove.each { |f| phase.remove_file_reference(f) }
         end
       end
     end
