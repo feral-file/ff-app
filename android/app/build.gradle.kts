@@ -117,11 +117,15 @@ android {
         create("development") {
             dimension = "env"
             applicationIdSuffix = ".inhouse"
-            resValue("string", "app_name", "Feral File (Dev)")
+            resValue("string", "app_name", "Feral File")
+            manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
+            manifestPlaceholders["appIconRound"] = "@mipmap/ic_launcher_round"
         }
         create("production") {
             dimension = "env"
             resValue("string", "app_name", "Feral File")
+            manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
+            manifestPlaceholders["appIconRound"] = "@mipmap/ic_launcher_round"
         }
     }
 

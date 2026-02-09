@@ -7,6 +7,8 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -53,22 +55,32 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
 
       // Also request legacy Bluetooth for older Android versions
       final bluetoothStatus = await Permission.bluetooth.request();
+      PermissionStatus? locationStatus;
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final sdkInt = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
+        if (sdkInt <= 30) {
+          locationStatus = await Permission.locationWhenInUse.request();
+        }
+      }
 
       _log.info(
-        'Bluetooth permissions - Scan: $scanStatus, Connect: $connectStatus, Legacy: $bluetoothStatus',
+        'Bluetooth permissions - Scan: $scanStatus, Connect: $connectStatus, '
+        'Legacy: $bluetoothStatus, Location: $locationStatus',
       );
 
       // If any permission is permanently denied, offer to open app settings
       if (scanStatus.isDenied ||
           connectStatus.isDenied ||
-          bluetoothStatus.isDenied) {
+          bluetoothStatus.isDenied ||
+          (locationStatus?.isDenied ?? false)) {
         _log.warning(
           'Bluetooth permissions denied. Offering to open app settings.',
         );
         _offerOpenAppSettings();
       } else if (scanStatus.isPermanentlyDenied ||
           connectStatus.isPermanentlyDenied ||
-          bluetoothStatus.isPermanentlyDenied) {
+          bluetoothStatus.isPermanentlyDenied ||
+          (locationStatus?.isPermanentlyDenied ?? false)) {
         _log.warning(
           'Bluetooth permissions permanently denied. Must open app settings.',
         );
