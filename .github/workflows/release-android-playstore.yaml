@@ -98,9 +98,15 @@ jobs:
 
       - name: Create env file
         run: |
-          touch .env
-          echo -e "${{ secrets.ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
+          cat > .env << 'EOF'
+          ${{ secrets.ENV_VARS }}
+          EOF
+          echo "✓ .env file created"
+          echo "=== .env content ==="
           cat .env
+          echo "=== .env stats ==="
+          echo "Size: $(wc -c < .env) bytes"
+          echo "Lines: $(wc -l < .env) lines"
 
       - run: flutter pub cache repair
       - run: flutter pub get
