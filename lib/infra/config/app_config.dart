@@ -66,7 +66,6 @@ class AppConfig {
     // Log warning if not configured
     if (url.isEmpty) {
       print('⚠️  WARNING: FF1_RELAYER_URL not configured in .env file');
-      print('   Set FF1_RELAYER_URL=https://tv-cast-coordination.autonomy-system.workers.dev');
       return '';
     }
 
@@ -80,12 +79,17 @@ class AppConfig {
     return url;
   }
 
+  /// Remote config JSON URL, expected to end with `/app.json`.
+  static String get remoteConfigUrl =>
+      dotenv.get('REMOTE_CONFIG_URL', fallback: '');
+
   /// Check if configuration is valid (all required keys present).
   static bool get isValid =>
       dp1FeedUrl.isNotEmpty &&
       indexerApiUrl.isNotEmpty &&
       dp1FeedApiKey.isNotEmpty &&
       indexerApiKey.isNotEmpty &&
+      remoteConfigUrl.isNotEmpty &&
       ff1RelayerUrl.isNotEmpty &&
       ff1RelayerApiKey.isNotEmpty;
 
@@ -111,6 +115,9 @@ class AppConfig {
     }
     if (ff1RelayerApiKey.isEmpty) {
       errors.add('FF1_RELAYER_API_KEY (or TV_API_KEY) is missing');
+    }
+    if (remoteConfigUrl.isEmpty) {
+      errors.add('REMOTE_CONFIG_URL is missing');
     }
 
     return errors;

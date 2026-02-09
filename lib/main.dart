@@ -1,7 +1,10 @@
 import 'package:app/app/app.dart';
 import 'package:app/app/providers/app_provider_observer.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/infra/config/app_config.dart';
+import 'package:app/infra/config/remote_app_config.dart';
+import 'package:app/infra/config/remote_config_service.dart';
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
@@ -27,7 +30,7 @@ Future<void> main() async {
   if (!AppConfig.isValid) {
     final errorMessage = AppConfig.getValidationErrorMessage();
     debugPrint('❌ CONFIGURATION ERROR:\n$errorMessage');
-    
+
     // Show error screen and prevent app from booting
     runApp(
       MaterialApp(
@@ -95,6 +98,46 @@ Future<void> main() async {
   final store = await initializeObjectBox();
   final bluetoothDeviceBox = store.box<FF1BluetoothDeviceEntity>();
   final bluetoothDeviceService = FF1BluetoothDeviceService(bluetoothDeviceBox);
+  final remoteConfigBox = store.box<RemoteAppConfigEntity>();
+  final remoteConfigUri = AppConfig.remoteConfigUrl.isEmpty
+      ? null
+      : Uri.tryParse(AppConfig.remoteConfigUrl);
+  final remoteConfigService = RemoteConfigService(
+    box: remoteConfigBox,
+    remoteConfigUri: remoteConfigUri,
+  );
+
+  final cachedConfig = remoteConfigService.loadCached();
+  late final RemoteAppConfig initialRemoteConfig;
+
+  // First launch behavior: requires network fetch.
+  if (cachedConfig == null) {
+    try {
+      final fetched = await remoteConfigService.fetchAndPersist();
+      initialRemoteConfig = fetched.config;
+    } on Exception catch (e) {
+      final errorMessage =
+          'Failed to load initial remote config from network.\n\n$e';
+      runApp(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  errorMessage,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+  } else {
+    initialRemoteConfig = cachedConfig.config;
+  }
 
   runApp(
     ProviderScope(
@@ -105,6 +148,8 @@ Future<void> main() async {
         ff1BluetoothDeviceServiceProvider.overrideWithValue(
           bluetoothDeviceService,
         ),
+        remoteConfigServiceProvider.overrideWithValue(remoteConfigService),
+        initialRemoteAppConfigProvider.overrideWithValue(initialRemoteConfig),
       ],
       child: const App(),
     ),

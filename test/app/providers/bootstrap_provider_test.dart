@@ -1,12 +1,11 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
-import 'package:app/app/feed/curated_channel_urls.dart';
+import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
-import 'package:app/infra/services/dp1_feed_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,7 +67,7 @@ void main() {
         overrides: [
           databaseServiceProvider.overrideWith((ref) => dbService),
           // Avoid network/remote-config work during unit tests.
-          curatedDp1ChannelUrlsProvider.overrideWithValue(const <String>[]),
+          curatedChannelUrlsProvider.overrideWithValue(const <String>[]),
         ],
       );
       addTearDown(container.dispose);
@@ -96,7 +95,7 @@ void main() {
         overrides: [
           databaseServiceProvider.overrideWith((ref) => dbService),
           // Avoid network/remote-config work during unit tests.
-          curatedDp1ChannelUrlsProvider.overrideWithValue(const <String>[]),
+          curatedChannelUrlsProvider.overrideWithValue(const <String>[]),
         ],
       );
       addTearDown(container.dispose);
@@ -120,28 +119,6 @@ void main() {
         stateChanges,
         contains(anyOf([BootstrapState.loading, BootstrapState.success])),
       );
-    });
-
-    test('demonstrates mocking DP1FeedService with overrides', () async {
-      final db = AppDatabase.forTesting(NativeDatabase.memory());
-      addTearDown(db.close);
-      final dbService = DatabaseService(db);
-
-      // Create a mock feed service that returns predictable values
-      final mockFeedService = _MockDP1FeedService();
-
-      final container = ProviderContainer.test(
-        overrides: [
-          databaseServiceProvider.overrideWith((ref) => dbService),
-          // Override the feed service with our mock
-          dp1FeedServiceProvider.overrideWith((ref) => mockFeedService),
-        ],
-      );
-      addTearDown(container.dispose);
-
-      // Read the mocked service
-      final feedService = container.read(dp1FeedServiceProvider);
-      expect(feedService, equals(mockFeedService));
     });
 
     test('demonstrates mocking BootstrapService', () async {
@@ -230,22 +207,6 @@ void main() {
       expect(subscription.read().value, equals(42));
     });
   });
-}
-
-/// Mock DP1FeedServiceImpl for testing.
-/// In a real scenario, you would use mockito or mocktail for this.
-class _MockDP1FeedService implements DP1FeedServiceImpl {
-  @override
-  Future<void> fetchChannel({
-    required String baseUrl,
-    required String channelId,
-  }) async {
-    // Mock implementation
-    return;
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// Mock BootstrapService for testing.

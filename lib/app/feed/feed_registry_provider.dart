@@ -1,5 +1,5 @@
-import 'package:app/app/feed/curated_channel_urls.dart';
 import 'package:app/app/feed/feed_manager.dart';
+import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/feed_config_store.dart';
@@ -123,7 +123,7 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
   Future<FeedRegistryState> build() async {
     _log = Logger('FeedRegistryNotifier');
 
-    final curatedUrls = ref.watch(curatedDp1ChannelUrlsProvider);
+    final curatedUrls = ref.watch(curatedChannelUrlsProvider);
     final curated = CuratedChannelRef.parseAll(curatedUrls);
 
     return FeedRegistryState(
@@ -139,7 +139,7 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
     _log.info('Setting up remote config channels: ${channelUrls.length} URLs');
     final manager = ref.read(feedManagerProvider);
     await manager.setupRemoteConfigChannels(channelUrls);
-    await manager.reloadAllCache(force: true);
+    await manager.reloadAllCache(force: false);
     _log.info('Setup complete');
   }
 

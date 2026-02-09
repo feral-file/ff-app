@@ -184,8 +184,9 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     if (message is UpdateTokensData) {
       // Serialize per-uuid work so UpdateTokensSuccess can await completion.
       final prev = _inFlightByUuid[message.uuid] ?? Future<void>.value();
-      _inFlightByUuid[message.uuid] =
-          prev.then((_) => _handleUpdateTokensData(message));
+      _inFlightByUuid[message.uuid] = prev.then(
+        (_) => _handleUpdateTokensData(message),
+      );
       return;
     }
 
@@ -282,8 +283,9 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
           );
 
     final returnedCids = tokens.map((t) => t.cid).toSet();
-    final missingCids =
-        tokenCids.where((cid) => !returnedCids.contains(cid)).toList();
+    final missingCids = tokenCids
+        .where((cid) => !returnedCids.contains(cid))
+        .toList();
 
     for (final address in msg.addresses) {
       if (tokens.isNotEmpty) {
@@ -308,5 +310,5 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
 
 final tokensSyncCoordinatorProvider =
     NotifierProvider<TokensSyncCoordinatorNotifier, TokensSyncState>(
-  TokensSyncCoordinatorNotifier.new,
-);
+      TokensSyncCoordinatorNotifier.new,
+    );
