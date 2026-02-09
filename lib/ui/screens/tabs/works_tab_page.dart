@@ -100,7 +100,7 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
   Widget _buildWorksGridView(WorksState state) {
     final works = state.works;
     final hasMore = state.hasMore;
-    final isLoadingMore = state.isLoading && works.isNotEmpty;
+    final isLoadingMore = state.isLoadingMore;
 
     return _LoadMoreListener(
       onScrollPositionChanged: _onScrollPositionChanged,
@@ -114,12 +114,11 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
             works: works,
             onItemTap: (item) => context.go('${Routes.works}/${item.id}'),
           ),
-          
-          // Load more indicator (uses LoadingWidget / GIF)
+          // Load more indicator at end of list when hasMore or loading next page
           if (hasMore || isLoadingMore)
             SliverToBoxAdapter(
               child: LoadMoreIndicator(
-                isLoadingMore: hasMore && isLoadingMore,
+                isLoadingMore: isLoadingMore,
                 padding: EdgeInsets.symmetric(vertical: LayoutConstants.space4),
               ),
             ),

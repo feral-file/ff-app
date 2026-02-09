@@ -478,6 +478,25 @@ class AppDatabase extends _$AppDatabase {
     return select(items).get();
   }
 
+  /// Get items with optional [limit] and [offset] for paging.
+  /// When both are null, returns all (same as [getAllItems]).
+  Future<List<ItemData>> getItems({int? limit, int? offset}) async {
+    final off = offset ?? 0;
+    final query = select(items);
+    if (limit != null) {
+      return (query..limit(limit, offset: off)).get();
+    }
+    if (off > 0) {
+      return (query..limit(_maxLimitForOffset, offset: off)).get();
+    }
+    return query.get();
+  }
+
+  /// Watch all items; emits when the items table changes.
+  Stream<List<ItemData>> watchAllItems() {
+    return select(items).watch();
+  }
+
   /// Upsert a playlist entry.
   Future<void> upsertPlaylistEntry(PlaylistEntriesCompanion entry) async {
     await into(playlistEntries).insertOnConflictUpdate(entry);
