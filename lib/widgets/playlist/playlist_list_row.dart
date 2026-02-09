@@ -13,29 +13,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 /// Aggregated stream of ALL playlist items by playlistId (batched).
-/// 
+///
 /// This provider reduces N separate DB streams (one per row) to a single
 /// aggregated stream. Each row then uses select() to only rebuild when its
 /// specific playlist's items change.
 final StreamProvider<Map<String, List<PlaylistItem>>>
-    allPlaylistItemsStreamProvider =
+allPlaylistItemsStreamProvider =
     StreamProvider.autoDispose<Map<String, List<PlaylistItem>>>((ref) {
-  final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService.watchAllPlaylistItems();
-});
+      final databaseService = ref.watch(databaseServiceProvider);
+      return databaseService.watchAllPlaylistItems();
+    });
 
 /// Get items for a specific playlist via select on the aggregated provider.
-/// 
+///
 /// This uses .select() to avoid creating extra streams for each row.
 /// Each row only rebuilds when its specific playlist's items change.
 final Provider<AsyncValue<List<PlaylistItem>>> Function(String)
-    playlistItemsProvider =
-    Provider.autoDispose.family<AsyncValue<List<PlaylistItem>>, String>(
-  (ref, playlistId) {
-    final allItemsAsync = ref.watch(allPlaylistItemsStreamProvider);
-    return allItemsAsync.whenData((map) => map[playlistId] ?? []);
-  },
-);
+playlistItemsProvider = Provider.autoDispose
+    .family<AsyncValue<List<PlaylistItem>>, String>(
+      (ref, playlistId) {
+        final allItemsAsync = ref.watch(allPlaylistItemsStreamProvider);
+        return allItemsAsync.whenData((map) => map[playlistId] ?? []);
+      },
+    );
 
 /// Playlist List Row - Combines list item info with carousel content.
 /// Uses domain models (Playlist, PlaylistItem) only.
@@ -107,7 +107,7 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
 
     return GestureDetector(
       onTap: () {
-        context.go('${Routes.playlists}/${playlist.id}');
+        context.push('${Routes.playlists}/${playlist.id}');
       },
       child: Container(
         decoration: BoxDecoration(

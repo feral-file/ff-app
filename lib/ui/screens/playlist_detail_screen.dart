@@ -44,7 +44,8 @@ class PlaylistDetailScreen extends ConsumerWidget {
         child: detailsAsync.when(
           loading: () => const LoadingView(),
           error: (error, _) => ErrorView(
-            error: 'We couldn’t load this playlist. Check your connection, then Retry.',
+            error:
+                'We couldn’t load this playlist. Check your connection, then Retry.',
             onRetry: () => ref.invalidate(playlistDetailsProvider(playlistId)),
           ),
           data: (details) {
@@ -110,7 +111,7 @@ class PlaylistDetailScreen extends ConsumerWidget {
                     sliver: UIHelper.worksSliverGrid(
                       works: items,
                       onItemTap: (item) =>
-                          context.go('${Routes.works}/${item.id}'),
+                          context.push('${Routes.works}/${item.id}'),
                     ),
                   ),
               ],

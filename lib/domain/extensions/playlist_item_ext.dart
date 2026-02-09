@@ -6,15 +6,14 @@ extension PlaylistItemExt on PlaylistItem {
   String get thumbnailUrlOrEmpty => thumbnailUrl ?? '';
 
   /// Artist name or empty string when missing.
-  String get artistNameOrEmpty => artistName ?? '';
+  String get artistName => artists?.map((a) => a.name).join(', ') ?? '';
 
   /// A compact label suitable for UI lists.
   ///
   /// Keep this pure (no Flutter) so it’s safe to use in `domain/`.
   String get compactLabel {
-    final artist = artistNameOrEmpty;
+    final artist = artistName;
     if (artist.isEmpty) return title;
     return '$title • $artist';
   }
 }
-

@@ -39,10 +39,6 @@ class TokenTransformer {
       },
       updatedAt: DateTime.now(),
       artists: dp1Artists,
-      artistName: artists
-          ?.map((a) => a.name)
-          .where((n) => n.isNotEmpty)
-          .join(', '),
     );
     return item;
   }

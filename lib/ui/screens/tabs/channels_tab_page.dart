@@ -89,7 +89,9 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
               error:
                   'We couldn’t load channels. Check your connection, then Retry.',
               onRetry: () {
-                ref.read(channelsProvider(ChannelType.dp1).notifier).loadChannels();
+                ref
+                    .read(channelsProvider(ChannelType.dp1).notifier)
+                    .loadChannels();
                 ref
                     .read(channelsProvider(ChannelType.localVirtual).notifier)
                     .loadChannels();
@@ -141,12 +143,12 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
         hasMore: hasMore,
         onViewAllTap: hasMore
             ? () {
-                context.go('${Routes.allChannels}?filter=curated');
+                context.push('${Routes.allChannels}?filter=curated');
               }
             : null,
         onChannelItemTap: (workId) {
           // Navigate to work detail
-          context.go('${Routes.works}/$workId');
+          context.push('${Routes.works}/$workId');
         },
       ),
     );

@@ -1,11 +1,11 @@
+import 'package:app/app/providers/mutations.dart';
+import 'package:app/domain/extensions/playlist_item_ext.dart';
+import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
-
-import '../../domain/models/channel.dart';
-import '../../domain/models/playlist.dart';
-import '../../domain/models/playlist_item.dart';
-import '../../infra/database/database_provider.dart';
-import 'mutations.dart';
 
 /// Search results container.
 class SearchResults {
@@ -26,12 +26,10 @@ class SearchResults {
   final List<PlaylistItem> works;
 
   /// Whether there are any results.
-  bool get isEmpty =>
-      channels.isEmpty && playlists.isEmpty && works.isEmpty;
+  bool get isEmpty => channels.isEmpty && playlists.isEmpty && works.isEmpty;
 
   /// Total number of results.
-  int get totalCount =>
-      channels.length + playlists.length + works.length;
+  int get totalCount => channels.length + playlists.length + works.length;
 }
 
 /// Notifier for search query state.
@@ -92,7 +90,7 @@ final searchResultsProvider = FutureProvider<SearchResults>((ref) async {
     final matchingWorks = allWorks.where((PlaylistItem work) {
       return work.title.toLowerCase().contains(lowerQuery) ||
           (work.subtitle?.toLowerCase().contains(lowerQuery) ?? false) ||
-          (work.artistName?.toLowerCase().contains(lowerQuery) ?? false);
+          (work.artistName.toLowerCase().contains(lowerQuery));
     }).toList();
 
     return SearchResults(
@@ -108,6 +106,9 @@ final searchResultsProvider = FutureProvider<SearchResults>((ref) async {
 
 /// Mutation for tracking search operations.
 final performSearchMutationProvider =
-    NotifierProvider<MutationNotifier<SearchResults>, MutationState<SearchResults>>(
-  MutationNotifier.new,
-);
+    NotifierProvider<
+      MutationNotifier<SearchResults>,
+      MutationState<SearchResults>
+    >(
+      MutationNotifier.new,
+    );

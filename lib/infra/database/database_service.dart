@@ -13,6 +13,7 @@ import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/drift_kinds.dart';
 import 'package:app/infra/database/token_transformer.dart';
+import 'package:rxdart/rxdart.dart';
 
 /// Database service providing high-level operations for data ingestion.
 /// Handles offline-first storage for DP-1 entities and relationships.
@@ -43,6 +44,7 @@ class DatabaseService {
   }) {
     return _db
         .watchChannels(type: type?.index, limit: limit)
+        .debounceTime(Duration(milliseconds: 300))
         .map(
           (rows) => rows.map(DatabaseConverters.channelDataToDomain).toList(),
         );
@@ -64,6 +66,7 @@ class DatabaseService {
           ownerAddress: ownerAddress,
           limit: limit,
         )
+        .debounceTime(Duration(milliseconds: 300))
         .map(
           (rows) =>
               rows.map(DatabaseConverters.playlistDataToDomainPreview).toList(),
@@ -87,9 +90,12 @@ class DatabaseService {
         stream = _db.watchPlaylistItemsByProvenance(playlistId);
     }
 
-    yield* stream.map(
-      (rows) => rows.map(DatabaseConverters.itemDataToDomainPreview).toList(),
-    );
+    yield* stream
+        .debounceTime(Duration(milliseconds: 300))
+        .map(
+          (rows) =>
+              rows.map(DatabaseConverters.itemDataToDomainPreview).toList(),
+        );
   }
 
   /// Watch all playlist items batched by playlistId (performance optimization).
@@ -451,6 +457,32 @@ class DatabaseService {
       _log.severe('Failed to get all items', e, stack);
       rethrow;
     }
+  }
+
+  /// Get items with optional [limit] and [offset] for paging.
+  Future<List<PlaylistItem>> getItems({int? limit, int? offset}) async {
+    try {
+      final data = await _db.getItems(limit: limit, offset: offset);
+      return data.map(DatabaseConverters.itemDataToDomainPreview).toList();
+    } catch (e, stack) {
+      _log.severe('Failed to get items', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Debounce duration for [watchAllItems] stream (reduces emissions on rapid DB changes).
+  static const Duration watchAllItemsDebounce = Duration(milliseconds: 300);
+
+  /// Watch all items; emits when the items table changes.
+  /// Debounced by [watchAllItemsDebounce]. Uses same preview converter as [getAllItems].
+  Stream<List<PlaylistItem>> watchAllItems() {
+    return _db
+        .watchAllItems()
+        .map(
+          (rows) =>
+              rows.map(DatabaseConverters.itemDataToDomainPreview).toList(),
+        )
+        .debounceTime(watchAllItemsDebounce);
   }
 
   /// Delete playlist item by ID.

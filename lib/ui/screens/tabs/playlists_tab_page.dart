@@ -65,12 +65,12 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
 
     // Watch both providers (curated = dp1, personal = addressBased).
     final curatedState = ref.watch(playlistsProvider(PlaylistType.dp1));
-    final personalState =
-        ref.watch(playlistsProvider(PlaylistType.addressBased));
+    final personalState = ref.watch(
+      playlistsProvider(PlaylistType.addressBased),
+    );
     final curatedPlaylists = curatedState.playlists;
     final personalPlaylists = personalState.playlists;
-    final isLoading =
-        curatedState.isLoading || personalState.isLoading;
+    final isLoading = curatedState.isLoading || personalState.isLoading;
     final error = curatedState.error ?? personalState.error;
     final hasMore = curatedState.hasMore;
 
@@ -94,7 +94,9 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
               error:
                   'We couldn’t load playlists. Check your connection, then Retry.',
               onRetry: () {
-                ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
+                ref
+                    .read(playlistsProvider(PlaylistType.dp1).notifier)
+                    .loadPlaylists();
                 ref
                     .read(playlistsProvider(PlaylistType.addressBased).notifier)
                     .loadPlaylists();
@@ -119,7 +121,7 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
               playlists: personalPlaylists.take(_previewCount).toList(),
               hasMore: personalPlaylists.length > _previewCount,
               onViewAllTap: personalPlaylists.length > _previewCount
-                  ? () => context.go('${Routes.allPlaylists}?filter=personal')
+                  ? () => context.push('${Routes.allPlaylists}?filter=personal')
                   : null,
               onPlaylistItemTap: (_) {},
             ),
@@ -142,7 +144,7 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
               playlists: curatedPlaylists.take(_previewCount).toList(),
               hasMore: hasMore || curatedPlaylists.length > _previewCount,
               onViewAllTap: (hasMore || curatedPlaylists.length > _previewCount)
-                  ? () => context.go('${Routes.allPlaylists}?filter=curated')
+                  ? () => context.push('${Routes.allPlaylists}?filter=curated')
                   : null,
               onPlaylistItemTap: (_) {},
             ),

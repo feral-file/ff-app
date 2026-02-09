@@ -26,7 +26,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -36,11 +36,38 @@ class AppDatabase extends _$AppDatabase {
         await _createIndexes();
       },
       onUpgrade: (Migrator m, int from, int to) async {
-        if (from < 2) {
-          await m.addColumn(items, items.listArtistJson);
+        if (from < 3) {
+          await _ensureListArtistJsonColumn(m);
         }
       },
+      beforeOpen: (OpeningDetails details) async {
+        // Ensure list_artist_json exists even if stored version is already 3
+        // (e.g. migration ran but addColumn failed, or DB was restored from backup).
+        await _ensureListArtistJsonColumn(null);
+      },
     );
+  }
+
+  /// Idempotent: add items.list_artist_json if missing.
+  /// [m] when non-null uses Migrator.addColumn; when null uses raw ALTER TABLE.
+  Future<void> _ensureListArtistJsonColumn(Migrator? m) async {
+    try {
+      if (m != null) {
+        await m.addColumn(items, items.listArtistJson);
+      } else {
+        await customStatement(
+          'ALTER TABLE items ADD COLUMN list_artist_json TEXT',
+        );
+      }
+    } catch (e, st) {
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('duplicate column') || msg.contains('already exists')) {
+        _log.fine('list_artist_json already present, skipping');
+        return;
+      }
+      _log.severe('Failed to add list_artist_json', e, st);
+      rethrow;
+    }
   }
 
   /// Creates performance indexes.
@@ -92,10 +119,10 @@ class AppDatabase extends _$AppDatabase {
     final query = select(channels)
       ..orderBy([
         (t) => OrderingTerm(
-              expression: t.sortOrder,
-              mode: OrderingMode.asc,
-              nulls: NullsOrder.last,
-            ),
+          expression: t.sortOrder,
+          mode: OrderingMode.asc,
+          nulls: NullsOrder.last,
+        ),
         (t) => OrderingTerm.asc(t.id),
       ]);
 
@@ -155,21 +182,22 @@ class AppDatabase extends _$AppDatabase {
     String playlistId, {
     int? limit,
   }) {
-    final query = select(items).join([
-      innerJoin(
-        playlistEntries,
-        playlistEntries.itemId.equalsExp(items.id),
-      ),
-    ])
-      ..where(playlistEntries.playlistId.equals(playlistId))
-      ..orderBy([
-        OrderingTerm(
-          expression: playlistEntries.position,
-          mode: OrderingMode.asc,
-          nulls: NullsOrder.last,
-        ),
-        OrderingTerm.asc(playlistEntries.itemId),
-      ]);
+    final query =
+        select(items).join([
+            innerJoin(
+              playlistEntries,
+              playlistEntries.itemId.equalsExp(items.id),
+            ),
+          ])
+          ..where(playlistEntries.playlistId.equals(playlistId))
+          ..orderBy([
+            OrderingTerm(
+              expression: playlistEntries.position,
+              mode: OrderingMode.asc,
+              nulls: NullsOrder.last,
+            ),
+            OrderingTerm.asc(playlistEntries.itemId),
+          ]);
 
     if (limit != null) {
       query.limit(limit);
@@ -189,17 +217,18 @@ class AppDatabase extends _$AppDatabase {
     String playlistId, {
     int? limit,
   }) {
-    final query = select(items).join([
-      innerJoin(
-        playlistEntries,
-        playlistEntries.itemId.equalsExp(items.id),
-      ),
-    ])
-      ..where(playlistEntries.playlistId.equals(playlistId))
-      ..orderBy([
-        OrderingTerm.desc(playlistEntries.sortKeyUs),
-        OrderingTerm.desc(playlistEntries.itemId),
-      ]);
+    final query =
+        select(items).join([
+            innerJoin(
+              playlistEntries,
+              playlistEntries.itemId.equalsExp(items.id),
+            ),
+          ])
+          ..where(playlistEntries.playlistId.equals(playlistId))
+          ..orderBy([
+            OrderingTerm.desc(playlistEntries.sortKeyUs),
+            OrderingTerm.desc(playlistEntries.itemId),
+          ]);
 
     if (limit != null) {
       query.limit(limit);
@@ -213,14 +242,13 @@ class AppDatabase extends _$AppDatabase {
   // Channel queries
   /// Get all channels ordered by sort order.
   Future<List<ChannelData>> getAllChannels() async {
-    return (select(channels)
-          ..orderBy([
-            (t) => OrderingTerm(
-                  expression: t.sortOrder,
-                  mode: OrderingMode.asc,
-                  nulls: NullsOrder.last,
-                ),
-          ]))
+    return (select(channels)..orderBy([
+          (t) => OrderingTerm(
+            expression: t.sortOrder,
+            mode: OrderingMode.asc,
+            nulls: NullsOrder.last,
+          ),
+        ]))
         .get();
   }
 
@@ -235,10 +263,10 @@ class AppDatabase extends _$AppDatabase {
       ..where((t) => t.type.equals(type))
       ..orderBy([
         (t) => OrderingTerm(
-              expression: t.sortOrder,
-              mode: OrderingMode.asc,
-              nulls: NullsOrder.last,
-            ),
+          expression: t.sortOrder,
+          mode: OrderingMode.asc,
+          nulls: NullsOrder.last,
+        ),
         (t) => OrderingTerm.asc(t.id),
       ]);
 
@@ -271,8 +299,7 @@ class AppDatabase extends _$AppDatabase {
   Future<List<PlaylistData>> getPlaylistsByChannel(String channelId) async {
     return (select(
       playlists,
-    )..where((t) => t.channelId.equals(channelId)))
-        .get();
+    )..where((t) => t.channelId.equals(channelId))).get();
   }
 
   /// Get playlist by ID.
@@ -304,11 +331,12 @@ class AppDatabase extends _$AppDatabase {
 
   /// Update playlist item count.
   Future<void> updatePlaylistItemCount(String playlistId) async {
-    final count = await (selectOnly(playlistEntries)
-          ..addColumns([playlistEntries.itemId.count()])
-          ..where(playlistEntries.playlistId.equals(playlistId)))
-        .getSingle()
-        .then((row) => row.read(playlistEntries.itemId.count()) ?? 0);
+    final count =
+        await (selectOnly(playlistEntries)
+              ..addColumns([playlistEntries.itemId.count()])
+              ..where(playlistEntries.playlistId.equals(playlistId)))
+            .getSingle()
+            .then((row) => row.read(playlistEntries.itemId.count()) ?? 0);
 
     await (update(playlists)..where((t) => t.id.equals(playlistId))).write(
       PlaylistsCompanion(itemCount: Value(count)),
@@ -346,21 +374,22 @@ class AppDatabase extends _$AppDatabase {
   // Playlist entry queries
   /// Get items for a playlist (position-based sorting).
   Future<List<ItemData>> getPlaylistItemsByPosition(String playlistId) async {
-    final query = select(items).join([
-      innerJoin(
-        playlistEntries,
-        playlistEntries.itemId.equalsExp(items.id),
-      ),
-    ])
-      ..where(playlistEntries.playlistId.equals(playlistId))
-      ..orderBy([
-        OrderingTerm(
-          expression: playlistEntries.position,
-          mode: OrderingMode.asc,
-          nulls: NullsOrder.last,
-        ),
-        OrderingTerm.asc(playlistEntries.itemId),
-      ]);
+    final query =
+        select(items).join([
+            innerJoin(
+              playlistEntries,
+              playlistEntries.itemId.equalsExp(items.id),
+            ),
+          ])
+          ..where(playlistEntries.playlistId.equals(playlistId))
+          ..orderBy([
+            OrderingTerm(
+              expression: playlistEntries.position,
+              mode: OrderingMode.asc,
+              nulls: NullsOrder.last,
+            ),
+            OrderingTerm.asc(playlistEntries.itemId),
+          ]);
 
     final result = await query.get();
     return result.map((row) => row.readTable(items)).toList();
@@ -370,17 +399,18 @@ class AppDatabase extends _$AppDatabase {
   Future<List<ItemData>> getPlaylistItemsByProvenance(
     String playlistId,
   ) async {
-    final query = select(items).join([
-      innerJoin(
-        playlistEntries,
-        playlistEntries.itemId.equalsExp(items.id),
-      ),
-    ])
-      ..where(playlistEntries.playlistId.equals(playlistId))
-      ..orderBy([
-        OrderingTerm.desc(playlistEntries.sortKeyUs),
-        OrderingTerm.desc(playlistEntries.itemId),
-      ]);
+    final query =
+        select(items).join([
+            innerJoin(
+              playlistEntries,
+              playlistEntries.itemId.equalsExp(items.id),
+            ),
+          ])
+          ..where(playlistEntries.playlistId.equals(playlistId))
+          ..orderBy([
+            OrderingTerm.desc(playlistEntries.sortKeyUs),
+            OrderingTerm.desc(playlistEntries.itemId),
+          ]);
 
     final result = await query.get();
     return result.map((row) => row.readTable(items)).toList();
@@ -439,13 +469,32 @@ class AppDatabase extends _$AppDatabase {
     }
 
     return query.watch().map(
-          (rows) => rows.map((row) => row.readTable(items)).toList(),
-        );
+      (rows) => rows.map((row) => row.readTable(items)).toList(),
+    );
   }
 
   /// Get all items from the database.
   Future<List<ItemData>> getAllItems() async {
     return select(items).get();
+  }
+
+  /// Get items with optional [limit] and [offset] for paging.
+  /// When both are null, returns all (same as [getAllItems]).
+  Future<List<ItemData>> getItems({int? limit, int? offset}) async {
+    final off = offset ?? 0;
+    final query = select(items);
+    if (limit != null) {
+      return (query..limit(limit, offset: off)).get();
+    }
+    if (off > 0) {
+      return (query..limit(_maxLimitForOffset, offset: off)).get();
+    }
+    return query.get();
+  }
+
+  /// Watch all items; emits when the items table changes.
+  Stream<List<ItemData>> watchAllItems() {
+    return select(items).watch();
   }
 
   /// Upsert a playlist entry.
@@ -466,8 +515,7 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deletePlaylistEntries(String playlistId) async {
     await (delete(
       playlistEntries,
-    )..where((t) => t.playlistId.equals(playlistId)))
-        .go();
+    )..where((t) => t.playlistId.equals(playlistId))).go();
   }
 
   /// Delete playlist entry by item ID (across all playlists).
@@ -480,9 +528,9 @@ class AppDatabase extends _$AppDatabase {
     required String playlistId,
     required String itemId,
   }) async {
-    await (delete(playlistEntries)
-          ..where(
-              (t) => t.playlistId.equals(playlistId) & t.itemId.equals(itemId)))
+    await (delete(playlistEntries)..where(
+          (t) => t.playlistId.equals(playlistId) & t.itemId.equals(itemId),
+        ))
         .go();
   }
 
@@ -523,9 +571,11 @@ class AppDatabase extends _$AppDatabase {
     );
 
     final query = select(playlists)
-      ..where((p) =>
-          p.baseUrl.isIn(baseUrls) &
-          (type != null ? p.type.equals(type) : const Constant(true)))
+      ..where(
+        (p) =>
+            p.baseUrl.isIn(baseUrls) &
+            (type != null ? p.type.equals(type) : const Constant(true)),
+      )
       ..orderBy([
         (p) => OrderingTerm.asc(baseUrlOrderExpr),
         (p) => OrderingTerm.asc(p.createdAtUs),
@@ -547,9 +597,9 @@ class AppDatabase extends _$AppDatabase {
     required int type,
     required String baseUrl,
   }) async {
-    return (delete(playlists)
-          ..where((p) => p.type.equals(type) & p.baseUrl.equals(baseUrl)))
-        .go();
+    return (delete(
+      playlists,
+    )..where((p) => p.type.equals(type) & p.baseUrl.equals(baseUrl))).go();
   }
 
   /// Delete all channels of given type and baseUrl.
@@ -558,9 +608,9 @@ class AppDatabase extends _$AppDatabase {
     required int type,
     required String baseUrl,
   }) async {
-    return (delete(channels)
-          ..where((c) => c.type.equals(type) & c.baseUrl.equals(baseUrl)))
-        .go();
+    return (delete(
+      channels,
+    )..where((c) => c.type.equals(type) & c.baseUrl.equals(baseUrl))).go();
   }
 }
 

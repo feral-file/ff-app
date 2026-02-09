@@ -217,7 +217,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         ),
         onTap: () {
           Navigator.of(context).pop();
-          context.go(Routes.connectedDevices);
+          context.push(Routes.connectedDevices);
         },
       ),
       // Personal Preferences & Data, Security Management
@@ -349,7 +349,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         Offstage(
           offstage: _selectedTab != HomeIndexHeaderTab.works,
           child: Container(
-            child: Text('Works'),
+            child: _worksPage,
           ),
         ),
       ],

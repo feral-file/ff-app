@@ -1,5 +1,6 @@
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/gallery_thumbnail_widgets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -26,7 +27,7 @@ class WorkGridCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = item.title;
-    final artistName = item.subtitle ?? item.artistName ?? '';
+    final artistName = item.subtitle ?? item.artistName;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

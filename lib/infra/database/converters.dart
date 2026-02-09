@@ -14,8 +14,8 @@ import 'package:app/infra/database/app_database.dart';
 import 'package:drift/drift.dart';
 
 /// Converts between domain models and database models.
-/// 
-/// **Performance note:** 
+///
+/// **Performance note:**
 /// - `*ToDomain()` methods perform full deserialization of all JSON fields.
 /// - `*ToDomainPreview()` methods skip heavy JSON fields for list UI performance.
 class DatabaseConverters {
@@ -60,7 +60,7 @@ class DatabaseConverters {
   }
 
   /// Convert PlaylistData to Playlist domain model (full deserialization).
-  /// 
+  ///
   /// Performs JSON parsing for signatures, defaults, and dynamicQueries.
   /// Use [playlistDataToDomainPreview] for list UI to skip expensive JSON work.
   static Playlist playlistDataToDomain(PlaylistData data) {
@@ -116,7 +116,7 @@ class DatabaseConverters {
   }
 
   /// Convert PlaylistData to Playlist (light projection for list UI).
-  /// 
+  ///
   /// Skips JSON deserialization of signatures, defaults, and dynamicQueries.
   /// Use for list queries where only basic fields (id, name, itemCount) are needed.
   static Playlist playlistDataToDomainPreview(PlaylistData data) {
@@ -180,7 +180,7 @@ class DatabaseConverters {
   }
 
   /// Convert ItemData to PlaylistItem domain model (full deserialization).
-  /// 
+  ///
   /// Performs JSON parsing for provenance, reproduction, override, display, tokenData, and artists.
   /// Use [itemDataToDomainPreview] for list UI to skip expensive JSON work.
   static PlaylistItem itemDataToDomain(ItemData data) {
@@ -262,7 +262,7 @@ class DatabaseConverters {
   }
 
   /// Convert ItemData to PlaylistItem (light projection for list UI).
-  /// 
+  ///
   /// Skips JSON deserialization of provenance, reproduction, override, display, and tokenData.
   /// Keeps artists and basic fields for display, avoiding heavy JSON parsing.
   /// Use for list queries where only title, thumbnail, and basic metadata are needed.
@@ -429,8 +429,11 @@ class DatabaseConverters {
   /// Used when creating PlaylistReference from API response.
   /// [channelId] must be set when playlist is ingested in channel context so
   /// [getPlaylistItemsByChannel] can return items (playlists.channel_id in DB).
-  static Playlist dp1PlaylistToDomain(DP1Playlist dp1,
-      {String? baseUrl, String? channelId}) {
+  static Playlist dp1PlaylistToDomain(
+    DP1Playlist dp1, {
+    String? baseUrl,
+    String? channelId,
+  }) {
     final dynamicQueries = dp1.dynamicQueries;
     final sortMode = dynamicQueries.isNotEmpty
         ? PlaylistSortMode.provenance
@@ -469,7 +472,7 @@ class DatabaseConverters {
     return PlaylistItem(
       id: item.id,
       kind: PlaylistItemKind.dp1Item,
-      title: item.title ?? 'Untitled',
+      title: item.title ?? token?.displayTitle ?? 'Unknown',
       sourceUri: item.source,
       refUri: item.ref,
       license: item.license?.value,
