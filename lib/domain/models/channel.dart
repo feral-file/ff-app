@@ -1,7 +1,10 @@
+import 'package:meta/meta.dart';
+
 /// Channel (DP-1 domain object).
 /// Represents a feed of content (playlists, works).
 /// Note: "My Collection" is modeled as a pinned personal Channel,
 /// not a separate domain object.
+@immutable
 class Channel {
   /// Creates a Channel.
   const Channel({
@@ -54,6 +57,40 @@ class Channel {
 
   /// Display order.
   final int? sortOrder;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Channel &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          type == other.type &&
+          description == other.description &&
+          isPinned == other.isPinned &&
+          baseUrl == other.baseUrl &&
+          slug == other.slug &&
+          curator == other.curator &&
+          coverImageUrl == other.coverImageUrl &&
+          createdAt == other.createdAt &&
+          updatedAt == other.updatedAt &&
+          sortOrder == other.sortOrder;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        name,
+        type,
+        description,
+        isPinned,
+        baseUrl,
+        slug,
+        curator,
+        coverImageUrl,
+        createdAt,
+        updatedAt,
+        sortOrder,
+      );
 
   /// Creates a copy with updated values.
   Channel copyWith({

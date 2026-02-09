@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -136,7 +137,15 @@ class WorksNotifier extends Notifier<WorksState> {
   }
 
   void _onItemsChanged(List<PlaylistItem> next) {
-    refresh();
+    final loadedCount = next.length > worksPageSize
+        ? worksPageSize
+        : next.length;
+    final newSlice = next.take(loadedCount).toList();
+    final currentSlice = state.works.take(loadedCount).toList();
+    final hasChanged = !listEquals(newSlice, currentSlice);
+    if (hasChanged) {
+      refresh();
+    }
   }
 
   /// Load a slice of works from database (no channel filter).

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/database_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -128,7 +129,6 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
     _watchSub = databaseService
         .watchPlaylistItemsByChannel(
           _channelId,
-          limit: channelPreviewPageSize + 1,
           offset: 0,
         )
         .listen(_onPlaylistItemsChanged, onError: _onWatchError);
@@ -139,31 +139,44 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
   }
 
   void _onPlaylistItemsChanged(List<PlaylistItem> next) {
-    load();
+    final loadedCount = channelPreviewPageSize > state.works.length
+        ? channelPreviewPageSize
+        : state.works.length;
+    final newSlice = next.take(loadedCount).toList();
+    final currentSlice = state.works.take(loadedCount).toList();
+    final changedItems = newSlice
+        .where((item) => !currentSlice.contains(item))
+        .toList();
+    if (changedItems.isNotEmpty) {
+      load(limit: loadedCount, offset: 0, showLoading: false);
+    }
   }
 
-  /// Load first page of preview works.
-  /// Single join query; requests limit+1 to detect hasMore.
-  Future<void> load() async {
+  /// Load preview works for the given [limit] and [offset].
+  /// Use limit = pageSize+1 to detect hasMore; display count is limit-1.
+  /// Updates the watched slice to (limit, offset) and refetches on DB change if slice changed.
+  Future<void> load({int? limit, int? offset, bool showLoading = true}) async {
     final id = _channelId;
     if (id.isEmpty) return;
 
     if (state.isLoading) return;
 
-    state = ChannelPreviewState.loading();
+    final requestedLimit = limit ?? channelPreviewPageSize + 1;
+    final requestedOffset = offset ?? 0;
+    if (showLoading) {
+      state = ChannelPreviewState.loading();
+    }
 
     try {
       final db = ref.read(databaseServiceProvider);
       final result = await db.getPlaylistItemsByChannel(
         id,
-        limit: channelPreviewPageSize + 1,
-        offset: 0,
+        limit: requestedLimit,
+        offset: requestedOffset,
       );
-      final hasMore = result.length > channelPreviewPageSize;
-      final pageItems =
-          hasMore ? result.take(channelPreviewPageSize).toList() : result;
+      final hasMore = result.length > requestedLimit;
 
-      state = ChannelPreviewState.loaded(works: pageItems, hasMore: hasMore);
+      state = ChannelPreviewState.loaded(works: result, hasMore: hasMore);
     } catch (e, stack) {
       _log.severe('Failed to load channel preview for $id', e, stack);
       state = ChannelPreviewState.error(e.toString());
@@ -205,4 +218,5 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
 /// Auto-dispose when no longer watched.
 final channelPreviewProvider = NotifierProvider.autoDispose
     .family<ChannelPreviewNotifier, ChannelPreviewState, String>(
-        ChannelPreviewNotifier.new);
+      ChannelPreviewNotifier.new,
+    );

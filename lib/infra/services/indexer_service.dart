@@ -59,6 +59,10 @@ class IndexerService {
   }
 
   /// Fetch tokens by CIDs (for enriching DP1 items).
+  ///
+  /// On timeout or network failure, returns an empty list so enrichment
+  /// can continue for other batches instead of propagating and triggering
+  /// Flutter's uncaught-exception handler.
   Future<List<AssetToken>> fetchTokensByCIDs({
     required List<String> tokenCids,
   }) async {
@@ -69,7 +73,7 @@ class IndexerService {
       return tokens;
     } catch (e, stack) {
       _log.severe('Failed to fetch tokens by CIDs', e, stack);
-      rethrow;
+      return const [];
     }
   }
 

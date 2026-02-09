@@ -98,12 +98,11 @@ class DatabaseService {
         );
   }
 
-  /// Watch all playlist items batched by playlistId (performance optimization).
+  /// Watch all playlist items batched by playlistId.
   ///
   /// Emits a map of {playlistId: [items]} whenever any item changes in any
-  /// playlist. This is used by [allPlaylistItemsStreamProvider] to provide a
-  /// single aggregated stream that multiple rows can select from, rather than
-  /// creating N separate DB streams for N rows in a list.
+  /// playlist. Prefer [watchPlaylistItems] for a single playlist to avoid
+  /// subscribing to every playlist.
   ///
   /// Returns a map where each key is a playlistId and the value is the ordered
   /// list of items for that playlist (sorted by position or provenance based on
@@ -402,7 +401,12 @@ class DatabaseService {
   }
 
   /// Get items for a playlist.
-  Future<List<PlaylistItem>> getPlaylistItems(String playlistId) async {
+  /// [limit] null = return all; [offset] null = 0.
+  Future<List<PlaylistItem>> getPlaylistItems(
+    String playlistId, {
+    int? limit,
+    int? offset,
+  }) async {
     try {
       final playlist = await getPlaylistById(playlistId);
       if (playlist == null) {
@@ -411,8 +415,16 @@ class DatabaseService {
       }
 
       final data = playlist.sortMode == PlaylistSortMode.position
-          ? await _db.getPlaylistItemsByPosition(playlistId)
-          : await _db.getPlaylistItemsByProvenance(playlistId);
+          ? await _db.getPlaylistItemsByPosition(
+              playlistId,
+              limit: limit,
+              offset: offset,
+            )
+          : await _db.getPlaylistItemsByProvenance(
+              playlistId,
+              limit: limit,
+              offset: offset,
+            );
 
       return data.map(DatabaseConverters.itemDataToDomain).toList();
     } catch (e, stack) {

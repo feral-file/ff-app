@@ -1,9 +1,12 @@
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
+import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
 
 /// Playlist (DP-1 domain object).
 /// Both personal and curated playlists are Playlists.
 /// Exhibition/Season/Program are playlistRole values (UI chrome),
 /// not separate domain objects.
+@immutable
 class Playlist {
   /// Creates a Playlist.
   const Playlist({
@@ -84,6 +87,63 @@ class Playlist {
 
   /// Number of items in the playlist.
   final int itemCount;
+
+  /// Deep equality for `Map<String, dynamic>?` (defaults).
+  static bool _mapEquals(Map<String, dynamic>? a, Map<String, dynamic>? b) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    return const DeepCollectionEquality().equals(a, b);
+  }
+
+  static const _deepEquality = DeepCollectionEquality();
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Playlist &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          type == other.type &&
+          description == other.description &&
+          channelId == other.channelId &&
+          playlistRole == other.playlistRole &&
+          playlistSource == other.playlistSource &&
+          baseUrl == other.baseUrl &&
+          dpVersion == other.dpVersion &&
+          slug == other.slug &&
+          createdAt == other.createdAt &&
+          updatedAt == other.updatedAt &&
+          listEquals(signatures, other.signatures) &&
+          _mapEquals(defaults, other.defaults) &&
+          listEquals(dynamicQueries, other.dynamicQueries) &&
+          ownerAddress == other.ownerAddress &&
+          ownerChain == other.ownerChain &&
+          sortMode == other.sortMode &&
+          itemCount == other.itemCount;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        name,
+        type,
+        description,
+        channelId,
+        playlistRole,
+        playlistSource,
+        baseUrl,
+        dpVersion,
+        slug,
+        createdAt,
+        updatedAt,
+        Object.hashAll(signatures ?? []),
+        defaults != null ? _deepEquality.hash(defaults) : null,
+        Object.hashAll(dynamicQueries ?? []),
+        ownerAddress,
+        ownerChain,
+        sortMode,
+        itemCount,
+      );
 
   /// Creates a copy with updated values.
   Playlist copyWith({

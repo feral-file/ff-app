@@ -1,10 +1,13 @@
 import 'package:app/domain/models/dp1/dp1_manifest.dart';
+import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
 
 /// PlaylistItem (DP-1 domain object).
 /// Represents an item in a playlist (not "Work" or "Item" - use correct
 /// terminology).
 /// This corresponds to "Items" in the database schema.
 /// UI layer can refer to this as "work" when displaying to users.
+@immutable
 class PlaylistItem {
   /// Creates a PlaylistItem.
   const PlaylistItem({
@@ -110,6 +113,60 @@ class PlaylistItem {
 
   /// Last update timestamp.
   final DateTime? updatedAt;
+
+  /// Deep equality for `Map<String, dynamic>?` fields (provenance, etc.).
+  static bool _mapEquals(Map<String, dynamic>? a, Map<String, dynamic>? b) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    return const DeepCollectionEquality().equals(a, b);
+  }
+
+  static const _deepEquality = DeepCollectionEquality();
+
+  // Field "override" shadows @override; omit annotation and ignore lint.
+  // ignore: annotate_overrides
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PlaylistItem &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          kind == other.kind &&
+          title == other.title &&
+          subtitle == other.subtitle &&
+          listEquals(artists, other.artists) &&
+          thumbnailUrl == other.thumbnailUrl &&
+          mediaUrl == other.mediaUrl &&
+          durationSec == other.durationSec &&
+          _mapEquals(provenance, other.provenance) &&
+          sourceUri == other.sourceUri &&
+          refUri == other.refUri &&
+          license == other.license &&
+          _mapEquals(reproduction, other.reproduction) &&
+          _mapEquals(override, other.override) &&
+          _mapEquals(display, other.display) &&
+          _mapEquals(tokenData, other.tokenData) &&
+          updatedAt == other.updatedAt;
+
+  // ignore: annotate_overrides - field "override" shadows @override annotation.
+  int get hashCode => Object.hash(
+        id,
+        kind,
+        title,
+        subtitle,
+        Object.hashAll(artists ?? []),
+        thumbnailUrl,
+        mediaUrl,
+        durationSec,
+        provenance != null ? _deepEquality.hash(provenance) : null,
+        sourceUri,
+        refUri,
+        license,
+        reproduction != null ? _deepEquality.hash(reproduction) : null,
+        override != null ? _deepEquality.hash(override) : null,
+        display != null ? _deepEquality.hash(display) : null,
+        tokenData != null ? _deepEquality.hash(tokenData) : null,
+        updatedAt,
+      );
 
   /// Creates a copy with updated values.
   PlaylistItem copyWith({

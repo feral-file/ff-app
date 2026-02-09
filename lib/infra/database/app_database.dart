@@ -373,7 +373,13 @@ class AppDatabase extends _$AppDatabase {
 
   // Playlist entry queries
   /// Get items for a playlist (position-based sorting).
-  Future<List<ItemData>> getPlaylistItemsByPosition(String playlistId) async {
+  /// [limit] null = return all; [offset] null = 0.
+  Future<List<ItemData>> getPlaylistItemsByPosition(
+    String playlistId, {
+    int? limit,
+    int? offset,
+  }) async {
+    final off = offset ?? 0;
     final query =
         select(items).join([
             innerJoin(
@@ -391,14 +397,21 @@ class AppDatabase extends _$AppDatabase {
             OrderingTerm.asc(playlistEntries.itemId),
           ]);
 
+    if (limit != null) {
+      query.limit(limit, offset: off);
+    }
     final result = await query.get();
     return result.map((row) => row.readTable(items)).toList();
   }
 
   /// Get items for a playlist (provenance-based sorting).
+  /// [limit] null = return all; [offset] null = 0.
   Future<List<ItemData>> getPlaylistItemsByProvenance(
-    String playlistId,
-  ) async {
+    String playlistId, {
+    int? limit,
+    int? offset,
+  }) async {
+    final off = offset ?? 0;
     final query =
         select(items).join([
             innerJoin(
@@ -412,6 +425,9 @@ class AppDatabase extends _$AppDatabase {
             OrderingTerm.desc(playlistEntries.itemId),
           ]);
 
+    if (limit != null) {
+      query.limit(limit, offset: off);
+    }
     final result = await query.get();
     return result.map((row) => row.readTable(items)).toList();
   }

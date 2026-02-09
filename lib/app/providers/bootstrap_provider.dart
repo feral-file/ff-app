@@ -1,6 +1,5 @@
 import 'package:app/app/feed/curated_channel_urls.dart';
 import 'package:app/app/feed/feed_registry_provider.dart';
-import 'package:app/app/providers/api_providers.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
