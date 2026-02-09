@@ -6,7 +6,7 @@ const _hasSeenOnboardingKey = 'hasSeenOnboarding';
 
 /// Provider that checks if the user has seen onboarding.
 /// Returns true if the user has completed onboarding, false otherwise.
-final hasSeenOnboardingProvider = FutureProvider<bool>((ref) async {
+final hasDoneOnboardingProvider = FutureProvider<bool>((ref) async {
   final flagsStore = ref.watch(appFlagsStoreProvider);
   return flagsStore.getBool(_hasSeenOnboardingKey);
 });
@@ -34,9 +34,9 @@ class OnboardingService {
   /// Reference to the [AppFlagsStore].
   final AppFlagsStore flagsStore;
 
-  /// Mark onboarding as complete and refresh [hasSeenOnboardingProvider].
+  /// Mark onboarding as complete and refresh [hasDoneOnboardingProvider].
   Future<void> completeOnboarding() async {
     await flagsStore.setBool(_hasSeenOnboardingKey, true);
-    ref.invalidate(hasSeenOnboardingProvider);
+    ref.invalidate(hasDoneOnboardingProvider);
   }
 }

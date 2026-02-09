@@ -13,6 +13,7 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/screens/add_alias_screen.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
 import 'package:flutter/foundation.dart';
@@ -85,14 +86,11 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
             next.value != null &&
             (previous is! AsyncData<Address?> || previous.value == null)) {
           if (context.mounted) {
-            final uri = Uri(
-              path: Routes.addAliasPage,
-              queryParameters: {
-                'address': next.value?.address,
-                'domain': next.value?.domain,
-              },
+            final payload = AddAliasScreenPayload(
+              address: next.value?.address ?? '',
+              domain: next.value?.domain,
             );
-            unawaited(context.push(uri.toString()));
+            unawaited(context.push(Routes.addAliasPage, extra: payload));
           }
         }
       },

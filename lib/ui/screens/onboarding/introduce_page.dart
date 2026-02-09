@@ -11,6 +11,7 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/ui/screens/onboarding/onboarding_add_address_page.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/onboarding/onboarding_shell.dart';
 import 'package:flutter/material.dart';
@@ -22,17 +23,28 @@ import 'package:go_router/go_router.dart';
 ///
 /// This widget is implemented using [OnboardingShell] to match the Figma screen:
 /// FF1 Art Computer → Onboarding B 4.
+///
+
+class IntroducePagePayload {
+  /// Constructor
+  IntroducePagePayload({
+    this.deeplink,
+  });
+
+  /// Optional deeplink carried through the onboarding flow.
+  final String? deeplink;
+}
 
 /// Introduce page.
 class IntroducePage extends StatelessWidget {
   /// Creates a IntroducePage.
   const IntroducePage({
-    this.deeplink,
+    required this.payload,
     super.key,
   });
 
-  /// Optional deeplink carried through the onboarding flow.
-  final String? deeplink;
+  /// Payload for the page
+  final IntroducePagePayload payload;
 
   @override
   Widget build(BuildContext context) {
@@ -82,12 +94,11 @@ class IntroducePage extends StatelessWidget {
 
   /// Callback triggered when the user taps the "Next" button.
   void onNext(BuildContext context) {
-    final uri = Uri(
-      path: Routes.onboardingAddAddressPage,
-      queryParameters: deeplink != null && deeplink!.isNotEmpty
-          ? {'deeplink': deeplink}
-          : null,
+    unawaited(
+      context.push(
+        Routes.onboardingAddAddressPage,
+        extra: OnboardingAddAddressPagePayload(deeplink: payload.deeplink),
+      ),
     );
-    unawaited(context.push(uri.toString()));
   }
 }

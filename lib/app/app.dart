@@ -13,14 +13,13 @@ class App extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final onboarding = ref.watch(hasSeenOnboardingProvider);
+    final hasDoneOnboarding = ref.read(hasDoneOnboardingProvider);
 
-    return onboarding.when(
-      loading: Container.new,
-      error: (_, __) => Container(),
-      data: (seen) {
+    return hasDoneOnboarding.maybeWhen(
+      data: (hasDone) {
         final router = ref.watch(
-          routerProvider(seen ? Routes.home : Routes.onboardingIntroducePage),
+          routerProvider(
+              hasDone ? Routes.home : Routes.onboardingIntroducePage),
         );
 
         return MaterialApp.router(
@@ -30,6 +29,7 @@ class App extends ConsumerWidget {
           theme: AppTheme.lightTheme(),
         );
       },
+      orElse: Container.new,
     );
   }
 }

@@ -24,12 +24,8 @@ import 'package:go_router/go_router.dart';
 class OnboardingSetupFf1Page extends ConsumerWidget {
   /// Creates a OnboardingSetupFf1Page.
   const OnboardingSetupFf1Page({
-    this.deeplink,
     super.key,
   });
-
-  /// Optional deeplink carried through the onboarding flow.
-  final String? deeplink;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -103,7 +99,7 @@ class OnboardingSetupFf1Page extends ConsumerWidget {
 
     final onboardingActions = ref.read(onboardingActionsProvider);
     unawaited(onboardingActions.completeOnboarding());
-    context.go(Routes.ff1DevicePickerPage);
+    unawaited(context.push(Routes.ff1DevicePickerPage));
   }
 
   Future<void> _onFinish(BuildContext context, WidgetRef ref) async {
@@ -113,7 +109,7 @@ class OnboardingSetupFf1Page extends ConsumerWidget {
 
     final onboardingActions = ref.read(onboardingActionsProvider);
     unawaited(onboardingActions.completeOnboarding());
-    context.go(Routes.home);
+    unawaited(context.push(Routes.home));
   }
 
   /// On learn more button pressed.

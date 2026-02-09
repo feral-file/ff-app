@@ -19,17 +19,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:go_router/go_router.dart';
-import 'package:logging/logging.dart';
 
-final log = Logger('AddAliasScreen');
-
-/// Screen for adding alias to a verified address.
-class AddAliasScreen extends ConsumerStatefulWidget {
+/// Payload for the add alias screen
+class AddAliasScreenPayload {
   /// Constructor
-  const AddAliasScreen({
+  const AddAliasScreenPayload({
     required this.address,
     this.domain,
-    super.key,
   });
 
   /// The verified address to add alias for
@@ -37,6 +33,18 @@ class AddAliasScreen extends ConsumerStatefulWidget {
 
   /// The domain of verified address
   final String? domain;
+}
+
+/// Screen for adding alias to a verified address.
+class AddAliasScreen extends ConsumerStatefulWidget {
+  /// Constructor
+  const AddAliasScreen({
+    required this.payload,
+    super.key,
+  });
+
+  /// Payload for the screen
+  final AddAliasScreenPayload payload;
 
   @override
   ConsumerState<AddAliasScreen> createState() => _AddAliasScreenState();
@@ -66,9 +74,9 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
   }
 
   void _handleAddAddress({required bool skipAlias}) {
-    final alias = skipAlias ? widget.domain : _inputController.text.trim();
+    final alias = skipAlias ? widget.payload.domain : _inputController.text.trim();
     unawaited(
-      ref.read(addAliasProvider.notifier).add(widget.address, alias),
+      ref.read(addAliasProvider.notifier).add(widget.payload.address, alias),
     );
   }
 

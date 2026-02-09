@@ -16,18 +16,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:go_router/go_router.dart';
 
-/// Onboarding step: add wallet address (optional).
-///
-/// Flow: Introduce -> Add Address -> Setup FF1
-class OnboardingAddAddressPage extends StatelessWidget {
-  /// Creates an OnboardingAddAddressPage.
-  const OnboardingAddAddressPage({
+/// Payload for the onboarding add address page
+class OnboardingAddAddressPagePayload {
+  /// Constructor
+  OnboardingAddAddressPagePayload({
     this.deeplink,
-    super.key,
   });
 
   /// Optional deeplink carried through the onboarding flow.
   final String? deeplink;
+}
+
+/// Onboarding add address page.
+class OnboardingAddAddressPage extends StatelessWidget {
+  /// Creates an OnboardingAddAddressPage.
+  const OnboardingAddAddressPage({
+    required this.payload,
+    super.key,
+  });
+
+  /// Payload for the page
+  final OnboardingAddAddressPagePayload payload;
 
   @override
   Widget build(BuildContext context) {
@@ -110,7 +119,7 @@ class OnboardingAddAddressPage extends StatelessWidget {
   }
 
   Future<void> _onNext(BuildContext context) async {
-    if (deeplink != null && deeplink!.isNotEmpty) {
+    if (payload.deeplink != null && payload.deeplink!.isNotEmpty) {
       // injector<ConfigurationService>().setDoneOnboarding(true);
       await context.push(Routes.handleBluetoothDeviceScanDeeplinkScreen);
       if (context.mounted) {

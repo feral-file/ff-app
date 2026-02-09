@@ -7,12 +7,12 @@ import 'package:app/ui/screens/all_channels_screen.dart';
 import 'package:app/ui/screens/all_playlists_screen.dart';
 import 'package:app/ui/screens/channel_detail_screen.dart';
 import 'package:app/ui/screens/connected_devices_screen.dart';
-import 'package:app/ui/screens/device_config_screen.dart';
 import 'package:app/ui/screens/ff1_setup/ff1_device_picker_page.dart';
+import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/ui/screens/ff1_test_screen.dart';
 import 'package:app/ui/screens/home_index_page.dart';
-import 'package:app/ui/screens/onboarding/onboarding_add_address_page.dart';
 import 'package:app/ui/screens/onboarding/introduce_page.dart';
+import 'package:app/ui/screens/onboarding/onboarding_add_address_page.dart';
 import 'package:app/ui/screens/onboarding/setup_ff1_page.dart';
 import 'package:app/ui/screens/playlist_detail_screen.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
@@ -50,23 +50,23 @@ final routerProvider =
           GoRoute(
             path: 'introduce',
             name: RouteNames.onboardingIntroduce,
-            builder: (context, state) => IntroducePage(
-              deeplink: state.uri.queryParameters['deeplink'],
-            ),
+            builder: (context, state) {
+              final payload = state.extra! as IntroducePagePayload;
+              return IntroducePage(payload: payload);
+            },
           ),
           GoRoute(
             path: 'add-address',
             name: RouteNames.onboardingAddAddress,
-            builder: (context, state) => OnboardingAddAddressPage(
-              deeplink: state.uri.queryParameters['deeplink'],
-            ),
+            builder: (context, state) {
+              final payload = state.extra! as OnboardingAddAddressPagePayload;
+              return OnboardingAddAddressPage(payload: payload);
+            },
           ),
           GoRoute(
             path: 'setup-ff1',
             name: RouteNames.onboardingSetupFf1,
-            builder: (context, state) => OnboardingSetupFf1Page(
-              deeplink: state.uri.queryParameters['deeplink'],
-            ),
+            builder: (context, state) => const OnboardingSetupFf1Page(),
           ),
         ],
       ),
@@ -90,13 +90,13 @@ final routerProvider =
         path: Routes.addAliasPage,
         name: RouteNames.addAlias,
         builder: (context, state) {
-          final address = state.uri.queryParameters['address'];
-          final domain = state.uri.queryParameters['domain'];
-          if (address == null || address.isEmpty) {
+          final payload = state.extra! as AddAliasScreenPayload;
+          if (payload.address.isEmpty) {
             // If no address provided, go back
             return const AddAddressScreen();
           }
-          return AddAliasScreen(address: address, domain: domain);
+
+          return AddAliasScreen(payload: payload);
         },
       ),
 
