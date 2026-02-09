@@ -1,3 +1,4 @@
+export 'address.dart';
 export 'blockchain.dart';
 export 'channel.dart';
 export 'dp1/dp1_channel.dart';

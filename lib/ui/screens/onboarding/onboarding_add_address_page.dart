@@ -85,7 +85,7 @@ class OnboardingAddAddressPage extends StatelessWidget {
                 ),
                 SizedBox(width: LayoutConstants.space2),
                 SvgPicture.asset(
-                  'assets/images/left.svg',
+                  'assets/images/arrow_right.svg',
                   colorFilter: const ColorFilter.mode(
                     PrimitivesTokens.colorsLightBlue,
                     BlendMode.srcIn,
@@ -104,7 +104,7 @@ class OnboardingAddAddressPage extends StatelessWidget {
   void _onAddAddressPressed(BuildContext context) {
     unawaited(
       context.push(
-        Routes.addAddressInputPage,
+        Routes.addAddressPage,
       ),
     );
   }

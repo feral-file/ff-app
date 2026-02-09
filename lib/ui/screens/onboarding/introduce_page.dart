@@ -67,7 +67,7 @@ class IntroducePage extends StatelessWidget {
             ),
             SizedBox(width: LayoutConstants.space2),
             SvgPicture.asset(
-              'assets/images/left.svg',
+              'assets/images/arrow_right.svg',
               colorFilter: const ColorFilter.mode(
                 PrimitivesTokens.colorsBlack,
                 BlendMode.srcIn,
@@ -86,7 +86,7 @@ class IntroducePage extends StatelessWidget {
       path: Routes.onboardingAddAddressPage,
       queryParameters: deeplink != null && deeplink!.isNotEmpty
           ? {'deeplink': deeplink}
-          : const {},
+          : null,
     );
     unawaited(context.push(uri.toString()));
   }

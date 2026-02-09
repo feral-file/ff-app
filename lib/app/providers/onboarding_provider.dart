@@ -15,15 +15,15 @@ final hasSeenOnboardingProvider = FutureProvider<bool>((ref) async {
 ///
 /// Use this from UI to mark onboarding as complete:
 /// `ref.read(onboardingActionsProvider).completeOnboarding()`.
-final onboardingActionsProvider = Provider<OnboardingActions>((ref) {
+final onboardingActionsProvider = Provider<OnboardingService>((ref) {
   final flagsStore = ref.watch(appFlagsStoreProvider);
-  return OnboardingActions(ref: ref, flagsStore: flagsStore);
+  return OnboardingService(ref: ref, flagsStore: flagsStore);
 });
 
 /// Thin helper around [AppFlagsStore] for onboarding operations.
-class OnboardingActions {
-  /// Creates an [OnboardingActions].
-  OnboardingActions({
+class OnboardingService {
+  /// Creates an [OnboardingService].
+  OnboardingService({
     required this.ref,
     required this.flagsStore,
   });

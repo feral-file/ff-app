@@ -87,8 +87,8 @@ class AddressService {
         await _databaseService.deletePlaylistItem(item.id);
       }
 
-      // Note: In a real implementation, you'd delete the playlist record too
-      // For now, just clearing its items is sufficient
+      // Delete the playlist record itself
+      await _databaseService.deletePlaylist(playlistId);
 
       _log.info('Removed address playlist: $playlistId');
     } catch (e, stack) {

@@ -57,7 +57,7 @@ class UIHelper {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Delete Address'.tr(),
+                    'Delete Address',
                     style: AppTypography.h2(context).white,
                   ),
                   const SizedBox(height: 40),
@@ -66,8 +66,8 @@ class UIHelper {
                     text: TextSpan(
                       style: AppTypography.body(context).white,
                       children: <TextSpan>[
-                        TextSpan(
-                          text: 'sure_delete_account'.tr(),
+                        const TextSpan(
+                          text: 'Are you sure you want to delete the address',
                         ),
                         TextSpan(
                           text: ' "$accountName"',
@@ -81,7 +81,7 @@ class UIHelper {
                   ),
                   const SizedBox(height: 40),
                   PrimaryAsyncButton(
-                    text: 'delete'.tr(),
+                    text: 'Delete',
                     onTap: () async {
                       await onRemove(walletAddress);
                       if (!context.mounted) {
@@ -93,7 +93,7 @@ class UIHelper {
                   const SizedBox(height: 10),
                   OutlineButton(
                     onTap: () => context.pop(),
-                    text: 'cancel_dialog'.tr(),
+                    text: 'Cancel',
                   ),
                 ],
               ),

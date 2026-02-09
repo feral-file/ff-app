@@ -1,4 +1,5 @@
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ class OutlineButton extends StatelessWidget {
     this.textColor,
     this.borderColor,
     this.padding = const EdgeInsets.symmetric(vertical: 13),
+    this.rightIcon,
   });
 
   /// On tap callback.
@@ -46,6 +48,9 @@ class OutlineButton extends StatelessWidget {
   /// Padding.
   final EdgeInsets padding;
 
+  /// Right icon.
+  final Widget? rightIcon;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -70,9 +75,9 @@ class OutlineButton extends StatelessWidget {
               children: [
                 if (isProcessing)
                   Container(
-                    height: 14,
-                    width: 14,
-                    margin: const EdgeInsets.only(right: 8),
+                    height: LayoutConstants.space3,
+                    width: LayoutConstants.space3,
+                    margin: EdgeInsets.only(right: LayoutConstants.space2),
                     child: CircularProgressIndicator(
                       color: theme.colorScheme.primary,
                       backgroundColor: theme.colorScheme.surface,
@@ -84,9 +89,14 @@ class OutlineButton extends StatelessWidget {
                 Text(
                   text ?? '',
                   style: AppTypography.body(context).white.copyWith(
-                      color: textColor ??
-                          (!enabled ? AppColor.disabledColor : null)),
+                        color: textColor ??
+                            (!enabled ? AppColor.disabledColor : null),
+                      ),
                 ),
+                if (rightIcon != null) ...[
+                  SizedBox(width: LayoutConstants.space2),
+                  rightIcon!,
+                ],
               ],
             ),
           ),

@@ -28,13 +28,4 @@ extension EthereumExtension on String {
     final regex = RegExp(r'^[^\s]+\.eth$', caseSensitive: false);
     return regex.hasMatch(this);
   }
-
-  /// Check if the string is a valid Ethereum address
-  bool isValidEthereumAddress() {
-    if (!isEthereumAddressFormat()) {
-      return false;
-    }
-
-    return isEthereumAddressFormat();
-  }
 }

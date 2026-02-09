@@ -581,6 +581,23 @@ class DatabaseService {
     }
   }
 
+  /// Delete playlist by ID.
+  ///
+  /// This deletes the playlist record and all its entries.
+  /// Items are not deleted (they may be referenced by other playlists).
+  Future<void> deletePlaylist(String playlistId) async {
+    try {
+      // Delete all playlist entries first
+      await _db.deletePlaylistEntries(playlistId);
+      // Then delete the playlist record
+      await _db.deletePlaylist(playlistId);
+      _log.info('Deleted playlist: $playlistId');
+    } catch (e, stack) {
+      _log.severe('Failed to delete playlist $playlistId', e, stack);
+      rethrow;
+    }
+  }
+
   /// Delete tokens by CIDs from a specific address-based playlist.
   ///
   /// This is used when processing change journal events (e.g. burn/transfer-out)

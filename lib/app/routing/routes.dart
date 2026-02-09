@@ -24,7 +24,10 @@ abstract class Routes {
       '/handle-bluetooth-device-scan-deeplink';
 
   /// Add address input page route path.
-  static const addAddressInputPage = '/add-address-input';
+  static const addAddressPage = '/add-address';
+
+  /// Add alias page route path.
+  static const addAliasPage = '/add-alias';
 
   /// Channels list route path.
   static const channels = '/channels';
@@ -52,6 +55,9 @@ abstract class Routes {
 
   /// Enter WiFi password route path (step 4-6 of WiFi connection).
   static const enterWifiPassword = '/enter-wifi-password';
+
+  /// Device configuration route path.
+  static const deviceConfiguration = '/device-configuration';
 }
 
 /// Named routes for type-safe navigation.
@@ -79,7 +85,10 @@ abstract class RouteNames {
       'handle-bluetooth-device-scan-deeplink';
 
   /// Add address input page route name.
-  static const addAddressInput = 'add-address-input';
+  static const addAddress = 'add-address';
+
+  /// Add alias page route name.
+  static const addAlias = 'add-alias';
 
   /// Channels list route name.
   static const channels = 'channels';
@@ -116,4 +125,7 @@ abstract class RouteNames {
 
   /// Enter WiFi password route name (step 4-6 of WiFi connection).
   static const enterWifiPassword = 'enter-wifi-password';
+
+  /// Device configuration route name.
+  static const deviceConfiguration = 'device-configuration';
 }

@@ -1,14 +1,17 @@
 import 'package:app/app/route_observer.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/models/ff1_device.dart';
-import 'package:app/ui/screens/add_address_input_screen.dart';
+import 'package:app/ui/screens/add_address_screen.dart';
+import 'package:app/ui/screens/add_alias_screen.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
 import 'package:app/ui/screens/all_playlists_screen.dart';
 import 'package:app/ui/screens/channel_detail_screen.dart';
 import 'package:app/ui/screens/connected_devices_screen.dart';
+import 'package:app/ui/screens/device_config_screen.dart';
+import 'package:app/ui/screens/ff1_setup/ff1_device_picker_page.dart';
 import 'package:app/ui/screens/ff1_test_screen.dart';
 import 'package:app/ui/screens/home_index_page.dart';
-import 'package:app/ui/screens/onboarding/add_address_page.dart';
+import 'package:app/ui/screens/onboarding/onboarding_add_address_page.dart';
 import 'package:app/ui/screens/onboarding/introduce_page.dart';
 import 'package:app/ui/screens/onboarding/setup_ff1_page.dart';
 import 'package:app/ui/screens/playlist_detail_screen.dart';
@@ -68,11 +71,33 @@ final routerProvider =
         ],
       ),
 
+      // FF1 device picker page route path.
+      GoRoute(
+        path: Routes.ff1DevicePickerPage,
+        name: RouteNames.ff1DevicePicker,
+        builder: (context, state) => const FF1DevicePickerPage(),
+      ),
+
       // Add address input page
       GoRoute(
-        path: Routes.addAddressInputPage,
-        name: RouteNames.addAddressInput,
-        builder: (context, state) => const AddAddressInputScreen(),
+        path: Routes.addAddressPage,
+        name: RouteNames.addAddress,
+        builder: (context, state) => const AddAddressScreen(),
+      ),
+
+      // Add alias page
+      GoRoute(
+        path: Routes.addAliasPage,
+        name: RouteNames.addAlias,
+        builder: (context, state) {
+          final address = state.uri.queryParameters['address'];
+          final domain = state.uri.queryParameters['domain'];
+          if (address == null || address.isEmpty) {
+            // If no address provided, go back
+            return const AddAddressScreen();
+          }
+          return AddAliasScreen(address: address, domain: domain);
+        },
       ),
 
       // Home route with tabs (playlists, channels, works, search)
@@ -190,6 +215,25 @@ final routerProvider =
           );
         },
       ),
+
+      // // Device configuration route
+      // GoRoute(
+      //   path: Routes.deviceConfiguration,
+      //   name: RouteNames.deviceConfiguration,
+      //   builder: (context, state) {
+      //     final args = state.extra as Map<String, dynamic>?;
+      //     if (args == null) {
+      //       return const Scaffold(
+      //         body: Center(child: Text('Invalid arguments')),
+      //       );
+      //     }
+      //     return DeviceConfigScreen(
+      //       payload: DeviceConfigPayload(
+      //         isFromOnboarding: args['isFromOnboarding'] as bool,
+      //       ),
+      //     );
+      //   },
+      // ),
     ],
   );
 });

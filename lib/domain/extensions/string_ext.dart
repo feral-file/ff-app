@@ -34,4 +34,12 @@ extension StringExtension on String {
     }
     return (length >= 36) ? mask(4) : this;
   }
+
+  /// Shorten address for display (0x1234...5678).
+  String shortenAddress() {
+    if (length <= 10) {
+      return this;
+    }
+    return '${substring(0, 6)}...${substring(length - 4, length)}';
+  }
 }
