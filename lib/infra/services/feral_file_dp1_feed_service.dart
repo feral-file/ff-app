@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/infra/services/dp1_feed_with_channel_extension_service_impl.dart';
@@ -11,7 +13,8 @@ import 'package:logging/logging.dart';
 /// - [addRemoteConfigChannelIds] adds channel IDs (does not replace).
 /// - When remote config channel IDs are set, [getAllPlaylists] and
 ///   [getAllChannels] use channel-scoped fetch.
-/// - [reloadCache] uses extension flow with queue-based enrichment.
+/// - [reloadCache] loads channels/playlists and queues items for enrichment
+///   (enrichment runs in parallel without blocking).
 class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
   /// Creates a FeralFileDP1FeedService.
   FeralFileDP1FeedService({
@@ -139,6 +142,7 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
             playlist: playlist,
             channelId: channel.id,
           );
+          // Enqueue but don't wait for processing
           await _enrichmentService.enqueuePlaylist(
             playlistId: playlist.id,
             items: playlist.items,
@@ -147,14 +151,17 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
       }
     }
 
-    // Step 3: Process enrichment queues
-    _log.info('Starting enrichment for $fetchedPlaylistCount playlists');
-    await _enrichmentService.processAll();
+    // Fire off enrichment in the background (don't wait)
+    _log.info(
+      'Queued enrichment for $fetchedPlaylistCount playlists; '
+      'starting background processing...',
+    );
+    unawaited(_enrichmentService.processAll());
 
     _log.info(
       'Reloaded cache with remote config channels: '
       '$fetchedChannelCount channels, '
-      '$fetchedPlaylistCount playlists',
+      '$fetchedPlaylistCount playlists (enrichment in progress)',
     );
   }
 }

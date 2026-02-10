@@ -407,6 +407,173 @@ void main() {
       });
     });
 
+    group('Enrichment priority queries', () {
+      test(
+        'loadHighPriorityBareItems orders playlists by baseUrl, then createdAt ASC, then id',
+        () async {
+          final older = DateTime.now().subtract(const Duration(hours: 1));
+          final newer = DateTime.now();
+
+          await service.ingestPlaylists([
+            Playlist(
+              id: 'pl_old',
+              name: 'Old',
+              type: PlaylistType.dp1,
+              baseUrl: 'https://b.example',
+              sortMode: PlaylistSortMode.position,
+              createdAt: older,
+              updatedAt: older,
+            ),
+            Playlist(
+              id: 'pl_new',
+              name: 'New',
+              type: PlaylistType.dp1,
+              baseUrl: 'https://a.example',
+              sortMode: PlaylistSortMode.position,
+              createdAt: newer,
+              updatedAt: newer,
+            ),
+          ]);
+
+          final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+
+          final itemCompanions = <ItemsCompanion>[];
+          final entryCompanions = <PlaylistEntriesCompanion>[];
+          for (var i = 0; i < 12; i++) {
+            final oldId = 'old_$i';
+            final newId = 'new_$i';
+            final oldProvenance =
+                '{"type":"onChain","contract":{"chain":"evm","standard":"erc721","address":"0xold","tokenId":"$i"}}';
+            final newProvenance =
+                '{"type":"onChain","contract":{"chain":"evm","standard":"erc721","address":"0xnew","tokenId":"$i"}}';
+
+            itemCompanions.addAll([
+              ItemsCompanion(
+                id: Value(oldId),
+                kind: const Value(0),
+                title: Value('Old $i'),
+                provenanceJson: Value(oldProvenance),
+                updatedAtUs: Value(nowUs),
+              ),
+              ItemsCompanion(
+                id: Value(newId),
+                kind: const Value(0),
+                title: Value('New $i'),
+                provenanceJson: Value(newProvenance),
+                updatedAtUs: Value(nowUs),
+              ),
+            ]);
+
+            entryCompanions.addAll([
+              PlaylistEntriesCompanion.insert(
+                playlistId: 'pl_old',
+                itemId: oldId,
+                position: Value(i),
+                sortKeyUs: BigInt.zero,
+                updatedAtUs: nowUs,
+              ),
+              PlaylistEntriesCompanion.insert(
+                playlistId: 'pl_new',
+                itemId: newId,
+                position: Value(i),
+                sortKeyUs: BigInt.zero,
+                updatedAtUs: nowUs,
+              ),
+            ]);
+          }
+
+          await db.upsertItems(itemCompanions);
+          await db.upsertPlaylistEntries(entryCompanions);
+
+          final high = await service.loadHighPriorityBareItems(
+            maxPerPlaylist: 8,
+            maxTotal: 50,
+          );
+          expect(high, hasLength(16));
+
+          for (var i = 0; i < 8; i++) {
+            expect(high[i].$3, equals('pl_new'));
+            expect(high[i].$1, equals('new_$i'));
+          }
+          for (var i = 8; i < 16; i++) {
+            expect(high[i].$3, equals('pl_old'));
+            expect(high[i].$1, equals('old_${i - 8}'));
+          }
+
+          final low = await service.loadLowPriorityBareItems(
+            maxPerPlaylist: 8,
+            maxTotal: 50,
+          );
+          expect(low, hasLength(8));
+
+          for (var i = 0; i < 4; i++) {
+            expect(low[i].$3, equals('pl_new'));
+            expect(low[i].$1, equals('new_${i + 8}'));
+          }
+          for (var i = 4; i < 8; i++) {
+            expect(low[i].$3, equals('pl_old'));
+            expect(low[i].$1, equals('old_${i + 4}'));
+          }
+        },
+      );
+
+      test(
+        'loadHighPriorityBareItems ranks items by playlist_entries.position',
+        () async {
+          final now = DateTime.now();
+          await service.ingestPlaylist(
+            Playlist(
+              id: 'pl_prov',
+              name: 'Prov',
+              type: PlaylistType.dp1,
+              sortMode: PlaylistSortMode.provenance,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+
+          final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+          const itemIds = ['p0', 'p1', 'p2'];
+          const positions = [2, 0, 1];
+          final itemCompanions = <ItemsCompanion>[
+            for (final id in itemIds)
+              ItemsCompanion(
+                id: Value(id),
+                kind: const Value(0),
+                title: Value(id),
+                provenanceJson: const Value(
+                  '{"type":"onChain","contract":{"chain":"evm","standard":"erc721","address":"0xprov","tokenId":"1"}}',
+                ),
+                updatedAtUs: Value(nowUs),
+              ),
+          ];
+
+          final entryCompanions = <PlaylistEntriesCompanion>[
+            for (var i = 0; i < itemIds.length; i++)
+              PlaylistEntriesCompanion.insert(
+                playlistId: 'pl_prov',
+                itemId: itemIds[i],
+                position: Value(positions[i]),
+                sortKeyUs: BigInt.from(i),
+                updatedAtUs: nowUs,
+              ),
+          ];
+
+          await db.upsertItems(itemCompanions);
+          await db.upsertPlaylistEntries(entryCompanions);
+
+          final high = await service.loadHighPriorityBareItems(
+            maxPerPlaylist: 2,
+            maxTotal: 10,
+          );
+
+          expect(high, hasLength(2));
+          expect(high[0].$1, equals('p1')); // position 0
+          expect(high[1].$1, equals('p2')); // position 1
+        },
+      );
+    });
+
     group('clearAll', () {
       test('removes all data', () async {
         // Insert some data
