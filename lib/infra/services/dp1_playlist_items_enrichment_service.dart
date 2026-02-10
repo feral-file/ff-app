@@ -16,10 +16,10 @@ class DP1PlaylistItemsEnrichmentService {
     required IndexerService indexerService,
     required DatabaseService databaseService,
     bool Function()? shouldContinue,
-  })  : _indexerService = indexerService,
-        _databaseService = databaseService,
-        _shouldContinue = shouldContinue ?? _alwaysContinue,
-        _log = Logger('DP1PlaylistItemsEnrichmentService');
+  }) : _indexerService = indexerService,
+       _databaseService = databaseService,
+       _shouldContinue = shouldContinue ?? _alwaysContinue,
+       _log = Logger('DP1PlaylistItemsEnrichmentService');
 
   final IndexerService _indexerService;
   final DatabaseService _databaseService;
@@ -73,7 +73,17 @@ class DP1PlaylistItemsEnrichmentService {
         _log.info('Enrichment paused before high-priority batch');
         return false;
       }
-      final highItems = await _loadHighPriorityBareItems();
+      late final List<_BareItem> highItems;
+      try {
+        highItems = await _loadHighPriorityBareItems();
+      } on Exception catch (e, stack) {
+        if (_isOperationCancelled(e)) {
+          _log.info('High-priority enrichment query cancelled');
+          return false;
+        }
+        _log.severe('Failed to load high-priority bare items', e, stack);
+        rethrow;
+      }
       if (highItems.isEmpty) break;
 
       batchCount++;
@@ -109,7 +119,17 @@ class DP1PlaylistItemsEnrichmentService {
         _log.info('Enrichment paused before low-priority batch');
         return false;
       }
-      final lowItems = await _loadLowPriorityBareItems();
+      late final List<_BareItem> lowItems;
+      try {
+        lowItems = await _loadLowPriorityBareItems();
+      } on Exception catch (e, stack) {
+        if (_isOperationCancelled(e)) {
+          _log.info('Low-priority enrichment query cancelled');
+          return false;
+        }
+        _log.severe('Failed to load low-priority bare items', e, stack);
+        rethrow;
+      }
       if (lowItems.isEmpty) break;
 
       batchCount++;
@@ -155,22 +175,19 @@ class DP1PlaylistItemsEnrichmentService {
       maxPerPlaylist: highPriorityPerPlaylist,
       maxTotal: maxBatchSize,
     );
-    return rows
-        .map((row) {
-          final cid = _databaseService.buildTokenCidFromProvenanceJson(row.$2);
-          if (cid == null || cid.isEmpty) {
-            return null;
-          }
-
-          return _BareItem(
-              itemId: row.$1,
-              cid: cid,
-              playlistId: row.$3,
-              position: row.$4,
-            );
-        })
-        .whereType<_BareItem>()
-        .toList();
+    final rowsWithCid = await _databaseService.extractTokenCidsFromBareRows(
+      rows: rows,
+    );
+    return rowsWithCid
+        .map(
+          (row) => _BareItem(
+            itemId: row.$1,
+            cid: row.$2,
+            playlistId: row.$3,
+            position: row.$4,
+          ),
+        )
+        .toList(growable: false);
   }
 
   /// Load low-priority bare items from database.
@@ -182,22 +199,19 @@ class DP1PlaylistItemsEnrichmentService {
       maxPerPlaylist: highPriorityPerPlaylist,
       maxTotal: maxBatchSize,
     );
-    return rows
-        .map((row) {
-          final cid = _databaseService.buildTokenCidFromProvenanceJson(row.$2);
-          if (cid == null || cid.isEmpty) {
-            return null;
-          }
-
-          return _BareItem(
-              itemId: row.$1,
-              cid: cid,
-              playlistId: row.$3,
-              position: row.$4,
-            );
-        })
-        .whereType<_BareItem>()
-        .toList();
+    final rowsWithCid = await _databaseService.extractTokenCidsFromBareRows(
+      rows: rows,
+    );
+    return rowsWithCid
+        .map(
+          (row) => _BareItem(
+            itemId: row.$1,
+            cid: row.$2,
+            playlistId: row.$3,
+            position: row.$4,
+          ),
+        )
+        .toList(growable: false);
   }
 
   /// Process a batch of bare items.
@@ -232,8 +246,9 @@ class DP1PlaylistItemsEnrichmentService {
       }),
     );
 
-    final validEnrichments =
-        enrichments.whereType<(String, AssetToken)>().toList();
+    final validEnrichments = enrichments
+        .whereType<(String, AssetToken)>()
+        .toList();
     await _databaseService.enrichPlaylistItemsWithTokensBatch(
       enrichments: validEnrichments,
     );
@@ -264,4 +279,9 @@ class _BareItem {
 
   /// Position in playlist.
   final int position;
+}
+
+bool _isOperationCancelled(Object error) {
+  return error.runtimeType.toString() == 'CancellationException' ||
+      error.toString().contains('Operation was cancelled');
 }

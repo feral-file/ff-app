@@ -14,6 +14,7 @@ final _log = Logger('AppDatabase');
 
 /// Large limit used when only offset is set (skip N rows, return the rest).
 const _maxLimitForOffset = 0x7FFFFFFF;
+const _maxReadPoolSize = 4;
 
 /// Main application database using Drift.
 /// Implements offline-first storage for DP-1 entities and relationships.
@@ -21,6 +22,12 @@ const _maxLimitForOffset = 0x7FFFFFFF;
 class AppDatabase extends _$AppDatabase {
   /// Creates an AppDatabase instance.
   AppDatabase() : super(_openConnection());
+
+  /// Creates an AppDatabase instance from a Drift [DatabaseConnection].
+  ///
+  /// Used by `computeWithDatabase` to run heavy DB work in a short-lived
+  /// isolate while reusing the same sqlite connection.
+  AppDatabase.fromConnection(DatabaseConnection e) : super(e);
 
   /// Creates an AppDatabase instance with a custom executor (for testing).
   AppDatabase.forTesting(super.e);
@@ -447,7 +454,8 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Get playlist items for a channel (join playlists → playlist_entries → items).
-  /// No ordering. [limit] null = return all; [offset] null = 0.
+  /// Ordered by playlist created time, playlist id, then item position.
+  /// [limit] null = return all; [offset] null = 0.
   /// Returns empty if playlists have null channel_id; set channelId when
   /// ingesting DP1 playlists in channel context (e.g. reloadCache with channels).
   Future<List<ItemData>> getPlaylistItemsByChannel(
@@ -456,16 +464,28 @@ class AppDatabase extends _$AppDatabase {
     int? offset,
   }) async {
     final off = offset ?? 0;
-    final query = select(items).join([
-      innerJoin(
-        playlistEntries,
-        playlistEntries.itemId.equalsExp(items.id),
-      ),
-      innerJoin(
-        playlists,
-        playlists.id.equalsExp(playlistEntries.playlistId),
-      ),
-    ])..where(playlists.channelId.equals(channelId));
+    final query =
+        select(items).join([
+            innerJoin(
+              playlistEntries,
+              playlistEntries.itemId.equalsExp(items.id),
+            ),
+            innerJoin(
+              playlists,
+              playlists.id.equalsExp(playlistEntries.playlistId),
+            ),
+          ])
+          ..where(playlists.channelId.equals(channelId))
+          ..orderBy([
+            OrderingTerm.asc(playlists.createdAtUs),
+            OrderingTerm.asc(playlists.id),
+            OrderingTerm(
+              expression: playlistEntries.position,
+              mode: OrderingMode.asc,
+              nulls: NullsOrder.last,
+            ),
+            OrderingTerm.asc(playlistEntries.itemId),
+          ]);
 
     if (limit != null) {
       query.limit(limit, offset: off);
@@ -483,16 +503,28 @@ class AppDatabase extends _$AppDatabase {
     int? offset,
   }) {
     final off = offset ?? 0;
-    final query = select(items).join([
-      innerJoin(
-        playlistEntries,
-        playlistEntries.itemId.equalsExp(items.id),
-      ),
-      innerJoin(
-        playlists,
-        playlists.id.equalsExp(playlistEntries.playlistId),
-      ),
-    ])..where(playlists.channelId.equals(channelId));
+    final query =
+        select(items).join([
+            innerJoin(
+              playlistEntries,
+              playlistEntries.itemId.equalsExp(items.id),
+            ),
+            innerJoin(
+              playlists,
+              playlists.id.equalsExp(playlistEntries.playlistId),
+            ),
+          ])
+          ..where(playlists.channelId.equals(channelId))
+          ..orderBy([
+            OrderingTerm.asc(playlists.createdAtUs),
+            OrderingTerm.asc(playlists.id),
+            OrderingTerm(
+              expression: playlistEntries.position,
+              mode: OrderingMode.asc,
+              nulls: NullsOrder.last,
+            ),
+            OrderingTerm.asc(playlistEntries.itemId),
+          ]);
 
     if (limit != null) {
       query.limit(limit, offset: off);
@@ -512,7 +544,10 @@ class AppDatabase extends _$AppDatabase {
   /// When both are null, returns all (same as [getAllItems]).
   Future<List<ItemData>> getItems({int? limit, int? offset}) async {
     final off = offset ?? 0;
-    final query = select(items);
+    final query = select(items)
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.id),
+      ]);
     if (limit != null) {
       return (query..limit(limit, offset: off)).get();
     }
@@ -524,7 +559,33 @@ class AppDatabase extends _$AppDatabase {
 
   /// Watch all items; emits when the items table changes.
   Stream<List<ItemData>> watchAllItems() {
-    return select(items).watch();
+    final query = select(items)
+      ..orderBy([
+        (t) => OrderingTerm.asc(t.id),
+      ]);
+    return query.watch();
+  }
+
+  /// Get ordered item IDs with optional [limit] and [offset].
+  /// Uses the same ordering as [getItems] so pagination and diff windows align.
+  Future<List<String>> getItemIds({int? limit, int? offset}) async {
+    final off = offset ?? 0;
+    final query = selectOnly(items)
+      ..addColumns([items.id])
+      ..orderBy([
+        OrderingTerm.asc(items.id),
+      ]);
+    if (limit != null) {
+      query.limit(limit, offset: off);
+    } else if (off > 0) {
+      query.limit(_maxLimitForOffset, offset: off);
+    }
+
+    final rows = await query.get();
+    return rows
+        .map((row) => row.read(items.id))
+        .whereType<String>()
+        .toList(growable: false);
   }
 
   /// Upsert a playlist entry.
@@ -649,11 +710,16 @@ LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'playlist_cache.sqlite'));
+    final readPoolSize = _resolveReadPoolSize();
 
-    _log.info('Opening database at: ${file.path}');
+    _log.info(
+      'Opening database at: ${file.path} '
+      '(write isolate + $readPoolSize read isolates)',
+    );
 
     return NativeDatabase.createInBackground(
       file,
+      readPool: readPoolSize,
       setup: (db) {
         // Set busy timeout first, before enabling WAL
         db.execute('PRAGMA busy_timeout = 5000');
@@ -668,4 +734,15 @@ LazyDatabase _openConnection() {
       },
     );
   });
+}
+
+int _resolveReadPoolSize() {
+  // Keep one core for UI/other async work, then cap reader isolates.
+  final availableForReaders = Platform.numberOfProcessors - 2;
+  if (availableForReaders <= 0) {
+    return 0;
+  }
+  return availableForReaders > _maxReadPoolSize
+      ? _maxReadPoolSize
+      : availableForReaders;
 }

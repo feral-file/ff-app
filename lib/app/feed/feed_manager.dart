@@ -44,6 +44,9 @@ class FeedManager {
   final List<Pair<String, BaseDP1FeedServiceImpl>> _feedServices = [];
   final Lock _reloadLock = Lock();
   bool _isPaused = false;
+  bool _isEnrichmentWorkerRunning = false;
+  bool _lastEnrichmentRunCompleted = false;
+  Future<void>? _enrichmentWorkerFuture;
 
   /// Default DP1 feed URL (for feralFileFeedService getter); set by [FeralFileFeedManager].
   String get defaultDp1FeedUrl => '';
@@ -127,20 +130,24 @@ class FeedManager {
           await _feedConfigStore.markBareItemsLoaded();
           bareLoaded = true;
         } else {
-          for (final feedService in services) {
-            if (_isPaused) return;
-            try {
-              await feedService.reloadCacheIfNeeded(
-                force: force || shouldReloadFromPolicy,
-              );
-            } on Exception catch (e, stack) {
-              _log.warning(
-                'Failed to reload cache for ${feedService.baseUrl}',
-                e,
-                stack,
-              );
-            }
-          }
+          final reloadFutures = services
+              .map((feedService) async {
+                if (_isPaused) return;
+                try {
+                  await feedService.reloadCacheIfNeeded(
+                    force: force || shouldReloadFromPolicy,
+                  );
+                } on Exception catch (e, stack) {
+                  _log.warning(
+                    'Failed to reload cache for ${feedService.baseUrl}',
+                    e,
+                    stack,
+                  );
+                }
+              })
+              .toList(growable: false);
+
+          await Future.wait(reloadFutures);
           if (_isPaused) return;
           await _feedConfigStore.markBareItemsLoaded();
           bareLoaded = true;
@@ -148,7 +155,7 @@ class FeedManager {
       }
 
       if (bareLoaded && !tokensEnriched) {
-        final completed = await runGlobalEnrichment();
+        final completed = await _ensureEnrichmentCompleted();
         if (_isPaused || !completed) return;
         await _feedConfigStore.markTokensEnriched();
       }
@@ -181,6 +188,37 @@ class FeedManager {
   /// Base manager has no enrichment stage.
   @protected
   Future<bool> runGlobalEnrichment() async => true;
+
+  void onChannelIngested() {
+    if (_isPaused) return;
+    // Keep it simple: if loop is running, ignore new notifications.
+    if (_isEnrichmentWorkerRunning) return;
+    _startEnrichmentWorkerIfIdle();
+  }
+
+  void _startEnrichmentWorkerIfIdle() {
+    if (_isEnrichmentWorkerRunning) return;
+    _enrichmentWorkerFuture ??= _runEnrichmentWorker();
+  }
+
+  Future<bool> _ensureEnrichmentCompleted() async {
+    if (!_isEnrichmentWorkerRunning && _enrichmentWorkerFuture == null) {
+      _startEnrichmentWorkerIfIdle();
+    }
+    await _enrichmentWorkerFuture;
+    return _lastEnrichmentRunCompleted;
+  }
+
+  Future<void> _runEnrichmentWorker() async {
+    if (_isEnrichmentWorkerRunning || _isPaused) return;
+    _isEnrichmentWorkerRunning = true;
+    try {
+      _lastEnrichmentRunCompleted = await runGlobalEnrichment();
+    } finally {
+      _isEnrichmentWorkerRunning = false;
+      _enrichmentWorkerFuture = null;
+    }
+  }
 
   /// Matches old repo's getAllCachedPlaylists(offset, limit).
   Future<List<PlaylistReference>> getAllCachedPlaylists({
@@ -277,6 +315,7 @@ class FeralFileFeedManager extends FeedManager {
         feedConfigStore: feedConfigStore,
         apiKey: _apiKey,
         indexerService: _indexerService,
+        onChannelIngested: onChannelIngested,
       );
       service.setPaused(isPaused);
       await service.init();

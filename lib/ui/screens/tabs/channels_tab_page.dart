@@ -6,7 +6,6 @@ import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/channels/channel_section.dart';
 import 'package:app/widgets/error_view.dart';
-import 'package:app/widgets/loading_view.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,7 +16,13 @@ import 'package:go_router/go_router.dart';
 /// Uses widgets copied from old app design.
 class ChannelsTabPage extends ConsumerStatefulWidget {
   /// Creates a ChannelsTabPage.
-  const ChannelsTabPage({super.key});
+  const ChannelsTabPage({
+    required this.isActive,
+    super.key,
+  });
+
+  /// Whether this tab is currently active.
+  final bool isActive;
 
   @override
   ConsumerState<ChannelsTabPage> createState() => ChannelsTabPageState();
@@ -27,6 +32,7 @@ class ChannelsTabPage extends ConsumerStatefulWidget {
 class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
     with AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
+  ChannelsState _cachedCuratedState = ChannelsState.initial();
 
   @override
   bool get wantKeepAlive => true;
@@ -36,13 +42,21 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
     super.initState();
     _scrollController.addListener(_onScroll);
 
-    // Trigger initial load for both curated and personal (old repo semantics).
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(channelsProvider(ChannelType.dp1).notifier).loadChannels();
-      ref
-          .read(channelsProvider(ChannelType.localVirtual).notifier)
-          .loadChannels();
+      if (!widget.isActive) return;
+      _loadChannels();
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant ChannelsTabPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.isActive) return;
+        _loadChannels();
+      });
+    }
   }
 
   @override
@@ -54,6 +68,7 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
   }
 
   void _onScroll() {
+    if (!widget.isActive) return;
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
       // Load more curated only (pagination applies to dp1).
@@ -61,23 +76,34 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
     }
   }
 
+  void _loadChannels() {
+    ref.read(channelsProvider(ChannelType.dp1).notifier).loadChannels();
+    ref
+        .read(channelsProvider(ChannelType.localVirtual).notifier)
+        .loadChannels();
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
-    // Watch slice to avoid rebuilds when unrelated state changes.
-    final slice = ref.watch(
-      channelsProvider(ChannelType.dp1).select(
-        (s) => (
-          channels: s.channels,
-          isLoading: s.isLoading,
-          error: s.error,
-        ),
-      ),
-    );
-    final curatedChannels = slice.channels;
-    final isLoading = slice.isLoading;
-    final error = slice.error;
+    // Watch curated channels provider (tab shows only curated).
+    final nextCuratedState = widget.isActive
+        ? ref.watch(channelsProvider(ChannelType.dp1))
+        : _cachedCuratedState;
+    final shouldKeepSnapshot =
+        widget.isActive &&
+        _cachedCuratedState.channels.isNotEmpty &&
+        nextCuratedState.channels.isEmpty &&
+        nextCuratedState.isLoading;
+    final curatedState = shouldKeepSnapshot
+        ? _cachedCuratedState
+        : nextCuratedState;
+    if (widget.isActive && !shouldKeepSnapshot) {
+      _cachedCuratedState = nextCuratedState;
+    }
+    final curatedChannels = curatedState.channels;
+    final error = curatedState.error;
 
     // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics
     // Parent NestedScrollView handles scrolling
@@ -86,10 +112,6 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
       controller: _scrollController,
       physics: const NeverScrollableScrollPhysics(),
       slivers: [
-        // Loading state
-        if (isLoading && curatedChannels.isEmpty)
-          const SliverToBoxAdapter(child: LoadingView()),
-
         // Error state
         if (error != null && curatedChannels.isEmpty)
           SliverToBoxAdapter(
@@ -139,6 +161,7 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
       itemBuilder: (context, index) => ChannelSection(
         sectionName: 'Curated',
         channels: channelRowData,
+        isActive: widget.isActive,
         sectionIcon: SvgPicture.asset(
           'assets/images/D.svg',
           width: LayoutConstants.iconSizeDefault,

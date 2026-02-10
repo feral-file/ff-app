@@ -123,6 +123,11 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
 
       _log.info('Bootstrap completed successfully');
     } on Exception catch (e, stack) {
+      if (_isOperationCancelled(e)) {
+        _log.info('Bootstrap cancelled');
+        state = const BootstrapStatus(state: BootstrapState.idle);
+        return;
+      }
       _log.severe('Bootstrap failed', e, stack);
       state = BootstrapStatus(
         state: BootstrapState.error,
@@ -142,3 +147,8 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
 final bootstrapProvider = NotifierProvider<BootstrapNotifier, BootstrapStatus>(
   BootstrapNotifier.new,
 );
+
+bool _isOperationCancelled(Object error) {
+  return error.runtimeType.toString() == 'CancellationException' ||
+      error.toString().contains('Operation was cancelled');
+}

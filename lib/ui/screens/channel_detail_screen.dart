@@ -48,71 +48,74 @@ class ChannelDetailScreen extends ConsumerWidget {
           onRefresh: onRefresh,
           backgroundColor: AppColor.primaryBlack,
           color: AppColor.white,
-          child: ref.watch(channelDetailsProvider(channelId)).when(
-            loading: () => const LoadingView(),
-            error: (error, _) => ErrorView(
-              error:
-                  'We couldn’t load this channel. Check your connection, then Retry.',
-              onRetry: () => onRefresh(),
-            ),
-            data: (details) {
-              final channel = details.channel;
-              final playlists = details.playlists;
-              if (channel == null) {
-                return Center(
-                  child: Text(
-                    'Channel not found',
-                    style: AppTypography.body(context).grey,
-                  ),
-                );
-              }
+          child: ref
+              .watch(channelDetailsProvider(channelId))
+              .when(
+                loading: () => const LoadingView(),
+                error: (error, _) => ErrorView(
+                  error:
+                      'We couldn’t load this channel. Check your connection, then Retry.',
+                  onRetry: () => onRefresh(),
+                ),
+                data: (details) {
+                  final channel = details.channel;
+                  final playlists = details.playlists;
+                  if (channel == null) {
+                    return Center(
+                      child: Text(
+                        'Channel not found',
+                        style: AppTypography.body(context).grey,
+                      ),
+                    );
+                  }
 
-              return CustomScrollView(
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: SizedBox(height: LayoutConstants.space12),
-                  ),
-                  SliverToBoxAdapter(
-                    child: ChannelHeader(
-                      channelId: channel.id,
-                      channelTitle: channel.name,
-                      channelSummary: channel.description,
-                      clickable: false,
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: SizedBox(height: LayoutConstants.space12),
-                  ),
-                  if (playlists.isEmpty)
-                    SliverToBoxAdapter(
-                      child: Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: LayoutConstants.pageHorizontalDefault,
-                          ),
-                          child: Text(
-                            'This channel has no playlists.',
-                            style: AppTypography.body(context).grey,
-                            textAlign: TextAlign.center,
-                          ),
+                  return CustomScrollView(
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: SizedBox(height: LayoutConstants.space6),
+                      ),
+                      SliverToBoxAdapter(
+                        child: ChannelHeader(
+                          channelId: channel.id,
+                          channelTitle: channel.name,
+                          channelSummary: channel.description,
+                          clickable: false,
                         ),
                       ),
-                    )
-                  else
-                    SliverList.builder(
-                      itemCount: playlists.length,
-                      itemBuilder: (context, index) => PlaylistRowItem(
-                        playlist: playlists[index],
-                        onItemTap: (item) {
-                          context.push('${Routes.works}/${item.id}');
-                        },
+                      SliverToBoxAdapter(
+                        child: SizedBox(height: LayoutConstants.space6),
                       ),
-                    ),
-                  const SliverToBoxAdapter(child: BottomSpacing()),
-                ],
-              );
-            },
-          ),
+                      if (playlists.isEmpty)
+                        SliverToBoxAdapter(
+                          child: Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal:
+                                    LayoutConstants.pageHorizontalDefault,
+                              ),
+                              child: Text(
+                                'This channel has no playlists.',
+                                style: AppTypography.body(context).grey,
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        SliverList.builder(
+                          itemCount: playlists.length,
+                          itemBuilder: (context, index) => PlaylistRowItem(
+                            playlist: playlists[index],
+                            onItemTap: (item) {
+                              context.push('${Routes.works}/${item.id}');
+                            },
+                          ),
+                        ),
+                      const SliverToBoxAdapter(child: BottomSpacing()),
+                    ],
+                  );
+                },
+              ),
         ),
       ),
     );

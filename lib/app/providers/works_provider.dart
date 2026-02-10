@@ -1,12 +1,12 @@
 import 'dart:async';
 
-import 'package:app/domain/models/models.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
 import 'package:app/app/providers/mutations.dart';
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -110,25 +110,61 @@ class WorksState {
 /// Notifier for works list: loads and pages all items from database.
 /// Pattern matches [ChannelPreviewNotifier]: database watcher + offset-based paging.
 class WorksNotifier extends Notifier<WorksState> {
+  static const Duration _dbChangeDebounce = Duration(seconds: 1);
+  static const int _defaultVisibleWindowSize = 24;
+
   late final Logger _log;
   StreamSubscription<List<PlaylistItem>>? _watchSub;
+  Timer? _refreshDebounceTimer;
+  bool _isActive = false;
+  bool _isApplyingDbChanges = false;
+  int _visibleStartIndex = 0;
+  int _visibleEndIndex = _defaultVisibleWindowSize - 1;
 
   @override
   WorksState build() {
     _log = Logger('WorksNotifier');
     ref.onDispose(() {
-      _log.info('Disposing WorksNotifier, cancelling subscription');
-      unawaited(_watchSub?.cancel());
-      _watchSub = null;
+      _log.info('Disposing WorksNotifier, cancelling listeners');
+      _stopWatching();
     });
 
-    unawaited(Future.microtask(_setupDatabaseWatch));
     return WorksState.initial();
   }
 
+  /// Toggle active/inactive mode for the works tab.
+  ///
+  /// Inactive mode keeps current UI state but stops database subscriptions.
+  void setActive(bool active) {
+    if (_isActive == active) {
+      return;
+    }
+    _isActive = active;
+    if (_isActive) {
+      _setupDatabaseWatch();
+      if (state.works.isEmpty) {
+        unawaited(loadWorks());
+      } else {
+        _scheduleDebouncedRefresh();
+      }
+    } else {
+      _stopWatching();
+    }
+  }
+
+  /// Update current visible range in the grid. Used to patch only visible rows.
+  void updateVisibleRange({
+    required int startIndex,
+    required int endIndex,
+  }) {
+    if (startIndex < 0 || endIndex < 0) return;
+    if (endIndex < startIndex) return;
+    _visibleStartIndex = startIndex;
+    _visibleEndIndex = endIndex;
+  }
+
   void _setupDatabaseWatch() {
-    unawaited(_watchSub?.cancel());
-    _watchSub = null;
+    _stopWatching();
 
     final databaseService = ref.read(databaseServiceProvider);
     _watchSub = databaseService.watchAllItems().listen(
@@ -141,16 +177,169 @@ class WorksNotifier extends Notifier<WorksState> {
     _log.warning('Database watch error', error, stack);
   }
 
+  void _stopWatching() {
+    _refreshDebounceTimer?.cancel();
+    _refreshDebounceTimer = null;
+    unawaited(_watchSub?.cancel());
+    _watchSub = null;
+  }
+
   void _onItemsChanged(List<PlaylistItem> next) {
-    final loadedCount = next.length > worksPageSize
-        ? worksPageSize
-        : next.length;
-    final newSlice = next.take(loadedCount).toList();
-    final currentSlice = state.works.take(loadedCount).toList();
-    final hasChanged = !listEquals(newSlice, currentSlice);
-    if (hasChanged) {
-      refresh();
+    if (!_isActive) return;
+    _scheduleDebouncedRefresh();
+  }
+
+  void _scheduleDebouncedRefresh() {
+    _refreshDebounceTimer?.cancel();
+    _refreshDebounceTimer = Timer(_dbChangeDebounce, () {
+      unawaited(_applyDatabaseChanges());
+    });
+  }
+
+  Future<void> _applyDatabaseChanges() async {
+    if (!_isActive || state.isLoading || state.isLoadingMore) return;
+    if (_isApplyingDbChanges) return;
+    _isApplyingDbChanges = true;
+    try {
+      if (state.works.isEmpty) {
+        await loadWorks();
+        return;
+      }
+
+      final db = ref.read(databaseServiceProvider);
+      final loadedCount = state.works.length;
+      final latestIds = await db.getItemIds(limit: loadedCount, offset: 0);
+      final currentIds = state.works.map((item) => item.id).toList();
+
+      if (latestIds.length != currentIds.length) {
+        await _reloadLoadedWindow();
+        return;
+      }
+
+      if (listEquals(currentIds, latestIds)) {
+        await _refreshVisibleRangeOnly();
+        await _syncHasMore();
+        return;
+      }
+
+      final diffWindow = _findDiffWindow(currentIds, latestIds);
+      if (diffWindow == null) {
+        await _reloadLoadedWindow();
+        return;
+      }
+
+      await _refreshRange(
+        start: diffWindow.$1,
+        end: diffWindow.$2,
+      );
+      await _syncHasMore();
+    } catch (e, stack) {
+      _log.warning('Failed to apply debounced DB changes', e, stack);
+    } finally {
+      _isApplyingDbChanges = false;
     }
+  }
+
+  (int, int)? _findDiffWindow(List<String> currentIds, List<String> latestIds) {
+    if (currentIds.length != latestIds.length || currentIds.isEmpty) {
+      return null;
+    }
+    var firstDiff = -1;
+    for (var i = 0; i < currentIds.length; i++) {
+      if (currentIds[i] != latestIds[i]) {
+        firstDiff = i;
+        break;
+      }
+    }
+    if (firstDiff < 0) return null;
+
+    var lastDiff = currentIds.length - 1;
+    while (lastDiff > firstDiff &&
+        currentIds[lastDiff] == latestIds[lastDiff]) {
+      lastDiff--;
+    }
+    return (firstDiff, lastDiff);
+  }
+
+  Future<void> _reloadLoadedWindow() async {
+    final currentCount = state.works.length;
+    final targetSize = currentCount > worksPageSize
+        ? currentCount
+        : worksPageSize;
+    final page = await _fetchPage(offset: 0, pageSize: targetSize);
+    state = state.copyWith(
+      works: page.$1,
+      hasMore: page.$2,
+      isLoading: false,
+      isLoadingMore: false,
+      clearError: true,
+    );
+  }
+
+  Future<void> _refreshVisibleRangeOnly() async {
+    final worksCount = state.works.length;
+    if (worksCount == 0) return;
+
+    var start = _visibleStartIndex;
+    var end = _visibleEndIndex;
+    if (start >= worksCount || end < start) {
+      start = 0;
+      end = (_defaultVisibleWindowSize - 1).clamp(0, worksCount - 1);
+    } else {
+      start = start.clamp(0, worksCount - 1);
+      end = end.clamp(start, worksCount - 1);
+    }
+
+    await _refreshRange(start: start, end: end);
+  }
+
+  Future<void> _refreshRange({
+    required int start,
+    required int end,
+  }) async {
+    final worksCount = state.works.length;
+    if (worksCount == 0 || start < 0 || end < start) return;
+
+    final safeStart = start.clamp(0, worksCount - 1);
+    final safeEnd = end.clamp(safeStart, worksCount - 1);
+    final size = safeEnd - safeStart + 1;
+    if (size <= 0) return;
+
+    final db = ref.read(databaseServiceProvider);
+    final refreshedSlice = await db.getItems(limit: size, offset: safeStart);
+    if (refreshedSlice.length != size) {
+      await _reloadLoadedWindow();
+      return;
+    }
+
+    final nextWorks = [...state.works];
+    nextWorks.replaceRange(safeStart, safeEnd + 1, refreshedSlice);
+    state = state.copyWith(
+      works: nextWorks,
+      clearError: true,
+    );
+  }
+
+  Future<void> _syncHasMore() async {
+    final loadedCount = state.works.length;
+    if (loadedCount == 0) return;
+    final db = ref.read(databaseServiceProvider);
+    final ids = await db.getItemIds(limit: loadedCount + 1, offset: 0);
+    final hasMore = ids.length > loadedCount;
+    if (hasMore != state.hasMore) {
+      state = state.copyWith(hasMore: hasMore);
+    }
+  }
+
+  Future<(List<PlaylistItem>, bool)> _fetchPage({
+    required int offset,
+    required int pageSize,
+  }) async {
+    final db = ref.read(databaseServiceProvider);
+    final raw = await db.getItems(limit: pageSize + 1, offset: offset);
+    final hasMore = raw.length > pageSize;
+    final pageItems = hasMore ? raw.take(pageSize).toList() : raw;
+    return (pageItems, hasMore);
   }
 
   /// Load a slice of works from database (no channel filter).
@@ -164,15 +353,18 @@ class WorksNotifier extends Notifier<WorksState> {
     if (state.isLoading) return;
 
     if (showLoading) {
-      state = WorksState.loading();
+      state = state.copyWith(isLoading: true, clearError: true);
     }
 
     try {
-      final db = ref.read(databaseServiceProvider);
-      final result = await db.getItems(limit: limit, offset: offset);
-      final hasMore = result.length >= limit;
-
-      state = WorksState.loaded(works: result, hasMore: hasMore);
+      final page = await _fetchPage(offset: offset, pageSize: limit);
+      state = state.copyWith(
+        works: page.$1,
+        hasMore: page.$2,
+        isLoading: false,
+        isLoadingMore: false,
+        clearError: true,
+      );
     } catch (e, stack) {
       _log.severe('Failed to load works', e, stack);
       state = WorksState.error(e.toString());
@@ -181,20 +373,26 @@ class WorksNotifier extends Notifier<WorksState> {
 
   /// Load next page and append (offset-based), like [ChannelPreviewNotifier.loadMore].
   Future<void> loadMore() async {
-    if (state.isLoadingMore || !state.hasMore) return;
+    if (!_isActive ||
+        state.isLoading ||
+        state.isLoadingMore ||
+        !state.hasMore) {
+      return;
+    }
 
-    state = state.copyWith(isLoadingMore: true);
+    state = state.copyWith(isLoadingMore: true, clearError: true);
 
     try {
-      final db = ref.read(databaseServiceProvider);
-      final result = await db.getItems(
-        limit: worksPageSize,
+      final page = await _fetchPage(
         offset: state.works.length,
+        pageSize: worksPageSize,
       );
-      final hasMore = result.length >= worksPageSize;
-      state = WorksState.loaded(
-        works: [...state.works, ...result],
-        hasMore: hasMore,
+      state = state.copyWith(
+        works: [...state.works, ...page.$1],
+        hasMore: page.$2,
+        isLoading: false,
+        isLoadingMore: false,
+        clearError: true,
       );
     } catch (e, stack) {
       _log.severe('Failed to load more works', e, stack);
@@ -211,10 +409,11 @@ class WorksNotifier extends Notifier<WorksState> {
 
   /// Refresh works (reload first page). Does not show loading state.
   Future<void> refresh() async {
+    if (!_isActive) return;
     final sizeToLoad = worksPageSize > state.works.length
         ? worksPageSize
         : state.works.length;
-    load(offset: 0, limit: sizeToLoad, showLoading: false);
+    await load(offset: 0, limit: sizeToLoad, showLoading: false);
   }
 }
 
@@ -329,7 +528,7 @@ class WorkDetailNotifier extends Notifier<AsyncValue<WorkDetailData?>> {
 
     AssetToken? token;
     try {
-      final cid = item.cid;
+      final cid = item.provenance?.cid;
       if (cid != null) {
         final indexerService = ref.read(indexerServiceProvider);
         token = await indexerService.getTokenByCid(cid);

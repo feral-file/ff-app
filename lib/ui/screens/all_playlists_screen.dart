@@ -174,6 +174,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                       onItemTap: (item) {
                         context.push('${Routes.playlists}/${item.id}');
                       },
+                      isActive: true,
                     ),
                   ),
                   if (hasMore || isLoadingMore)

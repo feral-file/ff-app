@@ -105,13 +105,17 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
 
   final String _channelId;
   late final Logger _log;
+  static const Duration _updatesDebounce = Duration(seconds: 1);
   StreamSubscription<List<PlaylistItem>>? _watchSub;
+  Timer? _updateDebounceTimer;
 
   @override
   ChannelPreviewState build() {
     _log = Logger('ChannelPreviewNotifier($_channelId)');
     ref.onDispose(() {
       _log.info('Disposing ChannelPreviewNotifier, cancelling subscription');
+      _updateDebounceTimer?.cancel();
+      _updateDebounceTimer = null;
       unawaited(_watchSub?.cancel());
       _watchSub = null;
     });
@@ -121,6 +125,8 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
   }
 
   void _setupDatabaseWatch() {
+    _updateDebounceTimer?.cancel();
+    _updateDebounceTimer = null;
     unawaited(_watchSub?.cancel());
     _watchSub = null;
     if (_channelId.isEmpty) return;
@@ -139,17 +145,44 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
   }
 
   void _onPlaylistItemsChanged(List<PlaylistItem> next) {
-    final loadedCount = channelPreviewPageSize > state.works.length
-        ? channelPreviewPageSize
-        : state.works.length;
-    final newSlice = next.take(loadedCount).toList();
-    final currentSlice = state.works.take(loadedCount).toList();
-    final changedItems = newSlice
-        .where((item) => !currentSlice.contains(item))
-        .toList();
-    if (changedItems.isNotEmpty) {
-      load(limit: loadedCount, offset: 0, showLoading: false);
+    // No debounce when there is no UI data yet: paint first items immediately.
+    if (state.works.isEmpty) {
+      _applyPlaylistItems(next);
+      return;
     }
+    _updateDebounceTimer?.cancel();
+    _updateDebounceTimer = Timer(_updatesDebounce, () {
+      _applyPlaylistItems(next);
+    });
+  }
+
+  void _applyPlaylistItems(List<PlaylistItem> next) {
+    final hasMore = next.length > channelPreviewPageSize;
+    final pageItems = hasMore
+        ? next.take(channelPreviewPageSize).toList()
+        : next;
+    final sameItems = _sameItemIds(state.works, pageItems);
+    if (sameItems &&
+        state.hasMore == hasMore &&
+        !state.isLoading &&
+        !state.isLoadingMore) {
+      return;
+    }
+    state = state.copyWith(
+      works: pageItems,
+      hasMore: hasMore,
+      isLoading: false,
+      isLoadingMore: false,
+      clearError: true,
+    );
+  }
+
+  bool _sameItemIds(List<PlaylistItem> a, List<PlaylistItem> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id) return false;
+    }
+    return true;
   }
 
   /// Load preview works for the given [limit] and [offset].
@@ -174,9 +207,12 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
         limit: requestedLimit,
         offset: requestedOffset,
       );
-      final hasMore = result.length > requestedLimit;
+      final hasMore = result.length > channelPreviewPageSize;
+      final pageItems = hasMore
+          ? result.take(channelPreviewPageSize).toList()
+          : result;
 
-      state = ChannelPreviewState.loaded(works: result, hasMore: hasMore);
+      state = ChannelPreviewState.loaded(works: pageItems, hasMore: hasMore);
     } catch (e, stack) {
       _log.severe('Failed to load channel preview for $id', e, stack);
       state = ChannelPreviewState.error(e.toString());

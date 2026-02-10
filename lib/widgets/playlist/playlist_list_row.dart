@@ -6,7 +6,6 @@ import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/dp1_carousel.dart';
 import 'package:app/widgets/error_view.dart';
-import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/playlist_title.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,7 +13,6 @@ import 'package:go_router/go_router.dart';
 
 /// Playlist List Row - Combines list item info with carousel content.
 /// Uses domain models (Playlist, PlaylistItem) only.
-/// Only watches [playlistDetailsProvider]; no separate playlist items provider.
 class PlaylistRowItem extends ConsumerStatefulWidget {
   /// Creates a PlaylistRowItem.
   const PlaylistRowItem({
@@ -22,6 +20,7 @@ class PlaylistRowItem extends ConsumerStatefulWidget {
     this.playlistCreator,
     this.onItemTap,
     this.scrollController,
+    this.isActive = true,
     this.headerBuilder,
     super.key,
   });
@@ -38,6 +37,9 @@ class PlaylistRowItem extends ConsumerStatefulWidget {
   /// Optional scroll controller for carousel.
   final ScrollController? scrollController;
 
+  /// Whether this row should actively listen to providers.
+  final bool isActive;
+
   /// Optional custom header builder.
   final Widget? Function(Playlist playlist, int itemCount)? headerBuilder;
 
@@ -46,7 +48,11 @@ class PlaylistRowItem extends ConsumerStatefulWidget {
 }
 
 class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
+  static const int _loadingItemsCount = 8;
+
   late ScrollController _carouselScrollController;
+  AsyncValue<PlaylistDetailsState> _cachedDetailsAsync =
+      const AsyncValue<PlaylistDetailsState>.loading();
 
   @override
   void initState() {
@@ -64,6 +70,14 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant PlaylistRowItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playlist.id != widget.playlist.id) {
+      _cachedDetailsAsync = const AsyncValue<PlaylistDetailsState>.loading();
+    }
+  }
+
   void _onScrollListener() {
     final scrollController = _carouselScrollController;
     if (scrollController.position.pixels >=
@@ -78,12 +92,20 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
     final playlistTitle = playlist.name;
     final creator = widget.playlistCreator ?? '';
 
-    final detailsAsync = ref.watch(playlistDetailsProvider(playlist.id));
+    final detailsAsync = widget.isActive
+        ? ref.watch(playlistDetailsProvider(playlist.id))
+        : _cachedDetailsAsync;
+    if (widget.isActive) {
+      _cachedDetailsAsync = detailsAsync;
+    }
+    final isLoading = detailsAsync.isLoading;
 
     return GestureDetector(
-      onTap: () {
-        context.push('${Routes.playlists}/${playlist.id}');
-      },
+      onTap: isLoading
+          ? null
+          : () {
+              context.push('${Routes.playlists}/${playlist.id}');
+            },
       child: Container(
         decoration: BoxDecoration(
           border: Border(
@@ -98,9 +120,9 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             detailsAsync.when(
-              data: (state) => widget.headerBuilder?.call(
+              data: (state) =>
+                  widget.headerBuilder?.call(
                     playlist,
                     state.total,
                   ) ??
@@ -130,10 +152,7 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
                   isLoadingMore: state.isLoadingMore,
                 );
               },
-              loading: () => SizedBox(
-                height: LayoutConstants.dp1CarouselHeight,
-                child: const LoadingView(),
-              ),
+              loading: _buildLoadingCarousel,
               error: (_, __) => SizedBox(
                 height: LayoutConstants.dp1CarouselHeight,
                 child: ErrorView(
@@ -146,6 +165,25 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildLoadingCarousel() {
+    final placeholderItems = List<PlaylistItem>.generate(
+      _loadingItemsCount,
+      (index) => PlaylistItem(
+        id: 'pl_loading_$index',
+        kind: PlaylistItemKind.dp1Item,
+        title: 'Loading',
+      ),
+      growable: false,
+    );
+
+    return DP1Carousel(
+      items: placeholderItems,
+      onItemTap: null,
+      scrollController: _carouselScrollController,
+      isLoadingMore: false,
     );
   }
 }
