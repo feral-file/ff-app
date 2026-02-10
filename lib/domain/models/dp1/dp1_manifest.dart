@@ -5,7 +5,9 @@
 //  that can be found in the LICENSE file.
 //
 
-// ignore_for_file: public_member_api_docs, sort_constructors_first, avoid_catches_without_on_clauses, lines_longer_than_80_chars, eol_at_end_of_file // Reason: copied from the legacy mobile app; keep DP-1 manifest model stable.
+// ignore_for_file: public_member_api_docs, sort_constructors_first, avoid_catches_without_on_clauses, lines_longer_than_80_chars // Reason: copied from the legacy mobile app; keep DP-1 manifest model stable.
+
+import 'package:meta/meta.dart';
 
 /// DP1 Manifest model following Display Protocol specification
 /// Reference: https://github.com/display-protocol/dp1/blob/main/docs/ref-manifest.md
@@ -56,7 +58,8 @@ class DP1Manifest {
       locale: json['locale'] as String,
       metadata: json['metadata'] != null
           ? DP1ManifestMetadata.fromJson(
-              json['metadata'] as Map<String, dynamic>)
+              json['metadata'] as Map<String, dynamic>,
+            )
           : null,
       controls: json['controls'] != null
           ? DP1Controls.fromJson(json['controls'] as Map<String, dynamic>)
@@ -84,13 +87,12 @@ class DP1Manifest {
     required String id,
     String refVersion = '0.1.0',
     String locale = 'en',
-  }) =>
-      DP1Manifest(
-        refVersion: refVersion,
-        id: id,
-        created: DateTime.now().toIso8601String(),
-        locale: locale,
-      );
+  }) => DP1Manifest(
+    refVersion: refVersion,
+    id: id,
+    created: DateTime.now().toIso8601String(),
+    locale: locale,
+  );
 
   /// Validate the manifest structure according to DP1 specification
   bool get isValid {
@@ -174,13 +176,14 @@ class DP1ManifestMetadata {
       title: json['title'] as String?,
       artists: json['artists'] != null
           ? (json['artists'] as List)
-              .map((e) => DP1Artist.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map((e) => DP1Artist.fromJson(e as Map<String, dynamic>))
+                .toList()
           : null,
       creditLine: json['creditLine'] as String?,
       description: json['description'] as String?,
-      tags:
-          json['tags'] != null ? List<String>.from(json['tags'] as List) : null,
+      tags: json['tags'] != null
+          ? List<String>.from(json['tags'] as List)
+          : null,
       thumbnails: json['thumbnails'] != null
           ? DP1Thumbnails.fromJson(json['thumbnails'] as Map<String, dynamic>)
           : null,
@@ -201,6 +204,7 @@ class DP1ManifestMetadata {
 
 /// Artist information - represents a creator of the work
 /// Each artist has a required name and optional ID and URL fields
+@immutable
 class DP1Artist {
   /// Artist name - the display name of the artist (required)
   final String name;
@@ -213,7 +217,7 @@ class DP1Artist {
   /// Can link to artist's website, portfolio, or social media
   final String? url;
 
-  DP1Artist({
+  const DP1Artist({
     required this.name,
     this.id,
     this.url,
@@ -234,6 +238,18 @@ class DP1Artist {
       if (url != null) 'url': url,
     };
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DP1Artist &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          id == other.id &&
+          url == other.url;
+
+  @override
+  int get hashCode => Object.hash(name, id, url);
 }
 
 /// Thumbnails container - holds different sized thumbnail images
@@ -520,10 +536,12 @@ class DP1I18n {
   factory DP1I18n.fromJson(Map<String, dynamic> json) {
     return DP1I18n(
       locales: json.isNotEmpty
-          ? json.map((key, value) => MapEntry(
+          ? json.map(
+              (key, value) => MapEntry(
                 key,
                 DP1LocalizedContent.fromJson(value as Map<String, dynamic>),
-              ))
+              ),
+            )
           : null,
     );
   }
@@ -664,5 +682,3 @@ extension DP1ManifestExtension on DP1Manifest {
     return metadata?.creditLine;
   }
 }
-
-

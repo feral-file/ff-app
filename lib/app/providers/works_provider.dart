@@ -1,11 +1,17 @@
 import 'dart:async';
 
+import 'package:app/domain/models/models.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
 import 'package:app/app/providers/mutations.dart';
+import 'package:app/app/providers/services_provider.dart';
+import 'package:app/domain/extensions/playlist_item_ext.dart';
+import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/database_provider.dart';
+import 'package:app/util/content_type_resolver.dart';
 
 /// Page size for works list (aligns with [ChannelPreviewNotifier] pattern).
 const int worksPageSize = 50;
@@ -116,7 +122,7 @@ class WorksNotifier extends Notifier<WorksState> {
       _watchSub = null;
     });
 
-    _setupDatabaseWatch();
+    unawaited(Future.microtask(_setupDatabaseWatch));
     return WorksState.initial();
   }
 
@@ -136,7 +142,15 @@ class WorksNotifier extends Notifier<WorksState> {
   }
 
   void _onItemsChanged(List<PlaylistItem> next) {
-    refresh();
+    final loadedCount = next.length > worksPageSize
+        ? worksPageSize
+        : next.length;
+    final newSlice = next.take(loadedCount).toList();
+    final currentSlice = state.works.take(loadedCount).toList();
+    final hasChanged = !listEquals(newSlice, currentSlice);
+    if (hasChanged) {
+      refresh();
+    }
   }
 
   /// Load a slice of works from database (no channel filter).
@@ -235,11 +249,110 @@ final playlistItemsProvider = FutureProvider.family<List<PlaylistItem>, String>(
   },
 );
 
-/// Provider for a specific playlist item by ID.
-final playlistItemByIdProvider = FutureProvider.family<PlaylistItem?, String>((
-  ref,
-  itemId,
-) async {
-  final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService.getPlaylistItemById(itemId);
+/// Data for the work detail screen: playlist item plus optional indexer token and mime type.
+/// UI is driven by [item]; [mimeType] for back layer preview; [token] for metadata/options.
+class WorkDetailData {
+  const WorkDetailData({
+    required this.item,
+    this.token,
+    this.mimeType,
+  });
+
+  final PlaylistItem item;
+  final AssetToken? token;
+  final String? mimeType;
+}
+
+/// Notifier for work detail: watches PlaylistItem by id and optionally
+/// fetches AssetToken from indexer. Same pattern as [PlaylistDetailsNotifier].
+class WorkDetailNotifier extends Notifier<AsyncValue<WorkDetailData?>> {
+  WorkDetailNotifier(this._itemId);
+
+  final String _itemId;
+  static final _log = Logger('WorkDetailNotifier');
+  StreamSubscription<PlaylistItem?>? _dbSubscription;
+
+  @override
+  AsyncValue<WorkDetailData?> build() {
+    ref.onDispose(() {
+      _log.info(
+        'Disposing WorkDetailNotifier, cancelling DB subscription for $_itemId',
+      );
+      unawaited(_dbSubscription?.cancel());
+      _dbSubscription = null;
+    });
+    _setupDatabaseListener();
+    return const AsyncValue.loading();
+  }
+
+  void _setupDatabaseListener() {
+    unawaited(_dbSubscription?.cancel());
+    _dbSubscription = null;
+    try {
+      final databaseService = ref.read(databaseServiceProvider);
+      _dbSubscription = databaseService
+          .watchPlaylistItemById(_itemId)
+          .listen(_onItemChanged, onError: _onWatchError);
+    } catch (e, s) {
+      _log.warning('Failed to setup database listener for $_itemId', e, s);
+    }
+  }
+
+  void _onWatchError(Object error, StackTrace stack) {
+    _log.warning('Database listener error for $_itemId', error, stack);
+    state = AsyncValue.error(error, stack);
+  }
+
+  void _onItemChanged(PlaylistItem? item) {
+    if (item == null) {
+      state = AsyncValue.data(null);
+      return;
+    }
+    final hasChanged = item != state.value?.item;
+    state = AsyncValue.data(
+      WorkDetailData(item: item, token: null, mimeType: null),
+    );
+    if (hasChanged) {
+      unawaited(_loadAndEmit(item));
+    }
+  }
+
+  Future<void> _loadAndEmit(PlaylistItem item) async {
+    final previewUrl = item.sourceUrl;
+    final mimeType = (previewUrl != null && previewUrl.isNotEmpty)
+        ? await contentType(previewUrl)
+        : null;
+
+    state = AsyncValue.data(
+      WorkDetailData(item: item, token: null, mimeType: mimeType),
+    );
+
+    AssetToken? token;
+    try {
+      final cid = item.cid;
+      if (cid != null) {
+        final indexerService = ref.read(indexerServiceProvider);
+        token = await indexerService.getTokenByCid(cid);
+        state = AsyncValue.data(
+          WorkDetailData(item: item, token: token, mimeType: mimeType),
+        );
+      }
+    } catch (_) {
+      // Leave token null; UI shows item-only content.
+    }
+  }
+}
+
+/// Provider for work detail screen. Listens to the database so UI refreshes
+/// when the item changes (e.g. enrichment). Auto-disposes when no longer listened.
+final workDetailStateProvider = NotifierProvider.autoDispose
+    .family<WorkDetailNotifier, AsyncValue<WorkDetailData?>, String>(
+      WorkDetailNotifier.new,
+    );
+
+/// Provider for current user's owner addresses (from AddressService).
+/// Used by work detail to show token ownership.
+final ownerAddressesProvider = FutureProvider<List<String>>((ref) async {
+  final addressService = ref.watch(addressServiceProvider);
+  return addressService.getAllAddresses();
 });

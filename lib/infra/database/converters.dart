@@ -184,19 +184,22 @@ class DatabaseConverters {
   /// Performs JSON parsing for provenance, reproduction, override, display, tokenData, and artists.
   /// Use [itemDataToDomainPreview] for list UI to skip expensive JSON work.
   static PlaylistItem itemDataToDomain(ItemData data) {
-    Map<String, dynamic>? provenance;
+    DP1Provenance? provenance;
     if (data.provenanceJson != null && data.provenanceJson!.isNotEmpty) {
       try {
-        provenance = jsonDecode(data.provenanceJson!) as Map<String, dynamic>;
+        final map =
+            jsonDecode(data.provenanceJson!) as Map<String, dynamic>;
+        provenance = DP1Provenance.fromJson(map);
       } catch (_) {
         // Ignore parsing errors
       }
     }
 
-    Map<String, dynamic>? reproduction;
+    ReproBlock? reproduction;
     if (data.reproJson != null && data.reproJson!.isNotEmpty) {
       try {
-        reproduction = jsonDecode(data.reproJson!) as Map<String, dynamic>;
+        final map = jsonDecode(data.reproJson!) as Map<String, dynamic>;
+        reproduction = ReproBlock.fromJson(map);
       } catch (_) {
         // Ignore parsing errors
       }
@@ -211,10 +214,11 @@ class DatabaseConverters {
       }
     }
 
-    Map<String, dynamic>? display;
+    DP1PlaylistDisplay? display;
     if (data.displayJson != null && data.displayJson!.isNotEmpty) {
       try {
-        display = jsonDecode(data.displayJson!) as Map<String, dynamic>;
+        final map = jsonDecode(data.displayJson!) as Map<String, dynamic>;
+        display = DP1PlaylistDisplay.fromJson(map);
       } catch (_) {
         // Ignore parsing errors
       }
@@ -247,12 +251,14 @@ class DatabaseConverters {
       title: data.title ?? '',
       subtitle: data.subtitle,
       thumbnailUrl: data.thumbnailUri,
-      durationSec: data.durationSec,
+      duration: data.durationSec ?? 0,
       provenance: provenance,
-      sourceUri: data.sourceUri,
-      refUri: data.refUri,
-      license: data.license,
-      reproduction: reproduction,
+      source: data.sourceUri,
+      ref: data.refUri,
+      license: data.license != null
+          ? ArtworkDisplayLicense.fromString(data.license!)
+          : null,
+      repro: reproduction,
       override: override,
       display: display,
       tokenData: tokenData,
@@ -285,12 +291,14 @@ class DatabaseConverters {
       title: data.title ?? '',
       subtitle: data.subtitle,
       thumbnailUrl: data.thumbnailUri,
-      durationSec: data.durationSec,
+      duration: data.durationSec ?? 0,
       provenance: null, // Skipped: heavy JSON decode
-      sourceUri: data.sourceUri,
-      refUri: data.refUri,
-      license: data.license,
-      reproduction: null, // Skipped: heavy JSON decode
+      source: data.sourceUri,
+      ref: data.refUri,
+      license: data.license != null
+          ? ArtworkDisplayLicense.fromString(data.license!)
+          : null,
+      repro: null, // Skipped: heavy JSON decode
       override: null, // Skipped: heavy JSON decode
       display: null, // Skipped: heavy JSON decode
       tokenData: null, // Skipped: heavy JSON decode
@@ -302,18 +310,18 @@ class DatabaseConverters {
   /// Convert PlaylistItem domain model to ItemsCompanion.
   static ItemsCompanion playlistItemToCompanion(PlaylistItem item) {
     final provenanceJson = item.provenance != null
-        ? jsonEncode(item.provenance)
+        ? jsonEncode(item.provenance!.toJson())
         : null;
 
-    final reproJson = item.reproduction != null
-        ? jsonEncode(item.reproduction)
-        : null;
+    final reproJson =
+        item.repro != null ? jsonEncode(item.repro!.toJson()) : null;
 
     final overrideJson = item.override != null
         ? jsonEncode(item.override)
         : null;
 
-    final displayJson = item.display != null ? jsonEncode(item.display) : null;
+    final displayJson =
+        item.display != null ? jsonEncode(item.display!.toJson()) : null;
 
     final tokenDataJson = item.tokenData != null
         ? jsonEncode(item.tokenData)
@@ -333,11 +341,11 @@ class DatabaseConverters {
       title: Value(item.title),
       subtitle: Value(item.subtitle),
       thumbnailUri: Value(item.thumbnailUrl),
-      durationSec: Value(item.durationSec),
+      durationSec: Value(item.duration),
       provenanceJson: Value(provenanceJson),
-      sourceUri: Value(item.sourceUri),
-      refUri: Value(item.refUri),
-      license: Value(item.license),
+      sourceUri: Value(item.source),
+      refUri: Value(item.ref),
+      license: Value(item.license?.value),
       reproJson: Value(reproJson),
       overrideJson: Value(overrideJson),
       displayJson: Value(displayJson),
@@ -370,26 +378,9 @@ class DatabaseConverters {
   }
 
   /// Convert PlaylistItem (domain) to DP1PlaylistItem (wire).
+  /// PlaylistItem extends DP1PlaylistItem so the item is returned as-is.
   static DP1PlaylistItem playlistItemToDP1PlaylistItem(PlaylistItem item) {
-    return DP1PlaylistItem(
-      id: item.id,
-      title: item.title,
-      source: item.sourceUri,
-      duration: item.durationSec ?? 0,
-      license: item.license != null
-          ? ArtworkDisplayLicense.fromString(item.license!)
-          : null,
-      ref: item.refUri,
-      provenance: item.provenance != null
-          ? DP1Provenance.fromJson(item.provenance!)
-          : null,
-      repro: item.reproduction != null
-          ? ReproBlock.fromJson(item.reproduction!)
-          : null,
-      display: item.display != null
-          ? DP1PlaylistDisplay.fromJson(item.display!)
-          : null,
-    );
+    return item;
   }
 
   /// Convert Playlist + items (domain) to DP1Playlist (wire).
@@ -473,13 +464,13 @@ class DatabaseConverters {
       id: item.id,
       kind: PlaylistItemKind.dp1Item,
       title: item.title ?? token?.displayTitle ?? 'Unknown',
-      sourceUri: item.source,
-      refUri: item.ref,
-      license: item.license?.value,
-      durationSec: item.duration,
-      provenance: item.provenance?.toJson(),
-      reproduction: item.repro?.toJson(),
-      display: item.display?.toJson(),
+      source: item.source,
+      ref: item.ref,
+      license: item.license,
+      duration: item.duration,
+      provenance: item.provenance,
+      repro: item.repro,
+      display: item.display,
       thumbnailUrl: thumbnailUrl,
       artists: artists,
       updatedAt: DateTime.now(),

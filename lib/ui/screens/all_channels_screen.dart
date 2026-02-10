@@ -1,4 +1,5 @@
 import 'package:app/app/providers/channels_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
@@ -12,6 +13,7 @@ import 'package:app/widgets/playlist/section_details_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 
 /// Filter for the "All channels" screen.
 enum AllChannelsFilter {
@@ -96,8 +98,9 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     final isLoadingMore = state.isLoadingMore;
     final hasMore = state.hasMore;
 
-    final title =
-        widget.filter == AllChannelsFilter.curated ? 'Curated' : 'Personal';
+    final title = widget.filter == AllChannelsFilter.curated
+        ? 'Curated'
+        : 'Personal';
     final description = widget.filter == AllChannelsFilter.curated
         ? 'Channels curated from DP-1 feeds.'
         : 'Channels saved on this device.';
@@ -173,12 +176,18 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
                       description: description,
                     ),
                   ),
-                  SliverToBoxAdapter(child: SizedBox(height: LayoutConstants.space6)),
+                  SliverToBoxAdapter(
+                    child: SizedBox(height: LayoutConstants.space6),
+                  ),
                   SliverList.builder(
                     itemCount: rowData.length,
                     itemBuilder: (context, index) => ChannelListRow(
                       channelData: rowData[index],
-                      onItemTap: (_) {},
+                      onItemTap: (item) {
+                        context.push(
+                          '${Routes.channels}/${item.id}',
+                        );
+                      },
                     ),
                   ),
                   if (hasMore || isLoadingMore)
@@ -194,4 +203,3 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     );
   }
 }
-

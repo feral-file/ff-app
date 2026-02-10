@@ -1,4 +1,5 @@
 import 'package:app/app/providers/playlists_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -11,6 +12,7 @@ import 'package:app/widgets/playlist/section_details_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 
 /// Filter for the "All playlists" screen.
 enum AllPlaylistsFilter {
@@ -75,9 +77,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     if (widget.filter != AllPlaylistsFilter.curated) return;
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
-      ref
-          .read(playlistsProvider(PlaylistType.dp1).notifier)
-          .loadMore();
+      ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadMore();
     }
   }
 
@@ -97,8 +97,9 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     final isLoadingMore = state.isLoadingMore;
     final hasMore = state.hasMore;
 
-    final title =
-        widget.filter == AllPlaylistsFilter.curated ? 'Curated' : 'Personal';
+    final title = widget.filter == AllPlaylistsFilter.curated
+        ? 'Curated'
+        : 'Personal';
     final description = widget.filter == AllPlaylistsFilter.curated
         ? 'Playlists curated from DP-1 feeds.'
         : 'Playlists from your saved addresses.';
@@ -163,12 +164,16 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                       description: description,
                     ),
                   ),
-                  SliverToBoxAdapter(child: SizedBox(height: LayoutConstants.space6)),
+                  SliverToBoxAdapter(
+                    child: SizedBox(height: LayoutConstants.space6),
+                  ),
                   SliverList.builder(
                     itemCount: playlists.length,
                     itemBuilder: (context, index) => PlaylistRowItem(
                       playlist: playlists[index],
-                      onItemTap: (_) {},
+                      onItemTap: (item) {
+                        context.push('${Routes.playlists}/${item.id}');
+                      },
                     ),
                   ),
                   if (hasMore || isLoadingMore)
@@ -184,4 +189,3 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     );
   }
 }
-

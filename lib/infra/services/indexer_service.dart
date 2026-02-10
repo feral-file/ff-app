@@ -16,8 +16,8 @@ class IndexerService {
   /// Creates an IndexerService.
   IndexerService({
     required IndexerClient client,
-  })  : _client = client,
-        _log = Logger('IndexerService');
+  }) : _client = client,
+       _log = Logger('IndexerService');
 
   final IndexerClient _client;
   final Logger _log;
@@ -59,6 +59,10 @@ class IndexerService {
   }
 
   /// Fetch tokens by CIDs (for enriching DP1 items).
+  ///
+  /// On timeout or network failure, returns an empty list so enrichment
+  /// can continue for other batches instead of propagating and triggering
+  /// Flutter's uncaught-exception handler.
   Future<List<AssetToken>> fetchTokensByCIDs({
     required List<String> tokenCids,
   }) async {
@@ -167,7 +171,7 @@ class IndexerService {
 
     final items =
         (data?['items'] as List?)?.whereType<Map<Object?, Object?>>() ??
-            const [];
+        const [];
 
     return items
         .map((e) => AssetToken.fromGraphQL(Map<String, dynamic>.from(e)))
@@ -260,8 +264,9 @@ class IndexerService {
 
       return jobs
           .whereType<Map<Object?, Object?>>()
-          .map((e) =>
-              AddressIndexingResult.fromJson(Map<String, dynamic>.from(e)))
+          .map(
+            (e) => AddressIndexingResult.fromJson(Map<String, dynamic>.from(e)),
+          )
           .toList();
     } catch (e, stack) {
       _log.severe('Failed to trigger address indexing', e, stack);

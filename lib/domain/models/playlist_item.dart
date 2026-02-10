@@ -1,29 +1,34 @@
+import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/dp1/dp1_manifest.dart';
+import 'package:app/domain/models/dp1/dp1_provenance.dart';
+import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
 
 /// PlaylistItem (DP-1 domain object).
-/// Represents an item in a playlist (not "Work" or "Item" - use correct
-/// terminology).
+/// Extends [DP1PlaylistItem] with app-specific fields (kind, enrichment, token data).
+/// Represents an item in a playlist (not "Work" or "Item" - use correct terminology).
 /// This corresponds to "Items" in the database schema.
 /// UI layer can refer to this as "work" when displaying to users.
-class PlaylistItem {
+@immutable
+class PlaylistItem extends DP1PlaylistItem {
   /// Creates a PlaylistItem.
-  const PlaylistItem({
-    required this.id,
+  PlaylistItem({
+    required super.id,
     required this.kind,
-    required this.title,
+    super.title,
     this.subtitle,
     this.artists,
     this.thumbnailUrl,
-    this.mediaUrl,
-    this.durationSec,
-    this.provenance,
-    this.sourceUri,
-    this.refUri,
-    this.license,
-    this.reproduction,
+    super.duration = 0,
+    super.provenance,
+    super.source,
+    super.ref,
+    super.license,
+    super.repro,
+    super.display,
     this.override,
-    this.display,
     this.tokenData,
+    this.sortKeyUs,
     this.updatedAt,
   });
 
@@ -35,37 +40,67 @@ class PlaylistItem {
           .map((e) => DP1Artist.fromJson(e as Map<String, dynamic>))
           .toList();
     }
+
+    DP1Provenance? provenance;
+    if (json['provenance'] is Map<String, dynamic>) {
+      try {
+        provenance = DP1Provenance.fromJson(
+          json['provenance'] as Map<String, dynamic>,
+        );
+      } catch (_) {
+        // Ignore parse errors
+      }
+    }
+
+    ReproBlock? repro;
+    if (json['repro'] is Map<String, dynamic>) {
+      try {
+        repro = ReproBlock.fromJson(
+          json['repro'] as Map<String, dynamic>,
+        );
+      } catch (_) {
+        // Ignore parse errors
+      }
+    }
+
+    DP1PlaylistDisplay? display;
+    if (json['display'] is Map<String, dynamic>) {
+      try {
+        display = DP1PlaylistDisplay.fromJson(
+          Map<String, dynamic>.from(json['display'] as Map),
+        );
+      } catch (_) {
+        // Ignore parse errors
+      }
+    }
+
     return PlaylistItem(
       id: json['id'] as String,
       kind: PlaylistItemKind.values[json['kind'] as int],
-      title: json['title'] as String,
+      title: json['title'] as String?,
       subtitle: json['subtitle'] as String?,
       artists: artists,
       thumbnailUrl: json['thumbnailUrl'] as String?,
-      mediaUrl: json['mediaUrl'] as String?,
-      durationSec: json['durationSec'] as int?,
-      provenance: json['provenance'] as Map<String, dynamic>?,
-      sourceUri: json['sourceUri'] as String?,
-      refUri: json['refUri'] as String?,
-      license: json['license'] as String?,
-      reproduction: json['reproduction'] as Map<String, dynamic>?,
+      duration: json['duration'] as int? ?? 0,
+      provenance: provenance,
+      source: json['source'] as String?,
+      ref: json['ref'] as String?,
+      license: json['license'] != null
+          ? ArtworkDisplayLicense.fromString(json['license'] as String)
+          : null,
+      repro: repro,
       override: json['override'] as Map<String, dynamic>?,
-      display: json['display'] as Map<String, dynamic>?,
+      display: display,
       tokenData: json['tokenData'] as Map<String, dynamic>?,
+      sortKeyUs: json['sortKeyUs'] as int?,
       updatedAt: json['updatedAt'] != null
           ? DateTime.parse(json['updatedAt'] as String)
           : null,
     );
   }
 
-  /// Item ID (CID for tokens, DP1 item ID for DP1 items).
-  final String id;
-
   /// Item kind (DP1 item or indexer token).
   final PlaylistItemKind kind;
-
-  /// Item title.
-  final String title;
 
   /// Optional subtitle (artists string).
   final String? subtitle;
@@ -76,40 +111,53 @@ class PlaylistItem {
   /// Optional thumbnail URL.
   final String? thumbnailUrl;
 
-  /// Optional media URL.
-  final String? mediaUrl;
-
-  /// Duration in seconds for media items.
-  final int? durationSec;
-
-  /// Provenance data.
-  final Map<String, dynamic>? provenance;
-
-  // DP1 fields
-  /// Source URI for DP1 items.
-  final String? sourceUri;
-
-  /// Reference URI for DP1 items.
-  final String? refUri;
-
-  /// License information.
-  final String? license;
-
-  /// Reproduction data.
-  final Map<String, dynamic>? reproduction;
-
-  /// Override configuration.
+  /// Override configuration (no DP1 type; stored as JSON).
   final Map<String, dynamic>? override;
 
-  /// Display configuration.
-  final Map<String, dynamic>? display;
-
-  // Token data
   /// Complete token JSON for reconstruction (indexer tokens).
   final Map<String, dynamic>? tokenData;
 
+  /// Sort key in microseconds (e.g. for address playlist by provenance time).
+  final int? sortKeyUs;
+
   /// Last update timestamp.
   final DateTime? updatedAt;
+
+  static const _deepEquality = DeepCollectionEquality();
+
+  static bool _mapEquals(Map<String, dynamic>? a, Map<String, dynamic>? b) {
+    if (a == null && b == null) return true;
+    if (a == null || b == null) return false;
+    return const DeepCollectionEquality().equals(a, b);
+  }
+
+  // ignore: annotate_overrides - equality override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PlaylistItem &&
+          runtimeType == other.runtimeType &&
+          super == other &&
+          kind == other.kind &&
+          subtitle == other.subtitle &&
+          listEquals(artists, other.artists) &&
+          thumbnailUrl == other.thumbnailUrl &&
+          _mapEquals(override, other.override) &&
+          _mapEquals(tokenData, other.tokenData) &&
+          sortKeyUs == other.sortKeyUs &&
+          updatedAt == other.updatedAt;
+
+  // ignore: annotate_overrides - hashCode override
+  int get hashCode => Object.hash(
+        super.hashCode,
+        kind,
+        subtitle,
+        Object.hashAll(artists ?? []),
+        thumbnailUrl,
+        override != null ? _deepEquality.hash(override) : null,
+        tokenData != null ? _deepEquality.hash(tokenData) : null,
+        sortKeyUs,
+        updatedAt,
+      );
 
   /// Creates a copy with updated values.
   PlaylistItem copyWith({
@@ -119,16 +167,16 @@ class PlaylistItem {
     String? subtitle,
     List<DP1Artist>? artists,
     String? thumbnailUrl,
-    String? mediaUrl,
-    int? durationSec,
-    Map<String, dynamic>? provenance,
-    String? sourceUri,
-    String? refUri,
-    String? license,
-    Map<String, dynamic>? reproduction,
+    int? duration,
+    DP1Provenance? provenance,
+    String? source,
+    String? ref,
+    ArtworkDisplayLicense? license,
+    ReproBlock? repro,
     Map<String, dynamic>? override,
-    Map<String, dynamic>? display,
+    DP1PlaylistDisplay? display,
     Map<String, dynamic>? tokenData,
+    int? sortKeyUs,
     DateTime? updatedAt,
   }) {
     return PlaylistItem(
@@ -138,41 +186,39 @@ class PlaylistItem {
       subtitle: subtitle ?? this.subtitle,
       artists: artists ?? this.artists,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
-      mediaUrl: mediaUrl ?? this.mediaUrl,
-      durationSec: durationSec ?? this.durationSec,
+      duration: duration ?? this.duration,
       provenance: provenance ?? this.provenance,
-      sourceUri: sourceUri ?? this.sourceUri,
-      refUri: refUri ?? this.refUri,
+      source: source ?? this.source,
+      ref: ref ?? this.ref,
       license: license ?? this.license,
-      reproduction: reproduction ?? this.reproduction,
+      repro: repro ?? this.repro,
       override: override ?? this.override,
       display: display ?? this.display,
       tokenData: tokenData ?? this.tokenData,
+      sortKeyUs: sortKeyUs ?? this.sortKeyUs,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
   /// Convert to JSON.
   Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'kind': kind.index,
-      'title': title,
-      'subtitle': subtitle,
-      if (artists != null) 'artists': artists!.map((e) => e.toJson()).toList(),
-      'thumbnailUrl': thumbnailUrl,
-      'mediaUrl': mediaUrl,
-      'durationSec': durationSec,
-      'provenance': provenance,
-      'sourceUri': sourceUri,
-      'refUri': refUri,
-      'license': license,
-      'reproduction': reproduction,
-      'override': override,
-      'display': display,
-      'tokenData': tokenData,
-      'updatedAt': updatedAt?.toIso8601String(),
-    };
+    final j = super.toJson();
+    j['kind'] = kind.index;
+    j['subtitle'] = subtitle;
+    if (artists != null) {
+      j['artists'] = artists!.map((e) => e.toJson()).toList();
+    }
+    j['thumbnailUrl'] = thumbnailUrl;
+    j['duration'] = duration;
+    j['source'] = source;
+    j['ref'] = ref;
+    j['license'] = license?.value;
+    j['repro'] = repro?.toJson();
+    j['override'] = override;
+    j['tokenData'] = tokenData;
+    j['sortKeyUs'] = sortKeyUs;
+    j['updatedAt'] = updatedAt?.toIso8601String();
+    return j;
   }
 }
 

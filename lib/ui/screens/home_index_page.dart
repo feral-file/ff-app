@@ -41,8 +41,8 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
   late HomeIndexHeaderTab _selectedTab;
   late ScrollController _scrollController;
   late final PlaylistsTabPage _playlistsPage;
-  late final ChannelsTabPage _channelsPage;
-  late final WorksTabPage _worksPage;
+  ChannelsTabPage? _channelsPage;
+  WorksTabPage? _worksPage;
 
   @override
   void initState() {
@@ -51,8 +51,16 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     _scrollController = ScrollController();
     _scrollController.addListener(_onScrollChange);
     _playlistsPage = PlaylistsTabPage(key: _playlistsPageKey);
-    _channelsPage = ChannelsTabPage(key: _channelsPageKey);
-    _worksPage = WorksTabPage(key: _worksPageKey);
+    // Build channels and works tabs after first frame(s) to reduce first-frame work.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _channelsPage = ChannelsTabPage(key: _channelsPageKey);
+          _worksPage = WorksTabPage(key: _worksPageKey);
+        });
+      });
+    });
 
     // Trigger bootstrap to fetch channels and playlists
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -351,13 +359,11 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         ),
         Offstage(
           offstage: _selectedTab != HomeIndexHeaderTab.channels,
-          child: _channelsPage,
+          child: _channelsPage ?? const SizedBox.shrink(),
         ),
         Offstage(
           offstage: _selectedTab != HomeIndexHeaderTab.works,
-          child: Container(
-            child: _worksPage,
-          ),
+          child: _worksPage ?? const SizedBox.shrink(),
         ),
       ],
     );

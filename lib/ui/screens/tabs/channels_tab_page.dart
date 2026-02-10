@@ -65,11 +65,19 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
   Widget build(BuildContext context) {
     super.build(context);
 
-    // Watch curated channels provider (tab shows only curated).
-    final curatedState = ref.watch(channelsProvider(ChannelType.dp1));
-    final curatedChannels = curatedState.channels;
-    final isLoading = curatedState.isLoading;
-    final error = curatedState.error;
+    // Watch slice to avoid rebuilds when unrelated state changes.
+    final slice = ref.watch(
+      channelsProvider(ChannelType.dp1).select(
+        (s) => (
+          channels: s.channels,
+          isLoading: s.isLoading,
+          error: s.error,
+        ),
+      ),
+    );
+    final curatedChannels = slice.channels;
+    final isLoading = slice.isLoading;
+    final error = slice.error;
 
     // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics
     // Parent NestedScrollView handles scrolling
@@ -146,9 +154,9 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
                 context.push('${Routes.allChannels}?filter=curated');
               }
             : null,
-        onChannelItemTap: (workId) {
+        onChannelItemTap: (item) {
           // Navigate to work detail
-          context.push('${Routes.works}/$workId');
+          context.push('${Routes.works}/${item.id}');
         },
       ),
     );

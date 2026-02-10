@@ -1,13 +1,16 @@
 import 'package:app/app/providers/channel_detail_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/channel_item.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/playlist_list_row.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 /// Channel detail screen.
 /// Shows details and content for a specific channel.
@@ -31,8 +34,12 @@ class ChannelDetailScreen extends ConsumerWidget {
       backgroundColor: AppColor.auGreyBackground,
       appBar: AppBar(
         backgroundColor: AppColor.auGreyBackground,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.pop(),
+        ),
         title: Text(
-          'Channel',
+          'Channels',
           style: AppTypography.h4(context).white,
         ),
       ),
@@ -63,7 +70,7 @@ class ChannelDetailScreen extends ConsumerWidget {
               return CustomScrollView(
                 slivers: [
                   SliverToBoxAdapter(
-                    child: SizedBox(height: LayoutConstants.space6),
+                    child: SizedBox(height: LayoutConstants.space12),
                   ),
                   SliverToBoxAdapter(
                     child: ChannelHeader(
@@ -74,8 +81,8 @@ class ChannelDetailScreen extends ConsumerWidget {
                     ),
                   ),
                   SliverToBoxAdapter(
-                    child: SizedBox(height: LayoutConstants.space6),
-            ),
+                    child: SizedBox(height: LayoutConstants.space12),
+                  ),
                   if (playlists.isEmpty)
                     SliverToBoxAdapter(
                       child: Center(
@@ -96,10 +103,13 @@ class ChannelDetailScreen extends ConsumerWidget {
                       itemCount: playlists.length,
                       itemBuilder: (context, index) => PlaylistRowItem(
                         playlist: playlists[index],
-                        onItemTap: (_) {},
+                        onItemTap: (item) {
+                          context.push('${Routes.works}/${item.id}');
+                        },
                       ),
-            ),
-          ],
+                    ),
+                  const SliverToBoxAdapter(child: BottomSpacing()),
+                ],
               );
             },
           ),

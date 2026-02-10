@@ -1,6 +1,8 @@
+import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 /// Channel Header - displays channel title and summary
 class ChannelHeader extends StatelessWidget {
@@ -16,16 +18,16 @@ class ChannelHeader extends StatelessWidget {
 
   /// Channel ID for navigation.
   final String channelId;
-  
+
   /// Channel title to display.
   final String channelTitle;
-  
+
   /// Optional channel summary/description.
   final String? channelSummary;
-  
+
   /// Whether the header is clickable for navigation.
   final bool clickable;
-  
+
   /// Max lines for summary text.
   final int? maxLines;
 
@@ -33,12 +35,9 @@ class ChannelHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        if (!clickable) return;
-        // TODO: Navigate to channel detail page
-        // Navigator.of(context).pushNamed(
-        //   AppRouter.channelDetailPage,
-        //   arguments: ChannelDetailPagePayload(channelId: channelId),
-        // );
+        if (clickable) {
+          context.push('${Routes.channels}/${channelId}');
+        }
       },
       child: Container(
         color: Colors.transparent,

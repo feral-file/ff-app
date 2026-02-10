@@ -140,7 +140,7 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
       _watchSub = null;
     });
 
-    _setupDatabaseWatch();
+    unawaited(Future.microtask(_setupDatabaseWatch));
     return PlaylistsState.initial();
   }
 

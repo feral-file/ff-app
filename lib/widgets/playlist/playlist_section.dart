@@ -34,7 +34,7 @@ class PlaylistSection extends StatefulWidget {
   final VoidCallback? onViewAllTap;
 
   /// Callback when a playlist item is tapped.
-  final void Function(String workId)? onPlaylistItemTap;
+  final void Function(PlaylistItem item)? onPlaylistItemTap;
 
   /// Optional scroll controller for carousel.
   final ScrollController? scrollController;
@@ -44,7 +44,7 @@ class PlaylistSection extends StatefulWidget {
 
   /// Optional custom header builder for playlist rows.
   final Widget? Function(Playlist playlist, int itemCount)?
-      playlistHeaderBuilder;
+  playlistHeaderBuilder;
 
   @override
   State<PlaylistSection> createState() => _PlaylistSectionState();
@@ -69,7 +69,8 @@ class _PlaylistSectionState extends State<PlaylistSection> {
       shrinkWrap: true,
       padding: EdgeInsets.zero,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: headerOffset +
+      itemCount:
+          headerOffset +
           (widget.playlists.isNotEmpty ? widget.playlists.length : 0),
       itemBuilder: (context, index) {
         // Header
@@ -93,14 +94,12 @@ class _PlaylistSectionState extends State<PlaylistSection> {
         return PlaylistRowItem(
           playlist: playlist,
           playlistCreator: _getCreatorName(playlist),
-          onItemTap: widget.onPlaylistItemTap == null
-              ? null
-              : (PlaylistItem item) => widget.onPlaylistItemTap!(item.id),
+          onItemTap: widget.onPlaylistItemTap,
           scrollController: widget.scrollController,
           headerBuilder: widget.playlistHeaderBuilder == null
               ? null
               : (p, itemCount) =>
-                  widget.playlistHeaderBuilder?.call(p, itemCount),
+                    widget.playlistHeaderBuilder?.call(p, itemCount),
         );
       },
     );

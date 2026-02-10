@@ -59,6 +59,10 @@ class LoadingWidget extends StatelessWidget {
   /// Default GIF size matching old repo (52).
   static const double _loadingGifSize = 52;
 
+  /// Minimum height needed for the default content (GIF + spacing + text).
+  /// Used to avoid overflow when parent has tight height (e.g. carousel row 65px).
+  static const double _minContentHeight = 66;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -66,25 +70,41 @@ class LoadingWidget extends StatelessWidget {
       width: width?.toDouble(),
       height: height?.toDouble(),
       child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            GifView.asset(
-              'assets/images/loading_white.gif',
-              width: width?.toDouble() ?? _loadingGifSize,
-              height: height?.toDouble(),
-              frameRate: frameRate ?? 12,
-              invertColors: invertColors,
-            ),
-            if (showText) ...[
-              SizedBox(height: LayoutConstants.space3),
-              Text(
-                text ?? 'Loading...',
-                style: AppTypography.bodySmall(context).white,
-              ),
-            ],
-          ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final maxH = constraints.maxHeight;
+            final useCompactLayout =
+                maxH.isFinite && maxH < _minContentHeight;
+            if (useCompactLayout) {
+              return GifView.asset(
+                'assets/images/loading_white.gif',
+                width: LayoutConstants.workThumbnailImageWidth,
+                height: LayoutConstants.workThumbnailImageHeight,
+                frameRate: frameRate ?? 12,
+                invertColors: invertColors,
+              );
+            }
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GifView.asset(
+                  'assets/images/loading_white.gif',
+                  width: width?.toDouble() ?? _loadingGifSize,
+                  height: height?.toDouble(),
+                  frameRate: frameRate ?? 12,
+                  invertColors: invertColors,
+                ),
+                if (showText) ...[
+                  SizedBox(height: LayoutConstants.space3),
+                  Text(
+                    text ?? 'Loading...',
+                    style: AppTypography.bodySmall(context).white,
+                  ),
+                ],
+              ],
+            );
+          },
         ),
       ),
     );

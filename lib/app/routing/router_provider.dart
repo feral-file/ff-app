@@ -1,3 +1,4 @@
+import 'package:app/app/route_observer.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
@@ -24,6 +25,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     debugLogDiagnostics: true,
     initialLocation: Routes.home,
+    observers: [routeObserver],
     routes: [
       // Home route with tabs (playlists, channels, works, search)
       GoRoute(

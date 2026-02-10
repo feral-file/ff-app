@@ -17,7 +17,7 @@ import 'package:go_router/go_router.dart';
 /// Shows details and works for a specific playlist.
 /// Note: Exhibition/Season/Program are playlist roles (UI chrome),
 /// not separate domain objects.
-class PlaylistDetailScreen extends ConsumerWidget {
+class PlaylistDetailScreen extends ConsumerStatefulWidget {
   /// Creates a PlaylistDetailScreen.
   const PlaylistDetailScreen({
     required this.playlistId,
@@ -28,8 +28,36 @@ class PlaylistDetailScreen extends ConsumerWidget {
   final String playlistId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final detailsAsync = ref.watch(playlistDetailsProvider(playlistId));
+  ConsumerState<PlaylistDetailScreen> createState() =>
+      _PlaylistDetailScreenState();
+}
+
+class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    final pos = _scrollController.position;
+    if (pos.pixels >= pos.maxScrollExtent * 0.8) {
+      ref.read(playlistDetailsProvider(widget.playlistId).notifier).loadMore();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final detailsAsync = ref.watch(playlistDetailsProvider(widget.playlistId));
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
@@ -46,11 +74,12 @@ class PlaylistDetailScreen extends ConsumerWidget {
           error: (error, _) => ErrorView(
             error:
                 'We couldn’t load this playlist. Check your connection, then Retry.',
-            onRetry: () => ref.invalidate(playlistDetailsProvider(playlistId)),
+            onRetry: () =>
+                ref.invalidate(playlistDetailsProvider(widget.playlistId)),
           ),
-          data: (details) {
-            final playlist = details.playlist;
-            final items = details.items;
+          data: (state) {
+            final playlist = state.playlist;
+            final items = state.items;
             if (playlist == null) {
               return Center(
                 child: Text(
@@ -67,20 +96,21 @@ class PlaylistDetailScreen extends ConsumerWidget {
                 : ref.watch(channelByIdProvider(channelId));
 
             return CustomScrollView(
+              controller: _scrollController,
               slivers: [
                 SliverToBoxAdapter(
                   child: channelAsync.when(
                     loading: () => PlaylistDetailsHeader(
                       title: playlist.name,
-                      total: items.length,
+                      total: state.total,
                     ),
                     error: (_, __) => PlaylistDetailsHeader(
                       title: playlist.name,
-                      total: items.length,
+                      total: state.total,
                     ),
                     data: (channel) => PlaylistDetailsHeader(
                       title: playlist.name,
-                      total: items.length,
+                      total: state.total,
                       subtitle: channel?.name,
                     ),
                   ),
@@ -112,6 +142,13 @@ class PlaylistDetailScreen extends ConsumerWidget {
                       works: items,
                       onItemTap: (item) =>
                           context.push('${Routes.works}/${item.id}'),
+                    ),
+                  ),
+                if (state.isLoadingMore)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(LayoutConstants.space4),
+                      child: const Center(child: LoadingWidget()),
                     ),
                   ),
               ],

@@ -425,7 +425,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      work.title,
+                      work.title ?? '',
                       style: AppTypography.body(context).white,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

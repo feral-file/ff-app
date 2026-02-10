@@ -1,8 +1,8 @@
+import 'package:app/app/providers/playlist_details_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/dp1_carousel.dart';
 import 'package:app/widgets/error_view.dart';
@@ -12,33 +12,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-/// Aggregated stream of ALL playlist items by playlistId (batched).
-///
-/// This provider reduces N separate DB streams (one per row) to a single
-/// aggregated stream. Each row then uses select() to only rebuild when its
-/// specific playlist's items change.
-final StreamProvider<Map<String, List<PlaylistItem>>>
-allPlaylistItemsStreamProvider =
-    StreamProvider.autoDispose<Map<String, List<PlaylistItem>>>((ref) {
-      final databaseService = ref.watch(databaseServiceProvider);
-      return databaseService.watchAllPlaylistItems();
-    });
-
-/// Get items for a specific playlist via select on the aggregated provider.
-///
-/// This uses .select() to avoid creating extra streams for each row.
-/// Each row only rebuilds when its specific playlist's items change.
-final Provider<AsyncValue<List<PlaylistItem>>> Function(String)
-playlistItemsProvider = Provider.autoDispose
-    .family<AsyncValue<List<PlaylistItem>>, String>(
-      (ref, playlistId) {
-        final allItemsAsync = ref.watch(allPlaylistItemsStreamProvider);
-        return allItemsAsync.whenData((map) => map[playlistId] ?? []);
-      },
-    );
-
 /// Playlist List Row - Combines list item info with carousel content.
 /// Uses domain models (Playlist, PlaylistItem) only.
+/// Only watches [playlistDetailsProvider]; no separate playlist items provider.
 class PlaylistRowItem extends ConsumerStatefulWidget {
   /// Creates a PlaylistRowItem.
   const PlaylistRowItem({
@@ -92,8 +68,7 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
     final scrollController = _carouselScrollController;
     if (scrollController.position.pixels >=
         scrollController.position.maxScrollExtent * 0.8) {
-      // TODO: Implement load more for playlist items
-      // For now, we load all items at once
+      ref.read(playlistDetailsProvider(widget.playlist.id).notifier).loadMore();
     }
   }
 
@@ -103,7 +78,7 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
     final playlistTitle = playlist.name;
     final creator = widget.playlistCreator ?? '';
 
-    final itemsAsync = ref.watch(playlistItemsProvider(playlist.id));
+    final detailsAsync = ref.watch(playlistDetailsProvider(playlist.id));
 
     return GestureDetector(
       onTap: () {
@@ -124,15 +99,16 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header
-            itemsAsync.when(
-              data: (items) {
-                return widget.headerBuilder?.call(playlist, items.length) ??
-                    PlaylistTitle(
-                      primaryText: playlistTitle,
-                      secondaryText: creator,
-                      total: items.length,
-                    );
-              },
+            detailsAsync.when(
+              data: (state) => widget.headerBuilder?.call(
+                    playlist,
+                    state.total,
+                  ) ??
+                  PlaylistTitle(
+                    primaryText: playlistTitle,
+                    secondaryText: creator,
+                    total: state.total,
+                  ),
               loading: () => PlaylistTitle(
                 primaryText: playlistTitle,
                 secondaryText: creator,
@@ -142,16 +118,16 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
                 secondaryText: creator,
               ),
             ),
-            itemsAsync.when(
-              data: (items) {
-                if (items.isEmpty) {
+            detailsAsync.when(
+              data: (state) {
+                if (state.items.isEmpty) {
                   return const SizedBox.shrink();
                 }
                 return DP1Carousel(
-                  items: items,
+                  items: state.items,
                   onItemTap: widget.onItemTap,
                   scrollController: _carouselScrollController,
-                  isLoadingMore: false,
+                  isLoadingMore: state.isLoadingMore,
                 );
               },
               loading: () => SizedBox(
@@ -162,7 +138,8 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
                 height: LayoutConstants.dp1CarouselHeight,
                 child: ErrorView(
                   error: 'We couldn’t load works in this playlist.',
-                  onRetry: null,
+                  onRetry: () =>
+                      ref.invalidate(playlistDetailsProvider(playlist.id)),
                 ),
               ),
             ),

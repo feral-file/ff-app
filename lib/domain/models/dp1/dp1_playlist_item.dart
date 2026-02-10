@@ -1,6 +1,7 @@
 import 'package:app/domain/models/dp1/dp1_provenance.dart';
+import 'package:collection/collection.dart';
 
-// ignore_for_file: public_member_api_docs, sort_constructors_first, lines_longer_than_80_chars, eol_at_end_of_file // Reason: copied from the legacy mobile app; keep DP-1 playlist-item wire model stable.
+// ignore_for_file: public_member_api_docs, sort_constructors_first, lines_longer_than_80_chars, eol_at_end_of_file, avoid_equals_and_hash_code_on_mutable_classes // Reason: copied from the legacy mobile app; keep DP-1 playlist-item wire model stable.
 
 class DP1PlaylistItem {
   DP1PlaylistItem({
@@ -72,6 +73,33 @@ class DP1PlaylistItem {
       if (provenance != null) 'provenance': provenance?.toJson(),
     };
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DP1PlaylistItem &&
+          id == other.id &&
+          title == other.title &&
+          source == other.source &&
+          duration == other.duration &&
+          license == other.license &&
+          ref == other.ref &&
+          display == other.display &&
+          repro == other.repro &&
+          provenance == other.provenance;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        title,
+        source,
+        duration,
+        license,
+        ref,
+        display,
+        repro,
+        provenance,
+      );
 }
 
 class DP1PlaylistDisplay {
@@ -116,6 +144,29 @@ class DP1PlaylistDisplay {
         if (interaction != null) 'interaction': interaction!.toJson(),
         'userOverrides': userOverrides,
       };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DP1PlaylistDisplay &&
+          scaling == other.scaling &&
+          margin == other.margin &&
+          background == other.background &&
+          autoplay == other.autoplay &&
+          loop == other.loop &&
+          interaction == other.interaction &&
+          userOverrides == other.userOverrides;
+
+  @override
+  int get hashCode => Object.hash(
+        scaling,
+        margin,
+        background,
+        autoplay,
+        loop,
+        interaction,
+        userOverrides,
+      );
 }
 
 class DP1PlaylistInteraction {
@@ -143,6 +194,16 @@ class DP1PlaylistInteraction {
         'keyboard': keyboard,
         if (mouse != null) 'mouse': mouse!.toJson(),
       };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DP1PlaylistInteraction &&
+          const ListEquality<String>().equals(keyboard, other.keyboard) &&
+          mouse == other.mouse;
+
+  @override
+  int get hashCode => Object.hash(Object.hashAll(keyboard), mouse);
 }
 
 class DP1PlaylistMouseInteraction {
@@ -172,6 +233,18 @@ class DP1PlaylistMouseInteraction {
         'drag': drag,
         'hover': hover,
       };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DP1PlaylistMouseInteraction &&
+          click == other.click &&
+          scroll == other.scroll &&
+          drag == other.drag &&
+          hover == other.hover;
+
+  @override
+  int get hashCode => Object.hash(click, scroll, drag, hover);
 }
 
 class ReproBlock {
@@ -207,6 +280,23 @@ class ReproBlock {
         if (assetsSHA256 != null) 'assetsSHA256': assetsSHA256,
         if (frameHash != null) 'frameHash': frameHash!.toJson(),
       };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReproBlock &&
+          engineVersion == other.engineVersion &&
+          seed == other.seed &&
+          const ListEquality<String>().equals(assetsSHA256, other.assetsSHA256) &&
+          frameHash == other.frameHash;
+
+  @override
+  int get hashCode => Object.hash(
+        engineVersion,
+        seed,
+        Object.hashAll(assetsSHA256 ?? []),
+        frameHash,
+      );
 }
 
 class ReproEngineVersion {
@@ -224,6 +314,14 @@ class ReproEngineVersion {
   Map<String, dynamic> toJson() => {
         if (chromium != null) 'chromium': chromium,
       };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReproEngineVersion && chromium == other.chromium;
+
+  @override
+  int get hashCode => chromium.hashCode;
 }
 
 class ReproFrameHash {
@@ -244,6 +342,16 @@ class ReproFrameHash {
         if (sha256 != null) 'sha256': sha256,
         if (phash != null) 'phash': phash,
       };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReproFrameHash &&
+          sha256 == other.sha256 &&
+          phash == other.phash;
+
+  @override
+  int get hashCode => Object.hash(sha256, phash);
 }
 
 enum ArtworkDisplayLicense {

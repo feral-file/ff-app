@@ -282,6 +282,13 @@ class AppDatabase extends _$AppDatabase {
     return (select(channels)..where((t) => t.id.equals(id))).getSingleOrNull();
   }
 
+  /// Watch a single channel by ID. Emits null if the channel is deleted.
+  Stream<ChannelData?> watchChannelById(String id) {
+    return (select(channels)..where((t) => t.id.equals(id)))
+        .watch()
+        .map((list) => list.isEmpty ? null : list.single);
+  }
+
   /// Upsert a channel.
   Future<void> upsertChannel(ChannelsCompanion channel) async {
     await into(channels).insertOnConflictUpdate(channel);
@@ -349,6 +356,13 @@ class AppDatabase extends _$AppDatabase {
     return (select(items)..where((t) => t.id.equals(id))).getSingleOrNull();
   }
 
+  /// Watch a single item by ID; emits when the row changes or is removed.
+  Stream<ItemData?> watchItemById(String id) {
+    return (select(items)..where((t) => t.id.equals(id)))
+        .watch()
+        .map((list) => list.isNotEmpty ? list.first : null);
+  }
+
   /// Get items by IDs.
   Future<List<ItemData>> getItemsByIds(List<String> ids) async {
     return (select(items)..where((t) => t.id.isIn(ids))).get();
@@ -373,7 +387,13 @@ class AppDatabase extends _$AppDatabase {
 
   // Playlist entry queries
   /// Get items for a playlist (position-based sorting).
-  Future<List<ItemData>> getPlaylistItemsByPosition(String playlistId) async {
+  /// [limit] null = return all; [offset] null = 0.
+  Future<List<ItemData>> getPlaylistItemsByPosition(
+    String playlistId, {
+    int? limit,
+    int? offset,
+  }) async {
+    final off = offset ?? 0;
     final query =
         select(items).join([
             innerJoin(
@@ -391,14 +411,21 @@ class AppDatabase extends _$AppDatabase {
             OrderingTerm.asc(playlistEntries.itemId),
           ]);
 
+    if (limit != null) {
+      query.limit(limit, offset: off);
+    }
     final result = await query.get();
     return result.map((row) => row.readTable(items)).toList();
   }
 
   /// Get items for a playlist (provenance-based sorting).
+  /// [limit] null = return all; [offset] null = 0.
   Future<List<ItemData>> getPlaylistItemsByProvenance(
-    String playlistId,
-  ) async {
+    String playlistId, {
+    int? limit,
+    int? offset,
+  }) async {
+    final off = offset ?? 0;
     final query =
         select(items).join([
             innerJoin(
@@ -412,6 +439,9 @@ class AppDatabase extends _$AppDatabase {
             OrderingTerm.desc(playlistEntries.itemId),
           ]);
 
+    if (limit != null) {
+      query.limit(limit, offset: off);
+    }
     final result = await query.get();
     return result.map((row) => row.readTable(items)).toList();
   }

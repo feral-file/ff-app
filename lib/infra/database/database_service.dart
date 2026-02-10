@@ -100,12 +100,11 @@ class DatabaseService {
         );
   }
 
-  /// Watch all playlist items batched by playlistId (performance optimization).
+  /// Watch all playlist items batched by playlistId.
   ///
   /// Emits a map of {playlistId: [items]} whenever any item changes in any
-  /// playlist. This is used by [allPlaylistItemsStreamProvider] to provide a
-  /// single aggregated stream that multiple rows can select from, rather than
-  /// creating N separate DB streams for N rows in a list.
+  /// playlist. Prefer [watchPlaylistItems] for a single playlist to avoid
+  /// subscribing to every playlist.
   ///
   /// Returns a map where each key is a playlistId and the value is the ordered
   /// list of items for that playlist (sorted by position or provenance based on
@@ -257,6 +256,18 @@ class DatabaseService {
     }
   }
 
+  /// Watch a single channel by ID as domain model. Emits null if the channel is
+  /// deleted or not found.
+  Stream<Channel?> watchChannelById(String id) {
+    return _db
+        .watchChannelById(id)
+        .debounceTime(Duration(milliseconds: 300))
+        .map(
+          (data) =>
+              data != null ? DatabaseConverters.channelDataToDomain(data) : null,
+        );
+  }
+
   // ========== Playlist Operations ==========
 
   /// Ingest a playlist into the database.
@@ -403,8 +414,32 @@ class DatabaseService {
     }
   }
 
+  /// Watch a single playlist item by ID; emits when the row changes or is removed.
+  Stream<PlaylistItem?> watchPlaylistItemById(String id) {
+    return _db
+        .watchItemById(id)
+        .debounceTime(Duration(milliseconds: 300))
+        .map((data) {
+          if (data == null) return null;
+          try {
+            return DatabaseConverters.itemDataToDomain(data);
+          } catch (e, stack) {
+            _log.severe('Failed to convert playlist item $id', e, stack);
+            rethrow;
+          }
+        })
+        .handleError((Object e, StackTrace stack) {
+          _log.severe('Watch playlist item $id error', e, stack);
+        });
+  }
+
   /// Get items for a playlist.
-  Future<List<PlaylistItem>> getPlaylistItems(String playlistId) async {
+  /// [limit] null = return all; [offset] null = 0.
+  Future<List<PlaylistItem>> getPlaylistItems(
+    String playlistId, {
+    int? limit,
+    int? offset,
+  }) async {
     try {
       final playlist = await getPlaylistById(playlistId);
       if (playlist == null) {
@@ -413,8 +448,16 @@ class DatabaseService {
       }
 
       final data = playlist.sortMode == PlaylistSortMode.position
-          ? await _db.getPlaylistItemsByPosition(playlistId)
-          : await _db.getPlaylistItemsByProvenance(playlistId);
+          ? await _db.getPlaylistItemsByPosition(
+              playlistId,
+              limit: limit,
+              offset: offset,
+            )
+          : await _db.getPlaylistItemsByProvenance(
+              playlistId,
+              limit: limit,
+              offset: offset,
+            );
 
       return data.map(DatabaseConverters.itemDataToDomain).toList();
     } catch (e, stack) {
@@ -595,15 +638,13 @@ class DatabaseService {
         );
       }).toList();
 
-      // Create playlist entries
+      // Create playlist entries (sort key from item.sortKeyUs)
       final entries = items.map((item) {
-        final sortKeyUs = (item.provenance?['sortKeyUs'] as int?) ?? 0;
-
         return DatabaseConverters.createPlaylistEntry(
           playlistId: addressPlaylist.id,
           itemId: item.id,
           position: null, // No position for provenance-based sorting
-          sortKeyUs: sortKeyUs,
+          sortKeyUs: item.sortKeyUs ?? 0,
         );
       }).toList();
 

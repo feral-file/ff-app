@@ -1,3 +1,4 @@
+import 'package:app/design/layout_constants.dart';
 import 'package:flutter/material.dart';
 
 /// Bottom spacing widget for consistent spacing at the bottom of scrollable content.
@@ -7,8 +8,7 @@ class BottomSpacing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Bottom safe area padding + extra space
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    return SizedBox(height: bottomPadding + 80);
+    return SizedBox(height: bottomPadding + LayoutConstants.space20);
   }
 }

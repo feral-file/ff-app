@@ -19,19 +19,19 @@ class ChannelSection extends StatelessWidget {
 
   /// Section name to display.
   final String sectionName;
-  
+
   /// List of channel data to display.
   final List<ChannelRowData> channels;
-  
+
   /// Optional icon widget for the section.
   final Widget? sectionIcon;
-  
+
   /// Callback when "View All" is tapped.
   final VoidCallback? onViewAllTap;
-  
+
   /// Callback when a work item within a channel is tapped.
-  final void Function(String workId)? onChannelItemTap;
-  
+  final void Function(PlaylistItem item)? onChannelItemTap;
+
   /// Whether there are more items to view.
   final bool hasMore;
 
@@ -64,9 +64,7 @@ class ChannelSection extends StatelessWidget {
 
         return ChannelListRow(
           channelData: channelData,
-          onItemTap: onChannelItemTap == null
-              ? null
-              : (PlaylistItem item) => onChannelItemTap!(item.id),
+          onItemTap: onChannelItemTap,
         );
       },
     );

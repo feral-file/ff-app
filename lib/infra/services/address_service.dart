@@ -151,6 +151,16 @@ class AddressService {
     return _databaseService.getAddressPlaylists();
   }
 
+  /// Get all owner addresses from the database (from address-based playlists).
+  /// Used by work detail and other features that need the list of user addresses.
+  Future<List<String>> getAllAddresses() async {
+    final playlists = await _databaseService.getAddressPlaylists();
+    return playlists
+        .map((p) => p.ownerAddress)
+        .whereType<String>()
+        .toList();
+  }
+
   /// Shorten address for display (0x1234...5678).
   String _shortenAddress(String address) {
     if (address.length <= 10) {

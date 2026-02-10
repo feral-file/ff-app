@@ -8,12 +8,6 @@ extension PlaylistItemExt on PlaylistItem {
   /// Artist name or empty string when missing.
   String get artistName => artists?.map((a) => a.name).join(', ') ?? '';
 
-  /// A compact label suitable for UI lists.
-  ///
-  /// Keep this pure (no Flutter) so it’s safe to use in `domain/`.
-  String get compactLabel {
-    final artist = artistName;
-    if (artist.isEmpty) return title;
-    return '$title • $artist';
-  }
+  /// Preview/source URL for media (DP1 source).
+  String? get sourceUrl => source;
 }
