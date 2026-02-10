@@ -3,10 +3,11 @@ import 'dart:convert';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 /// FF1 device model (Bluetooth-connected device)
-/// 
+///
 /// Represents a physical FF1 device that can be paired and controlled
 /// via Bluetooth. This is a domain model independent of Flutter framework.
 class FF1Device {
+  /// Creates a FF1 device.
   const FF1Device({
     required this.name,
     required this.remoteId,
@@ -14,6 +15,28 @@ class FF1Device {
     this.topicId,
     this.branchName = 'release',
   });
+
+  /// Creates a FF1 device from JSON.
+  factory FF1Device.fromJson(Map<String, dynamic> json) {
+    return FF1Device(
+      name: json['name'] as String,
+      remoteId: json['remoteId'] as String,
+      deviceId: json['deviceId'] as String? ?? json['name'] as String,
+      topicId: json['topicId'] as String?,
+      branchName: json['branchName'] as String? ?? 'release',
+    );
+  }
+
+  /// Creates a FF1 device from BluetoothDevice.
+  factory FF1Device.fromBluetoothDevice(BluetoothDevice device) {
+    return FF1Device(
+      name: device.advName.isNotEmpty ? device.advName : device.remoteId.str,
+      remoteId: device.remoteId.str,
+      deviceId: device.advName.isNotEmpty
+          ? device.advName
+          : 'FF1_${device.remoteId.str.substring(0, 8)}',
+    );
+  }
 
   /// User-friendly name for the device
   final String name;
@@ -29,16 +52,6 @@ class FF1Device {
 
   /// Release branch (release, demo, qemu, etc.)
   final String branchName;
-
-  factory FF1Device.fromJson(Map<String, dynamic> json) {
-    return FF1Device(
-      name: json['name'] as String,
-      remoteId: json['remoteId'] as String,
-      deviceId: json['deviceId'] as String? ?? json['name'] as String,
-      topicId: json['topicId'] as String?,
-      branchName: json['branchName'] as String? ?? 'release',
-    );
-  }
 
   Map<String, dynamic> toJson() => {
         'name': name,

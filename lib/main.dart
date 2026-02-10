@@ -1,7 +1,9 @@
 import 'package:app/app/app.dart';
 import 'package:app/app/providers/app_provider_observer.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/config/remote_config_service.dart';
@@ -139,6 +141,12 @@ Future<void> main() async {
     initialRemoteConfig = cachedConfig.config;
   }
 
+  // Read onboarding flag once before starting the app to decide initial route.
+  final tempContainer = ProviderContainer();
+  final hasDoneOnboarding =
+      await tempContainer.read(hasDoneOnboardingProvider.future);
+  tempContainer.dispose();
+
   runApp(
     ProviderScope(
       observers: [AppProviderObserver()],
@@ -151,7 +159,11 @@ Future<void> main() async {
         remoteConfigServiceProvider.overrideWithValue(remoteConfigService),
         initialRemoteAppConfigProvider.overrideWithValue(initialRemoteConfig),
       ],
-      child: const App(),
+      child: App(
+        initialLocation: hasDoneOnboarding
+            ? Routes.home
+            : Routes.onboardingIntroducePage,
+      ),
     ),
   );
 }

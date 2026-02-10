@@ -1,24 +1,50 @@
+import 'dart:async';
+
 import 'package:app/app/providers/ff1_connection_providers.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/domain/models/wifi_point.dart';
 import 'package:app/theme/app_color.dart';
-import 'package:app/ui/ui_helper.dart';
+import 'package:app/widgets/appbars/setup_app_bar.dart';
+import 'package:app/widgets/buttons/primary_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gif_view/gif_view.dart';
+import 'package:go_router/go_router.dart';
+
+/// Payload for the enter wifi password page
+class EnterWifiPasswordPagePayload {
+  /// Constructor
+  EnterWifiPasswordPagePayload({
+    required this.onSubmitted,
+    required this.device,
+    required this.wifiAccessPoint,
+  });
+
+  /// The device to enter wifi password for
+  final FF1Device device;
+
+  /// The WiFi access point to enter wifi password for
+  final WifiPoint wifiAccessPoint;
+
+  /// The callback to call when the wifi password is submitted
+  final FutureOr<void> Function(String? topicId, Object? error)? onSubmitted;
+}
 
 /// Screen for entering WiFi password (Step 4 of the flow)
 ///
 /// User selects a network and enters password here
 class EnterWiFiPasswordScreen extends ConsumerStatefulWidget {
   const EnterWiFiPasswordScreen({
-    required this.device,
-    required this.networkSsid,
+    required this.payload,
     super.key,
   });
 
-  final FF1Device device;
-  final String networkSsid;
+  /// The payload for the enter wifi password page
+  final EnterWifiPasswordPagePayload payload;
 
   @override
   ConsumerState<EnterWiFiPasswordScreen> createState() =>
@@ -28,20 +54,64 @@ class EnterWiFiPasswordScreen extends ConsumerStatefulWidget {
 class _EnterWiFiPasswordScreenState
     extends ConsumerState<EnterWiFiPasswordScreen> {
   final _passwordController = TextEditingController();
-  bool _showPassword = false;
+  final _passwordFocusNode = FocusNode();
+  bool _isProcessing = false;
+
+  /// Parse SSID from networkSsid (may contain "ssid|security" format)
+  String _parseSSID(String ssid) {
+    if (ssid.contains('|')) {
+      final parts = ssid.split('|');
+      return parts.isNotEmpty ? parts.first : ssid;
+    }
+    return ssid;
+  }
+
+  /// Check if network is open (from "ssid|security" format)
+  bool _isOpenNetwork(String ssid) {
+    if (!ssid.contains('|')) {
+      return false;
+    }
+    final parts = ssid.split('|');
+    if (parts.length > 1) {
+      final security = parts[1].trim().toUpperCase();
+      return security == 'OPEN';
+    }
+    return false;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
+    if (isOpen) {
+      // Auto-submit for open networks
+      Future.microtask(() => _handleSendCredentials());
+    } else {
+      // Request focus on password field after first frame
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _passwordFocusNode.requestFocus();
+        }
+      });
+    }
+  }
 
   @override
   void dispose() {
     _passwordController.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
-  void _handleSendCredentials() async {
-    if (_passwordController.text.isEmpty) {
+  Future<void> _handleSendCredentials() async {
+    final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
+    final password = isOpen ? '' : _passwordController.text.trim();
+
+    if (!isOpen && password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'WiFi password is required to connect.',
+            'Please enter the WiFi password',
             style: AppTypography.body(context).white,
           ),
           backgroundColor: AppColor.error,
@@ -50,263 +120,239 @@ class _EnterWiFiPasswordScreenState
       return;
     }
 
+    setState(() {
+      _isProcessing = true;
+    });
+
     // Step 5 & 6: Send credentials and wait for device connection
     await ref.read(wifiConnectionProvider.notifier).sendCredentialsAndConnect(
-          device: widget.device,
-          ssid: widget.networkSsid,
-          password: _passwordController.text,
+          device: widget.payload.device,
+          ssid: _parseSSID(widget.payload.wifiAccessPoint.ssid),
+          password: password,
         );
   }
 
   @override
   Widget build(BuildContext context) {
     final connectionState = ref.watch(wifiConnectionProvider);
-    final isProcessing =
-        connectionState.status != WiFiConnectionStatus.selectingNetwork &&
-            connectionState.status != WiFiConnectionStatus.idle;
+    final isProcessing = _isProcessing ||
+        (connectionState.status != WiFiConnectionStatus.selectingNetwork &&
+            connectionState.status != WiFiConnectionStatus.idle);
+    final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
+    final parsedSsid = _parseSSID(widget.payload.wifiAccessPoint.ssid);
 
     // Listen for success and navigate
     ref.listen(wifiConnectionProvider, (previous, next) {
       if (next.status == WiFiConnectionStatus.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Device connected.',
-              style: AppTypography.body(context).white,
-            ),
-            backgroundColor: AppColor.primaryBlack,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        setState(() {
+          _isProcessing = false;
+        });
+
         // Navigate to connected devices screen
         Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.of(context).popUntil((route) => route.isFirst);
+          if (mounted && context.mounted) {
+            unawaited(context.push(Routes.connectedDevices));
           }
         });
       } else if (next.status == WiFiConnectionStatus.error) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              next.message ?? 'Connection failed.',
-              style: AppTypography.body(context).white,
-            ),
-            backgroundColor: AppColor.error,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        setState(() {
+          _isProcessing = false;
+        });
       }
     });
 
     return Scaffold(
-      backgroundColor: AppColor.auGreyBackground,
-      appBar: AppBar(
-        backgroundColor: AppColor.auGreyBackground,
-        title: Text(
-          'Enter WiFi password',
-          style: AppTypography.h4(context).white,
-        ),
-        elevation: 0,
+      appBar: const SetupAppBar(
+        title: 'Enter WiFi Password',
       ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            padding: EdgeInsets.all(LayoutConstants.space6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Device info card
-                Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(LayoutConstants.space4),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: PrimitivesTokens.colorsDarkGrey,
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: LayoutConstants.setupPageHorizontal,
+          ),
+          child: isProcessing
+              ? _buildProcessingView(parsedSsid)
+              : isOpen
+                  ? const SizedBox()
+                  : Stack(
                       children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.devices,
-                              color: AppColor.feralFileLightBlue,
-                              size: LayoutConstants.iconSizeLarge,
+                        CustomScrollView(
+                          slivers: [
+                            SliverToBoxAdapter(
+                              child: SizedBox(
+                                height: LayoutConstants.space6 +
+                                    LayoutConstants.space2,
+                              ),
                             ),
-                            SizedBox(width: LayoutConstants.space3),
-                            Expanded(
+                            SliverToBoxAdapter(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    widget.device.name,
-                                    style: AppTypography.h4(context).white,
+                                    parsedSsid,
+                                    style: AppTypography.body(context).white,
                                   ),
-                                  SizedBox(height: LayoutConstants.space1),
-                                  Text(
-                                    'ID: ${widget.device.deviceId}',
-                                    style: AppTypography.bodySmall(context).grey,
+                                  SizedBox(height: LayoutConstants.space4),
+                                  PasswordTextField(
+                                    controller: _passwordController,
+                                    focusNode: _passwordFocusNode,
+                                    style: AppTypography.body(context).white,
+                                    hintText: 'Password',
+                                    defaultObscure: false,
+                                    isEnabled: !isProcessing,
+                                    onChanged: (_) {},
                                   ),
                                 ],
                               ),
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                SizedBox(height: LayoutConstants.space8),
-
-                // Network name
-                Text(
-                  'WiFi Network',
-                  style: AppTypography.h4(context).white,
-                ),
-                SizedBox(height: LayoutConstants.space2),
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(LayoutConstants.space3),
-                  decoration: BoxDecoration(
-                    color: AppColor.auLightGrey,
-                    border: Border.all(color: AppColor.auGrey),
-                    borderRadius: BorderRadius.circular(LayoutConstants.space2),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.wifi, color: AppColor.feralFileLightBlue),
-                      SizedBox(width: LayoutConstants.space3),
-                      Expanded(
-                        child: Text(
-                          widget.networkSsid,
-                          style: AppTypography.body(context).black,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: LayoutConstants.space6),
-
-                // Password field
-                Text(
-                  'Password',
-                  style: AppTypography.h4(context).white,
-                ),
-                SizedBox(height: LayoutConstants.space2),
-                TextField(
-                  controller: _passwordController,
-                  enabled: !isProcessing,
-                  obscureText: !_showPassword,
-                  decoration: InputDecoration(
-                    hintText: 'Enter WiFi password',
-                    border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(LayoutConstants.space2),
-                    ),
-                    prefixIcon: const Icon(Icons.lock),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _showPassword ? Icons.visibility : Icons.visibility_off,
-                      ),
-                      onPressed: () {
-                        setState(() => _showPassword = !_showPassword);
-                      },
-                    ),
-                  ),
-                ),
-                SizedBox(height: LayoutConstants.space8),
-
-                // Status message
-                if (connectionState.message != null &&
-                    connectionState.status !=
-                        WiFiConnectionStatus.selectingNetwork &&
-                    connectionState.status != WiFiConnectionStatus.idle) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.all(LayoutConstants.space4),
-                    decoration: BoxDecoration(
-                      color:
-                          connectionState.status == WiFiConnectionStatus.error
-                              ? AppColor.lightRed
-                              : AppColor.feralFileLightBlue,
-                      border: Border.all(
-                        color:
-                            connectionState.status == WiFiConnectionStatus.error
-                                ? AppColor.error
-                                : AppColor.feralFileLightBlue,
-                      ),
-                      borderRadius:
-                          BorderRadius.circular(LayoutConstants.space2),
-                    ),
-                    child: Row(
-                      children: [
-                        if (connectionState.status ==
-                            WiFiConnectionStatus.error)
-                          Icon(
-                            Icons.error_outline,
-                            color: AppColor.error,
-                          )
-                        else if (connectionState.status ==
-                            WiFiConnectionStatus.success)
-                          Icon(
-                            Icons.check_circle_outline,
-                            color: AppColor.feralFileHighlight,
-                          )
-                        else
-                          loadingIndicator(
-                            valueColor: AppColor.primaryBlack,
-                            size: LayoutConstants.iconSizeMedium,
-                          ),
-                        SizedBox(width: LayoutConstants.space3),
-                        Expanded(
-                          child: Text(
-                            connectionState.message!,
-                            style: AppTypography.bodySmall(context).black,
+                        Positioned(
+                          bottom: LayoutConstants.space4,
+                          left: 0,
+                          right: 0,
+                          child: PrimaryAsyncButton(
+                            padding: EdgeInsets.symmetric(
+                              vertical: LayoutConstants.space3 +
+                                  LayoutConstants.space1,
+                            ),
+                            enabled: true,
+                            onTap: _handleSendCredentials,
+                            color: AppColor.white,
+                            text: 'Submit',
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  SizedBox(height: LayoutConstants.space6),
-                ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProcessingView(String ssid) {
+    return SizedBox(
+      width: double.infinity,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          GifView.asset(
+            'assets/images/loading.gif',
+            width: 139,
+            height: 92.67,
+            frameRate: 12,
+          ),
+          SizedBox(height: LayoutConstants.space16),
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: 'Connecting to ',
+                  style: AppTypography.h2(context).white.regular,
+                ),
+                TextSpan(
+                  text: ssid,
+                  style: AppTypography.h2(context).white.bold,
+                ),
+                TextSpan(
+                  text: '...',
+                  style: AppTypography.h2(context).white.regular,
+                ),
               ],
             ),
           ),
-
-          // Send button - floating at bottom
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppColor.white,
-              ),
-              padding: EdgeInsets.all(LayoutConstants.space6),
-              child: SizedBox(
-                width: double.infinity,
-                height: LayoutConstants.space12,
-                child: ElevatedButton(
-                  onPressed: isProcessing ? null : _handleSendCredentials,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (isProcessing)
-                        loadingIndicator(
-                          valueColor: AppColor.white,
-                          size: LayoutConstants.iconSizeMedium,
-                        )
-                      else
-                        const Icon(Icons.send, color: AppColor.white),
-                      SizedBox(width: LayoutConstants.space2),
-                      Text(
-                        isProcessing ? 'Connecting...' : 'Connect to WiFi',
-                        style: AppTypography.body(context).white,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
         ],
+      ),
+    );
+  }
+}
+
+/// PasswordTextField widget - to enter password, with button to change visibility
+class PasswordTextField extends StatefulWidget {
+  const PasswordTextField({
+    required this.controller,
+    super.key,
+    this.defaultObscure = true,
+    this.style,
+    this.hintText,
+    this.onChanged,
+    this.onSubmitted,
+    this.onVisibilityChanged,
+    this.isEnabled = true,
+    this.focusNode,
+  });
+
+  final TextEditingController controller;
+  final TextStyle? style;
+  final bool defaultObscure;
+  final String? hintText;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final ValueChanged<bool>? onVisibilityChanged;
+  final bool isEnabled;
+  final FocusNode? focusNode;
+
+  @override
+  State<PasswordTextField> createState() => _PasswordTextFieldState();
+}
+
+class _PasswordTextFieldState extends State<PasswordTextField> {
+  late bool _isObscure;
+
+  @override
+  void initState() {
+    super.initState();
+    _isObscure = widget.defaultObscure;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      focusNode: widget.focusNode,
+      autocorrect: false,
+      enableSuggestions: false,
+      controller: widget.controller,
+      onChanged: widget.onChanged,
+      onSubmitted: widget.onSubmitted,
+      obscureText: _isObscure,
+      style: widget.style,
+      enabled: widget.isEnabled,
+      decoration: InputDecoration(
+        hintText: widget.hintText,
+        hintStyle: widget.style,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(
+            LayoutConstants.space2 +
+                LayoutConstants.space2 +
+                LayoutConstants.space1,
+          ),
+          borderSide: BorderSide.none,
+        ),
+        fillColor: AppColor.primaryBlack,
+        focusColor: AppColor.primaryBlack,
+        filled: true,
+        constraints: BoxConstraints(
+          minHeight: LayoutConstants.minTouchTarget +
+              LayoutConstants.space4 +
+              LayoutConstants.space4,
+        ),
+        contentPadding: EdgeInsets.symmetric(
+          vertical: LayoutConstants.space6,
+          horizontal: LayoutConstants.space4,
+        ),
+        suffixIcon: IconButton(
+          icon: Icon(
+            _isObscure ? Icons.visibility_off : Icons.visibility,
+            color: AppColor.greyMedium,
+            size: LayoutConstants.iconSizeMedium,
+          ),
+          onPressed: () {
+            setState(() {
+              _isObscure = !_isObscure;
+              widget.onVisibilityChanged?.call(_isObscure);
+            });
+          },
+        ),
       ),
     );
   }

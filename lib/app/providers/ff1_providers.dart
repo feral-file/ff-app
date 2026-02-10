@@ -12,7 +12,7 @@ import 'package:logging/logging.dart';
 // ============================================================================
 
 /// Retry logic for BLE operations (scan, connect, commands).
-/// 
+///
 /// Retries up to 3 times with exponential backoff (1s, 2s, 4s).
 /// Does not retry on Errors (programming bugs).
 Duration? _bleRetry(int retryCount, Object error) {
@@ -20,10 +20,10 @@ Duration? _bleRetry(int retryCount, Object error) {
   if (error is Error) {
     return null;
   }
-  
+
   // Max 3 retries
   if (retryCount >= 3) return null;
-  
+
   // Exponential backoff: 1s, 2s, 4s
   return Duration(seconds: 1 << retryCount);
 }
@@ -200,7 +200,7 @@ class FF1BleControl {
   }
 
   /// Get device information
-  /// 
+  ///
   /// Note: When using this method directly, consider using ff1BleSendCommandProvider
   /// for automatic retry via Riverpod. This method no longer includes manual retry.
   Future<String> getInfo({
@@ -303,6 +303,8 @@ class FF1ScanState {
   }
 }
 
+final _ff1ScanLog = Logger('FF1ScanNotifier');
+
 /// FF1 BLE scan state notifier
 class FF1ScanNotifier extends Notifier<FF1ScanState> {
   FF1ScanNotifier();
@@ -325,7 +327,8 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
     try {
       final devices = await _control.scan(timeout: timeout);
       state = state.copyWith(isScanning: false, devices: devices);
-    } catch (e) {
+    } on Exception catch (e) {
+      _ff1ScanLog.severe('Failed to scan for devices', e);
       state = state.copyWith(isScanning: false, error: e);
     }
   }
@@ -344,27 +347,6 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
 /// FF1 scan state provider
 final ff1ScanProvider = NotifierProvider<FF1ScanNotifier, FF1ScanState>(
   FF1ScanNotifier.new,
-);
-
-// ============================================================================
-// Auto-dispose BLE Operation Providers (with automatic retry)
-// ============================================================================
-
-/// Scan for FF1 devices (auto-dispose, with retry).
-/// 
-/// This provider automatically disposes after use (BLE scan is one-time).
-/// Uses Riverpod's automatic retry mechanism (3 attempts with exponential backoff).
-/// 
-/// Usage:
-/// ```dart
-/// final devices = await ref.read(ff1BleScanProvider.future);
-/// ```
-final ff1BleScanProvider = FutureProvider.autoDispose<List<BluetoothDevice>>(
-  retry: _bleRetry,
-  (ref) async {
-    final control = ref.watch(ff1ControlProvider);
-    return control.scan();
-  },
 );
 
 /// Parameters for BLE connection
@@ -390,10 +372,10 @@ class FF1BleConnectParams {
 }
 
 /// Connect to FF1 device via BLE (auto-dispose, with retry).
-/// 
+///
 /// This provider automatically disposes after use (BLE connect is one-time).
 /// Uses Riverpod's automatic retry mechanism (3 attempts with exponential backoff).
-/// 
+///
 /// Usage:
 /// ```dart
 /// await ref.read(
@@ -405,7 +387,7 @@ final ff1BleConnectProvider = FutureProvider.autoDispose
   retry: _bleRetry,
   (ref, params) async {
     final control = ref.watch(ff1ControlProvider);
-    
+
     // Riverpod handles retry, so we set maxRetries to 0 in transport
     await control.connect(
       device: params.device,
@@ -444,10 +426,10 @@ class FF1BleCommandParams<T extends FF1BleRequest> {
 }
 
 /// Send BLE command to device (auto-dispose, with retry).
-/// 
+///
 /// This provider automatically disposes after use.
 /// Uses Riverpod's automatic retry mechanism.
-/// 
+///
 /// Usage:
 /// ```dart
 /// final topicId = await ref.read(
@@ -463,7 +445,7 @@ final ff1BleSendCommandProvider = FutureProvider.autoDispose
   retry: _bleRetry,
   (ref, params) async {
     final transport = ref.watch(ff1TransportProvider);
-    
+
     return transport.sendCommand(
       device: params.device,
       command: params.command,

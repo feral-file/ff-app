@@ -20,8 +20,11 @@ abstract class Routes {
   static const ff1DevicePickerPage = '/ff1-device-picker';
 
   /// Handle Bluetooth device scan deeplink screen route path.
-  static const handleBluetoothDeviceScanDeeplinkScreen =
+  static const handleBluetoothDeviceScanDeeplinkPage =
       '/handle-bluetooth-device-scan-deeplink';
+
+  /// Connect FF1 page route path.
+  static const connectFF1Page = '/connect-ff1';
 
   /// Add address input page route path.
   static const addAddressPage = '/add-address';
@@ -49,6 +52,9 @@ abstract class Routes {
 
   /// Connected devices route path.
   static const connectedDevices = '/connected-devices';
+
+  /// Start setup FF1 route path
+  static const startSetupFf1 = '/start-setup-ff1';
 
   /// Scan WiFi networks route path (step 1-3 of WiFi connection).
   static const scanWifiNetworks = '/scan-wifi-networks';
@@ -81,8 +87,11 @@ abstract class RouteNames {
   static const ff1DevicePicker = 'ff1-device-picker';
 
   /// Handle Bluetooth device scan deeplink screen route name.
-  static const handleBluetoothDeviceScanDeeplinkScreen =
+  static const handleBluetoothDeviceScanDeeplink =
       'handle-bluetooth-device-scan-deeplink';
+
+  /// Connect FF1 page route name.
+  static const connectFF1 = 'connect-ff1';
 
   /// Add address input page route name.
   static const addAddress = 'add-address';
@@ -119,6 +128,9 @@ abstract class RouteNames {
 
   /// Connected devices route name.
   static const connectedDevices = 'connected-devices';
+
+  /// Start setup FF1 route name.
+  static const startSetupFf1 = 'start-setup-ff1';
 
   /// Scan WiFi networks route name (step 1-3 of WiFi connection).
   static const scanWifiNetworks = 'scan-wifi-networks';

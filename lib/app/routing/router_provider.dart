@@ -1,12 +1,12 @@
 import 'package:app/app/route_observer.dart';
 import 'package:app/app/routing/routes.dart';
-import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/ui/screens/add_address_screen.dart';
 import 'package:app/ui/screens/add_alias_screen.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
 import 'package:app/ui/screens/all_playlists_screen.dart';
 import 'package:app/ui/screens/channel_detail_screen.dart';
 import 'package:app/ui/screens/connected_devices_screen.dart';
+import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
 import 'package:app/ui/screens/ff1_setup/ff1_device_picker_page.dart';
 import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/ui/screens/ff1_test_screen.dart';
@@ -18,9 +18,11 @@ import 'package:app/ui/screens/playlist_detail_screen.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
 import 'package:app/ui/screens/send_wifi_credentials_screen.dart';
 import 'package:app/ui/screens/work_detail_screen.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:logging/logging.dart';
+
+final _log = Logger('RouterProvider');
 
 /// Master router provider using go_router.
 /// This is the single source of truth for navigation in the app.
@@ -51,7 +53,9 @@ final routerProvider =
             path: 'introduce',
             name: RouteNames.onboardingIntroduce,
             builder: (context, state) {
-              final payload = state.extra! as IntroducePagePayload;
+              final payload = state.extra is IntroducePagePayload
+                  ? state.extra! as IntroducePagePayload
+                  : IntroducePagePayload();
               return IntroducePage(payload: payload);
             },
           ),
@@ -59,7 +63,9 @@ final routerProvider =
             path: 'add-address',
             name: RouteNames.onboardingAddAddress,
             builder: (context, state) {
-              final payload = state.extra! as OnboardingAddAddressPagePayload;
+              final payload = state.extra is OnboardingAddAddressPagePayload
+                  ? state.extra! as OnboardingAddAddressPagePayload
+                  : OnboardingAddAddressPagePayload();
               return OnboardingAddAddressPage(payload: payload);
             },
           ),
@@ -90,10 +96,16 @@ final routerProvider =
         path: Routes.addAliasPage,
         name: RouteNames.addAlias,
         builder: (context, state) {
+          if (state.extra == null) {
+            _log.warning('AddAliasScreen: extra is null');
+            // Back to previous page
+            context.pop();
+          }
+
           final payload = state.extra! as AddAliasScreenPayload;
           if (payload.address.isEmpty) {
-            // If no address provided, go back
-            return const AddAddressScreen();
+            _log.warning('AddAliasScreen: address is empty');
+            context.pop();
           }
 
           return AddAliasScreen(payload: payload);
@@ -179,19 +191,47 @@ final routerProvider =
         builder: (context, state) => const ConnectedDevicesScreen(),
       ),
 
+      // Start setup FF1 route
+      GoRoute(
+        path: Routes.startSetupFf1,
+        name: RouteNames.startSetupFf1,
+        builder: (context, state) {
+          final payload = state.extra is StartSetupFf1PagePayload
+              ? state.extra! as StartSetupFf1PagePayload
+              : StartSetupFf1PagePayload();
+          return StartSetupFf1Page(payload: payload);
+        },
+      ),
+
+      // Connect FF1 page route.
+      GoRoute(
+        path: Routes.connectFF1Page,
+        name: RouteNames.connectFF1,
+        builder: (context, state) {
+          if (state.extra == null) {
+            _log.warning('ConnectFF1Page: extra is null');
+            // Back to previous page
+            context.pop();
+          }
+
+          final payload = state.extra! as ConnectFF1PagePayload;
+          return ConnectFF1Page(payload: payload);
+        },
+      ),
+
       // Scan WiFi networks route (step 1-3 of connection)
       GoRoute(
         path: Routes.scanWifiNetworks,
         name: RouteNames.scanWifiNetworks,
         builder: (context, state) {
-          final deviceJson = state.extra as Map<String, dynamic>?;
-          if (deviceJson == null) {
-            return const Scaffold(
-              body: Center(child: Text('Device not found')),
-            );
+          if (state.extra == null) {
+            _log.warning('ScanWiFiNetworkScreen: extra is null');
+            // Back to previous page
+            context.pop();
           }
-          final device = FF1Device.fromJson(deviceJson);
-          return ScanWiFiNetworkScreen(device: device);
+
+          final payload = state.extra! as ScanWifiNetworkPagePayload;
+          return ScanWiFiNetworkScreen(payload: payload);
         },
       ),
 
@@ -200,19 +240,8 @@ final routerProvider =
         path: Routes.enterWifiPassword,
         name: RouteNames.enterWifiPassword,
         builder: (context, state) {
-          final args = state.extra as Map<String, dynamic>?;
-          if (args == null) {
-            return const Scaffold(
-              body: Center(child: Text('Invalid arguments')),
-            );
-          }
-          final deviceJson = args['device'] as Map<String, dynamic>;
-          final networkSsid = args['network'] as String;
-          final device = FF1Device.fromJson(deviceJson);
-          return EnterWiFiPasswordScreen(
-            device: device,
-            networkSsid: networkSsid,
-          );
+          final payload = state.extra! as EnterWifiPasswordPagePayload;
+          return EnterWiFiPasswordScreen(payload: payload);
         },
       ),
 

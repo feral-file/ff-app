@@ -121,7 +121,7 @@ class OnboardingAddAddressPage extends StatelessWidget {
   Future<void> _onNext(BuildContext context) async {
     if (payload.deeplink != null && payload.deeplink!.isNotEmpty) {
       // injector<ConfigurationService>().setDoneOnboarding(true);
-      await context.push(Routes.handleBluetoothDeviceScanDeeplinkScreen);
+      await context.push(Routes.handleBluetoothDeviceScanDeeplinkPage);
       if (context.mounted) {
         await context.push(Routes.scanWifiNetworks);
       }
