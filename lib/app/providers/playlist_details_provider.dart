@@ -77,8 +77,12 @@ class PlaylistDetailsNotifier
       unawaited(_dbSubscription?.cancel());
       _dbSubscription = null;
     });
-    _setupDatabaseListener();
-    unawaited(_loadInitial(limit: _pageSize, offset: 0));
+
+    unawaited(
+      Future.microtask(() {
+        _setupDatabaseListener();
+      }),
+    );
     return const AsyncValue.loading();
   }
 

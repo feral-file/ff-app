@@ -60,7 +60,22 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
   Widget build(BuildContext context) {
     super.build(context);
 
-    final worksState = ref.watch(worksProvider);
+    final slice = ref.watch(
+      worksProvider.select((s) => (
+        works: s.works,
+        isLoading: s.isLoading,
+        error: s.error,
+        hasMore: s.hasMore,
+        isLoadingMore: s.isLoadingMore,
+      )),
+    );
+    final worksState = WorksState(
+      works: slice.works,
+      isLoading: slice.isLoading,
+      error: slice.error,
+      hasMore: slice.hasMore,
+      isLoadingMore: slice.isLoadingMore,
+    );
 
     return RefreshIndicator(
       onRefresh: _onRefresh,

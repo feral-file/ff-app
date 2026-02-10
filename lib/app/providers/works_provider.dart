@@ -122,7 +122,7 @@ class WorksNotifier extends Notifier<WorksState> {
       _watchSub = null;
     });
 
-    _setupDatabaseWatch();
+    unawaited(Future.microtask(_setupDatabaseWatch));
     return WorksState.initial();
   }
 

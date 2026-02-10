@@ -63,16 +63,27 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
   Widget build(BuildContext context) {
     super.build(context);
 
-    // Watch both providers (curated = dp1, personal = addressBased).
-    final curatedState = ref.watch(playlistsProvider(PlaylistType.dp1));
-    final personalState = ref.watch(
-      playlistsProvider(PlaylistType.addressBased),
+    // Watch slices to avoid rebuilds when unrelated state changes.
+    final curatedSlice = ref.watch(
+      playlistsProvider(PlaylistType.dp1).select((s) => (
+        playlists: s.playlists,
+        isLoading: s.isLoading,
+        error: s.error,
+        hasMore: s.hasMore,
+      )),
     );
-    final curatedPlaylists = curatedState.playlists;
-    final personalPlaylists = personalState.playlists;
-    final isLoading = curatedState.isLoading || personalState.isLoading;
-    final error = curatedState.error ?? personalState.error;
-    final hasMore = curatedState.hasMore;
+    final personalSlice = ref.watch(
+      playlistsProvider(PlaylistType.addressBased).select((s) => (
+        playlists: s.playlists,
+        isLoading: s.isLoading,
+        error: s.error,
+      )),
+    );
+    final curatedPlaylists = curatedSlice.playlists;
+    final personalPlaylists = personalSlice.playlists;
+    final isLoading = curatedSlice.isLoading || personalSlice.isLoading;
+    final error = curatedSlice.error ?? personalSlice.error;
+    final hasMore = curatedSlice.hasMore;
 
     // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics.
     // Parent NestedScrollView handles scrolling.

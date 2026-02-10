@@ -116,7 +116,7 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
       _watchSub = null;
     });
 
-    _setupDatabaseWatch();
+    unawaited(Future.microtask(_setupDatabaseWatch));
     return ChannelPreviewState.initial();
   }
 

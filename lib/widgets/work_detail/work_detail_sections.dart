@@ -86,13 +86,15 @@ class _SectionExpandedWidgetState extends State<SectionExpandedWidget> {
             child: ColoredBox(
               color: Colors.transparent,
               child: Padding(
-                padding: widget.headerPadding ??
+                padding:
+                    widget.headerPadding ??
                     EdgeInsets.only(top: LayoutConstants.space4),
                 child: Row(
                   children: [
                     Text(
                       widget.header ?? '',
-                      style: widget.headerStyle ??
+                      style:
+                          widget.headerStyle ??
                           AppTypography.body(context).white,
                     ),
                     const Spacer(),
@@ -187,7 +189,10 @@ class MetaDataItem extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               maxLines: 3,
               style: onValueTap != null
-                  ? linkStyle ?? AppTypography.body(context).copyWith(color: AppColor.feralFileHighlight)
+                  ? linkStyle ??
+                        AppTypography.body(
+                          context,
+                        ).copyWith(color: AppColor.feralFileHighlight)
                   : valueStyle ?? AppTypography.body(context).white,
             ),
           ),
@@ -265,7 +270,9 @@ class ProvenanceItem extends StatelessWidget {
                       border: Border.all(
                         color: AppColor.feralFileHighlight,
                       ),
-                      borderRadius: BorderRadius.circular(LayoutConstants.space16),
+                      borderRadius: BorderRadius.circular(
+                        LayoutConstants.space16,
+                      ),
                     ),
                     child: Text(
                       'View',
@@ -360,8 +367,7 @@ Widget buildWorkDetailTokenOwnershipSection(
   final ownerItem = token.owners?.items.firstWhereOrNull(
     (e) => ownerAddresses.contains(e.ownerAddress),
   );
-  if (ownerItem == null ||
-      (int.tryParse(ownerItem.quantity) ?? 0) <= 0) {
+  if (ownerItem == null || (int.tryParse(ownerItem.quantity) ?? 0) <= 0) {
     return const SizedBox.shrink();
   }
 
@@ -410,7 +416,8 @@ Widget buildWorkDetailProvenanceSection(
           children: [
             for (var i = 0; i < provenances.length; i++) ...[
               ProvenanceItem(
-                title: _maskAddress(provenances[i].toAddress ?? '') +
+                title:
+                    _maskAddress(provenances[i].toAddress ?? '') +
                     (youAddresses.contains(provenances[i].toAddress)
                         ? ' (you)'
                         : ''),
