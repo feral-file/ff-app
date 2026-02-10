@@ -1,196 +1,217 @@
-import 'dart:async';
-import 'dart:collection';
-
-import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
-import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:logging/logging.dart';
-import 'package:synchronized/synchronized.dart';
-
-/// Task for enriching a playlist item with indexer token data.
-class EnrichmentTask {
-  /// Creates an enrichment task.
-  const EnrichmentTask({
-    required this.playlistId,
-    required this.position,
-    required this.dp1Item,
-    required this.cid,
-  });
-
-  /// Playlist ID this item belongs to.
-  final String playlistId;
-
-  /// Position in playlist.
-  final int position;
-
-  /// DP1 playlist item (bare).
-  final DP1PlaylistItem dp1Item;
-
-  /// Computed CID for indexer lookup.
-  final String cid;
-}
 
 /// Service for enriching playlist items with indexer token data.
 ///
-/// Uses a locked high/low priority queue to batch indexer requests:
-/// - High priority: first 8 items per playlist (for carousel preview)
-/// - Low priority: remaining items
-/// - Batch size: 50 tokens per indexer request
+/// Uses SQLite as the single source of truth instead of in-memory queues.
+/// - Loads bare items (no token enrichment) from database
+/// - Prioritizes: high (first 8 per playlist), then low priority items
+/// - Enriches with tokens from indexer
+/// - Updates items back to database
 class DP1PlaylistItemsEnrichmentService {
   /// Creates a DP1PlaylistItemsEnrichmentService.
   DP1PlaylistItemsEnrichmentService({
     required IndexerService indexerService,
     required DatabaseService databaseService,
+    bool Function()? shouldContinue,
   })  : _indexerService = indexerService,
         _databaseService = databaseService,
+        _shouldContinue = shouldContinue ?? _alwaysContinue,
         _log = Logger('DP1PlaylistItemsEnrichmentService');
 
   final IndexerService _indexerService;
   final DatabaseService _databaseService;
+  final bool Function() _shouldContinue;
   final Logger _log;
 
-  /// Lock for queue operations.
-  final Lock _lock = Lock();
+  static bool _alwaysContinue() => true;
 
-  /// High priority queue (first 8 items per playlist).
-  final Queue<EnrichmentTask> _highQueue = Queue<EnrichmentTask>();
+  /// Maximum high-priority items per playlist.
+  static const int highPriorityPerPlaylist = 8;
 
-  /// Low priority queue (remaining items).
-  final Queue<EnrichmentTask> _lowQueue = Queue<EnrichmentTask>();
+  /// Maximum items to load and process per batch.
+  static const int maxBatchSize = 50;
 
-  /// Number of high-priority items per playlist.
-  static const int highPerPlaylist = 8;
+  /// Deprecated: kept for backward compatibility with tests.
+  @Deprecated('Use highPriorityPerPlaylist instead')
+  static const int highPerPlaylist = highPriorityPerPlaylist;
 
-  /// Batch size for indexer requests.
-  static const int indexerBatchSize = 50;
+  /// Deprecated: kept for backward compatibility with tests.
+  @Deprecated('Use maxBatchSize instead')
+  static const int indexerBatchSize = maxBatchSize;
 
-  /// Enqueue tasks for a playlist's items.
-  ///
-  /// First [highPerPlaylist] items go to high queue, rest go to low queue.
+  /// Placeholder enqueuePlaylist for backward compatibility.
+  /// No-op since we now use database as source of truth.
   Future<void> enqueuePlaylist({
     required String playlistId,
-    required List<DP1PlaylistItem> items,
+    required dynamic items,
   }) async {
-    await _lock.synchronized(() {
-      for (var i = 0; i < items.length; i++) {
-        final item = items[i];
-        final cid = item.cid;
-        if (cid == null || cid.isEmpty) {
-          _log.fine('Skipping item without CID: ${item.id}');
-          continue;
-        }
-
-        final task = EnrichmentTask(
-          playlistId: playlistId,
-          position: i,
-          dp1Item: item,
-          cid: cid,
-        );
-
-        if (i < highPerPlaylist) {
-          _highQueue.add(task);
-        } else {
-          _lowQueue.add(task);
-        }
-      }
-      _log.info(
-        'Enqueued ${items.length} items for playlist $playlistId '
-        '(high: ${_highQueue.length}, low: ${_lowQueue.length})',
-      );
-    });
+    _log.fine('enqueuePlaylist called (no-op; using database as source)');
   }
 
-  /// Take a batch of tasks from queues (high priority first).
-  ///
-  /// Returns up to [indexerBatchSize] tasks, draining high queue first,
-  /// then filling remaining capacity from low queue.
-  Future<List<EnrichmentTask>> _takeBatch() async {
-    return _lock.synchronized(() {
-      final batch = <EnrichmentTask>[];
-
-      // Drain high queue first
-      while (_highQueue.isNotEmpty && batch.length < indexerBatchSize) {
-        batch.add(_highQueue.removeFirst());
-      }
-
-      // Fill remaining capacity from low queue
-      while (_lowQueue.isNotEmpty && batch.length < indexerBatchSize) {
-        batch.add(_lowQueue.removeFirst());
-      }
-
-      return batch;
-    });
-  }
-
-  /// Check if queues are empty.
-  Future<bool> isEmpty() async {
-    return _lock.synchronized(() {
-      return _highQueue.isEmpty && _lowQueue.isEmpty;
-    });
-  }
-
-  /// Get queue sizes (for logging/debugging).
-  Future<({int high, int low})> getQueueSizes() async {
-    return _lock.synchronized(() {
-      return (high: _highQueue.length, low: _lowQueue.length);
-    });
-  }
-
-  /// Clear all queues.
+  /// Placeholder clear for backward compatibility.
+  /// No-op since we now use database as source of truth.
   Future<void> clear() async {
-    await _lock.synchronized(() {
-      _highQueue.clear();
-      _lowQueue.clear();
-    });
+    _log.fine('clear called (no-op; using database as source)');
   }
 
-  /// Process all queued enrichment tasks.
+  /// Process all bare items from database: high priority first, then low.
   ///
-  /// Drains queues in batches of [indexerBatchSize], fetches tokens from
-  /// indexer, converts to enriched [PlaylistItem]s, and batch-upserts to DB.
-  Future<void> processAll() async {
+  /// Loads bare items (only title, no enrichment fields) from database,
+  /// prioritizes high (first 8 per playlist), then processes batches.
+  Future<bool> processAll() async {
     var totalProcessed = 0;
     var batchCount = 0;
+    var totalUpdated = 0;
 
+    // Process high-priority items first by repeatedly pulling from DB.
+    _log.info('Loading high-priority items from database (paged)...');
     while (true) {
-      final batch = await _takeBatch();
-      if (batch.isEmpty) {
-        break;
+      if (!_shouldContinue()) {
+        _log.info('Enrichment paused before high-priority batch');
+        return false;
       }
+      final highItems = await _loadHighPriorityBareItems();
+      if (highItems.isEmpty) break;
 
       batchCount++;
-      final sizes = await getQueueSizes();
-      _log.info(
-        'Processing batch $batchCount: ${batch.length} tasks '
-        '(remaining: high=${sizes.high}, low=${sizes.low})',
-      );
 
+      _log.info(
+        'Processing high-priority batch $batchCount: '
+        '${highItems.length} items',
+      );
       try {
-        await _processBatch(batch);
-        totalProcessed += batch.length;
+        final updated = await _processBatch(highItems);
+        totalProcessed += highItems.length;
+        totalUpdated += updated;
+        if (updated == 0) {
+          _log.warning(
+            'No high-priority items were updated in batch $batchCount; '
+            'stopping to avoid reprocessing the same rows.',
+          );
+          break;
+        }
       } on Exception catch (e, stack) {
-        _log.severe('Failed to process batch $batchCount', e, stack);
-        // Continue processing remaining batches even if one fails
+        _log.severe(
+          'Failed to process high-priority batch $batchCount',
+          e,
+          stack,
+        );
+      }
+    }
+
+    // Then process low-priority items by repeatedly pulling from DB.
+    _log.info('Loading low-priority items from database (paged)...');
+    while (true) {
+      if (!_shouldContinue()) {
+        _log.info('Enrichment paused before low-priority batch');
+        return false;
+      }
+      final lowItems = await _loadLowPriorityBareItems();
+      if (lowItems.isEmpty) break;
+
+      batchCount++;
+
+      _log.info(
+        'Processing low-priority batch $batchCount: '
+        '${lowItems.length} items',
+      );
+      try {
+        final updated = await _processBatch(lowItems);
+        totalProcessed += lowItems.length;
+        totalUpdated += updated;
+        if (updated == 0) {
+          _log.warning(
+            'No low-priority items were updated in batch $batchCount; '
+            'stopping to avoid reprocessing the same rows.',
+          );
+          break;
+        }
+      } on Exception catch (e, stack) {
+        _log.severe(
+          'Failed to process low-priority batch $batchCount',
+          e,
+          stack,
+        );
       }
     }
 
     _log.info(
       'Enrichment complete: '
-      'processed $totalProcessed items in $batchCount batches',
+      'processed $totalProcessed items, '
+      'updated $totalUpdated items in $batchCount batches',
     );
+    return true;
   }
 
-  /// Process a single batch of enrichment tasks.
-  Future<void> _processBatch(List<EnrichmentTask> batch) async {
-    if (batch.isEmpty) return;
+  /// Load high-priority bare items from database.
+  ///
+  /// Returns first [highPriorityPerPlaylist] items per playlist that are bare
+  /// (have only title set, no enrichment fields), ordered by creation date.
+  Future<List<_BareItem>> _loadHighPriorityBareItems() async {
+    final rows = await _databaseService.loadHighPriorityBareItems(
+      maxPerPlaylist: highPriorityPerPlaylist,
+      maxTotal: maxBatchSize,
+    );
+    return rows
+        .map((row) {
+          final cid = _databaseService.buildTokenCidFromProvenanceJson(row.$2);
+          if (cid == null || cid.isEmpty) {
+            return null;
+          }
 
-    // Extract CIDs for indexer lookup
-    final cids = batch.map((task) => task.cid).toList();
+          return _BareItem(
+              itemId: row.$1,
+              cid: cid,
+              playlistId: row.$3,
+              position: row.$4,
+            );
+        })
+        .whereType<_BareItem>()
+        .toList();
+  }
+
+  /// Load low-priority bare items from database.
+  ///
+  /// Returns bare items (have only title set, no enrichment fields) beyond
+  /// the high-priority set, ordered by creation date.
+  Future<List<_BareItem>> _loadLowPriorityBareItems() async {
+    final rows = await _databaseService.loadLowPriorityBareItems(
+      maxPerPlaylist: highPriorityPerPlaylist,
+      maxTotal: maxBatchSize,
+    );
+    return rows
+        .map((row) {
+          final cid = _databaseService.buildTokenCidFromProvenanceJson(row.$2);
+          if (cid == null || cid.isEmpty) {
+            return null;
+          }
+
+          return _BareItem(
+              itemId: row.$1,
+              cid: cid,
+              playlistId: row.$3,
+              position: row.$4,
+            );
+        })
+        .whereType<_BareItem>()
+        .toList();
+  }
+
+  /// Process a batch of bare items.
+  ///
+  /// Fetches tokens from indexer and updates items in database.
+  Future<int> _processBatch(List<_BareItem> batch) async {
+    if (!_shouldContinue()) return 0;
+    if (batch.isEmpty) return 0;
+
+    // Extract and de-dupe CIDs for indexer lookup.
+    final cids = batch.map((item) => item.cid).toSet().toList();
 
     // Fetch tokens from indexer
+    _log.fine('Fetching ${cids.length} tokens from indexer...');
     final tokens = await _indexerService.fetchTokensByCIDs(tokenCids: cids);
     final tokensByCid = <String, AssetToken>{};
     for (final token in tokens) {
@@ -199,22 +220,48 @@ class DP1PlaylistItemsEnrichmentService {
 
     _log.fine('Fetched ${tokens.length}/${cids.length} tokens from indexer');
 
-    // Convert DP1 items + tokens to enriched PlaylistItems
-    final enrichedItems = <PlaylistItem>[];
-    for (final task in batch) {
-      final token = tokensByCid[task.cid];
-      final enrichedItem = DatabaseConverters.dp1PlaylistItemToPlaylistItem(
-        task.dp1Item,
-        token: token,
-      );
-      enrichedItems.add(enrichedItem);
-    }
-
-    // Batch-upsert enriched items to database
-    await _databaseService.upsertPlaylistItemsEnriched(enrichedItems);
-
-    _log.fine(
-      'Upserted ${enrichedItems.length} enriched items to database',
+    // Build enrichment updates in parallel, then persist in one transaction.
+    final enrichments = await Future.wait(
+      batch.map((item) async {
+        final token = tokensByCid[item.cid];
+        if (token == null) {
+          _log.fine('No token found for CID ${item.cid}');
+          return null;
+        }
+        return (item.itemId, token);
+      }),
     );
+
+    final validEnrichments =
+        enrichments.whereType<(String, AssetToken)>().toList();
+    await _databaseService.enrichPlaylistItemsWithTokensBatch(
+      enrichments: validEnrichments,
+    );
+
+    _log.fine('Updated ${validEnrichments.length} items in database');
+    return validEnrichments.length;
   }
+}
+
+/// Internal model for bare playlist items from database.
+class _BareItem {
+  /// Creates a _BareItem.
+  const _BareItem({
+    required this.itemId,
+    required this.cid,
+    required this.playlistId,
+    required this.position,
+  });
+
+  /// Item ID in database.
+  final String itemId;
+
+  /// CID for indexer lookup.
+  final String cid;
+
+  /// Playlist ID.
+  final String playlistId;
+
+  /// Position in playlist.
+  final int position;
 }

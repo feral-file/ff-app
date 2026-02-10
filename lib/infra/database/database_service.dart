@@ -1,11 +1,11 @@
 import 'dart:async';
-
-import 'package:logging/logging.dart';
+import 'dart:convert';
 
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -13,6 +13,8 @@ import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/drift_kinds.dart';
 import 'package:app/infra/database/token_transformer.dart';
+import 'package:drift/drift.dart';
+import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
 
 /// Database service providing high-level operations for data ingestion.
@@ -954,6 +956,100 @@ class DatabaseService {
     await ingestChannels(domainChannels);
   }
 
+  /// Ingest one DP1 channel and all its playlists/items in a single transaction.
+  ///
+  /// This is optimized for remote-config channel bootstrap where one channel URL
+  /// should be persisted atomically to reduce lock churn and watcher invalidation.
+  Future<void> ingestDP1ChannelWithPlaylistsBare({
+    required String baseUrl,
+    required DP1Channel channel,
+    required List<DP1Playlist> playlists,
+  }) async {
+    try {
+      final domainChannel = Channel(
+        id: channel.id,
+        name: channel.title,
+        type: ChannelType.dp1,
+        description: channel.summary,
+        baseUrl: baseUrl,
+        slug: channel.slug,
+        curator: channel.curator,
+        coverImageUrl: channel.coverImage,
+        createdAt: channel.created,
+        updatedAt: channel.created,
+      );
+
+      final channelCompanion =
+          DatabaseConverters.channelToCompanion(domainChannel);
+      final playlistCompanions = <PlaylistsCompanion>[];
+      final itemCompanions = <ItemsCompanion>[];
+      final entryCompanions = <PlaylistEntriesCompanion>[];
+      final playlistIds = <String>[];
+
+      for (final playlist in playlists) {
+        final domainPlaylist = DatabaseConverters.dp1PlaylistToDomain(
+          playlist,
+          baseUrl: baseUrl,
+          channelId: channel.id,
+        );
+        playlistCompanions.add(
+          DatabaseConverters.playlistToCompanion(domainPlaylist),
+        );
+        playlistIds.add(domainPlaylist.id);
+
+        for (var i = 0; i < playlist.items.length; i++) {
+          final bareItem = DatabaseConverters.dp1PlaylistItemToPlaylistItem(
+            playlist.items[i],
+            token: null,
+          );
+          itemCompanions.add(DatabaseConverters.playlistItemToCompanion(bareItem));
+          entryCompanions.add(
+            DatabaseConverters.createPlaylistEntry(
+              playlistId: domainPlaylist.id,
+              itemId: bareItem.id,
+              position: i,
+              sortKeyUs: 0,
+            ),
+          );
+        }
+      }
+
+      await _db.transaction(() async {
+        await _db.batch((batch) {
+          batch.insertAllOnConflictUpdate(_db.channels, [channelCompanion]);
+          if (playlistCompanions.isNotEmpty) {
+            batch.insertAllOnConflictUpdate(_db.playlists, playlistCompanions);
+          }
+          if (itemCompanions.isNotEmpty) {
+            batch.insertAllOnConflictUpdate(_db.items, itemCompanions);
+          }
+          if (entryCompanions.isNotEmpty) {
+            batch.insertAllOnConflictUpdate(
+              _db.playlistEntries,
+              entryCompanions,
+            );
+          }
+        });
+
+        for (final playlistId in playlistIds) {
+          await _db.updatePlaylistItemCount(playlistId);
+        }
+      });
+
+      _log.info(
+        'Ingested channel ${channel.id} with ${playlists.length} playlists '
+        'in one transaction',
+      );
+    } catch (e, stack) {
+      _log.severe(
+        'Failed to ingest channel ${channel.id} with playlists in one transaction',
+        e,
+        stack,
+      );
+      rethrow;
+    }
+  }
+
   /// Ingest a DP1 playlist wire model into the database.
   ///
   /// When [fetchTokens] is provided and playlist items have CIDs, tokens are
@@ -996,5 +1092,248 @@ class DatabaseService {
         .where((cid) => cid != null)
         .cast<String>()
         .toList();
+  }
+
+  // ===========================================================================
+  // Enrichment queries (SQLite as single source of truth)
+  // ===========================================================================
+
+  /// Load high-priority bare items from database.
+  ///
+  /// Returns first [maxPerPlaylist] bare items per playlist that haven't been
+  /// enriched yet, ordered by creation order (playlist entry order).
+  /// Max [maxTotal] items across all playlists.
+  Future<List<(String, String?, String, int)>> loadHighPriorityBareItems({
+    required int maxPerPlaylist,
+    required int maxTotal,
+  }) async {
+    try {
+      final query = _db.customSelect(
+        '''
+        WITH ranked AS (
+          SELECT
+            pe.playlist_id,
+            pe.item_id,
+            i.provenance_json,
+            pe.position,
+            p.base_url,
+            p.created_at_us,
+            p.id AS playlist_sort_id,
+            ROW_NUMBER() OVER (
+              PARTITION BY pe.playlist_id
+              ORDER BY
+                COALESCE(pe.position, 2147483647) ASC,
+                pe.item_id ASC
+            ) AS item_rank
+          FROM playlist_entries pe
+          JOIN playlists p ON pe.playlist_id = p.id
+          JOIN items i ON pe.item_id = i.id
+          WHERE i.thumbnail_uri IS NULL
+            AND i.list_artist_json IS NULL
+        )
+        SELECT
+          playlist_id,
+          item_id,
+          provenance_json,
+          position
+        FROM ranked
+        WHERE item_rank <= ?1
+        ORDER BY
+          COALESCE(base_url, '') ASC,
+          created_at_us ASC,
+          playlist_sort_id ASC,
+          item_rank ASC
+        LIMIT ?2
+        ''',
+        variables: [
+          Variable.withInt(maxPerPlaylist),
+          Variable.withInt(maxTotal),
+        ],
+      );
+
+      final rows = await query.get();
+      final result = <(String, String?, String, int)>[];
+
+      for (final row in rows) {
+        final playlistId = row.read<String>('playlist_id');
+        final itemId = row.read<String>('item_id');
+        final provenanceJson = row.readNullable<String>('provenance_json');
+        final position = row.readNullable<int>('position') ?? -1;
+        result.add((itemId, provenanceJson, playlistId, position));
+      }
+
+      _log.fine('Loaded ${result.length} high-priority bare items');
+      return result;
+    } catch (e, stack) {
+      _log.severe('Failed to load high-priority bare items', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Load low-priority bare items from database.
+  ///
+  /// Returns bare items beyond the first [maxPerPlaylist] items per playlist.
+  /// Max [maxTotal] items across all playlists.
+  Future<List<(String, String?, String, int)>> loadLowPriorityBareItems({
+    required int maxPerPlaylist,
+    required int maxTotal,
+  }) async {
+    try {
+      final query = _db.customSelect(
+        '''
+        WITH ranked AS (
+          SELECT
+            pe.playlist_id,
+            pe.item_id,
+            i.provenance_json,
+            pe.position,
+            p.base_url,
+            p.created_at_us,
+            p.id AS playlist_sort_id,
+            ROW_NUMBER() OVER (
+              PARTITION BY pe.playlist_id
+              ORDER BY
+                COALESCE(pe.position, 2147483647) ASC,
+                pe.item_id ASC
+            ) AS item_rank
+          FROM playlist_entries pe
+          JOIN playlists p ON pe.playlist_id = p.id
+          JOIN items i ON pe.item_id = i.id
+          WHERE i.thumbnail_uri IS NULL
+            AND i.list_artist_json IS NULL
+        )
+        SELECT
+          playlist_id,
+          item_id,
+          provenance_json,
+          position
+        FROM ranked
+        WHERE item_rank > ?1
+        ORDER BY
+          COALESCE(base_url, '') ASC,
+          created_at_us ASC,
+          playlist_sort_id ASC,
+          item_rank ASC
+        LIMIT ?2
+        ''',
+        variables: [
+          Variable.withInt(maxPerPlaylist),
+          Variable.withInt(maxTotal),
+        ],
+      );
+
+      final rows = await query.get();
+      final result = <(String, String?, String, int)>[];
+
+      for (final row in rows) {
+        final playlistId = row.read<String>('playlist_id');
+        final itemId = row.read<String>('item_id');
+        final provenanceJson = row.readNullable<String>('provenance_json');
+        final position = row.readNullable<int>('position') ?? -1;
+        result.add((itemId, provenanceJson, playlistId, position));
+      }
+
+      _log.fine('Loaded ${result.length} low-priority bare items');
+      return result;
+    } catch (e, stack) {
+      _log.severe('Failed to load low-priority bare items', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Enrich a single playlist item with token data.
+  ///
+  /// Updates the item in database with thumbnailUri and artists from token.
+  Future<void> enrichPlaylistItemWithToken({
+    required String itemId,
+    required AssetToken token,
+  }) async {
+    try {
+      final enrichedItem = TokenTransformer.assetTokenToPlaylistItem(token: token);
+
+      // Create companion with enriched data
+      final companion = ItemsCompanion(
+        id: Value(itemId),
+        kind: Value(1), // indexer token
+        title: Value(enrichedItem.title),
+        subtitle: Value(enrichedItem.subtitle),
+        thumbnailUri: Value(enrichedItem.thumbnailUrl),
+        listArtistJson: enrichedItem.artists != null && enrichedItem.artists!.isNotEmpty
+            ? Value(jsonEncode(enrichedItem.artists!.map((a) => a.toJson()).toList()))
+            : const Value(null),
+        tokenDataJson: Value(jsonEncode(token.toRestJson())),
+        updatedAtUs: Value(BigInt.from(DateTime.now().microsecondsSinceEpoch)),
+      );
+
+      await _db.upsertItem(companion);
+    } catch (e, stack) {
+      _log.severe('Failed to enrich item $itemId', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Enrich multiple playlist items in a single database transaction.
+  Future<void> enrichPlaylistItemsWithTokensBatch({
+    required List<(String, AssetToken)> enrichments,
+  }) async {
+    if (enrichments.isEmpty) return;
+
+    try {
+      final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+      final companions = enrichments.map((enrichment) {
+        final itemId = enrichment.$1;
+        final token = enrichment.$2;
+        final enrichedItem =
+            TokenTransformer.assetTokenToPlaylistItem(token: token);
+
+        return ItemsCompanion(
+          id: Value(itemId),
+          kind: Value(1), // indexer token
+          title: Value(enrichedItem.title),
+          subtitle: Value(enrichedItem.subtitle),
+          thumbnailUri: Value(enrichedItem.thumbnailUrl),
+          listArtistJson:
+              enrichedItem.artists != null && enrichedItem.artists!.isNotEmpty
+                  ? Value(
+                      jsonEncode(
+                        enrichedItem.artists!.map((a) => a.toJson()).toList(),
+                      ),
+                    )
+                  : const Value(null),
+          tokenDataJson: Value(jsonEncode(token.toRestJson())),
+          updatedAtUs: Value(nowUs),
+        );
+      }).toList(growable: false);
+
+      await _db.batch((batch) {
+        batch.insertAllOnConflictUpdate(_db.items, companions);
+      });
+    } catch (e, stack) {
+      _log.severe(
+        'Failed to enrich ${enrichments.length} items in batch',
+        e,
+        stack,
+      );
+      rethrow;
+    }
+  }
+
+  /// Build token CID from provenance json.
+  String? buildTokenCidFromProvenanceJson(String? provenanceJson) {
+    if (provenanceJson == null || provenanceJson.isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(provenanceJson);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+
+      final provenance = DP1Provenance.fromJson(decoded);
+      return provenance.cid;
+    } on Exception {
+      return null;
+    }
   }
 }

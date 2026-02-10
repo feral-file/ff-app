@@ -1,9 +1,9 @@
+import 'dart:async';
+
 import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/infra/services/dp1_feed_with_channel_extension_service_impl.dart';
-import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
-import 'package:collection/collection.dart';
 import 'package:logging/logging.dart';
 
 /// DP1 feed service with remote config channel support.
@@ -12,7 +12,8 @@ import 'package:logging/logging.dart';
 /// - [addRemoteConfigChannelIds] adds channel IDs (does not replace).
 /// - When remote config channel IDs are set, [getAllPlaylists] and
 ///   [getAllChannels] use channel-scoped fetch.
-/// - [reloadCache] uses extension flow with queue-based enrichment.
+/// - [reloadCache] loads channels/playlists and queues items for enrichment
+///   (enrichment runs in parallel without blocking).
 class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
   /// Creates a FeralFileDP1FeedService.
   FeralFileDP1FeedService({
@@ -21,16 +22,12 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
     required super.feedConfigStore,
     required super.apiKey,
     required this.indexerService,
-    required DP1PlaylistItemsEnrichmentService enrichmentService,
     super.isExternalFeedService,
     super.dio,
-  }) : _enrichmentService = enrichmentService,
-       _log = Logger('FeralFileDP1FeedService[$baseUrl]');
+  }) : _log = Logger('FeralFileDP1FeedService[$baseUrl]');
 
   /// Indexer service for token enrichment.
   final IndexerService indexerService;
-
-  final DP1PlaylistItemsEnrichmentService _enrichmentService;
 
   late final Logger _log;
 
@@ -103,53 +100,77 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
   }
 
   Future<void> _reloadCacheWithRemoteConfigChannels() async {
-    final channels = await getChannelsByIds(
-      channelIds: _remoteConfigChannelIds,
-      usingCache: false,
-    );
-    _log.info('Fetched ${channels.length} channels');
-
-    final playlists = await getAllPlaylists();
-    _log.info('Fetched ${playlists.length} playlists');
-
+    if (isPaused) {
+      _log.info('Skip remote-config cache reload while paused');
+      return;
+    }
     await clearCache();
 
-    // Step 1: Ingest channels first
-    await databaseService.ingestDP1ChannelsWire(
-      baseUrl: baseUrl,
-      channels: channels,
+    final results = await Future.wait(
+      _remoteConfigChannelIds.map(_fetchChannelAndPlaylists),
     );
 
-    // Step 2: Ingest playlists and bare items (no enrichment yet)
-    await _enrichmentService.clear();
-    for (final playlist in playlists) {
-      final channelId = channels
-          .firstWhereOrNull(
-            (c) => c.playlists.any((p) => p.contains(playlist.id)),
-          )
-          ?.id;
-      if (channelId != null) {
-        await databaseService.ingestDP1PlaylistBare(
-          baseUrl: baseUrl,
-          playlist: playlist,
-          channelId: channelId,
-        );
-        // Enqueue items for enrichment
-        await _enrichmentService.enqueuePlaylist(
-          playlistId: playlist.id,
-          items: playlist.items,
-        );
+    var fetchedChannelCount = 0;
+    var fetchedPlaylistCount = 0;
+    for (final result in results) {
+      if (isPaused) {
+        _log.info('Pause requested before persisting fetched channel data');
+        return;
       }
+      if (result == null) continue;
+      await databaseService.ingestDP1ChannelWithPlaylistsBare(
+        baseUrl: baseUrl,
+        channel: result.channel,
+        playlists: result.playlists,
+      );
+      fetchedChannelCount += 1;
+      fetchedPlaylistCount += result.playlists.length;
     }
-
-    // Step 3: Process enrichment queues
-    _log.info('Starting enrichment for ${playlists.length} playlists');
-    await _enrichmentService.processAll();
 
     _log.info(
       'Reloaded cache with remote config channels: '
-      '${channels.length} channels, '
-      '${playlists.length} playlists',
+      '$fetchedChannelCount channels, '
+      '$fetchedPlaylistCount playlists',
     );
   }
+
+  Future<_ChannelLoadResult?> _fetchChannelAndPlaylists(String channelId) async {
+    if (isPaused) return null;
+
+    final channel = await getChannelDetail(channelId, fromCache: false);
+    if (channel == null) {
+      _log.warning('Skipping missing remote config channel: $channelId');
+      return null;
+    }
+
+    final playlists = <DP1Playlist>[];
+    String? cursor;
+    var hasMore = true;
+    while (hasMore) {
+      if (isPaused) return null;
+      final response = await getPlaylistsByChannelId(
+        channelId: channel.id,
+        cursor: cursor,
+        limit: 20,
+      );
+      hasMore = response.hasMore;
+      cursor = response.cursor;
+      playlists.addAll(response.items);
+    }
+
+    return _ChannelLoadResult(
+      channel: channel,
+      playlists: playlists,
+    );
+  }
+}
+
+class _ChannelLoadResult {
+  const _ChannelLoadResult({
+    required this.channel,
+    required this.playlists,
+  });
+
+  final DP1Channel channel;
+  final List<DP1Playlist> playlists;
 }

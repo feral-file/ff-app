@@ -36,6 +36,8 @@ class FeedConfigStore {
   static const _globalLastRefreshEpochKey = '_globalLastRefreshEpoch';
   static const _cacheDurationSecondsKey = 'cacheDurationSeconds';
   static const _lastFeedUpdatedAtKey = 'lastFeedUpdatedAt';
+  static const _bareItemsLoadedAtKey = 'bareItemsLoadedAt';
+  static const _tokensEnrichedAtKey = 'tokensEnrichedAt';
 
   static const _defaultCacheDurationSeconds = 86400; // 1 day
   static final _defaultLastFeedUpdatedAt = DateTime(2023);
@@ -194,6 +196,58 @@ class FeedConfigStore {
   Future<void> setLastFeedUpdatedAt(DateTime time) async {
     final config = await _readConfig();
     config[_lastFeedUpdatedAtKey] = time.toIso8601String();
+    await _writeConfig(config);
+  }
+
+  /// Returns whether bare items have been fully loaded from feeds.
+  Future<bool> isBareItemsLoaded() async {
+    final config = await _readConfig();
+    final timeStr = config[_bareItemsLoadedAtKey] as String?;
+    if (timeStr == null || timeStr.isEmpty) {
+      return false;
+    }
+    try {
+      DateTime.parse(timeStr);
+      return true;
+    } on FormatException {
+      return false;
+    }
+  }
+
+  /// Returns whether token enrichment has completed for all feed bare items.
+  Future<bool> isTokensEnriched() async {
+    final config = await _readConfig();
+    final timeStr = config[_tokensEnrichedAtKey] as String?;
+    if (timeStr == null || timeStr.isEmpty) {
+      return false;
+    }
+    try {
+      DateTime.parse(timeStr);
+      return true;
+    } on FormatException {
+      return false;
+    }
+  }
+
+  /// Marks bare feed item loading as complete.
+  Future<void> markBareItemsLoaded({DateTime? at}) async {
+    final config = await _readConfig();
+    config[_bareItemsLoadedAtKey] = (at ?? DateTime.now()).toIso8601String();
+    await _writeConfig(config);
+  }
+
+  /// Marks token enrichment as complete.
+  Future<void> markTokensEnriched({DateTime? at}) async {
+    final config = await _readConfig();
+    config[_tokensEnrichedAtKey] = (at ?? DateTime.now()).toIso8601String();
+    await _writeConfig(config);
+  }
+
+  /// Clears staged feed sync markers.
+  Future<void> clearSyncStages() async {
+    final config = await _readConfig();
+    config.remove(_bareItemsLoadedAtKey);
+    config.remove(_tokensEnrichedAtKey);
     await _writeConfig(config);
   }
 }

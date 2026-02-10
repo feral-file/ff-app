@@ -86,7 +86,9 @@ class FakeTokensWorker implements IndexerTokensWorker {
     required List<AddressAnchor> addressAnchors,
   }) async {
     final addresses = addressAnchors.map((e) => e.address).toList();
-    final anchor = addressAnchors.map((e) => e.anchor).reduce(
+    final anchor = addressAnchors
+        .map((e) => e.anchor)
+        .reduce(
           (a, b) => a < b ? a : b,
         );
 
@@ -136,10 +138,12 @@ class SyncFakeIndexerClient extends IndexerClient {
       'owners': t.owners?.toJson(),
       'provenance_events': t.provenanceEvents?.toJson(),
       'enrichment_source': t.enrichmentSource?.toJson(),
-      'metadata_media_assets':
-          t.metadataMediaAssets?.map((e) => e.toJson()).toList(),
-      'enrichment_source_media_assets':
-          t.enrichmentSourceMediaAssets?.map((e) => e.toJson()).toList(),
+      'metadata_media_assets': t.metadataMediaAssets
+          ?.map((e) => e.toJson())
+          .toList(),
+      'enrichment_source_media_assets': t.enrichmentSourceMediaAssets
+          ?.map((e) => e.toJson())
+          .toList(),
     };
   }
 
@@ -152,9 +156,10 @@ class SyncFakeIndexerClient extends IndexerClient {
     if (subKey == 'tokens') {
       final tokenCids =
           (vars['token_cids'] as List?)?.whereType<String>().toList() ??
-              const <String>[];
-      final tokenIds =
-          (vars['token_ids'] as List?)?.map((e) => int.tryParse('$e')).toList();
+          const <String>[];
+      final tokenIds = (vars['token_ids'] as List?)
+          ?.map((e) => int.tryParse('$e'))
+          .toList();
 
       final matchesByCid = tokenCids.contains(tokenCid);
       final matchesById = tokenIds?.contains(token.id) ?? false;
@@ -198,7 +203,7 @@ class SyncFakeIndexerClient extends IndexerClient {
             },
             'created_at': '2025-01-01T00:00:00Z',
             'updated_at': '2025-01-01T00:00:00Z',
-          }
+          },
         ],
         'offset': 0,
         'total': 1,
@@ -223,8 +228,9 @@ void main() {
     final dbService = DatabaseService(db);
     final tempDir = Directory.systemTemp.createTempSync('idx_cfg_');
     addTearDown(() => tempDir.deleteSync(recursive: true));
-    final configStore =
-        IndexerConfigStore(documentsDirFactory: () async => tempDir);
+    final configStore = IndexerConfigStore(
+      documentsDirFactory: () async => tempDir,
+    );
 
     const address = '0x1111111111111111111111111111111111111111';
     const chain = 'eip155:1';

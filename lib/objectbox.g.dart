@@ -107,6 +107,59 @@ final _entities = <obx_int.ModelEntity>[
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
   ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(2, 7506149401476678293),
+    name: 'RemoteAppConfigEntity',
+    lastPropertyId: const obx_int.IdUid(12, 7038997176806896091),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 7086625386443446574),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 9083997618836770667),
+        name: 'scope',
+        type: 9,
+        flags: 2080,
+        indexId: const obx_int.IdUid(1, 1584066664369836598),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 9049828629891282188),
+        name: 'etag',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 524985703992515482),
+        name: 'updatedAtUs',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 6931567675333886946),
+        name: 'curatedChannelUrlsJson',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(11, 2827048657705408854),
+        name: 'feedCacheDurationSec',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(12, 7038997176806896091),
+        name: 'feedLastUpdatedAtUs',
+        type: 6,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
 ];
 
 /// Shortcut for [obx.Store.new] that passes [getObjectBoxModel] and for Flutter
@@ -152,13 +205,19 @@ obx_int.ModelDefinition getObjectBoxModel() {
     // Typically, this is done with `dart run build_runner build`.
     generatorVersion: obx_int.GeneratorVersion.v2025_12_16,
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(1, 2853626907365117643),
-    lastIndexId: const obx_int.IdUid(0, 0),
+    lastEntityId: const obx_int.IdUid(2, 7506149401476678293),
+    lastIndexId: const obx_int.IdUid(1, 1584066664369836598),
     lastRelationId: const obx_int.IdUid(0, 0),
     lastSequenceId: const obx_int.IdUid(0, 0),
     retiredEntityUids: const [],
     retiredIndexUids: const [],
-    retiredPropertyUids: const [],
+    retiredPropertyUids: const [
+      4548421187535112785,
+      8241133500042741809,
+      1779253016339897687,
+      5381724396762660670,
+      6726641447328928585,
+    ],
     retiredRelationUids: const [],
     modelVersion: 5,
     modelVersionParserMinimum: 5,
@@ -266,6 +325,73 @@ obx_int.ModelDefinition getObjectBoxModel() {
             return object;
           },
         ),
+    RemoteAppConfigEntity: obx_int.EntityDefinition<RemoteAppConfigEntity>(
+      model: _entities[1],
+      toOneRelations: (RemoteAppConfigEntity object) => [],
+      toManyRelations: (RemoteAppConfigEntity object) => {},
+      getId: (RemoteAppConfigEntity object) => object.id,
+      setId: (RemoteAppConfigEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (RemoteAppConfigEntity object, fb.Builder fbb) {
+        final scopeOffset = fbb.writeString(object.scope);
+        final etagOffset = fbb.writeString(object.etag);
+        final curatedChannelUrlsJsonOffset = fbb.writeString(
+          object.curatedChannelUrlsJson,
+        );
+        fbb.startTable(13);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, scopeOffset);
+        fbb.addOffset(2, etagOffset);
+        fbb.addInt64(4, object.updatedAtUs);
+        fbb.addOffset(5, curatedChannelUrlsJsonOffset);
+        fbb.addInt64(10, object.feedCacheDurationSec);
+        fbb.addInt64(11, object.feedLastUpdatedAtUs);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final scopeParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final etagParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final curatedChannelUrlsJsonParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 14, '');
+        final feedCacheDurationSecParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          24,
+          0,
+        );
+        final feedLastUpdatedAtUsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          26,
+          0,
+        );
+        final updatedAtUsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          12,
+          0,
+        );
+        final object = RemoteAppConfigEntity(
+          scope: scopeParam,
+          etag: etagParam,
+          curatedChannelUrlsJson: curatedChannelUrlsJsonParam,
+          feedCacheDurationSec: feedCacheDurationSecParam,
+          feedLastUpdatedAtUs: feedLastUpdatedAtUsParam,
+          updatedAtUs: updatedAtUsParam,
+        )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
+
+        return object;
+      },
+    ),
   };
 
   return obx_int.ModelDefinition(model, bindings);
@@ -340,4 +466,45 @@ class FF1BluetoothDeviceEntity_ {
   static final metadataJson = obx.QueryStringProperty<FF1BluetoothDeviceEntity>(
     _entities[0].properties[12],
   );
+}
+
+/// [RemoteAppConfigEntity] entity fields to define ObjectBox queries.
+class RemoteAppConfigEntity_ {
+  /// See [RemoteAppConfigEntity.id].
+  static final id = obx.QueryIntegerProperty<RemoteAppConfigEntity>(
+    _entities[1].properties[0],
+  );
+
+  /// See [RemoteAppConfigEntity.scope].
+  static final scope = obx.QueryStringProperty<RemoteAppConfigEntity>(
+    _entities[1].properties[1],
+  );
+
+  /// See [RemoteAppConfigEntity.etag].
+  static final etag = obx.QueryStringProperty<RemoteAppConfigEntity>(
+    _entities[1].properties[2],
+  );
+
+  /// See [RemoteAppConfigEntity.updatedAtUs].
+  static final updatedAtUs = obx.QueryIntegerProperty<RemoteAppConfigEntity>(
+    _entities[1].properties[3],
+  );
+
+  /// See [RemoteAppConfigEntity.curatedChannelUrlsJson].
+  static final curatedChannelUrlsJson =
+      obx.QueryStringProperty<RemoteAppConfigEntity>(
+        _entities[1].properties[4],
+      );
+
+  /// See [RemoteAppConfigEntity.feedCacheDurationSec].
+  static final feedCacheDurationSec =
+      obx.QueryIntegerProperty<RemoteAppConfigEntity>(
+        _entities[1].properties[5],
+      );
+
+  /// See [RemoteAppConfigEntity.feedLastUpdatedAtUs].
+  static final feedLastUpdatedAtUs =
+      obx.QueryIntegerProperty<RemoteAppConfigEntity>(
+        _entities[1].properties[6],
+      );
 }

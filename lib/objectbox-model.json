@@ -76,17 +76,69 @@
         }
       ],
       "relations": []
+    },
+    {
+      "id": "2:7506149401476678293",
+      "lastPropertyId": "12:7038997176806896091",
+      "name": "RemoteAppConfigEntity",
+      "properties": [
+        {
+          "id": "1:7086625386443446574",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:9083997618836770667",
+          "name": "scope",
+          "indexId": "1:1584066664369836598",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:9049828629891282188",
+          "name": "etag",
+          "type": 9
+        },
+        {
+          "id": "5:524985703992515482",
+          "name": "updatedAtUs",
+          "type": 6
+        },
+        {
+          "id": "6:6931567675333886946",
+          "name": "curatedChannelUrlsJson",
+          "type": 9
+        },
+        {
+          "id": "11:2827048657705408854",
+          "name": "feedCacheDurationSec",
+          "type": 6
+        },
+        {
+          "id": "12:7038997176806896091",
+          "name": "feedLastUpdatedAtUs",
+          "type": 6
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "1:2853626907365117643",
-  "lastIndexId": "0:0",
+  "lastEntityId": "2:7506149401476678293",
+  "lastIndexId": "1:1584066664369836598",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",
   "modelVersion": 5,
   "modelVersionParserMinimum": 5,
   "retiredEntityUids": [],
   "retiredIndexUids": [],
-  "retiredPropertyUids": [],
+  "retiredPropertyUids": [
+    4548421187535112785,
+    8241133500042741809,
+    1779253016339897687,
+    5381724396762660670,
+    6726641447328928585
+  ],
   "retiredRelationUids": [],
   "version": 1
 }

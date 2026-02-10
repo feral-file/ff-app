@@ -135,6 +135,15 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
   }
 
   bool _isReloadingCache = false;
+  bool _isPaused = false;
+
+  /// Pause or resume long-running feed sync work.
+  void setPaused(bool paused) {
+    _isPaused = paused;
+  }
+
+  @protected
+  bool get isPaused => _isPaused;
 
   @override
   Future<void> reloadCache() async {
@@ -145,6 +154,10 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
       String? cursor;
       const limit = 50;
       while (hasMore) {
+        if (_isPaused) {
+          _log.info('Reload cache paused for $baseUrl');
+          return;
+        }
         final resp = await api.getPlaylists(cursor: cursor, limit: limit);
 
         hasMore = resp.hasMore;
@@ -188,6 +201,12 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
 
   @override
   Future<void> reloadCacheIfNeeded({bool force = false}) async {
+    if (_isPaused) {
+      _log.info(
+        '[BaseDP1FeedServiceImpl] Skip reload while paused for baseUrl=$baseUrl',
+      );
+      return;
+    }
     if (force) {
       _log.info(
         '[BaseDP1FeedServiceImpl] Forced cache reload for baseUrl=$baseUrl',

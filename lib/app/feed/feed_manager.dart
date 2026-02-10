@@ -15,6 +15,7 @@ import 'package:app/infra/services/base_dp1_feed_service_impl.dart';
 import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
+import 'package:synchronized/synchronized.dart';
 
 /// Base feed manager: holds feed services and provides cache/reload APIs.
 /// Matches old repo's [FeedManager].
@@ -41,6 +42,8 @@ class FeedManager {
   late final Logger _log;
 
   final List<Pair<String, BaseDP1FeedServiceImpl>> _feedServices = [];
+  final Lock _reloadLock = Lock();
+  bool _isPaused = false;
 
   /// Default DP1 feed URL (for feralFileFeedService getter); set by [FeralFileFeedManager].
   String get defaultDp1FeedUrl => '';
@@ -84,19 +87,100 @@ class FeedManager {
   ];
 
   Future<void> reloadAllCache({bool force = false}) async {
-    _log.info('[FeedManager] Reload all cache, force: $force');
-    for (final feedService in feedServices) {
-      try {
-        await feedService.reloadCacheIfNeeded(force: force);
-      } on Exception catch (e, stack) {
-        _log.warning(
-          'Failed to reload cache for ${feedService.baseUrl}',
-          e,
-          stack,
-        );
+    await _reloadLock.synchronized(() async {
+      _log.info('[FeedManager] Reload all cache, force: $force');
+      if (_isPaused) {
+        _log.info('[FeedManager] Skip reload while paused');
+        return;
       }
-    }
+
+      final services = feedServices;
+      if (services.isEmpty) return;
+
+      var shouldReloadFromPolicy = force;
+      if (!force) {
+        for (final feedService in services) {
+          if (_isPaused) return;
+          final stale = await feedService.shouldReloadCache();
+          if (stale) {
+            shouldReloadFromPolicy = true;
+            break;
+          }
+        }
+      }
+
+      if (force || shouldReloadFromPolicy) {
+        await _feedConfigStore.clearSyncStages();
+      }
+
+      var bareLoaded = await _feedConfigStore.isBareItemsLoaded();
+      var tokensEnriched = await _feedConfigStore.isTokensEnriched();
+
+      if (!force && !shouldReloadFromPolicy && bareLoaded && tokensEnriched) {
+        _log.info('[FeedManager] Skip reload; all stages already complete');
+        return;
+      }
+
+      if (!bareLoaded) {
+        if (!shouldReloadFromPolicy && !force) {
+          // Cache is not stale and services report up-to-date; infer stage complete.
+          await _feedConfigStore.markBareItemsLoaded();
+          bareLoaded = true;
+        } else {
+          for (final feedService in services) {
+            if (_isPaused) return;
+            try {
+              await feedService.reloadCacheIfNeeded(
+                force: force || shouldReloadFromPolicy,
+              );
+            } on Exception catch (e, stack) {
+              _log.warning(
+                'Failed to reload cache for ${feedService.baseUrl}',
+                e,
+                stack,
+              );
+            }
+          }
+          if (_isPaused) return;
+          await _feedConfigStore.markBareItemsLoaded();
+          bareLoaded = true;
+        }
+      }
+
+      if (bareLoaded && !tokensEnriched) {
+        final completed = await runGlobalEnrichment();
+        if (_isPaused || !completed) return;
+        await _feedConfigStore.markTokensEnriched();
+      }
+    });
   }
+
+  /// Pause feed and enrichment work.
+  void pauseWork() {
+    _isPaused = true;
+    for (final feedService in feedServices) {
+      feedService.setPaused(true);
+    }
+    _log.info('[FeedManager] Work paused');
+  }
+
+  /// Resume feed and enrichment work.
+  void resumeWork() {
+    _isPaused = false;
+    for (final feedService in feedServices) {
+      feedService.setPaused(false);
+    }
+    _log.info('[FeedManager] Work resumed');
+  }
+
+  @protected
+  bool get isPaused => _isPaused;
+
+  /// Runs enrichment for all bare playlist items.
+  ///
+  /// Base manager has no enrichment stage.
+  @protected
+  Future<bool> runGlobalEnrichment() async => true;
 
   /// Matches old repo's getAllCachedPlaylists(offset, limit).
   Future<List<PlaylistReference>> getAllCachedPlaylists({
@@ -193,17 +277,9 @@ class FeralFileFeedManager extends FeedManager {
         feedConfigStore: feedConfigStore,
         apiKey: _apiKey,
         indexerService: _indexerService,
-        enrichmentService: _enrichmentService,
       );
-      Object? error;
-      await service.init(
-        onPlaylistError: (e) {
-          error = e;
-        },
-        onChannelError: (e) {
-          error = e;
-        },
-      );
+      service.setPaused(isPaused);
+      await service.init();
       service.addRemoteConfigChannelIds(channelIdsByUrl[endpoint]!);
       addFeedService(service);
     }
@@ -212,6 +288,12 @@ class FeralFileFeedManager extends FeedManager {
       'Finish setup remote config channels: '
       '${remoteConfigChannels.map((e) => e.channelId).toList()}',
     );
+  }
+
+  @override
+  Future<bool> runGlobalEnrichment() async {
+    if (isPaused) return false;
+    return _enrichmentService.processAll();
   }
 
   /// Matches old repo's getAllCachedChannels.
