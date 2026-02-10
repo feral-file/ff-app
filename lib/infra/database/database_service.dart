@@ -254,6 +254,18 @@ class DatabaseService {
     }
   }
 
+  /// Watch a single channel by ID as domain model. Emits null if the channel is
+  /// deleted or not found.
+  Stream<Channel?> watchChannelById(String id) {
+    return _db
+        .watchChannelById(id)
+        .debounceTime(Duration(milliseconds: 300))
+        .map(
+          (data) =>
+              data != null ? DatabaseConverters.channelDataToDomain(data) : null,
+        );
+  }
+
   // ========== Playlist Operations ==========
 
   /// Ingest a playlist into the database.

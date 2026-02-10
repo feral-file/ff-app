@@ -282,6 +282,13 @@ class AppDatabase extends _$AppDatabase {
     return (select(channels)..where((t) => t.id.equals(id))).getSingleOrNull();
   }
 
+  /// Watch a single channel by ID. Emits null if the channel is deleted.
+  Stream<ChannelData?> watchChannelById(String id) {
+    return (select(channels)..where((t) => t.id.equals(id)))
+        .watch()
+        .map((list) => list.isEmpty ? null : list.single);
+  }
+
   /// Upsert a channel.
   Future<void> upsertChannel(ChannelsCompanion channel) async {
     await into(channels).insertOnConflictUpdate(channel);

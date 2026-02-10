@@ -67,11 +67,13 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
 
     // Watch slice to avoid rebuilds when unrelated state changes.
     final slice = ref.watch(
-      channelsProvider(ChannelType.dp1).select((s) => (
-        channels: s.channels,
-        isLoading: s.isLoading,
-        error: s.error,
-      )),
+      channelsProvider(ChannelType.dp1).select(
+        (s) => (
+          channels: s.channels,
+          isLoading: s.isLoading,
+          error: s.error,
+        ),
+      ),
     );
     final curatedChannels = slice.channels;
     final isLoading = slice.isLoading;
@@ -152,9 +154,9 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
                 context.push('${Routes.allChannels}?filter=curated');
               }
             : null,
-        onChannelItemTap: (workId) {
+        onChannelItemTap: (item) {
           // Navigate to work detail
-          context.push('${Routes.works}/$workId');
+          context.push('${Routes.works}/${item.id}');
         },
       ),
     );

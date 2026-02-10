@@ -1,4 +1,5 @@
 <svg width="11" height="9" viewBox="0 0 11 9" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M5.97468 8.63453L10.1092 4.5L5.97468 0.365469" stroke="#A0A0A0" stroke-miterlimit="10"/>
-<line y1="-0.5" x2="9.77778" y2="-0.5" transform="matrix(-1.03363 0 0 1.03363 10.1062 4.84597)" stroke="#A0A0A0"/>
+    <path d="M5.97468 8.63453L10.1092 4.5L5.97468 0.365469" stroke="#A0A0A0" stroke-miterlimit="10" />
+    <line y1="-0.5" x2="9.77778" y2="-0.5" transform="matrix(-1.03363 0 0 1.03363 10.1062 4.84597)"
+        stroke="#A0A0A0" />
 </svg>

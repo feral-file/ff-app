@@ -65,19 +65,23 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
 
     // Watch slices to avoid rebuilds when unrelated state changes.
     final curatedSlice = ref.watch(
-      playlistsProvider(PlaylistType.dp1).select((s) => (
-        playlists: s.playlists,
-        isLoading: s.isLoading,
-        error: s.error,
-        hasMore: s.hasMore,
-      )),
+      playlistsProvider(PlaylistType.dp1).select(
+        (s) => (
+          playlists: s.playlists,
+          isLoading: s.isLoading,
+          error: s.error,
+          hasMore: s.hasMore,
+        ),
+      ),
     );
     final personalSlice = ref.watch(
-      playlistsProvider(PlaylistType.addressBased).select((s) => (
-        playlists: s.playlists,
-        isLoading: s.isLoading,
-        error: s.error,
-      )),
+      playlistsProvider(PlaylistType.addressBased).select(
+        (s) => (
+          playlists: s.playlists,
+          isLoading: s.isLoading,
+          error: s.error,
+        ),
+      ),
     );
     final curatedPlaylists = curatedSlice.playlists;
     final personalPlaylists = personalSlice.playlists;
@@ -134,7 +138,9 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
               onViewAllTap: personalPlaylists.length > _previewCount
                   ? () => context.push('${Routes.allPlaylists}?filter=personal')
                   : null,
-              onPlaylistItemTap: (_) {},
+              onPlaylistItemTap: (item) {
+                context.push('${Routes.works}/${item.id}');
+              },
             ),
           ),
 
@@ -157,7 +163,9 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
               onViewAllTap: (hasMore || curatedPlaylists.length > _previewCount)
                   ? () => context.push('${Routes.allPlaylists}?filter=curated')
                   : null,
-              onPlaylistItemTap: (_) {},
+              onPlaylistItemTap: (item) {
+                context.push('${Routes.works}/${item.id}');
+              },
             ),
           ),
 

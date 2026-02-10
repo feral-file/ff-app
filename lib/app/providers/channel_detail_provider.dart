@@ -2,7 +2,7 @@ import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:logging/logging.dart';
+import 'package:rxdart/rxdart.dart';
 
 /// View model for channel details (domain only).
 class ChannelDetails {
@@ -19,19 +19,15 @@ class ChannelDetails {
 }
 
 /// Provider for channel details state.
+/// Watches the database so the UI updates when channel or playlists change.
 final channelDetailsProvider =
-    FutureProvider.family<ChannelDetails, String>((ref, channelId) async {
-  final log = Logger('channelDetailsProvider');
+    StreamProvider.family<ChannelDetails, String>((ref, channelId) {
+  final databaseService = ref.read(databaseServiceProvider);
 
-  try {
-    final databaseService = ref.read(databaseServiceProvider);
-    final channel = await databaseService.getChannelById(channelId);
-    final playlists =
-        await databaseService.getPlaylistsByChannel(channelId);
-    return ChannelDetails(channel: channel, playlists: playlists);
-  } catch (e, stack) {
-    log.severe('Failed to load channel details for $channelId', e, stack);
-    rethrow;
-  }
+  return Rx.combineLatest2<Channel?, List<Playlist>, ChannelDetails>(
+    databaseService.watchChannelById(channelId),
+    databaseService.watchPlaylists(channelId: channelId),
+    (channel, playlists) =>
+        ChannelDetails(channel: channel, playlists: playlists),
+  );
 });
-
