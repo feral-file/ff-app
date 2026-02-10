@@ -1,6 +1,6 @@
 import 'package:app/domain/models/blockchain.dart';
 
-// ignore_for_file: public_member_api_docs // Reason: copied from the legacy mobile app; keep DP-1 provenance wire model stable.
+// ignore_for_file: public_member_api_docs, avoid_equals_and_hash_code_on_mutable_classes // Reason: copied from the legacy mobile app; keep DP-1 provenance wire model stable.
 
 class DP1Provenance {
   DP1Provenance({
@@ -26,6 +26,16 @@ class DP1Provenance {
       'contract': contract.toJson(),
     };
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DP1Provenance &&
+          type == other.type &&
+          contract == other.contract;
+
+  @override
+  int get hashCode => Object.hash(type, contract);
 }
 
 String getContractAddress(String address) {
@@ -82,6 +92,22 @@ class DP1Contract {
       'metaHash': metaHash,
     };
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DP1Contract &&
+          chain == other.chain &&
+          standard == other.standard &&
+          address == other.address &&
+          tokenId == other.tokenId &&
+          seriesId == other.seriesId &&
+          uri == other.uri &&
+          metaHash == other.metaHash;
+
+  @override
+  int get hashCode =>
+      Object.hash(chain, standard, address, tokenId, seriesId, uri, metaHash);
 }
 
 enum DP1ProvenanceType {

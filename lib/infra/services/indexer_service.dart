@@ -16,8 +16,8 @@ class IndexerService {
   /// Creates an IndexerService.
   IndexerService({
     required IndexerClient client,
-  })  : _client = client,
-        _log = Logger('IndexerService');
+  }) : _client = client,
+       _log = Logger('IndexerService');
 
   final IndexerClient _client;
   final Logger _log;
@@ -73,7 +73,7 @@ class IndexerService {
       return tokens;
     } catch (e, stack) {
       _log.severe('Failed to fetch tokens by CIDs', e, stack);
-      return const [];
+      rethrow;
     }
   }
 
@@ -171,7 +171,7 @@ class IndexerService {
 
     final items =
         (data?['items'] as List?)?.whereType<Map<Object?, Object?>>() ??
-            const [];
+        const [];
 
     return items
         .map((e) => AssetToken.fromGraphQL(Map<String, dynamic>.from(e)))
@@ -264,8 +264,9 @@ class IndexerService {
 
       return jobs
           .whereType<Map<Object?, Object?>>()
-          .map((e) =>
-              AddressIndexingResult.fromJson(Map<String, dynamic>.from(e)))
+          .map(
+            (e) => AddressIndexingResult.fromJson(Map<String, dynamic>.from(e)),
+          )
           .toList();
     } catch (e, stack) {
       _log.severe('Failed to trigger address indexing', e, stack);

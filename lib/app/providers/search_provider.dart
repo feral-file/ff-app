@@ -88,9 +88,10 @@ final searchResultsProvider = FutureProvider<SearchResults>((ref) async {
     // Search works
     final allWorks = await databaseService.getAllItems();
     final matchingWorks = allWorks.where((PlaylistItem work) {
-      return work.title.toLowerCase().contains(lowerQuery) ||
-          (work.subtitle?.toLowerCase().contains(lowerQuery) ?? false) ||
-          (work.artistName.toLowerCase().contains(lowerQuery));
+      return work.title?.toLowerCase().contains(lowerQuery) ??
+          false ||
+              (work.subtitle?.toLowerCase().contains(lowerQuery) ?? false) ||
+              (work.artistName.toLowerCase().contains(lowerQuery));
     }).toList();
 
     return SearchResults(

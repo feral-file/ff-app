@@ -349,6 +349,13 @@ class AppDatabase extends _$AppDatabase {
     return (select(items)..where((t) => t.id.equals(id))).getSingleOrNull();
   }
 
+  /// Watch a single item by ID; emits when the row changes or is removed.
+  Stream<ItemData?> watchItemById(String id) {
+    return (select(items)..where((t) => t.id.equals(id)))
+        .watch()
+        .map((list) => list.isNotEmpty ? list.first : null);
+  }
+
   /// Get items by IDs.
   Future<List<ItemData>> getItemsByIds(List<String> ids) async {
     return (select(items)..where((t) => t.id.isIn(ids))).get();

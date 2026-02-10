@@ -1,0 +1,51 @@
+import 'package:app/design/app_typography.dart';
+import 'package:app/theme/app_color.dart';
+import 'package:flutter/material.dart';
+import 'package:gif_view/gif_view.dart';
+
+/// Default of loading state widget
+class LoadingWidget extends StatelessWidget {
+  final bool invertColors;
+  final Color? backgroundColor;
+  final Alignment alignment;
+  final EdgeInsets padding;
+  final bool isInfinitySize;
+
+  const LoadingWidget(
+      {super.key,
+      this.invertColors = false,
+      this.backgroundColor,
+      this.alignment = Alignment.center,
+      this.padding = EdgeInsets.zero,
+      this.isInfinitySize = true});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: isInfinitySize ? double.infinity : null,
+      height: isInfinitySize ? double.infinity : null,
+      color: backgroundColor ?? AppColor.primaryBlack,
+      child: Align(
+        alignment: alignment,
+        child: Padding(
+          padding: padding,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GifView.asset(
+                'assets/images/loading_white.gif',
+                height: 52,
+                frameRate: 12,
+                invertColors: invertColors,
+              ),
+              const SizedBox(height: 12),
+              Text('Loading', style: AppTypography.body(context).white)
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

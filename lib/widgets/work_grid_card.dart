@@ -55,7 +55,7 @@ class WorkGridCard extends StatelessWidget {
               ),
               SizedBox(height: LayoutConstants.space2),
               Text(
-                title,
+                title ?? '',
                 style: AppTypography.bodySmall(context).white,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,

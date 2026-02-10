@@ -87,6 +87,11 @@ dependencies:
   shimmer: 3.0.0
   graphql: 5.2.0
   flutter_pdfview: 1.4.4
+  just_audio: ^0.10.4
+  audio_session: ^0.2.2
+  webview_flutter: ^4.13.0
+  webview_flutter_android: ^4.7.0
+  webview_flutter_wkwebview: ^3.14.0
   backdrop: 0.9.1
   wakelock_plus: 1.4.0
   flutter_email_sender: 8.0.0

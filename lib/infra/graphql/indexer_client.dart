@@ -11,12 +11,12 @@ class IndexerClient {
     this.queryTimeout = const Duration(seconds: 60),
     this.mutationTimeout = const Duration(seconds: 15),
   }) : _client = GraphQLClient(
-          link: HttpLink(
-            '${endpoint}/graphql',
-            defaultHeaders: defaultHeaders,
-          ),
-          cache: GraphQLCache(),
-        );
+         link: HttpLink(
+           '${endpoint}/graphql',
+           defaultHeaders: defaultHeaders,
+         ),
+         cache: GraphQLCache(),
+       );
 
   final GraphQLClient _client;
 
@@ -39,15 +39,14 @@ class IndexerClient {
     String? subKey,
   }) async {
     try {
-      final result = await _client
-          .query(
-            QueryOptions(
-              document: gql(doc),
-              variables: vars,
-              fetchPolicy: FetchPolicy.networkOnly,
-            ),
-          )
-          .timeout(queryTimeout);
+      final result = await _client.query(
+        QueryOptions(
+          document: gql(doc),
+          variables: vars,
+          fetchPolicy: FetchPolicy.networkOnly,
+          queryRequestTimeout: queryTimeout,
+        ),
+      );
 
       if (result.hasException) {
         _captureGraphQLError(
@@ -92,6 +91,7 @@ class IndexerClient {
               document: gql(doc),
               variables: vars,
               fetchPolicy: FetchPolicy.networkOnly,
+              queryRequestTimeout: mutationTimeout,
             ),
           )
           .timeout(mutationTimeout);
@@ -144,8 +144,9 @@ class IndexerClient {
           extra: {
             'vars': vars,
             'doc': doc,
-            'graphqlErrors':
-                exception?.graphqlErrors.map((e) => e.message).toList(),
+            'graphqlErrors': exception?.graphqlErrors
+                .map((e) => e.message)
+                .toList(),
             'linkException': exception?.linkException?.toString(),
           },
           throwable: exception,

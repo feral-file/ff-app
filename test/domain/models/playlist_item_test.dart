@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('PlaylistItem', () {
     test('creates playlist item with required fields', () {
-      const item = PlaylistItem(
+      final item = PlaylistItem(
         id: 'item_123',
         kind: PlaylistItemKind.indexerToken,
         title: 'Test Item',
@@ -17,7 +17,7 @@ void main() {
       expect(item.title, equals('Test Item'));
       expect(item.artistName, '');
       expect(item.thumbnailUrl, isNull);
-      expect(item.mediaUrl, isNull);
+      expect(item.source, isNull);
     });
 
     test('creates playlist item with all fields', () {
@@ -27,7 +27,7 @@ void main() {
         title: 'Complete Item',
         artists: [DP1Artist(name: 'Test Artist', id: 'artist_123')],
         thumbnailUrl: 'https://example.com/thumb.jpg',
-        mediaUrl: 'https://example.com/media.mp4',
+        source: 'https://example.com/media.mp4',
       );
 
       expect(item.id, equals('item_456'));
@@ -35,11 +35,11 @@ void main() {
       expect(item.title, equals('Complete Item'));
       expect(item.artistName, equals('Test Artist'));
       expect(item.thumbnailUrl, equals('https://example.com/thumb.jpg'));
-      expect(item.mediaUrl, equals('https://example.com/media.mp4'));
+      expect(item.sourceUrl, equals('https://example.com/media.mp4'));
     });
 
     test('copyWith creates new instance with updated values', () {
-      const original = PlaylistItem(
+      final original = PlaylistItem(
         id: 'item_123',
         kind: PlaylistItemKind.indexerToken,
         title: 'Test Item',
@@ -56,11 +56,11 @@ void main() {
 
       // Original is unchanged
       expect(original.title, equals('Test Item'));
-      expect(original.artistName, isNull);
+      expect(original.artistName, equals(''));
     });
 
     test('toJson serializes correctly', () {
-      const item = PlaylistItem(
+      final item = PlaylistItem(
         id: 'item_test',
         kind: PlaylistItemKind.indexerToken,
         title: 'Test Item',

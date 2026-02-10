@@ -87,17 +87,19 @@ class LayoutConstants {
 
   // Page padding
   /// Setup page horizontal padding (44px)
-  static final double setupPageHorizontal =
-      PrimitivesTokens.spacingSetupPageHorizontal.toDouble();
+  static final double setupPageHorizontal = PrimitivesTokens
+      .spacingSetupPageHorizontal
+      .toDouble();
 
   /// Default page horizontal padding (16px)
-  static final double pageHorizontalDefault =
-      PrimitivesTokens.spacingPageHorizontalDefault.toDouble();
+  static final double pageHorizontalDefault = PrimitivesTokens
+      .spacingPageHorizontalDefault
+      .toDouble();
 
   // Touch targets
   /// Minimum touch target size (44px)
-  static final double minTouchTarget =
-      PrimitivesTokens.spacingMinTouchTarget.toDouble();
+  static final double minTouchTarget = PrimitivesTokens.spacingMinTouchTarget
+      .toDouble();
 
   /// Default button height
   static const double buttonHeightDefault = 44;
@@ -107,18 +109,18 @@ class LayoutConstants {
 
   // Icon sizes
   /// Small icon size (12px)
-  static final double iconSizeSmall =
-      PrimitivesTokens.iconSizesSmall.toDouble();
+  static final double iconSizeSmall = PrimitivesTokens.iconSizesSmall
+      .toDouble();
 
   /// Default icon size (16px)
-  static final double iconSizeDefault =
-      PrimitivesTokens.iconSizesDefault.toDouble();
+  static final double iconSizeDefault = PrimitivesTokens.iconSizesDefault
+      .toDouble();
 
   /// Medium icon size (20px)
-  static final double iconSizeMedium =
-      PrimitivesTokens.iconSizesMedium.toDouble();
+  static final double iconSizeMedium = PrimitivesTokens.iconSizesMedium
+      .toDouble();
 
   /// Large icon size (24px)
-  static final double iconSizeLarge =
-      PrimitivesTokens.iconSizesLarge.toDouble();
+  static final double iconSizeLarge = PrimitivesTokens.iconSizesLarge
+      .toDouble();
 }

@@ -86,7 +86,8 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
         slivers: [
           SliverToBoxAdapter(
             child: ErrorView(
-              error: 'We couldn’t load works. Check your connection, then Retry.',
+              error:
+                  'We couldn’t load works. Check your connection, then Retry.',
               onRetry: () => ref.read(worksProvider.notifier).loadWorks(),
             ),
           ),
@@ -112,7 +113,10 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
           // Works grid - domain PlaylistItem only
           UIHelper.worksSliverGrid(
             works: works,
-            onItemTap: (item) => context.go('${Routes.works}/${item.id}'),
+            onItemTap: (item) => context.pushNamed(
+              RouteNames.workDetail,
+              pathParameters: {'workId': item.id},
+            ),
           ),
           // Load more indicator at end of list when hasMore or loading next page
           if (hasMore || isLoadingMore)

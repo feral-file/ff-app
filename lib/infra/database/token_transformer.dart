@@ -11,18 +11,14 @@ class TokenTransformer {
     String? ownerAddress,
   }) {
     final title = token.displayTitle ?? 'Untitled';
-    final subtitle = token.metadata?.artists
-        ?.map((a) => a.name)
-        .where((n) => n.isNotEmpty)
-        .join(', ');
+    final artists = token.enrichmentSource?.artists ?? token.metadata?.artists;
 
-    final artists = token.metadata?.artists;
     final dp1Artists = artists
         ?.map((a) => DP1Artist(name: a.name, id: a.did))
         .toList();
 
     final normalizedOwner = ownerAddress?.toUpperCase();
-    final sortKeyUs = _computeSortKeyUsFromOwnershipSignals(
+    final sortKeyUs = computeSortKeyUsForToken(
       token: token,
       ownerAddress: normalizedOwner,
     );
@@ -31,23 +27,20 @@ class TokenTransformer {
       id: token.cid,
       kind: PlaylistItemKind.indexerToken,
       title: title,
-      subtitle: (subtitle == null || subtitle.isEmpty) ? null : subtitle,
       thumbnailUrl: token.getGalleryThumbnailUrl(),
       tokenData: token.toRestJson(),
-      provenance: {
-        'sortKeyUs': sortKeyUs,
-      },
+      sortKeyUs: sortKeyUs,
       updatedAt: DateTime.now(),
       artists: dp1Artists,
     );
     return item;
   }
 
-  /// Compute sort key from ownership signals.
+  /// Compute sort key in microseconds for playlist entry ordering.
   ///
   /// Prefer `provenance_events` when available; fall back to `owner_provenances`
   /// (legacy token summary query shape) when provenance events are not present.
-  static int _computeSortKeyUsFromOwnershipSignals({
+  static int computeSortKeyUsForToken({
     required AssetToken token,
     required String? ownerAddress,
   }) {
@@ -57,7 +50,7 @@ class TokenTransformer {
 
     final events = token.provenanceEvents?.items ?? const <ProvenanceEvent>[];
     if (events.isEmpty) {
-      return _computeSortKeyUsFromOwnerProvenances(
+      return computeSortKeyUsFromOwnerProvenances(
         token: token,
         ownerAddress: ownerAddress,
       );
@@ -78,7 +71,7 @@ class TokenTransformer {
     return latestUs;
   }
 
-  static int _computeSortKeyUsFromOwnerProvenances({
+  static int computeSortKeyUsFromOwnerProvenances({
     required AssetToken token,
     required String ownerAddress,
   }) {
