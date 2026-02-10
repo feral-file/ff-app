@@ -4,7 +4,6 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/error_view.dart';
-import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/playlist_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,7 +13,13 @@ import 'package:go_router/go_router.dart';
 /// Playlists tab page with curated and personal playlists.
 class PlaylistsTabPage extends ConsumerStatefulWidget {
   /// Creates a PlaylistsTabPage.
-  const PlaylistsTabPage({super.key});
+  const PlaylistsTabPage({
+    required this.isActive,
+    super.key,
+  });
+
+  /// Whether this tab is currently active.
+  final bool isActive;
 
   @override
   ConsumerState<PlaylistsTabPage> createState() => PlaylistsTabPageState();
@@ -26,6 +31,8 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
   static const int _previewCount = 5;
 
   final ScrollController _scrollController = ScrollController();
+  PlaylistsState _cachedCuratedState = PlaylistsState.initial();
+  PlaylistsState _cachedPersonalState = PlaylistsState.initial();
 
   @override
   bool get wantKeepAlive => true;
@@ -35,13 +42,21 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     super.initState();
     _scrollController.addListener(_onScroll);
 
-    // Trigger initial load for both curated and personal (old repo semantics).
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
-      ref
-          .read(playlistsProvider(PlaylistType.addressBased).notifier)
-          .loadPlaylists();
+      if (!widget.isActive) return;
+      _loadPlaylists();
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant PlaylistsTabPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.isActive) return;
+        _loadPlaylists();
+      });
+    }
   }
 
   @override
@@ -52,6 +67,7 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
   }
 
   void _onScroll() {
+    if (!widget.isActive) return;
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
       // Load more curated only (pagination applies to dp1).
@@ -59,35 +75,46 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     }
   }
 
+  void _loadPlaylists() {
+    ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
+    ref
+        .read(playlistsProvider(PlaylistType.addressBased).notifier)
+        .loadPlaylists();
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
-    // Watch slices to avoid rebuilds when unrelated state changes.
-    final curatedSlice = ref.watch(
-      playlistsProvider(PlaylistType.dp1).select(
-        (s) => (
-          playlists: s.playlists,
-          isLoading: s.isLoading,
-          error: s.error,
-          hasMore: s.hasMore,
-        ),
-      ),
-    );
-    final personalSlice = ref.watch(
-      playlistsProvider(PlaylistType.addressBased).select(
-        (s) => (
-          playlists: s.playlists,
-          isLoading: s.isLoading,
-          error: s.error,
-        ),
-      ),
-    );
-    final curatedPlaylists = curatedSlice.playlists;
-    final personalPlaylists = personalSlice.playlists;
-    final isLoading = curatedSlice.isLoading || personalSlice.isLoading;
-    final error = curatedSlice.error ?? personalSlice.error;
-    final hasMore = curatedSlice.hasMore;
+    // Watch both providers (curated = dp1, personal = addressBased).
+    final nextCuratedState = widget.isActive
+        ? ref.watch(playlistsProvider(PlaylistType.dp1))
+        : _cachedCuratedState;
+    final nextPersonalState = widget.isActive
+        ? ref.watch(playlistsProvider(PlaylistType.addressBased))
+        : _cachedPersonalState;
+    final shouldKeepSnapshot =
+        widget.isActive &&
+        (_cachedCuratedState.playlists.isNotEmpty ||
+            _cachedPersonalState.playlists.isNotEmpty) &&
+        nextCuratedState.playlists.isEmpty &&
+        nextPersonalState.playlists.isEmpty &&
+        (nextCuratedState.isLoading || nextPersonalState.isLoading);
+
+    final curatedState = shouldKeepSnapshot
+        ? _cachedCuratedState
+        : nextCuratedState;
+    final personalState = shouldKeepSnapshot
+        ? _cachedPersonalState
+        : nextPersonalState;
+    if (widget.isActive && !shouldKeepSnapshot) {
+      _cachedCuratedState = nextCuratedState;
+      _cachedPersonalState = nextPersonalState;
+    }
+    final curatedPlaylists = curatedState.playlists;
+    final personalPlaylists = personalState.playlists;
+    final error = curatedState.error ?? personalState.error;
+    final hasMore = curatedState.hasMore;
 
     // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics.
     // Parent NestedScrollView handles scrolling.
@@ -96,10 +123,6 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
       controller: _scrollController,
       physics: const NeverScrollableScrollPhysics(),
       slivers: [
-        // Loading state
-        if (isLoading && curatedPlaylists.isEmpty && personalPlaylists.isEmpty)
-          const SliverToBoxAdapter(child: LoadingView()),
-
         // Error state
         if (error != null &&
             curatedPlaylists.isEmpty &&
@@ -134,6 +157,7 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
                 ),
               ),
               playlists: personalPlaylists.take(_previewCount).toList(),
+              isActive: widget.isActive,
               hasMore: personalPlaylists.length > _previewCount,
               onViewAllTap: personalPlaylists.length > _previewCount
                   ? () => context.push('${Routes.allPlaylists}?filter=personal')
@@ -159,6 +183,7 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
                 ),
               ),
               playlists: curatedPlaylists.take(_previewCount).toList(),
+              isActive: widget.isActive,
               hasMore: hasMore || curatedPlaylists.length > _previewCount,
               onViewAllTap: (hasMore || curatedPlaylists.length > _previewCount)
                   ? () => context.push('${Routes.allPlaylists}?filter=curated')

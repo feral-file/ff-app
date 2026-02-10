@@ -188,6 +188,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
                           '${Routes.channels}/${item.id}',
                         );
                       },
+                      isActive: true,
                     ),
                   ),
                   if (hasMore || isLoadingMore)

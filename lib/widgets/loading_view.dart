@@ -70,41 +70,31 @@ class LoadingWidget extends StatelessWidget {
       width: width?.toDouble(),
       height: height?.toDouble(),
       child: Center(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final maxH = constraints.maxHeight;
-            final useCompactLayout =
-                maxH.isFinite && maxH < _minContentHeight;
-            if (useCompactLayout) {
-              return GifView.asset(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GifView.asset(
                 'assets/images/loading_white.gif',
-                width: LayoutConstants.workThumbnailImageWidth,
-                height: LayoutConstants.workThumbnailImageHeight,
+                width: width?.toDouble() ?? _loadingGifSize,
+                height: height?.toDouble(),
                 frameRate: frameRate ?? 12,
                 invertColors: invertColors,
-              );
-            }
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GifView.asset(
-                  'assets/images/loading_white.gif',
-                  width: width?.toDouble() ?? _loadingGifSize,
-                  height: height?.toDouble(),
-                  frameRate: frameRate ?? 12,
-                  invertColors: invertColors,
+              ),
+              if (showText) ...[
+                SizedBox(height: LayoutConstants.space3),
+                Text(
+                  text ?? 'Loading...',
+                  style: AppTypography.bodySmall(context).white,
+                  maxLines: 1,
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
                 ),
-                if (showText) ...[
-                  SizedBox(height: LayoutConstants.space3),
-                  Text(
-                    text ?? 'Loading...',
-                    style: AppTypography.bodySmall(context).white,
-                  ),
-                ],
               ],
-            );
-          },
+            ],
+          ),
         ),
       ),
     );

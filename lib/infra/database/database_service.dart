@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
-import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -32,6 +32,31 @@ class DatabaseService {
 
   final AppDatabase _db;
   late final Logger _log;
+
+  Future<T> _runWriteTaskOnDriftIsolate<T>({
+    required Future<T> Function(AppDatabase db) task,
+  }) async {
+    try {
+      return await _db.computeWithDatabase<T, AppDatabase>(
+        connect: AppDatabase.fromConnection,
+        computation: task,
+      );
+    } on Object catch (e) {
+      if (e is UnsupportedError) {
+        _log.warning(
+          'computeWithDatabase unsupported, running on current isolate: $e',
+        );
+        return task(_db);
+      }
+      if (e is ArgumentError && _isIsolateSendFailure(e)) {
+        _log.warning(
+          'Failed to send payload to drift isolate, running locally: $e',
+        );
+        return task(_db);
+      }
+      rethrow;
+    }
+  }
 
   // ===========================================================================
   // Watch operations (reactive streams)
@@ -93,7 +118,11 @@ class DatabaseService {
     }
 
     yield* stream
-        .debounceTime(Duration(milliseconds: 300))
+        .throttleTime(
+          const Duration(milliseconds: 300),
+          leading: true,
+          trailing: true,
+        )
         .map(
           (rows) =>
               rows.map(DatabaseConverters.itemDataToDomainPreview).toList(),
@@ -511,6 +540,16 @@ class DatabaseService {
       return data.map(DatabaseConverters.itemDataToDomainPreview).toList();
     } catch (e, stack) {
       _log.severe('Failed to get items', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Get ordered item IDs with optional [limit] and [offset] for diff windows.
+  Future<List<String>> getItemIds({int? limit, int? offset}) async {
+    try {
+      return _db.getItemIds(limit: limit, offset: offset);
+    } catch (e, stack) {
+      _log.severe('Failed to get item ids', e, stack);
       rethrow;
     }
   }
@@ -1007,75 +1046,14 @@ class DatabaseService {
     required List<DP1Playlist> playlists,
   }) async {
     try {
-      final domainChannel = Channel(
-        id: channel.id,
-        name: channel.title,
-        type: ChannelType.dp1,
-        description: channel.summary,
-        baseUrl: baseUrl,
-        slug: channel.slug,
-        curator: channel.curator,
-        coverImageUrl: channel.coverImage,
-        createdAt: channel.created,
-        updatedAt: channel.created,
-      );
-
-      final channelCompanion =
-          DatabaseConverters.channelToCompanion(domainChannel);
-      final playlistCompanions = <PlaylistsCompanion>[];
-      final itemCompanions = <ItemsCompanion>[];
-      final entryCompanions = <PlaylistEntriesCompanion>[];
-      final playlistIds = <String>[];
-
-      for (final playlist in playlists) {
-        final domainPlaylist = DatabaseConverters.dp1PlaylistToDomain(
-          playlist,
+      await _runWriteTaskOnDriftIsolate<void>(
+        task: (db) => _ingestDP1ChannelWithPlaylistsBareOnDatabase(
+          db: db,
           baseUrl: baseUrl,
-          channelId: channel.id,
-        );
-        playlistCompanions.add(
-          DatabaseConverters.playlistToCompanion(domainPlaylist),
-        );
-        playlistIds.add(domainPlaylist.id);
-
-        for (var i = 0; i < playlist.items.length; i++) {
-          final bareItem = DatabaseConverters.dp1PlaylistItemToPlaylistItem(
-            playlist.items[i],
-            token: null,
-          );
-          itemCompanions.add(DatabaseConverters.playlistItemToCompanion(bareItem));
-          entryCompanions.add(
-            DatabaseConverters.createPlaylistEntry(
-              playlistId: domainPlaylist.id,
-              itemId: bareItem.id,
-              position: i,
-              sortKeyUs: 0,
-            ),
-          );
-        }
-      }
-
-      await _db.transaction(() async {
-        await _db.batch((batch) {
-          batch.insertAllOnConflictUpdate(_db.channels, [channelCompanion]);
-          if (playlistCompanions.isNotEmpty) {
-            batch.insertAllOnConflictUpdate(_db.playlists, playlistCompanions);
-          }
-          if (itemCompanions.isNotEmpty) {
-            batch.insertAllOnConflictUpdate(_db.items, itemCompanions);
-          }
-          if (entryCompanions.isNotEmpty) {
-            batch.insertAllOnConflictUpdate(
-              _db.playlistEntries,
-              entryCompanions,
-            );
-          }
-        });
-
-        for (final playlistId in playlistIds) {
-          await _db.updatePlaylistItemCount(playlistId);
-        }
-      });
+          channel: channel,
+          playlists: playlists,
+        ),
+      );
 
       _log.info(
         'Ingested channel ${channel.id} with ${playlists.length} playlists '
@@ -1089,6 +1067,83 @@ class DatabaseService {
       );
       rethrow;
     }
+  }
+
+  static Future<void> _ingestDP1ChannelWithPlaylistsBareOnDatabase({
+    required AppDatabase db,
+    required String baseUrl,
+    required DP1Channel channel,
+    required List<DP1Playlist> playlists,
+  }) async {
+    final domainChannel = Channel(
+      id: channel.id,
+      name: channel.title,
+      type: ChannelType.dp1,
+      description: channel.summary,
+      baseUrl: baseUrl,
+      slug: channel.slug,
+      curator: channel.curator,
+      coverImageUrl: channel.coverImage,
+      createdAt: channel.created,
+      updatedAt: channel.created,
+    );
+
+    final channelCompanion = DatabaseConverters.channelToCompanion(
+      domainChannel,
+    );
+    final playlistCompanions = <PlaylistsCompanion>[];
+    final itemCompanions = <ItemsCompanion>[];
+    final entryCompanions = <PlaylistEntriesCompanion>[];
+    final playlistIds = <String>[];
+
+    for (final playlist in playlists) {
+      final domainPlaylist = DatabaseConverters.dp1PlaylistToDomain(
+        playlist,
+        baseUrl: baseUrl,
+        channelId: channel.id,
+      );
+      playlistCompanions.add(
+        DatabaseConverters.playlistToCompanion(domainPlaylist),
+      );
+      playlistIds.add(domainPlaylist.id);
+
+      for (var i = 0; i < playlist.items.length; i++) {
+        final bareItem = DatabaseConverters.dp1PlaylistItemToPlaylistItem(
+          playlist.items[i],
+          token: null,
+        );
+        itemCompanions.add(
+          DatabaseConverters.playlistItemToCompanion(bareItem),
+        );
+        entryCompanions.add(
+          DatabaseConverters.createPlaylistEntry(
+            playlistId: domainPlaylist.id,
+            itemId: bareItem.id,
+            position: i,
+            sortKeyUs: 0,
+          ),
+        );
+      }
+    }
+
+    await db.transaction(() async {
+      await db.batch((batch) {
+        batch.insertAllOnConflictUpdate(db.channels, [channelCompanion]);
+        if (playlistCompanions.isNotEmpty) {
+          batch.insertAllOnConflictUpdate(db.playlists, playlistCompanions);
+        }
+        if (itemCompanions.isNotEmpty) {
+          batch.insertAllOnConflictUpdate(db.items, itemCompanions);
+        }
+        if (entryCompanions.isNotEmpty) {
+          batch.insertAllOnConflictUpdate(db.playlistEntries, entryCompanions);
+        }
+      });
+
+      for (final playlistId in playlistIds) {
+        await db.updatePlaylistItemCount(playlistId);
+      }
+    });
   }
 
   /// Ingest a DP1 playlist wire model into the database.
@@ -1206,6 +1261,10 @@ class DatabaseService {
       _log.fine('Loaded ${result.length} high-priority bare items');
       return result;
     } catch (e, stack) {
+      if (_isOperationCancelled(e)) {
+        _log.fine('High-priority bare-items query cancelled');
+        return const <(String, String?, String, int)>[];
+      }
       _log.severe('Failed to load high-priority bare items', e, stack);
       rethrow;
     }
@@ -1277,6 +1336,10 @@ class DatabaseService {
       _log.fine('Loaded ${result.length} low-priority bare items');
       return result;
     } catch (e, stack) {
+      if (_isOperationCancelled(e)) {
+        _log.fine('Low-priority bare-items query cancelled');
+        return const <(String, String?, String, int)>[];
+      }
       _log.severe('Failed to load low-priority bare items', e, stack);
       rethrow;
     }
@@ -1290,7 +1353,9 @@ class DatabaseService {
     required AssetToken token,
   }) async {
     try {
-      final enrichedItem = TokenTransformer.assetTokenToPlaylistItem(token: token);
+      final enrichedItem = TokenTransformer.assetTokenToPlaylistItem(
+        token: token,
+      );
 
       // Create companion with enriched data
       final companion = ItemsCompanion(
@@ -1299,8 +1364,13 @@ class DatabaseService {
         title: Value(enrichedItem.title),
         subtitle: Value(enrichedItem.subtitle),
         thumbnailUri: Value(enrichedItem.thumbnailUrl),
-        listArtistJson: enrichedItem.artists != null && enrichedItem.artists!.isNotEmpty
-            ? Value(jsonEncode(enrichedItem.artists!.map((a) => a.toJson()).toList()))
+        listArtistJson:
+            enrichedItem.artists != null && enrichedItem.artists!.isNotEmpty
+            ? Value(
+                jsonEncode(
+                  enrichedItem.artists!.map((a) => a.toJson()).toList(),
+                ),
+              )
             : const Value(null),
         tokenDataJson: Value(jsonEncode(token.toRestJson())),
         updatedAtUs: Value(BigInt.from(DateTime.now().microsecondsSinceEpoch)),
@@ -1321,34 +1391,14 @@ class DatabaseService {
 
     try {
       final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
-      final companions = enrichments.map((enrichment) {
-        final itemId = enrichment.$1;
-        final token = enrichment.$2;
-        final enrichedItem =
-            TokenTransformer.assetTokenToPlaylistItem(token: token);
-
-        return ItemsCompanion(
-          id: Value(itemId),
-          kind: Value(1), // indexer token
-          title: Value(enrichedItem.title),
-          subtitle: Value(enrichedItem.subtitle),
-          thumbnailUri: Value(enrichedItem.thumbnailUrl),
-          listArtistJson:
-              enrichedItem.artists != null && enrichedItem.artists!.isNotEmpty
-                  ? Value(
-                      jsonEncode(
-                        enrichedItem.artists!.map((a) => a.toJson()).toList(),
-                      ),
-                    )
-                  : const Value(null),
-          tokenDataJson: Value(jsonEncode(token.toRestJson())),
-          updatedAtUs: Value(nowUs),
-        );
-      }).toList(growable: false);
-
-      await _db.batch((batch) {
-        batch.insertAllOnConflictUpdate(_db.items, companions);
-      });
+      // Hot path: avoid computeWithDatabase() here because it spawns a short-
+      // lived isolate per batch and adds IPC overhead. SQL still runs on
+      // Drift's background writer isolate via NativeDatabase.createInBackground.
+      await _enrichPlaylistItemsWithTokensBatchOnDatabase(
+        db: _db,
+        enrichments: enrichments,
+        nowUs: nowUs,
+      );
     } catch (e, stack) {
       _log.severe(
         'Failed to enrich ${enrichments.length} items in batch',
@@ -1359,22 +1409,149 @@ class DatabaseService {
     }
   }
 
+  static Future<void> _enrichPlaylistItemsWithTokensBatchOnDatabase({
+    required AppDatabase db,
+    required List<(String, AssetToken)> enrichments,
+    required BigInt nowUs,
+  }) async {
+    final companions = enrichments
+        .map((enrichment) {
+          final itemId = enrichment.$1;
+          final token = enrichment.$2;
+          final enrichedItem = TokenTransformer.assetTokenToPlaylistItem(
+            token: token,
+          );
+
+          return ItemsCompanion(
+            id: Value(itemId),
+            kind: const Value(1), // indexer token
+            title: Value(enrichedItem.title),
+            subtitle: Value(enrichedItem.subtitle),
+            thumbnailUri: Value(enrichedItem.thumbnailUrl),
+            listArtistJson:
+                enrichedItem.artists != null && enrichedItem.artists!.isNotEmpty
+                ? Value(
+                    jsonEncode(
+                      enrichedItem.artists!.map((a) => a.toJson()).toList(),
+                    ),
+                  )
+                : const Value(null),
+            tokenDataJson: Value(jsonEncode(token.toRestJson())),
+            updatedAtUs: Value(nowUs),
+          );
+        })
+        .toList(growable: false);
+
+    await db.batch((batch) {
+      batch.insertAllOnConflictUpdate(db.items, companions);
+    });
+  }
+
+  /// Build token CIDs from raw bare-item rows on a worker isolate.
+  ///
+  /// This offloads JSON decoding of `provenance_json` from the UI isolate.
+  Future<List<(String, String, String, int)>> extractTokenCidsFromBareRows({
+    required List<(String, String?, String, int)> rows,
+  }) async {
+    if (rows.isEmpty) return const <(String, String, String, int)>[];
+    // For typical enrichment batches (<= 50), isolate spawn/IPC overhead can
+    // dominate. Offload only when input is large enough to benefit.
+    if (rows.length < 200) {
+      return _extractTokenCidRows(rows);
+    }
+    return Isolate.run(() => _extractTokenCidRows(rows));
+  }
+
   /// Build token CID from provenance json.
   String? buildTokenCidFromProvenanceJson(String? provenanceJson) {
-    if (provenanceJson == null || provenanceJson.isEmpty) {
+    return _buildTokenCidFromProvenanceJson(provenanceJson);
+  }
+}
+
+bool _isIsolateSendFailure(ArgumentError error) {
+  return error.toString().contains('Illegal argument in isolate message');
+}
+
+bool _isOperationCancelled(Object error) {
+  return error.runtimeType.toString() == 'CancellationException' ||
+      error.toString().contains('Operation was cancelled');
+}
+
+List<(String, String, String, int)> _extractTokenCidRows(
+  List<(String, String?, String, int)> rows,
+) {
+  final withCid = <(String, String, String, int)>[];
+
+  for (final row in rows) {
+    final cid = _buildTokenCidFromProvenanceJson(row.$2);
+    if (cid == null || cid.isEmpty) {
+      continue;
+    }
+    withCid.add((row.$1, cid, row.$3, row.$4));
+  }
+
+  return withCid;
+}
+
+String? _buildTokenCidFromProvenanceJson(String? provenanceJson) {
+  if (provenanceJson == null || provenanceJson.isEmpty) {
+    return null;
+  }
+
+  try {
+    final decoded = jsonDecode(provenanceJson);
+    if (decoded is! Map) {
       return null;
     }
 
-    try {
-      final decoded = jsonDecode(provenanceJson);
-      if (decoded is! Map<String, dynamic>) {
-        return null;
-      }
-
-      final provenance = DP1Provenance.fromJson(decoded);
-      return provenance.cid;
-    } on Exception {
+    final decodedMap = Map<String, dynamic>.from(decoded);
+    final contractRaw = decodedMap['contract'];
+    if (contractRaw is! Map) {
       return null;
     }
+
+    final contract = Map<String, dynamic>.from(contractRaw);
+    final chainRaw = contract['chain']?.toString().toLowerCase();
+    if (chainRaw == null || chainRaw.isEmpty) {
+      return null;
+    }
+
+    final prefix = _cidPrefixForChain(chainRaw);
+    if (prefix == null || prefix.isEmpty) {
+      return null;
+    }
+
+    final standard = contract['standard']?.toString().toLowerCase();
+    if (standard == null || standard.isEmpty || standard == 'other') {
+      return null;
+    }
+
+    final address = contract['address']?.toString();
+    if (address == null || address.isEmpty) {
+      return null;
+    }
+
+    final tokenId = contract['tokenId']?.toString();
+    if (tokenId == null || tokenId.isEmpty) {
+      return null;
+    }
+
+    return '$prefix:$standard:$address:$tokenId';
+  } on Object {
+    return null;
+  }
+}
+
+String? _cidPrefixForChain(String chain) {
+  switch (chain) {
+    case 'evm':
+    case 'ethereum':
+    case 'eth':
+      return 'eip155:1';
+    case 'tezos':
+    case 'tez':
+      return 'tezos:mainnet';
+    default:
+      return null;
   }
 }

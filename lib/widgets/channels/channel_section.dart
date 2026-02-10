@@ -14,6 +14,7 @@ class ChannelSection extends StatelessWidget {
     this.onViewAllTap,
     this.onChannelItemTap,
     this.hasMore = true,
+    this.isActive = true,
     super.key,
   });
 
@@ -34,6 +35,9 @@ class ChannelSection extends StatelessWidget {
 
   /// Whether there are more items to view.
   final bool hasMore;
+
+  /// Whether rows should actively listen to providers.
+  final bool isActive;
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +68,7 @@ class ChannelSection extends StatelessWidget {
 
         return ChannelListRow(
           channelData: channelData,
+          isActive: isActive,
           onItemTap: onChannelItemTap,
         );
       },

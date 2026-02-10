@@ -17,6 +17,7 @@ class PlaylistSection extends StatefulWidget {
     this.onPlaylistItemTap,
     this.scrollController,
     this.hasMore = true,
+    this.isActive = true,
     this.playlistHeaderBuilder,
     super.key,
   });
@@ -41,6 +42,9 @@ class PlaylistSection extends StatefulWidget {
 
   /// Whether there are more playlists to view.
   final bool hasMore;
+
+  /// Whether rows should actively listen to providers.
+  final bool isActive;
 
   /// Optional custom header builder for playlist rows.
   final Widget? Function(Playlist playlist, int itemCount)?
@@ -94,6 +98,7 @@ class _PlaylistSectionState extends State<PlaylistSection> {
         return PlaylistRowItem(
           playlist: playlist,
           playlistCreator: _getCreatorName(playlist),
+          isActive: widget.isActive,
           onItemTap: widget.onPlaylistItemTap,
           scrollController: widget.scrollController,
           headerBuilder: widget.playlistHeaderBuilder == null

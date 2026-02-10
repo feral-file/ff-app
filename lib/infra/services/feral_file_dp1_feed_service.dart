@@ -22,12 +22,14 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
     required super.feedConfigStore,
     required super.apiKey,
     required this.indexerService,
+    this.onChannelIngested,
     super.isExternalFeedService,
     super.dio,
   }) : _log = Logger('FeralFileDP1FeedService[$baseUrl]');
 
   /// Indexer service for token enrichment.
   final IndexerService indexerService;
+  final void Function()? onChannelIngested;
 
   late final Logger _log;
 
@@ -106,25 +108,49 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
     }
     await clearCache();
 
-    final results = await Future.wait(
-      _remoteConfigChannelIds.map(_fetchChannelAndPlaylists),
-    );
-
     var fetchedChannelCount = 0;
     var fetchedPlaylistCount = 0;
-    for (final result in results) {
-      if (isPaused) {
-        _log.info('Pause requested before persisting fetched channel data');
-        return;
-      }
-      if (result == null) continue;
+
+    if (_remoteConfigChannelIds.isEmpty) {
+      return;
+    }
+
+    final firstChannelId = _remoteConfigChannelIds.first;
+    final remainingChannelIds = _remoteConfigChannelIds.skip(1).toList();
+
+    // Ingest the first channel first so enrichment can start immediately.
+    final firstResult = await _fetchChannelAndPlaylists(firstChannelId);
+    if (firstResult != null && !isPaused) {
       await databaseService.ingestDP1ChannelWithPlaylistsBare(
         baseUrl: baseUrl,
-        channel: result.channel,
-        playlists: result.playlists,
+        channel: firstResult.channel,
+        playlists: firstResult.playlists,
       );
+      onChannelIngested?.call();
       fetchedChannelCount += 1;
-      fetchedPlaylistCount += result.playlists.length;
+      fetchedPlaylistCount += firstResult.playlists.length;
+    }
+
+    // Continue fetching/ingesting the rest in parallel.
+    if (remainingChannelIds.isNotEmpty) {
+      final results = await Future.wait(
+        remainingChannelIds.map(_fetchChannelAndPlaylists),
+      );
+      for (final result in results) {
+        if (isPaused) {
+          _log.info('Pause requested before persisting fetched channel data');
+          return;
+        }
+        if (result == null) continue;
+        await databaseService.ingestDP1ChannelWithPlaylistsBare(
+          baseUrl: baseUrl,
+          channel: result.channel,
+          playlists: result.playlists,
+        );
+        onChannelIngested?.call();
+        fetchedChannelCount += 1;
+        fetchedPlaylistCount += result.playlists.length;
+      }
     }
 
     _log.info(
@@ -134,7 +160,9 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
     );
   }
 
-  Future<_ChannelLoadResult?> _fetchChannelAndPlaylists(String channelId) async {
+  Future<_ChannelLoadResult?> _fetchChannelAndPlaylists(
+    String channelId,
+  ) async {
     if (isPaused) return null;
 
     final channel = await getChannelDetail(channelId, fromCache: false);

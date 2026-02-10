@@ -40,9 +40,6 @@ class HomeIndexPage extends ConsumerStatefulWidget {
 class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
   late HomeIndexHeaderTab _selectedTab;
   late ScrollController _scrollController;
-  late final PlaylistsTabPage _playlistsPage;
-  ChannelsTabPage? _channelsPage;
-  WorksTabPage? _worksPage;
 
   @override
   void initState() {
@@ -50,17 +47,6 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     _selectedTab = HomeIndexHeaderTab.playlists;
     _scrollController = ScrollController();
     _scrollController.addListener(_onScrollChange);
-    _playlistsPage = PlaylistsTabPage(key: _playlistsPageKey);
-    // Build channels and works tabs after first frame(s) to reduce first-frame work.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        setState(() {
-          _channelsPage = ChannelsTabPage(key: _channelsPageKey);
-          _worksPage = WorksTabPage(key: _worksPageKey);
-        });
-      });
-    });
 
     // Trigger bootstrap to fetch channels and playlists
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -355,15 +341,24 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
       children: [
         Offstage(
           offstage: _selectedTab != HomeIndexHeaderTab.playlists,
-          child: _playlistsPage,
+          child: PlaylistsTabPage(
+            key: _playlistsPageKey,
+            isActive: _selectedTab == HomeIndexHeaderTab.playlists,
+          ),
         ),
         Offstage(
           offstage: _selectedTab != HomeIndexHeaderTab.channels,
-          child: _channelsPage ?? const SizedBox.shrink(),
+          child: ChannelsTabPage(
+            key: _channelsPageKey,
+            isActive: _selectedTab == HomeIndexHeaderTab.channels,
+          ),
         ),
         Offstage(
           offstage: _selectedTab != HomeIndexHeaderTab.works,
-          child: _worksPage ?? const SizedBox.shrink(),
+          child: WorksTabPage(
+            key: _worksPageKey,
+            isActive: _selectedTab == HomeIndexHeaderTab.works,
+          ),
         ),
       ],
     );

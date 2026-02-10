@@ -41,6 +41,7 @@ class ChannelListRow extends ConsumerStatefulWidget {
   const ChannelListRow({
     required this.channelData,
     this.onItemTap,
+    this.isActive = true,
     super.key,
   });
 
@@ -50,11 +51,16 @@ class ChannelListRow extends ConsumerStatefulWidget {
   /// Callback when a work item is tapped.
   final void Function(PlaylistItem item)? onItemTap;
 
+  /// Whether this row should actively listen to providers.
+  final bool isActive;
+
   @override
   ConsumerState<ChannelListRow> createState() => _ChannelListRowState();
 }
 
 class _ChannelListRowState extends ConsumerState<ChannelListRow> {
+  ChannelPreviewState _cachedPreviewState = ChannelPreviewState.initial();
+
   @override
   void initState() {
     super.initState();
@@ -68,18 +74,37 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
   @override
   void didUpdateWidget(ChannelListRow oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.channelData.channelId != widget.channelData.channelId) {
+      _cachedPreviewState = ChannelPreviewState.initial();
+    }
+    if (!oldWidget.isActive &&
+        widget.isActive &&
+        widget.channelData.works.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.isActive) return;
+        ref
+            .read(channelPreviewProvider(widget.channelData.channelId).notifier)
+            .load();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final channelId = widget.channelData.channelId;
-    final previewState = ref.watch(channelPreviewProvider(channelId));
+    final previewState = widget.isActive
+        ? ref.watch(channelPreviewProvider(channelId))
+        : _cachedPreviewState;
+    if (widget.isActive) {
+      _cachedPreviewState = previewState;
+    }
 
     final works = widget.channelData.works.isNotEmpty
         ? widget.channelData.works
         : previewState.works;
-    final hasMore =
-        widget.channelData.works.isNotEmpty ? false : previewState.hasMore;
+    final hasMore = widget.channelData.works.isNotEmpty
+        ? false
+        : previewState.hasMore;
     final isLoadingMore =
         widget.channelData.works.isEmpty && previewState.isLoadingMore;
     final isLoading =
