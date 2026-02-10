@@ -66,9 +66,6 @@ final bootstrapServiceProvider = Provider<BootstrapService>((ref) {
 final dp1FeedServiceProvider = Provider<FeralFileDP1FeedService>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
   final indexerService = ref.watch(indexerServiceProvider);
-  final enrichmentService = ref.watch(
-    dp1PlaylistItemsEnrichmentServiceProvider,
-  );
   final feedConfigStore = ref.watch(feedConfigStoreProvider);
 
   return FeralFileDP1FeedService(
@@ -76,7 +73,6 @@ final dp1FeedServiceProvider = Provider<FeralFileDP1FeedService>((ref) {
     isExternalFeedService: false,
     databaseService: databaseService,
     indexerService: indexerService,
-    enrichmentService: enrichmentService,
     feedConfigStore: feedConfigStore,
     apiKey: AppConfig.dp1FeedApiKey,
   );

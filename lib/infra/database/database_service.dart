@@ -956,6 +956,100 @@ class DatabaseService {
     await ingestChannels(domainChannels);
   }
 
+  /// Ingest one DP1 channel and all its playlists/items in a single transaction.
+  ///
+  /// This is optimized for remote-config channel bootstrap where one channel URL
+  /// should be persisted atomically to reduce lock churn and watcher invalidation.
+  Future<void> ingestDP1ChannelWithPlaylistsBare({
+    required String baseUrl,
+    required DP1Channel channel,
+    required List<DP1Playlist> playlists,
+  }) async {
+    try {
+      final domainChannel = Channel(
+        id: channel.id,
+        name: channel.title,
+        type: ChannelType.dp1,
+        description: channel.summary,
+        baseUrl: baseUrl,
+        slug: channel.slug,
+        curator: channel.curator,
+        coverImageUrl: channel.coverImage,
+        createdAt: channel.created,
+        updatedAt: channel.created,
+      );
+
+      final channelCompanion =
+          DatabaseConverters.channelToCompanion(domainChannel);
+      final playlistCompanions = <PlaylistsCompanion>[];
+      final itemCompanions = <ItemsCompanion>[];
+      final entryCompanions = <PlaylistEntriesCompanion>[];
+      final playlistIds = <String>[];
+
+      for (final playlist in playlists) {
+        final domainPlaylist = DatabaseConverters.dp1PlaylistToDomain(
+          playlist,
+          baseUrl: baseUrl,
+          channelId: channel.id,
+        );
+        playlistCompanions.add(
+          DatabaseConverters.playlistToCompanion(domainPlaylist),
+        );
+        playlistIds.add(domainPlaylist.id);
+
+        for (var i = 0; i < playlist.items.length; i++) {
+          final bareItem = DatabaseConverters.dp1PlaylistItemToPlaylistItem(
+            playlist.items[i],
+            token: null,
+          );
+          itemCompanions.add(DatabaseConverters.playlistItemToCompanion(bareItem));
+          entryCompanions.add(
+            DatabaseConverters.createPlaylistEntry(
+              playlistId: domainPlaylist.id,
+              itemId: bareItem.id,
+              position: i,
+              sortKeyUs: 0,
+            ),
+          );
+        }
+      }
+
+      await _db.transaction(() async {
+        await _db.batch((batch) {
+          batch.insertAllOnConflictUpdate(_db.channels, [channelCompanion]);
+          if (playlistCompanions.isNotEmpty) {
+            batch.insertAllOnConflictUpdate(_db.playlists, playlistCompanions);
+          }
+          if (itemCompanions.isNotEmpty) {
+            batch.insertAllOnConflictUpdate(_db.items, itemCompanions);
+          }
+          if (entryCompanions.isNotEmpty) {
+            batch.insertAllOnConflictUpdate(
+              _db.playlistEntries,
+              entryCompanions,
+            );
+          }
+        });
+
+        for (final playlistId in playlistIds) {
+          await _db.updatePlaylistItemCount(playlistId);
+        }
+      });
+
+      _log.info(
+        'Ingested channel ${channel.id} with ${playlists.length} playlists '
+        'in one transaction',
+      );
+    } catch (e, stack) {
+      _log.severe(
+        'Failed to ingest channel ${channel.id} with playlists in one transaction',
+        e,
+        stack,
+      );
+      rethrow;
+    }
+  }
+
   /// Ingest a DP1 playlist wire model into the database.
   ///
   /// When [fetchTokens] is provided and playlist items have CIDs, tokens are
@@ -1211,8 +1305,8 @@ class DatabaseService {
         );
       }).toList(growable: false);
 
-      await _db.transaction(() async {
-        await _db.upsertItems(companions);
+      await _db.batch((batch) {
+        batch.insertAllOnConflictUpdate(_db.items, companions);
       });
     } catch (e, stack) {
       _log.severe(

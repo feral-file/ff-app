@@ -15,13 +15,18 @@ class DP1PlaylistItemsEnrichmentService {
   DP1PlaylistItemsEnrichmentService({
     required IndexerService indexerService,
     required DatabaseService databaseService,
+    bool Function()? shouldContinue,
   })  : _indexerService = indexerService,
         _databaseService = databaseService,
+        _shouldContinue = shouldContinue ?? _alwaysContinue,
         _log = Logger('DP1PlaylistItemsEnrichmentService');
 
   final IndexerService _indexerService;
   final DatabaseService _databaseService;
+  final bool Function() _shouldContinue;
   final Logger _log;
+
+  static bool _alwaysContinue() => true;
 
   /// Maximum high-priority items per playlist.
   static const int highPriorityPerPlaylist = 8;
@@ -56,7 +61,7 @@ class DP1PlaylistItemsEnrichmentService {
   ///
   /// Loads bare items (only title, no enrichment fields) from database,
   /// prioritizes high (first 8 per playlist), then processes batches.
-  Future<void> processAll() async {
+  Future<bool> processAll() async {
     var totalProcessed = 0;
     var batchCount = 0;
     var totalUpdated = 0;
@@ -64,6 +69,10 @@ class DP1PlaylistItemsEnrichmentService {
     // Process high-priority items first by repeatedly pulling from DB.
     _log.info('Loading high-priority items from database (paged)...');
     while (true) {
+      if (!_shouldContinue()) {
+        _log.info('Enrichment paused before high-priority batch');
+        return false;
+      }
       final highItems = await _loadHighPriorityBareItems();
       if (highItems.isEmpty) break;
 
@@ -96,6 +105,10 @@ class DP1PlaylistItemsEnrichmentService {
     // Then process low-priority items by repeatedly pulling from DB.
     _log.info('Loading low-priority items from database (paged)...');
     while (true) {
+      if (!_shouldContinue()) {
+        _log.info('Enrichment paused before low-priority batch');
+        return false;
+      }
       final lowItems = await _loadLowPriorityBareItems();
       if (lowItems.isEmpty) break;
 
@@ -130,6 +143,7 @@ class DP1PlaylistItemsEnrichmentService {
       'processed $totalProcessed items, '
       'updated $totalUpdated items in $batchCount batches',
     );
+    return true;
   }
 
   /// Load high-priority bare items from database.
@@ -190,6 +204,7 @@ class DP1PlaylistItemsEnrichmentService {
   ///
   /// Fetches tokens from indexer and updates items in database.
   Future<int> _processBatch(List<_BareItem> batch) async {
+    if (!_shouldContinue()) return 0;
     if (batch.isEmpty) return 0;
 
     // Extract and de-dupe CIDs for indexer lookup.

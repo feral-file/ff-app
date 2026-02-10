@@ -95,6 +95,34 @@ void main() {
       });
     });
 
+    group('sync stages', () {
+      test('stage defaults to not completed', () async {
+        expect(await store.isBareItemsLoaded(), isFalse);
+        expect(await store.isTokensEnriched(), isFalse);
+      });
+
+      test('can mark stages complete', () async {
+        final bareAt = DateTime(2025, 1, 1, 10, 0);
+        final enrichedAt = DateTime(2025, 1, 1, 11, 0);
+
+        await store.markBareItemsLoaded(at: bareAt);
+        await store.markTokensEnriched(at: enrichedAt);
+
+        expect(await store.isBareItemsLoaded(), isTrue);
+        expect(await store.isTokensEnriched(), isTrue);
+      });
+
+      test('clearSyncStages resets both markers', () async {
+        await store.markBareItemsLoaded();
+        await store.markTokensEnriched();
+
+        await store.clearSyncStages();
+
+        expect(await store.isBareItemsLoaded(), isFalse);
+        expect(await store.isTokensEnriched(), isFalse);
+      });
+    });
+
     group('file persistence', () {
       test('persists data across store instances', () async {
         final baseUrl = 'https://feed.example';
@@ -118,6 +146,18 @@ void main() {
         expect(retrievedTime, equals(time));
         expect(retrievedDuration, equals(duration));
         expect(retrievedLastUpdated, equals(lastUpdated));
+      });
+
+      test('persists sync stage markers across store instances', () async {
+        await store.markBareItemsLoaded();
+        await store.markTokensEnriched();
+
+        final store2 = FeedConfigStore(
+          documentsDirFactory: () async => tempDir,
+        );
+
+        expect(await store2.isBareItemsLoaded(), isTrue);
+        expect(await store2.isTokensEnriched(), isTrue);
       });
 
       test('handles missing file gracefully', () async {

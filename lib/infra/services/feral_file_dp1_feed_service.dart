@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/infra/services/dp1_feed_with_channel_extension_service_impl.dart';
-import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:logging/logging.dart';
 
@@ -23,16 +22,12 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
     required super.feedConfigStore,
     required super.apiKey,
     required this.indexerService,
-    required DP1PlaylistItemsEnrichmentService enrichmentService,
     super.isExternalFeedService,
     super.dio,
-  }) : _enrichmentService = enrichmentService,
-       _log = Logger('FeralFileDP1FeedService[$baseUrl]');
+  }) : _log = Logger('FeralFileDP1FeedService[$baseUrl]');
 
   /// Indexer service for token enrichment.
   final IndexerService indexerService;
-
-  final DP1PlaylistItemsEnrichmentService _enrichmentService;
 
   late final Logger _log;
 
@@ -105,63 +100,77 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
   }
 
   Future<void> _reloadCacheWithRemoteConfigChannels() async {
+    if (isPaused) {
+      _log.info('Skip remote-config cache reload while paused');
+      return;
+    }
     await clearCache();
-    await _enrichmentService.clear();
+
+    final results = await Future.wait(
+      _remoteConfigChannelIds.map(_fetchChannelAndPlaylists),
+    );
 
     var fetchedChannelCount = 0;
     var fetchedPlaylistCount = 0;
-
-    for (final channelId in _remoteConfigChannelIds) {
-      final channel = await getChannelDetail(channelId, fromCache: false);
-      if (channel == null) {
-        _log.warning('Skipping missing remote config channel: $channelId');
-        continue;
+    for (final result in results) {
+      if (isPaused) {
+        _log.info('Pause requested before persisting fetched channel data');
+        return;
       }
-      fetchedChannelCount += 1;
-
-      await databaseService.ingestDP1ChannelsWire(
+      if (result == null) continue;
+      await databaseService.ingestDP1ChannelWithPlaylistsBare(
         baseUrl: baseUrl,
-        channels: <DP1Channel>[channel],
+        channel: result.channel,
+        playlists: result.playlists,
       );
-
-      String? cursor;
-      var hasMore = true;
-      while (hasMore) {
-        final response = await getPlaylistsByChannelId(
-          channelId: channel.id,
-          cursor: cursor,
-          limit: 20,
-        );
-        hasMore = response.hasMore;
-        cursor = response.cursor;
-
-        for (final playlist in response.items) {
-          fetchedPlaylistCount += 1;
-          await databaseService.ingestDP1PlaylistBare(
-            baseUrl: baseUrl,
-            playlist: playlist,
-            channelId: channel.id,
-          );
-          // Enqueue but don't wait for processing
-          await _enrichmentService.enqueuePlaylist(
-            playlistId: playlist.id,
-            items: playlist.items,
-          );
-        }
-      }
+      fetchedChannelCount += 1;
+      fetchedPlaylistCount += result.playlists.length;
     }
-
-    // Fire off enrichment in the background (don't wait)
-    _log.info(
-      'Queued enrichment for $fetchedPlaylistCount playlists; '
-      'starting background processing...',
-    );
-    unawaited(_enrichmentService.processAll());
 
     _log.info(
       'Reloaded cache with remote config channels: '
       '$fetchedChannelCount channels, '
-      '$fetchedPlaylistCount playlists (enrichment in progress)',
+      '$fetchedPlaylistCount playlists',
     );
   }
+
+  Future<_ChannelLoadResult?> _fetchChannelAndPlaylists(String channelId) async {
+    if (isPaused) return null;
+
+    final channel = await getChannelDetail(channelId, fromCache: false);
+    if (channel == null) {
+      _log.warning('Skipping missing remote config channel: $channelId');
+      return null;
+    }
+
+    final playlists = <DP1Playlist>[];
+    String? cursor;
+    var hasMore = true;
+    while (hasMore) {
+      if (isPaused) return null;
+      final response = await getPlaylistsByChannelId(
+        channelId: channel.id,
+        cursor: cursor,
+        limit: 20,
+      );
+      hasMore = response.hasMore;
+      cursor = response.cursor;
+      playlists.addAll(response.items);
+    }
+
+    return _ChannelLoadResult(
+      channel: channel,
+      playlists: playlists,
+    );
+  }
+}
+
+class _ChannelLoadResult {
+  const _ChannelLoadResult({
+    required this.channel,
+    required this.playlists,
+  });
+
+  final DP1Channel channel;
+  final List<DP1Playlist> playlists;
 }

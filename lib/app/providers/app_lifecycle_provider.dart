@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -40,7 +41,12 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
+      ref.read(feedManagerProvider).pauseWork();
       unawaited(_checkpointDatabase());
+    } else if (state == AppLifecycleState.resumed) {
+      final feedManager = ref.read(feedManagerProvider);
+      feedManager.resumeWork();
+      unawaited(feedManager.reloadAllCache(force: false));
     }
   }
 
