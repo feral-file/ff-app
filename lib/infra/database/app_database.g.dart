@@ -3,6 +3,331 @@
 part of 'app_database.dart';
 
 // ignore_for_file: type=lint
+class $PublishersTable extends Publishers
+    with TableInfo<$PublishersTable, PublisherData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PublishersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtUsMeta = const VerificationMeta(
+    'createdAtUs',
+  );
+  @override
+  late final GeneratedColumn<BigInt> createdAtUs = GeneratedColumn<BigInt>(
+    'created_at_us',
+    aliasedName,
+    false,
+    type: DriftSqlType.bigInt,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtUsMeta = const VerificationMeta(
+    'updatedAtUs',
+  );
+  @override
+  late final GeneratedColumn<BigInt> updatedAtUs = GeneratedColumn<BigInt>(
+    'updated_at_us',
+    aliasedName,
+    false,
+    type: DriftSqlType.bigInt,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, title, createdAtUs, updatedAtUs];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'publishers';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PublisherData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('created_at_us')) {
+      context.handle(
+        _createdAtUsMeta,
+        createdAtUs.isAcceptableOrUnknown(
+          data['created_at_us']!,
+          _createdAtUsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtUsMeta);
+    }
+    if (data.containsKey('updated_at_us')) {
+      context.handle(
+        _updatedAtUsMeta,
+        updatedAtUs.isAcceptableOrUnknown(
+          data['updated_at_us']!,
+          _updatedAtUsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtUsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PublisherData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PublisherData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      createdAtUs: attachedDatabase.typeMapping.read(
+        DriftSqlType.bigInt,
+        data['${effectivePrefix}created_at_us'],
+      )!,
+      updatedAtUs: attachedDatabase.typeMapping.read(
+        DriftSqlType.bigInt,
+        data['${effectivePrefix}updated_at_us'],
+      )!,
+    );
+  }
+
+  @override
+  $PublishersTable createAlias(String alias) {
+    return $PublishersTable(attachedDatabase, alias);
+  }
+}
+
+class PublisherData extends DataClass implements Insertable<PublisherData> {
+  /// Publisher identifier.
+  final String id;
+
+  /// Publisher display name.
+  final String title;
+
+  /// Creation timestamp in microseconds.
+  final BigInt createdAtUs;
+
+  /// Last update timestamp in microseconds.
+  final BigInt updatedAtUs;
+  const PublisherData({
+    required this.id,
+    required this.title,
+    required this.createdAtUs,
+    required this.updatedAtUs,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['title'] = Variable<String>(title);
+    map['created_at_us'] = Variable<BigInt>(createdAtUs);
+    map['updated_at_us'] = Variable<BigInt>(updatedAtUs);
+    return map;
+  }
+
+  PublishersCompanion toCompanion(bool nullToAbsent) {
+    return PublishersCompanion(
+      id: Value(id),
+      title: Value(title),
+      createdAtUs: Value(createdAtUs),
+      updatedAtUs: Value(updatedAtUs),
+    );
+  }
+
+  factory PublisherData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PublisherData(
+      id: serializer.fromJson<String>(json['id']),
+      title: serializer.fromJson<String>(json['title']),
+      createdAtUs: serializer.fromJson<BigInt>(json['createdAtUs']),
+      updatedAtUs: serializer.fromJson<BigInt>(json['updatedAtUs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'title': serializer.toJson<String>(title),
+      'createdAtUs': serializer.toJson<BigInt>(createdAtUs),
+      'updatedAtUs': serializer.toJson<BigInt>(updatedAtUs),
+    };
+  }
+
+  PublisherData copyWith({
+    String? id,
+    String? title,
+    BigInt? createdAtUs,
+    BigInt? updatedAtUs,
+  }) => PublisherData(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    createdAtUs: createdAtUs ?? this.createdAtUs,
+    updatedAtUs: updatedAtUs ?? this.updatedAtUs,
+  );
+  PublisherData copyWithCompanion(PublishersCompanion data) {
+    return PublisherData(
+      id: data.id.present ? data.id.value : this.id,
+      title: data.title.present ? data.title.value : this.title,
+      createdAtUs: data.createdAtUs.present
+          ? data.createdAtUs.value
+          : this.createdAtUs,
+      updatedAtUs: data.updatedAtUs.present
+          ? data.updatedAtUs.value
+          : this.updatedAtUs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PublisherData(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('createdAtUs: $createdAtUs, ')
+          ..write('updatedAtUs: $updatedAtUs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, title, createdAtUs, updatedAtUs);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PublisherData &&
+          other.id == this.id &&
+          other.title == this.title &&
+          other.createdAtUs == this.createdAtUs &&
+          other.updatedAtUs == this.updatedAtUs);
+}
+
+class PublishersCompanion extends UpdateCompanion<PublisherData> {
+  final Value<String> id;
+  final Value<String> title;
+  final Value<BigInt> createdAtUs;
+  final Value<BigInt> updatedAtUs;
+  final Value<int> rowid;
+  const PublishersCompanion({
+    this.id = const Value.absent(),
+    this.title = const Value.absent(),
+    this.createdAtUs = const Value.absent(),
+    this.updatedAtUs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PublishersCompanion.insert({
+    required String id,
+    required String title,
+    required BigInt createdAtUs,
+    required BigInt updatedAtUs,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       title = Value(title),
+       createdAtUs = Value(createdAtUs),
+       updatedAtUs = Value(updatedAtUs);
+  static Insertable<PublisherData> custom({
+    Expression<String>? id,
+    Expression<String>? title,
+    Expression<BigInt>? createdAtUs,
+    Expression<BigInt>? updatedAtUs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (title != null) 'title': title,
+      if (createdAtUs != null) 'created_at_us': createdAtUs,
+      if (updatedAtUs != null) 'updated_at_us': updatedAtUs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PublishersCompanion copyWith({
+    Value<String>? id,
+    Value<String>? title,
+    Value<BigInt>? createdAtUs,
+    Value<BigInt>? updatedAtUs,
+    Value<int>? rowid,
+  }) {
+    return PublishersCompanion(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      createdAtUs: createdAtUs ?? this.createdAtUs,
+      updatedAtUs: updatedAtUs ?? this.updatedAtUs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (createdAtUs.present) {
+      map['created_at_us'] = Variable<BigInt>(createdAtUs.value);
+    }
+    if (updatedAtUs.present) {
+      map['updated_at_us'] = Variable<BigInt>(updatedAtUs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PublishersCompanion(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('createdAtUs: $createdAtUs, ')
+          ..write('updatedAtUs: $updatedAtUs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ChannelsTable extends Channels
     with TableInfo<$ChannelsTable, ChannelData> {
   @override
@@ -46,6 +371,20 @@ class $ChannelsTable extends Channels
     true,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
+  );
+  static const VerificationMeta _publisherIdMeta = const VerificationMeta(
+    'publisherId',
+  );
+  @override
+  late final GeneratedColumn<String> publisherId = GeneratedColumn<String>(
+    'publisher_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES publishers (id)',
+    ),
   );
   static const VerificationMeta _titleMeta = const VerificationMeta('title');
   @override
@@ -128,6 +467,7 @@ class $ChannelsTable extends Channels
     type,
     baseUrl,
     slug,
+    publisherId,
     title,
     curator,
     summary,
@@ -171,6 +511,15 @@ class $ChannelsTable extends Channels
       context.handle(
         _slugMeta,
         slug.isAcceptableOrUnknown(data['slug']!, _slugMeta),
+      );
+    }
+    if (data.containsKey('publisher_id')) {
+      context.handle(
+        _publisherIdMeta,
+        publisherId.isAcceptableOrUnknown(
+          data['publisher_id']!,
+          _publisherIdMeta,
+        ),
       );
     }
     if (data.containsKey('title')) {
@@ -255,6 +604,10 @@ class $ChannelsTable extends Channels
         DriftSqlType.string,
         data['${effectivePrefix}slug'],
       ),
+      publisherId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}publisher_id'],
+      ),
       title: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}title'],
@@ -305,6 +658,9 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
   /// URL-friendly identifier.
   final String? slug;
 
+  /// Publisher reference.
+  final String? publisherId;
+
   /// Channel title.
   final String title;
 
@@ -330,6 +686,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
     required this.type,
     this.baseUrl,
     this.slug,
+    this.publisherId,
     required this.title,
     this.curator,
     this.summary,
@@ -348,6 +705,9 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
     }
     if (!nullToAbsent || slug != null) {
       map['slug'] = Variable<String>(slug);
+    }
+    if (!nullToAbsent || publisherId != null) {
+      map['publisher_id'] = Variable<String>(publisherId);
     }
     map['title'] = Variable<String>(title);
     if (!nullToAbsent || curator != null) {
@@ -375,6 +735,9 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
           ? const Value.absent()
           : Value(baseUrl),
       slug: slug == null && nullToAbsent ? const Value.absent() : Value(slug),
+      publisherId: publisherId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(publisherId),
       title: Value(title),
       curator: curator == null && nullToAbsent
           ? const Value.absent()
@@ -403,6 +766,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
       type: serializer.fromJson<int>(json['type']),
       baseUrl: serializer.fromJson<String?>(json['baseUrl']),
       slug: serializer.fromJson<String?>(json['slug']),
+      publisherId: serializer.fromJson<String?>(json['publisherId']),
       title: serializer.fromJson<String>(json['title']),
       curator: serializer.fromJson<String?>(json['curator']),
       summary: serializer.fromJson<String?>(json['summary']),
@@ -420,6 +784,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
       'type': serializer.toJson<int>(type),
       'baseUrl': serializer.toJson<String?>(baseUrl),
       'slug': serializer.toJson<String?>(slug),
+      'publisherId': serializer.toJson<String?>(publisherId),
       'title': serializer.toJson<String>(title),
       'curator': serializer.toJson<String?>(curator),
       'summary': serializer.toJson<String?>(summary),
@@ -435,6 +800,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
     int? type,
     Value<String?> baseUrl = const Value.absent(),
     Value<String?> slug = const Value.absent(),
+    Value<String?> publisherId = const Value.absent(),
     String? title,
     Value<String?> curator = const Value.absent(),
     Value<String?> summary = const Value.absent(),
@@ -447,6 +813,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
     type: type ?? this.type,
     baseUrl: baseUrl.present ? baseUrl.value : this.baseUrl,
     slug: slug.present ? slug.value : this.slug,
+    publisherId: publisherId.present ? publisherId.value : this.publisherId,
     title: title ?? this.title,
     curator: curator.present ? curator.value : this.curator,
     summary: summary.present ? summary.value : this.summary,
@@ -463,6 +830,9 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
       type: data.type.present ? data.type.value : this.type,
       baseUrl: data.baseUrl.present ? data.baseUrl.value : this.baseUrl,
       slug: data.slug.present ? data.slug.value : this.slug,
+      publisherId: data.publisherId.present
+          ? data.publisherId.value
+          : this.publisherId,
       title: data.title.present ? data.title.value : this.title,
       curator: data.curator.present ? data.curator.value : this.curator,
       summary: data.summary.present ? data.summary.value : this.summary,
@@ -486,6 +856,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
           ..write('type: $type, ')
           ..write('baseUrl: $baseUrl, ')
           ..write('slug: $slug, ')
+          ..write('publisherId: $publisherId, ')
           ..write('title: $title, ')
           ..write('curator: $curator, ')
           ..write('summary: $summary, ')
@@ -503,6 +874,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
     type,
     baseUrl,
     slug,
+    publisherId,
     title,
     curator,
     summary,
@@ -519,6 +891,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
           other.type == this.type &&
           other.baseUrl == this.baseUrl &&
           other.slug == this.slug &&
+          other.publisherId == this.publisherId &&
           other.title == this.title &&
           other.curator == this.curator &&
           other.summary == this.summary &&
@@ -533,6 +906,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
   final Value<int> type;
   final Value<String?> baseUrl;
   final Value<String?> slug;
+  final Value<String?> publisherId;
   final Value<String> title;
   final Value<String?> curator;
   final Value<String?> summary;
@@ -546,6 +920,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
     this.type = const Value.absent(),
     this.baseUrl = const Value.absent(),
     this.slug = const Value.absent(),
+    this.publisherId = const Value.absent(),
     this.title = const Value.absent(),
     this.curator = const Value.absent(),
     this.summary = const Value.absent(),
@@ -560,6 +935,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
     required int type,
     this.baseUrl = const Value.absent(),
     this.slug = const Value.absent(),
+    this.publisherId = const Value.absent(),
     required String title,
     this.curator = const Value.absent(),
     this.summary = const Value.absent(),
@@ -578,6 +954,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
     Expression<int>? type,
     Expression<String>? baseUrl,
     Expression<String>? slug,
+    Expression<String>? publisherId,
     Expression<String>? title,
     Expression<String>? curator,
     Expression<String>? summary,
@@ -592,6 +969,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
       if (type != null) 'type': type,
       if (baseUrl != null) 'base_url': baseUrl,
       if (slug != null) 'slug': slug,
+      if (publisherId != null) 'publisher_id': publisherId,
       if (title != null) 'title': title,
       if (curator != null) 'curator': curator,
       if (summary != null) 'summary': summary,
@@ -608,6 +986,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
     Value<int>? type,
     Value<String?>? baseUrl,
     Value<String?>? slug,
+    Value<String?>? publisherId,
     Value<String>? title,
     Value<String?>? curator,
     Value<String?>? summary,
@@ -622,6 +1001,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
       type: type ?? this.type,
       baseUrl: baseUrl ?? this.baseUrl,
       slug: slug ?? this.slug,
+      publisherId: publisherId ?? this.publisherId,
       title: title ?? this.title,
       curator: curator ?? this.curator,
       summary: summary ?? this.summary,
@@ -647,6 +1027,9 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
     }
     if (slug.present) {
       map['slug'] = Variable<String>(slug.value);
+    }
+    if (publisherId.present) {
+      map['publisher_id'] = Variable<String>(publisherId.value);
     }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
@@ -682,6 +1065,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
           ..write('type: $type, ')
           ..write('baseUrl: $baseUrl, ')
           ..write('slug: $slug, ')
+          ..write('publisherId: $publisherId, ')
           ..write('title: $title, ')
           ..write('curator: $curator, ')
           ..write('summary: $summary, ')
@@ -3023,6 +3407,7 @@ class PlaylistEntriesCompanion extends UpdateCompanion<PlaylistEntryData> {
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
+  late final $PublishersTable publishers = $PublishersTable(this);
   late final $ChannelsTable channels = $ChannelsTable(this);
   late final $PlaylistsTable playlists = $PlaylistsTable(this);
   late final $ItemsTable items = $ItemsTable(this);
@@ -3034,6 +3419,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
+    publishers,
     channels,
     playlists,
     items,
@@ -3041,12 +3427,301 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   ];
 }
 
+typedef $$PublishersTableCreateCompanionBuilder =
+    PublishersCompanion Function({
+      required String id,
+      required String title,
+      required BigInt createdAtUs,
+      required BigInt updatedAtUs,
+      Value<int> rowid,
+    });
+typedef $$PublishersTableUpdateCompanionBuilder =
+    PublishersCompanion Function({
+      Value<String> id,
+      Value<String> title,
+      Value<BigInt> createdAtUs,
+      Value<BigInt> updatedAtUs,
+      Value<int> rowid,
+    });
+
+final class $$PublishersTableReferences
+    extends BaseReferences<_$AppDatabase, $PublishersTable, PublisherData> {
+  $$PublishersTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$ChannelsTable, List<ChannelData>>
+  _channelsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.channels,
+    aliasName: $_aliasNameGenerator(db.publishers.id, db.channels.publisherId),
+  );
+
+  $$ChannelsTableProcessedTableManager get channelsRefs {
+    final manager = $$ChannelsTableTableManager(
+      $_db,
+      $_db.channels,
+    ).filter((f) => f.publisherId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_channelsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$PublishersTableFilterComposer
+    extends Composer<_$AppDatabase, $PublishersTable> {
+  $$PublishersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<BigInt> get createdAtUs => $composableBuilder(
+    column: $table.createdAtUs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<BigInt> get updatedAtUs => $composableBuilder(
+    column: $table.updatedAtUs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> channelsRefs(
+    Expression<bool> Function($$ChannelsTableFilterComposer f) f,
+  ) {
+    final $$ChannelsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.channels,
+      getReferencedColumn: (t) => t.publisherId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChannelsTableFilterComposer(
+            $db: $db,
+            $table: $db.channels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$PublishersTableOrderingComposer
+    extends Composer<_$AppDatabase, $PublishersTable> {
+  $$PublishersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<BigInt> get createdAtUs => $composableBuilder(
+    column: $table.createdAtUs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<BigInt> get updatedAtUs => $composableBuilder(
+    column: $table.updatedAtUs,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PublishersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PublishersTable> {
+  $$PublishersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<BigInt> get createdAtUs => $composableBuilder(
+    column: $table.createdAtUs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<BigInt> get updatedAtUs => $composableBuilder(
+    column: $table.updatedAtUs,
+    builder: (column) => column,
+  );
+
+  Expression<T> channelsRefs<T extends Object>(
+    Expression<T> Function($$ChannelsTableAnnotationComposer a) f,
+  ) {
+    final $$ChannelsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.channels,
+      getReferencedColumn: (t) => t.publisherId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChannelsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.channels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$PublishersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PublishersTable,
+          PublisherData,
+          $$PublishersTableFilterComposer,
+          $$PublishersTableOrderingComposer,
+          $$PublishersTableAnnotationComposer,
+          $$PublishersTableCreateCompanionBuilder,
+          $$PublishersTableUpdateCompanionBuilder,
+          (PublisherData, $$PublishersTableReferences),
+          PublisherData,
+          PrefetchHooks Function({bool channelsRefs})
+        > {
+  $$PublishersTableTableManager(_$AppDatabase db, $PublishersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PublishersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PublishersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PublishersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<BigInt> createdAtUs = const Value.absent(),
+                Value<BigInt> updatedAtUs = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PublishersCompanion(
+                id: id,
+                title: title,
+                createdAtUs: createdAtUs,
+                updatedAtUs: updatedAtUs,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String title,
+                required BigInt createdAtUs,
+                required BigInt updatedAtUs,
+                Value<int> rowid = const Value.absent(),
+              }) => PublishersCompanion.insert(
+                id: id,
+                title: title,
+                createdAtUs: createdAtUs,
+                updatedAtUs: updatedAtUs,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PublishersTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({channelsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (channelsRefs) db.channels],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (channelsRefs)
+                    await $_getPrefetchedData<
+                      PublisherData,
+                      $PublishersTable,
+                      ChannelData
+                    >(
+                      currentTable: table,
+                      referencedTable: $$PublishersTableReferences
+                          ._channelsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$PublishersTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).channelsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where(
+                            (e) => e.publisherId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PublishersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PublishersTable,
+      PublisherData,
+      $$PublishersTableFilterComposer,
+      $$PublishersTableOrderingComposer,
+      $$PublishersTableAnnotationComposer,
+      $$PublishersTableCreateCompanionBuilder,
+      $$PublishersTableUpdateCompanionBuilder,
+      (PublisherData, $$PublishersTableReferences),
+      PublisherData,
+      PrefetchHooks Function({bool channelsRefs})
+    >;
 typedef $$ChannelsTableCreateCompanionBuilder =
     ChannelsCompanion Function({
       required String id,
       required int type,
       Value<String?> baseUrl,
       Value<String?> slug,
+      Value<String?> publisherId,
       required String title,
       Value<String?> curator,
       Value<String?> summary,
@@ -3062,6 +3737,7 @@ typedef $$ChannelsTableUpdateCompanionBuilder =
       Value<int> type,
       Value<String?> baseUrl,
       Value<String?> slug,
+      Value<String?> publisherId,
       Value<String> title,
       Value<String?> curator,
       Value<String?> summary,
@@ -3071,6 +3747,30 @@ typedef $$ChannelsTableUpdateCompanionBuilder =
       Value<int?> sortOrder,
       Value<int> rowid,
     });
+
+final class $$ChannelsTableReferences
+    extends BaseReferences<_$AppDatabase, $ChannelsTable, ChannelData> {
+  $$ChannelsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PublishersTable _publisherIdTable(_$AppDatabase db) =>
+      db.publishers.createAlias(
+        $_aliasNameGenerator(db.channels.publisherId, db.publishers.id),
+      );
+
+  $$PublishersTableProcessedTableManager? get publisherId {
+    final $_column = $_itemColumn<String>('publisher_id');
+    if ($_column == null) return null;
+    final manager = $$PublishersTableTableManager(
+      $_db,
+      $_db.publishers,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_publisherIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
 
 class $$ChannelsTableFilterComposer
     extends Composer<_$AppDatabase, $ChannelsTable> {
@@ -3135,6 +3835,29 @@ class $$ChannelsTableFilterComposer
     column: $table.sortOrder,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$PublishersTableFilterComposer get publisherId {
+    final $$PublishersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.publisherId,
+      referencedTable: $db.publishers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PublishersTableFilterComposer(
+            $db: $db,
+            $table: $db.publishers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$ChannelsTableOrderingComposer
@@ -3200,6 +3923,29 @@ class $$ChannelsTableOrderingComposer
     column: $table.sortOrder,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$PublishersTableOrderingComposer get publisherId {
+    final $$PublishersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.publisherId,
+      referencedTable: $db.publishers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PublishersTableOrderingComposer(
+            $db: $db,
+            $table: $db.publishers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$ChannelsTableAnnotationComposer
@@ -3249,6 +3995,29 @@ class $$ChannelsTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  $$PublishersTableAnnotationComposer get publisherId {
+    final $$PublishersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.publisherId,
+      referencedTable: $db.publishers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PublishersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.publishers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$ChannelsTableTableManager
@@ -3262,12 +4031,9 @@ class $$ChannelsTableTableManager
           $$ChannelsTableAnnotationComposer,
           $$ChannelsTableCreateCompanionBuilder,
           $$ChannelsTableUpdateCompanionBuilder,
-          (
-            ChannelData,
-            BaseReferences<_$AppDatabase, $ChannelsTable, ChannelData>,
-          ),
+          (ChannelData, $$ChannelsTableReferences),
           ChannelData,
-          PrefetchHooks Function()
+          PrefetchHooks Function({bool publisherId})
         > {
   $$ChannelsTableTableManager(_$AppDatabase db, $ChannelsTable table)
     : super(
@@ -3286,6 +4052,7 @@ class $$ChannelsTableTableManager
                 Value<int> type = const Value.absent(),
                 Value<String?> baseUrl = const Value.absent(),
                 Value<String?> slug = const Value.absent(),
+                Value<String?> publisherId = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String?> curator = const Value.absent(),
                 Value<String?> summary = const Value.absent(),
@@ -3299,6 +4066,7 @@ class $$ChannelsTableTableManager
                 type: type,
                 baseUrl: baseUrl,
                 slug: slug,
+                publisherId: publisherId,
                 title: title,
                 curator: curator,
                 summary: summary,
@@ -3314,6 +4082,7 @@ class $$ChannelsTableTableManager
                 required int type,
                 Value<String?> baseUrl = const Value.absent(),
                 Value<String?> slug = const Value.absent(),
+                Value<String?> publisherId = const Value.absent(),
                 required String title,
                 Value<String?> curator = const Value.absent(),
                 Value<String?> summary = const Value.absent(),
@@ -3327,6 +4096,7 @@ class $$ChannelsTableTableManager
                 type: type,
                 baseUrl: baseUrl,
                 slug: slug,
+                publisherId: publisherId,
                 title: title,
                 curator: curator,
                 summary: summary,
@@ -3337,9 +4107,54 @@ class $$ChannelsTableTableManager
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ChannelsTableReferences(db, table, e),
+                ),
+              )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({publisherId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (publisherId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.publisherId,
+                                referencedTable: $$ChannelsTableReferences
+                                    ._publisherIdTable(db),
+                                referencedColumn: $$ChannelsTableReferences
+                                    ._publisherIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
         ),
       );
 }
@@ -3354,9 +4169,9 @@ typedef $$ChannelsTableProcessedTableManager =
       $$ChannelsTableAnnotationComposer,
       $$ChannelsTableCreateCompanionBuilder,
       $$ChannelsTableUpdateCompanionBuilder,
-      (ChannelData, BaseReferences<_$AppDatabase, $ChannelsTable, ChannelData>),
+      (ChannelData, $$ChannelsTableReferences),
       ChannelData,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool publisherId})
     >;
 typedef $$PlaylistsTableCreateCompanionBuilder =
     PlaylistsCompanion Function({
@@ -4413,6 +5228,8 @@ typedef $$PlaylistEntriesTableProcessedTableManager =
 class $AppDatabaseManager {
   final _$AppDatabase _db;
   $AppDatabaseManager(this._db);
+  $$PublishersTableTableManager get publishers =>
+      $$PublishersTableTableManager(_db, _db.publishers);
   $$ChannelsTableTableManager get channels =>
       $$ChannelsTableTableManager(_db, _db.channels);
   $$PlaylistsTableTableManager get playlists =>

@@ -15,6 +15,7 @@ class Channel {
     this.isPinned = false,
     this.baseUrl,
     this.slug,
+    this.publisherId,
     this.curator,
     this.coverImageUrl,
     this.createdAt,
@@ -43,6 +44,9 @@ class Channel {
   /// URL-friendly identifier.
   final String? slug;
 
+  /// Optional publisher reference.
+  final String? publisherId;
+
   /// Curator name.
   final String? curator;
 
@@ -70,6 +74,7 @@ class Channel {
           isPinned == other.isPinned &&
           baseUrl == other.baseUrl &&
           slug == other.slug &&
+          publisherId == other.publisherId &&
           curator == other.curator &&
           coverImageUrl == other.coverImageUrl &&
           createdAt == other.createdAt &&
@@ -78,19 +83,20 @@ class Channel {
 
   @override
   int get hashCode => Object.hash(
-        id,
-        name,
-        type,
-        description,
-        isPinned,
-        baseUrl,
-        slug,
-        curator,
-        coverImageUrl,
-        createdAt,
-        updatedAt,
-        sortOrder,
-      );
+    id,
+    name,
+    type,
+    description,
+    isPinned,
+    baseUrl,
+    slug,
+    publisherId,
+    curator,
+    coverImageUrl,
+    createdAt,
+    updatedAt,
+    sortOrder,
+  );
 
   /// Creates a copy with updated values.
   Channel copyWith({
@@ -101,6 +107,7 @@ class Channel {
     bool? isPinned,
     String? baseUrl,
     String? slug,
+    String? publisherId,
     String? curator,
     String? coverImageUrl,
     DateTime? createdAt,
@@ -115,6 +122,7 @@ class Channel {
       isPinned: isPinned ?? this.isPinned,
       baseUrl: baseUrl ?? this.baseUrl,
       slug: slug ?? this.slug,
+      publisherId: publisherId ?? this.publisherId,
       curator: curator ?? this.curator,
       coverImageUrl: coverImageUrl ?? this.coverImageUrl,
       createdAt: createdAt ?? this.createdAt,

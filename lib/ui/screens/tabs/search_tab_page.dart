@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/app/providers/search_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -8,7 +10,6 @@ import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/loading_view.dart';
-import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -25,38 +26,45 @@ class SearchTabPage extends ConsumerStatefulWidget {
 
 class _SearchTabPageState extends ConsumerState<SearchTabPage>
     with AutomaticKeepAliveClientMixin {
+  static const Duration _searchThrottleDuration = Duration(milliseconds: 500);
+
   final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocusNode = FocusNode();
+  Timer? _searchThrottleTimer;
+  DateTime? _lastSearchAt;
+  String _pendingQuery = '';
 
   @override
   bool get wantKeepAlive => true;
 
   @override
-  void initState() {
-    super.initState();
-    // Auto-focus on search when tab is opened
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _searchFocusNode.requestFocus();
-    });
-  }
-
-  @override
   void dispose() {
     _searchController.dispose();
-    _searchFocusNode.dispose();
-    EasyDebounce.cancel('search');
+    _searchThrottleTimer?.cancel();
     super.dispose();
   }
 
+  void _emitSearch(String query) {
+    _lastSearchAt = DateTime.now();
+    ref.read(searchQueryProvider.notifier).setQuery(query);
+  }
+
   void _onSearchChanged(String query) {
-    // Debounce search to avoid excessive queries
-    EasyDebounce.debounce(
-      'search',
-      const Duration(milliseconds: 500),
-      () {
-        ref.read(searchQueryProvider.notifier).setQuery(query);
-      },
-    );
+    _pendingQuery = query;
+    final now = DateTime.now();
+    final lastSearchAt = _lastSearchAt;
+
+    if (lastSearchAt == null ||
+        now.difference(lastSearchAt) >= _searchThrottleDuration) {
+      _searchThrottleTimer?.cancel();
+      _emitSearch(query);
+      return;
+    }
+
+    final remaining = _searchThrottleDuration - now.difference(lastSearchAt);
+    _searchThrottleTimer?.cancel();
+    _searchThrottleTimer = Timer(remaining, () {
+      _emitSearch(_pendingQuery);
+    });
   }
 
   @override
@@ -97,8 +105,8 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
               vertical: LayoutConstants.space3,
             ),
             child: TextField(
+              autofocus: true,
               controller: _searchController,
-              focusNode: _searchFocusNode,
               style: AppTypography.body(context).white,
               decoration: InputDecoration(
                 hintText: 'Search channels, playlists, works...',
@@ -134,8 +142,10 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
                         ),
                         onPressed: () {
                           _searchController.clear();
+                          _lastSearchAt = null;
+                          _pendingQuery = '';
+                          _searchThrottleTimer?.cancel();
                           ref.read(searchQueryProvider.notifier).clear();
-                          EasyDebounce.cancel('search');
                         },
                       )
                     : null,

@@ -30,8 +30,8 @@ class IndexerConfigStore {
   IndexerConfigStore({
     required Future<Directory> Function() documentsDirFactory,
     Logger? logger,
-  })  : _documentsDirFactory = documentsDirFactory,
-        _log = logger ?? Logger('IndexerConfigStore');
+  }) : _documentsDirFactory = documentsDirFactory,
+       _log = logger ?? Logger('IndexerConfigStore');
 
   static const _fileName = 'indexer_config.json';
   static const _anchorsKey = 'lastUpdateChangeAnchorByAddress';
@@ -115,8 +115,8 @@ class IndexerConfigStore {
   /// Persists the last update change anchor for [address].
   Future<void> setAnchor(String address, int anchor) async {
     final config = await _readConfig();
-    final map = config[_anchorsKey] as Map<String, dynamic>? ??
-        <String, dynamic>{};
+    final map =
+        config[_anchorsKey] as Map<String, dynamic>? ?? <String, dynamic>{};
     map[_normalizeAddressKey(address)] = anchor;
     config[_anchorsKey] = map;
     await _writeConfig(config);
@@ -152,7 +152,8 @@ class IndexerConfigStore {
     required String workflowId,
   }) async {
     final config = await _readConfig();
-    final map = config[_indexingInfoKey] as Map<String, dynamic>? ??
+    final map =
+        config[_indexingInfoKey] as Map<String, dynamic>? ??
         <String, dynamic>{};
     map[_normalizeAddressKey(address)] = <String, dynamic>{
       'workflow_id': workflowId,
@@ -199,7 +200,8 @@ class IndexerConfigStore {
   /// Persists last fetch token time for [address].
   Future<void> setLastFetchTokenTime(String address, DateTime time) async {
     final config = await _readConfig();
-    final map = config[_lastFetchTimeKey] as Map<String, dynamic>? ??
+    final map =
+        config[_lastFetchTimeKey] as Map<String, dynamic>? ??
         <String, dynamic>{};
     map[_normalizeAddressKey(address)] = time.toUtc().toIso8601String();
     config[_lastFetchTimeKey] = map;
@@ -214,6 +216,29 @@ class IndexerConfigStore {
     map.remove(_normalizeAddressKey(address));
     config[_lastFetchTimeKey] = map;
     await _writeConfig(config);
+  }
+
+  /// Returns all addresses tracked in any indexer persistence map.
+  Future<Set<String>> getTrackedAddresses() async {
+    final config = await _readConfig();
+    final addresses = <String>{};
+
+    final anchors = config[_anchorsKey] as Map<String, dynamic>?;
+    if (anchors != null) {
+      addresses.addAll(anchors.keys.map((k) => k.toUpperCase()));
+    }
+
+    final indexingInfo = config[_indexingInfoKey] as Map<String, dynamic>?;
+    if (indexingInfo != null) {
+      addresses.addAll(indexingInfo.keys.map((k) => k.toUpperCase()));
+    }
+
+    final lastFetch = config[_lastFetchTimeKey] as Map<String, dynamic>?;
+    if (lastFetch != null) {
+      addresses.addAll(lastFetch.keys.map((k) => k.toUpperCase()));
+    }
+
+    return addresses;
   }
 }
 

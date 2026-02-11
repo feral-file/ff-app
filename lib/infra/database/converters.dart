@@ -29,6 +29,7 @@ class DatabaseConverters {
       isPinned: false, // TODO: Add isPinned field to database
       baseUrl: data.baseUrl,
       slug: data.slug,
+      publisherId: data.publisherId,
       curator: data.curator,
       coverImageUrl: data.coverImageUri,
       createdAt: DateTime.fromMicrosecondsSinceEpoch(data.createdAtUs.toInt()),
@@ -52,6 +53,7 @@ class DatabaseConverters {
       ),
       baseUrl: Value(channel.baseUrl),
       slug: Value(channel.slug),
+      publisherId: Value(channel.publisherId),
       curator: Value(channel.curator),
       summary: Value(channel.description),
       coverImageUri: Value(channel.coverImageUrl),
@@ -187,8 +189,7 @@ class DatabaseConverters {
     DP1Provenance? provenance;
     if (data.provenanceJson != null && data.provenanceJson!.isNotEmpty) {
       try {
-        final map =
-            jsonDecode(data.provenanceJson!) as Map<String, dynamic>;
+        final map = jsonDecode(data.provenanceJson!) as Map<String, dynamic>;
         provenance = DP1Provenance.fromJson(map);
       } catch (_) {
         // Ignore parsing errors
@@ -313,15 +314,17 @@ class DatabaseConverters {
         ? jsonEncode(item.provenance!.toJson())
         : null;
 
-    final reproJson =
-        item.repro != null ? jsonEncode(item.repro!.toJson()) : null;
+    final reproJson = item.repro != null
+        ? jsonEncode(item.repro!.toJson())
+        : null;
 
     final overrideJson = item.override != null
         ? jsonEncode(item.override)
         : null;
 
-    final displayJson =
-        item.display != null ? jsonEncode(item.display!.toJson()) : null;
+    final displayJson = item.display != null
+        ? jsonEncode(item.display!.toJson())
+        : null;
 
     final tokenDataJson = item.tokenData != null
         ? jsonEncode(item.tokenData)

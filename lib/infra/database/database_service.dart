@@ -535,6 +535,48 @@ class DatabaseService {
     }
   }
 
+  /// Full-text search channels by title.
+  Future<List<Channel>> searchChannelsByTitle(
+    String query, {
+    int limit = 20,
+  }) async {
+    try {
+      final data = await _db.searchChannelsByTitleFts(query, limit: limit);
+      return data.map(DatabaseConverters.channelDataToDomain).toList();
+    } catch (e, stack) {
+      _log.severe('Failed to search channels by title', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Full-text search playlists by title.
+  Future<List<Playlist>> searchPlaylistsByTitle(
+    String query, {
+    int limit = 20,
+  }) async {
+    try {
+      final data = await _db.searchPlaylistsByTitleFts(query, limit: limit);
+      return data.map(DatabaseConverters.playlistDataToDomainPreview).toList();
+    } catch (e, stack) {
+      _log.severe('Failed to search playlists by title', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Full-text search items by title.
+  Future<List<PlaylistItem>> searchItemsByTitle(
+    String query, {
+    int limit = 20,
+  }) async {
+    try {
+      final data = await _db.searchItemsByTitleFts(query, limit: limit);
+      return data.map(DatabaseConverters.itemDataToDomainPreview).toList();
+    } catch (e, stack) {
+      _log.severe('Failed to search items by title', e, stack);
+      rethrow;
+    }
+  }
+
   /// Get items with optional [limit] and [offset] for paging.
   Future<List<PlaylistItem>> getItems({int? limit, int? offset}) async {
     try {

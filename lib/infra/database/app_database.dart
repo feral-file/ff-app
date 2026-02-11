@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart' as sqlite3;
 import 'package:path/path.dart' as p;
 
 import 'tables.dart';
@@ -15,10 +16,14 @@ final _log = Logger('AppDatabase');
 /// Large limit used when only offset is set (skip N rows, return the rest).
 const _maxLimitForOffset = 0x7FFFFFFF;
 const _maxReadPoolSize = 4;
+const _schemaVersionV1 = 1;
+const _dbResetReindexMarkerFile = 'db_reset_requires_reindex.flag';
 
 /// Main application database using Drift.
 /// Implements offline-first storage for DP-1 entities and relationships.
-@DriftDatabase(tables: [Channels, Playlists, Items, PlaylistEntries])
+@DriftDatabase(
+  tables: [Publishers, Channels, Playlists, Items, PlaylistEntries],
+)
 class AppDatabase extends _$AppDatabase {
   /// Creates an AppDatabase instance.
   AppDatabase() : super(_openConnection());
@@ -33,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => _schemaVersionV1;
 
   @override
   MigrationStrategy get migration {
@@ -41,44 +46,26 @@ class AppDatabase extends _$AppDatabase {
       onCreate: (Migrator m) async {
         await m.createAll();
         await _createIndexes();
-      },
-      onUpgrade: (Migrator m, int from, int to) async {
-        if (from < 3) {
-          await _ensureListArtistJsonColumn(m);
-        }
+        await _createFtsInfrastructure();
+        await _rebuildFtsIndexes();
       },
       beforeOpen: (OpeningDetails details) async {
-        // Ensure list_artist_json exists even if stored version is already 3
-        // (e.g. migration ran but addColumn failed, or DB was restored from backup).
-        await _ensureListArtistJsonColumn(null);
+        await _createIndexes();
+        await _createFtsInfrastructure();
+        if (details.wasCreated || details.hadUpgrade) {
+          await _rebuildFtsIndexes();
+        }
       },
     );
   }
 
-  /// Idempotent: add items.list_artist_json if missing.
-  /// [m] when non-null uses Migrator.addColumn; when null uses raw ALTER TABLE.
-  Future<void> _ensureListArtistJsonColumn(Migrator? m) async {
-    try {
-      if (m != null) {
-        await m.addColumn(items, items.listArtistJson);
-      } else {
-        await customStatement(
-          'ALTER TABLE items ADD COLUMN list_artist_json TEXT',
-        );
-      }
-    } catch (e, st) {
-      final msg = e.toString().toLowerCase();
-      if (msg.contains('duplicate column') || msg.contains('already exists')) {
-        _log.fine('list_artist_json already present, skipping');
-        return;
-      }
-      _log.severe('Failed to add list_artist_json', e, st);
-      rethrow;
-    }
-  }
-
   /// Creates performance indexes.
   Future<void> _createIndexes() async {
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_channels_publisher '
+      'ON channels(publisher_id)',
+    );
+
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_channels_type_order '
       'ON channels(type, sort_order)',
@@ -108,6 +95,119 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_entries_position '
       'ON playlist_entries(playlist_id, position ASC, item_id ASC)',
     );
+  }
+
+  Future<void> _createFtsInfrastructure() async {
+    await customStatement('''
+      CREATE VIRTUAL TABLE IF NOT EXISTS channels_fts
+      USING fts5(
+        id UNINDEXED,
+        title,
+        tokenize = 'unicode61 remove_diacritics 2'
+      )
+    ''');
+
+    await customStatement('''
+      CREATE VIRTUAL TABLE IF NOT EXISTS playlists_fts
+      USING fts5(
+        id UNINDEXED,
+        title,
+        tokenize = 'unicode61 remove_diacritics 2'
+      )
+    ''');
+
+    await customStatement('''
+      CREATE VIRTUAL TABLE IF NOT EXISTS items_fts
+      USING fts5(
+        id UNINDEXED,
+        title,
+        tokenize = 'unicode61 remove_diacritics 2'
+      )
+    ''');
+
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS channels_ai AFTER INSERT ON channels BEGIN
+        INSERT INTO channels_fts(id, title) VALUES (new.id, new.title);
+      END
+    ''');
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS channels_ad AFTER DELETE ON channels BEGIN
+        DELETE FROM channels_fts WHERE id = old.id;
+      END
+    ''');
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS channels_au AFTER UPDATE ON channels BEGIN
+        DELETE FROM channels_fts WHERE id = old.id;
+        INSERT INTO channels_fts(id, title) VALUES (new.id, new.title);
+      END
+    ''');
+
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS playlists_ai AFTER INSERT ON playlists BEGIN
+        INSERT INTO playlists_fts(id, title) VALUES (new.id, new.title);
+      END
+    ''');
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS playlists_ad AFTER DELETE ON playlists BEGIN
+        DELETE FROM playlists_fts WHERE id = old.id;
+      END
+    ''');
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS playlists_au AFTER UPDATE ON playlists BEGIN
+        DELETE FROM playlists_fts WHERE id = old.id;
+        INSERT INTO playlists_fts(id, title) VALUES (new.id, new.title);
+      END
+    ''');
+
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS items_ai AFTER INSERT ON items BEGIN
+        INSERT INTO items_fts(id, title) VALUES (new.id, COALESCE(new.title, ''));
+      END
+    ''');
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS items_ad AFTER DELETE ON items BEGIN
+        DELETE FROM items_fts WHERE id = old.id;
+      END
+    ''');
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE ON items BEGIN
+        DELETE FROM items_fts WHERE id = old.id;
+        INSERT INTO items_fts(id, title) VALUES (new.id, COALESCE(new.title, ''));
+      END
+    ''');
+  }
+
+  Future<void> _rebuildFtsIndexes() async {
+    await customStatement('DELETE FROM channels_fts');
+    await customStatement(
+      'INSERT INTO channels_fts(id, title) '
+      'SELECT id, title FROM channels',
+    );
+
+    await customStatement('DELETE FROM playlists_fts');
+    await customStatement(
+      'INSERT INTO playlists_fts(id, title) '
+      'SELECT id, title FROM playlists',
+    );
+
+    await customStatement('DELETE FROM items_fts');
+    await customStatement(
+      'INSERT INTO items_fts(id, title) '
+      'SELECT id, COALESCE(title, \'\') FROM items',
+    );
+  }
+
+  String _buildFtsMatchQuery(String rawQuery) {
+    final tokens = rawQuery
+        .trim()
+        .split(RegExp(r'\s+'))
+        .map((token) => token.replaceAll(RegExp(r'[^A-Za-z0-9_]'), ''))
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+    if (tokens.isEmpty) {
+      return '';
+    }
+    return tokens.map((token) => '"$token"*').join(' ');
   }
 
   // ===========================================================================
@@ -291,9 +391,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// Watch a single channel by ID. Emits null if the channel is deleted.
   Stream<ChannelData?> watchChannelById(String id) {
-    return (select(channels)..where((t) => t.id.equals(id)))
-        .watch()
-        .map((list) => list.isEmpty ? null : list.single);
+    return (select(channels)..where((t) => t.id.equals(id))).watch().map(
+      (list) => list.isEmpty ? null : list.single,
+    );
   }
 
   /// Upsert a channel.
@@ -370,9 +470,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// Watch a single item by ID; emits when the row changes or is removed.
   Stream<ItemData?> watchItemById(String id) {
-    return (select(items)..where((t) => t.id.equals(id)))
-        .watch()
-        .map((list) => list.isNotEmpty ? list.first : null);
+    return (select(items)..where((t) => t.id.equals(id))).watch().map(
+      (list) => list.isNotEmpty ? list.first : null,
+    );
   }
 
   /// Get items by IDs.
@@ -543,6 +643,93 @@ class AppDatabase extends _$AppDatabase {
   /// Get all items from the database.
   Future<List<ItemData>> getAllItems() async {
     return select(items).get();
+  }
+
+  /// Full-text search channels by title.
+  Future<List<ChannelData>> searchChannelsByTitleFts(
+    String query, {
+    int limit = 20,
+  }) async {
+    final matchQuery = _buildFtsMatchQuery(query);
+    if (matchQuery.isEmpty) {
+      return const [];
+    }
+
+    final rows = await customSelect(
+      '''
+      SELECT c.*
+      FROM channels_fts f
+      INNER JOIN channels c ON c.id = f.id
+      WHERE channels_fts MATCH ?
+      ORDER BY bm25(channels_fts), c.sort_order ASC, c.id ASC
+      LIMIT ?
+      ''',
+      variables: [
+        Variable.withString(matchQuery),
+        Variable.withInt(limit),
+      ],
+      readsFrom: {channels},
+    ).get();
+
+    return rows.map((row) => channels.map(row.data)).toList();
+  }
+
+  /// Full-text search playlists by title.
+  Future<List<PlaylistData>> searchPlaylistsByTitleFts(
+    String query, {
+    int limit = 20,
+  }) async {
+    final matchQuery = _buildFtsMatchQuery(query);
+    if (matchQuery.isEmpty) {
+      return const [];
+    }
+
+    final rows = await customSelect(
+      '''
+      SELECT p.*
+      FROM playlists_fts f
+      INNER JOIN playlists p ON p.id = f.id
+      WHERE playlists_fts MATCH ?
+      ORDER BY bm25(playlists_fts), p.created_at_us DESC, p.id ASC
+      LIMIT ?
+      ''',
+      variables: [
+        Variable.withString(matchQuery),
+        Variable.withInt(limit),
+      ],
+      readsFrom: {playlists},
+    ).get();
+
+    return rows.map((row) => playlists.map(row.data)).toList();
+  }
+
+  /// Full-text search items by title.
+  Future<List<ItemData>> searchItemsByTitleFts(
+    String query, {
+    int limit = 20,
+  }) async {
+    final matchQuery = _buildFtsMatchQuery(query);
+    if (matchQuery.isEmpty) {
+      return const [];
+    }
+
+    final rows = await customSelect(
+      '''
+      SELECT i.*
+      FROM items_fts f
+      INNER JOIN items i ON i.id = f.id
+      WHERE items_fts MATCH ?
+      ORDER BY bm25(items_fts), i.updated_at_us DESC, i.id ASC
+      LIMIT ?
+      ''',
+      variables: [
+        Variable.withString(matchQuery),
+        Variable.withInt(limit),
+      ],
+      readsFrom: {items},
+    ).get();
+
+    return rows.map((row) => items.map(row.data)).toList();
   }
 
   /// Get items with optional [limit] and [offset] for paging.
@@ -716,29 +903,149 @@ LazyDatabase _openConnection() {
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'playlist_cache.sqlite'));
     final readPoolSize = _resolveReadPoolSize();
+    await _resetDatabaseIfSchemaConflicts(file, dbFolder);
 
     _log.info(
       'Opening database at: ${file.path} '
       '(write isolate + $readPoolSize read isolates)',
     );
 
-    return NativeDatabase.createInBackground(
-      file,
-      readPool: readPoolSize,
-      setup: (db) {
-        // Set busy timeout first, before enabling WAL
-        db.execute('PRAGMA busy_timeout = 5000');
-
-        // Enable WAL mode for better concurrency
-        db.execute('PRAGMA journal_mode = WAL');
-
-        // Set WAL autocheckpoint to happen more frequently (every 1000 pages, ~4MB)
-        db.execute('PRAGMA wal_autocheckpoint = 1000');
-
-        _log.info('Database opened with WAL mode enabled');
-      },
-    );
+    try {
+      return NativeDatabase.createInBackground(
+        file,
+        readPool: readPoolSize,
+        setup: (db) {
+          // Set busy timeout first, before enabling WAL
+          db.execute('PRAGMA busy_timeout = 5000');
+          // Enable WAL mode for better concurrency
+          db.execute('PRAGMA journal_mode = WAL');
+          // Set WAL autocheckpoint to happen more frequently (every 1000 pages, ~4MB)
+          db.execute('PRAGMA wal_autocheckpoint = 1000');
+          _log.info('Database opened with WAL mode enabled');
+        },
+      );
+    } on Object catch (e, st) {
+      _log.warning(
+        'Failed to open database. Recreating from scratch and retrying once.',
+        e,
+        st,
+      );
+      await _deleteDatabaseFiles(file);
+      await _markDatabaseResetForReindex(dbFolder);
+      return NativeDatabase.createInBackground(
+        file,
+        readPool: readPoolSize,
+        setup: (db) {
+          db.execute('PRAGMA busy_timeout = 5000');
+          db.execute('PRAGMA journal_mode = WAL');
+          db.execute('PRAGMA wal_autocheckpoint = 1000');
+          _log.info('Database reopened from scratch with WAL mode enabled');
+        },
+      );
+    }
   });
+}
+
+Future<void> _resetDatabaseIfSchemaConflicts(
+  File dbFile,
+  Directory dbFolder,
+) async {
+  if (!dbFile.existsSync()) {
+    return;
+  }
+
+  sqlite3.Database? probeDb;
+  try {
+    probeDb = sqlite3.sqlite3.open(dbFile.path);
+    final rows = probeDb.select('PRAGMA user_version');
+    final userVersion = rows.isEmpty ? 0 : (rows.first.columnAt(0) as int);
+    final schemaCompatible = _isSchemaCompatibleV1(probeDb);
+    if (userVersion == _schemaVersionV1 && schemaCompatible) {
+      return;
+    }
+
+    _log.warning(
+      'Schema conflict detected (found user_version=$userVersion, '
+      'expected=$_schemaVersionV1, compatible=$schemaCompatible). '
+      'Recreating database from scratch.',
+    );
+    await _deleteDatabaseFiles(dbFile);
+    await _markDatabaseResetForReindex(dbFolder);
+  } on Object catch (e, st) {
+    _log.warning(
+      'Failed to read schema version. Recreating database from scratch.',
+      e,
+      st,
+    );
+    await _deleteDatabaseFiles(dbFile);
+    await _markDatabaseResetForReindex(dbFolder);
+  } finally {
+    probeDb?.dispose();
+  }
+}
+
+bool _isSchemaCompatibleV1(sqlite3.Database db) {
+  const requiredTables = <String>{
+    'publishers',
+    'channels',
+    'playlists',
+    'items',
+    'playlist_entries',
+  };
+
+  final existingTables = db
+      .select("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .map((row) => row.columnAt(0).toString())
+      .toSet();
+  if (!existingTables.containsAll(requiredTables)) {
+    return false;
+  }
+
+  if (!_tableHasColumn(db, 'channels', 'publisher_id')) {
+    return false;
+  }
+  if (!_tableHasColumn(db, 'items', 'list_artist_json')) {
+    return false;
+  }
+
+  return true;
+}
+
+bool _tableHasColumn(sqlite3.Database db, String table, String column) {
+  final rows = db.select('PRAGMA table_info($table)');
+  for (final row in rows) {
+    final name = row.columnAt(1).toString();
+    if (name == column) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Future<void> _deleteDatabaseFiles(File dbFile) async {
+  final wal = File('${dbFile.path}-wal');
+  final shm = File('${dbFile.path}-shm');
+  for (final f in <File>[dbFile, wal, shm]) {
+    if (f.existsSync()) {
+      await f.delete();
+    }
+  }
+}
+
+Future<void> _markDatabaseResetForReindex(Directory dbFolder) async {
+  final marker = File(p.join(dbFolder.path, _dbResetReindexMarkerFile));
+  await marker.writeAsString(DateTime.now().toUtc().toIso8601String());
+}
+
+/// Returns true when a schema-conflict reset happened and clears the marker.
+Future<bool> consumeDatabaseResetReindexMarker() async {
+  final dbFolder = await getApplicationDocumentsDirectory();
+  final marker = File(p.join(dbFolder.path, _dbResetReindexMarkerFile));
+  if (!marker.existsSync()) {
+    return false;
+  }
+  await marker.delete();
+  return true;
 }
 
 int _resolveReadPoolSize() {

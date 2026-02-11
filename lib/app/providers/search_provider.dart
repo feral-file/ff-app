@@ -1,5 +1,4 @@
 import 'package:app/app/providers/mutations.dart';
-import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -69,30 +68,15 @@ final searchResultsProvider = FutureProvider<SearchResults>((ref) async {
 
   try {
     final databaseService = ref.watch(databaseServiceProvider);
-    final lowerQuery = query.toLowerCase();
+    final results = await Future.wait([
+      databaseService.searchChannelsByTitle(query, limit: 20),
+      databaseService.searchPlaylistsByTitle(query, limit: 20),
+      databaseService.searchItemsByTitle(query, limit: 40),
+    ]);
 
-    // Search channels
-    final allChannels = await databaseService.getChannels();
-    final matchingChannels = allChannels.where((Channel channel) {
-      return channel.name.toLowerCase().contains(lowerQuery) ||
-          (channel.description?.toLowerCase().contains(lowerQuery) ?? false);
-    }).toList();
-
-    // Search playlists
-    final allPlaylists = await databaseService.getAllPlaylists();
-    final matchingPlaylists = allPlaylists.where((Playlist playlist) {
-      return playlist.name.toLowerCase().contains(lowerQuery) ||
-          (playlist.description?.toLowerCase().contains(lowerQuery) ?? false);
-    }).toList();
-
-    // Search works
-    final allWorks = await databaseService.getAllItems();
-    final matchingWorks = allWorks.where((PlaylistItem work) {
-      return work.title?.toLowerCase().contains(lowerQuery) ??
-          false ||
-              (work.subtitle?.toLowerCase().contains(lowerQuery) ?? false) ||
-              (work.artistName.toLowerCase().contains(lowerQuery));
-    }).toList();
+    final matchingChannels = results[0] as List<Channel>;
+    final matchingPlaylists = results[1] as List<Playlist>;
+    final matchingWorks = results[2] as List<PlaylistItem>;
 
     return SearchResults(
       channels: matchingChannels,

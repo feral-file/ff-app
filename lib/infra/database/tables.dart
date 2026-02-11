@@ -1,5 +1,25 @@
 import 'package:drift/drift.dart';
 
+/// Publishers table.
+/// A publisher can own multiple channels.
+@DataClassName('PublisherData')
+class Publishers extends Table {
+  /// Publisher identifier.
+  TextColumn get id => text()();
+
+  /// Publisher display name.
+  TextColumn get title => text()();
+
+  /// Creation timestamp in microseconds.
+  Int64Column get createdAtUs => int64()();
+
+  /// Last update timestamp in microseconds.
+  Int64Column get updatedAtUs => int64()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Channels table.
 /// Stores DP1 channels and local virtual channels.
 @DataClassName('ChannelData')
@@ -15,6 +35,9 @@ class Channels extends Table {
 
   /// URL-friendly identifier.
   TextColumn get slug => text().nullable()();
+
+  /// Publisher reference.
+  TextColumn get publisherId => text().nullable().references(Publishers, #id)();
 
   /// Channel title.
   TextColumn get title => text()();
