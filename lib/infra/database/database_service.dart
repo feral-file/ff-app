@@ -1301,6 +1301,7 @@ class DatabaseService {
             pe.item_id,
             i.provenance_json,
             pe.position,
+            c.publisher_id,
             p.base_url,
             p.created_at_us,
             p.id AS playlist_sort_id,
@@ -1312,18 +1313,33 @@ class DatabaseService {
             ) AS item_rank
           FROM playlist_entries pe
           JOIN playlists p ON pe.playlist_id = p.id
+          LEFT JOIN channels c ON p.channel_id = c.id
           JOIN items i ON pe.item_id = i.id
           WHERE i.thumbnail_uri IS NULL
             AND i.list_artist_json IS NULL
+        ),
+        interleaved AS (
+          SELECT
+            *,
+            ROW_NUMBER() OVER (
+              PARTITION BY COALESCE(CAST(publisher_id AS TEXT), COALESCE(base_url, ''))
+              ORDER BY
+                created_at_us ASC,
+                playlist_sort_id ASC,
+                item_rank ASC
+            ) AS publisher_round
+          FROM ranked
         )
         SELECT
           playlist_id,
           item_id,
           provenance_json,
           position
-        FROM ranked
+        FROM interleaved
         WHERE item_rank <= ?1
         ORDER BY
+          publisher_round ASC,
+          COALESCE(publisher_id, 2147483647) ASC,
           COALESCE(base_url, '') ASC,
           created_at_us ASC,
           playlist_sort_id ASC,
@@ -1376,6 +1392,7 @@ class DatabaseService {
             pe.item_id,
             i.provenance_json,
             pe.position,
+            c.publisher_id,
             p.base_url,
             p.created_at_us,
             p.id AS playlist_sort_id,
@@ -1387,18 +1404,33 @@ class DatabaseService {
             ) AS item_rank
           FROM playlist_entries pe
           JOIN playlists p ON pe.playlist_id = p.id
+          LEFT JOIN channels c ON p.channel_id = c.id
           JOIN items i ON pe.item_id = i.id
           WHERE i.thumbnail_uri IS NULL
             AND i.list_artist_json IS NULL
+        ),
+        interleaved AS (
+          SELECT
+            *,
+            ROW_NUMBER() OVER (
+              PARTITION BY COALESCE(CAST(publisher_id AS TEXT), COALESCE(base_url, ''))
+              ORDER BY
+                created_at_us ASC,
+                playlist_sort_id ASC,
+                item_rank ASC
+            ) AS publisher_round
+          FROM ranked
         )
         SELECT
           playlist_id,
           item_id,
           provenance_json,
           position
-        FROM ranked
+        FROM interleaved
         WHERE item_rank > ?1
         ORDER BY
+          publisher_round ASC,
+          COALESCE(publisher_id, 2147483647) ASC,
           COALESCE(base_url, '') ASC,
           created_at_us ASC,
           playlist_sort_id ASC,

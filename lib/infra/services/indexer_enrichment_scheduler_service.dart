@@ -151,25 +151,34 @@ class IndexerEnrichmentSchedulerService {
   }
 
   Future<_EnrichmentPlan> _buildEnrichmentPlan() async {
-    final maxHighPrefetch = _maxEnrichmentWorkers * _batchSize;
+    final maxHighCapacity = _maxEnrichmentWorkers * _batchSize;
     final highItems = await _enrichmentService.loadHighPriorityWorkItems(
-      limit: maxHighPrefetch,
+      // Read one extra row to detect "high backlog exceeds worker capacity".
+      limit: maxHighCapacity + 1,
     );
 
-    final hasHigh = highItems.isNotEmpty;
-    final reservedWorkers = hasHigh && _maxEnrichmentWorkers > 1 ? 1 : 0;
-    final activeWorkers = (_maxEnrichmentWorkers - reservedWorkers).clamp(
-      1,
-      64,
-    );
+    final hasHighOverflow = highItems.length > maxHighCapacity;
+    final boundedHighItems = hasHighOverflow
+        ? highItems.take(maxHighCapacity).toList(growable: false)
+        : highItems;
+    final hasHigh = boundedHighItems.isNotEmpty;
+
+    // Keep one worker idle for next-loop high arrivals unless high backlog
+    // already exceeds current full-worker capacity.
+    final reserveSpareWorker = !hasHighOverflow && _maxEnrichmentWorkers > 1;
+    final workersThisLoop = reserveSpareWorker
+        ? _maxEnrichmentWorkers - 1
+        : _maxEnrichmentWorkers;
+    final activeWorkers = workersThisLoop.clamp(1, 64);
+
+    // Do not fetch low items when high backlog alone can saturate workers.
+    final shouldFetchLowItems = !hasHighOverflow;
     final lowItems = await _enrichmentService.loadLowPriorityWorkItems(
-      limit: hasHigh
-          ? activeWorkers * _lowBurstBatchSize
-          : _maxEnrichmentWorkers * _lowBurstBatchSize,
+      limit: shouldFetchLowItems ? activeWorkers * _lowBurstBatchSize : 0,
     );
 
     final payload = <String, Object>{
-      'highCidItemPairs': highItems
+      'highCidItemPairs': boundedHighItems
           .map((item) => <String>[item.cid, item.itemId])
           .toList(growable: false),
       'lowCidItemPairs': lowItems
@@ -180,6 +189,7 @@ class IndexerEnrichmentSchedulerService {
       'batchSize': _batchSize,
       'lowBurstBatchSize': _lowBurstBatchSize,
       'hasHighPriority': hasHigh,
+      'hasHighOverflow': hasHighOverflow,
     };
     final selected = await Isolate.run(
       () => _buildCidItemAssignmentsOnIsolate(payload),
@@ -194,7 +204,7 @@ class IndexerEnrichmentSchedulerService {
 
     return _EnrichmentPlan(
       assignments: assignments,
-      reservedWorkers: reservedWorkers,
+      reservedWorkers: reserveSpareWorker ? 1 : 0,
     );
   }
 
@@ -308,6 +318,7 @@ List<Map<String, String>> _buildCidItemAssignmentsOnIsolate(
   final batchSize = payload['batchSize']! as int;
   final lowBurstBatchSize = payload['lowBurstBatchSize']! as int;
   final hasHighPriority = payload['hasHighPriority']! as bool;
+  final hasHighOverflow = payload['hasHighOverflow']! as bool;
 
   final highQueue = List<List<String>>.from(highCidItemPairs);
   final lowQueue = List<List<String>>.from(lowCidItemPairs);
@@ -334,8 +345,24 @@ List<Map<String, String>> _buildCidItemAssignmentsOnIsolate(
 
   final assignments = <Map<String, String>>[];
 
+  if (hasHighOverflow) {
+    // Hard-priority mode: saturate all available workers with high items only.
+    for (
+      var worker = 0;
+      worker < activeWorkers && highQueue.isNotEmpty;
+      worker++
+    ) {
+      assignments.add(toCidItemMap(takeFrom(highQueue, batchSize)));
+    }
+    return assignments.where((m) => m.isNotEmpty).toList(growable: false);
+  }
+
   if (!hasHighPriority) {
-    for (var worker = 0; worker < maxWorkers && lowQueue.isNotEmpty; worker++) {
+    for (
+      var worker = 0;
+      worker < activeWorkers && lowQueue.isNotEmpty;
+      worker++
+    ) {
       assignments.add(
         toCidItemMap(takeFrom(lowQueue, lowBurstBatchSize)),
       );
@@ -346,7 +373,10 @@ List<Map<String, String>> _buildCidItemAssignmentsOnIsolate(
   final firstPairs = <List<String>>[
     ...takeFrom(highQueue, batchSize),
   ];
-  if (firstPairs.length < batchSize && lowQueue.isNotEmpty) {
+  // Only top-up with low when there is no high item left currently.
+  if (firstPairs.length < batchSize &&
+      highQueue.isEmpty &&
+      lowQueue.isNotEmpty) {
     firstPairs.addAll(
       takeFrom(lowQueue, batchSize - firstPairs.length),
     );
@@ -364,7 +394,9 @@ List<Map<String, String>> _buildCidItemAssignmentsOnIsolate(
     final pairs = <List<String>>[];
     if (highQueue.isNotEmpty) {
       pairs.addAll(takeFrom(highQueue, batchSize));
-      if (pairs.length < batchSize && lowQueue.isNotEmpty) {
+      if (pairs.length < batchSize &&
+          highQueue.isEmpty &&
+          lowQueue.isNotEmpty) {
         pairs.addAll(takeFrom(lowQueue, batchSize - pairs.length));
       }
     } else {

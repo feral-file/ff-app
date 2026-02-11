@@ -214,6 +214,40 @@ void main() {
             enrichmentService.assignments.map((batch) => batch.length).toList()
               ..sort();
         expect(sizes, equals(<int>[50, 100, 100, 100]));
+        expect(enrichmentService.maxObservedParallelism, equals(3));
+      },
+    );
+
+    test(
+      'high backlog beyond worker capacity uses only high-priority items',
+      () async {
+        final enrichmentService = _FakeEnrichmentService(
+          indexerService: indexerService,
+          databaseService: databaseService,
+          high: _workItems('h', 260),
+          low: _workItems('l', 200),
+        );
+
+        final scheduler = IndexerEnrichmentSchedulerService(
+          enrichmentService: enrichmentService,
+          indexerSyncService: syncService,
+        );
+
+        final ok = await scheduler.processFeedEnrichmentUntilIdle();
+
+        expect(ok, isTrue);
+        expect(enrichmentService.assignments.length, greaterThanOrEqualTo(4));
+        final firstWave = enrichmentService.assignments.take(4).toList();
+        expect(
+          firstWave.map((b) => b.length).toList(),
+          everyElement(equals(50)),
+        );
+        for (final batch in firstWave) {
+          expect(
+            batch.values.every((itemId) => itemId.startsWith('h_')),
+            isTrue,
+          );
+        }
         expect(enrichmentService.maxObservedParallelism, equals(4));
       },
     );

@@ -557,7 +557,7 @@ void main() {
 
     group('Enrichment priority queries', () {
       test(
-        'loadHighPriorityBareItems orders playlists by baseUrl, then createdAt ASC, then id',
+        'loadHighPriorityBareItems interleaves by publisher round instead of draining one publisher first',
         () async {
           final older = DateTime.now().subtract(const Duration(hours: 1));
           final newer = DateTime.now();
@@ -640,12 +640,11 @@ void main() {
           expect(high, hasLength(16));
 
           for (var i = 0; i < 8; i++) {
-            expect(high[i].$3, equals('pl_new'));
-            expect(high[i].$1, equals('new_$i'));
-          }
-          for (var i = 8; i < 16; i++) {
-            expect(high[i].$3, equals('pl_old'));
-            expect(high[i].$1, equals('old_${i - 8}'));
+            final base = i * 2;
+            expect(high[base].$3, equals('pl_new'));
+            expect(high[base].$1, equals('new_$i'));
+            expect(high[base + 1].$3, equals('pl_old'));
+            expect(high[base + 1].$1, equals('old_$i'));
           }
 
           final low = await service.loadLowPriorityBareItems(
@@ -655,12 +654,11 @@ void main() {
           expect(low, hasLength(8));
 
           for (var i = 0; i < 4; i++) {
-            expect(low[i].$3, equals('pl_new'));
-            expect(low[i].$1, equals('new_${i + 8}'));
-          }
-          for (var i = 4; i < 8; i++) {
-            expect(low[i].$3, equals('pl_old'));
-            expect(low[i].$1, equals('old_${i + 4}'));
+            final base = i * 2;
+            expect(low[base].$3, equals('pl_new'));
+            expect(low[base].$1, equals('new_${i + 8}'));
+            expect(low[base + 1].$3, equals('pl_old'));
+            expect(low[base + 1].$1, equals('old_${i + 8}'));
           }
         },
       );
