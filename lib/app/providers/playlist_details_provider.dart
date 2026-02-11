@@ -88,6 +88,7 @@ class PlaylistDetailsNotifier
 
   /// Watch playlist items in DB; on change reload or update total (like old Bloc).
   void _setupDatabaseListener() {
+    if (!ref.mounted) return;
     unawaited(_dbSubscription?.cancel());
     _dbSubscription = null;
     try {
@@ -105,6 +106,7 @@ class PlaylistDetailsNotifier
   }
 
   void _onDatabaseChanged(List<PlaylistItem> fullList) {
+    if (!ref.mounted) return;
     final current = switch (state) {
       AsyncData(value: final v) => v,
       _ => null,
@@ -120,11 +122,10 @@ class PlaylistDetailsNotifier
         : current.items.length;
     final newSlice = fullList.take(loadedCount).toList();
     final currentSlice = current.items.take(loadedCount).toList();
-    final sameIds = listEquals(
-      newSlice.map((e) => e.id).toList(),
-      currentSlice.map((e) => e.id).toList(),
-    );
-    if (!sameIds) {
+    final hasChanged =
+        newSlice.length != currentSlice.length ||
+        !listEquals(newSlice, currentSlice);
+    if (hasChanged) {
       state = AsyncValue.data(
         PlaylistDetailsState(
           playlist: current.playlist,
@@ -149,11 +150,13 @@ class PlaylistDetailsNotifier
     try {
       final databaseService = ref.read(databaseServiceProvider);
       final playlist = await databaseService.getPlaylistById(_playlistId);
+      if (!ref.mounted) return;
       final items = await databaseService.getPlaylistItems(
         _playlistId,
         limit: limit,
         offset: offset,
       );
+      if (!ref.mounted) return;
       final nextOffset = offset + items.length;
       state = AsyncValue.data(
         PlaylistDetailsState(
@@ -166,6 +169,7 @@ class PlaylistDetailsNotifier
         ),
       );
     } catch (e, stack) {
+      if (!ref.mounted) return;
       _log.severe('Failed to load playlist details for $_playlistId', e, stack);
       state = AsyncValue.error(e, stack);
     }
@@ -188,6 +192,7 @@ class PlaylistDetailsNotifier
         limit: _pageSize,
         offset: current.offset,
       );
+      if (!ref.mounted) return;
       if (newItems.isEmpty) {
         state = AsyncValue.data(
           current.copyWith(hasMore: false, isLoadingMore: false),
@@ -206,6 +211,7 @@ class PlaylistDetailsNotifier
         ),
       );
     } catch (e, stack) {
+      if (!ref.mounted) return;
       _log.severe('Failed to load more for $_playlistId', e, stack);
       state = AsyncValue.data(current.copyWith(isLoadingMore: false));
     }
