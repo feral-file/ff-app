@@ -324,8 +324,10 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
 
     try {
       final devices = await _control.scan(timeout: timeout);
+      if (!ref.mounted) return;
       state = state.copyWith(isScanning: false, devices: devices);
     } catch (e) {
+      if (!ref.mounted) return;
       state = state.copyWith(isScanning: false, error: e);
     }
   }

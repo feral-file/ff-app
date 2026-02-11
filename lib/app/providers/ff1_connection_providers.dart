@@ -260,6 +260,7 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         }
       }
 
+      if (!ref.mounted) return;
       // Step 7: Update database with topicId
       state = state.copyWith(
         status: WiFiConnectionStatus.finalizingConnection,
@@ -279,6 +280,7 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
       // Update connection state to connected
       await deviceService.updateConnectionState(device.deviceId, 1);
 
+      if (!ref.mounted) return;
       // Invalidate providers to reflect changes
       ref.invalidate(allFF1BluetoothDevicesProvider);
       ref.invalidate(activeFF1BluetoothDeviceProvider);
@@ -294,9 +296,11 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
       // in the cloud communication layer.
 
       await Future<void>.delayed(const Duration(seconds: 2));
+      if (!ref.mounted) return;
       state = const WiFiConnectionState();
     } on FF1Error catch (e) {
       _log.severe('FF1 Error: $e');
+      if (!ref.mounted) return;
       state = state.copyWith(
         status: WiFiConnectionStatus.error,
         error: e,
@@ -304,6 +308,7 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
       );
     } catch (e, st) {
       _log.severe('Unexpected error during connection', e, st);
+      if (!ref.mounted) return;
       state = state.copyWith(
         status: WiFiConnectionStatus.error,
         error: e,

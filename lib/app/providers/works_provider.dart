@@ -164,6 +164,7 @@ class WorksNotifier extends Notifier<WorksState> {
   }
 
   void _setupDatabaseWatch() {
+    if (!ref.mounted) return;
     _stopWatching();
 
     final databaseService = ref.read(databaseServiceProvider);
@@ -267,6 +268,7 @@ class WorksNotifier extends Notifier<WorksState> {
         ? currentCount
         : worksPageSize;
     final page = await _fetchPage(offset: 0, pageSize: targetSize);
+    if (!ref.mounted) return;
     state = state.copyWith(
       works: page.$1,
       hasMore: page.$2,
@@ -307,6 +309,7 @@ class WorksNotifier extends Notifier<WorksState> {
 
     final db = ref.read(databaseServiceProvider);
     final refreshedSlice = await db.getItems(limit: size, offset: safeStart);
+    if (!ref.mounted) return;
     if (refreshedSlice.length != size) {
       await _reloadLoadedWindow();
       return;
@@ -325,6 +328,7 @@ class WorksNotifier extends Notifier<WorksState> {
     if (loadedCount == 0) return;
     final db = ref.read(databaseServiceProvider);
     final ids = await db.getItemIds(limit: loadedCount + 1, offset: 0);
+    if (!ref.mounted) return;
     final hasMore = ids.length > loadedCount;
     if (hasMore != state.hasMore) {
       state = state.copyWith(hasMore: hasMore);
@@ -358,6 +362,7 @@ class WorksNotifier extends Notifier<WorksState> {
 
     try {
       final page = await _fetchPage(offset: offset, pageSize: limit);
+      if (!ref.mounted) return;
       state = state.copyWith(
         works: page.$1,
         hasMore: page.$2,
@@ -366,6 +371,7 @@ class WorksNotifier extends Notifier<WorksState> {
         clearError: true,
       );
     } catch (e, stack) {
+      if (!ref.mounted) return;
       _log.severe('Failed to load works', e, stack);
       state = WorksState.error(e.toString());
     }
@@ -387,6 +393,7 @@ class WorksNotifier extends Notifier<WorksState> {
         offset: state.works.length,
         pageSize: worksPageSize,
       );
+      if (!ref.mounted) return;
       state = state.copyWith(
         works: [...state.works, ...page.$1],
         hasMore: page.$2,
@@ -395,6 +402,7 @@ class WorksNotifier extends Notifier<WorksState> {
         clearError: true,
       );
     } catch (e, stack) {
+      if (!ref.mounted) return;
       _log.severe('Failed to load more works', e, stack);
       state = state.copyWith(
         isLoadingMore: false,
@@ -485,6 +493,7 @@ class WorkDetailNotifier extends Notifier<AsyncValue<WorkDetailData?>> {
   }
 
   void _setupDatabaseListener() {
+    if (!ref.mounted) return;
     unawaited(_dbSubscription?.cancel());
     _dbSubscription = null;
     try {
@@ -499,10 +508,12 @@ class WorkDetailNotifier extends Notifier<AsyncValue<WorkDetailData?>> {
 
   void _onWatchError(Object error, StackTrace stack) {
     _log.warning('Database listener error for $_itemId', error, stack);
+    if (!ref.mounted) return;
     state = AsyncValue.error(error, stack);
   }
 
   void _onItemChanged(PlaylistItem? item) {
+    if (!ref.mounted) return;
     if (item == null) {
       state = AsyncValue.data(null);
       return;
@@ -522,6 +533,7 @@ class WorkDetailNotifier extends Notifier<AsyncValue<WorkDetailData?>> {
         ? await contentType(previewUrl)
         : null;
 
+    if (!ref.mounted) return;
     state = AsyncValue.data(
       WorkDetailData(item: item, token: null, mimeType: mimeType),
     );
@@ -532,6 +544,7 @@ class WorkDetailNotifier extends Notifier<AsyncValue<WorkDetailData?>> {
       if (cid != null) {
         final indexerService = ref.read(indexerServiceProvider);
         token = await indexerService.getTokenByCid(cid);
+        if (!ref.mounted) return;
         state = AsyncValue.data(
           WorkDetailData(item: item, token: token, mimeType: mimeType),
         );

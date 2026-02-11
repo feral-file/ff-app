@@ -148,6 +148,7 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
   /// Watch full playlist list for this type (no limit). Aligns with old repo
   /// PlaylistsBloc: watch emits entire list so we detect new data after reload.
   void _setupDatabaseWatch() {
+    if (!ref.mounted) return;
     _watchSub?.cancel();
     final databaseService = ref.read(databaseServiceProvider);
     _watchSub = databaseService
@@ -162,6 +163,7 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
   /// Reacts to DB changes. [next] is the full list (watch has no limit).
   /// Aligns with old repo: hasChanged = length/prefix diff or (more in DB and !hasMore).
   void _onPlaylistsChanged(List<Playlist> next) {
+    if (!ref.mounted) return;
     if (state.playlists.isEmpty && !state.isLoading) {
       unawaited(loadPlaylists(size: _pageSize));
       return;
@@ -189,6 +191,7 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
       switch (_type) {
         case PlaylistType.dp1:
           final result = await _loadDp1Playlists();
+          if (!ref.mounted) return;
           state = PlaylistsState.loaded(
             playlists: result,
             hasMore: false,
@@ -202,6 +205,7 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
           break;
       }
     } catch (e, stack) {
+      if (!ref.mounted) return;
       _log.severe('Failed to load playlists', e, stack);
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -238,6 +242,7 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
   Future<void> _loadAddressBasedPlaylists() async {
     final databaseService = ref.read(databaseServiceProvider);
     final personal = await databaseService.getAddressPlaylists();
+    if (!ref.mounted) return;
     state = PlaylistsState.loaded(
       playlists: personal,
       hasMore: false,

@@ -148,6 +148,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
   }
 
   void _setupDatabaseWatch() {
+    if (!ref.mounted) return;
     _watchSub?.cancel();
     final databaseService = ref.read(databaseServiceProvider);
     final limit = (_pageSize > state.channels.length)
@@ -163,6 +164,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
   }
 
   void _onChannelsChanged(List<Channel> next) {
+    if (!ref.mounted) return;
     if (state.channels.isEmpty && !state.isLoading) {
       unawaited(refresh());
       return;
@@ -197,6 +199,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
           ChannelType.dp1,
           limit: effectiveSize + 1,
         );
+        if (!ref.mounted) return;
         final hasMore = result.length > effectiveSize;
         final page = hasMore ? result.take(effectiveSize).toList() : result;
         final nextCursor = hasMore ? effectiveSize.toString() : null;
@@ -213,6 +216,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
         final personalAll = await databaseService.getChannelsByType(
           ChannelType.localVirtual,
         );
+        if (!ref.mounted) return;
         state = ChannelsState.loaded(
           channels: personalAll,
           hasMore: false,
@@ -222,6 +226,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
         _log.info('Personal channels: ${personalAll.length}');
       }
     } catch (e, stack) {
+      if (!ref.mounted) return;
       _log.severe('Failed to load channels', e, stack);
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -258,6 +263,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
         offset: start,
       );
 
+      if (!ref.mounted) return;
       if (result.isEmpty) {
         state = state.copyWith(
           isLoadingMore: false,
@@ -279,6 +285,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
         cursor: nextCursor,
       );
     } catch (e, stack) {
+      if (!ref.mounted) return;
       _log.severe('Failed to load more channels', e, stack);
       state = state.copyWith(isLoadingMore: false, error: e.toString());
     }
