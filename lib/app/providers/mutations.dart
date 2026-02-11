@@ -48,9 +48,11 @@ class MutationNotifier<T> extends Notifier<MutationState<T>> {
     try {
       state = const MutationPending();
       final result = await operation();
+      if (!ref.mounted) return result;
       state = MutationSuccess(result);
       return result;
     } catch (error, stackTrace) {
+      if (!ref.mounted) rethrow;
       state = MutationError(error, stackTrace);
       rethrow;
     }

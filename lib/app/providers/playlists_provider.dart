@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/providers/mutations.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/database_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:sentry/sentry.dart';
@@ -147,6 +148,7 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
   /// Watch full playlist list for this type (no limit). Aligns with old repo
   /// PlaylistsBloc: watch emits entire list so we detect new data after reload.
   void _setupDatabaseWatch() {
+    if (!ref.mounted) return;
     _watchSub?.cancel();
     final databaseService = ref.read(databaseServiceProvider);
     _watchSub = databaseService
@@ -161,6 +163,7 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
   /// Reacts to DB changes. [next] is the full list (watch has no limit).
   /// Aligns with old repo: hasChanged = length/prefix diff or (more in DB and !hasMore).
   void _onPlaylistsChanged(List<Playlist> next) {
+    if (!ref.mounted) return;
     if (state.playlists.isEmpty && !state.isLoading) {
       unawaited(loadPlaylists(size: _pageSize));
       return;
@@ -168,45 +171,27 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
     final current = state.playlists;
     final loadedLength = current.length;
     final listenSize = loadedLength > _pageSize ? loadedLength : _pageSize;
+    final slice = next.take(listenSize).toList();
 
-    bool hasChanged =
-        (current.length != next.length) ||
-        (current.length < next.length && !state.hasMore);
-    if (!hasChanged && current.isNotEmpty && next.isNotEmpty) {
-      final n = current.length < next.length ? current.length : next.length;
-      if (n > 0 &&
-          !_samePlaylistIds(current.sublist(0, n), next.sublist(0, n))) {
-        hasChanged = true;
-      }
+    final hasChanged =
+        current.length != slice.length || !listEquals(current, slice);
+    if (hasChanged) {
+      unawaited(loadPlaylists(size: listenSize));
     }
-
-    if (hasChanged && !state.isLoading && !state.isLoadingMore) {
-      if (_type == PlaylistType.dp1) {
-        unawaited(loadPlaylists(size: listenSize));
-      } else {
-        state = state.copyWith(playlists: next);
-      }
-    }
-  }
-
-  bool _samePlaylistIds(List<Playlist> a, List<Playlist> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i].id != b[i].id) return false;
-    }
-    return true;
   }
 
   /// Load playlists for this type.
   /// dp1 (curated): Load all from database. addressBased: database, all.
   Future<void> loadPlaylists({int? size}) async {
     try {
+      if (state.isLoading) return;
       _log.info('Loading playlists (type: ${_type.name})...');
       state = state.copyWith(isLoading: true, clearError: true);
 
       switch (_type) {
         case PlaylistType.dp1:
           final result = await _loadDp1Playlists();
+          if (!ref.mounted) return;
           state = PlaylistsState.loaded(
             playlists: result,
             hasMore: false,
@@ -220,6 +205,7 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
           break;
       }
     } catch (e, stack) {
+      if (!ref.mounted) return;
       _log.severe('Failed to load playlists', e, stack);
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -256,6 +242,7 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
   Future<void> _loadAddressBasedPlaylists() async {
     final databaseService = ref.read(databaseServiceProvider);
     final personal = await databaseService.getAddressPlaylists();
+    if (!ref.mounted) return;
     state = PlaylistsState.loaded(
       playlists: personal,
       hasMore: false,
