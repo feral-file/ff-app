@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// Completer for handling deeplink.
+Completer<void> handleDeeplinkCompleter = Completer<void>();
+
 /// Provider for handling deep links.
 /// Listens to incoming app links and exposes them as a stream.
 final deeplinkHandlerProvider = Provider<DeeplinkHandler>((ref) {

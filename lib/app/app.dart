@@ -7,11 +7,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Consumes the router provider to configure navigation.
 class App extends ConsumerWidget {
   /// Creates the root App widget.
-  const App({super.key});
+  const App({
+    required this.initialLocation,
+    super.key,
+  });
+
+  /// Initial location for the app router.
+  final String initialLocation;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final router = ref.watch(routerProvider);
+    final router = ref.watch(
+      routerProvider(initialLocation),
+    );
 
     return MaterialApp.router(
       title: 'Feral File',

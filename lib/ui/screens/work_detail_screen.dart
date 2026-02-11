@@ -400,7 +400,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                         token: token,
                       ),
                       loading: () => const SizedBox.shrink(),
-                      error: (_, _) => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
                     ),
                   if (token != null)
                     ownerAddressesAsync.when(
@@ -411,7 +411,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                         token: token,
                       ),
                       loading: () => const SizedBox.shrink(),
-                      error: (_, _) => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
                     ),
                   buildWorkDetailRightSection(context, item, token),
                   SizedBox(height: LayoutConstants.space20),

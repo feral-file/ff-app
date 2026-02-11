@@ -58,6 +58,15 @@ class AppConfig {
     fallback: dotenv.get('TV_API_KEY', fallback: ''),
   );
 
+  /// Domain Resolver URL (Domain Resolver API endpoint
+  /// for resolving Ethereum and Tezos addresses from ENS and TNS domains)
+  static String get domainResolverUrl =>
+      dotenv.get('DOMAIN_RESOLVER_URL', fallback: '');
+
+  /// Domain Resolver API Key for authentication.
+  static String get domainResolverApiKey =>
+      dotenv.get('DOMAIN_RESOLVER_API_KEY', fallback: '');
+
   /// FF1 Cast API URL (REST endpoint for sending commands).
   /// Uses FF1_RELAYER_URL as the base URL, converting scheme from ws:// to https://.
   static String get ff1CastApiUrl {

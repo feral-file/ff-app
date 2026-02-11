@@ -357,6 +357,11 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  /// Delete playlist by ID.
+  Future<void> deletePlaylist(String playlistId) async {
+    await (delete(playlists)..where((t) => t.id.equals(playlistId))).go();
+  }
+
   // Item queries
   /// Get item by ID.
   Future<ItemData?> getItemById(String id) async {

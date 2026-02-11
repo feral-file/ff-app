@@ -9,7 +9,7 @@ class AppTypography {
 
   /// PP Mori font family name
   static const String ppMori = PrimitivesTokens.fontFamiliesPpMori;
-  
+
   /// IBM Plex Mono font family name
   static const String ibmPlexMono = PrimitivesTokens.fontFamiliesIbmPlexMono;
 
@@ -209,22 +209,22 @@ class AppTypography {
 extension TypographyColors on TextStyle {
   /// Apply black color
   TextStyle get black => copyWith(color: const Color(0xFF000000));
-  
+
   /// Apply white color
   TextStyle get white => copyWith(color: const Color(0xFFFFFFFF));
-  
+
   /// Apply grey color
   TextStyle get grey => copyWith(color: const Color(0xFFA0A0A0));
-  
+
   /// Apply inactive (dimmed) color
   TextStyle get inactive => copyWith(color: const Color(0xFF999999));
-  
+
   /// Apply highlight color
   TextStyle get highlight => copyWith(color: const Color(0xFFECFF0C));
-  
+
   /// Apply red color
   TextStyle get red => copyWith(color: const Color(0xFFD10000));
-  
+
   /// Apply light blue color
   TextStyle get lightBlue => copyWith(color: const Color(0xFFB9E5FF));
 }
@@ -239,7 +239,7 @@ extension TypographyFontStyle on TextStyle {
 extension TypographyFontWeight on TextStyle {
   /// Apply bold weight
   TextStyle get bold => copyWith(fontWeight: FontWeight.w700);
-  
+
   /// Apply regular weight
   TextStyle get regular => copyWith(fontWeight: FontWeight.w400);
 }
@@ -247,5 +247,8 @@ extension TypographyFontWeight on TextStyle {
 /// Decoration extensions for TextStyle
 extension TypographyDecorations on TextStyle {
   /// Apply underline decoration
-  TextStyle get underline => copyWith(decoration: TextDecoration.underline);
+  TextStyle get underline => copyWith(
+        decoration: TextDecoration.underline,
+        decorationColor: color,
+      );
 }

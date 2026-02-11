@@ -1,3 +1,4 @@
+import 'package:app/domain/models/models.dart';
 import 'package:logging/logging.dart';
 
 import '../../domain/models/playlist.dart';
@@ -26,18 +27,18 @@ class AddressService {
   /// Add a wallet address and create its playlist.
   /// This creates an address-based playlist in the "My Collection" channel.
   Future<Playlist> addAddress({
-    required String address,
-    required String chain,
+    required WalletAddress walletAddress,
     String channelId = 'my_collection',
   }) async {
     try {
-      final normalizedAddress = address.toUpperCase();
+      final chain = walletAddress.chain;
+      final normalizedAddress = walletAddress.address.toUpperCase();
       _log.info('Adding address: $normalizedAddress on chain $chain');
 
       // Create address playlist
       final playlist = Playlist(
         id: 'addr:$chain:$normalizedAddress',
-        name: '$chain: ${_shortenAddress(normalizedAddress)}',
+        name: walletAddress.name,
         type: PlaylistType.addressBased,
         channelId: channelId,
         playlistSource: PlaylistSource.personal,
@@ -57,18 +58,18 @@ class AddressService {
       _log.info('Added address playlist: ${playlist.id}');
       return playlist;
     } catch (e, stack) {
-      _log.severe('Failed to add address $address', e, stack);
+      _log.severe('Failed to add address $walletAddress', e, stack);
       rethrow;
     }
   }
 
   /// Remove an address and its playlist.
   Future<void> removeAddress({
-    required String address,
-    required String chain,
+    required WalletAddress walletAddress,
   }) async {
     try {
-      final normalizedAddress = address.toUpperCase();
+      final chain = walletAddress.chain;
+      final normalizedAddress = walletAddress.address.toUpperCase();
       final playlistId = 'addr:$chain:$normalizedAddress';
 
       _log.info('Removing address: $normalizedAddress');
@@ -86,12 +87,12 @@ class AddressService {
         await _databaseService.deletePlaylistItem(item.id);
       }
 
-      // Note: In a real implementation, you'd delete the playlist record too
-      // For now, just clearing its items is sufficient
+      // Delete the playlist record itself
+      await _databaseService.deletePlaylist(playlistId);
 
       _log.info('Removed address playlist: $playlistId');
     } catch (e, stack) {
-      _log.severe('Failed to remove address $address', e, stack);
+      _log.severe('Failed to remove address $walletAddress', e, stack);
       rethrow;
     }
   }

@@ -4,6 +4,8 @@ import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
 import 'package:app/infra/services/address_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
+import 'package:app/infra/services/domain_address_service.dart';
+import 'package:app/infra/services/domain_service.dart';
 import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
@@ -95,3 +97,18 @@ final dp1PlaylistItemsEnrichmentServiceProvider =
         databaseService: databaseService,
       );
     });
+
+/// Provider for the DomainService.
+/// Resolves ENS/TNS-style domains to chain addresses.
+final domainServiceProvider = Provider<DomainService>((ref) {
+  return DomainServiceImpl();
+});
+
+/// Provider for the DomainAddressService.
+/// Verifies raw addresses and domain-based addresses across supported chains.
+final domainAddressServiceProvider =
+    Provider<DomainAddressService>((ref) {
+  final domainService = ref.watch(domainServiceProvider);
+
+  return DomainAddressServiceImpl(domainService);
+});

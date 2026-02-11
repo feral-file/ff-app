@@ -61,6 +61,7 @@
     </queries>
 
     <!-- Bluetooth permissions -->
+    <!-- Required for all Android versions -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission

@@ -1,18 +1,43 @@
-import 'package:app/app/providers/ff1_connection_providers.dart';
+import 'dart:async';
+
+import 'package:app/app/providers/connect_wifi_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/domain/models/wifi_point.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/send_wifi_credentials_screen.dart';
-import 'package:app/widgets/loading_view.dart';
+import 'package:app/widgets/appbars/setup_app_bar.dart';
+import 'package:app/widgets/buttons/primary_button.dart';
+import 'package:app/widgets/section_expanded_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+/// Payload for the scan wifi network page
+class ScanWifiNetworkPagePayload {
+  /// Constructor
+  ScanWifiNetworkPagePayload({
+    required this.device,
+  });
+
+  /// The device to scan wifi networks for
+  final FF1Device device;
+}
 
 /// Screen for scanning and selecting WiFi networks
 class ScanWiFiNetworkScreen extends ConsumerStatefulWidget {
-  const ScanWiFiNetworkScreen({required this.device, super.key});
+  /// Constructor
+  const ScanWiFiNetworkScreen({
+    required this.payload,
+    super.key,
+  });
 
-  final FF1Device device;
+  /// The payload for the scan wifi network page
+  final ScanWifiNetworkPagePayload payload;
 
   @override
   ConsumerState<ScanWiFiNetworkScreen> createState() =>
@@ -20,172 +45,309 @@ class ScanWiFiNetworkScreen extends ConsumerStatefulWidget {
 }
 
 class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
+  final TextEditingController _ssidController = TextEditingController();
+  bool _shouldEnableConnectButton = false;
+
   @override
   void initState() {
     super.initState();
     // Start scanning for networks
     Future.microtask(() {
-      ref.read(wifiConnectionProvider.notifier).connectAndScanNetworks(
-            device: widget.device,
-          );
+      unawaited(
+        ref.read(connectWiFiProvider.notifier).connectAndScanNetworks(
+              device: widget.payload.device,
+            ),
+      );
     });
   }
 
   @override
-  Widget build(BuildContext context) {
-    final connectionState = ref.watch(wifiConnectionProvider);
-
-    return Scaffold(
-      backgroundColor: AppColor.auGreyBackground,
-      appBar: AppBar(
-        backgroundColor: AppColor.auGreyBackground,
-        title: Text(
-          'Select WiFi network',
-          style: AppTypography.h4(context).white,
-        ),
-        elevation: 0,
-      ),
-      body: connectionState.status == WiFiConnectionStatus.selectingNetwork &&
-              connectionState.scannedNetworks != null
-          ? _buildNetworkList(context, connectionState, ref)
-          : _buildLoadingOrError(context, connectionState),
-    );
+  void dispose() {
+    _ssidController.dispose();
+    super.dispose();
   }
 
-  Widget _buildNetworkList(
-    BuildContext context,
-    WiFiConnectionState state,
-    WidgetRef ref,
-  ) {
-    final networks = state.scannedNetworks ?? [];
-
-    if (networks.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.wifi_off,
-              size: LayoutConstants.space16,
-              color: AppColor.auQuickSilver,
-            ),
-            SizedBox(height: LayoutConstants.space4),
-            Text(
-              'No WiFi Networks Found',
-              style: AppTypography.h3(context).white,
-            ),
-            SizedBox(height: LayoutConstants.space2),
-            Text(
-              'Make sure your WiFi network is visible',
-              style: AppTypography.body(context).grey,
-            ),
-            SizedBox(height: LayoutConstants.space6),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: Text(
-                'Go back',
-                style: AppTypography.body(context).white,
-              ),
-            ),
-          ],
-        ),
-      );
+  /// Parse SSID from scan result (may contain "ssid|security" format)
+  String _parseSSID(String result) {
+    if (result.contains('|')) {
+      final parts = result.split('|');
+      return parts.isNotEmpty ? parts.first : result;
     }
+    return result;
+  }
 
-    return ListView.builder(
-      padding: EdgeInsets.all(LayoutConstants.space4),
-      itemCount: networks.length,
-      itemBuilder: (context, index) {
-        final network = networks[index];
-        return Card(
-          margin: EdgeInsets.only(bottom: LayoutConstants.space3),
-          child: ListTile(
-            leading: Icon(
-              Icons.wifi,
-              color: AppColor.feralFileLightBlue,
-            ),
-            title: Text(
-              network.ssid,
-              style: AppTypography.body(context).white,
-            ),
-            trailing: const Icon(Icons.arrow_forward, color: AppColor.white),
-            onTap: () {
-              ref.read(wifiConnectionProvider.notifier).selectNetwork(network);
-              // Navigate to password entry screen
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) => EnterWiFiPasswordScreen(
-                    device: widget.device,
-                    networkSsid: network.ssid,
+  /// Check if network is open (from "ssid|security" format)
+  bool _isOpenNetwork(String result) {
+    if (!result.contains('|')) {
+      return false;
+    }
+    final parts = result.split('|');
+    if (parts.length > 1) {
+      final security = parts[1].trim().toUpperCase();
+      return security == 'OPEN';
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final connectionState = ref.watch(connectWiFiProvider);
+    final isScanning =
+        connectionState.status == WiFiConnectionStatus.connecting ||
+            connectionState.status == WiFiConnectionStatus.scanningNetworks;
+    final hasError = connectionState.status == WiFiConnectionStatus.error;
+    final networks = connectionState.scannedNetworks ?? [];
+
+    return Scaffold(
+      appBar: const SetupAppBar(
+        title: 'Select WiFi Network',
+      ),
+      backgroundColor: PrimitivesTokens.colorsDarkGrey,
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: LayoutConstants.setupPageHorizontal,
+          ),
+          child: KeyboardVisibilityBuilder(
+            builder: (context, isKeyboardVisible) {
+              return CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: LayoutConstants.space6 + LayoutConstants.space2,
+                    ),
                   ),
-                ),
+                  if (isScanning) ...[
+                    SliverToBoxAdapter(
+                      child: Text(
+                        'Getting WiFi networks from your FF1. Please wait a moment...',
+                        style: AppTypography.body(context).white,
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: SizedBox(height: LayoutConstants.space6),
+                    ),
+                  ] else ...[
+                    if (hasError || (networks.isEmpty && !isScanning))
+                      SliverToBoxAdapter(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              hasError
+                                  ? 'Cannot get available networks from your FF1'
+                                  : 'No wifi networks found by FF1',
+                              style: AppTypography.caption(context).bold.white,
+                            ),
+                            SizedBox(height: LayoutConstants.space2),
+                            Text(
+                              hasError
+                                  ? connectionState.message ??
+                                      'There might be an issue with the WiFi module on your FF1. Please try restarting your FF1 and scan again.'
+                                  : 'There might be an issue with the WiFi module on your FF1. Please try restarting your FF1 and scan again.',
+                              style: AppTypography.body(context).white,
+                            ),
+                            SizedBox(height: LayoutConstants.space5),
+                            PrimaryButton(
+                              onTap: () {
+                                unawaited(
+                                  ref
+                                      .read(connectWiFiProvider.notifier)
+                                      .connectAndScanNetworks(
+                                        device: widget.payload.device,
+                                      ),
+                                );
+                              },
+                              text: 'Retry',
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                  if (networks.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _listWifiView(context, networks, connectionState),
+                    ),
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: LayoutConstants.space10,
+                    ),
+                  ),
+                ],
               );
             },
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
-  Widget _buildLoadingOrError(
+  Widget _listWifiView(
     BuildContext context,
-    WiFiConnectionState state,
+    List<WiFiNetwork> networks,
+    WiFiConnectionState connectionState,
   ) {
-    if (state.status == WiFiConnectionStatus.connecting ||
-        state.status == WiFiConnectionStatus.scanningNetworks) {
-      return Center(
-        child: LoadingWidget(
-          backgroundColor: AppColor.auGreyBackground,
-          text: state.message ?? 'Scanning networks...',
+    return Column(
+      children: [
+        Text(
+          '''To avoid overloading the BLE connection, only the strongest nearby Wi-Fi networks are shown. '''
+          '''If your network isn't listed, try moving the device closer to your Wi-Fi router, or connect manually.''',
+          style: AppTypography.body(context).white,
         ),
-      );
-    }
+        SizedBox(height: LayoutConstants.space20),
+        ...networks.map(
+          (network) => _networkItem(context, network),
+        ),
+        _otherNetworkItem(context),
+      ],
+    );
+  }
 
-    if (state.status == WiFiConnectionStatus.error) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: LayoutConstants.space16,
-              color: AppColor.error,
-            ),
-            SizedBox(height: LayoutConstants.space4),
-            Text(
-              'Error Scanning Networks',
-              style: AppTypography.h3(context).white,
-            ),
-            SizedBox(height: LayoutConstants.space2),
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: LayoutConstants.space6,
+  Widget _networkItem(BuildContext context, WiFiNetwork network) {
+    // Parse SSID and check if open (if scan result contains security info)
+    final ssid = _parseSSID(network.ssid);
+    final isOpen = _isOpenNetwork(network.ssid);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () {
+            ref.read(connectWiFiProvider.notifier).selectNetwork(network);
+            unawaited(
+              context.push(
+                Routes.enterWifiPassword,
+                extra: EnterWifiPasswordPagePayload(
+                  onSubmitted: (topicId, error) {},
+                  device: widget.payload.device,
+                  wifiAccessPoint: WifiPoint(ssid),
+                ),
               ),
-              child: Text(
-                state.message ?? 'An unexpected error occurred',
-                textAlign: TextAlign.center,
-                style: AppTypography.body(context).grey,
+            );
+          },
+          child: SizedBox(
+            width: double.infinity,
+            child: ColoredBox(
+              color: Colors.transparent,
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: LayoutConstants.space5,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        ssid,
+                        style: AppTypography.body(context).white,
+                      ),
+                    ),
+                    if (!isOpen)
+                      Icon(
+                        Icons.lock,
+                        color: AppColor.white,
+                        size: LayoutConstants.iconSizeMedium,
+                      ),
+                  ],
+                ),
               ),
             ),
-            SizedBox(height: LayoutConstants.space6),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: Text(
-                'Go back',
+          ),
+        ),
+        const Divider(
+          color: AppColor.primaryBlack,
+        ),
+      ],
+    );
+  }
+
+  Widget _otherNetworkItem(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionExpandedWidget(
+          header: 'Other network',
+          headerStyle: AppTypography.body(context).white,
+          withDivider: false,
+          headerPadding: EdgeInsets.symmetric(
+            vertical: LayoutConstants.space5,
+          ),
+          iconOnUnExpanded: const SizedBox.shrink(),
+          iconOnExpanded: const SizedBox.shrink(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Network name (SSID)',
                 style: AppTypography.body(context).white,
               ),
-            ),
-          ],
-        ),
-      );
-    }
+              SizedBox(height: LayoutConstants.space4),
+              TextField(
+                controller: _ssidController,
+                decoration: InputDecoration(
+                  hintText: 'Enter wifi network',
+                  hintStyle: AppTypography.body(context).white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(
+                      LayoutConstants.space2 + LayoutConstants.space1,
+                    ),
+                    borderSide: BorderSide.none,
+                  ),
+                  fillColor: AppColor.primaryBlack,
+                  focusColor: AppColor.primaryBlack,
+                  filled: true,
+                  constraints: BoxConstraints(
+                    minHeight:
+                        LayoutConstants.minTouchTarget + LayoutConstants.space4,
+                  ),
+                  contentPadding: EdgeInsets.symmetric(
+                    vertical: LayoutConstants.space6,
+                    horizontal: LayoutConstants.space4,
+                  ),
+                ),
+                style: AppTypography.body(context).white,
+                onChanged: (value) {
+                  if (mounted) {
+                    setState(() {
+                      _shouldEnableConnectButton = value.trim().isNotEmpty;
+                    });
+                  }
+                },
+              ),
+              SizedBox(height: LayoutConstants.space6),
+              PrimaryButton(
+                enabled: _shouldEnableConnectButton,
+                onTap: () async {
+                  final ssid = _ssidController.text.trim();
+                  if (ssid.isEmpty) {
+                    return;
+                  }
+                  // Create a WiFiNetwork for the manually entered SSID
+                  final network = WiFiNetwork(ssid);
+                  ref.read(connectWiFiProvider.notifier).selectNetwork(network);
+                  // Navigate to password entry screen
 
-    return const Center(
-      child: LoadingView(),
+                  unawaited(
+                    context.push(
+                      Routes.enterWifiPassword,
+                      extra: EnterWifiPasswordPagePayload(
+                        onSubmitted: (topicId, error) {},
+                        device: widget.payload.device,
+                        wifiAccessPoint: WifiPoint(ssid),
+                      ),
+                    ),
+                  );
+                },
+                text: 'Continue',
+              ),
+              SizedBox(height: LayoutConstants.space4),
+            ],
+          ),
+        ),
+        const Divider(
+          color: AppColor.primaryBlack,
+        ),
+      ],
     );
   }
 }
