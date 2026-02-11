@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:app/app/providers/ff1_connection_providers.dart';
+import 'package:app/app/providers/connect_wifi_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -11,6 +11,7 @@ import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/send_wifi_credentials_screen.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
+import 'package:app/widgets/section_expanded_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -46,16 +47,17 @@ class ScanWiFiNetworkScreen extends ConsumerStatefulWidget {
 class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
   final TextEditingController _ssidController = TextEditingController();
   bool _shouldEnableConnectButton = false;
-  bool _isOtherNetworkExpanded = false;
 
   @override
   void initState() {
     super.initState();
     // Start scanning for networks
     Future.microtask(() {
-      ref.read(wifiConnectionProvider.notifier).connectAndScanNetworks(
-            device: widget.payload.device,
-          );
+      unawaited(
+        ref.read(connectWiFiProvider.notifier).connectAndScanNetworks(
+              device: widget.payload.device,
+            ),
+      );
     });
   }
 
@@ -89,7 +91,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final connectionState = ref.watch(wifiConnectionProvider);
+    final connectionState = ref.watch(connectWiFiProvider);
     final isScanning =
         connectionState.status == WiFiConnectionStatus.connecting ||
             connectionState.status == WiFiConnectionStatus.scanningNetworks;
@@ -148,11 +150,13 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                             SizedBox(height: LayoutConstants.space5),
                             PrimaryButton(
                               onTap: () {
-                                ref
-                                    .read(wifiConnectionProvider.notifier)
-                                    .connectAndScanNetworks(
-                                      device: widget.payload.device,
-                                    );
+                                unawaited(
+                                  ref
+                                      .read(connectWiFiProvider.notifier)
+                                      .connectAndScanNetworks(
+                                        device: widget.payload.device,
+                                      ),
+                                );
                               },
                               text: 'Retry',
                             ),
@@ -209,7 +213,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
       children: [
         GestureDetector(
           onTap: () {
-            ref.read(wifiConnectionProvider.notifier).selectNetwork(network);
+            ref.read(connectWiFiProvider.notifier).selectNetwork(network);
             unawaited(
               context.push(
                 Routes.enterWifiPassword,
@@ -261,101 +265,85 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              _isOtherNetworkExpanded = !_isOtherNetworkExpanded;
-            });
-          },
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              vertical: LayoutConstants.space5,
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Other network',
-                  style: AppTypography.body(context).white,
-                ),
-                Icon(
-                  _isOtherNetworkExpanded
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                  color: AppColor.white,
-                  size: LayoutConstants.iconSizeMedium,
-                ),
-              ],
-            ),
+        SectionExpandedWidget(
+          header: 'Other network',
+          headerStyle: AppTypography.body(context).white,
+          withDivider: false,
+          headerPadding: EdgeInsets.symmetric(
+            vertical: LayoutConstants.space5,
           ),
-        ),
-        if (_isOtherNetworkExpanded) ...[
-          SizedBox(height: LayoutConstants.space4),
-          Text(
-            'Network name (SSID)',
-            style: AppTypography.body(context).white,
-          ),
-          SizedBox(height: LayoutConstants.space4),
-          TextField(
-            controller: _ssidController,
-            decoration: InputDecoration(
-              hintText: 'Enter wifi network',
-              hintStyle: AppTypography.body(context).white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(
-                  LayoutConstants.space2 + LayoutConstants.space1,
-                ),
-                borderSide: BorderSide.none,
+          iconOnUnExpanded: const SizedBox.shrink(),
+          iconOnExpanded: const SizedBox.shrink(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Network name (SSID)',
+                style: AppTypography.body(context).white,
               ),
-              fillColor: AppColor.primaryBlack,
-              focusColor: AppColor.primaryBlack,
-              filled: true,
-              constraints: BoxConstraints(
-                minHeight:
-                    LayoutConstants.minTouchTarget + LayoutConstants.space4,
-              ),
-              contentPadding: EdgeInsets.symmetric(
-                vertical: LayoutConstants.space6,
-                horizontal: LayoutConstants.space4,
-              ),
-            ),
-            style: AppTypography.body(context).white,
-            onChanged: (value) {
-              if (mounted) {
-                setState(() {
-                  _shouldEnableConnectButton = value.trim().isNotEmpty;
-                });
-              }
-            },
-          ),
-          SizedBox(height: LayoutConstants.space6),
-          PrimaryButton(
-            enabled: _shouldEnableConnectButton,
-            onTap: () async {
-              final ssid = _ssidController.text.trim();
-              if (ssid.isEmpty) {
-                return;
-              }
-              // Create a WiFiNetwork for the manually entered SSID
-              final network = WiFiNetwork(ssid);
-              ref.read(wifiConnectionProvider.notifier).selectNetwork(network);
-              // Navigate to password entry screen
-
-              unawaited(
-                context.push(
-                  Routes.enterWifiPassword,
-                  extra: EnterWifiPasswordPagePayload(
-                    onSubmitted: (topicId, error) {},
-                    device: widget.payload.device,
-                    wifiAccessPoint: WifiPoint(ssid),
+              SizedBox(height: LayoutConstants.space4),
+              TextField(
+                controller: _ssidController,
+                decoration: InputDecoration(
+                  hintText: 'Enter wifi network',
+                  hintStyle: AppTypography.body(context).white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(
+                      LayoutConstants.space2 + LayoutConstants.space1,
+                    ),
+                    borderSide: BorderSide.none,
+                  ),
+                  fillColor: AppColor.primaryBlack,
+                  focusColor: AppColor.primaryBlack,
+                  filled: true,
+                  constraints: BoxConstraints(
+                    minHeight:
+                        LayoutConstants.minTouchTarget + LayoutConstants.space4,
+                  ),
+                  contentPadding: EdgeInsets.symmetric(
+                    vertical: LayoutConstants.space6,
+                    horizontal: LayoutConstants.space4,
                   ),
                 ),
-              );
-            },
-            text: 'Continue',
+                style: AppTypography.body(context).white,
+                onChanged: (value) {
+                  if (mounted) {
+                    setState(() {
+                      _shouldEnableConnectButton = value.trim().isNotEmpty;
+                    });
+                  }
+                },
+              ),
+              SizedBox(height: LayoutConstants.space6),
+              PrimaryButton(
+                enabled: _shouldEnableConnectButton,
+                onTap: () async {
+                  final ssid = _ssidController.text.trim();
+                  if (ssid.isEmpty) {
+                    return;
+                  }
+                  // Create a WiFiNetwork for the manually entered SSID
+                  final network = WiFiNetwork(ssid);
+                  ref.read(connectWiFiProvider.notifier).selectNetwork(network);
+                  // Navigate to password entry screen
+
+                  unawaited(
+                    context.push(
+                      Routes.enterWifiPassword,
+                      extra: EnterWifiPasswordPagePayload(
+                        onSubmitted: (topicId, error) {},
+                        device: widget.payload.device,
+                        wifiAccessPoint: WifiPoint(ssid),
+                      ),
+                    ),
+                  );
+                },
+                text: 'Continue',
+              ),
+              SizedBox(height: LayoutConstants.space4),
+            ],
           ),
-          SizedBox(height: LayoutConstants.space4),
-        ],
+        ),
         const Divider(
           color: AppColor.primaryBlack,
         ),

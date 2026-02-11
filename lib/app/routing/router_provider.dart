@@ -8,6 +8,7 @@ import 'package:app/ui/screens/channel_detail_screen.dart';
 import 'package:app/ui/screens/connected_devices_screen.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
 import 'package:app/ui/screens/ff1_setup/ff1_device_picker_page.dart';
+import 'package:app/ui/screens/ff1_setup/ff1_updating_page.dart';
 import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/ui/screens/ff1_test_screen.dart';
 import 'package:app/ui/screens/home_index_page.dart';
@@ -263,6 +264,13 @@ final routerProvider =
       //     );
       //   },
       // ),
+
+      // FF1 updating route
+      GoRoute(
+        path: Routes.ff1Updating,
+        name: RouteNames.ff1Updating,
+        builder: (context, state) => const FF1UpdatingPage(),
+      ),
     ],
   );
 });

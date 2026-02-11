@@ -1,12 +1,16 @@
 import 'dart:async';
 
-import 'package:app/app/providers/ff1_connection_providers.dart';
+import 'package:app/app/providers/connect_wifi_provider.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/wifi_point.dart';
+import 'package:app/domain/utils/ui_helper.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
@@ -38,6 +42,7 @@ class EnterWifiPasswordPagePayload {
 ///
 /// User selects a network and enters password here
 class EnterWiFiPasswordScreen extends ConsumerStatefulWidget {
+  /// Constructor
   const EnterWiFiPasswordScreen({
     required this.payload,
     super.key,
@@ -85,7 +90,7 @@ class _EnterWiFiPasswordScreenState
     final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
     if (isOpen) {
       // Auto-submit for open networks
-      Future.microtask(() => _handleSendCredentials());
+      Future.microtask(() => unawaited(_handleSendCredentials()));
     } else {
       // Request focus on password field after first frame
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -125,7 +130,7 @@ class _EnterWiFiPasswordScreenState
     });
 
     // Step 5 & 6: Send credentials and wait for device connection
-    await ref.read(wifiConnectionProvider.notifier).sendCredentialsAndConnect(
+    await ref.read(connectWiFiProvider.notifier).sendCredentialsAndConnect(
           device: widget.payload.device,
           ssid: _parseSSID(widget.payload.wifiAccessPoint.ssid),
           password: password,
@@ -134,27 +139,102 @@ class _EnterWiFiPasswordScreenState
 
   @override
   Widget build(BuildContext context) {
-    final connectionState = ref.watch(wifiConnectionProvider);
+    final connectionState = ref.watch(connectWiFiProvider);
     final isProcessing = _isProcessing ||
         (connectionState.status != WiFiConnectionStatus.selectingNetwork &&
-            connectionState.status != WiFiConnectionStatus.idle);
+            connectionState.status != WiFiConnectionStatus.idle &&
+            connectionState.status != WiFiConnectionStatus.error);
     final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
     final parsedSsid = _parseSSID(widget.payload.wifiAccessPoint.ssid);
 
     // Listen for success and navigate
-    ref.listen(wifiConnectionProvider, (previous, next) {
+    ref.listen(connectWiFiProvider, (previous, next) {
       if (next.status == WiFiConnectionStatus.success) {
+        if (connectionState.topicId != null) {
+          // hide qr code on device
+          unawaited(
+            ref.read(ff1WifiControlProvider).showPairingQRCode(
+                  topicId: connectionState.topicId!,
+                  show: false,
+                ),
+          );
+        }
+        unawaited(
+          ref.read(onboardingActionsProvider).completeOnboarding(),
+        );
+        unawaited(
+          context.push(Routes.home),
+        );
+
         setState(() {
           _isProcessing = false;
         });
-
-        // Navigate to connected devices screen
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted && context.mounted) {
-            unawaited(context.push(Routes.connectedDevices));
-          }
-        });
       } else if (next.status == WiFiConnectionStatus.error) {
+        final error = next.error;
+
+        if (error is FF1ResponseError) {
+          if (error is VersionCheckFailedError) {
+            unawaited(
+              UIHelper.showInfoDialog(
+                context,
+                error.title,
+                error.message,
+                closeButton: 'Contact support',
+                onClose: () async {
+                  unawaited(UIHelper.showCustomerSupport(context));
+                },
+              ).then((_) {
+                widget.payload.onSubmitted?.call(null, error);
+              }),
+            );
+          } else if (error is DeviceUpdatingError) {
+            unawaited(
+              context.push(
+                Routes.ff1Updating,
+              ),
+            );
+          } else {
+            unawaited(
+              UIHelper.showInfoDialog(
+                context,
+                error.title,
+                error.message,
+              ).then(
+                (value) {
+                  if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) &&
+                      context.mounted) {
+                    context.pop();
+                  }
+                },
+              ),
+            );
+          }
+        } else if (error is TimeoutException) {
+          unawaited(
+            UIHelper.showInfoDialog(
+              context,
+              'Can\'t reach FF1',
+              'FF1 didn\'t respond in time. Make sure FF1 is nearby and try again.',
+            ).then((_) {
+              widget.payload.onSubmitted?.call(null, error);
+            }),
+          );
+        } else {
+          unawaited(
+            UIHelper.showInfoDialog(
+              context,
+              'Wi‑Fi setup failed',
+              'FF1 couldn\'t complete Wi‑Fi setup because of an unexpected issue. Contact support for help.',
+              closeButton: 'Contact support',
+              onClose: () async {
+                unawaited(UIHelper.showCustomerSupport(context));
+              },
+            ).then((_) {
+              widget.payload.onSubmitted?.call(null, error);
+            }),
+          );
+        }
+
         setState(() {
           _isProcessing = false;
         });
@@ -219,7 +299,6 @@ class _EnterWiFiPasswordScreenState
                             ),
                             enabled: true,
                             onTap: _handleSendCredentials,
-                            color: AppColor.white,
                             text: 'Submit',
                           ),
                         ),

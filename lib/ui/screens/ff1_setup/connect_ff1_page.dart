@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/connect_ff1_providers.dart';
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -165,13 +166,19 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
             } else {
               context.popUntil(Routes.startSetupFf1);
               unawaited(
-                context.push(
-                  Routes.deviceConfiguration,
-                  // extra: DeviceConfigPayload(
-                  //   isFromOnboarding: true,
-                  // ),
-                ),
+                ref.read(onboardingActionsProvider).completeOnboarding(),
               );
+              unawaited(
+                context.push(Routes.home),
+              );
+              // unawaited(
+              //   context.push(
+              //     Routes.deviceConfiguration,
+              //     // extra: DeviceConfigPayload(
+              //     //   isFromOnboarding: true,
+              //     // ),
+              //   ),
+              // );
             }
           } else {
             context.pop();
@@ -269,6 +276,11 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                             SizedBox(height: LayoutConstants.space5),
                             PrimaryButton(
                               onTap: () async {
+                                unawaited(
+                                  ref
+                                      .read(onboardingActionsProvider)
+                                      .completeOnboarding(),
+                                );
                                 unawaited(
                                   context.push(
                                     Routes.home,

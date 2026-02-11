@@ -64,6 +64,9 @@ abstract class Routes {
 
   /// Device configuration route path.
   static const deviceConfiguration = '/device-configuration';
+
+  /// FF1 updating route path.
+  static const ff1Updating = '/ff1-updating';
 }
 
 /// Named routes for type-safe navigation.
@@ -140,4 +143,7 @@ abstract class RouteNames {
 
   /// Device configuration route name.
   static const deviceConfiguration = 'device-configuration';
+
+  /// FF1 updating route name.
+  static const ff1Updating = 'ff1-updating';
 }
