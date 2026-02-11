@@ -1,10 +1,30 @@
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/config/app_config.dart';
+import 'package:uuid/uuid.dart';
 
 /// Convenience extensions for [Playlist].
 extension PlaylistExt on Playlist {
+  /// Creates a minimal DP1 playlist for a single work (playlist item).
+  /// Use when casting a single work to FF1.
+  static Playlist fromPlaylistItem(
+    List<PlaylistItem> items, {
+    String? name,
+    String? description,
+  }) {
+    final id = Uuid().v4();
+    return Playlist(
+      id: id,
+      name: name ?? 'Works',
+      description: description,
+      type: PlaylistType.dp1,
+      playlistSource: PlaylistSource.global,
+      itemCount: items.length,
+    );
+  }
+
   /// Returns true if this playlist is address-based (user's wallet collection).
   bool get isAddressPlaylist => type == PlaylistType.addressBased;
 
