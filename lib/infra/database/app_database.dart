@@ -790,9 +790,53 @@ class AppDatabase extends _$AppDatabase {
   /// Get items with optional [limit] and [offset] for paging.
   /// When both are null, returns all (same as [getAllItems]).
   Future<List<ItemData>> getItems({int? limit, int? offset}) async {
+    final publisherOrderExpr = CustomExpression<int>(
+      '''
+      COALESCE(
+        (
+          SELECT MIN(c.publisher_id)
+          FROM playlist_entries pe
+          JOIN playlists p ON p.id = pe.playlist_id
+          LEFT JOIN channels c ON c.id = p.channel_id
+          WHERE pe.item_id = items.id
+        ),
+        2147483647
+      )
+      ''',
+    );
+    final channelCreatedAtOrderExpr = CustomExpression<BigInt>(
+      '''
+      COALESCE(
+        (
+          SELECT MIN(c.created_at_us)
+          FROM playlist_entries pe
+          JOIN playlists p ON p.id = pe.playlist_id
+          JOIN channels c ON c.id = p.channel_id
+          WHERE pe.item_id = items.id
+        ),
+        9223372036854775807
+      )
+      ''',
+    );
+    final playlistCreatedAtOrderExpr = CustomExpression<BigInt>(
+      '''
+      COALESCE(
+        (
+          SELECT MIN(p.created_at_us)
+          FROM playlist_entries pe
+          JOIN playlists p ON p.id = pe.playlist_id
+          WHERE pe.item_id = items.id
+        ),
+        9223372036854775807
+      )
+      ''',
+    );
     final off = offset ?? 0;
     final query = select(items)
       ..orderBy([
+        (t) => OrderingTerm.asc(publisherOrderExpr),
+        (t) => OrderingTerm.asc(channelCreatedAtOrderExpr),
+        (t) => OrderingTerm.asc(playlistCreatedAtOrderExpr),
         (t) => OrderingTerm.asc(t.id),
       ]);
     if (limit != null) {
@@ -806,8 +850,52 @@ class AppDatabase extends _$AppDatabase {
 
   /// Watch all items; emits when the items table changes.
   Stream<List<ItemData>> watchAllItems() {
+    final publisherOrderExpr = CustomExpression<int>(
+      '''
+      COALESCE(
+        (
+          SELECT MIN(c.publisher_id)
+          FROM playlist_entries pe
+          JOIN playlists p ON p.id = pe.playlist_id
+          LEFT JOIN channels c ON c.id = p.channel_id
+          WHERE pe.item_id = items.id
+        ),
+        2147483647
+      )
+      ''',
+    );
+    final channelCreatedAtOrderExpr = CustomExpression<BigInt>(
+      '''
+      COALESCE(
+        (
+          SELECT MIN(c.created_at_us)
+          FROM playlist_entries pe
+          JOIN playlists p ON p.id = pe.playlist_id
+          JOIN channels c ON c.id = p.channel_id
+          WHERE pe.item_id = items.id
+        ),
+        9223372036854775807
+      )
+      ''',
+    );
+    final playlistCreatedAtOrderExpr = CustomExpression<BigInt>(
+      '''
+      COALESCE(
+        (
+          SELECT MIN(p.created_at_us)
+          FROM playlist_entries pe
+          JOIN playlists p ON p.id = pe.playlist_id
+          WHERE pe.item_id = items.id
+        ),
+        9223372036854775807
+      )
+      ''',
+    );
     final query = select(items)
       ..orderBy([
+        (t) => OrderingTerm.asc(publisherOrderExpr),
+        (t) => OrderingTerm.asc(channelCreatedAtOrderExpr),
+        (t) => OrderingTerm.asc(playlistCreatedAtOrderExpr),
         (t) => OrderingTerm.asc(t.id),
       ]);
     return query.watch();
@@ -816,10 +904,54 @@ class AppDatabase extends _$AppDatabase {
   /// Get ordered item IDs with optional [limit] and [offset].
   /// Uses the same ordering as [getItems] so pagination and diff windows align.
   Future<List<String>> getItemIds({int? limit, int? offset}) async {
+    final publisherOrderExpr = CustomExpression<int>(
+      '''
+      COALESCE(
+        (
+          SELECT MIN(c.publisher_id)
+          FROM playlist_entries pe
+          JOIN playlists p ON p.id = pe.playlist_id
+          LEFT JOIN channels c ON c.id = p.channel_id
+          WHERE pe.item_id = items.id
+        ),
+        2147483647
+      )
+      ''',
+    );
+    final channelCreatedAtOrderExpr = CustomExpression<BigInt>(
+      '''
+      COALESCE(
+        (
+          SELECT MIN(c.created_at_us)
+          FROM playlist_entries pe
+          JOIN playlists p ON p.id = pe.playlist_id
+          JOIN channels c ON c.id = p.channel_id
+          WHERE pe.item_id = items.id
+        ),
+        9223372036854775807
+      )
+      ''',
+    );
+    final playlistCreatedAtOrderExpr = CustomExpression<BigInt>(
+      '''
+      COALESCE(
+        (
+          SELECT MIN(p.created_at_us)
+          FROM playlist_entries pe
+          JOIN playlists p ON p.id = pe.playlist_id
+          WHERE pe.item_id = items.id
+        ),
+        9223372036854775807
+      )
+      ''',
+    );
     final off = offset ?? 0;
     final query = selectOnly(items)
       ..addColumns([items.id])
       ..orderBy([
+        OrderingTerm.asc(publisherOrderExpr),
+        OrderingTerm.asc(channelCreatedAtOrderExpr),
+        OrderingTerm.asc(playlistCreatedAtOrderExpr),
         OrderingTerm.asc(items.id),
       ]);
     if (limit != null) {

@@ -248,6 +248,149 @@ void main() {
       });
 
       test(
+        'getItems and getItemIds order works by publisher, channel createdAt, then playlist createdAt',
+        () async {
+          final t2024 = DateTime.parse('2024-01-01T00:00:00Z');
+          final t2025 = DateTime.parse('2025-01-01T00:00:00Z');
+          final t2026 = DateTime.parse('2026-01-01T00:00:00Z');
+
+          await service.ingestPublisher(id: 10, name: 'Publisher 10');
+          await service.ingestPublisher(id: 20, name: 'Publisher 20');
+
+          await service.ingestChannels([
+            Channel(
+              id: 'ch_pub20_old',
+              name: 'Channel pub20 old',
+              type: ChannelType.dp1,
+              publisherId: 20,
+              createdAt: t2024,
+              updatedAt: t2024,
+            ),
+            Channel(
+              id: 'ch_pub20_new',
+              name: 'Channel pub20 new',
+              type: ChannelType.dp1,
+              publisherId: 20,
+              createdAt: t2025,
+              updatedAt: t2025,
+            ),
+            Channel(
+              id: 'ch_pub10',
+              name: 'Channel pub10',
+              type: ChannelType.dp1,
+              publisherId: 10,
+              createdAt: t2026,
+              updatedAt: t2026,
+            ),
+          ]);
+
+          await service.ingestPlaylists([
+            Playlist(
+              id: 'pl_pub20_old',
+              name: 'Playlist pub20 old',
+              type: PlaylistType.dp1,
+              channelId: 'ch_pub20_old',
+              sortMode: PlaylistSortMode.position,
+              createdAt: t2024.add(const Duration(minutes: 1)),
+              updatedAt: t2024.add(const Duration(minutes: 1)),
+            ),
+            Playlist(
+              id: 'pl_pub20_new',
+              name: 'Playlist pub20 new',
+              type: PlaylistType.dp1,
+              channelId: 'ch_pub20_new',
+              sortMode: PlaylistSortMode.position,
+              createdAt: t2025.add(const Duration(minutes: 1)),
+              updatedAt: t2025.add(const Duration(minutes: 1)),
+            ),
+            Playlist(
+              id: 'pl_pub10',
+              name: 'Playlist pub10',
+              type: PlaylistType.dp1,
+              channelId: 'ch_pub10',
+              sortMode: PlaylistSortMode.position,
+              createdAt: t2026.add(const Duration(minutes: 1)),
+              updatedAt: t2026.add(const Duration(minutes: 1)),
+            ),
+          ]);
+
+          await service.ingestPlaylistItems([
+            PlaylistItem(
+              id: 'wk_pub20_old',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'wk_pub20_old',
+              updatedAt: DateTime.now(),
+            ),
+            PlaylistItem(
+              id: 'wk_pub20_new',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'wk_pub20_new',
+              updatedAt: DateTime.now(),
+            ),
+            PlaylistItem(
+              id: 'wk_pub10',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'wk_pub10',
+              updatedAt: DateTime.now(),
+            ),
+            PlaylistItem(
+              id: 'wk_orphan',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'wk_orphan',
+              updatedAt: DateTime.now(),
+            ),
+          ]);
+
+          final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+          await db.upsertPlaylistEntries([
+            PlaylistEntriesCompanion.insert(
+              playlistId: 'pl_pub20_old',
+              itemId: 'wk_pub20_old',
+              position: const Value(0),
+              sortKeyUs: BigInt.zero,
+              updatedAtUs: nowUs,
+            ),
+            PlaylistEntriesCompanion.insert(
+              playlistId: 'pl_pub20_new',
+              itemId: 'wk_pub20_new',
+              position: const Value(0),
+              sortKeyUs: BigInt.zero,
+              updatedAtUs: nowUs,
+            ),
+            PlaylistEntriesCompanion.insert(
+              playlistId: 'pl_pub10',
+              itemId: 'wk_pub10',
+              position: const Value(0),
+              sortKeyUs: BigInt.zero,
+              updatedAtUs: nowUs,
+            ),
+          ]);
+
+          final orderedItems = await service.getItems();
+          expect(
+            orderedItems.map((item) => item.id),
+            [
+              'wk_pub10',
+              'wk_pub20_old',
+              'wk_pub20_new',
+              'wk_orphan',
+            ],
+          );
+
+          final orderedIds = await service.getItemIds();
+          expect(
+            orderedIds,
+            [
+              'wk_pub10',
+              'wk_pub20_old',
+              'wk_pub20_new',
+              'wk_orphan',
+            ],
+          );
+        },
+      );
+
+      test(
         'getPlaylistItemsByChannel returns items from all playlists in channel',
         () async {
           // Channel and two playlists in it

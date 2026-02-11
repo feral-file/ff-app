@@ -13,8 +13,8 @@ class IndexerClient {
     this.defaultHeaders = const {},
     this.queryTimeout = const Duration(seconds: 60),
     this.mutationTimeout = const Duration(seconds: 15),
-    this.maxConcurrentRequests = 4,
-    this.maxRequestsPerSecond = 4,
+    this.maxConcurrentRequests = 10,
+    this.maxRequestsPerSecond = 10,
   }) : _client = GraphQLClient(
          link: HttpLink(
            '${endpoint}/graphql',
