@@ -8,8 +8,6 @@
 import 'dart:async';
 
 import 'package:app/app/providers/onboarding_provider.dart';
-import 'package:app/app/routing/deeplink_handler.dart';
-import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -102,7 +100,7 @@ class OnboardingSetupFf1Page extends ConsumerWidget {
   Future<void> _onFinish(BuildContext context, WidgetRef ref) async {
     final onboardingActions = ref.read(onboardingActionsProvider);
     unawaited(onboardingActions.completeOnboarding());
-    unawaited(context.replaceAllAndPushNamed(Routes.home));
+    context.go(Routes.home);
   }
 
   /// On learn more button pressed.

@@ -172,26 +172,25 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
             );
 
             if (state.portalIsSet) {
-              // Just show portal is set view
+              // Portal is set, show portal is set view
             } else {
               if (context.mounted) {
-                context.popUntil(Routes.startSetupFf1);
                 unawaited(
                   ref.read(onboardingActionsProvider).completeOnboarding(),
                 );
+                context.popUntil(Routes.startSetupFf1);
+                // TODO: Navigate to Device config instead
                 unawaited(
                   context.push(Routes.home),
                 );
               }
             }
           } else {
-            context.pop();
-            unawaited(
-              context.push(
-                Routes.scanWifiNetworks,
-                extra: ScanWifiNetworkPagePayload(
-                  device: state.ff1device,
-                ),
+            // No internet connection, navigate to scan wifi networks page
+            context.replace(
+              Routes.scanWifiNetworks,
+              extra: ScanWifiNetworkPagePayload(
+                device: state.ff1device,
               ),
             );
           }
@@ -213,9 +212,12 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
             await UIHelper.showInfoDialog(
               context,
               'Connect failed',
-              'FF1 couldn\'t connect to the device because of an unexpected issue. Contact support for help.',
+              state.exception.toString(),
+              closeButton: 'Contact support',
               onClose: () async {
-                unawaited(UIHelper.showCustomerSupport(context));
+                unawaited(
+                  UIHelper.showCustomerSupport(context),
+                );
               },
             );
           }
@@ -289,16 +291,13 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                             SizedBox(height: LayoutConstants.space5),
                             PrimaryButton(
                               onTap: () async {
+                                // TODO: Navigate to Device config instead
                                 unawaited(
                                   ref
                                       .read(onboardingActionsProvider)
                                       .completeOnboarding(),
                                 );
-                                unawaited(
-                                  context.replaceAllAndPushNamed(
-                                    Routes.home,
-                                  ),
-                                );
+                                context.go(Routes.home);
                               },
                               text: 'Start using the app',
                             ),

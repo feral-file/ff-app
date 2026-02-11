@@ -1,11 +1,9 @@
-import 'dart:async';
-
-import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 /// FF1 updating page
 class FF1UpdatingPage extends StatelessWidget {
@@ -21,13 +19,13 @@ class FF1UpdatingPage extends StatelessWidget {
           // User tried to use hardware back button or swipe back gesture
           // Navigate to home instead of popping
 
-          unawaited(context.replaceAllAndPushNamed(Routes.home));
+          context.go(Routes.home);
         }
       },
       child: Scaffold(
         appBar: SetupAppBar(
           onBack: () {
-            unawaited(context.replaceAllAndPushNamed(Routes.home));
+            context.go(Routes.home);
           },
           withDivider: false,
         ),
