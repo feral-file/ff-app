@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/providers/mutations.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/database_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:sentry/sentry.dart';
@@ -168,39 +169,20 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
     final current = state.playlists;
     final loadedLength = current.length;
     final listenSize = loadedLength > _pageSize ? loadedLength : _pageSize;
+    final slice = next.take(listenSize).toList();
 
-    bool hasChanged =
-        (current.length != next.length) ||
-        (current.length < next.length && !state.hasMore);
-    if (!hasChanged && current.isNotEmpty && next.isNotEmpty) {
-      final n = current.length < next.length ? current.length : next.length;
-      if (n > 0 &&
-          !_samePlaylistIds(current.sublist(0, n), next.sublist(0, n))) {
-        hasChanged = true;
-      }
+    final hasChanged =
+        current.length != slice.length || !listEquals(current, slice);
+    if (hasChanged) {
+      unawaited(loadPlaylists(size: listenSize));
     }
-
-    if (hasChanged && !state.isLoading && !state.isLoadingMore) {
-      if (_type == PlaylistType.dp1) {
-        unawaited(loadPlaylists(size: listenSize));
-      } else {
-        state = state.copyWith(playlists: next);
-      }
-    }
-  }
-
-  bool _samePlaylistIds(List<Playlist> a, List<Playlist> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i].id != b[i].id) return false;
-    }
-    return true;
   }
 
   /// Load playlists for this type.
   /// dp1 (curated): Load all from database. addressBased: database, all.
   Future<void> loadPlaylists({int? size}) async {
     try {
+      if (state.isLoading) return;
       _log.info('Loading playlists (type: ${_type.name})...');
       state = state.copyWith(isLoading: true, clearError: true);
 

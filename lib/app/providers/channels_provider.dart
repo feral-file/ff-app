@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/providers/mutations.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/infra/database/database_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -149,8 +150,9 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
   void _setupDatabaseWatch() {
     _watchSub?.cancel();
     final databaseService = ref.read(databaseServiceProvider);
-    final limit =
-        (_pageSize > state.channels.length) ? _pageSize : state.channels.length;
+    final limit = (_pageSize > state.channels.length)
+        ? _pageSize
+        : state.channels.length;
     _watchSub = databaseService
         .watchChannels(type: _type, limit: limit)
         .listen(_onChannelsChanged, onError: _onWatchError);
@@ -162,38 +164,31 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 
   void _onChannelsChanged(List<Channel> next) {
     if (state.channels.isEmpty && !state.isLoading) {
-      unawaited(loadChannels(size: _pageSize));
+      unawaited(refresh());
       return;
     }
     final current = state.channels;
-    final hasChanged = !_sameChannelIds(current, next);
-    if (hasChanged && !state.isLoading && !state.isLoadingMore) {
-      if (_type == ChannelType.dp1) {
-        final size = current.isEmpty ? _pageSize : current.length;
-        unawaited(loadChannels(size: size));
-      } else {
-        state = state.copyWith(channels: next);
-      }
+    final loadedLength = current.length;
+    final listenSize = loadedLength > _pageSize ? loadedLength : _pageSize;
+    final slice = next.take(listenSize).toList();
+    final hasChanged =
+        current.length != slice.length || !listEquals(current, slice);
+    if (hasChanged) {
+      unawaited(refresh());
     }
-  }
-
-  bool _sameChannelIds(List<Channel> a, List<Channel> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i].id != b[i].id) return false;
-    }
-    return true;
   }
 
   /// Load channels for this type.
   /// Pagination applies to dp1 (curated); localVirtual loads all.
-  Future<void> loadChannels({int? size}) async {
+  Future<void> loadChannels({int? size, bool showLoading = true}) async {
     try {
       final effectiveSize = size ?? _pageSize;
       _log.info(
         'Loading channels from database (type: ${_type.name}, size: $effectiveSize)...',
       );
-      state = state.copyWith(isLoading: true, clearError: true);
+      if (showLoading) {
+        state = ChannelsState.loading();
+      }
 
       final databaseService = ref.read(databaseServiceProvider);
 
@@ -235,7 +230,10 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
   /// Refresh channels.
   Future<void> refresh() async {
     final size = state.channels.isEmpty ? _pageSize : state.channels.length;
-    await loadChannels(size: _type == ChannelType.dp1 ? size : null);
+    await loadChannels(
+      size: _type == ChannelType.dp1 ? size : null,
+      showLoading: false,
+    );
   }
 
   /// Load more channels. Only applies to dp1 (curated).
@@ -290,26 +288,26 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 /// Provider for channels state by type (dp1 = curated, localVirtual = personal).
 final channelsProvider =
     NotifierProvider.family<ChannelsNotifier, ChannelsState, ChannelType>(
-  ChannelsNotifier.new,
-);
+      ChannelsNotifier.new,
+    );
 
 /// Mutation for loading channels (generic; use with specific type in UI).
 final loadChannelsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Mutation for refreshing channels.
 final refreshChannelsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Mutation for loading more channels.
 final loadMoreChannelsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-  MutationNotifier.new,
-);
+      MutationNotifier.new,
+    );
 
 /// Provider for a specific channel by ID.
 final channelByIdProvider = FutureProvider.family<Channel?, String>((

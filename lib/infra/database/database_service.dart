@@ -208,6 +208,7 @@ class DatabaseService {
           limit: limit,
           offset: offset ?? 0,
         )
+        .debounceTime(Duration(milliseconds: 300))
         .map(
           (rows) => rows.map(DatabaseConverters.itemDataToDomain).toList(),
         );
@@ -292,8 +293,9 @@ class DatabaseService {
         .watchChannelById(id)
         .debounceTime(Duration(milliseconds: 300))
         .map(
-          (data) =>
-              data != null ? DatabaseConverters.channelDataToDomain(data) : null,
+          (data) => data != null
+              ? DatabaseConverters.channelDataToDomain(data)
+              : null,
         );
   }
 
