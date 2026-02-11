@@ -6,8 +6,11 @@ ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
   'Debug' => :debug,
+  'Debug-development' => :debug,
   'Profile' => :release,
+  'Profile-development' => :release,
   'Release' => :release,
+  'Release-development' => :release,
 }
 
 def flutter_root
@@ -41,6 +44,7 @@ post_install do |installer|
     flutter_additional_ios_build_settings(target)
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '18.0'
+      config.build_settings['SWIFT_VERSION'] = '5.0'
     end
     
     # Fix for mobile_scanner PrivacyInfo.xcprivacy missing file
