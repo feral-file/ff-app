@@ -100,8 +100,9 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       const Duration(seconds: 15),
       () {
         if (!_cancelRequested && state.value is ConnectFF1Connecting) {
-          state =
-              AsyncValue.data(ConnectFF1StillConnecting(ff1Device: ff1Device));
+          state = AsyncValue.data(
+            ConnectFF1StillConnecting(ff1Device: ff1Device),
+          );
         }
       },
     );
@@ -146,7 +147,8 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     // If device info is not provided, fetch it via get_info command
     if (ff1DeviceInfo == null) {
       _log.info(
-          '[ConnectFF1Notifier] Device info not provided, fetching via get_info');
+        '[ConnectFF1Notifier] Device info not provided, fetching via get_info',
+      );
       try {
         // Add delay to ensure connection is stable and characteristics are discovered
         // Connection state handler already waits 1s, but add extra delay for getInfo
@@ -197,7 +199,16 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     final topicId = ff1DeviceInfo.topicId;
     final branchName = ff1DeviceInfo.branchName;
     if (topicId.isNotEmpty) {
-      await ref.read(addFF1BluetoothDeviceProvider(ff1Device).future);
+      await ref.read(
+        addFF1BluetoothDeviceProvider(
+          ff1Device.copyWith(topicId: topicId, branchName: branchName),
+        ).future,
+      );
+
+      // set as active device
+      await ref.read(
+        setActiveFF1BluetoothDeviceProvider(ff1Device.deviceId).future,
+      );
 
       // Hide QR code on device
       await ref
@@ -216,8 +227,9 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     }
 
     Pair<String, bool>? res;
-    final topicIdFromKeepWifi =
-        await ref.read(ff1ControlProvider).keepWifi(device: ff1Device);
+    final topicIdFromKeepWifi = await ref
+        .read(ff1ControlProvider)
+        .keepWifi(device: ff1Device);
     res = Pair<String, bool>(
       topicIdFromKeepWifi,
       true, // indicates that it from onboarding
@@ -231,6 +243,11 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       branchName: branchName,
     );
     await ref.read(addFF1BluetoothDeviceProvider(newFF1Device).future);
+
+    // set as active device
+    await ref.read(
+      setActiveFF1BluetoothDeviceProvider(newFF1Device.deviceId).future,
+    );
 
     state = AsyncValue.data(
       ConnectFF1Connected(
@@ -258,5 +275,5 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 /// Provider for connect FF1 flow
 final connectFF1Provider =
     AsyncNotifierProvider<ConnectFF1Notifier, ConnectFF1State>(
-  ConnectFF1Notifier.new,
-);
+      ConnectFF1Notifier.new,
+    );

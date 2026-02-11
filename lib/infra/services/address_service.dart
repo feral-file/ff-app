@@ -1,3 +1,4 @@
+import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
@@ -66,16 +67,9 @@ class AddressService {
         return existing;
       }
 
-      final playlist = Playlist(
-        id: 'addr:$chain:$normalizedAddress',
-        name: walletAddress.name,
-        type: PlaylistType.addressBased,
+      final playlist = PlaylistExt.fromWalletAddress(
+        walletAddress,
         channelId: channelId,
-        ownerAddress: normalizedAddress,
-        ownerChain: chain,
-        sortMode: PlaylistSortMode.provenance,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
       );
 
       await _databaseService.ingestPlaylist(playlist);
@@ -99,7 +93,7 @@ class AddressService {
         walletAddress.address,
         chain: chain,
       );
-      final playlistId = 'addr:$chain:$normalizedAddress';
+      final playlistId = PlaylistExt.addressPlaylistId(normalizedAddress);
 
       _log.info('Removing address: $normalizedAddress');
       await _addressIndexingProcessService.stop(normalizedAddress);

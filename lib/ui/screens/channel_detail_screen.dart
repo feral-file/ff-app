@@ -6,6 +6,7 @@ import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/channel_item.dart';
 import 'package:app/widgets/error_view.dart';
+import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/playlist_list_row.dart';
 import 'package:flutter/material.dart';
@@ -32,16 +33,9 @@ class ChannelDetailScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
-      appBar: AppBar(
+      appBar: MainAppBar(
+        backTitle: 'Channels',
         backgroundColor: AppColor.auGreyBackground,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
-        ),
-        title: Text(
-          'Channels',
-          style: AppTypography.h4(context).white,
-        ),
       ),
       body: SafeArea(
         child: RefreshIndicator(

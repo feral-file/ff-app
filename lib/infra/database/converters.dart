@@ -392,7 +392,11 @@ class DatabaseConverters {
     Playlist playlist,
     List<PlaylistItem> items,
   ) {
-    final dp1Items = items.map(playlistItemToDP1PlaylistItem).toList();
+    final isAddressPlaylist = playlist.ownerAddress != null;
+    final dp1Items = isAddressPlaylist
+        ? <DP1PlaylistItem>[]
+        : items.map(playlistItemToDP1PlaylistItem).toList();
+
     return DP1Playlist(
       dpVersion: playlist.dpVersion ?? '1.0.0',
       id: playlist.id,
@@ -404,7 +408,7 @@ class DatabaseConverters {
       signature: playlist.signatures?.isNotEmpty == true
           ? playlist.signatures!.first
           : '',
-      dynamicQueries: const [],
+      dynamicQueries: playlist.dynamicQueries ?? const [],
     );
   }
 

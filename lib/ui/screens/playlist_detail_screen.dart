@@ -1,12 +1,18 @@
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/playlist_details_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/ff1/dp1_intent.dart';
+import 'package:app/infra/database/converters.dart' show DatabaseConverters;
+import 'package:app/infra/database/database_provider.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/error_view.dart';
+import 'package:app/widgets/appbars/main_app_bar.dart';
+import 'package:app/widgets/ff_display_button.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/playlist_details_header.dart';
 import 'package:flutter/material.dart';
@@ -59,14 +65,46 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
   Widget build(BuildContext context) {
     final detailsAsync = ref.watch(playlistDetailsProvider(widget.playlistId));
 
+    final PlaylistDetailsState? state = detailsAsync.hasValue
+        ? detailsAsync.value
+        : null;
+    final hasPlaylist = state?.playlist != null && state?.items != null;
+
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
-      appBar: AppBar(
+      appBar: MainAppBar(
+        backTitle: 'Playlists',
         backgroundColor: AppColor.auGreyBackground,
-        title: Text(
-          'Playlist',
-          style: AppTypography.h4(context).white,
-        ),
+        actions: [
+          if (hasPlaylist)
+            FFDisplayButton(
+              onDeviceSelected: (device) async {
+                final current = ref
+                    .read(playlistDetailsProvider(widget.playlistId))
+                    .value;
+                if (current?.playlist == null || current?.items == null) {
+                  return;
+                }
+                final canvas = ref.read(canvasClientServiceV2Provider);
+
+                final database = ref.read(databaseServiceProvider);
+
+                final allItems = await database.getPlaylistItems(
+                  widget.playlistId,
+                );
+                final dp1 = DatabaseConverters.playlistAndItemsToDP1Playlist(
+                  current!.playlist!,
+                  allItems,
+                );
+                await canvas.castPlaylist(
+                  device,
+                  dp1,
+                  DP1Intent.displayNow(),
+                  usingUrl: false,
+                );
+              },
+            ),
+        ],
       ),
       body: SafeArea(
         child: detailsAsync.when(

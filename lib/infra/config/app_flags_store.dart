@@ -8,6 +8,9 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:synchronized/synchronized.dart';
 
+/// Key for "has seen Play to FF1" tooltip in [AppFlagsStore].
+const String hasSeenPlayToFf1TooltipKey = 'has_seen_play_to_ff1_tooltip';
+
 /// Simple key-value store for app-level flags and preferences.
 ///
 /// Backed by a JSON file in the application documents directory.
@@ -131,4 +134,3 @@ final appFlagsStoreProvider = Provider<AppFlagsStore>((ref) {
     logger: Logger('AppFlagsStore'),
   );
 });
-

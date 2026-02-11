@@ -1,23 +1,22 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-import 'package:collection/collection.dart';
-import 'package:logging/logging.dart';
-
 import 'package:app/app/feed/feed_reference_models.dart';
+import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_api_responses.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
-import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/pair.dart';
+import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/config/feed_config_store.dart';
 import 'package:app/infra/config/remote_app_config.dart';
-import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/drift_kinds.dart';
 import 'package:app/infra/services/base_dp1_feed_service_impl.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:app/infra/services/indexer_enrichment_scheduler_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
+import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
+import 'package:logging/logging.dart';
 import 'package:synchronized/synchronized.dart';
 
 /// Base feed manager: holds feed services and provides cache/reload APIs.
@@ -227,7 +226,7 @@ class FeedManager {
   }
 
   /// Matches old repo's getAllCachedPlaylists(offset, limit).
-  Future<List<PlaylistReference>> getAllCachedPlaylists({
+  Future<List<Playlist>> getAllCachedPlaylists({
     int? offset,
     int? limit,
   }) async {
@@ -242,7 +241,9 @@ class FeedManager {
     );
 
     return rows
-        .map((row) => PlaylistReference(playlist: row.$1, url: row.$3))
+        .map(
+          (row) => row.$1,
+        )
         .toList();
   }
 
@@ -385,84 +386,31 @@ class FeralFileFeedManager extends FeedManager {
   }
 
   /// Matches old repo's getAllCachedChannels.
-  Future<List<ChannelReference>> getAllCachedChannels() async {
-    final allChannelReferences = <ChannelReference>[];
+  Future<List<Channel>> getAllCachedChannels() async {
+    final allChannels = <Channel>[];
     for (final feedService in feedServices) {
       if (feedService is FeralFileDP1FeedService) {
         final channels = await feedService.getAllCachedChannels();
         for (final channel in channels) {
-          allChannelReferences.add(
-            ChannelReference(channel: channel, url: feedService.baseUrl),
-          );
+          allChannels.add(channel);
         }
       }
     }
-    return allChannelReferences;
+    return allChannels;
   }
 
   /// Matches old repo's getAllCachedPlaylistsOfChannels.
-  Future<List<PlaylistReference>> getAllCachedPlaylistsOfChannels(
-    List<ChannelReference> channels,
+  Future<List<Playlist>> getAllCachedPlaylistsOfChannels(
+    List<String> channelIds,
   ) async {
-    final allPlaylistReferences = <PlaylistReference>[];
-    for (final channelRef in channels) {
-      final service = getFeedServiceByUrl(channelRef.url);
-      if (service is FeralFileDP1FeedService) {
-        final rows = await service.getCachedPlaylistsByChannelId(
-          channelRef.channel.id,
-        );
-        for (final row in rows) {
-          allPlaylistReferences.add(
-            PlaylistReference(playlist: row.$1, url: channelRef.url),
-          );
-        }
-      }
+    final allPlaylists = <Playlist>[];
+    for (final channelId in channelIds) {
+      final playlists = await databaseService.getPlaylistsByChannel(
+        channelId,
+      );
+      allPlaylists.addAll(playlists);
     }
-    return allPlaylistReferences;
-  }
-
-  /// Matches old repo's getChannelReferenceByChannelId.
-  Future<ChannelReference?> getChannelReferenceByChannelId(
-    String channelId,
-  ) async {
-    for (final feedService in feedServices) {
-      if (feedService is FeralFileDP1FeedService) {
-        try {
-          final channel = await feedService.getCachedChannelById(channelId);
-          if (channel != null) {
-            return ChannelReference(
-              channel: channel,
-              url: feedService.baseUrl,
-            );
-          }
-        } on Exception catch (e) {
-          _log.info(
-            'Error getting channel by ID $channelId: $e, '
-            'service: ${feedService.baseUrl}',
-          );
-        }
-      }
-    }
-    return null;
-  }
-
-  /// Matches old repo's getPlaylistReferenceByPlaylistId.
-  Future<PlaylistReference?> getPlaylistReferenceByPlaylistId(
-    String playlistId,
-  ) async {
-    for (final feedService in feedServices) {
-      final dp1 = await feedService.getPlaylistById(playlistId);
-      if (dp1 != null) {
-        return PlaylistReference(
-          playlist: DatabaseConverters.dp1PlaylistToDomain(
-            dp1,
-            baseUrl: feedService.baseUrl,
-          ),
-          url: feedService.baseUrl,
-        );
-      }
-    }
-    return null;
+    return allPlaylists;
   }
 
   /// Matches old repo's getPlaylistItemsByListOfChannels.
@@ -544,23 +492,11 @@ class FeralFileFeedManager extends FeedManager {
   }
 
   /// Matches old repo's getCachedChannelReferenceByPlaylist.
-  Future<ChannelReference?> getCachedChannelReferenceByPlaylist(
+  Future<Channel?> getCachedChannelReferenceByPlaylist(
     Playlist playlist,
   ) async {
     final data = await databaseService.getChannelByPlaylistId(playlist.id);
     if (data == null) return null;
-    return ChannelReference(channel: data.$1, url: data.$3);
-  }
-}
-
-/// Extension for [PlaylistReference] to get creator title from cached channel.
-/// Matches old repo's PlaylistReferenceExtension.getCreator.
-extension PlaylistReferenceExtension on PlaylistReference {
-  /// Get creator title of the playlist from cached channel reference.
-  Future<String> getCreator(FeralFileFeedManager manager) async {
-    final channelReference = await manager.getCachedChannelReferenceByPlaylist(
-      playlist,
-    );
-    return channelReference?.channel.name ?? '';
+    return data.$1;
   }
 }

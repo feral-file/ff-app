@@ -6,6 +6,7 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/work_detail_back_layer.dart';
 import 'package:app/ui/ui_helper.dart';
+import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/work_detail/artwork_details_header.dart';
@@ -93,31 +94,17 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     return asyncData.when(
       loading: () => Scaffold(
         backgroundColor: AppColor.auGreyBackground,
-        appBar: AppBar(
+        appBar: MainAppBar(
+          backTitle: widget.backTitle ?? 'Work',
           backgroundColor: AppColor.auGreyBackground,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          title: Text(
-            'Work',
-            style: AppTypography.h4(context).white,
-          ),
         ),
         body: const LoadingView(),
       ),
       error: (error, _) => Scaffold(
         backgroundColor: AppColor.auGreyBackground,
-        appBar: AppBar(
+        appBar: MainAppBar(
+          backTitle: widget.backTitle ?? 'Work',
           backgroundColor: AppColor.auGreyBackground,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          title: Text(
-            'Work',
-            style: AppTypography.h4(context).white,
-          ),
         ),
         body: ErrorView(
           error: 'We couldn’t load this work. Check your connection, then Retry.',
@@ -129,16 +116,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
         if (data == null) {
           return Scaffold(
             backgroundColor: AppColor.auGreyBackground,
-            appBar: AppBar(
+            appBar: MainAppBar(
+              backTitle: widget.backTitle ?? 'Work',
               backgroundColor: AppColor.auGreyBackground,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-              title: Text(
-                'Work',
-                style: AppTypography.h4(context).white,
-              ),
             ),
             body: Center(
               child: Text(
@@ -161,16 +141,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
           body: BackdropScaffold(
             backgroundColor: AppColor.auGreyBackground,
             frontLayerElevation: 1,
-            appBar: AppBar(
+            appBar: MainAppBar(
+              backTitle: widget.backTitle ?? 'Work',
               backgroundColor: AppColor.auGreyBackground,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-              title: Text(
-                widget.backTitle ?? 'Work',
-                style: AppTypography.h4(context).white,
-              ),
             ),
             backLayer: WorkDetailBackLayer(
               item: item,

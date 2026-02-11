@@ -10,7 +10,7 @@ import 'dart:ui';
 
 class PrimitivesTokens {
   PrimitivesTokens._();
-  
+
   // colors
   static const colorsBlack = Color(0xFF000000);
   static const colorsDarkGrey = Color(0xFF2E2E2E);
@@ -22,11 +22,11 @@ class PrimitivesTokens {
   static const colorsLightGrey = Color(0xFFE3E3E3);
   static const colorsLightRed = Color(0xFFF44336);
   static const colorsWhite = Color(0xFFFFFFFF);
-  
+
   // font families
   static const fontFamiliesIbmPlexMono = 'IBMPlexMono';
   static const fontFamiliesPpMori = 'PP Mori';
-  
+
   // font sizes
   static const fontSizesBody = 16;
   static const fontSizesBodySmall = 14;
@@ -37,17 +37,17 @@ class PrimitivesTokens {
   static const fontSizesH3 = 18;
   static const fontSizesH4 = 16;
   static const fontSizesVerySmall = 8;
-  
+
   // font weights
   static const fontWeightsBold = 'Bold';
   static const fontWeightsRegular = 'Regular';
-  
+
   // icon sizes
   static const iconSizesDefault = 16;
   static const iconSizesLarge = 24;
   static const iconSizesMedium = 20;
   static const iconSizesSmall = 12;
-  
+
   // letter spacings
   static const letterSpacings0 = 0;
   static const paragraphIndents0 = 0;
@@ -62,6 +62,7 @@ class PrimitivesTokens {
   static const spacingSpace10 = 40;
   static const spacingSpace12 = 48;
   static const spacingSpace16 = 64;
+  static const spacingSpace18 = 72;
   static const spacingSpace20 = 80;
   static const spacingSpace2 = 8;
   static const spacingSpace3 = 12;

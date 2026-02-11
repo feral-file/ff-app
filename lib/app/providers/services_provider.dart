@@ -3,6 +3,7 @@ import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/feed_config_store.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
+import 'package:app/infra/ff1/tv_cast/tv_cast_dio.dart';
 import 'package:app/infra/services/address_service.dart';
 import 'package:app/infra/services/address_indexing_process_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
@@ -11,7 +12,6 @@ import 'package:app/infra/services/device_info_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Provider for per-address index + sync process orchestration.
@@ -87,11 +87,10 @@ final deviceInfoServiceProvider = Provider<DeviceInfoService>((ref) {
   return DeviceInfoService();
 });
 
-/// Provider for TvCast API (relayer cast endpoint). Dio baseUrl from [AppConfig.ff1CastApiUrl].
+/// Provider for TvCast API (relayer cast endpoint).
+/// Uses [createTvCastDio] (baseUrl, timeouts, API-KEY header from [AppConfig.ff1RelayerApiKey]).
 final tvCastApiProvider = Provider<TvCastApi>((ref) {
-  final dio = Dio(
-    BaseOptions(baseUrl: AppConfig.ff1CastApiUrl),
-  );
+  final dio = createTvCastDio();
   return TvCastApi(dio);
 });
 

@@ -54,12 +54,12 @@ class FF1Device {
   final String branchName;
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'remoteId': remoteId,
-        'deviceId': deviceId,
-        'topicId': topicId,
-        'branchName': branchName,
-      };
+    'name': name,
+    'remoteId': remoteId,
+    'deviceId': deviceId,
+    'topicId': topicId,
+    'branchName': branchName,
+  };
 
   FF1Device copyWith({
     String? name,
@@ -91,15 +91,16 @@ class FF1Device {
 
   @override
   int get hashCode => Object.hash(
-        name,
-        remoteId,
-        deviceId,
-        topicId,
-        branchName,
-      );
+    name,
+    remoteId,
+    deviceId,
+    topicId,
+    branchName,
+  );
 
   @override
-  String toString() => 'FF1Device(name: $name, deviceId: $deviceId, '
+  String toString() =>
+      'FF1Device(name: $name, deviceId: $deviceId, '
       'remoteId: $remoteId, topicId: $topicId, branch: $branchName)';
 
   /// Storage key for persistence (using deviceId as key)

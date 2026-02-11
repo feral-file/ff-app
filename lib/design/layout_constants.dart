@@ -82,6 +82,9 @@ class LayoutConstants {
   /// Space 16 (64px)
   static final double space16 = PrimitivesTokens.spacingSpace16.toDouble();
 
+  /// Space 18 (72px)
+  static final double space18 = PrimitivesTokens.spacingSpace18.toDouble();
+
   /// Space 20 (80px)
   static final double space20 = PrimitivesTokens.spacingSpace20.toDouble();
 

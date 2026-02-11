@@ -4,6 +4,7 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/load_more_indicator.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -109,12 +110,8 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
-      appBar: AppBar(
-        backgroundColor: AppColor.auGreyBackground,
-        title: Text(
-          'Playlists',
-          style: AppTypography.h4(context).white,
-        ),
+      appBar: const MainAppBar(
+        backTitle: 'Index',
       ),
       body: SafeArea(
         child: RefreshIndicator(

@@ -5,6 +5,7 @@ import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/sync_provider.dart';
+import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/changes/change.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -238,7 +239,7 @@ void main() {
 
     const address = '0x1111111111111111111111111111111111111111';
     const chain = 'eip155:1';
-    final playlistId = 'addr:$chain:${address.toUpperCase()}';
+    final playlistId = PlaylistExt.addressPlaylistId(address.toUpperCase());
 
     // Seed an address playlist so incremental sync can discover it.
     await dbService.ingestPlaylist(

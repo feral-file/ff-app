@@ -7,7 +7,7 @@ import 'package:logging/logging.dart';
 import 'package:objectbox/objectbox.dart';
 
 /// Service for persisting and managing FF1 Bluetooth devices using ObjectBox.
-/// 
+///
 /// Handles all database operations for connected devices including:
 /// - Adding/updating devices
 /// - Removing devices
@@ -27,9 +27,7 @@ class FF1BluetoothDeviceService {
   List<FF1Device> getAllDevices() {
     try {
       final entities = _box.getAll();
-      return entities
-          .map(_entityToDomain)
-          .toList();
+      return entities.map(_entityToDomain).toList();
     } catch (e, stack) {
       _log.severe('Failed to get all devices', e, stack);
       rethrow;
@@ -39,11 +37,12 @@ class FF1BluetoothDeviceService {
   /// Get device by device ID
   FF1Device? getDeviceById(String deviceId) {
     try {
-      final query = _box.query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
+      final query = _box
+          .query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
           .build();
       final results = query.find();
       query.close();
-      
+
       if (results.isEmpty) return null;
       return _entityToDomain(results.first);
     } catch (e, stack) {
@@ -55,11 +54,12 @@ class FF1BluetoothDeviceService {
   /// Get device by Bluetooth remote ID
   FF1Device? getDeviceByRemoteId(String remoteId) {
     try {
-      final query = _box.query(FF1BluetoothDeviceEntity_.remoteId.equals(remoteId))
+      final query = _box
+          .query(FF1BluetoothDeviceEntity_.remoteId.equals(remoteId))
           .build();
       final results = query.find();
       query.close();
-      
+
       if (results.isEmpty) return null;
       return _entityToDomain(results.first);
     } catch (e, stack) {
@@ -71,11 +71,12 @@ class FF1BluetoothDeviceService {
   /// Get the currently active device
   FF1Device? getActiveDevice() {
     try {
-      final query = _box.query(FF1BluetoothDeviceEntity_.isActive.equals(true))
+      final query = _box
+          .query(FF1BluetoothDeviceEntity_.isActive.equals(true))
           .build();
       final results = query.find();
       query.close();
-      
+
       if (results.isEmpty) return null;
       return _entityToDomain(results.first);
     } catch (e, stack) {
@@ -88,22 +89,31 @@ class FF1BluetoothDeviceService {
   Future<void> putDevice(FF1Device device) async {
     try {
       final now = DateTime.now().microsecondsSinceEpoch;
-      
+
       // Check if device exists
       final existing = getDeviceById(device.deviceId);
-      
+
       final entity = FF1BluetoothDeviceEntity(
         deviceId: device.deviceId,
         remoteId: device.remoteId,
         name: device.name,
         topicId: device.topicId ?? '',
         branchName: device.branchName,
-        createdAtUs: existing != null ? 
-            _box.query(FF1BluetoothDeviceEntity_.deviceId.equals(device.deviceId)).build().findFirst()?.createdAtUs ?? now 
+        createdAtUs: existing != null
+            ? _box
+                      .query(
+                        FF1BluetoothDeviceEntity_.deviceId.equals(
+                          device.deviceId,
+                        ),
+                      )
+                      .build()
+                      .findFirst()
+                      ?.createdAtUs ??
+                  now
             : now,
         updatedAtUs: now,
       );
-      
+
       _box.put(entity);
       _log.info('Device added/updated: ${device.deviceId}');
     } catch (e, stack) {
@@ -116,22 +126,24 @@ class FF1BluetoothDeviceService {
   Future<void> setActiveDevice(String deviceId) async {
     try {
       // Clear previous active device
-      final query = _box.query(FF1BluetoothDeviceEntity_.isActive.equals(true))
+      final query = _box
+          .query(FF1BluetoothDeviceEntity_.isActive.equals(true))
           .build();
       final previousActive = query.find();
       query.close();
-      
+
       for (final device in previousActive) {
         device.isActive = false;
         _box.put(device);
       }
-      
+
       // Set new active device
-      final query2 = _box.query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
+      final query2 = _box
+          .query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
           .build();
       final results = query2.find();
       query2.close();
-      
+
       if (results.isNotEmpty) {
         results.first.isActive = true;
         _box.put(results.first);
@@ -147,25 +159,27 @@ class FF1BluetoothDeviceService {
   /// state: 0 = disconnected, 1 = connected, 2 = connecting
   Future<void> updateConnectionState(String deviceId, int state) async {
     try {
-      final query = _box.query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
+      final query = _box
+          .query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
           .build();
       final results = query.find();
       query.close();
-      
+
       if (results.isEmpty) {
         _log.warning('Device not found: $deviceId');
         return;
       }
-      
+
       final device = results.first;
       device.connectionState = state;
       device.updatedAtUs = DateTime.now().microsecondsSinceEpoch;
-      
-      if (state == 1) { // connected
+
+      if (state == 1) {
+        // connected
         device.failedConnectionAttempts = 0;
         device.lastConnectionAttemptUs = DateTime.now().microsecondsSinceEpoch;
       }
-      
+
       _box.put(device);
       _log.info('Connection state updated for $deviceId: $state');
     } catch (e, stack) {
@@ -177,23 +191,26 @@ class FF1BluetoothDeviceService {
   /// Record a failed connection attempt
   Future<void> recordFailedConnection(String deviceId) async {
     try {
-      final query = _box.query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
+      final query = _box
+          .query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
           .build();
       final results = query.find();
       query.close();
-      
+
       if (results.isEmpty) {
         _log.warning('Device not found: $deviceId');
         return;
       }
-      
+
       final device = results.first;
       device.failedConnectionAttempts++;
       device.lastConnectionAttemptUs = DateTime.now().microsecondsSinceEpoch;
       device.updatedAtUs = DateTime.now().microsecondsSinceEpoch;
-      
+
       _box.put(device);
-      _log.info('Failed connection recorded for $deviceId (attempts: ${device.failedConnectionAttempts})');
+      _log.info(
+        'Failed connection recorded for $deviceId (attempts: ${device.failedConnectionAttempts})',
+      );
     } catch (e, stack) {
       _log.severe('Failed to record failed connection for $deviceId', e, stack);
       rethrow;
@@ -203,20 +220,21 @@ class FF1BluetoothDeviceService {
   /// Update device topic ID (cloud connectivity info)
   Future<void> updateTopicId(String deviceId, String topicId) async {
     try {
-      final query = _box.query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
+      final query = _box
+          .query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
           .build();
       final results = query.find();
       query.close();
-      
+
       if (results.isEmpty) {
         _log.warning('Device not found: $deviceId');
         return;
       }
-      
+
       final device = results.first;
       device.topicId = topicId;
       device.updatedAtUs = DateTime.now().microsecondsSinceEpoch;
-      
+
       _box.put(device);
       _log.info('Topic ID updated for $deviceId');
     } catch (e, stack) {
@@ -226,22 +244,26 @@ class FF1BluetoothDeviceService {
   }
 
   /// Store additional metadata for a device
-  Future<void> updateMetadata(String deviceId, Map<String, dynamic> metadata) async {
+  Future<void> updateMetadata(
+    String deviceId,
+    Map<String, dynamic> metadata,
+  ) async {
     try {
-      final query = _box.query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
+      final query = _box
+          .query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
           .build();
       final results = query.find();
       query.close();
-      
+
       if (results.isEmpty) {
         _log.warning('Device not found: $deviceId');
         return;
       }
-      
+
       final device = results.first;
       device.metadataJson = jsonEncode(metadata);
       device.updatedAtUs = DateTime.now().microsecondsSinceEpoch;
-      
+
       _box.put(device);
       _log.info('Metadata updated for $deviceId');
     } catch (e, stack) {
@@ -253,16 +275,17 @@ class FF1BluetoothDeviceService {
   /// Remove a device from storage
   Future<void> removeDevice(String deviceId) async {
     try {
-      final query = _box.query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
+      final query = _box
+          .query(FF1BluetoothDeviceEntity_.deviceId.equals(deviceId))
           .build();
       final results = query.find();
       query.close();
-      
+
       if (results.isEmpty) {
         _log.warning('Device not found: $deviceId');
         return;
       }
-      
+
       _box.remove(results.first.id);
       _log.info('Device removed: $deviceId');
     } catch (e, stack) {
