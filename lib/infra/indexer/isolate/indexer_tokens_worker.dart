@@ -1,4 +1,4 @@
-// ignore_for_file: public_member_api_docs, lines_longer_than_80_chars, avoid_catches_without_on_clauses, cast_nullable_to_non_nullable, deprecated_member_use, unintended_html_in_doc_comment, noop_primitive_operations, unnecessary_breaks, omit_local_variable_types // Reason: isolate wire protocol + error reporting mirrors legacy app; keep stable and auditable.
+// ignore_for_file: public_member_api_docs, avoid_catches_without_on_clauses, cast_nullable_to_non_nullable, deprecated_member_use, unintended_html_in_doc_comment, noop_primitive_operations, unnecessary_breaks, omit_local_variable_types // Reason: isolate wire protocol + error reporting mirrors legacy app; keep stable and auditable.
 
 import 'dart:async';
 import 'dart:convert';
@@ -113,7 +113,6 @@ class IndexerTokensWorker {
     ]);
   }
 
-  /// Trigger token indexing for [tokenCids].
   /// Stream change-journal pages for [addressAnchors].
   ///
   /// We keep the old repo wire format: a Map<String, String> (address -> json).
@@ -198,49 +197,56 @@ class IndexerTokensWorker {
   static late IndexerService _indexerService;
 
   static void _isolateEntry(List<Object?> args) {
-    runZonedGuarded(() {
-      final sendPort = args[0] as SendPort;
-      final endpoint = args[1] as String;
-      final apiKey = args[2] as String;
+    runZonedGuarded(
+      () {
+        final sendPort = args[0] as SendPort;
+        final endpoint = args[1] as String;
+        final apiKey = args[2] as String;
 
-      _isolateLog = Logger('IndexerTokensWorker[Isolate]');
-      _isolateSendPort = sendPort;
+        _isolateLog = Logger('IndexerTokensWorker[Isolate]');
+        _isolateSendPort = sendPort;
 
-      // Setup isolate-scoped IndexerService (no AppConfig/flutter_dotenv here).
-      final client = IndexerClient(
-        endpoint: endpoint,
-        defaultHeaders: <String, String>{
-          'Content-Type': 'application/json',
-          if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
-        },
-      );
-      _indexerService = IndexerService(client: client);
+        // Setup isolate-scoped IndexerService (no AppConfig/flutter_dotenv here).
+        final client = IndexerClient(
+          endpoint: endpoint,
+          defaultHeaders: <String, String>{
+            'Content-Type': 'application/json',
+            if (apiKey.isNotEmpty) 'Authorization': 'ApiKey $apiKey',
+          },
+        );
+        _indexerService = IndexerService(client: client);
 
-      final receivePort = ReceivePort()..listen(_handleMessageInIsolate);
-      _isolateSendPort?.send(receivePort.sendPort);
-    }, (error, stackTrace) {
-      try {
-        unawaited(Sentry.captureEvent(
-          SentryEvent(
-            message: SentryMessage('Unhandled exception in indexer isolate'),
-            level: SentryLevel.error,
-            extra: {
-              'error': error.toString(),
-              'stackTrace': stackTrace.toString(),
-            },
-            throwable: error,
-          ),
-        ));
-      } catch (_) {
-        // ignore
-      }
+        final receivePort = ReceivePort()..listen(_handleMessageInIsolate);
+        _isolateSendPort?.send(receivePort.sendPort);
+      },
+      (error, stackTrace) {
+        try {
+          unawaited(
+            Sentry.captureEvent(
+              SentryEvent(
+                message: SentryMessage(
+                  'Unhandled exception in indexer isolate',
+                ),
+                level: SentryLevel.error,
+                extra: {
+                  'error': error.toString(),
+                  'stackTrace': stackTrace.toString(),
+                },
+                throwable: error,
+              ),
+            ),
+          );
+        } catch (_) {
+          // ignore
+        }
 
-      try {
-        _isolateSendPort?.send('UNHANDLED_ERROR: ${error.toString()}');
-      } catch (_) {
-        // ignore
-      }
-    });
+        try {
+          _isolateSendPort?.send('UNHANDLED_ERROR: ${error.toString()}');
+        } catch (_) {
+          // ignore
+        }
+      },
+    );
   }
 
   static void _handleMessageInIsolate(dynamic message) {
@@ -251,19 +257,23 @@ class IndexerTokensWorker {
 
       switch (opcode) {
         case WorkerOpcodes.fetchAllTokens:
-          unawaited(_fetchAllTokens(
-            uuid: message[1] as String,
-            addresses: List<String>.from(message[2] as List),
-            offset: message[3] as int?,
-            total: message[4] as int?,
-          ));
+          unawaited(
+            _fetchAllTokens(
+              uuid: message[1] as String,
+              addresses: List<String>.from(message[2] as List),
+              offset: message[3] as int?,
+              total: message[4] as int?,
+            ),
+          );
           break;
 
         case WorkerOpcodes.reindexAddressesList:
-          unawaited(_reindexAddressesListInIndexer(
-            uuid: message[1] as String,
-            addresses: List<String>.from(message[2] as List),
-          ));
+          unawaited(
+            _reindexAddressesListInIndexer(
+              uuid: message[1] as String,
+              addresses: List<String>.from(message[2] as List),
+            ),
+          );
           break;
 
         case WorkerOpcodes.updateTokensInIsolate:
@@ -282,17 +292,21 @@ class IndexerTokensWorker {
               );
             }
           }
-          unawaited(_updateTokensInIsolate(
-            uuid: message[1] as String,
-            addressAnchors: anchors,
-          ));
+          unawaited(
+            _updateTokensInIsolate(
+              uuid: message[1] as String,
+              addressAnchors: anchors,
+            ),
+          );
           break;
 
         case WorkerOpcodes.fetchManualTokens:
-          unawaited(_fetchManualTokens(
-            uuid: message[1] as String,
-            tokenCids: List<String>.from(message[2] as List),
-          ));
+          unawaited(
+            _fetchManualTokens(
+              uuid: message[1] as String,
+              tokenCids: List<String>.from(message[2] as List),
+            ),
+          );
           break;
 
         default:
@@ -334,7 +348,9 @@ class IndexerTokensWorker {
 
         final sentTokens = total == null
             ? tokens
-            : tokens.take((total - numberOfToken).clamp(0, tokens.length)).toList();
+            : tokens
+                  .take((total - numberOfToken).clamp(0, tokens.length))
+                  .toList();
 
         _isolateSendPort?.send(FetchTokensData(uuid, addresses, sentTokens));
 
@@ -420,8 +436,9 @@ class IndexerTokensWorker {
     required List<String> tokenCids,
   }) async {
     try {
-      final tokens =
-          await _indexerService.fetchTokensByCIDs(tokenCids: tokenCids);
+      final tokens = await _indexerService.fetchTokensByCIDs(
+        tokenCids: tokenCids,
+      );
       _isolateSendPort?.send(FetchManualTokensDone(uuid, tokens));
     } catch (e) {
       _isolateSendPort?.send(FetchManualTokensFailure(uuid, e));

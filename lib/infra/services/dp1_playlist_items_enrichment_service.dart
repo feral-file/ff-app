@@ -73,36 +73,14 @@ class DP1PlaylistItemsEnrichmentService {
         _log.info('Enrichment paused before high-priority batch');
         return false;
       }
-      late final List<_BareItem> highItems;
-      try {
-        highItems = await _loadHighPriorityBareItems();
-      } on Exception catch (e, stack) {
-        if (_isOperationCancelled(e)) {
-          _log.info('High-priority enrichment query cancelled');
-          return false;
-        }
-        _log.severe('Failed to load high-priority bare items', e, stack);
-        rethrow;
-      }
-      if (highItems.isEmpty) break;
-
       batchCount++;
-
-      _log.info(
-        'Processing high-priority batch $batchCount: '
-        '${highItems.length} items',
-      );
       try {
-        final updated = await _processBatch(highItems);
-        totalProcessed += highItems.length;
-        totalUpdated += updated;
+        final updated = await processNextHighPriorityBatch();
         if (updated == 0) {
-          _log.warning(
-            'No high-priority items were updated in batch $batchCount; '
-            'stopping to avoid reprocessing the same rows.',
-          );
           break;
         }
+        totalProcessed += updated;
+        totalUpdated += updated;
       } on Exception catch (e, stack) {
         _log.severe(
           'Failed to process high-priority batch $batchCount',
@@ -119,36 +97,14 @@ class DP1PlaylistItemsEnrichmentService {
         _log.info('Enrichment paused before low-priority batch');
         return false;
       }
-      late final List<_BareItem> lowItems;
-      try {
-        lowItems = await _loadLowPriorityBareItems();
-      } on Exception catch (e, stack) {
-        if (_isOperationCancelled(e)) {
-          _log.info('Low-priority enrichment query cancelled');
-          return false;
-        }
-        _log.severe('Failed to load low-priority bare items', e, stack);
-        rethrow;
-      }
-      if (lowItems.isEmpty) break;
-
       batchCount++;
-
-      _log.info(
-        'Processing low-priority batch $batchCount: '
-        '${lowItems.length} items',
-      );
       try {
-        final updated = await _processBatch(lowItems);
-        totalProcessed += lowItems.length;
-        totalUpdated += updated;
+        final updated = await processNextLowPriorityBatch();
         if (updated == 0) {
-          _log.warning(
-            'No low-priority items were updated in batch $batchCount; '
-            'stopping to avoid reprocessing the same rows.',
-          );
           break;
         }
+        totalProcessed += updated;
+        totalUpdated += updated;
       } on Exception catch (e, stack) {
         _log.severe(
           'Failed to process low-priority batch $batchCount',
@@ -164,6 +120,56 @@ class DP1PlaylistItemsEnrichmentService {
       'updated $totalUpdated items in $batchCount batches',
     );
     return true;
+  }
+
+  /// Process the next high-priority enrichment batch.
+  ///
+  /// Returns the number of playlist items updated in this batch.
+  Future<int> processNextHighPriorityBatch() async {
+    if (!_shouldContinue()) return 0;
+    late final List<_BareItem> highItems;
+    try {
+      highItems = await _loadHighPriorityBareItems();
+    } on Exception catch (e, stack) {
+      if (_isOperationCancelled(e)) {
+        _log.info('High-priority enrichment query cancelled');
+        return 0;
+      }
+      _log.severe('Failed to load high-priority bare items', e, stack);
+      rethrow;
+    }
+
+    if (highItems.isEmpty) {
+      return 0;
+    }
+
+    _log.info('Processing high-priority batch: ${highItems.length} items');
+    return _processBatch(highItems);
+  }
+
+  /// Process the next low-priority enrichment batch.
+  ///
+  /// Returns the number of playlist items updated in this batch.
+  Future<int> processNextLowPriorityBatch() async {
+    if (!_shouldContinue()) return 0;
+    late final List<_BareItem> lowItems;
+    try {
+      lowItems = await _loadLowPriorityBareItems();
+    } on Exception catch (e, stack) {
+      if (_isOperationCancelled(e)) {
+        _log.info('Low-priority enrichment query cancelled');
+        return 0;
+      }
+      _log.severe('Failed to load low-priority bare items', e, stack);
+      rethrow;
+    }
+
+    if (lowItems.isEmpty) {
+      return 0;
+    }
+
+    _log.info('Processing low-priority batch: ${lowItems.length} items');
+    return _processBatch(lowItems);
   }
 
   /// Load high-priority bare items from database.

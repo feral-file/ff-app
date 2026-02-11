@@ -1,4 +1,5 @@
 import 'package:app/app/providers/playlists_provider.dart';
+import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -112,9 +113,14 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
       _cachedPersonalState = nextPersonalState;
     }
     final curatedPlaylists = curatedState.playlists;
+    final curatedBaseUrl = _firstCuratedBaseUrl();
+    final curatedSectionPlaylists = curatedBaseUrl == null
+        ? curatedPlaylists
+        : curatedPlaylists
+              .where((playlist) => playlist.baseUrl == curatedBaseUrl)
+              .toList();
     final personalPlaylists = personalState.playlists;
     final error = curatedState.error ?? personalState.error;
-    final hasMore = curatedState.hasMore;
 
     // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics.
     // Parent NestedScrollView handles scrolling.
@@ -125,7 +131,7 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
       slivers: [
         // Error state
         if (error != null &&
-            curatedPlaylists.isEmpty &&
+            curatedSectionPlaylists.isEmpty &&
             personalPlaylists.isEmpty)
           SliverToBoxAdapter(
             child: ErrorView(
@@ -169,7 +175,7 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
           ),
 
         // Curated playlists section (preview).
-        if (curatedPlaylists.isNotEmpty)
+        if (curatedSectionPlaylists.isNotEmpty)
           SliverToBoxAdapter(
             child: PlaylistSection(
               sectionName: 'Curated',
@@ -182,10 +188,10 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
                   BlendMode.srcIn,
                 ),
               ),
-              playlists: curatedPlaylists.take(_previewCount).toList(),
+              playlists: curatedSectionPlaylists.take(_previewCount).toList(),
               isActive: widget.isActive,
-              hasMore: hasMore || curatedPlaylists.length > _previewCount,
-              onViewAllTap: (hasMore || curatedPlaylists.length > _previewCount)
+              hasMore: curatedSectionPlaylists.length > _previewCount,
+              onViewAllTap: curatedSectionPlaylists.length > _previewCount
                   ? () => context.push('${Routes.allPlaylists}?filter=curated')
                   : null,
               onPlaylistItemTap: (item) {
@@ -200,5 +206,27 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
         ),
       ],
     );
+  }
+
+  String? _firstCuratedBaseUrl() {
+    final curatedUrls = ref.watch(curatedChannelUrlsProvider);
+    if (curatedUrls.isEmpty) {
+      return null;
+    }
+
+    final firstUrl = curatedUrls.first.trim();
+    if (firstUrl.isEmpty) {
+      return null;
+    }
+
+    try {
+      final uri = Uri.parse(firstUrl);
+      if (!uri.hasScheme || uri.host.isEmpty) {
+        return null;
+      }
+      return uri.origin;
+    } on FormatException {
+      return null;
+    }
   }
 }

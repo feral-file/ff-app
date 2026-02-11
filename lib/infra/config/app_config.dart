@@ -83,6 +83,14 @@ class AppConfig {
   static String get remoteConfigUrl =>
       dotenv.get('REMOTE_CONFIG_URL', fallback: '');
 
+  /// Domain resolver GraphQL endpoint for ENS/TNS lookup.
+  static String get domainResolverUrl =>
+      dotenv.get('DOMAIN_RESOLVER_URL', fallback: '');
+
+  /// Domain resolver API key.
+  static String get domainResolverApiKey =>
+      dotenv.get('DOMAIN_RESOLVER_API_KEY', fallback: '');
+
   /// Check if configuration is valid (all required keys present).
   static bool get isValid =>
       dp1FeedUrl.isNotEmpty &&

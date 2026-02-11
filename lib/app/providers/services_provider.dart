@@ -1,37 +1,13 @@
+import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/feed_config_store.dart';
 import 'package:app/infra/database/database_provider.dart';
-import 'package:app/infra/graphql/indexer_client_provider.dart';
 import 'package:app/infra/services/address_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
-import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
+import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
-import 'package:app/infra/services/indexer_service.dart';
-import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-/// Provider for the IndexerService.
-/// Handles fetching tokens from the indexer API.
-final indexerServiceProvider = Provider<IndexerService>((ref) {
-  final client = ref.watch(indexerClientProvider);
-
-  return IndexerService(
-    client: client,
-  );
-});
-
-/// Provider for the IndexerSyncService.
-/// Orchestrates indexer fetch + local ingestion for address playlists.
-final indexerSyncServiceProvider = Provider<IndexerSyncService>((ref) {
-  final databaseService = ref.watch(databaseServiceProvider);
-  final indexerService = ref.watch(indexerServiceProvider);
-
-  return IndexerSyncService(
-    indexerService: indexerService,
-    databaseService: databaseService,
-  );
-});
 
 /// Provider for the AddressService.
 /// Manages user wallet addresses and address-based playlists.
@@ -39,11 +15,25 @@ final addressServiceProvider = Provider<AddressService>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
   final indexerService = ref.watch(indexerServiceProvider);
   final indexerSyncService = ref.watch(indexerSyncServiceProvider);
+  final domainAddressService = ref.watch(domainAddressServiceProvider);
+  final enrichmentScheduler = ref.watch(
+    indexerEnrichmentSchedulerServiceProvider,
+  );
 
   return AddressService(
     databaseService: databaseService,
     indexerService: indexerService,
     indexerSyncService: indexerSyncService,
+    domainAddressService: domainAddressService,
+    enrichmentScheduler: enrichmentScheduler,
+  );
+});
+
+/// Provider for ENS/TNS address resolution and address/domain validation.
+final domainAddressServiceProvider = Provider<DomainAddressService>((ref) {
+  return DomainAddressService(
+    resolverUrl: AppConfig.domainResolverUrl,
+    resolverApiKey: AppConfig.domainResolverApiKey,
   );
 });
 
@@ -51,18 +41,11 @@ final addressServiceProvider = Provider<AddressService>((ref) {
 /// Handles initial app setup and data bootstrapping.
 final bootstrapServiceProvider = Provider<BootstrapService>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
-
-  return BootstrapService(
-    databaseService: databaseService,
-  );
+  return BootstrapService(databaseService: databaseService);
 });
 
 /// Provider for the DP1FeedServiceImpl.
 /// Fetches playlists from DP1 feed servers with cache policy support.
-///
-/// This provider is used by the default bootstrap flow (non-curated feeds).
-/// For curated feeds with remote config channels, use FeralFileDP1FeedService
-/// directly in FeedRegistryNotifier.
 final dp1FeedServiceProvider = Provider<FeralFileDP1FeedService>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
   final indexerService = ref.watch(indexerServiceProvider);
@@ -82,16 +65,3 @@ final dp1FeedServiceProvider = Provider<FeralFileDP1FeedService>((ref) {
 final supportEmailServiceProvider = Provider<SupportEmailService>((ref) {
   return SupportEmailService();
 });
-
-/// Provider for the DP1 playlist items enrichment service.
-/// Handles batch enrichment of playlist items with indexer token data.
-final dp1PlaylistItemsEnrichmentServiceProvider =
-    Provider<DP1PlaylistItemsEnrichmentService>((ref) {
-      final indexerService = ref.watch(indexerServiceProvider);
-      final databaseService = ref.watch(databaseServiceProvider);
-
-      return DP1PlaylistItemsEnrichmentService(
-        indexerService: indexerService,
-        databaseService: databaseService,
-      );
-    });

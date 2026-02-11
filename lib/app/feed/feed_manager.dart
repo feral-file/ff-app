@@ -12,8 +12,8 @@ import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/drift_kinds.dart';
 import 'package:app/infra/services/base_dp1_feed_service_impl.dart';
-import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
+import 'package:app/infra/services/indexer_enrichment_scheduler_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:synchronized/synchronized.dart';
 
@@ -45,7 +45,6 @@ class FeedManager {
   final Lock _reloadLock = Lock();
   bool _isPaused = false;
   bool _isEnrichmentWorkerRunning = false;
-  bool _lastEnrichmentRunCompleted = false;
   Future<void>? _enrichmentWorkerFuture;
 
   /// Default DP1 feed URL (for feralFileFeedService getter); set by [FeralFileFeedManager].
@@ -155,9 +154,7 @@ class FeedManager {
       }
 
       if (bareLoaded && !tokensEnriched) {
-        final completed = await _ensureEnrichmentCompleted();
-        if (_isPaused || !completed) return;
-        await _feedConfigStore.markTokensEnriched();
+        _startEnrichmentWorkerIfIdle();
       }
     });
   }
@@ -201,19 +198,14 @@ class FeedManager {
     _enrichmentWorkerFuture ??= _runEnrichmentWorker();
   }
 
-  Future<bool> _ensureEnrichmentCompleted() async {
-    if (!_isEnrichmentWorkerRunning && _enrichmentWorkerFuture == null) {
-      _startEnrichmentWorkerIfIdle();
-    }
-    await _enrichmentWorkerFuture;
-    return _lastEnrichmentRunCompleted;
-  }
-
   Future<void> _runEnrichmentWorker() async {
     if (_isEnrichmentWorkerRunning || _isPaused) return;
     _isEnrichmentWorkerRunning = true;
     try {
-      _lastEnrichmentRunCompleted = await runGlobalEnrichment();
+      final completed = await runGlobalEnrichment();
+      if (!_isPaused && completed) {
+        await _feedConfigStore.markTokensEnriched();
+      }
     } finally {
       _isEnrichmentWorkerRunning = false;
       _enrichmentWorkerFuture = null;
@@ -258,17 +250,17 @@ class FeralFileFeedManager extends FeedManager {
     required super.feedConfigStore,
     required this.defaultDp1FeedUrl,
     required IndexerService indexerService,
-    required DP1PlaylistItemsEnrichmentService enrichmentService,
+    required IndexerEnrichmentSchedulerService enrichmentScheduler,
     required String apiKey,
   }) : _indexerService = indexerService,
-       _enrichmentService = enrichmentService,
+       _enrichmentScheduler = enrichmentScheduler,
        _apiKey = apiKey;
 
   @override
   final String defaultDp1FeedUrl;
 
   final IndexerService _indexerService;
-  final DP1PlaylistItemsEnrichmentService _enrichmentService;
+  final IndexerEnrichmentSchedulerService _enrichmentScheduler;
   final String _apiKey;
 
   List<RemoteConfigChannel> remoteConfigChannels = [];
@@ -332,7 +324,13 @@ class FeralFileFeedManager extends FeedManager {
   @override
   Future<bool> runGlobalEnrichment() async {
     if (isPaused) return false;
-    return _enrichmentService.processAll();
+    return _enrichmentScheduler.processUntilIdle();
+  }
+
+  @override
+  void onChannelIngested() {
+    super.onChannelIngested();
+    _enrichmentScheduler.notifyFeedWorkAvailable();
   }
 
   /// Matches old repo's getAllCachedChannels.
