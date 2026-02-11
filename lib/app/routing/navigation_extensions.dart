@@ -50,29 +50,4 @@ extension NavigationExtensions on BuildContext {
     // navigate to it using go() which will handle the navigation appropriately
     router.go(targetRoute);
   }
-
-  /// Replaces all routes in the navigation stack and navigates to a route.
-  ///
-  /// This method will:
-  /// 1. Clear/replace the entire navigation stack
-  /// 2. Navigate to the specified route path
-  ///
-  /// In go_router, [go] replaces the entire navigation stack and navigates
-  /// to the route path, which is the desired behavior for "replace all and push".
-  ///
-  /// Usage:
-  /// ```dart
-  /// context.replaceAllAndPushNamed(Routes.home);
-  /// context.replaceAllAndPushNamed(Routes.home, arguments: payload);
-  /// ```
-  Future<dynamic>? replaceAllAndPushNamed(
-    String routePath, {
-    Object? arguments,
-  }) {
-    GoRouter.of(this).go(
-      routePath,
-      extra: arguments,
-    );
-    return null;
-  }
 }
