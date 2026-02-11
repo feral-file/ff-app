@@ -1,13 +1,18 @@
 import 'dart:async';
 
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/extensions/playlist_ext.dart';
+import 'package:app/domain/models/ff1/dp1_intent.dart';
+import 'package:app/infra/database/converters.dart' show DatabaseConverters;
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/work_detail_back_layer.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/error_view.dart';
+import 'package:app/widgets/ff_display_button.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/work_detail/artwork_details_header.dart';
 import 'package:app/widgets/work_detail/work_detail_sections.dart';
@@ -48,6 +53,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     with SingleTickerProviderStateMixin {
   static const double _infoShrinkPosition = 0.001;
   static const double _infoExpandPosition = 0.29;
+
   /// Matches old repo artwork_detail_page _infoHeaderHeight for bottom spacer.
   static const double _infoHeaderHeight = 68;
 
@@ -107,9 +113,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
           backgroundColor: AppColor.auGreyBackground,
         ),
         body: ErrorView(
-          error: 'We couldn’t load this work. Check your connection, then Retry.',
-          onRetry: () =>
-              ref.invalidate(workDetailStateProvider(widget.workId)),
+          error:
+              'We couldn’t load this work. Check your connection, then Retry.',
+          onRetry: () => ref.invalidate(workDetailStateProvider(widget.workId)),
         ),
       ),
       data: (data) {
@@ -129,7 +135,8 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
           );
         }
 
-        _appBarBottomDy ??= kToolbarHeight +
+        _appBarBottomDy ??=
+            kToolbarHeight +
             LayoutConstants.space5 +
             MediaQuery.of(context).padding.top;
 
@@ -144,6 +151,28 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
             appBar: MainAppBar(
               backTitle: widget.backTitle ?? 'Work',
               backgroundColor: AppColor.auGreyBackground,
+              actions: [
+                FFDisplayButton(
+                  onDeviceSelected: (device) async {
+                    final canvas = ref.read(canvasClientServiceV2Provider);
+                    final items = [item];
+                    final singleWorkPlaylist = PlaylistExt.fromPlaylistItem(
+                      items,
+                    );
+                    final dp1 =
+                        DatabaseConverters.playlistAndItemsToDP1Playlist(
+                          singleWorkPlaylist,
+                          items,
+                        );
+                    await canvas.castPlaylist(
+                      device,
+                      dp1,
+                      DP1Intent.displayNow(),
+                      usingUrl: false,
+                    );
+                  },
+                ),
+              ],
             ),
             backLayer: WorkDetailBackLayer(
               item: item,
@@ -366,8 +395,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                   ),
                   if (token != null)
                     ownerAddressesAsync.when(
-                      data: (addresses) =>
-                          buildWorkDetailTokenOwnershipSection(
+                      data: (addresses) => buildWorkDetailTokenOwnershipSection(
                         context,
                         ownerAddresses: addresses,
                         token: token,
@@ -377,8 +405,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     ),
                   if (token != null)
                     ownerAddressesAsync.when(
-                      data: (addresses) =>
-                          buildWorkDetailProvenanceSection(
+                      data: (addresses) => buildWorkDetailProvenanceSection(
                         context,
                         ownerAddresses: addresses,
                         token: token,
@@ -392,7 +419,8 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
               ),
             ),
             SizedBox(
-              height: (MediaQuery.of(context).size.height -
+              height:
+                  (MediaQuery.of(context).size.height -
                       (_appBarBottomDy ?? 80) -
                       _infoHeaderHeight) *
                   0.5,

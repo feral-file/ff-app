@@ -1,4 +1,3 @@
-
 /// Feed server info (url + createdAt).
 /// Matches old repo's [FeedServerInfo].
 class FeedServerInfo {
