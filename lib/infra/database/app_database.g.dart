@@ -11,12 +11,12 @@ class $PublishersTable extends Publishers
   $PublishersTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
     'id',
     aliasedName,
     false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _titleMeta = const VerificationMeta('title');
   @override
@@ -65,8 +65,6 @@ class $PublishersTable extends Publishers
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    } else if (isInserting) {
-      context.missing(_idMeta);
     }
     if (data.containsKey('title')) {
       context.handle(
@@ -108,7 +106,7 @@ class $PublishersTable extends Publishers
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return PublisherData(
       id: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
+        DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
       title: attachedDatabase.typeMapping.read(
@@ -134,7 +132,7 @@ class $PublishersTable extends Publishers
 
 class PublisherData extends DataClass implements Insertable<PublisherData> {
   /// Publisher identifier.
-  final String id;
+  final int id;
 
   /// Publisher display name.
   final String title;
@@ -153,7 +151,7 @@ class PublisherData extends DataClass implements Insertable<PublisherData> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
+    map['id'] = Variable<int>(id);
     map['title'] = Variable<String>(title);
     map['created_at_us'] = Variable<BigInt>(createdAtUs);
     map['updated_at_us'] = Variable<BigInt>(updatedAtUs);
@@ -175,7 +173,7 @@ class PublisherData extends DataClass implements Insertable<PublisherData> {
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return PublisherData(
-      id: serializer.fromJson<String>(json['id']),
+      id: serializer.fromJson<int>(json['id']),
       title: serializer.fromJson<String>(json['title']),
       createdAtUs: serializer.fromJson<BigInt>(json['createdAtUs']),
       updatedAtUs: serializer.fromJson<BigInt>(json['updatedAtUs']),
@@ -185,7 +183,7 @@ class PublisherData extends DataClass implements Insertable<PublisherData> {
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
+      'id': serializer.toJson<int>(id),
       'title': serializer.toJson<String>(title),
       'createdAtUs': serializer.toJson<BigInt>(createdAtUs),
       'updatedAtUs': serializer.toJson<BigInt>(updatedAtUs),
@@ -193,7 +191,7 @@ class PublisherData extends DataClass implements Insertable<PublisherData> {
   }
 
   PublisherData copyWith({
-    String? id,
+    int? id,
     String? title,
     BigInt? createdAtUs,
     BigInt? updatedAtUs,
@@ -240,57 +238,49 @@ class PublisherData extends DataClass implements Insertable<PublisherData> {
 }
 
 class PublishersCompanion extends UpdateCompanion<PublisherData> {
-  final Value<String> id;
+  final Value<int> id;
   final Value<String> title;
   final Value<BigInt> createdAtUs;
   final Value<BigInt> updatedAtUs;
-  final Value<int> rowid;
   const PublishersCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
     this.createdAtUs = const Value.absent(),
     this.updatedAtUs = const Value.absent(),
-    this.rowid = const Value.absent(),
   });
   PublishersCompanion.insert({
-    required String id,
+    this.id = const Value.absent(),
     required String title,
     required BigInt createdAtUs,
     required BigInt updatedAtUs,
-    this.rowid = const Value.absent(),
-  }) : id = Value(id),
-       title = Value(title),
+  }) : title = Value(title),
        createdAtUs = Value(createdAtUs),
        updatedAtUs = Value(updatedAtUs);
   static Insertable<PublisherData> custom({
-    Expression<String>? id,
+    Expression<int>? id,
     Expression<String>? title,
     Expression<BigInt>? createdAtUs,
     Expression<BigInt>? updatedAtUs,
-    Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (title != null) 'title': title,
       if (createdAtUs != null) 'created_at_us': createdAtUs,
       if (updatedAtUs != null) 'updated_at_us': updatedAtUs,
-      if (rowid != null) 'rowid': rowid,
     });
   }
 
   PublishersCompanion copyWith({
-    Value<String>? id,
+    Value<int>? id,
     Value<String>? title,
     Value<BigInt>? createdAtUs,
     Value<BigInt>? updatedAtUs,
-    Value<int>? rowid,
   }) {
     return PublishersCompanion(
       id: id ?? this.id,
       title: title ?? this.title,
       createdAtUs: createdAtUs ?? this.createdAtUs,
       updatedAtUs: updatedAtUs ?? this.updatedAtUs,
-      rowid: rowid ?? this.rowid,
     );
   }
 
@@ -298,7 +288,7 @@ class PublishersCompanion extends UpdateCompanion<PublisherData> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     if (id.present) {
-      map['id'] = Variable<String>(id.value);
+      map['id'] = Variable<int>(id.value);
     }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
@@ -309,9 +299,6 @@ class PublishersCompanion extends UpdateCompanion<PublisherData> {
     if (updatedAtUs.present) {
       map['updated_at_us'] = Variable<BigInt>(updatedAtUs.value);
     }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
     return map;
   }
 
@@ -321,8 +308,7 @@ class PublishersCompanion extends UpdateCompanion<PublisherData> {
           ..write('id: $id, ')
           ..write('title: $title, ')
           ..write('createdAtUs: $createdAtUs, ')
-          ..write('updatedAtUs: $updatedAtUs, ')
-          ..write('rowid: $rowid')
+          ..write('updatedAtUs: $updatedAtUs')
           ..write(')'))
         .toString();
   }
@@ -376,11 +362,11 @@ class $ChannelsTable extends Channels
     'publisherId',
   );
   @override
-  late final GeneratedColumn<String> publisherId = GeneratedColumn<String>(
+  late final GeneratedColumn<int> publisherId = GeneratedColumn<int>(
     'publisher_id',
     aliasedName,
     true,
-    type: DriftSqlType.string,
+    type: DriftSqlType.int,
     requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
       'REFERENCES publishers (id)',
@@ -605,7 +591,7 @@ class $ChannelsTable extends Channels
         data['${effectivePrefix}slug'],
       ),
       publisherId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
+        DriftSqlType.int,
         data['${effectivePrefix}publisher_id'],
       ),
       title: attachedDatabase.typeMapping.read(
@@ -659,7 +645,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
   final String? slug;
 
   /// Publisher reference.
-  final String? publisherId;
+  final int? publisherId;
 
   /// Channel title.
   final String title;
@@ -707,7 +693,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
       map['slug'] = Variable<String>(slug);
     }
     if (!nullToAbsent || publisherId != null) {
-      map['publisher_id'] = Variable<String>(publisherId);
+      map['publisher_id'] = Variable<int>(publisherId);
     }
     map['title'] = Variable<String>(title);
     if (!nullToAbsent || curator != null) {
@@ -766,7 +752,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
       type: serializer.fromJson<int>(json['type']),
       baseUrl: serializer.fromJson<String?>(json['baseUrl']),
       slug: serializer.fromJson<String?>(json['slug']),
-      publisherId: serializer.fromJson<String?>(json['publisherId']),
+      publisherId: serializer.fromJson<int?>(json['publisherId']),
       title: serializer.fromJson<String>(json['title']),
       curator: serializer.fromJson<String?>(json['curator']),
       summary: serializer.fromJson<String?>(json['summary']),
@@ -784,7 +770,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
       'type': serializer.toJson<int>(type),
       'baseUrl': serializer.toJson<String?>(baseUrl),
       'slug': serializer.toJson<String?>(slug),
-      'publisherId': serializer.toJson<String?>(publisherId),
+      'publisherId': serializer.toJson<int?>(publisherId),
       'title': serializer.toJson<String>(title),
       'curator': serializer.toJson<String?>(curator),
       'summary': serializer.toJson<String?>(summary),
@@ -800,7 +786,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
     int? type,
     Value<String?> baseUrl = const Value.absent(),
     Value<String?> slug = const Value.absent(),
-    Value<String?> publisherId = const Value.absent(),
+    Value<int?> publisherId = const Value.absent(),
     String? title,
     Value<String?> curator = const Value.absent(),
     Value<String?> summary = const Value.absent(),
@@ -906,7 +892,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
   final Value<int> type;
   final Value<String?> baseUrl;
   final Value<String?> slug;
-  final Value<String?> publisherId;
+  final Value<int?> publisherId;
   final Value<String> title;
   final Value<String?> curator;
   final Value<String?> summary;
@@ -954,7 +940,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
     Expression<int>? type,
     Expression<String>? baseUrl,
     Expression<String>? slug,
-    Expression<String>? publisherId,
+    Expression<int>? publisherId,
     Expression<String>? title,
     Expression<String>? curator,
     Expression<String>? summary,
@@ -986,7 +972,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
     Value<int>? type,
     Value<String?>? baseUrl,
     Value<String?>? slug,
-    Value<String?>? publisherId,
+    Value<int?>? publisherId,
     Value<String>? title,
     Value<String?>? curator,
     Value<String?>? summary,
@@ -1029,7 +1015,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
       map['slug'] = Variable<String>(slug.value);
     }
     if (publisherId.present) {
-      map['publisher_id'] = Variable<String>(publisherId.value);
+      map['publisher_id'] = Variable<int>(publisherId.value);
     }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
@@ -3429,19 +3415,17 @@ abstract class _$AppDatabase extends GeneratedDatabase {
 
 typedef $$PublishersTableCreateCompanionBuilder =
     PublishersCompanion Function({
-      required String id,
+      Value<int> id,
       required String title,
       required BigInt createdAtUs,
       required BigInt updatedAtUs,
-      Value<int> rowid,
     });
 typedef $$PublishersTableUpdateCompanionBuilder =
     PublishersCompanion Function({
-      Value<String> id,
+      Value<int> id,
       Value<String> title,
       Value<BigInt> createdAtUs,
       Value<BigInt> updatedAtUs,
-      Value<int> rowid,
     });
 
 final class $$PublishersTableReferences
@@ -3458,7 +3442,7 @@ final class $$PublishersTableReferences
     final manager = $$ChannelsTableTableManager(
       $_db,
       $_db.channels,
-    ).filter((f) => f.publisherId.id.sqlEquals($_itemColumn<String>('id')!));
+    ).filter((f) => f.publisherId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_channelsRefsTable($_db));
     return ProcessedTableManager(
@@ -3476,7 +3460,7 @@ class $$PublishersTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnFilters<String> get id => $composableBuilder(
+  ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
     builder: (column) => ColumnFilters(column),
   );
@@ -3531,7 +3515,7 @@ class $$PublishersTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnOrderings<String> get id => $composableBuilder(
+  ColumnOrderings<int> get id => $composableBuilder(
     column: $table.id,
     builder: (column) => ColumnOrderings(column),
   );
@@ -3561,7 +3545,7 @@ class $$PublishersTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<String> get id =>
+  GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
   GeneratedColumn<String> get title =>
@@ -3631,31 +3615,27 @@ class $$PublishersTableTableManager
               $$PublishersTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
-                Value<String> id = const Value.absent(),
+                Value<int> id = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<BigInt> createdAtUs = const Value.absent(),
                 Value<BigInt> updatedAtUs = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
               }) => PublishersCompanion(
                 id: id,
                 title: title,
                 createdAtUs: createdAtUs,
                 updatedAtUs: updatedAtUs,
-                rowid: rowid,
               ),
           createCompanionCallback:
               ({
-                required String id,
+                Value<int> id = const Value.absent(),
                 required String title,
                 required BigInt createdAtUs,
                 required BigInt updatedAtUs,
-                Value<int> rowid = const Value.absent(),
               }) => PublishersCompanion.insert(
                 id: id,
                 title: title,
                 createdAtUs: createdAtUs,
                 updatedAtUs: updatedAtUs,
-                rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -3721,7 +3701,7 @@ typedef $$ChannelsTableCreateCompanionBuilder =
       required int type,
       Value<String?> baseUrl,
       Value<String?> slug,
-      Value<String?> publisherId,
+      Value<int?> publisherId,
       required String title,
       Value<String?> curator,
       Value<String?> summary,
@@ -3737,7 +3717,7 @@ typedef $$ChannelsTableUpdateCompanionBuilder =
       Value<int> type,
       Value<String?> baseUrl,
       Value<String?> slug,
-      Value<String?> publisherId,
+      Value<int?> publisherId,
       Value<String> title,
       Value<String?> curator,
       Value<String?> summary,
@@ -3758,7 +3738,7 @@ final class $$ChannelsTableReferences
       );
 
   $$PublishersTableProcessedTableManager? get publisherId {
-    final $_column = $_itemColumn<String>('publisher_id');
+    final $_column = $_itemColumn<int>('publisher_id');
     if ($_column == null) return null;
     final manager = $$PublishersTableTableManager(
       $_db,
@@ -4052,7 +4032,7 @@ class $$ChannelsTableTableManager
                 Value<int> type = const Value.absent(),
                 Value<String?> baseUrl = const Value.absent(),
                 Value<String?> slug = const Value.absent(),
-                Value<String?> publisherId = const Value.absent(),
+                Value<int?> publisherId = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String?> curator = const Value.absent(),
                 Value<String?> summary = const Value.absent(),
@@ -4082,7 +4062,7 @@ class $$ChannelsTableTableManager
                 required int type,
                 Value<String?> baseUrl = const Value.absent(),
                 Value<String?> slug = const Value.absent(),
-                Value<String?> publisherId = const Value.absent(),
+                Value<int?> publisherId = const Value.absent(),
                 required String title,
                 Value<String?> curator = const Value.absent(),
                 Value<String?> summary = const Value.absent(),

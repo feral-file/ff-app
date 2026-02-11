@@ -1,10 +1,12 @@
 import 'dart:io';
 
 import 'package:app/app/feed/feed_registry_provider.dart';
+import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
@@ -33,8 +35,18 @@ ASSET_URL=https://assets.feralfile.com
   test('build() loads curated URLs', () async {
     final container = ProviderContainer.test(
       overrides: [
-        curatedChannelUrlsProvider.overrideWithValue(
-          <String>['https://feed.example/api/v1/channels/ch_123'],
+        remoteConfigPublishersProvider.overrideWithValue(
+          <RemoteConfigPublisher>[
+            RemoteConfigPublisher(
+              id: 0,
+              name: 'Feral File',
+              channelUrls: <String>[
+                'https://feed.example/api/v1/channels/ch_123',
+              ],
+              feedCacheDuration: Duration(days: 1),
+              feedLastUpdatedAt: DateTime.utc(2026, 2, 2),
+            ),
+          ],
         ),
       ],
     );
@@ -48,6 +60,7 @@ ASSET_URL=https://assets.feralfile.com
       equals('https://feed.example'),
     );
     expect(state.curatedChannels.single.channelId, equals('ch_123'));
+    expect(state.curatedChannels.single.publisherId, equals(0));
   });
 
   test('setupRemoteConfigChannels groups channels by baseUrl', () async {
@@ -79,10 +92,26 @@ ASSET_URL=https://assets.feralfile.com
     await container
         .read(feedRegistryProvider.notifier)
         .setupRemoteConfigChannels(
-          <String>[
-            'https://feed1.example/api/v1/channels/ch_1',
-            'https://feed1.example/api/v1/channels/ch_2',
-            'https://feed2.example/api/v1/channels/ch_3',
+          <RemoteConfigPublisher>[
+            RemoteConfigPublisher(
+              id: 0,
+              name: 'Feral File',
+              channelUrls: <String>[
+                'https://feed1.example/api/v1/channels/ch_1',
+                'https://feed1.example/api/v1/channels/ch_2',
+              ],
+              feedCacheDuration: Duration(days: 1),
+              feedLastUpdatedAt: DateTime.utc(2026, 2, 2),
+            ),
+            RemoteConfigPublisher(
+              id: 1,
+              name: 'Objkt',
+              channelUrls: <String>[
+                'https://feed2.example/api/v1/channels/ch_3',
+              ],
+              feedCacheDuration: Duration(days: 1),
+              feedLastUpdatedAt: DateTime.utc(2026, 2, 2),
+            ),
           ],
         );
 
@@ -122,7 +151,17 @@ ASSET_URL=https://assets.feralfile.com
       await container
           .read(feedRegistryProvider.notifier)
           .setupRemoteConfigChannels(
-            <String>['https://feed.example/api/v1/channels/ch_123'],
+            <RemoteConfigPublisher>[
+              RemoteConfigPublisher(
+                id: 0,
+                name: 'Feral File',
+                channelUrls: <String>[
+                  'https://feed.example/api/v1/channels/ch_123',
+                ],
+                feedCacheDuration: Duration(days: 1),
+                feedLastUpdatedAt: DateTime.utc(2026, 2, 2),
+              ),
+            ],
           );
 
       // This should complete without throwing, even if HTTP calls fail

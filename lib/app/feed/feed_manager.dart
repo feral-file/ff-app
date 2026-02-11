@@ -10,6 +10,7 @@ import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/pair.dart';
 import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/drift_kinds.dart';
@@ -277,30 +278,51 @@ class FeralFileFeedManager extends FeedManager {
 
   /// Setup remote config channels from curated URLs; then load custom feed servers.
   /// Matches old repo's setupRemoteConfigChannels step-by-step.
-  Future<void> setupRemoteConfigChannels(List<String> channelUrls) async {
-    final remoteConfigChannelsParsed = channelUrls.map((url) {
-      final uri = Uri.parse(url);
-      return RemoteConfigChannel(
-        endpoint: uri.origin,
-        channelId: uri.pathSegments.isNotEmpty
-            ? uri.pathSegments.last
-            : uri.path,
-      );
-    }).toList();
+  Future<void> setupRemoteConfigChannels(
+    List<RemoteConfigPublisher> publishers,
+  ) async {
+    final remoteConfigChannelsParsed = <RemoteConfigChannel>[];
+    for (final publisher in publishers) {
+      for (final url in publisher.channelUrls) {
+        final uri = Uri.parse(url);
+        remoteConfigChannelsParsed.add(
+          RemoteConfigChannel(
+            endpoint: uri.origin,
+            channelId: uri.pathSegments.isNotEmpty
+                ? uri.pathSegments.last
+                : uri.path,
+            publisherId: publisher.id,
+          ),
+        );
+      }
+    }
     remoteConfigChannels = remoteConfigChannelsParsed;
 
-    final channelIdsByUrl = <String, List<String>>{};
-    for (final channel in remoteConfigChannels) {
-      channelIdsByUrl
-          .putIfAbsent(channel.endpoint, () => [])
-          .add(channel.channelId);
+    final channelsByUrl = <String, List<RemoteConfigChannel>>{};
+    for (final channel in remoteConfigChannelsParsed) {
+      channelsByUrl.putIfAbsent(channel.endpoint, () => []).add(channel);
     }
 
-    for (final endpoint in channelIdsByUrl.keys) {
+    for (final publisher in publishers) {
+      await databaseService.ingestPublisher(
+        id: publisher.id,
+        name: publisher.name,
+      );
+    }
+
+    for (final endpoint in channelsByUrl.keys) {
+      final endpointChannels = channelsByUrl[endpoint]!;
       final existingService = getFeedServiceByUrl(endpoint);
       if (existingService != null) {
-        (existingService as FeralFileDP1FeedService).addRemoteConfigChannelIds(
-          channelIdsByUrl[endpoint]!,
+        (existingService as FeralFileDP1FeedService).setRemoteConfigChannels(
+          endpointChannels
+              .map(
+                (channel) => RemoteConfigFeedChannel(
+                  channelId: channel.channelId,
+                  publisherId: channel.publisherId,
+                ),
+              )
+              .toList(),
         );
         continue;
       }
@@ -315,7 +337,16 @@ class FeralFileFeedManager extends FeedManager {
       );
       service.setPaused(isPaused);
       await service.init();
-      service.addRemoteConfigChannelIds(channelIdsByUrl[endpoint]!);
+      service.setRemoteConfigChannels(
+        endpointChannels
+            .map(
+              (channel) => RemoteConfigFeedChannel(
+                channelId: channel.channelId,
+                publisherId: channel.publisherId,
+              ),
+            )
+            .toList(),
+      );
       addFeedService(service);
     }
 

@@ -2,6 +2,7 @@ import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/infra/config/app_config.dart';
+import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
@@ -67,7 +68,9 @@ void main() {
         overrides: [
           databaseServiceProvider.overrideWith((ref) => dbService),
           // Avoid network/remote-config work during unit tests.
-          curatedChannelUrlsProvider.overrideWithValue(const <String>[]),
+          remoteConfigPublishersProvider.overrideWithValue(
+            const <RemoteConfigPublisher>[],
+          ),
         ],
       );
       addTearDown(container.dispose);
@@ -95,7 +98,9 @@ void main() {
         overrides: [
           databaseServiceProvider.overrideWith((ref) => dbService),
           // Avoid network/remote-config work during unit tests.
-          curatedChannelUrlsProvider.overrideWithValue(const <String>[]),
+          remoteConfigPublishersProvider.overrideWithValue(
+            const <RemoteConfigPublisher>[],
+          ),
         ],
       );
       addTearDown(container.dispose);

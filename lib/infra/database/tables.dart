@@ -5,7 +5,7 @@ import 'package:drift/drift.dart';
 @DataClassName('PublisherData')
 class Publishers extends Table {
   /// Publisher identifier.
-  TextColumn get id => text()();
+  IntColumn get id => integer()();
 
   /// Publisher display name.
   TextColumn get title => text()();
@@ -37,7 +37,8 @@ class Channels extends Table {
   TextColumn get slug => text().nullable()();
 
   /// Publisher reference.
-  TextColumn get publisherId => text().nullable().references(Publishers, #id)();
+  IntColumn get publisherId =>
+      integer().nullable().references(Publishers, #id)();
 
   /// Channel title.
   TextColumn get title => text()();

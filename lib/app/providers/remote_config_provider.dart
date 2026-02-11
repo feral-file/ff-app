@@ -61,6 +61,13 @@ final curatedChannelUrlsProvider = Provider<List<String>>((ref) {
   return ref.watch(remoteAppConfigProvider).curatedChannelUrls;
 });
 
+/// Convenience provider for publisher configs loaded from remote config.
+final remoteConfigPublishersProvider = Provider<List<RemoteConfigPublisher>>((
+  ref,
+) {
+  return ref.watch(remoteAppConfigProvider).publishers;
+});
+
 /// Convenience provider for feed cache duration from remote config.
 final remoteFeedCacheDurationProvider = Provider<Duration>((ref) {
   return ref.watch(remoteAppConfigProvider).feedCacheDuration;

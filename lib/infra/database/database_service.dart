@@ -216,6 +216,21 @@ class DatabaseService {
 
   // ========== Channel Operations ==========
 
+  /// Ingest/update a publisher row.
+  Future<void> ingestPublisher({
+    required int id,
+    required String name,
+  }) async {
+    final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+    final companion = PublishersCompanion.insert(
+      id: Value(id),
+      title: name,
+      createdAtUs: nowUs,
+      updatedAtUs: nowUs,
+    );
+    await _db.upsertPublisher(companion);
+  }
+
   /// Ingest a channel into the database.
   Future<void> ingestChannel(Channel channel) async {
     try {
@@ -1058,6 +1073,7 @@ class DatabaseService {
         batch.deleteAll(_db.items);
         batch.deleteAll(_db.playlists);
         batch.deleteAll(_db.channels);
+        batch.deleteAll(_db.publishers);
       });
       _log.info('Cleared all database data');
     } catch (e, stack) {
@@ -1084,6 +1100,7 @@ class DatabaseService {
   Future<void> ingestDP1ChannelsWire({
     required String baseUrl,
     required List<DP1Channel> channels,
+    int? publisherId,
   }) async {
     final domainChannels = channels.map((dp1) {
       return Channel(
@@ -1093,6 +1110,7 @@ class DatabaseService {
         description: dp1.summary,
         baseUrl: baseUrl,
         slug: dp1.slug,
+        publisherId: publisherId,
         curator: dp1.curator,
         coverImageUrl: dp1.coverImage,
         createdAt: dp1.created,
@@ -1111,6 +1129,7 @@ class DatabaseService {
     required String baseUrl,
     required DP1Channel channel,
     required List<DP1Playlist> playlists,
+    int? publisherId,
   }) async {
     try {
       await _runWriteTaskOnDriftIsolate<void>(
@@ -1119,6 +1138,7 @@ class DatabaseService {
           baseUrl: baseUrl,
           channel: channel,
           playlists: playlists,
+          publisherId: publisherId,
         ),
       );
 
@@ -1141,6 +1161,7 @@ class DatabaseService {
     required String baseUrl,
     required DP1Channel channel,
     required List<DP1Playlist> playlists,
+    int? publisherId,
   }) async {
     final domainChannel = Channel(
       id: channel.id,
@@ -1149,6 +1170,7 @@ class DatabaseService {
       description: channel.summary,
       baseUrl: baseUrl,
       slug: channel.slug,
+      publisherId: publisherId,
       curator: channel.curator,
       coverImageUrl: channel.coverImage,
       createdAt: channel.created,

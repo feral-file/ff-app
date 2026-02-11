@@ -105,11 +105,14 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       await feedConfigStore.setCacheDuration(feedCacheDuration);
       await feedConfigStore.setLastFeedUpdatedAt(feedLastUpdatedAt);
 
-      final curatedUrls = ref.read(curatedChannelUrlsProvider);
+      final publishers = ref.read(remoteConfigPublishersProvider);
+      final curatedUrls = publishers.expand(
+        (publisher) => publisher.channelUrls,
+      );
       final curatedSetupFuture = ref
           .read(feedRegistryProvider.notifier)
           .setupRemoteConfigChannels(
-            curatedUrls,
+            publishers,
           );
 
       await curatedSetupFuture;

@@ -33,21 +33,37 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
 
   late final Logger _log;
 
-  final List<String> _remoteConfigChannelIds = [];
+  final List<RemoteConfigFeedChannel> _remoteConfigChannels = [];
+
+  List<String> get _remoteConfigChannelIds => _remoteConfigChannels
+      .map((channel) => channel.channelId)
+      .toList(growable: false);
 
   /// Add remote config channel IDs (accumulative; matches old repo).
   void addRemoteConfigChannelIds(List<String> channelIds) {
-    _remoteConfigChannelIds.addAll(channelIds);
+    _remoteConfigChannels.addAll(
+      channelIds.map((id) => RemoteConfigFeedChannel(channelId: id)),
+    );
     _log.info(
       'Added ${channelIds.length} remote config channel IDs for $baseUrl',
     );
   }
 
+  /// Set remote config channels with publisher metadata.
+  void setRemoteConfigChannels(List<RemoteConfigFeedChannel> channels) {
+    _remoteConfigChannels
+      ..clear()
+      ..addAll(channels);
+    _log.info(
+      'Set ${channels.length} remote config channels for $baseUrl',
+    );
+  }
+
   /// Set remote config channel IDs (replaces existing; for FeedRegistry compat).
   void setRemoteConfigChannelIds(List<String> channelIds) {
-    _remoteConfigChannelIds
+    _remoteConfigChannels
       ..clear()
-      ..addAll(channelIds);
+      ..addAll(channelIds.map((id) => RemoteConfigFeedChannel(channelId: id)));
     _log.info(
       'Set ${channelIds.length} remote config channel IDs for $baseUrl',
     );
@@ -115,16 +131,17 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
       return;
     }
 
-    final firstChannelId = _remoteConfigChannelIds.first;
-    final remainingChannelIds = _remoteConfigChannelIds.skip(1).toList();
+    final firstChannel = _remoteConfigChannels.first;
+    final remainingChannels = _remoteConfigChannels.skip(1).toList();
 
     // Ingest the first channel first so enrichment can start immediately.
-    final firstResult = await _fetchChannelAndPlaylists(firstChannelId);
+    final firstResult = await _fetchChannelAndPlaylists(firstChannel);
     if (firstResult != null && !isPaused) {
       await databaseService.ingestDP1ChannelWithPlaylistsBare(
         baseUrl: baseUrl,
         channel: firstResult.channel,
         playlists: firstResult.playlists,
+        publisherId: firstResult.publisherId,
       );
       onChannelIngested?.call();
       fetchedChannelCount += 1;
@@ -132,9 +149,9 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
     }
 
     // Continue fetching/ingesting the rest in parallel.
-    if (remainingChannelIds.isNotEmpty) {
+    if (remainingChannels.isNotEmpty) {
       final results = await Future.wait(
-        remainingChannelIds.map(_fetchChannelAndPlaylists),
+        remainingChannels.map(_fetchChannelAndPlaylists),
       );
       for (final result in results) {
         if (isPaused) {
@@ -146,6 +163,7 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
           baseUrl: baseUrl,
           channel: result.channel,
           playlists: result.playlists,
+          publisherId: result.publisherId,
         );
         onChannelIngested?.call();
         fetchedChannelCount += 1;
@@ -161,13 +179,18 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
   }
 
   Future<_ChannelLoadResult?> _fetchChannelAndPlaylists(
-    String channelId,
+    RemoteConfigFeedChannel channelConfig,
   ) async {
     if (isPaused) return null;
 
-    final channel = await getChannelDetail(channelId, fromCache: false);
+    final channel = await getChannelDetail(
+      channelConfig.channelId,
+      fromCache: false,
+    );
     if (channel == null) {
-      _log.warning('Skipping missing remote config channel: $channelId');
+      _log.warning(
+        'Skipping missing remote config channel: ${channelConfig.channelId}',
+      );
       return null;
     }
 
@@ -189,16 +212,29 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
     return _ChannelLoadResult(
       channel: channel,
       playlists: playlists,
+      publisherId: channelConfig.publisherId,
     );
   }
+}
+
+class RemoteConfigFeedChannel {
+  const RemoteConfigFeedChannel({
+    required this.channelId,
+    this.publisherId,
+  });
+
+  final String channelId;
+  final int? publisherId;
 }
 
 class _ChannelLoadResult {
   const _ChannelLoadResult({
     required this.channel,
     required this.playlists,
+    this.publisherId,
   });
 
   final DP1Channel channel;
   final List<DP1Playlist> playlists;
+  final int? publisherId;
 }

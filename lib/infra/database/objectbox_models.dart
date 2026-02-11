@@ -116,7 +116,7 @@ class RemoteAppConfigEntity {
   /// Last known ETag from the remote config endpoint.
   String etag;
 
-  /// Curated channel URLs in configured order, serialized as JSON string array.
+  /// Cached publishers payload serialized as JSON.
   String curatedChannelUrlsJson;
 
   /// Feed cache duration in seconds from remote config.

@@ -39,34 +39,48 @@ class RemoteConfigService {
 
     final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
     if (segments.isEmpty) {
-      return uri.replace(path: '/app.json');
+      return uri.replace(path: '/ff-app.json');
     }
 
     final last = segments.last.toLowerCase();
+    if (last == 'ff-app.json') {
+      return uri.replace(path: '/${segments.join('/')}');
+    }
     if (last == 'app.json') {
-      return uri;
+      segments.removeLast();
+      segments.add('ff-app.json');
+      return uri.replace(path: '/${segments.join('/')}');
     }
 
-    return uri.replace(path: '/${segments.join('/')}/app.json');
+    return uri.replace(path: '/${segments.join('/')}/ff-app.json');
   }
 
   CachedRemoteConfig? loadCached() {
     final entity = _getEntity();
     if (entity == null) return null;
 
-    final config = RemoteAppConfig(
-      curatedChannelUrls: _decodeChannelUrls(entity.curatedChannelUrlsJson),
-      feedCacheDuration: Duration(seconds: entity.feedCacheDurationSec),
-      feedLastUpdatedAt: DateTime.fromMicrosecondsSinceEpoch(
-        entity.feedLastUpdatedAtUs,
-        isUtc: true,
-      ),
-    );
+    try {
+      final config = RemoteAppConfig(
+        publishers: _decodePublishers(entity.curatedChannelUrlsJson),
+      );
 
-    return CachedRemoteConfig(
-      config: config,
-      etag: entity.etag,
-    );
+      return CachedRemoteConfig(
+        config: config,
+        etag: entity.etag,
+      );
+    } on FormatException catch (e, stack) {
+      _log.info(
+        'Ignoring invalid cached remote config; refetching from network.',
+      );
+      _box.remove(entity.id);
+      return null;
+    } on Object catch (e, stack) {
+      _log.info(
+        'Failed to decode cached remote config; refetching from network.',
+      );
+      _box.remove(entity.id);
+      return null;
+    }
   }
 
   Future<CachedRemoteConfig> fetchAndPersist() async {
@@ -139,7 +153,9 @@ class RemoteConfigService {
     final entity = RemoteAppConfigEntity(
       scope: 'app',
       etag: etag,
-      curatedChannelUrlsJson: jsonEncode(config.curatedChannelUrls),
+      curatedChannelUrlsJson: jsonEncode(
+        config.publishers.map((publisher) => publisher.toJson()).toList(),
+      ),
       feedCacheDurationSec: config.feedCacheDuration.inSeconds,
       feedLastUpdatedAtUs: config.feedLastUpdatedAt
           .toUtc()
@@ -149,12 +165,36 @@ class RemoteConfigService {
     _box.put(entity);
   }
 
-  List<String> _decodeChannelUrls(String raw) {
+  List<RemoteConfigPublisher> _decodePublishers(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is! List) {
-      throw const FormatException('Invalid cached channel URL list.');
+      throw const FormatException('Invalid cached publishers list.');
     }
-    return decoded.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
+
+    final publishers = <RemoteConfigPublisher>[];
+    for (final entry in decoded.asMap().entries) {
+      final rawPublisher = entry.value;
+      if (rawPublisher is! Map) {
+        continue;
+      }
+      try {
+        publishers.add(
+          RemoteConfigPublisher.fromJson(
+            rawPublisher.cast<String, dynamic>(),
+            id: entry.key,
+          ),
+        );
+      } on FormatException {
+        continue;
+      } on Object {
+        continue;
+      }
+    }
+
+    if (publishers.isEmpty) {
+      throw const FormatException('Invalid cached publishers list.');
+    }
+    return publishers;
   }
 
   String _sanitizeEtag(String raw) {

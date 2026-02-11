@@ -88,7 +88,7 @@ class AppConfig {
     return url;
   }
 
-  /// Remote config JSON URL, expected to end with `/app.json`.
+  /// Remote config JSON URL, expected to end with `/ff-app.json`.
   static String get remoteConfigUrl =>
       dotenv.get('REMOTE_CONFIG_URL', fallback: '');
 

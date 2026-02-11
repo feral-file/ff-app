@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/mutations.dart';
+import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/foundation.dart';
@@ -302,4 +303,21 @@ final playlistByIdProvider = FutureProvider.family<Playlist?, String>((
 ) async {
   final databaseService = ref.watch(databaseServiceProvider);
   return databaseService.getPlaylistById(playlistId);
+});
+
+/// Watch DP-1 channel publisher ids keyed by channel id.
+final dp1ChannelPublisherByIdProvider = StreamProvider<Map<String, int>>((
+  ref,
+) {
+  final databaseService = ref.watch(databaseServiceProvider);
+  return databaseService.watchChannels(type: ChannelType.dp1).map((channels) {
+    final map = <String, int>{};
+    for (final channel in channels) {
+      final publisherId = channel.publisherId;
+      if (publisherId != null) {
+        map[channel.id] = publisherId;
+      }
+    }
+    return map;
+  });
 });

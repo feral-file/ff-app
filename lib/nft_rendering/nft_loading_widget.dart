@@ -11,41 +11,53 @@ class LoadingWidget extends StatelessWidget {
   final EdgeInsets padding;
   final bool isInfinitySize;
 
-  const LoadingWidget(
-      {super.key,
-      this.invertColors = false,
-      this.backgroundColor,
-      this.alignment = Alignment.center,
-      this.padding = EdgeInsets.zero,
-      this.isInfinitySize = true});
+  const LoadingWidget({
+    super.key,
+    this.invertColors = false,
+    this.backgroundColor,
+    this.alignment = Alignment.center,
+    this.padding = EdgeInsets.zero,
+    this.isInfinitySize = true,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: isInfinitySize ? double.infinity : null,
-      height: isInfinitySize ? double.infinity : null,
-      color: backgroundColor ?? AppColor.primaryBlack,
-      child: Align(
-        alignment: alignment,
-        child: Padding(
-          padding: padding,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              GifView.asset(
-                'assets/images/loading_white.gif',
-                height: 52,
-                frameRate: 12,
-                invertColors: invertColors,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = isInfinitySize && constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : null;
+        final height = isInfinitySize && constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : null;
+
+        return Container(
+          width: width,
+          height: height,
+          color: backgroundColor ?? AppColor.primaryBlack,
+          child: Align(
+            alignment: alignment,
+            child: Padding(
+              padding: padding,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  GifView.asset(
+                    'assets/images/loading_white.gif',
+                    height: 52,
+                    frameRate: 12,
+                    invertColors: invertColors,
+                  ),
+                  const SizedBox(height: 12),
+                  Text('Loading', style: AppTypography.body(context).white),
+                ],
               ),
-              const SizedBox(height: 12),
-              Text('Loading', style: AppTypography.body(context).white)
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

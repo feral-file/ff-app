@@ -2,6 +2,7 @@ import 'package:app/app/feed/feed_manager.dart';
 import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
+import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/feed_config_store.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -16,6 +17,7 @@ class CuratedChannelRef {
   const CuratedChannelRef({
     required this.baseUrl,
     required this.channelId,
+    required this.publisherId,
   });
 
   /// Feed server origin, e.g. `https://example.org`.
@@ -23,12 +25,16 @@ class CuratedChannelRef {
 
   /// DP-1 channel ID, e.g. `ch_...`.
   final String channelId;
+  final int publisherId;
 
   /// Best-effort parser for curated DP-1 channel URLs.
   ///
   /// Expected shape:
   /// `https://example.org/api/v1/channels/ch_...`
-  static CuratedChannelRef? tryParse(String raw) {
+  static CuratedChannelRef? tryParse(
+    String raw, {
+    required int publisherId,
+  }) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
 
@@ -47,19 +53,34 @@ class CuratedChannelRef {
       return CuratedChannelRef(
         baseUrl: origin,
         channelId: channelId,
+        publisherId: publisherId,
       );
     } on FormatException {
       return null;
     }
   }
 
-  /// Parses and deduplicates a list of curated channel URLs.
-  static List<CuratedChannelRef> parseAll(Iterable<String> urls) {
-    final refs = urls.map(tryParse).whereType<CuratedChannelRef>().toList();
-    // Deduplicate by (baseUrl, channelId).
+  /// Parses and deduplicates channels from publisher-aware remote config.
+  static List<CuratedChannelRef> parseAll(
+    Iterable<RemoteConfigPublisher> publishers,
+  ) {
+    final refs = <CuratedChannelRef>[];
+    for (final publisher in publishers) {
+      final publisherId = publisher.id;
+      for (final channelUrl in publisher.channelUrls) {
+        final parsed = tryParse(
+          channelUrl,
+          publisherId: publisherId,
+        );
+        if (parsed != null) {
+          refs.add(parsed);
+        }
+      }
+    }
+    // Deduplicate by (baseUrl, channelId, publisherId).
     final unique = <String, CuratedChannelRef>{};
     for (final ref in refs) {
-      unique['${ref.baseUrl}::${ref.channelId}'] = ref;
+      unique['${ref.baseUrl}::${ref.channelId}::${ref.publisherId}'] = ref;
     }
     return unique.values.toList();
   }
@@ -129,8 +150,8 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
   Future<FeedRegistryState> build() async {
     _log = Logger('FeedRegistryNotifier');
 
-    final curatedUrls = ref.watch(curatedChannelUrlsProvider);
-    final curated = CuratedChannelRef.parseAll(curatedUrls);
+    final publishers = ref.watch(remoteConfigPublishersProvider);
+    final curated = CuratedChannelRef.parseAll(publishers);
 
     return FeedRegistryState(
       curatedChannels: curated,
@@ -141,10 +162,16 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
   ///
   /// Delegates to [FeralFileFeedManager.setupRemoteConfigChannels] (matches
   /// old repo: parse → group by endpoint → add/update services + custom feeds).
-  Future<void> setupRemoteConfigChannels(List<String> channelUrls) async {
-    _log.info('Setting up remote config channels: ${channelUrls.length} URLs');
+  Future<void> setupRemoteConfigChannels(
+    List<RemoteConfigPublisher> publishers,
+  ) async {
+    final channelCount = publishers.fold<int>(
+      0,
+      (count, publisher) => count + publisher.channelUrls.length,
+    );
+    _log.info('Setting up remote config channels: $channelCount URLs');
     final manager = ref.read(feedManagerProvider);
-    await manager.setupRemoteConfigChannels(channelUrls);
+    await manager.setupRemoteConfigChannels(publishers);
     await manager.reloadAllCache(force: false);
     _log.info('Setup complete');
   }

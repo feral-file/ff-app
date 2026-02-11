@@ -16,7 +16,7 @@ final _log = Logger('AppDatabase');
 /// Large limit used when only offset is set (skip N rows, return the rest).
 const _maxLimitForOffset = 0x7FFFFFFF;
 const _maxReadPoolSize = 4;
-const _schemaVersionV1 = 1;
+const _schemaVersionV1 = 2;
 const _dbResetReindexMarkerFile = 'db_reset_requires_reindex.flag';
 
 /// Main application database using Drift.
@@ -223,8 +223,12 @@ class AppDatabase extends _$AppDatabase {
     int? type,
     int? limit,
   }) {
+    final publisherOrderExpr = CustomExpression<int>(
+      'COALESCE(channels.publisher_id, 2147483647)',
+    );
     final query = select(channels)
       ..orderBy([
+        (t) => OrderingTerm.asc(publisherOrderExpr),
         (t) => OrderingTerm(
           expression: t.sortOrder,
           mode: OrderingMode.asc,
@@ -255,8 +259,21 @@ class AppDatabase extends _$AppDatabase {
     String? ownerAddress,
     int? limit,
   }) {
+    final publisherOrderExpr = CustomExpression<int>(
+      '''
+      COALESCE(
+        (
+          SELECT c.publisher_id
+          FROM channels c
+          WHERE c.id = playlists.channel_id
+        ),
+        2147483647
+      )
+      ''',
+    );
     final query = select(playlists)
       ..orderBy([
+        (t) => OrderingTerm.asc(publisherOrderExpr),
         (t) => OrderingTerm.desc(t.createdAtUs),
         (t) => OrderingTerm.asc(t.id),
       ]);
@@ -349,12 +366,17 @@ class AppDatabase extends _$AppDatabase {
   // Channel queries
   /// Get all channels ordered by sort order.
   Future<List<ChannelData>> getAllChannels() async {
+    final publisherOrderExpr = CustomExpression<int>(
+      'COALESCE(channels.publisher_id, 2147483647)',
+    );
     return (select(channels)..orderBy([
+          (t) => OrderingTerm.asc(publisherOrderExpr),
           (t) => OrderingTerm(
             expression: t.sortOrder,
             mode: OrderingMode.asc,
             nulls: NullsOrder.last,
           ),
+          (t) => OrderingTerm.asc(t.id),
         ]))
         .get();
   }
@@ -366,9 +388,13 @@ class AppDatabase extends _$AppDatabase {
     int? limit,
     int offset = 0,
   }) async {
+    final publisherOrderExpr = CustomExpression<int>(
+      'COALESCE(channels.publisher_id, 2147483647)',
+    );
     final query = select(channels)
       ..where((t) => t.type.equals(type))
       ..orderBy([
+        (t) => OrderingTerm.asc(publisherOrderExpr),
         (t) => OrderingTerm(
           expression: t.sortOrder,
           mode: OrderingMode.asc,
@@ -401,6 +427,18 @@ class AppDatabase extends _$AppDatabase {
     await into(channels).insertOnConflictUpdate(channel);
   }
 
+  /// Upsert a publisher.
+  Future<void> upsertPublisher(PublishersCompanion publisher) async {
+    await into(publishers).insertOnConflictUpdate(publisher);
+  }
+
+  /// Upsert multiple publishers in a batch.
+  Future<void> upsertPublishers(List<PublishersCompanion> publisherList) async {
+    await batch((batch) {
+      batch.insertAllOnConflictUpdate(publishers, publisherList);
+    });
+  }
+
   /// Upsert multiple channels in a batch.
   Future<void> upsertChannels(List<ChannelsCompanion> channelList) async {
     await batch((batch) {
@@ -423,7 +461,24 @@ class AppDatabase extends _$AppDatabase {
 
   /// Get all playlists.
   Future<List<PlaylistData>> getAllPlaylists() async {
-    return select(playlists).get();
+    final publisherOrderExpr = CustomExpression<int>(
+      '''
+      COALESCE(
+        (
+          SELECT c.publisher_id
+          FROM channels c
+          WHERE c.id = playlists.channel_id
+        ),
+        2147483647
+      )
+      ''',
+    );
+    return (select(playlists)..orderBy([
+          (t) => OrderingTerm.asc(publisherOrderExpr),
+          (t) => OrderingTerm.desc(t.createdAtUs),
+          (t) => OrderingTerm.asc(t.id),
+        ]))
+        .get();
   }
 
   /// Get address-based playlists.
@@ -852,6 +907,18 @@ class AppDatabase extends _$AppDatabase {
       ),
       orElse: Constant(baseUrls.length),
     );
+    final publisherOrderExpr = CustomExpression<int>(
+      '''
+      COALESCE(
+        (
+          SELECT c.publisher_id
+          FROM channels c
+          WHERE c.id = playlists.channel_id
+        ),
+        2147483647
+      )
+      ''',
+    );
 
     final query = select(playlists)
       ..where(
@@ -860,6 +927,7 @@ class AppDatabase extends _$AppDatabase {
             (type != null ? p.type.equals(type) : const Constant(true)),
       )
       ..orderBy([
+        (p) => OrderingTerm.asc(publisherOrderExpr),
         (p) => OrderingTerm.asc(baseUrlOrderExpr),
         (p) => OrderingTerm.asc(p.createdAtUs),
         (p) => OrderingTerm.asc(p.id),

@@ -1,5 +1,4 @@
 import 'package:app/app/providers/playlists_provider.dart';
-import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -113,12 +112,17 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
       _cachedPersonalState = nextPersonalState;
     }
     final curatedPlaylists = curatedState.playlists;
-    final curatedBaseUrl = _firstCuratedBaseUrl();
-    final curatedSectionPlaylists = curatedBaseUrl == null
-        ? curatedPlaylists
-        : curatedPlaylists
-              .where((playlist) => playlist.baseUrl == curatedBaseUrl)
-              .toList();
+    final channelPublisherById = ref.watch(
+      dp1ChannelPublisherByIdProvider,
+    );
+    final curatedSectionPlaylists = curatedPlaylists.where((playlist) {
+      final channelId = playlist.channelId;
+      if (channelId == null || channelId.isEmpty) {
+        return false;
+      }
+      final publisherId = channelPublisherById.asData?.value[channelId];
+      return publisherId == 0;
+    }).toList();
     final personalPlaylists = personalState.playlists;
     final error = curatedState.error ?? personalState.error;
 
@@ -206,27 +210,5 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
         ),
       ],
     );
-  }
-
-  String? _firstCuratedBaseUrl() {
-    final curatedUrls = ref.watch(curatedChannelUrlsProvider);
-    if (curatedUrls.isEmpty) {
-      return null;
-    }
-
-    final firstUrl = curatedUrls.first.trim();
-    if (firstUrl.isEmpty) {
-      return null;
-    }
-
-    try {
-      final uri = Uri.parse(firstUrl);
-      if (!uri.hasScheme || uri.host.isEmpty) {
-        return null;
-      }
-      return uri.origin;
-    } on FormatException {
-      return null;
-    }
   }
 }

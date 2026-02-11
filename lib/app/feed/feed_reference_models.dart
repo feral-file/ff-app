@@ -9,9 +9,7 @@ import 'package:app/infra/database/converters.dart';
 class FeedServerInfo {
   FeedServerInfo({required this.url, required this.createdAt});
 
-  FeedServerInfo.fromUrl(String url)
-      : url = url,
-        createdAt = DateTime.now();
+  FeedServerInfo.fromUrl(String url) : url = url, createdAt = DateTime.now();
 
   final String url;
   final DateTime createdAt;
@@ -23,10 +21,12 @@ class RemoteConfigChannel {
   RemoteConfigChannel({
     required this.endpoint,
     required this.channelId,
+    this.publisherId,
   });
 
   final String endpoint;
   final String channelId;
+  final int? publisherId;
 
   String get url => '$endpoint/api/v1/channels/$channelId';
 }
@@ -53,15 +53,14 @@ class PlaylistReference {
   factory PlaylistReference.fromFeralFileDP1Playlist(
     DP1Playlist dp1Playlist,
     String defaultFeedUrl,
-  ) =>
-      PlaylistReference(
-        playlist: DatabaseConverters.dp1PlaylistToDomain(
-          dp1Playlist,
-          baseUrl: defaultFeedUrl,
-        ),
-        url: defaultFeedUrl,
-        type: PlaylistReferenceType.channel,
-      );
+  ) => PlaylistReference(
+    playlist: DatabaseConverters.dp1PlaylistToDomain(
+      dp1Playlist,
+      baseUrl: defaultFeedUrl,
+    ),
+    url: defaultFeedUrl,
+    type: PlaylistReferenceType.channel,
+  );
 
   final Playlist playlist;
   final String url;
@@ -133,30 +132,29 @@ class ChannelReference {
   factory ChannelReference.fromFeralFileDP1Channel(
     DP1Channel dp1Channel,
     String defaultFeedUrl,
-  ) =>
-      ChannelReference(
-        channel: dp1Channel.toDomainChannel(baseUrl: defaultFeedUrl),
-        url: defaultFeedUrl,
-      );
+  ) => ChannelReference(
+    channel: dp1Channel.toDomainChannel(baseUrl: defaultFeedUrl),
+    url: defaultFeedUrl,
+  );
 
   final Channel channel;
   final String url;
 
   Map<String, dynamic> toJson() => {
-        'channel': _channelToJson(channel),
-        'url': url,
-      };
+    'channel': _channelToJson(channel),
+    'url': url,
+  };
 
   static Map<String, dynamic> _channelToJson(Channel c) => {
-        'id': c.id,
-        'slug': c.slug ?? '',
-        'title': c.name,
-        'curator': c.curator,
-        'summary': c.description,
-        'playlists': <String>[],
-        'created': c.createdAt?.toIso8601String() ?? '',
-        'coverImage': c.coverImageUrl,
-      };
+    'id': c.id,
+    'slug': c.slug ?? '',
+    'title': c.name,
+    'curator': c.curator,
+    'summary': c.description,
+    'playlists': <String>[],
+    'created': c.createdAt?.toIso8601String() ?? '',
+    'coverImage': c.coverImageUrl,
+  };
 
   @override
   bool operator ==(Object other) {

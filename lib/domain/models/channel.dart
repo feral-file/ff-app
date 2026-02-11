@@ -45,7 +45,7 @@ class Channel {
   final String? slug;
 
   /// Optional publisher reference.
-  final String? publisherId;
+  final int? publisherId;
 
   /// Curator name.
   final String? curator;
@@ -107,7 +107,7 @@ class Channel {
     bool? isPinned,
     String? baseUrl,
     String? slug,
-    String? publisherId,
+    int? publisherId,
     String? curator,
     String? coverImageUrl,
     DateTime? createdAt,
