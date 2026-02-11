@@ -10,6 +10,7 @@ abstract final class WorkerOpcodes {
   static const reindexAddressesList = 'REINDEX_ADDRESSES_LIST';
   static const updateTokensInIsolate = 'UPDATE_TOKENS_IN_ISOLATE';
   static const fetchManualTokens = 'FETCH_MANUAL_TOKENS';
+  static const channelIngested = 'CHANNEL_INGESTED';
 }
 
 /// An address + last processed anchor pair.
@@ -22,17 +23,17 @@ class AddressAnchor {
   });
 
   factory AddressAnchor.fromJson(Map<String, dynamic> json) => AddressAnchor(
-        address: json['address'] as String? ?? '',
-        anchor: int.tryParse(json['anchor']?.toString() ?? '') ?? 0,
-      );
+    address: json['address'] as String? ?? '',
+    anchor: int.tryParse(json['anchor']?.toString() ?? '') ?? 0,
+  );
 
   final String address;
   final int anchor;
 
   Map<String, dynamic> toJson() => {
-        'address': address,
-        'anchor': anchor,
-      };
+    'address': address,
+    'anchor': anchor,
+  };
 
   /// Encodes this anchor as a compact JSON string payload.
   ///

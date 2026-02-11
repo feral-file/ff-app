@@ -145,6 +145,14 @@ class IndexerTokensWorker {
     ]);
   }
 
+  /// Notify isolate that new channel data has been ingested.
+  void notifyChannelIngested({required String uuid}) {
+    sendRaw(<Object?>[
+      WorkerOpcodes.channelIngested,
+      uuid,
+    ]);
+  }
+
   Future<void> stop() async {
     _isolate?.kill(priority: Isolate.immediate);
     _isolate = null;
@@ -307,6 +315,10 @@ class IndexerTokensWorker {
               tokenCids: List<String>.from(message[2] as List),
             ),
           );
+          break;
+
+        case WorkerOpcodes.channelIngested:
+          _isolateSendPort?.send(ChannelIngestedAck(message[1] as String));
           break;
 
         default:

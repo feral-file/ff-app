@@ -56,7 +56,7 @@ class AddAliasNotifier extends AsyncNotifier<void> {
     state = const AsyncValue.loading();
 
     try {
-      final normalizedAddress = address.toUpperCase();
+      final normalizedAddress = address.trim();
       final name = (alias?.isEmpty ?? false)
           ? normalizedAddress.shortenAddress()
           : alias;

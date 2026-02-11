@@ -180,6 +180,13 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     _worker.reindexAddressesList(uuid: uuid, addresses: addresses);
   }
 
+  /// Notify isolate when a new channel was ingested.
+  Future<void> notifyChannelIngested() async {
+    await _worker.ready;
+    final uuid = DateTime.now().microsecondsSinceEpoch.toString();
+    _worker.notifyChannelIngested(uuid: uuid);
+  }
+
   void _handleWorkerMessage(TokensWorkerMessage message) {
     if (message is UpdateTokensData) {
       // Serialize per-uuid work so UpdateTokensSuccess can await completion.
@@ -207,6 +214,13 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
 
     if (message is ReindexAddressesFailure) {
       state = state.copyWith(errorMessage: message.exception.toString());
+      return;
+    }
+
+    if (message is ChannelIngestedAck) {
+      unawaited(
+        ref.read(indexerProvider.notifier).processFeedEnrichmentUntilIdle(),
+      );
       return;
     }
   }

@@ -94,12 +94,6 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       await bootstrapService.bootstrap();
       _log.info('My Collection channel created');
 
-      // Step 1.1: Ensure default startup address is present.
-      state = state.copyWith(message: 'Scheduling personal + curated sync...');
-      final defaultAddressFuture = ref
-          .read(addressServiceProvider)
-          .ensureDefaultAddressOnStartup();
-
       // Step 2: Setup and reload curated channels (matches old repo pattern).
       // This is intentionally additive to the default DP1_FEED_URL bootstrap.
       state = state.copyWith(message: 'Syncing curated feeds...');
@@ -118,8 +112,7 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
             curatedUrls,
           );
 
-      // Run personal address sync and curated feed setup independently.
-      await Future.wait<void>([defaultAddressFuture, curatedSetupFuture]);
+      await curatedSetupFuture;
 
       _log.info('✓ Curated feeds setup and reloaded');
 

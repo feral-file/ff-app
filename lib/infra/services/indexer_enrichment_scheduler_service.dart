@@ -1,81 +1,106 @@
 import 'dart:async';
 
 import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
-import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:logging/logging.dart';
 
 /// Shared scheduler for feed enrichment + personal address token sync.
 ///
-/// Loop priority per cycle:
-/// 1) High-priority feed enrichment batch (50 max)
-/// 2) Otherwise low-priority feed enrichment batch (50 max)
-/// 3) Then one personal-address batch (50 max)
-///
-/// The loop runs until all three queues are empty.
+/// This service runs two independent processes:
+/// 1) Feed enrichment batches (high -> low priority)
+/// 2) Personal address batch syncing
 class IndexerEnrichmentSchedulerService {
   /// Creates an IndexerEnrichmentSchedulerService.
   IndexerEnrichmentSchedulerService({
     required DP1PlaylistItemsEnrichmentService enrichmentService,
-    required IndexerService indexerService,
     required IndexerSyncService indexerSyncService,
   }) : _enrichmentService = enrichmentService,
-       _indexerService = indexerService,
        _indexerSyncService = indexerSyncService,
        _log = Logger('IndexerEnrichmentSchedulerService');
 
   final DP1PlaylistItemsEnrichmentService _enrichmentService;
-  final IndexerService _indexerService;
   final IndexerSyncService _indexerSyncService;
   final Logger _log;
 
   static const int _batchSize = 50;
   static const int _maxEmptyRetriesPerAddress = 5;
   static const Duration _emptyRetryDelay = Duration(seconds: 3);
-  static const Duration _indexingPollDelay = Duration(seconds: 5);
-  static const Duration _indexingTimeout = Duration(minutes: 15);
 
   final Map<String, _PersonalSyncCursor> _personalQueue =
       <String, _PersonalSyncCursor>{};
 
-  Future<void>? _runningLoop;
-  bool _hasPendingSignal = false;
+  Future<void>? _enrichmentLoop;
+  Future<void>? _addressLoop;
+  bool _hasPendingEnrichmentSignal = false;
+  bool _hasPendingAddressSignal = false;
 
   /// Adds/refreshes an address in personal sync queue and starts loop.
   void enqueuePersonalAddress(String address) {
     _personalQueue.putIfAbsent(address, () => const _PersonalSyncCursor());
-    unawaited(processUntilIdle());
+    unawaited(processAddressQueueUntilIdle());
   }
 
   /// Notify that feed ingest has new bare items ready for enrichment.
   void notifyFeedWorkAvailable() {
-    unawaited(processUntilIdle());
+    unawaited(processFeedEnrichmentUntilIdle());
   }
 
-  /// Runs shared queue loop to completion (or joins in-flight run).
-  Future<bool> processUntilIdle() async {
-    if (_runningLoop != null) {
-      _hasPendingSignal = true;
-      await _runningLoop;
+  /// Runs feed enrichment process to completion (or joins in-flight run).
+  Future<bool> processFeedEnrichmentUntilIdle() async {
+    if (_enrichmentLoop != null) {
+      _hasPendingEnrichmentSignal = true;
+      await _enrichmentLoop;
       return true;
     }
 
     final completer = Completer<void>();
-    _runningLoop = completer.future;
+    _enrichmentLoop = completer.future;
 
     try {
       do {
-        _hasPendingSignal = false;
-        await _drainOnce();
-      } while (_hasPendingSignal);
+        _hasPendingEnrichmentSignal = false;
+        await _drainFeedEnrichmentOnce();
+      } while (_hasPendingEnrichmentSignal);
       return true;
     } finally {
-      _runningLoop = null;
+      _enrichmentLoop = null;
       completer.complete();
     }
   }
 
-  Future<void> _drainOnce() async {
+  /// Runs personal address batch sync process to completion.
+  Future<bool> processAddressQueueUntilIdle() async {
+    if (_addressLoop != null) {
+      _hasPendingAddressSignal = true;
+      await _addressLoop;
+      return true;
+    }
+
+    final completer = Completer<void>();
+    _addressLoop = completer.future;
+
+    try {
+      do {
+        _hasPendingAddressSignal = false;
+        await _drainAddressQueueOnce();
+      } while (_hasPendingAddressSignal);
+      return true;
+    } finally {
+      _addressLoop = null;
+      completer.complete();
+    }
+  }
+
+  /// Runs both processes independently and waits until both are idle.
+  Future<bool> processUntilIdle() async {
+    final results = await Future.wait(<Future<bool>>[
+      processFeedEnrichmentUntilIdle(),
+      processAddressQueueUntilIdle(),
+    ]);
+    return results.every((value) => value);
+  }
+
+  Future<void> _drainFeedEnrichmentOnce() async {
     while (true) {
       final highUpdated = await _enrichmentService
           .processNextHighPriorityBatch();
@@ -84,10 +109,20 @@ class IndexerEnrichmentSchedulerService {
         lowUpdated = await _enrichmentService.processNextLowPriorityBatch();
       }
 
-      final personalLoaded = await _processNextPersonalBatch();
-
-      final hasWork = highUpdated > 0 || lowUpdated > 0 || personalLoaded > 0;
+      final hasWork = highUpdated > 0 || lowUpdated > 0;
       if (!hasWork) {
+        return;
+      }
+    }
+  }
+
+  Future<void> _drainAddressQueueOnce() async {
+    while (_personalQueue.isNotEmpty) {
+      final loaded = await _processNextPersonalBatch();
+      if (loaded > 0) {
+        continue;
+      }
+      if (_personalQueue.isEmpty) {
         return;
       }
     }
@@ -100,14 +135,6 @@ class IndexerEnrichmentSchedulerService {
 
     final address = _personalQueue.keys.first;
     final cursor = _personalQueue[address]!;
-
-    final ready = await _ensurePersonalAddressIndexingReady(
-      address: address,
-      cursor: cursor,
-    );
-    if (!ready) {
-      return 0;
-    }
 
     final loaded = await _indexerSyncService.syncTokensForAddresses(
       addresses: <String>[address],
@@ -140,128 +167,24 @@ class IndexerEnrichmentSchedulerService {
 
     return loaded;
   }
-
-  Future<bool> _ensurePersonalAddressIndexingReady({
-    required String address,
-    required _PersonalSyncCursor cursor,
-  }) async {
-    var workflowId = cursor.workflowId;
-    if (workflowId == null || workflowId.isEmpty) {
-      try {
-        final results = await _indexerService.indexAddressesList(<String>[
-          address,
-        ]);
-        for (final result in results) {
-          if (_addressesEqual(result.address, address) &&
-              result.workflowId.isNotEmpty) {
-            workflowId = result.workflowId;
-            _personalQueue[address] = cursor.copyWith(workflowId: workflowId);
-            break;
-          }
-        }
-      } on Object catch (e, stack) {
-        _log.warning('Failed to trigger indexing for personal address $address', e, stack);
-        return false;
-      }
-    }
-
-    if (workflowId == null || workflowId.isEmpty) {
-      return false;
-    }
-
-    if (cursor.indexingDone) {
-      return true;
-    }
-
-    final done = await _waitForAddressIndexingWorkflow(
-      workflowId: workflowId,
-      address: address,
-    );
-    if (!done) {
-      return false;
-    }
-
-    final latest = _personalQueue[address];
-    if (latest == null) {
-      return false;
-    }
-    _personalQueue[address] = latest.copyWith(indexingDone: true);
-    return true;
-  }
-
-  Future<bool> _waitForAddressIndexingWorkflow({
-    required String workflowId,
-    required String address,
-  }) async {
-    final startedAt = DateTime.now();
-    while (true) {
-      try {
-        final status = await _indexerService.getAddressIndexingJobStatus(
-          workflowId: workflowId,
-        );
-        if (status.status.isDone) {
-          if (!status.status.isSuccess) {
-            _log.warning(
-              'Address indexing finished with non-success status '
-              'for $address: ${status.status.name}',
-            );
-          }
-          return status.status.isSuccess;
-        }
-      } on Object catch (e, stack) {
-        _log.warning(
-          'Failed to read indexing status for $address workflow=$workflowId',
-          e,
-          stack,
-        );
-      }
-
-      if (DateTime.now().difference(startedAt) > _indexingTimeout) {
-        _log.warning(
-          'Timed out waiting for indexing workflow $workflowId for $address',
-        );
-        return false;
-      }
-      await Future<void>.delayed(_indexingPollDelay);
-    }
-  }
-
-  bool _addressesEqual(String left, String right) {
-    if (_isEthereumAddress(left) || _isEthereumAddress(right)) {
-      return left.toLowerCase() == right.toLowerCase();
-    }
-    return left == right;
-  }
-
-  bool _isEthereumAddress(String address) {
-    return address.startsWith('0x') || address.startsWith('0X');
-  }
 }
 
 class _PersonalSyncCursor {
   const _PersonalSyncCursor({
     this.offset = 0,
     this.emptyRetries = 0,
-    this.workflowId,
-    this.indexingDone = false,
   });
 
   final int offset;
   final int emptyRetries;
-  final String? workflowId;
-  final bool indexingDone;
 
   _PersonalSyncCursor copyWith({
     int? offset,
     int? emptyRetries,
-    String? workflowId,
-    bool? indexingDone,
   }) {
     return _PersonalSyncCursor(
       offset: offset ?? this.offset,
       emptyRetries: emptyRetries ?? this.emptyRetries,
-      workflowId: workflowId ?? this.workflowId,
-      indexingDone: indexingDone ?? this.indexingDone,
     );
   }
 }

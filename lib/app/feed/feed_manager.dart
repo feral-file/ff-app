@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:collection/collection.dart';
 import 'package:logging/logging.dart';
@@ -252,6 +254,7 @@ class FeralFileFeedManager extends FeedManager {
     required IndexerService indexerService,
     required IndexerEnrichmentSchedulerService enrichmentScheduler,
     required String apiKey,
+    this.onChannelPersistedInDatabase,
   }) : _indexerService = indexerService,
        _enrichmentScheduler = enrichmentScheduler,
        _apiKey = apiKey;
@@ -262,6 +265,7 @@ class FeralFileFeedManager extends FeedManager {
   final IndexerService _indexerService;
   final IndexerEnrichmentSchedulerService _enrichmentScheduler;
   final String _apiKey;
+  final Future<void> Function()? onChannelPersistedInDatabase;
 
   List<RemoteConfigChannel> remoteConfigChannels = [];
 
@@ -324,13 +328,17 @@ class FeralFileFeedManager extends FeedManager {
   @override
   Future<bool> runGlobalEnrichment() async {
     if (isPaused) return false;
-    return _enrichmentScheduler.processUntilIdle();
+    return _enrichmentScheduler.processFeedEnrichmentUntilIdle();
   }
 
   @override
   void onChannelIngested() {
     super.onChannelIngested();
     _enrichmentScheduler.notifyFeedWorkAvailable();
+    final callback = onChannelPersistedInDatabase;
+    if (callback != null) {
+      unawaited(callback());
+    }
   }
 
   /// Matches old repo's getAllCachedChannels.

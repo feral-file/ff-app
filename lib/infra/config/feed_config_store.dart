@@ -28,8 +28,8 @@ class FeedConfigStore {
   FeedConfigStore({
     required Future<Directory> Function() documentsDirFactory,
     Logger? logger,
-  })  : _documentsDirFactory = documentsDirFactory,
-        _log = logger ?? Logger('FeedConfigStore');
+  }) : _documentsDirFactory = documentsDirFactory,
+       _log = logger ?? Logger('FeedConfigStore');
 
   static const _fileName = 'feed_config.json';
   static const _lastRefreshTimeByUrlKey = 'lastRefreshTimeByUrl';
@@ -38,6 +38,8 @@ class FeedConfigStore {
   static const _lastFeedUpdatedAtKey = 'lastFeedUpdatedAt';
   static const _bareItemsLoadedAtKey = 'bareItemsLoadedAt';
   static const _tokensEnrichedAtKey = 'tokensEnrichedAt';
+  static const _addressIndexingStateByAddressKey =
+      'addressIndexingStateByAddress';
 
   static const _defaultCacheDurationSeconds = 86400; // 1 day
   static final _defaultLastFeedUpdatedAt = DateTime(2023);
@@ -46,8 +48,9 @@ class FeedConfigStore {
   final Logger _log;
   final Lock _lock = Lock();
 
-  @visibleForTesting
+  String _normalizeAddressKey(String address) => address.trim().toUpperCase();
 
+  @visibleForTesting
   /// Resolves the config file path.
   Future<File> resolveFile() async {
     final dir = await _documentsDirFactory();
@@ -141,7 +144,8 @@ class FeedConfigStore {
   Future<void> setLastRefreshTime(String baseUrl, DateTime time) async {
     final config = await _readConfig();
     config.remove(_globalLastRefreshEpochKey);
-    final map = config[_lastRefreshTimeByUrlKey] as Map<String, dynamic>? ??
+    final map =
+        config[_lastRefreshTimeByUrlKey] as Map<String, dynamic>? ??
         <String, dynamic>{};
     map[baseUrl] = time.toIso8601String();
     config[_lastRefreshTimeByUrlKey] = map;
@@ -152,7 +156,8 @@ class FeedConfigStore {
   /// Matches old repo's ConfigurationService.deleteDp1LastTimeRefreshFeedByUrl.
   Future<void> deleteLastRefreshTime(String baseUrl) async {
     final config = await _readConfig();
-    final map = config[_lastRefreshTimeByUrlKey] as Map<String, dynamic>? ??
+    final map =
+        config[_lastRefreshTimeByUrlKey] as Map<String, dynamic>? ??
         <String, dynamic>{};
     map.remove(baseUrl);
     config[_lastRefreshTimeByUrlKey] = map;
@@ -164,7 +169,8 @@ class FeedConfigStore {
   /// Defaults to 1 day (86400 seconds).
   Future<Duration> getCacheDuration() async {
     final config = await _readConfig();
-    final seconds = config[_cacheDurationSecondsKey] as int? ??
+    final seconds =
+        config[_cacheDurationSecondsKey] as int? ??
         _defaultCacheDurationSeconds;
     return Duration(seconds: seconds);
   }
@@ -250,6 +256,132 @@ class FeedConfigStore {
     config.remove(_tokensEnrichedAtKey);
     await _writeConfig(config);
   }
+
+  /// Gets persisted indexing status for [address], if any.
+  Future<AddressIndexingProcessStatus?> getAddressIndexingStatus(
+    String address,
+  ) async {
+    final config = await _readConfig();
+    final states =
+        config[_addressIndexingStateByAddressKey] as Map<String, dynamic>?;
+    final raw = states?[_normalizeAddressKey(address)];
+    if (raw is! Map<String, dynamic>) {
+      return null;
+    }
+    return AddressIndexingProcessStatus.fromJson(raw);
+  }
+
+  /// Gets all persisted indexing statuses keyed by normalized address.
+  Future<Map<String, AddressIndexingProcessStatus>>
+  getAllAddressIndexingStatuses() async {
+    final config = await _readConfig();
+    final states =
+        config[_addressIndexingStateByAddressKey] as Map<String, dynamic>?;
+    if (states == null) {
+      return <String, AddressIndexingProcessStatus>{};
+    }
+
+    final result = <String, AddressIndexingProcessStatus>{};
+    for (final entry in states.entries) {
+      final raw = entry.value;
+      if (raw is Map<String, dynamic>) {
+        result[entry.key.toUpperCase()] = AddressIndexingProcessStatus.fromJson(
+          raw,
+        );
+      }
+    }
+    return result;
+  }
+
+  /// Persists indexing status for [address].
+  Future<void> setAddressIndexingStatus({
+    required String address,
+    required AddressIndexingProcessStatus status,
+  }) async {
+    final config = await _readConfig();
+    final states =
+        config[_addressIndexingStateByAddressKey] as Map<String, dynamic>? ??
+        <String, dynamic>{};
+    states[_normalizeAddressKey(address)] = status.toJson();
+    config[_addressIndexingStateByAddressKey] = states;
+    await _writeConfig(config);
+  }
+
+  /// Removes persisted indexing status for [address].
+  Future<void> clearAddressIndexingStatus(String address) async {
+    final config = await _readConfig();
+    final states =
+        config[_addressIndexingStateByAddressKey] as Map<String, dynamic>?;
+    if (states == null) {
+      return;
+    }
+    states.remove(_normalizeAddressKey(address));
+    config[_addressIndexingStateByAddressKey] = states;
+    await _writeConfig(config);
+  }
+}
+
+/// Runtime/persisted state for per-address indexing process.
+enum AddressIndexingProcessState {
+  idle,
+  indexingTriggered,
+  waitingForIndexStatus,
+  syncingTokens,
+  paused,
+  stopped,
+  completed,
+  failed,
+}
+
+/// Persistable status for per-address indexing process.
+class AddressIndexingProcessStatus {
+  const AddressIndexingProcessStatus({
+    required this.state,
+    required this.updatedAt,
+    this.errorMessage,
+  });
+
+  factory AddressIndexingProcessStatus.fromJson(Map<String, dynamic> json) {
+    final rawState = json['state']?.toString() ?? '';
+    final state = AddressIndexingProcessState.values.firstWhere(
+      (e) => e.name == rawState,
+      orElse: () => AddressIndexingProcessState.idle,
+    );
+    final updatedAtRaw = json['updatedAt']?.toString();
+    final updatedAt =
+        DateTime.tryParse(updatedAtRaw ?? '')?.toUtc() ??
+        DateTime.now().toUtc();
+    final errorMessage = json['errorMessage']?.toString();
+    return AddressIndexingProcessStatus(
+      state: state,
+      updatedAt: updatedAt,
+      errorMessage: errorMessage?.isEmpty ?? true ? null : errorMessage,
+    );
+  }
+
+  final AddressIndexingProcessState state;
+  final DateTime updatedAt;
+  final String? errorMessage;
+
+  AddressIndexingProcessStatus copyWith({
+    AddressIndexingProcessState? state,
+    DateTime? updatedAt,
+    String? errorMessage,
+    bool clearError = false,
+  }) {
+    return AddressIndexingProcessStatus(
+      state: state ?? this.state,
+      updatedAt: updatedAt ?? this.updatedAt,
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'state': state.name,
+    'updatedAt': updatedAt.toUtc().toIso8601String(),
+    if (errorMessage != null && errorMessage!.isNotEmpty)
+      'errorMessage': errorMessage,
+  };
 }
 
 /// Provider for [FeedConfigStore].

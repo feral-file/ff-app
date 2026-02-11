@@ -1,5 +1,6 @@
 import 'package:app/app/feed/feed_manager.dart';
 import 'package:app/app/providers/indexer_provider.dart';
+import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/feed_config_store.dart';
@@ -108,6 +109,11 @@ final feedManagerProvider = Provider<FeralFileFeedManager>((ref) {
     indexerService: ref.read(indexerServiceProvider),
     enrichmentScheduler: ref.read(indexerEnrichmentSchedulerServiceProvider),
     apiKey: AppConfig.dp1FeedApiKey,
+    onChannelPersistedInDatabase: () async {
+      await ref
+          .read(tokensSyncCoordinatorProvider.notifier)
+          .notifyChannelIngested();
+    },
   );
 });
 

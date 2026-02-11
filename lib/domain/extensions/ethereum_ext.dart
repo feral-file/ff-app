@@ -7,7 +7,7 @@ extension EthereumExtension on String {
     try {
       final address = EthereumAddress.fromHex(this, enforceEip55: isChecksum);
       return address;
-    } on Exception {
+    } on Object {
       return null;
     }
   }

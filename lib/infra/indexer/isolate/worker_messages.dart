@@ -88,4 +88,9 @@ class FetchManualTokensFailure extends TokensWorkerFailure {
   const FetchManualTokensFailure(super.uuid, super.exception);
 }
 
+/// Signal emitted after channel-ingested notification reaches the isolate.
+class ChannelIngestedAck extends TokensWorkerMessage {
+  const ChannelIngestedAck(super.uuid);
+}
+
 // End of file.

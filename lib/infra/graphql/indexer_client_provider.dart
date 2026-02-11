@@ -17,11 +17,14 @@ final indexerClientProvider = Provider<IndexerClient>((ref) {
 
   final authorization = apiKey.isEmpty ? null : 'ApiKey $apiKey';
 
-  return IndexerClient(
+  final client = IndexerClient(
     endpoint: endpoint,
     defaultHeaders: {
       'Content-Type': 'application/json',
       if (authorization != null) 'Authorization': authorization,
     },
   );
+
+  ref.onDispose(client.dispose);
+  return client;
 });

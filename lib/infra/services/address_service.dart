@@ -1,8 +1,7 @@
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
-import 'package:app/infra/services/indexer_enrichment_scheduler_service.dart';
-import 'package:app/infra/services/indexer_service.dart';
+import 'package:app/infra/services/address_indexing_process_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:logging/logging.dart';
 
@@ -11,26 +10,21 @@ class AddressService {
   /// Creates an AddressService.
   AddressService({
     required DatabaseService databaseService,
-    required IndexerService indexerService,
     required IndexerSyncService indexerSyncService,
     required DomainAddressService domainAddressService,
-    required IndexerEnrichmentSchedulerService enrichmentScheduler,
+    required AddressIndexingProcessService addressIndexingProcessService,
   }) : _databaseService = databaseService,
-       _indexerService = indexerService,
        _domainAddressService = domainAddressService,
-       _enrichmentScheduler = enrichmentScheduler {
+       _addressIndexingProcessService = addressIndexingProcessService {
     _indexerSyncService = indexerSyncService;
     _log = Logger('AddressService');
   }
 
   final DatabaseService _databaseService;
-  final IndexerService _indexerService;
   final DomainAddressService _domainAddressService;
-  final IndexerEnrichmentSchedulerService _enrichmentScheduler;
+  final AddressIndexingProcessService _addressIndexingProcessService;
   late final IndexerSyncService _indexerSyncService;
   late final Logger _log;
-  static const Duration _indexingPollDelay = Duration(seconds: 5);
-  static const Duration _indexingTimeout = Duration(minutes: 15);
 
   /// Add an address from either a raw address or ENS/TNS domain.
   Future<Playlist> addAddressOrDomain({
@@ -68,7 +62,7 @@ class AddressService {
       final existing = await _getAddressPlaylistByOwner(normalizedAddress);
       if (existing != null) {
         _log.info('Address playlist already exists: ${existing.id}');
-        await _runAddressIndexingAndEnrichment(normalizedAddress);
+        await _addressIndexingProcessService.start(normalizedAddress);
         return existing;
       }
 
@@ -85,7 +79,7 @@ class AddressService {
       );
 
       await _databaseService.ingestPlaylist(playlist);
-      await _runAddressIndexingAndEnrichment(normalizedAddress);
+      await _addressIndexingProcessService.start(normalizedAddress);
 
       _log.info('Added address playlist: ${playlist.id}');
       return playlist;
@@ -108,6 +102,7 @@ class AddressService {
       final playlistId = 'addr:$chain:$normalizedAddress';
 
       _log.info('Removing address: $normalizedAddress');
+      await _addressIndexingProcessService.stop(normalizedAddress);
 
       final playlist = await _databaseService.getPlaylistById(playlistId);
       if (playlist == null) {
@@ -193,131 +188,16 @@ class AddressService {
     return playlists.map((p) => p.ownerAddress).whereType<String>().toList();
   }
 
-  /// Ensure the default startup addresses exist.
-  ///
-  /// This is intentionally idempotent and safe to call on every app startup.
-  Future<void> ensureDefaultAddressOnStartup() async {
-    const defaultDomains = ['einstein-rosen.eth', 'einstein-rosen.tez'];
-
-    for (final defaultDomain in defaultDomains) {
-      try {
-        final resolved = await _domainAddressService.verifyAddressOrDomain(
-          defaultDomain,
-        );
-        if (resolved == null) {
-          _log.warning(
-            'Could not resolve default startup domain: $defaultDomain',
-          );
-          continue;
-        }
-
-        final chain = _chainStringFromType(resolved.type);
-        final normalizedAddress = _normalizeAddressForChain(
-          resolved.address,
-          chain: chain,
-        );
-
-        final existing = await _getAddressPlaylistByOwner(normalizedAddress);
-        if (existing != null) {
-          await _runAddressIndexingAndEnrichment(normalizedAddress);
-          continue;
-        }
-
-        await addAddress(
-          walletAddress: WalletAddress(
-            address: normalizedAddress,
-            createdAt: DateTime.now(),
-            name: resolved.domain ?? _shortenAddress(normalizedAddress),
-          ),
-        );
-      } on Object catch (e, stack) {
-        _log.warning(
-          'Failed to auto-add default startup address ($defaultDomain)',
-          e,
-          stack,
-        );
-      }
-    }
+  /// Pause indexing/sync process for an address.
+  Future<void> pauseAddressProcessing(String address) async {
+    final normalizedAddress = _normalizeAddressForChain(address);
+    await _addressIndexingProcessService.pause(normalizedAddress);
   }
 
-  Future<void> _runAddressIndexingAndEnrichment(
-    String normalizedAddress,
-  ) async {
-    try {
-      final results = await _indexerService.indexAddressesList([
-        normalizedAddress,
-      ]);
-      var workflowId = '';
-      for (final result in results) {
-        if (!_addressesEqual(result.address, normalizedAddress)) {
-          continue;
-        }
-        if (result.workflowId.isEmpty) {
-          continue;
-        }
-        workflowId = result.workflowId;
-        break;
-      }
-
-      if (workflowId.isNotEmpty) {
-        await _waitForAddressIndexingWorkflow(
-          workflowId: workflowId,
-          address: normalizedAddress,
-        );
-      }
-    } on Object catch (e, stack) {
-      _log.warning(
-        'Trigger/wait indexing failed for $normalizedAddress; '
-        'continuing with direct token fetch',
-        e,
-        stack,
-      );
-    }
-
-    _enrichmentScheduler.enqueuePersonalAddress(normalizedAddress);
-    _enrichmentScheduler.notifyFeedWorkAvailable();
-  }
-
-  Future<void> _waitForAddressIndexingWorkflow({
-    required String workflowId,
-    required String address,
-  }) async {
-    final startedAt = DateTime.now();
-
-    while (true) {
-      AddressIndexingJobResponse? status;
-      try {
-        status = await _indexerService.getAddressIndexingJobStatus(
-          workflowId: workflowId,
-        );
-      } on Object catch (e, stack) {
-        _log.warning(
-          'Failed to read indexing status for $address workflow=$workflowId; '
-          'will retry',
-          e,
-          stack,
-        );
-      }
-
-      if (status != null && status.status.isDone) {
-        if (!status.status.isSuccess) {
-          _log.warning(
-            'Address indexing finished with non-success status '
-            'for $address: ${status.status.name}',
-          );
-        }
-        return;
-      }
-
-      if (DateTime.now().difference(startedAt) > _indexingTimeout) {
-        _log.warning(
-          'Timed out waiting for indexing workflow $workflowId for $address',
-        );
-        return;
-      }
-
-      await Future<void>.delayed(_indexingPollDelay);
-    }
+  /// Resume indexing/sync process for an address.
+  Future<void> resumeAddressProcessing(String address) async {
+    final normalizedAddress = _normalizeAddressForChain(address);
+    await _addressIndexingProcessService.resume(normalizedAddress);
   }
 
   Future<Playlist?> _getAddressPlaylistByOwner(String normalizedAddress) async {
@@ -332,14 +212,6 @@ class AddressService {
       }
     }
     return null;
-  }
-
-  String _chainStringFromType(Chain chain) {
-    return switch (chain) {
-      Chain.ethereum => 'ETH',
-      Chain.tezos => 'TEZ',
-      Chain.unknown => 'UNKNOWN',
-    };
   }
 
   String _normalizeAddressForChain(

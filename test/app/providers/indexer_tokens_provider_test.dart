@@ -69,13 +69,19 @@ class FakeIndexerTokensWorker implements IndexerTokensWorker {
   }) {}
 
   @override
-  void reindexAddressesList({required String uuid, required List<String> addresses}) {}
+  void reindexAddressesList({
+    required String uuid,
+    required List<String> addresses,
+  }) {}
 
   @override
   void fetchManualTokens({
     required String uuid,
     required List<String> tokenCids,
   }) {}
+
+  @override
+  void notifyChannelIngested({required String uuid}) {}
 
   @override
   Future<void> stop() async {
@@ -105,7 +111,8 @@ class FakeIndexerService extends IndexerService {
 }
 
 class RecordingDatabaseService extends DatabaseService {
-  RecordingDatabaseService() : super(AppDatabase.forTesting(NativeDatabase.memory()));
+  RecordingDatabaseService()
+    : super(AppDatabase.forTesting(NativeDatabase.memory()));
 
   final ingestedByAddress = <String, List<AssetToken>>{};
   final deletedByAddress = <String, List<String>>{};

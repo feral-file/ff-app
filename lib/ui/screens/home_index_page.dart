@@ -1,5 +1,3 @@
-import 'package:app/app/providers/bootstrap_provider.dart';
-import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -47,20 +45,6 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     _selectedTab = HomeIndexHeaderTab.playlists;
     _scrollController = ScrollController();
     _scrollController.addListener(_onScrollChange);
-
-    // Trigger bootstrap to fetch channels and playlists
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await ref.read(bootstrapProvider.notifier).bootstrap();
-      final changed = await ref
-          .read(remoteAppConfigProvider.notifier)
-          .refreshInBackground();
-      if (changed) {
-        await ref.read(bootstrapProvider.notifier).bootstrap();
-      }
-      // Tab pages (ChannelsTabPage, PlaylistsTabPage) handle their own data loading
-      // in initState via loadChannels() and loadPlaylists() calls.
-      // No need to reload here—doing so would duplicate notifier emissions and rebuilds.
-    });
   }
 
   @override

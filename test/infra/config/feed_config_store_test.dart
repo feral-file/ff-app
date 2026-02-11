@@ -123,6 +123,42 @@ void main() {
       });
     });
 
+    group('address indexing states', () {
+      test('stores and retrieves per-address indexing state', () async {
+        final address = 'tz1abc123456789012345678901234567890123';
+        final now = DateTime(2026, 2, 11, 11, 0).toUtc();
+
+        await store.setAddressIndexingStatus(
+          address: address,
+          status: AddressIndexingProcessStatus(
+            state: AddressIndexingProcessState.syncingTokens,
+            updatedAt: now,
+          ),
+        );
+
+        final status = await store.getAddressIndexingStatus(address);
+        expect(status, isNotNull);
+        expect(status?.state, AddressIndexingProcessState.syncingTokens);
+        expect(status?.updatedAt, now);
+      });
+
+      test('clearAddressIndexingStatus removes state', () async {
+        final address = '0x99fc8AD516FBCC9bA3123D56e63A35d05AA9EFB8';
+        await store.setAddressIndexingStatus(
+          address: address,
+          status: AddressIndexingProcessStatus(
+            state: AddressIndexingProcessState.waitingForIndexStatus,
+            updatedAt: DateTime.now().toUtc(),
+            errorMessage: 'temporary',
+          ),
+        );
+
+        expect(await store.getAddressIndexingStatus(address), isNotNull);
+        await store.clearAddressIndexingStatus(address);
+        expect(await store.getAddressIndexingStatus(address), isNull);
+      });
+    });
+
     group('file persistence', () {
       test('persists data across store instances', () async {
         final baseUrl = 'https://feed.example';

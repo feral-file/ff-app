@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
 import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
+import 'package:app/infra/services/indexer_address_indexing_service.dart';
 import 'package:app/infra/services/indexer_enrichment_scheduler_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
@@ -32,6 +35,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
   late final IndexerSyncService _indexerSyncService;
   late final DP1PlaylistItemsEnrichmentService _enrichmentService;
   late final IndexerEnrichmentSchedulerService _scheduler;
+  late final IndexerAddressIndexingService _addressIndexingService;
 
   @override
   IndexerState build() {
@@ -51,9 +55,13 @@ class IndexerNotifier extends Notifier<IndexerState> {
     );
     _scheduler = IndexerEnrichmentSchedulerService(
       enrichmentService: _enrichmentService,
-      indexerService: _indexerService,
       indexerSyncService: _indexerSyncService,
     );
+    _addressIndexingService = IndexerAddressIndexingService();
+
+    ref.onDispose(() {
+      unawaited(_addressIndexingService.dispose());
+    });
 
     return const IndexerState();
   }
@@ -66,6 +74,10 @@ class IndexerNotifier extends Notifier<IndexerState> {
 
   /// Expose enrichment service for callers needing direct batch operations.
   DP1PlaylistItemsEnrichmentService get enrichmentService => _enrichmentService;
+
+  /// Expose isolate-backed address indexing service.
+  IndexerAddressIndexingService get addressIndexingService =>
+      _addressIndexingService;
 
   /// Enqueue personal address processing and run shared loop.
   void enqueuePersonalAddress(String address) {
@@ -83,6 +95,28 @@ class IndexerNotifier extends Notifier<IndexerState> {
       return await _scheduler.processUntilIdle();
     } on Object catch (e, stack) {
       _log.warning('Indexer scheduler failed', e, stack);
+      state = IndexerState(lastError: e);
+      return false;
+    }
+  }
+
+  /// Run feed enrichment process only.
+  Future<bool> processFeedEnrichmentUntilIdle() async {
+    try {
+      return await _scheduler.processFeedEnrichmentUntilIdle();
+    } on Object catch (e, stack) {
+      _log.warning('Feed enrichment process failed', e, stack);
+      state = IndexerState(lastError: e);
+      return false;
+    }
+  }
+
+  /// Run personal-address sync process only.
+  Future<bool> processAddressBatchUntilIdle() async {
+    try {
+      return await _scheduler.processAddressQueueUntilIdle();
+    } on Object catch (e, stack) {
+      _log.warning('Address batch process failed', e, stack);
       state = IndexerState(lastError: e);
       return false;
     }
@@ -144,4 +178,10 @@ final dp1PlaylistItemsEnrichmentServiceProvider =
 final indexerEnrichmentSchedulerServiceProvider =
     Provider<IndexerEnrichmentSchedulerService>((ref) {
       return ref.watch(indexerProvider.notifier).scheduler;
+    });
+
+/// Compatibility provider: isolate-backed address indexing service.
+final indexerAddressIndexingServiceProvider =
+    Provider<IndexerAddressIndexingService>((ref) {
+      return ref.watch(indexerProvider.notifier).addressIndexingService;
     });

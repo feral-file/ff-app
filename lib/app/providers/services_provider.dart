@@ -3,29 +3,41 @@ import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/feed_config_store.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/services/address_service.dart';
+import 'package:app/infra/services/address_indexing_process_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// Provider for per-address index + sync process orchestration.
+final addressIndexingProcessServiceProvider =
+    Provider<AddressIndexingProcessService>((ref) {
+      final indexerService = ref.watch(indexerServiceProvider);
+      final indexerSyncService = ref.watch(indexerSyncServiceProvider);
+      final feedConfigStore = ref.watch(feedConfigStoreProvider);
+      return AddressIndexingProcessService(
+        indexerService: indexerService,
+        indexerSyncService: indexerSyncService,
+        feedConfigStore: feedConfigStore,
+      );
+    });
+
 /// Provider for the AddressService.
 /// Manages user wallet addresses and address-based playlists.
 final addressServiceProvider = Provider<AddressService>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
-  final indexerService = ref.watch(indexerServiceProvider);
   final indexerSyncService = ref.watch(indexerSyncServiceProvider);
   final domainAddressService = ref.watch(domainAddressServiceProvider);
-  final enrichmentScheduler = ref.watch(
-    indexerEnrichmentSchedulerServiceProvider,
+  final addressIndexingProcessService = ref.watch(
+    addressIndexingProcessServiceProvider,
   );
 
   return AddressService(
     databaseService: databaseService,
-    indexerService: indexerService,
     indexerSyncService: indexerSyncService,
     domainAddressService: domainAddressService,
-    enrichmentScheduler: enrichmentScheduler,
+    addressIndexingProcessService: addressIndexingProcessService,
   );
 });
 
