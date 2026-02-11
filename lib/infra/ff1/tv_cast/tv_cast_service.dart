@@ -1,0 +1,336 @@
+import 'dart:async';
+
+import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
+import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
+import 'package:logging/logging.dart';
+import 'package:dio/dio.dart';
+
+abstract class TvCastService {
+  Future<CheckCastingStatusReply> status(
+    CheckCastingStatusRequest request, {
+    bool shouldShowError = true,
+  });
+
+  Future<ConnectReplyV2> connect(ConnectRequestV2 request);
+  Future<DisconnectReplyV2> disconnect(DisconnectRequestV2 request);
+  Future<CastDP1PlaylistReply> castDP1Playlist(
+    CastDP1PlaylistRequestAbstract request,
+  );
+  Future<PauseCastingReply> pauseCasting(PauseCastingRequest request);
+  Future<ResumeCastingReply> resumeCasting(ResumeCastingRequest request);
+  Future<NextArtworkReply> nextArtwork(NextArtworkRequest request);
+  Future<PreviousArtworkReply> previousArtwork(PreviousArtworkRequest request);
+  Future<MoveToArtworkReply> moveToArtwork(MoveToArtworkRequest request);
+  Future<UpdateDurationReply> updateDuration(UpdateDurationRequest request);
+  Future<KeyboardEventReply> keyboardEvent(KeyboardEventRequest request);
+  Future<RotateReply> rotate(RotateRequest request);
+  Future<SetSleepModeReply> setSleepMode(SetSleepModeRequest request);
+  Future<GetDeviceStatusReply> getDeviceStatus(GetDeviceStatusRequest request);
+  Future<UpdateArtFramingReply> updateArtFraming(
+    UpdateArtFramingRequest request,
+  );
+  Future<UpdateToLatestVersionReply> updateToLatestVersion(
+    UpdateToLatestVersionRequest request,
+  );
+  Future<GestureReply> tap(TapGestureRequest request);
+  Future<GestureReply> drag(DragGestureRequest request);
+  Future<ShowPairingQRCodeReply> showPairingQRCode(
+    ShowPairingQRCodeRequest request,
+  );
+  Future<void> safeShutdown(SafeShutdownRequest request);
+  Future<void> safeRestart(SafeRestartRequest request);
+  Future<SafeFactoryResetReply> safeFactoryReset(
+    SafeFactoryResetRequest request,
+  );
+  Future<SendLogReply> sendLog(SendLogRequest request);
+  Future<DeviceRealtimeMetricsReply> deviceMetrics(
+    DeviceRealtimeMetricsRequest request,
+  );
+}
+
+abstract class BaseTvCastService implements TvCastService {
+  BaseTvCastService();
+
+  Future<Map<String, dynamic>> _sendData(
+    Map<String, dynamic> body, {
+    bool shouldShowError = true,
+    Duration? timeout,
+  });
+
+  Map<String, dynamic> _getBody(FF1Request request) =>
+      RequestBody(request).toJson();
+
+  @override
+  Future<CheckCastingStatusReply> status(
+    CheckCastingStatusRequest request, {
+    bool shouldShowError = true,
+  }) async {
+    try {
+      final result = await _sendData(
+        _getBody(request),
+        shouldShowError: shouldShowError,
+        timeout: const Duration(seconds: 10),
+      );
+      return CheckCastingStatusReply.fromJson(result);
+    } catch (e) {
+      _log.info('Failed to get device status: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<ConnectReplyV2> connect(ConnectRequestV2 request) async {
+    try {
+      final result = await _sendData(_getBody(request));
+      return ConnectReplyV2.fromJson(result);
+    } catch (e) {
+      _log.info('Failed to connect to device: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<DisconnectReplyV2> disconnect(DisconnectRequestV2 request) async {
+    final result = await _sendData(_getBody(request));
+    return DisconnectReplyV2.fromJson(result);
+  }
+
+  @override
+  Future<CastDP1PlaylistReply> castDP1Playlist(
+    CastDP1PlaylistRequestAbstract request,
+  ) async {
+    final result = await _sendData(
+      RequestBody(request).toJson(),
+      shouldShowError: false,
+      timeout: const Duration(seconds: 10),
+    );
+    return CastDP1PlaylistReply.fromJson(result);
+  }
+
+  @override
+  Future<PauseCastingReply> pauseCasting(PauseCastingRequest request) async {
+    final result = await _sendData(_getBody(request));
+    return PauseCastingReply.fromJson(result);
+  }
+
+  @override
+  Future<ResumeCastingReply> resumeCasting(ResumeCastingRequest request) async {
+    final result = await _sendData(_getBody(request));
+    return ResumeCastingReply.fromJson(result);
+  }
+
+  @override
+  Future<NextArtworkReply> nextArtwork(NextArtworkRequest request) async {
+    final result = await _sendData(_getBody(request));
+    return NextArtworkReply.fromJson(result);
+  }
+
+  @override
+  Future<PreviousArtworkReply> previousArtwork(
+    PreviousArtworkRequest request,
+  ) async {
+    final result = await _sendData(_getBody(request));
+    return PreviousArtworkReply.fromJson(result);
+  }
+
+  @override
+  Future<MoveToArtworkReply> moveToArtwork(MoveToArtworkRequest request) async {
+    final result = await _sendData(_getBody(request));
+    return MoveToArtworkReply.fromJson(result);
+  }
+
+  @override
+  Future<UpdateDurationReply> updateDuration(
+    UpdateDurationRequest request,
+  ) async {
+    final result = await _sendData(_getBody(request));
+    return UpdateDurationReply.fromJson(result);
+  }
+
+  @override
+  Future<KeyboardEventReply> keyboardEvent(KeyboardEventRequest request) async {
+    final result = await _sendData(_getBody(request));
+    return KeyboardEventReply.fromJson(result);
+  }
+
+  @override
+  Future<RotateReply> rotate(RotateRequest request) async {
+    final result = await _sendData(_getBody(request));
+    return RotateReply.fromJson(result);
+  }
+
+  @override
+  Future<SetSleepModeReply> setSleepMode(SetSleepModeRequest request) async {
+    final result = await _sendData(_getBody(request));
+    return SetSleepModeReply.fromJson(result);
+  }
+
+  @override
+  Future<GetDeviceStatusReply> getDeviceStatus(
+    GetDeviceStatusRequest request,
+  ) async {
+    final result = await _sendData(
+      _getBody(request),
+      timeout: const Duration(seconds: 15),
+      shouldShowError: false,
+    );
+    return GetDeviceStatusReply.fromJson(result);
+  }
+
+  @override
+  Future<UpdateArtFramingReply> updateArtFraming(
+    UpdateArtFramingRequest request,
+  ) async {
+    final result = await _sendData(_getBody(request));
+    return UpdateArtFramingReply.fromJson(result);
+  }
+
+  @override
+  Future<UpdateToLatestVersionReply> updateToLatestVersion(
+    UpdateToLatestVersionRequest request,
+  ) async {
+    final result = await _sendData(
+      _getBody(request),
+      timeout: const Duration(seconds: 30),
+    );
+    return UpdateToLatestVersionReply.fromJson(result);
+  }
+
+  @override
+  Future<GestureReply> tap(TapGestureRequest request) async {
+    final result = await _sendData(_getBody(request));
+    return GestureReply.fromJson(result);
+  }
+
+  @override
+  Future<GestureReply> drag(DragGestureRequest request) async {
+    final result = await _sendData(_getBody(request));
+    return GestureReply.fromJson(result);
+  }
+
+  @override
+  Future<ShowPairingQRCodeReply> showPairingQRCode(
+    ShowPairingQRCodeRequest request,
+  ) async {
+    final result = await _sendData(_getBody(request));
+    return ShowPairingQRCodeReply.fromJson(result);
+  }
+
+  @override
+  Future<void> safeShutdown(SafeShutdownRequest request) async {
+    try {
+      await _sendData(_getBody(request));
+    } catch (e) {
+      _log.warning('Failed to perform safe shutdown: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> safeRestart(SafeRestartRequest request) async {
+    try {
+      await _sendData(_getBody(request));
+    } catch (e) {
+      _log.warning('Failed to perform safe restart: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<SafeFactoryResetReply> safeFactoryReset(
+    SafeFactoryResetRequest request,
+  ) async {
+    try {
+      final result = await _sendData(_getBody(request));
+      return SafeFactoryResetReply.fromJson(result);
+    } catch (e) {
+      _log.warning('Failed to perform factory reset: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<SendLogReply> sendLog(SendLogRequest request) async {
+    try {
+      final result = await _sendData(
+        _getBody(request),
+        timeout: const Duration(seconds: 30),
+      );
+      return SendLogReply.fromJson(result);
+    } catch (e) {
+      _log.warning('Failed to send log: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<DeviceRealtimeMetricsReply> deviceMetrics(
+    DeviceRealtimeMetricsRequest request,
+  ) async {
+    try {
+      final result = await _sendData(_getBody(request));
+      return DeviceRealtimeMetricsReply.fromJson(result);
+    } catch (e) {
+      _log.info('Failed to get device metrics: $e');
+      rethrow;
+    }
+  }
+
+  static final Logger _log = Logger('TvCastService');
+}
+
+class TvCastServiceImpl extends BaseTvCastService {
+  TvCastServiceImpl(this._api, this._device);
+
+  final TvCastApi _api;
+  final FF1Device _device;
+
+  @override
+  Future<Map<String, dynamic>> _sendData(
+    Map<String, dynamic> body, {
+    bool shouldShowError = false,
+    Duration? timeout,
+  }) async {
+    try {
+      final resultFuture = _api.request(
+        topicId: _device.topicId ?? '',
+        body: body,
+      );
+      final result = await resultFuture.timeout(
+        timeout ?? const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('Request timed out');
+        },
+      ).catchError((Object error) {
+        if (error is TimeoutException) {
+          throw TimeoutException('Request timed out');
+        }
+        throw error;
+      });
+
+      final resultMap = result is Map<String, dynamic>
+          ? result
+          : Map<String, dynamic>.from(result as Map);
+
+      if (!resultMap.containsKey('message')) {
+        return resultMap;
+      }
+
+      var message = resultMap['message'];
+      while (
+          message is Map<String, dynamic> && message.containsKey('message')) {
+        message = message['message'];
+      }
+
+      return message is Map<String, dynamic>
+          ? message
+          : Map<String, dynamic>.from(message as Map);
+    } catch (e) {
+      if (shouldShowError) {
+        BaseTvCastService._log.warning('TvCast request error: $e');
+      }
+      rethrow;
+    }
+  }
+}
