@@ -189,7 +189,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
         'Loading channels from database (type: ${_type.name}, size: $effectiveSize)...',
       );
       if (showLoading) {
-        state = ChannelsState.loading();
+        state = state.copyWith(isLoading: true, clearError: true);
       }
 
       final databaseService = ref.read(databaseServiceProvider);
@@ -227,6 +227,11 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       }
     } catch (e, stack) {
       if (!ref.mounted) return;
+      if (_isOperationCancelled(e)) {
+        _log.info('Channels load cancelled');
+        state = state.copyWith(isLoading: false, clearError: true);
+        return;
+      }
       _log.severe('Failed to load channels', e, stack);
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -286,10 +291,20 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       );
     } catch (e, stack) {
       if (!ref.mounted) return;
+      if (_isOperationCancelled(e)) {
+        _log.info('Load more channels cancelled');
+        state = state.copyWith(isLoadingMore: false, clearError: true);
+        return;
+      }
       _log.severe('Failed to load more channels', e, stack);
       state = state.copyWith(isLoadingMore: false, error: e.toString());
     }
   }
+}
+
+bool _isOperationCancelled(Object error) {
+  return error.runtimeType.toString() == 'CancellationException' ||
+      error.toString().contains('Operation was cancelled');
 }
 
 /// Provider for channels state by type (dp1 = curated, localVirtual = personal).

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/infra/config/app_config.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
@@ -56,6 +57,7 @@ class IndexerNotifier extends Notifier<IndexerState> {
     _scheduler = IndexerEnrichmentSchedulerService(
       enrichmentService: _enrichmentService,
       indexerSyncService: _indexerSyncService,
+      maxEnrichmentWorkers: AppConfig.indexerEnrichmentMaxThreads,
     );
     _addressIndexingService = IndexerAddressIndexingService();
 

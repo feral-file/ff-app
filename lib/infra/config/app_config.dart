@@ -26,6 +26,18 @@ class AppConfig {
   static String get indexerApiKey =>
       dotenv.get('INDEXER_API_KEY', fallback: '');
 
+  /// Max concurrent enrichment workers for feed token enrichment.
+  ///
+  /// Defaults to 4 if unset or invalid.
+  static int get indexerEnrichmentMaxThreads {
+    final raw = dotenv.get('INDEXER_ENRICHMENT_MAX_THREADS', fallback: '4');
+    final parsed = int.tryParse(raw);
+    if (parsed == null || parsed <= 0) {
+      return 4;
+    }
+    return parsed;
+  }
+
   /// Asset URL prefix for media files.
   static String get assetUrl => dotenv.get('ASSET_URL', fallback: '');
 

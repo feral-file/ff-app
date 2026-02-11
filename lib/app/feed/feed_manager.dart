@@ -209,10 +209,21 @@ class FeedManager {
       if (!_isPaused && completed) {
         await _feedConfigStore.markTokensEnriched();
       }
+    } on Object catch (e, stack) {
+      if (_isOperationCancelled(e)) {
+        _log.info('[FeedManager] Enrichment worker cancelled');
+      } else {
+        _log.warning('[FeedManager] Enrichment worker failed', e, stack);
+      }
     } finally {
       _isEnrichmentWorkerRunning = false;
       _enrichmentWorkerFuture = null;
     }
+  }
+
+  bool _isOperationCancelled(Object error) {
+    return error.runtimeType.toString() == 'CancellationException' ||
+        error.toString().contains('Operation was cancelled');
   }
 
   /// Matches old repo's getAllCachedPlaylists(offset, limit).
@@ -365,11 +376,12 @@ class FeralFileFeedManager extends FeedManager {
   @override
   void onChannelIngested() {
     super.onChannelIngested();
-    _enrichmentScheduler.notifyFeedWorkAvailable();
     final callback = onChannelPersistedInDatabase;
     if (callback != null) {
       unawaited(callback());
+      return;
     }
+    _enrichmentScheduler.notifyFeedWorkAvailable();
   }
 
   /// Matches old repo's getAllCachedChannels.

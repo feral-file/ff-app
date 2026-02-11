@@ -95,6 +95,11 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_entries_position '
       'ON playlist_entries(playlist_id, position ASC, item_id ASC)',
     );
+
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_entries_item '
+      'ON playlist_entries(item_id, playlist_id)',
+    );
   }
 
   Future<void> _createFtsInfrastructure() async {
@@ -790,179 +795,73 @@ class AppDatabase extends _$AppDatabase {
   /// Get items with optional [limit] and [offset] for paging.
   /// When both are null, returns all (same as [getAllItems]).
   Future<List<ItemData>> getItems({int? limit, int? offset}) async {
-    final publisherOrderExpr = CustomExpression<int>(
-      '''
-      COALESCE(
-        (
-          SELECT MIN(c.publisher_id)
-          FROM playlist_entries pe
-          JOIN playlists p ON p.id = pe.playlist_id
-          LEFT JOIN channels c ON c.id = p.channel_id
-          WHERE pe.item_id = items.id
-        ),
-        2147483647
-      )
-      ''',
-    );
-    final channelCreatedAtOrderExpr = CustomExpression<BigInt>(
-      '''
-      COALESCE(
-        (
-          SELECT MIN(c.created_at_us)
-          FROM playlist_entries pe
-          JOIN playlists p ON p.id = pe.playlist_id
-          JOIN channels c ON c.id = p.channel_id
-          WHERE pe.item_id = items.id
-        ),
-        9223372036854775807
-      )
-      ''',
-    );
-    final playlistCreatedAtOrderExpr = CustomExpression<BigInt>(
-      '''
-      COALESCE(
-        (
-          SELECT MIN(p.created_at_us)
-          FROM playlist_entries pe
-          JOIN playlists p ON p.id = pe.playlist_id
-          WHERE pe.item_id = items.id
-        ),
-        9223372036854775807
-      )
-      ''',
-    );
-    final off = offset ?? 0;
-    final query = select(items)
-      ..orderBy([
-        (t) => OrderingTerm.asc(publisherOrderExpr),
-        (t) => OrderingTerm.asc(channelCreatedAtOrderExpr),
-        (t) => OrderingTerm.asc(playlistCreatedAtOrderExpr),
-        (t) => OrderingTerm.asc(t.id),
-      ]);
-    if (limit != null) {
-      return (query..limit(limit, offset: off)).get();
-    }
-    if (off > 0) {
-      return (query..limit(_maxLimitForOffset, offset: off)).get();
-    }
-    return query.get();
+    final orderedIds = await _getOrderedItemIds(limit: limit, offset: offset);
+    if (orderedIds.isEmpty) return const <ItemData>[];
+
+    final rows = await getItemsByIds(orderedIds);
+    final rowsById = <String, ItemData>{
+      for (final row in rows) row.id: row,
+    };
+    return orderedIds
+        .map((id) => rowsById[id])
+        .whereType<ItemData>()
+        .toList(growable: false);
   }
 
   /// Watch all items; emits when the items table changes.
   Stream<List<ItemData>> watchAllItems() {
-    final publisherOrderExpr = CustomExpression<int>(
-      '''
-      COALESCE(
-        (
-          SELECT MIN(c.publisher_id)
-          FROM playlist_entries pe
-          JOIN playlists p ON p.id = pe.playlist_id
-          LEFT JOIN channels c ON c.id = p.channel_id
-          WHERE pe.item_id = items.id
-        ),
-        2147483647
-      )
-      ''',
-    );
-    final channelCreatedAtOrderExpr = CustomExpression<BigInt>(
-      '''
-      COALESCE(
-        (
-          SELECT MIN(c.created_at_us)
-          FROM playlist_entries pe
-          JOIN playlists p ON p.id = pe.playlist_id
-          JOIN channels c ON c.id = p.channel_id
-          WHERE pe.item_id = items.id
-        ),
-        9223372036854775807
-      )
-      ''',
-    );
-    final playlistCreatedAtOrderExpr = CustomExpression<BigInt>(
-      '''
-      COALESCE(
-        (
-          SELECT MIN(p.created_at_us)
-          FROM playlist_entries pe
-          JOIN playlists p ON p.id = pe.playlist_id
-          WHERE pe.item_id = items.id
-        ),
-        9223372036854775807
-      )
-      ''',
-    );
-    final query = select(items)
-      ..orderBy([
-        (t) => OrderingTerm.asc(publisherOrderExpr),
-        (t) => OrderingTerm.asc(channelCreatedAtOrderExpr),
-        (t) => OrderingTerm.asc(playlistCreatedAtOrderExpr),
-        (t) => OrderingTerm.asc(t.id),
-      ]);
+    // Works provider only uses this stream as a "data changed" signal.
+    // Keep query lightweight to avoid expensive per-row ranking on every change.
+    final query = select(items)..orderBy([(t) => OrderingTerm.asc(t.id)]);
     return query.watch();
   }
 
   /// Get ordered item IDs with optional [limit] and [offset].
   /// Uses the same ordering as [getItems] so pagination and diff windows align.
   Future<List<String>> getItemIds({int? limit, int? offset}) async {
-    final publisherOrderExpr = CustomExpression<int>(
-      '''
-      COALESCE(
-        (
-          SELECT MIN(c.publisher_id)
-          FROM playlist_entries pe
-          JOIN playlists p ON p.id = pe.playlist_id
-          LEFT JOIN channels c ON c.id = p.channel_id
-          WHERE pe.item_id = items.id
-        ),
-        2147483647
-      )
-      ''',
-    );
-    final channelCreatedAtOrderExpr = CustomExpression<BigInt>(
-      '''
-      COALESCE(
-        (
-          SELECT MIN(c.created_at_us)
-          FROM playlist_entries pe
-          JOIN playlists p ON p.id = pe.playlist_id
-          JOIN channels c ON c.id = p.channel_id
-          WHERE pe.item_id = items.id
-        ),
-        9223372036854775807
-      )
-      ''',
-    );
-    final playlistCreatedAtOrderExpr = CustomExpression<BigInt>(
-      '''
-      COALESCE(
-        (
-          SELECT MIN(p.created_at_us)
-          FROM playlist_entries pe
-          JOIN playlists p ON p.id = pe.playlist_id
-          WHERE pe.item_id = items.id
-        ),
-        9223372036854775807
-      )
-      ''',
-    );
+    return _getOrderedItemIds(limit: limit, offset: offset);
+  }
+
+  Future<List<String>> _getOrderedItemIds({int? limit, int? offset}) async {
     final off = offset ?? 0;
-    final query = selectOnly(items)
-      ..addColumns([items.id])
-      ..orderBy([
-        OrderingTerm.asc(publisherOrderExpr),
-        OrderingTerm.asc(channelCreatedAtOrderExpr),
-        OrderingTerm.asc(playlistCreatedAtOrderExpr),
-        OrderingTerm.asc(items.id),
-      ]);
-    if (limit != null) {
-      query.limit(limit, offset: off);
-    } else if (off > 0) {
-      query.limit(_maxLimitForOffset, offset: off);
+    final limitClause = limit != null || off > 0 ? 'LIMIT ? OFFSET ?' : '';
+    final variables = <Variable<Object>>[];
+    if (limit != null || off > 0) {
+      variables
+        ..add(Variable.withInt(limit ?? _maxLimitForOffset))
+        ..add(Variable.withInt(off));
     }
+
+    final query = customSelect(
+      '''
+      WITH item_rank AS (
+        SELECT
+          pe.item_id AS item_id,
+          MIN(COALESCE(c.publisher_id, 2147483647)) AS publisher_order,
+          MIN(COALESCE(c.created_at_us, 9223372036854775807)) AS channel_created_at_order,
+          MIN(COALESCE(p.created_at_us, 9223372036854775807)) AS playlist_created_at_order
+        FROM playlist_entries pe
+        JOIN playlists p ON p.id = pe.playlist_id
+        LEFT JOIN channels c ON c.id = p.channel_id
+        GROUP BY pe.item_id
+      )
+      SELECT i.id AS id
+      FROM items i
+      LEFT JOIN item_rank r ON r.item_id = i.id
+      ORDER BY
+        COALESCE(r.publisher_order, 2147483647) ASC,
+        COALESCE(r.channel_created_at_order, 9223372036854775807) ASC,
+        COALESCE(r.playlist_created_at_order, 9223372036854775807) ASC,
+        i.id ASC
+      $limitClause
+      ''',
+      variables: variables,
+      readsFrom: {items, playlists, channels, playlistEntries},
+    );
 
     final rows = await query.get();
     return rows
-        .map((row) => row.read(items.id))
+        .map((row) => row.read<String>('id'))
         .whereType<String>()
         .toList(growable: false);
   }

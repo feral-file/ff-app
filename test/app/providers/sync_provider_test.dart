@@ -75,6 +75,9 @@ class FakeTokensWorker implements IndexerTokensWorker {
   }) {}
 
   @override
+  void notifyChannelIngested({required String uuid}) {}
+
+  @override
   void updateTokensInIsolate({
     required String uuid,
     required List<AddressAnchor> addressAnchors,

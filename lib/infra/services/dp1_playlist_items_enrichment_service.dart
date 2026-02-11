@@ -127,9 +127,9 @@ class DP1PlaylistItemsEnrichmentService {
   /// Returns the number of playlist items updated in this batch.
   Future<int> processNextHighPriorityBatch() async {
     if (!_shouldContinue()) return 0;
-    late final List<_BareItem> highItems;
+    late final List<EnrichmentWorkItem> highItems;
     try {
-      highItems = await _loadHighPriorityBareItems();
+      highItems = await loadHighPriorityWorkItems(limit: maxBatchSize);
     } on Exception catch (e, stack) {
       if (_isOperationCancelled(e)) {
         _log.info('High-priority enrichment query cancelled');
@@ -144,7 +144,7 @@ class DP1PlaylistItemsEnrichmentService {
     }
 
     _log.info('Processing high-priority batch: ${highItems.length} items');
-    return _processBatch(highItems);
+    return enrichWorkItems(highItems);
   }
 
   /// Process the next low-priority enrichment batch.
@@ -152,9 +152,9 @@ class DP1PlaylistItemsEnrichmentService {
   /// Returns the number of playlist items updated in this batch.
   Future<int> processNextLowPriorityBatch() async {
     if (!_shouldContinue()) return 0;
-    late final List<_BareItem> lowItems;
+    late final List<EnrichmentWorkItem> lowItems;
     try {
-      lowItems = await _loadLowPriorityBareItems();
+      lowItems = await loadLowPriorityWorkItems(limit: maxBatchSize);
     } on Exception catch (e, stack) {
       if (_isOperationCancelled(e)) {
         _log.info('Low-priority enrichment query cancelled');
@@ -169,24 +169,26 @@ class DP1PlaylistItemsEnrichmentService {
     }
 
     _log.info('Processing low-priority batch: ${lowItems.length} items');
-    return _processBatch(lowItems);
+    return enrichWorkItems(lowItems);
   }
 
   /// Load high-priority bare items from database.
   ///
   /// Returns first [highPriorityPerPlaylist] items per playlist that are bare
   /// (have only title set, no enrichment fields), ordered by creation date.
-  Future<List<_BareItem>> _loadHighPriorityBareItems() async {
+  Future<List<EnrichmentWorkItem>> loadHighPriorityWorkItems({
+    required int limit,
+  }) async {
     final rows = await _databaseService.loadHighPriorityBareItems(
       maxPerPlaylist: highPriorityPerPlaylist,
-      maxTotal: maxBatchSize,
+      maxTotal: limit,
     );
     final rowsWithCid = await _databaseService.extractTokenCidsFromBareRows(
       rows: rows,
     );
     return rowsWithCid
         .map(
-          (row) => _BareItem(
+          (row) => EnrichmentWorkItem(
             itemId: row.$1,
             cid: row.$2,
             playlistId: row.$3,
@@ -200,17 +202,19 @@ class DP1PlaylistItemsEnrichmentService {
   ///
   /// Returns bare items (have only title set, no enrichment fields) beyond
   /// the high-priority set, ordered by creation date.
-  Future<List<_BareItem>> _loadLowPriorityBareItems() async {
+  Future<List<EnrichmentWorkItem>> loadLowPriorityWorkItems({
+    required int limit,
+  }) async {
     final rows = await _databaseService.loadLowPriorityBareItems(
       maxPerPlaylist: highPriorityPerPlaylist,
-      maxTotal: maxBatchSize,
+      maxTotal: limit,
     );
     final rowsWithCid = await _databaseService.extractTokenCidsFromBareRows(
       rows: rows,
     );
     return rowsWithCid
         .map(
-          (row) => _BareItem(
+          (row) => EnrichmentWorkItem(
             itemId: row.$1,
             cid: row.$2,
             playlistId: row.$3,
@@ -220,17 +224,44 @@ class DP1PlaylistItemsEnrichmentService {
         .toList(growable: false);
   }
 
-  /// Process a batch of bare items.
+  /// Enrich provided work items in chunks of [maxBatchSize].
   ///
-  /// Fetches tokens from indexer and updates items in database.
-  Future<int> _processBatch(List<_BareItem> batch) async {
+  /// Keeping a strict chunk size ensures indexer requests stay at 50 items.
+  Future<int> enrichWorkItems(List<EnrichmentWorkItem> items) async {
     if (!_shouldContinue()) return 0;
-    if (batch.isEmpty) return 0;
+    if (items.isEmpty) return 0;
 
-    // Extract and de-dupe CIDs for indexer lookup.
-    final cids = batch.map((item) => item.cid).toSet().toList();
+    final cidToItemId = <String, String>{};
+    for (final item in items) {
+      cidToItemId[item.cid] = item.itemId;
+    }
+    return enrichCidToItemMap(cidToItemId);
+  }
 
-    // Fetch tokens from indexer
+  /// Enrich a map of `{cid: itemId}`.
+  ///
+  /// Worker input is map-shaped so workers do not re-select bare rows from DB.
+  Future<int> enrichCidToItemMap(Map<String, String> cidToItemId) async {
+    if (!_shouldContinue()) return 0;
+    if (cidToItemId.isEmpty) return 0;
+
+    final entries = cidToItemId.entries.toList(growable: false);
+    var totalUpdated = 0;
+    for (var start = 0; start < entries.length; start += maxBatchSize) {
+      if (!_shouldContinue()) break;
+      final end = (start + maxBatchSize).clamp(0, entries.length);
+      final chunk = entries.sublist(start, end);
+      totalUpdated += await _enrichCidToItemChunk(chunk);
+    }
+    return totalUpdated;
+  }
+
+  Future<int> _enrichCidToItemChunk(
+    List<MapEntry<String, String>> chunk,
+  ) async {
+    if (chunk.isEmpty) return 0;
+
+    final cids = chunk.map((entry) => entry.key).toList(growable: false);
     _log.fine('Fetching ${cids.length} tokens from indexer...');
     final tokens = await _indexerService.fetchTokensByCIDs(tokenCids: cids);
     final tokensByCid = <String, AssetToken>{};
@@ -238,36 +269,25 @@ class DP1PlaylistItemsEnrichmentService {
       tokensByCid[token.cid] = token;
     }
 
-    _log.fine('Fetched ${tokens.length}/${cids.length} tokens from indexer');
+    final enrichments = <(String, AssetToken)>[];
+    for (final entry in chunk) {
+      final token = tokensByCid[entry.key];
+      if (token == null) continue;
+      enrichments.add((entry.value, token));
+    }
 
-    // Build enrichment updates in parallel, then persist in one transaction.
-    final enrichments = await Future.wait(
-      batch.map((item) async {
-        final token = tokensByCid[item.cid];
-        if (token == null) {
-          _log.fine('No token found for CID ${item.cid}');
-          return null;
-        }
-        return (item.itemId, token);
-      }),
-    );
-
-    final validEnrichments = enrichments
-        .whereType<(String, AssetToken)>()
-        .toList();
     await _databaseService.enrichPlaylistItemsWithTokensBatch(
-      enrichments: validEnrichments,
+      enrichments: enrichments,
     );
-
-    _log.fine('Updated ${validEnrichments.length} items in database');
-    return validEnrichments.length;
+    _log.fine('Updated ${enrichments.length} items in database');
+    return enrichments.length;
   }
 }
 
-/// Internal model for bare playlist items from database.
-class _BareItem {
-  /// Creates a _BareItem.
-  const _BareItem({
+/// Bare playlist item selected for enrichment.
+class EnrichmentWorkItem {
+  /// Creates an [EnrichmentWorkItem].
+  const EnrichmentWorkItem({
     required this.itemId,
     required this.cid,
     required this.playlistId,

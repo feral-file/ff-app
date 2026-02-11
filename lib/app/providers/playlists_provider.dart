@@ -207,6 +207,11 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
       }
     } catch (e, stack) {
       if (!ref.mounted) return;
+      if (_isOperationCancelled(e)) {
+        _log.info('Playlist load cancelled');
+        state = state.copyWith(isLoading: false, clearError: true);
+        return;
+      }
       _log.severe('Failed to load playlists', e, stack);
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -282,6 +287,11 @@ final refreshPlaylistsMutationProvider =
     NotifierProvider<MutationNotifier<void>, MutationState<void>>(
       MutationNotifier.new,
     );
+
+bool _isOperationCancelled(Object error) {
+  return error.runtimeType.toString() == 'CancellationException' ||
+      error.toString().contains('Operation was cancelled');
+}
 
 /// Mutation for loading more playlists.
 final loadMorePlaylistsMutationProvider =

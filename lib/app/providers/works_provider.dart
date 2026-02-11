@@ -373,8 +373,21 @@ class WorksNotifier extends Notifier<WorksState> {
       );
     } catch (e, stack) {
       if (!ref.mounted) return;
+      if (_isOperationCancelled(e)) {
+        _log.info('Works load cancelled');
+        state = state.copyWith(
+          isLoading: false,
+          isLoadingMore: false,
+          clearError: true,
+        );
+        return;
+      }
       _log.severe('Failed to load works', e, stack);
-      state = WorksState.error(e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        isLoadingMore: false,
+        error: e.toString(),
+      );
     }
   }
 
@@ -404,6 +417,11 @@ class WorksNotifier extends Notifier<WorksState> {
       );
     } catch (e, stack) {
       if (!ref.mounted) return;
+      if (_isOperationCancelled(e)) {
+        _log.info('Load more works cancelled');
+        state = state.copyWith(isLoadingMore: false, clearError: true);
+        return;
+      }
       _log.severe('Failed to load more works', e, stack);
       state = state.copyWith(
         isLoadingMore: false,
@@ -569,3 +587,8 @@ final ownerAddressesProvider = FutureProvider<List<String>>((ref) async {
   final addressService = ref.watch(addressServiceProvider);
   return addressService.getAllAddresses();
 });
+
+bool _isOperationCancelled(Object error) {
+  return error.runtimeType.toString() == 'CancellationException' ||
+      error.toString().contains('Operation was cancelled');
+}
