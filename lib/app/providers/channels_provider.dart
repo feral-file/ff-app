@@ -124,7 +124,7 @@ class ChannelsState {
 class ChannelsNotifier extends Notifier<ChannelsState> {
   ChannelsNotifier(this._type);
 
-  static const int _pageSize = 5;
+  static const int _pageSize = 10;
 
   final ChannelType _type;
   late final Logger _log;
