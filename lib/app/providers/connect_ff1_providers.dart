@@ -1,12 +1,10 @@
 import 'dart:async';
 
-import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
-import 'package:app/domain/models/pair.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -24,19 +22,19 @@ class ConnectFF1Initial extends ConnectFF1State {}
 /// BLE connecting state
 class ConnectFF1Connecting extends ConnectFF1State {
   /// Constructor
-  const ConnectFF1Connecting({required this.ff1Device});
+  const ConnectFF1Connecting({required this.blDevice});
 
-  /// FF1 device being connected to
-  final FF1Device ff1Device;
+  /// Bluetooth device being connected to
+  final BluetoothDevice blDevice;
 }
 
 /// BLE still connecting state (after 15 seconds)
 class ConnectFF1StillConnecting extends ConnectFF1State {
   /// Constructor
-  const ConnectFF1StillConnecting({required this.ff1Device});
+  const ConnectFF1StillConnecting({required this.blDevice});
 
-  /// FF1 device being connected to
-  final FF1Device ff1Device;
+  /// Bluetooth device being connected to
+  final BluetoothDevice blDevice;
 }
 
 /// BLE connected state
@@ -89,11 +87,8 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     _cancelRequested = false;
     _stillConnectingTimer?.cancel();
 
-    // Convert BluetoothDevice to FF1Device
-    var ff1Device = FF1Device.fromBluetoothDevice(bluetoothDevice);
-
     // Set initial connecting state
-    state = AsyncValue.data(ConnectFF1Connecting(ff1Device: ff1Device));
+    state = AsyncValue.data(ConnectFF1Connecting(blDevice: bluetoothDevice));
 
     // Set up timer for "still connecting" state after 15 seconds
     _stillConnectingTimer = Timer(
@@ -101,7 +96,9 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       () {
         if (!_cancelRequested && state.value is ConnectFF1Connecting) {
           state = AsyncValue.data(
-            ConnectFF1StillConnecting(ff1Device: ff1Device),
+            ConnectFF1StillConnecting(
+              blDevice: bluetoothDevice,
+            ),
           );
         }
       },
@@ -109,23 +106,27 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
     try {
       final control = ref.read(ff1ControlProvider);
-      if (ff1Device.remoteId.isEmpty) {
+      var blDevice = bluetoothDevice;
+      if (blDevice.remoteId.str.isEmpty) {
+        if (ff1DeviceInfo == null) {
+          throw Exception('Device info is not provided');
+        }
+
         _log.info(
-          '[ConnectFF1Notifier] Device ${ff1Device.name} has empty remoteID, scan and connect',
+          '[ConnectFF1Notifier] Device ${ff1DeviceInfo.name} has empty remoteID, scan and connect',
         );
-        final foundDevice = await control.scanForName(name: ff1Device.name);
+        final foundDevice = await control.scanForName(name: ff1DeviceInfo.name);
         if (foundDevice != null) {
-          final foundFF1Device = FF1Device.fromBluetoothDevice(foundDevice);
           await control.connect(
-            device: foundFF1Device,
+            blDevice: foundDevice,
           );
-          ff1Device = foundFF1Device;
+          blDevice = foundDevice;
         }
       } else {
-        await control.connect(device: ff1Device);
+        await control.connect(blDevice: blDevice);
       }
 
-      await _handlePostConnect(ff1DeviceInfo, ff1Device);
+      await _handlePostConnect(ff1DeviceInfo, blDevice);
     } on FF1ConnectionCancelledError catch (_) {
       _log.info('[ConnectFF1Notifier] Connection cancelled by user');
     } on Exception catch (e) {
@@ -141,7 +142,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
   Future<void> _handlePostConnect(
     FF1DeviceInfo? initialFF1DeviceInfo,
-    FF1Device ff1Device,
+    BluetoothDevice blDevice,
   ) async {
     var ff1DeviceInfo = initialFF1DeviceInfo;
     // If device info is not provided, fetch it via get_info command
@@ -155,7 +156,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         await Future<void>.delayed(const Duration(milliseconds: 500));
 
         final control = ref.read(ff1ControlProvider);
-        final getInfoResponse = await control.getInfo(device: ff1Device);
+        final getInfoResponse = await control.getInfo(blDevice: blDevice);
         ff1DeviceInfo = getInfoResponse.toFF1DeviceInfo;
 
         _log.info(
@@ -185,6 +186,11 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       }
     }
 
+    var ff1Device = FF1Device.fromBluetoothDeviceAndDeviceInfo(
+      blDevice,
+      ff1DeviceInfo,
+    );
+
     if (!ff1DeviceInfo.isConnectedToInternet) {
       state = AsyncValue.data(
         ConnectFF1Connected(
@@ -196,20 +202,8 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       return;
     }
 
-    final topicId = ff1DeviceInfo.topicId;
-    final branchName = ff1DeviceInfo.branchName;
+    final topicId = ff1Device.topicId;
     if (topicId.isNotEmpty) {
-      await ref.read(
-        addFF1BluetoothDeviceProvider(
-          ff1Device.copyWith(topicId: topicId, branchName: branchName),
-        ).future,
-      );
-
-      // set as active device
-      await ref.read(
-        setActiveFF1BluetoothDeviceProvider(ff1Device.deviceId).future,
-      );
-
       // Hide QR code on device
       await ref
           .read(ff1WifiControlProvider)
@@ -226,32 +220,16 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       return;
     }
 
-    Pair<String, bool>? res;
-    final topicIdFromKeepWifi = await ref
-        .read(ff1ControlProvider)
-        .keepWifi(device: ff1Device);
-    res = Pair<String, bool>(
-      topicIdFromKeepWifi,
-      true, // indicates that it from onboarding
-    );
+    final topicIdFromKeepWifi =
+        await ref.read(ff1ControlProvider).keepWifi(blDevice: blDevice);
+    if (topicIdFromKeepWifi.isEmpty) {
+      throw Exception('Failed to get topicId from keepWifi');
+    }
 
-    final newFF1Device = FF1Device(
-      topicId: res.first,
-      remoteId: ff1Device.remoteId,
-      deviceId: ff1Device.deviceId,
-      name: ff1DeviceInfo.name,
-      branchName: branchName,
-    );
-    await ref.read(addFF1BluetoothDeviceProvider(newFF1Device).future);
-
-    // set as active device
-    await ref.read(
-      setActiveFF1BluetoothDeviceProvider(newFF1Device.deviceId).future,
-    );
-
+    ff1Device = ff1Device.copyWith(topicId: topicIdFromKeepWifi);
     state = AsyncValue.data(
       ConnectFF1Connected(
-        ff1device: newFF1Device,
+        ff1device: ff1Device,
         portalIsSet: false,
         isConnectedToInternet: true,
       ),

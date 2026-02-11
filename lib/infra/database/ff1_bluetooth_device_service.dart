@@ -97,7 +97,7 @@ class FF1BluetoothDeviceService {
         deviceId: device.deviceId,
         remoteId: device.remoteId,
         name: device.name,
-        topicId: device.topicId ?? '',
+        topicId: device.topicId,
         branchName: device.branchName,
         createdAtUs: existing != null
             ? _box
@@ -311,7 +311,7 @@ class FF1BluetoothDeviceService {
       name: entity.name,
       remoteId: entity.remoteId,
       deviceId: entity.deviceId,
-      topicId: entity.topicId.isEmpty ? null : entity.topicId,
+      topicId: entity.topicId,
       branchName: entity.branchName,
     );
   }

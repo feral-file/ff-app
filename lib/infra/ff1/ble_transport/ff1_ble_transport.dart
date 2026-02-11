@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
@@ -108,20 +107,19 @@ class FF1BleTransport {
 
   /// Connect to an FF1 device
   ///
-  /// [device] - FF1 device to connect to
+  /// [blDevice] - FF1 device to connect to
   /// [timeout] - connection timeout
   /// [maxRetries] - max connection attempts (default 0 when using Riverpod retry)
   /// [shouldContinue] - optional callback to check if connection should continue
-  /// 
+  ///
   /// Note: When using Riverpod's automatic retry, set maxRetries to 0.
   /// Riverpod will handle retries with proper exponential backoff.
   Future<void> connect({
-    required FF1Device device,
+    required BluetoothDevice blDevice,
     Duration timeout = const Duration(seconds: 30),
     int maxRetries = 0,
     bool Function()? shouldContinue,
   }) async {
-    final blDevice = device.toBluetoothDevice();
 
     // Check if operation should continue (for cancellation)
     if (shouldContinue != null && !shouldContinue()) {
@@ -131,11 +129,11 @@ class FF1BleTransport {
 
     if (maxRetries == 0) {
       // Single attempt - Riverpod handles retry
-      _log.info('Connecting to ${device.deviceId}');
-      
+      _log.info('Connecting to ${blDevice.advName}');
+
       try {
         await _connectOnce(blDevice, timeout: timeout);
-        _log.info('Connected to ${device.deviceId}');
+        _log.info('Connected to ${blDevice.advName}');
       } catch (e) {
         if (e is FF1ConnectionCancelledError) {
           rethrow;
@@ -154,12 +152,12 @@ class FF1BleTransport {
 
         try {
           _log.info(
-            'Connecting to ${device.deviceId} (attempt ${attempt + 1}/${maxRetries + 1})',
+            'Connecting to ${blDevice.advName} (attempt ${attempt + 1}/${maxRetries + 1})',
           );
 
           await _connectOnce(blDevice, timeout: timeout);
 
-          _log.info('Connected to ${device.deviceId}');
+          _log.info('Connected to ${blDevice.advName}');
           return;
         } catch (e) {
           if (e is FF1ConnectionCancelledError) {
@@ -308,10 +306,9 @@ class FF1BleTransport {
   }
 
   /// Disconnect from device
-  Future<void> disconnect(FF1Device device) async {
-    final blDevice = device.toBluetoothDevice();
+  Future<void> disconnect(BluetoothDevice blDevice) async {
     await blDevice.disconnect();
-    _characteristics.remove(device.remoteId);
+    _characteristics.remove(blDevice.remoteId.str);
   }
 
   /// Scan for FF1 devices
@@ -384,18 +381,16 @@ class FF1BleTransport {
 
   /// Send a command to device and wait for response
   ///
-  /// [device] - target FF1 device
+  /// [blDevice] - target FF1 device
   /// [command] - command to send
   /// [request] - request parameters
   /// [timeout] - response timeout
   Future<FF1BleResponse> sendCommand({
-    required FF1Device device,
+    required BluetoothDevice blDevice,
     required FF1BleCommand command,
     required FF1BleRequest request,
     Duration timeout = const Duration(seconds: 10),
   }) async {
-    final blDevice = device.toBluetoothDevice();
-
     if (blDevice.isDisconnected) {
       throw const FF1BluetoothError('Device is disconnected');
     }
@@ -413,7 +408,7 @@ class FF1BleTransport {
 
     try {
       // Get characteristic
-      final char = _characteristics[device.remoteId];
+      final char = _characteristics[blDevice.remoteId.str];
       if (char == null) {
         throw Exception('Command characteristic not found');
       }
@@ -460,7 +455,7 @@ class FF1BleTransport {
         if (!isDataTooLong) {
           _log.info('Rediscovering services after write failure...');
           await device.discoverServices();
-          
+
           // Wait for services to be discovered
           await Future<void>.delayed(const Duration(milliseconds: 500));
         }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:app/domain/models/models.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 /// FF1 device model (Bluetooth-connected device)
@@ -12,7 +13,7 @@ class FF1Device {
     required this.name,
     required this.remoteId,
     required this.deviceId,
-    this.topicId,
+    required this.topicId,
     this.branchName = 'release',
   });
 
@@ -22,19 +23,22 @@ class FF1Device {
       name: json['name'] as String,
       remoteId: json['remoteId'] as String,
       deviceId: json['deviceId'] as String? ?? json['name'] as String,
-      topicId: json['topicId'] as String?,
+      topicId: json['topicId'] as String,
       branchName: json['branchName'] as String? ?? 'release',
     );
   }
 
   /// Creates a FF1 device from BluetoothDevice.
-  factory FF1Device.fromBluetoothDevice(BluetoothDevice device) {
+  factory FF1Device.fromBluetoothDeviceAndDeviceInfo(
+    BluetoothDevice blDevice,
+    FF1DeviceInfo deviceInfo,
+  ) {
     return FF1Device(
-      name: device.advName.isNotEmpty ? device.advName : device.remoteId.str,
-      remoteId: device.remoteId.str,
-      deviceId: device.advName.isNotEmpty
-          ? device.advName
-          : 'FF1_${device.remoteId.str.substring(0, 8)}',
+      name: deviceInfo.name,
+      deviceId: deviceInfo.deviceId,
+      topicId: deviceInfo.topicId,
+      branchName: deviceInfo.branchName,
+      remoteId: blDevice.remoteId.str,
     );
   }
 
@@ -48,7 +52,7 @@ class FF1Device {
   final String deviceId;
 
   /// Topic ID for cloud/WebSocket communication (obtained after WiFi setup)
-  final String? topicId;
+  final String topicId;
 
   /// Release branch (release, demo, qemu, etc.)
   final String branchName;

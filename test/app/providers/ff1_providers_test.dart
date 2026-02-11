@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:app/app/providers/ff1_providers.dart';
-import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
@@ -30,14 +29,10 @@ void main() {
         addTearDown(container.dispose);
 
         final control = container.read(ff1ControlProvider);
-        final device = const FF1Device(
-          name: 'TestFF1',
-          remoteId: '00:11:22:33:44:55',
-          deviceId: 'FF1_TEST',
-        );
+        final blDevice = BluetoothDevice.fromId('00:11:22:33:44:55');
 
         final topicId = await control.sendWifiCredentials(
-          device: device,
+          blDevice: blDevice,
           ssid: 'TestNetwork',
           password: 'password123',
         );
@@ -63,15 +58,11 @@ void main() {
         addTearDown(container.dispose);
 
         final control = container.read(ff1ControlProvider);
-        final device = const FF1Device(
-          name: 'TestFF1',
-          remoteId: '00:11:22:33:44:55',
-          deviceId: 'FF1_TEST',
-        );
+        final blDevice = BluetoothDevice.fromId('00:11:22:33:44:55');
 
         expect(
           () => control.sendWifiCredentials(
-            device: device,
+            blDevice: blDevice,
             ssid: 'TestNetwork',
             password: 'wrongpass',
           ),
@@ -96,15 +87,11 @@ void main() {
         addTearDown(container.dispose);
 
         final control = container.read(ff1ControlProvider);
-        final device = const FF1Device(
-          name: 'TestFF1',
-          remoteId: '00:11:22:33:44:55',
-          deviceId: 'FF1_TEST',
-        );
+        final blDevice = BluetoothDevice.fromId('00:11:22:33:44:55');
 
         expect(
           () => control.sendWifiCredentials(
-            device: device,
+            blDevice: blDevice,
             ssid: 'TestNetwork',
             password: 'password',
           ),
@@ -131,13 +118,9 @@ void main() {
         addTearDown(container.dispose);
 
         final control = container.read(ff1ControlProvider);
-        final device = const FF1Device(
-          name: 'TestFF1',
-          remoteId: '00:11:22:33:44:55',
-          deviceId: 'FF1_TEST',
-        );
+        final blDevice = BluetoothDevice.fromId('00:11:22:33:44:55');
 
-        final ssids = await control.scanWifi(device: device);
+        final ssids = await control.scanWifi(blDevice: blDevice);
 
         expect(ssids, ['Network1', 'Network2', 'Network3']);
         expect(fakeTransport.lastCommand, FF1BleCommand.scanWifi);
@@ -160,13 +143,9 @@ void main() {
         addTearDown(container.dispose);
 
         final control = container.read(ff1ControlProvider);
-        final device = const FF1Device(
-          name: 'TestFF1',
-          remoteId: '00:11:22:33:44:55',
-          deviceId: 'FF1_TEST',
-        );
+        final blDevice = BluetoothDevice.fromId('00:11:22:33:44:55');
 
-        final ssids = await control.scanWifi(device: device);
+        final ssids = await control.scanWifi(blDevice: blDevice);
 
         expect(ssids, isEmpty);
       });
@@ -190,13 +169,9 @@ void main() {
         addTearDown(container.dispose);
 
         final control = container.read(ff1ControlProvider);
-        final device = const FF1Device(
-          name: 'TestFF1',
-          remoteId: '00:11:22:33:44:55',
-          deviceId: 'FF1_TEST',
-        );
+        final blDevice = BluetoothDevice.fromId('00:11:22:33:44:55');
 
-        final topicId = await control.keepWifi(device: device);
+        final topicId = await control.keepWifi(blDevice: blDevice);
 
         expect(topicId, 'topic_existing');
         expect(fakeTransport.lastCommand, FF1BleCommand.keepWifi);
@@ -219,14 +194,10 @@ void main() {
         addTearDown(container.dispose);
 
         final control = container.read(ff1ControlProvider);
-        final device = const FF1Device(
-          name: 'TestFF1',
-          remoteId: '00:11:22:33:44:55',
-          deviceId: 'FF1_TEST',
-        );
+        final blDevice = BluetoothDevice.fromId('00:11:22:33:44:55');
 
         expect(
-          () => control.keepWifi(device: device),
+          () => control.keepWifi(blDevice: blDevice),
           throwsA(isA<WifiRequiredError>()),
         );
       });
@@ -250,13 +221,9 @@ void main() {
         addTearDown(container.dispose);
 
         final control = container.read(ff1ControlProvider);
-        final device = const FF1Device(
-          name: 'TestFF1',
-          remoteId: '00:11:22:33:44:55',
-          deviceId: 'FF1_TEST',
-        );
+        final blDevice = BluetoothDevice.fromId('00:11:22:33:44:55');
 
-        final info = await control.getInfo(device: device);
+        final info = await control.getInfo(blDevice: blDevice);
 
         expect(info, contains('version'));
         expect(info, contains('deviceId'));
@@ -287,14 +254,10 @@ void main() {
         );
         addTearDown(container.dispose);
 
-        final device = const FF1Device(
-          name: 'TestFF1',
-          remoteId: '00:11:22:33:44:55',
-          deviceId: 'FF1_TEST',
-        );
+        final blDevice = BluetoothDevice.fromId('00:11:22:33:44:55');
 
         final provider = ff1BleSendCommandProvider(FF1BleCommandParams(
-          device: device,
+          blDevice: blDevice,
           command: FF1BleCommand.getInfo,
           request: const GetInfoRequest(),
         ));
@@ -397,7 +360,7 @@ class FakeFF1BleTransport implements FF1BleTransport {
 
   final FF1BleResponse? sendCommandResponse;
   final Future<FF1BleResponse> Function(
-    FF1Device device,
+    BluetoothDevice device,
     FF1BleCommand command,
     FF1BleRequest request,
     Duration timeout,
@@ -420,7 +383,7 @@ class FakeFF1BleTransport implements FF1BleTransport {
 
   @override
   Future<FF1BleResponse> sendCommand({
-    required FF1Device device,
+    required BluetoothDevice blDevice,
     required FF1BleCommand command,
     required FF1BleRequest request,
     Duration timeout = const Duration(seconds: 10),
@@ -429,7 +392,7 @@ class FakeFF1BleTransport implements FF1BleTransport {
     lastRequest = request;
 
     if (sendCommandCallback != null) {
-      return sendCommandCallback!(device, command, request, timeout);
+      return sendCommandCallback!(blDevice, command, request, timeout);
     }
 
     if (sendCommandResponse != null) {
@@ -471,7 +434,7 @@ class FakeFF1BleTransport implements FF1BleTransport {
 
   @override
   Future<void> connect({
-    required FF1Device device,
+    required BluetoothDevice blDevice,
     Duration timeout = const Duration(seconds: 30),
     int maxRetries = 3,
     bool Function()? shouldContinue,
@@ -480,7 +443,7 @@ class FakeFF1BleTransport implements FF1BleTransport {
   }
 
   @override
-  Future<void> disconnect(FF1Device device) async {
+  Future<void> disconnect(BluetoothDevice device) async {
     // Mock: do nothing
   }
 }

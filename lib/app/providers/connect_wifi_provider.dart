@@ -4,7 +4,6 @@
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
-import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
@@ -127,10 +126,11 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         status: WiFiConnectionStatus.connecting,
         message: 'Connecting to ${device.name}...',
       );
+      final blDevice = device.toBluetoothDevice();
 
       // Step 1: Connect to device (with automatic retry)
       await ref.read(
-        ff1BleConnectProvider(FF1BleConnectParams(device: device)).future,
+        ff1BleConnectProvider(FF1BleConnectParams(blDevice: blDevice)).future,
       );
       _log.info('Connected to device: ${device.deviceId}');
 
@@ -143,7 +143,7 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
       final response = await ref.read(
         ff1BleSendCommandProvider(
           FF1BleCommandParams(
-            device: device,
+            blDevice: blDevice,
             command: FF1BleCommand.scanWifi,
             request: const ScanWifiRequest(),
           ),
@@ -206,12 +206,13 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         status: WiFiConnectionStatus.sendingCredentials,
         message: 'Sending WiFi credentials to device...',
       );
+      final blDevice = device.toBluetoothDevice();
 
       // Step 5: Send WiFi credentials (connect_wifi command) with automatic retry
       // Device will attempt to connect to WiFi and respond with topicId
       final response = await ref.read(
         ff1BleSendCommandProvider(FF1BleCommandParams(
-          device: device,
+          blDevice: blDevice,
           command: FF1BleCommand.sendWifiCredentials,
           request: SendWifiCredentialsRequest(ssid: ssid, password: password),
           timeout: const Duration(seconds: 60),
@@ -242,22 +243,9 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
       );
 
       final updatedDevice = device.copyWith(topicId: topicId);
-      final deviceService = ref.read(ff1BluetoothDeviceServiceProvider);
-
-      await deviceService.putDevice(updatedDevice);
-      _log.info('Device updated in database with topicId: $topicId');
-
-      // Set as active device
-      await deviceService.setActiveDevice(device.deviceId);
-      _log.info('Device set as active');
-
-      // Update connection state to connected
-      await deviceService.updateConnectionState(device.deviceId, 1);
-
-      // Invalidate providers to reflect changes
-      ref.invalidate(allFF1BluetoothDevicesProvider);
-      ref.invalidate(activeFF1BluetoothDeviceProvider);
-      ref.invalidate(ff1BluetoothDeviceByIdProvider(device.deviceId));
+      await ref.read(addFF1BluetoothDeviceProvider(updatedDevice).future);
+      await ref
+          .read(setActiveFF1BluetoothDeviceProvider(device.deviceId).future);
 
       state = state.copyWith(
         status: WiFiConnectionStatus.success,

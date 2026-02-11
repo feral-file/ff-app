@@ -33,6 +33,11 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
   @override
   void initState() {
     super.initState();
+    final bluetoothState = ref.read(bluetoothAdapterStateProvider);
+    final isBluetoothEnabled = bluetoothState.maybeWhen(
+      data: (state) => state == BluetoothAdapterState.on,
+      orElse: () => false,
+    );
     if (isBluetoothEnabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_startScan(context));
@@ -65,15 +70,25 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
               _log.info(
                 '[FF1DevicePickerPage] Bluetooth enabled, auto-starting scan',
               );
-              unawaited(_startScan(context));
+              if (context.mounted) {
+                unawaited(_startScan(context));
+              }
             }
           }
         },
       )
       // Auto-navigate when exactly one device is found after scan completes
       ..listen<FF1ScanState>(ff1ScanProvider, (previous, next) {
-        if (!next.isScanning && next.devices.length == 1) {
-          _navigateToStartSetupPage(context, next.devices.first);
+        // Scan just completed (was scanning, now not)
+        final justFinished =
+            (previous?.isScanning ?? false) && !next.isScanning;
+
+        // Only navigate if scan just finished and exactly one device was found
+        if (justFinished && next.devices.length == 1) {
+          // Check mounted before navigation
+          if (context.mounted) {
+            _navigateToStartSetupPage(context, next.devices.first);
+          }
         }
       });
 
@@ -82,7 +97,7 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
 
     final isBluetoothEnabled = bluetoothState.maybeWhen(
       data: (state) => state == BluetoothAdapterState.on,
-      orElse: () => true,
+      orElse: () => false,
     );
 
     return Scaffold(
@@ -121,18 +136,16 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
     );
   }
 
-  bool get isBluetoothEnabled {
-    final bluetoothState = ref.read(bluetoothAdapterStateProvider);
-    return bluetoothState.maybeWhen(
-      data: (state) => state == BluetoothAdapterState.on,
-      orElse: () => true,
-    );
-  }
-
   Future<void> _startScan(BuildContext context) async {
+    final bluetoothState = ref.read(bluetoothAdapterStateProvider);
+    final isBluetoothEnabled = bluetoothState.maybeWhen(
+      data: (state) => state == BluetoothAdapterState.on,
+      orElse: () => false,
+    );
+
     if (!isBluetoothEnabled) {
       _log.warning(
-          '[FF1DevicePickerPage] Bluetooth is not enabled, cannot scan');
+          '[FF1DevicePickerPage] Bluetooth is not enabled (state: $bluetoothState), cannot scan');
       return;
     }
 

@@ -4,7 +4,6 @@ import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -32,7 +31,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
   final _ssidController = TextEditingController(text: 'TestNetwork');
   final _passwordController = TextEditingController(text: 'password123');
 
-  FF1Device? _selectedDevice;
+  BluetoothDevice? _selectedDevice;
   bool _isConnecting = false;
   String? _connectionError;
   String? _wifiResult;
@@ -94,8 +93,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
   Future<void> _offerOpenAppSettings() async {
     if (!mounted) return;
 
-    final shouldOpen =
-        await showDialog<bool>(
+    final shouldOpen = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Bluetooth Permission Required'),
@@ -139,35 +137,24 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
     try {
       final control = ref.read(ff1ControlProvider);
 
-      // Create FF1Device from BluetoothDevice
-      final device = FF1Device(
-        name: blDevice.advName.isNotEmpty
-            ? blDevice.advName
-            : blDevice.remoteId.str,
-        remoteId: blDevice.remoteId.str,
-        deviceId: blDevice.advName.isNotEmpty
-            ? blDevice.advName
-            : 'FF1_${blDevice.remoteId.str.substring(0, 8)}',
-      );
+      _log.info('Connecting to ${blDevice.advName}...');
 
-      _log.info('Connecting to ${device.deviceId}...');
-
-      await control.connect(device: device);
+      await control.connect(blDevice: blDevice);
 
       _log.info('Connected! Getting device info...');
 
       // Get device info
-      final info = await control.getInfo(device: device);
+      final info = await control.getInfo(blDevice: blDevice);
       _log.info('Device info: $info');
 
       setState(() {
-        _selectedDevice = device;
+        _selectedDevice = blDevice;
         _isConnecting = false;
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Connected to ${device.deviceId}')),
+          SnackBar(content: Text('Connected to ${blDevice.advName}')),
         );
       }
     } catch (e) {
@@ -210,7 +197,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
         final timezone = now.timeZoneName;
 
         await control.setTimezone(
-          device: _selectedDevice!,
+          blDevice: _selectedDevice!,
           timezone: timezone,
           time: now,
         );
@@ -227,7 +214,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
       });
 
       final topicId = await control.sendWifiCredentials(
-        device: _selectedDevice!,
+        blDevice: _selectedDevice!,
         ssid: ssid,
         password: password,
       );
@@ -243,11 +230,10 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
 
       // Call keepWifi to confirm connection
       _log.info('Confirming WiFi connection...');
-      await control.keepWifi(device: _selectedDevice!);
+      await control.keepWifi(blDevice: _selectedDevice!);
 
       setState(() {
-        _wifiResult =
-            'SUCCESS!\n\nTopic ID: $topicId\n\n'
+        _wifiResult = 'SUCCESS!\n\nTopic ID: $topicId\n\n'
             'The device is now connected to WiFi and can be controlled '
             'via cloud WebSocket.\n\n'
             'Tap "Test WiFi Connection" to verify connectivity.';
@@ -288,7 +274,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
 
       _log.info('Scanning for WiFi networks...');
 
-      final ssids = await control.scanWifi(device: _selectedDevice!);
+      final ssids = await control.scanWifi(blDevice: _selectedDevice!);
 
       _log.info('Found ${ssids.length} networks: $ssids');
 
@@ -657,9 +643,8 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
       itemCount: scanState.devices.length,
       itemBuilder: (context, index) {
         final device = scanState.devices[index];
-        final name = device.advName.isNotEmpty
-            ? device.advName
-            : device.remoteId.str;
+        final name =
+            device.advName.isNotEmpty ? device.advName : device.remoteId.str;
 
         return ListTile(
           leading: const Icon(Icons.devices),
@@ -715,7 +700,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
                   ),
                   SizedBox(height: LayoutConstants.space2),
                   Text(
-                    'Device: ${_selectedDevice!.deviceId}',
+                    'Device: ${_selectedDevice!.remoteId.str}',
                     style: AppTypography.body(context),
                   ),
                   Text(
@@ -796,7 +781,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
               label: Text(
                 'Rotate 90°',
                 style: AppTypography.body(context).white,
-            ),
+              ),
             ),
             SizedBox(height: LayoutConstants.space2),
             Row(
@@ -808,8 +793,8 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
                     label: Text(
                       'Play',
                       style: AppTypography.body(context).white,
+                    ),
                   ),
-                ),
                 ),
                 SizedBox(width: LayoutConstants.space2),
                 Expanded(

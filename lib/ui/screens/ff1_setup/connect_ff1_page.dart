@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/connect_ff1_providers.dart';
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
@@ -161,24 +162,27 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
         if (state is ConnectFF1Connected) {
           _recordDuration(success: true);
           if (state.isConnectedToInternet) {
+            await ref
+                .read(addFF1BluetoothDeviceProvider(state.ff1device).future);
+            unawaited(
+              ref.read(
+                setActiveFF1BluetoothDeviceProvider(state.ff1device.deviceId)
+                    .future,
+              ),
+            );
+
             if (state.portalIsSet) {
               // Just show portal is set view
             } else {
-              context.popUntil(Routes.startSetupFf1);
-              unawaited(
-                ref.read(onboardingActionsProvider).completeOnboarding(),
-              );
-              unawaited(
-                context.push(Routes.home),
-              );
-              // unawaited(
-              //   context.push(
-              //     Routes.deviceConfiguration,
-              //     // extra: DeviceConfigPayload(
-              //     //   isFromOnboarding: true,
-              //     // ),
-              //   ),
-              // );
+              if (context.mounted) {
+                context.popUntil(Routes.startSetupFf1);
+                unawaited(
+                  ref.read(onboardingActionsProvider).completeOnboarding(),
+                );
+                unawaited(
+                  context.push(Routes.home),
+                );
+              }
             }
           } else {
             context.pop();
@@ -204,6 +208,15 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
               onClose: exception.shouldShowSupport
                   ? () => unawaited(UIHelper.showCustomerSupport(context))
                   : null,
+            );
+          } else {
+            await UIHelper.showInfoDialog(
+              context,
+              'Connect failed',
+              'FF1 couldn\'t connect to the device because of an unexpected issue. Contact support for help.',
+              onClose: () async {
+                unawaited(UIHelper.showCustomerSupport(context));
+              },
             );
           }
         }
@@ -282,7 +295,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                                       .completeOnboarding(),
                                 );
                                 unawaited(
-                                  context.push(
+                                  context.replaceAllAndPushNamed(
                                     Routes.home,
                                   ),
                                 );

@@ -94,20 +94,12 @@ class OnboardingSetupFf1Page extends ConsumerWidget {
 
   /// On setup FF1 button pressed.
   void _onSetupFf1(BuildContext context, WidgetRef ref) {
-    if (!handleDeeplinkCompleter.isCompleted) {
-      handleDeeplinkCompleter.complete();
-    }
-
     // final onboardingActions = ref.read(onboardingActionsProvider);
     // unawaited(onboardingActions.completeOnboarding());
     unawaited(context.push(Routes.ff1DevicePickerPage));
   }
 
   Future<void> _onFinish(BuildContext context, WidgetRef ref) async {
-    if (!handleDeeplinkCompleter.isCompleted) {
-      handleDeeplinkCompleter.complete();
-    }
-
     final onboardingActions = ref.read(onboardingActionsProvider);
     unawaited(onboardingActions.completeOnboarding());
     unawaited(context.replaceAllAndPushNamed(Routes.home));

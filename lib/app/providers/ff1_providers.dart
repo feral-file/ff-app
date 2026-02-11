@@ -1,4 +1,3 @@
-import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
@@ -90,13 +89,13 @@ class FF1BleControl {
 
   /// Connect to an FF1 device
   Future<void> connect({
-    required FF1Device device,
+    required BluetoothDevice blDevice,
     Duration timeout = const Duration(seconds: 30),
     int maxRetries = 3,
     bool Function()? shouldContinue,
   }) async {
     await _transport.connect(
-      device: device,
+      blDevice: blDevice,
       timeout: timeout,
       maxRetries: maxRetries,
       shouldContinue: shouldContinue,
@@ -104,8 +103,8 @@ class FF1BleControl {
   }
 
   /// Disconnect from device
-  Future<void> disconnect(FF1Device device) async {
-    await _transport.disconnect(device);
+  Future<void> disconnect(BluetoothDevice blDevice) async {
+    await _transport.disconnect(blDevice);
   }
 
   /// Scan for FF1 devices
@@ -139,15 +138,16 @@ class FF1BleControl {
   ///
   /// Returns the topicId on success, which can be used for cloud communication
   Future<String> sendWifiCredentials({
-    required FF1Device device,
+    required BluetoothDevice blDevice,
     required String ssid,
     required String password,
   }) async {
     final response = await _transport.sendCommand(
-      device: device,
+      blDevice: blDevice,
       command: FF1BleCommand.sendWifiCredentials,
       request: SendWifiCredentialsRequest(ssid: ssid, password: password),
-      timeout: const Duration(seconds: 60), // Increased timeout for WiFi connection
+      timeout:
+          const Duration(seconds: 60), // Increased timeout for WiFi connection
     );
 
     if (response.isError) {
@@ -163,10 +163,10 @@ class FF1BleControl {
 
   /// Scan for available WiFi networks
   Future<List<String>> scanWifi({
-    required FF1Device device,
+    required BluetoothDevice blDevice,
   }) async {
     final response = await _transport.sendCommand(
-      device: device,
+      blDevice: blDevice,
       command: FF1BleCommand.scanWifi,
       request: const ScanWifiRequest(),
     );
@@ -180,10 +180,10 @@ class FF1BleControl {
 
   /// Keep current WiFi connection (get topicId if already connected)
   Future<String> keepWifi({
-    required FF1Device device,
+    required BluetoothDevice blDevice,
   }) async {
     final response = await _transport.sendCommand(
-      device: device,
+      blDevice: blDevice,
       command: FF1BleCommand.keepWifi,
       request: const KeepWifiRequest(),
     );
@@ -204,10 +204,10 @@ class FF1BleControl {
   /// Note: When using this method directly, consider using ff1BleSendCommandProvider
   /// for automatic retry via Riverpod. This method no longer includes manual retry.
   Future<String> getInfo({
-    required FF1Device device,
+    required BluetoothDevice blDevice,
   }) async {
     final response = await _transport.sendCommand(
-      device: device,
+      blDevice: blDevice,
       command: FF1BleCommand.getInfo,
       request: const GetInfoRequest(),
     );
@@ -221,10 +221,10 @@ class FF1BleControl {
 
   /// Factory reset device
   Future<void> factoryReset({
-    required FF1Device device,
+    required BluetoothDevice blDevice,
   }) async {
     final response = await _transport.sendCommand(
-      device: device,
+      blDevice: blDevice,
       command: FF1BleCommand.factoryReset,
       request: const FactoryResetRequest(),
       timeout: const Duration(seconds: 30),
@@ -237,13 +237,13 @@ class FF1BleControl {
 
   /// Send device logs to support
   Future<void> sendLog({
-    required FF1Device device,
+    required BluetoothDevice blDevice,
     required String userId,
     required String title,
     required String apiKey,
   }) async {
     final response = await _transport.sendCommand(
-      device: device,
+      blDevice: blDevice,
       command: FF1BleCommand.sendLog,
       request: SendLogRequest(
         userId: userId,
@@ -260,12 +260,12 @@ class FF1BleControl {
 
   /// Set device timezone
   Future<void> setTimezone({
-    required FF1Device device,
+    required BluetoothDevice blDevice,
     required String timezone,
     DateTime? time,
   }) async {
     await _transport.sendCommand(
-      device: device,
+      blDevice: blDevice,
       command: FF1BleCommand.setTimezone,
       request: SetTimezoneRequest(timezone: timezone, time: time),
       timeout: const Duration(seconds: 5),
@@ -313,6 +313,10 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
 
   @override
   FF1ScanState build() {
+    ref.onDispose(() {
+      _ff1ScanLog.info('FF1ScanNotifier disposed');
+    });
+
     return const FF1ScanState(isScanning: false, devices: []);
   }
 
@@ -347,18 +351,19 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
 }
 
 /// FF1 scan state provider
-final ff1ScanProvider = NotifierProvider<FF1ScanNotifier, FF1ScanState>(
+final ff1ScanProvider =
+    NotifierProvider.autoDispose<FF1ScanNotifier, FF1ScanState>(
   FF1ScanNotifier.new,
 );
 
 /// Parameters for BLE connection
 class FF1BleConnectParams {
   const FF1BleConnectParams({
-    required this.device,
+    required this.blDevice,
     this.timeout = const Duration(seconds: 30),
   });
 
-  final FF1Device device;
+  final BluetoothDevice blDevice;
   final Duration timeout;
 
   @override
@@ -366,11 +371,11 @@ class FF1BleConnectParams {
       identical(this, other) ||
       other is FF1BleConnectParams &&
           runtimeType == other.runtimeType &&
-          device.deviceId == other.device.deviceId &&
+          blDevice.remoteId.str == other.blDevice.remoteId.str &&
           timeout == other.timeout;
 
   @override
-  int get hashCode => device.deviceId.hashCode ^ timeout.hashCode;
+  int get hashCode => blDevice.remoteId.str.hashCode ^ timeout.hashCode;
 }
 
 /// Connect to FF1 device via BLE (auto-dispose, with retry).
@@ -384,15 +389,15 @@ class FF1BleConnectParams {
 ///   ff1BleConnectProvider(FF1BleConnectParams(device: device)).future,
 /// );
 /// ```
-final ff1BleConnectProvider = FutureProvider.autoDispose
-    .family<void, FF1BleConnectParams>(
+final ff1BleConnectProvider =
+    FutureProvider.autoDispose.family<void, FF1BleConnectParams>(
   retry: _bleRetry,
   (ref, params) async {
     final control = ref.watch(ff1ControlProvider);
 
     // Riverpod handles retry, so we set maxRetries to 0 in transport
     await control.connect(
-      device: params.device,
+      blDevice: params.blDevice,
       timeout: params.timeout,
       maxRetries: 0, // Riverpod handles retry
     );
@@ -402,13 +407,13 @@ final ff1BleConnectProvider = FutureProvider.autoDispose
 /// Parameters for BLE command execution
 class FF1BleCommandParams<T extends FF1BleRequest> {
   const FF1BleCommandParams({
-    required this.device,
+    required this.blDevice,
     required this.command,
     required this.request,
     this.timeout = const Duration(seconds: 10),
   });
 
-  final FF1Device device;
+  final BluetoothDevice blDevice;
   final FF1BleCommand command;
   final T request;
   final Duration timeout;
@@ -418,13 +423,13 @@ class FF1BleCommandParams<T extends FF1BleRequest> {
       identical(this, other) ||
       other is FF1BleCommandParams<T> &&
           runtimeType == other.runtimeType &&
-          device.deviceId == other.device.deviceId &&
+          blDevice.remoteId.str == other.blDevice.remoteId.str &&
           command == other.command &&
           timeout == other.timeout;
 
   @override
   int get hashCode =>
-      device.deviceId.hashCode ^ command.hashCode ^ timeout.hashCode;
+      blDevice.remoteId.str.hashCode ^ command.hashCode ^ timeout.hashCode;
 }
 
 /// Send BLE command to device (auto-dispose, with retry).
@@ -442,14 +447,14 @@ class FF1BleCommandParams<T extends FF1BleRequest> {
 ///   )).future,
 /// );
 /// ```
-final ff1BleSendCommandProvider = FutureProvider.autoDispose
-    .family<FF1BleResponse, FF1BleCommandParams>(
+final ff1BleSendCommandProvider =
+    FutureProvider.autoDispose.family<FF1BleResponse, FF1BleCommandParams>(
   retry: _bleRetry,
   (ref, params) async {
     final transport = ref.watch(ff1TransportProvider);
 
     return transport.sendCommand(
-      device: params.device,
+      blDevice: params.blDevice,
       command: params.command,
       request: params.request,
       timeout: params.timeout,
