@@ -7,19 +7,21 @@ import 'package:logging/logging.dart';
 /// Override this in tests with a fake/mock client.
 final indexerClientProvider = Provider<IndexerClient>((ref) {
   final log = Logger('IndexerClientProvider');
-  
+
   final endpoint = AppConfig.indexerApiUrl;
   final apiKey = AppConfig.indexerApiKey;
-  
+
   if (endpoint.isEmpty) {
     log.warning('Indexer API URL not configured');
   }
-  
+
+  final authorization = apiKey.isEmpty ? null : 'ApiKey $apiKey';
+
   return IndexerClient(
     endpoint: endpoint,
     defaultHeaders: {
       'Content-Type': 'application/json',
-      if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
+      if (authorization != null) 'Authorization': authorization,
     },
   );
 });

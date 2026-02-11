@@ -1,5 +1,5 @@
 import 'package:app/app/providers/api_retry_strategy.dart';
-import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

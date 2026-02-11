@@ -716,6 +716,12 @@ class DatabaseService {
         'Ingested ${items.length} tokens for address $address',
       );
     } catch (e, stack) {
+      if (_isOperationCancelled(e)) {
+        _log.info(
+          'Token ingest cancelled for address $address (non-fatal): $e',
+        );
+        return;
+      }
       _log.severe('Failed to ingest tokens for address $address', e, stack);
       rethrow;
     }

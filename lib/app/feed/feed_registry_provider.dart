@@ -1,6 +1,6 @@
 import 'package:app/app/feed/feed_manager.dart';
+import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
-import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/feed_config_store.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -106,7 +106,7 @@ final feedManagerProvider = Provider<FeralFileFeedManager>((ref) {
     feedConfigStore: ref.read(feedConfigStoreProvider),
     defaultDp1FeedUrl: AppConfig.dp1FeedUrl,
     indexerService: ref.read(indexerServiceProvider),
-    enrichmentService: ref.read(dp1PlaylistItemsEnrichmentServiceProvider),
+    enrichmentScheduler: ref.read(indexerEnrichmentSchedulerServiceProvider),
     apiKey: AppConfig.dp1FeedApiKey,
   );
 });

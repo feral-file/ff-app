@@ -29,15 +29,18 @@ class IndexerSyncService {
     int? offset,
   }) async {
     _log.info('Syncing tokens for ${addresses.length} addresses');
+    final queryAddresses = addresses
+        .map(_normalizeAddressForIndexerQuery)
+        .toList(growable: false);
 
     final tokens = await _indexerService.fetchTokensByAddresses(
-      addresses: addresses,
+      addresses: queryAddresses,
       limit: limit,
       offset: offset,
     );
 
     int totalIngested = 0;
-    for (final address in addresses) {
+    for (final address in queryAddresses) {
       await _databaseService.ingestTokensForAddress(
         address: address,
         tokens: tokens,
@@ -60,7 +63,13 @@ class IndexerSyncService {
     _log.info('Synced $totalIngested tokens total');
     return totalIngested;
   }
+
+  String _normalizeAddressForIndexerQuery(String address) {
+    if (address.startsWith('0X')) {
+      return '0x${address.substring(2)}';
+    }
+    return address;
+  }
 }
 
 // End of file.
-

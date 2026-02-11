@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
 import 'package:app/app/providers/mutations.dart';
+import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:app/domain/extensions/playlist_item_ext.dart';
