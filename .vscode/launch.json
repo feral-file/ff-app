@@ -5,11 +5,6 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "ff-app",
-            "request": "launch",
-            "type": "dart"
-        },
-        {
             "name": "ff-app (development mode)",
             "request": "launch",
             "type": "dart",
