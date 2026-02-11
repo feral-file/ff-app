@@ -125,6 +125,7 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
   }
 
   void _setupDatabaseWatch() {
+    if (!ref.mounted) return;
     _updateDebounceTimer?.cancel();
     _updateDebounceTimer = null;
     unawaited(_watchSub?.cancel());
@@ -157,32 +158,21 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
   }
 
   void _applyPlaylistItems(List<PlaylistItem> next) {
-    final hasMore = next.length > channelPreviewPageSize;
-    final pageItems = hasMore
-        ? next.take(channelPreviewPageSize).toList()
-        : next;
-    final sameItems = _sameItemIds(state.works, pageItems);
-    if (sameItems &&
-        state.hasMore == hasMore &&
-        !state.isLoading &&
-        !state.isLoadingMore) {
-      return;
+    if (!ref.mounted) return;
+    final loadedLength = state.works.length;
+    final listenSize = loadedLength > channelPreviewPageSize
+        ? loadedLength
+        : channelPreviewPageSize;
+    final pageItems = next.take(listenSize).toList();
+    final current = state.works;
+    final hasChanged =
+        current.length != pageItems.length || !listEquals(current, pageItems);
+    if (hasChanged) {
+      state = ChannelPreviewState.loaded(
+        works: pageItems,
+        hasMore: next.length > pageItems.length,
+      );
     }
-    state = state.copyWith(
-      works: pageItems,
-      hasMore: hasMore,
-      isLoading: false,
-      isLoadingMore: false,
-      clearError: true,
-    );
-  }
-
-  bool _sameItemIds(List<PlaylistItem> a, List<PlaylistItem> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i].id != b[i].id) return false;
-    }
-    return true;
   }
 
   /// Load preview works for the given [limit] and [offset].
@@ -207,6 +197,7 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
         limit: requestedLimit,
         offset: requestedOffset,
       );
+      if (!ref.mounted) return;
       final hasMore = result.length > channelPreviewPageSize;
       final pageItems = hasMore
           ? result.take(channelPreviewPageSize).toList()
@@ -214,6 +205,7 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
 
       state = ChannelPreviewState.loaded(works: pageItems, hasMore: hasMore);
     } catch (e, stack) {
+      if (!ref.mounted) return;
       _log.severe('Failed to load channel preview for $id', e, stack);
       state = ChannelPreviewState.error(e.toString());
     }
@@ -234,12 +226,14 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
         limit: channelPreviewPageSize,
         offset: state.works.length,
       );
+      if (!ref.mounted) return;
       final hasMore = result.length >= channelPreviewPageSize;
       state = ChannelPreviewState.loaded(
         works: [...state.works, ...result],
         hasMore: hasMore,
       );
     } catch (e, stack) {
+      if (!ref.mounted) return;
       _log.severe('Failed to load more channel preview for $id', e, stack);
       state = state.copyWith(
         isLoadingMore: false,

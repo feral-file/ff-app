@@ -33,12 +33,14 @@ class RemoteAppConfigNotifier extends Notifier<RemoteAppConfig> {
     try {
       final service = ref.read(remoteConfigServiceProvider);
       final updated = await service.refreshIfChanged();
+      if (!ref.mounted) return false;
       if (updated != null) {
         state = updated.config;
         _log.info('Remote config updated from network.');
         return true;
       }
     } on Exception catch (e, stack) {
+      if (!ref.mounted) return false;
       _log.warning('Failed to refresh remote config.', e, stack);
     }
     return false;

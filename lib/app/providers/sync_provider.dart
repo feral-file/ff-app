@@ -79,6 +79,7 @@ class IncrementalSyncNotifier extends Notifier<IncrementalSyncState> {
     try {
       final databaseService = ref.read(databaseServiceProvider);
       final playlists = await databaseService.getAddressPlaylists();
+      if (!ref.mounted) return;
       final addresses = playlists
           .map((p) => p.ownerAddress)
           .whereType<String>()
@@ -94,8 +95,10 @@ class IncrementalSyncNotifier extends Notifier<IncrementalSyncState> {
       final coordinator = ref.read(tokensSyncCoordinatorProvider.notifier);
       await coordinator.syncAddresses(addresses);
 
+      if (!ref.mounted) return;
       state = state.copyWith(lastRunAt: DateTime.now(), clearLastError: true);
     } on Object catch (e, stack) {
+      if (!ref.mounted) return;
       _log.warning('Incremental sync failed', e, stack);
       state = state.copyWith(lastRunAt: DateTime.now(), lastError: e);
     }
