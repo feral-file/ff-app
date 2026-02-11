@@ -201,7 +201,7 @@ class AddressService {
   ///
   /// This is intentionally idempotent and safe to call on every app startup.
   Future<void> ensureDefaultAddressOnStartup() async {
-    const defaultDomains = ['reas.eth'];
+    const defaultDomains = ['einstein-rosen.eth', 'einstein-rosen.tez'];
 
     for (final defaultDomain in defaultDomains) {
       try {

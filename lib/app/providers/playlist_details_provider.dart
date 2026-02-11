@@ -124,7 +124,8 @@ class PlaylistDetailsNotifier
       newSlice.map((e) => e.id).toList(),
       currentSlice.map((e) => e.id).toList(),
     );
-    if (!sameIds) {
+    final sameSnapshot = listEquals(newSlice, currentSlice);
+    if (!sameIds || !sameSnapshot) {
       state = AsyncValue.data(
         PlaylistDetailsState(
           playlist: current.playlist,
