@@ -128,11 +128,12 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                       child: SizedBox(height: LayoutConstants.space6),
                     ),
                   ] else ...[
-                    if (hasError || (networks.isEmpty && !isScanning))
+                    if (hasError || networks.isEmpty)
                       SliverToBoxAdapter(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // TODO: Handle case connect to device failed
                             Text(
                               hasError
                                   ? 'Cannot get available networks from your FF1'
@@ -144,7 +145,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                               hasError
                                   ? connectionState.message ??
                                       'There might be an issue with the WiFi module on your FF1. Please try restarting your FF1 and scan again.'
-                                  : 'There might be an issue with the WiFi module on your FF1. Please try restarting your FF1 and scan again.',
+                                  : 'Make sure WiFi networks are available nearby, then try again.',
                               style: AppTypography.body(context).white,
                             ),
                             SizedBox(height: LayoutConstants.space5),
@@ -218,7 +219,6 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
               context.push(
                 Routes.enterWifiPassword,
                 extra: EnterWifiPasswordPagePayload(
-                  onSubmitted: (topicId, error) {},
                   device: widget.payload.device,
                   wifiAccessPoint: WifiPoint(ssid),
                 ),
@@ -331,7 +331,6 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                     context.push(
                       Routes.enterWifiPassword,
                       extra: EnterWifiPasswordPagePayload(
-                        onSubmitted: (topicId, error) {},
                         device: widget.payload.device,
                         wifiAccessPoint: WifiPoint(ssid),
                       ),

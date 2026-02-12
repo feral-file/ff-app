@@ -124,11 +124,11 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
       state = state.copyWith(
         deviceId: device.deviceId,
         status: WiFiConnectionStatus.connecting,
-        message: 'Connecting to ${device.name}...',
       );
       final blDevice = device.toBluetoothDevice();
 
       // Step 1: Connect to device (with automatic retry)
+      // TODO: check the remoteID empty => scan & connect
       await ref.read(
         ff1BleConnectProvider(FF1BleConnectParams(blDevice: blDevice)).future,
       );
@@ -136,7 +136,6 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
 
       state = state.copyWith(
         status: WiFiConnectionStatus.scanningNetworks,
-        message: 'Scanning for WiFi networks...',
       );
 
       // Step 2: Scan for available WiFi networks (with automatic retry)
@@ -207,6 +206,8 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         message: 'Sending WiFi credentials to device...',
       );
       final blDevice = device.toBluetoothDevice();
+
+      // TODO: Check device connection
 
       // Step 5: Send WiFi credentials (connect_wifi command) with automatic retry
       // Device will attempt to connect to WiFi and respond with topicId

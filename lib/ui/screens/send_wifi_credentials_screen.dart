@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/connect_wifi_provider.dart';
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -23,7 +24,6 @@ import 'package:go_router/go_router.dart';
 class EnterWifiPasswordPagePayload {
   /// Constructor
   EnterWifiPasswordPagePayload({
-    required this.onSubmitted,
     required this.device,
     required this.wifiAccessPoint,
   });
@@ -33,9 +33,6 @@ class EnterWifiPasswordPagePayload {
 
   /// The WiFi access point to enter wifi password for
   final WifiPoint wifiAccessPoint;
-
-  /// The callback to call when the wifi password is submitted
-  final FutureOr<void> Function(String? topicId, Object? error)? onSubmitted;
 }
 
 /// Screen for entering WiFi password (Step 4 of the flow)
@@ -112,6 +109,7 @@ class _EnterWiFiPasswordScreenState
     final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
     final password = isOpen ? '' : _passwordController.text.trim();
 
+    // TODO: Disable, enable password field
     if (!isOpen && password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -158,17 +156,26 @@ class _EnterWiFiPasswordScreenState
                   show: false,
                 ),
           );
+
+          final ffDevice =
+              widget.payload.device.copyWith(topicId: connectionState.topicId);
+
+          unawaited(
+            ref.read(addFF1BluetoothDeviceProvider(ffDevice).future),
+          );
+          unawaited(
+            ref.read(
+              setActiveFF1BluetoothDeviceProvider(ffDevice.deviceId).future,
+            ),
+          );
         }
+
         unawaited(
           ref.read(onboardingActionsProvider).completeOnboarding(),
         );
-        unawaited(
-          context.push(Routes.home),
-        );
 
-        setState(() {
-          _isProcessing = false;
-        });
+        // TODO: navigate to bluetoothConnectedDeviceConfig(isFromOnboarding: )
+        context.go(Routes.home);
       } else if (next.status == WiFiConnectionStatus.error) {
         final error = next.error;
 
@@ -184,15 +191,14 @@ class _EnterWiFiPasswordScreenState
                   unawaited(UIHelper.showCustomerSupport(context));
                 },
               ).then((_) {
-                widget.payload.onSubmitted?.call(null, error);
+                if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) &&
+                    context.mounted) {
+                  context.pop();
+                }
               }),
             );
           } else if (error is DeviceUpdatingError) {
-            unawaited(
-              context.push(
-                Routes.ff1Updating,
-              ),
-            );
+            context.go(Routes.ff1Updating);
           } else {
             unawaited(
               UIHelper.showInfoDialog(
@@ -216,7 +222,10 @@ class _EnterWiFiPasswordScreenState
               'Can\'t reach FF1',
               'FF1 didn\'t respond in time. Make sure FF1 is nearby and try again.',
             ).then((_) {
-              widget.payload.onSubmitted?.call(null, error);
+              if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) &&
+                  context.mounted) {
+                context.pop();
+              }
             }),
           );
         } else {
@@ -230,7 +239,10 @@ class _EnterWiFiPasswordScreenState
                 unawaited(UIHelper.showCustomerSupport(context));
               },
             ).then((_) {
-              widget.payload.onSubmitted?.call(null, error);
+              if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) &&
+                  context.mounted) {
+                context.pop();
+              }
             }),
           );
         }
