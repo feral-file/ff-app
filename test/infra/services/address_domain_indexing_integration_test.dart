@@ -168,26 +168,27 @@ Future<List<AssetToken>> _fetchAllTokensForAddress({
   required IndexerService indexerService,
   required String address,
   int pageSize = 50,
-  int maxPages = 12,
+  int maxPages = 30,
 }) async {
   final all = <AssetToken>[];
-  var offset = 0;
+  int? nextOffset = 0;
 
   for (var page = 0; page < maxPages; page++) {
-    final items = await indexerService.fetchTokensByAddresses(
+    final tokenPage = await indexerService.fetchTokensPageByAddresses(
       addresses: [address],
       limit: pageSize,
-      offset: offset,
+      offset: nextOffset,
     );
+    final items = tokenPage.tokens;
     if (items.isEmpty) {
       break;
     }
 
     all.addAll(items);
-    if (items.length < pageSize) {
+    if (tokenPage.nextOffset == null) {
       break;
     }
-    offset += pageSize;
+    nextOffset = tokenPage.nextOffset;
   }
 
   return all;

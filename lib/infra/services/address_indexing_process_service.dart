@@ -145,20 +145,22 @@ class AddressIndexingProcessService {
       );
 
       while (!process.cancelled && !process.paused) {
-        final loaded = await _indexerSyncService.syncTokensForAddresses(
-          addresses: <String>[process.address],
+        final page = await _indexerSyncService.syncTokensPageForAddress(
+          address: process.address,
           limit: _batchSize,
           offset: process.offset,
         );
+        final loaded = page.fetchedCount;
 
         if (loaded <= 0) {
           break;
         }
 
-        process.offset += _batchSize;
-        if (loaded < _batchSize) {
+        final nextOffset = page.nextOffset;
+        if (nextOffset == null || nextOffset <= process.offset) {
           break;
         }
+        process.offset = nextOffset;
       }
 
       if (process.cancelled) {

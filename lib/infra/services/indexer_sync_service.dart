@@ -12,9 +12,9 @@ class IndexerSyncService {
   IndexerSyncService({
     required IndexerService indexerService,
     required DatabaseService databaseService,
-  })  : _indexerService = indexerService,
-        _databaseService = databaseService,
-        _log = Logger('IndexerSyncService');
+  }) : _indexerService = indexerService,
+       _databaseService = databaseService,
+       _log = Logger('IndexerSyncService');
 
   final IndexerService _indexerService;
   final DatabaseService _databaseService;
@@ -64,12 +64,52 @@ class IndexerSyncService {
     return totalIngested;
   }
 
+  /// Fetch and ingest one paged batch for a single address playlist.
+  ///
+  /// Returns the fetched page count and next `offset` cursor.
+  Future<AddressSyncPageResult> syncTokensPageForAddress({
+    required String address,
+    int? limit,
+    int? offset,
+  }) async {
+    final queryAddress = _normalizeAddressForIndexerQuery(address);
+    final page = await _indexerService.fetchTokensPageByAddresses(
+      addresses: <String>[queryAddress],
+      limit: limit,
+      offset: offset,
+    );
+
+    await _databaseService.ingestTokensForAddress(
+      address: queryAddress,
+      tokens: page.tokens,
+    );
+
+    return AddressSyncPageResult(
+      fetchedCount: page.tokens.length,
+      nextOffset: page.nextOffset,
+    );
+  }
+
   String _normalizeAddressForIndexerQuery(String address) {
     if (address.startsWith('0X')) {
       return '0x${address.substring(2)}';
     }
     return address;
   }
+}
+
+class AddressSyncPageResult {
+  /// Creates one page result for address token sync.
+  const AddressSyncPageResult({
+    required this.fetchedCount,
+    this.nextOffset,
+  });
+
+  /// Number of tokens fetched in the page.
+  final int fetchedCount;
+
+  /// Cursor offset for requesting the next page.
+  final int? nextOffset;
 }
 
 // End of file.

@@ -72,8 +72,9 @@ class IndexerService {
       _log.info('Fetched ${tokens.length} tokens');
       return tokens;
     } catch (e, stack) {
-      _log.severe('Failed to fetch tokens by CIDs', e, stack);
-      rethrow;
+      // Fail-open for enrichment flows: do not propagate indexer outages to UI.
+      _log.warning('Failed to fetch tokens by CIDs; returning empty', e, stack);
+      return const <AssetToken>[];
     }
   }
 
@@ -86,16 +87,62 @@ class IndexerService {
     try {
       // Default behavior: QueryListTokensRequest page size is 50.
       final effectiveLimit = limit ?? _defaultTokensPageSize;
-      final tokens = await _fetchTokens(
-        owners: addresses,
+      final page = await fetchTokensPageByAddresses(
+        addresses: addresses,
         limit: effectiveLimit,
         offset: offset,
       );
-      return tokens;
+      return page.tokens;
     } catch (e, stack) {
       _log.severe('Failed to fetch tokens by addresses', e, stack);
       rethrow;
     }
+  }
+
+  /// Fetch one tokens page by owner addresses with optional cursor paging.
+  Future<TokensPage> fetchTokensPageByAddresses({
+    required List<String> addresses,
+    int? limit,
+    int? offset,
+  }) async {
+    final vars = <String, dynamic>{
+      'owners': addresses,
+      'chains': _defaultChains,
+    };
+    if (limit != null) {
+      vars['limit'] = limit;
+    }
+    if (offset != null) {
+      vars['offset'] = offset;
+    }
+
+    final data = await _client.query(
+      doc: getTokens,
+      vars: vars,
+      subKey: 'tokens',
+    );
+
+    final items =
+        (data?['items'] as List?)?.whereType<Map<Object?, Object?>>() ??
+        const [];
+
+    final tokens = items
+        .map((e) => AssetToken.fromGraphQL(Map<String, dynamic>.from(e)))
+        .toList(growable: false);
+    final nextOffset = _parseOffset(data?['offset']);
+
+    return TokensPage(
+      tokens: tokens,
+      nextOffset: nextOffset,
+    );
+  }
+
+  int? _parseOffset(Object? rawOffset) {
+    if (rawOffset == null) return null;
+    if (rawOffset is int) return rawOffset;
+    if (rawOffset is num) return rawOffset.toInt();
+    if (rawOffset is String) return int.tryParse(rawOffset);
+    return null;
   }
 
   Future<List<AssetToken>> _fetchTokensByCids({
@@ -106,12 +153,21 @@ class IndexerService {
     // Legacy behavior: fetch manual tokens from indexer in batches of 40.
     final results = <AssetToken>[];
     for (final batch in _batchesOf(tokenCids, _manualFetchCidsBatchSize)) {
-      final tokens = await _fetchTokens(
-        tokenCids: batch,
-        limit: batch.length.clamp(1, _maxUint8Limit),
-        offset: 0,
-      );
-      results.addAll(tokens);
+      try {
+        final tokens = await _fetchTokens(
+          tokenCids: batch,
+          limit: batch.length.clamp(1, _maxUint8Limit),
+          offset: 0,
+        );
+        results.addAll(tokens);
+      } catch (e, stack) {
+        // Keep processing remaining batches when one request fails.
+        _log.warning(
+          'Failed token CID batch (${batch.length}); skipping batch',
+          e,
+          stack,
+        );
+      }
     }
 
     // Preserve requested order and dedupe by CID.
@@ -312,4 +368,19 @@ class IndexerService {
     if (tokens.isEmpty) return null;
     return tokens.first;
   }
+}
+
+/// One paged tokens response.
+class TokensPage {
+  /// Creates a single token page payload.
+  const TokensPage({
+    required this.tokens,
+    this.nextOffset,
+  });
+
+  /// Tokens returned in this page.
+  final List<AssetToken> tokens;
+
+  /// Cursor offset for the next page. `null` means no more pages.
+  final int? nextOffset;
 }
