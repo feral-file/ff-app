@@ -3,9 +3,10 @@ import 'dart:io';
 import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
-import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
-import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
+import 'package:app/infra/database/objectbox_models.dart';
+import 'package:app/objectbox.g.dart' show openStore;
 import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -33,8 +34,18 @@ ASSET_URL=https://assets.feralfile.com
   });
 
   test('build() loads curated URLs', () async {
+    final tempDir = Directory.systemTemp.createTempSync('feed_registry_test_');
+    addTearDown(() => tempDir.deleteSync(recursive: true));
+    final objectBoxStore = await openStore(directory: tempDir.path);
+    addTearDown(objectBoxStore.close);
+    final appStateService = AppStateService(
+      appStateBox: objectBoxStore.box<AppStateEntity>(),
+      appStateAddressBox: objectBoxStore.box<AppStateAddressEntity>(),
+    );
+
     final container = ProviderContainer.test(
       overrides: [
+        appStateServiceProvider.overrideWithValue(appStateService),
         remoteConfigPublishersProvider.overrideWithValue(
           <RemoteConfigPublisher>[
             RemoteConfigPublisher(
@@ -66,6 +77,8 @@ ASSET_URL=https://assets.feralfile.com
   test('setupRemoteConfigChannels groups channels by baseUrl', () async {
     final tempDir = Directory.systemTemp.createTempSync('feed_registry_test_');
     addTearDown(() => tempDir.deleteSync(recursive: true));
+    final objectBoxStore = await openStore(directory: tempDir.path);
+    addTearDown(objectBoxStore.close);
 
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(db.close);
@@ -76,15 +89,16 @@ ASSET_URL=https://assets.feralfile.com
       client: indexerClient,
     );
 
-    final feedConfigStore = FeedConfigStore(
-      documentsDirFactory: () async => tempDir,
+    final appStateService = AppStateService(
+      appStateBox: objectBoxStore.box<AppStateEntity>(),
+      appStateAddressBox: objectBoxStore.box<AppStateAddressEntity>(),
     );
 
     final container = ProviderContainer.test(
       overrides: [
         databaseServiceProvider.overrideWithValue(dbService),
         indexerServiceProvider.overrideWithValue(indexerService),
-        feedConfigStoreProvider.overrideWithValue(feedConfigStore),
+        appStateServiceProvider.overrideWithValue(appStateService),
       ],
     );
     addTearDown(container.dispose);
@@ -125,6 +139,8 @@ ASSET_URL=https://assets.feralfile.com
         'feed_registry_test_',
       );
       addTearDown(() => tempDir.deleteSync(recursive: true));
+      final objectBoxStore = await openStore(directory: tempDir.path);
+      addTearDown(objectBoxStore.close);
 
       final db = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(db.close);
@@ -135,15 +151,16 @@ ASSET_URL=https://assets.feralfile.com
         client: indexerClient,
       );
 
-      final feedConfigStore = FeedConfigStore(
-        documentsDirFactory: () async => tempDir,
+      final appStateService = AppStateService(
+        appStateBox: objectBoxStore.box<AppStateEntity>(),
+        appStateAddressBox: objectBoxStore.box<AppStateAddressEntity>(),
       );
 
       final container = ProviderContainer.test(
         overrides: [
           databaseServiceProvider.overrideWithValue(dbService),
           indexerServiceProvider.overrideWithValue(indexerService),
-          feedConfigStoreProvider.overrideWithValue(feedConfigStore),
+          appStateServiceProvider.overrideWithValue(appStateService),
         ],
       );
       addTearDown(container.dispose);

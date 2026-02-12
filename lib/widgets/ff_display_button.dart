@@ -7,7 +7,7 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
-import 'package:app/infra/config/app_flags_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/widgets/buttons/play_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -73,8 +73,8 @@ class _FFDisplayButtonState extends ConsumerState<FFDisplayButton>
   }
 
   Future<void> _maybeShowPlayTooltip() async {
-    final flagsStore = ref.read(appFlagsStoreProvider);
-    final hasSeenTooltip = await flagsStore.getBool(hasSeenPlayToFf1TooltipKey);
+    final appStateService = ref.read(appStateServiceProvider);
+    final hasSeenTooltip = await appStateService.hasSeenPlayToFf1Tooltip();
     final activeAsync = ref.read(activeFF1BluetoothDeviceProvider);
     final hasCastingDevice = activeAsync.value != null;
 
@@ -90,8 +90,8 @@ class _FFDisplayButtonState extends ConsumerState<FFDisplayButton>
       return;
     }
     _setShowPlayTooltip(false);
-    final flagsStore = ref.read(appFlagsStoreProvider);
-    await flagsStore.setBool(hasSeenPlayToFf1TooltipKey, true);
+    final appStateService = ref.read(appStateServiceProvider);
+    await appStateService.setHasSeenPlayToFf1Tooltip(hasSeen: true);
   }
 
   void _insertOverlay() {

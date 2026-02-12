@@ -1,5 +1,6 @@
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/models.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/address_indexing_process_service.dart';
@@ -14,9 +15,11 @@ class AddressService {
     required IndexerSyncService indexerSyncService,
     required DomainAddressService domainAddressService,
     required AddressIndexingProcessService addressIndexingProcessService,
+    required AppStateService appStateService,
   }) : _databaseService = databaseService,
        _domainAddressService = domainAddressService,
-       _addressIndexingProcessService = addressIndexingProcessService {
+       _addressIndexingProcessService = addressIndexingProcessService,
+       _appStateService = appStateService {
     _indexerSyncService = indexerSyncService;
     _log = Logger('AddressService');
   }
@@ -24,6 +27,7 @@ class AddressService {
   final DatabaseService _databaseService;
   final DomainAddressService _domainAddressService;
   final AddressIndexingProcessService _addressIndexingProcessService;
+  final AppStateService _appStateService;
   late final IndexerSyncService _indexerSyncService;
   late final Logger _log;
 
@@ -110,6 +114,7 @@ class AddressService {
       }
 
       await _databaseService.deletePlaylist(playlistId);
+      await _appStateService.clearAddressState(normalizedAddress);
 
       _log.info('Removed address playlist: $playlistId');
     } catch (e, stack) {

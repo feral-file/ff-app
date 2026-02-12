@@ -5,9 +5,9 @@ import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/router_provider.dart';
 import 'package:app/domain/models/wallet_address.dart';
-import 'package:app/infra/config/feed_config_store.dart';
-import 'package:app/infra/config/indexer_config_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
+import 'package:app/infra/database/database_provider.dart';
 import 'package:app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -91,20 +91,19 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap> {
       return;
     }
 
-    final feedConfigStore = ref.read(feedConfigStoreProvider);
-    final indexerConfigStore = ref.read(indexerConfigStoreProvider);
+    final appState = ref.read(appStateServiceProvider);
+    final databaseService = ref.read(databaseServiceProvider);
 
-    // Force feed side to reload from scratch.
-    await feedConfigStore.clearSyncStages();
-    await feedConfigStore.setLastTimeRefreshFeeds(DateTime(1970));
+    await appState.setLastTimeRefreshFeeds(DateTime(1970));
 
-    // Read known addresses from local state stores.
-    final statusMap = await feedConfigStore.getAllAddressIndexingStatuses();
-    final trackedAddresses = await indexerConfigStore.getTrackedAddresses();
-    final addresses = <String>{
-      ...statusMap.keys.map((a) => a.toUpperCase()),
-      ...trackedAddresses,
-    }.toList(growable: false);
+    // Read known addresses from SQLite source of truth.
+    final addressPlaylists = await databaseService.getAddressPlaylists();
+    final addresses = addressPlaylists
+        .map((playlist) => playlist.ownerAddress)
+        .whereType<String>()
+        .map((address) => address.toUpperCase())
+        .toSet()
+        .toList(growable: false);
 
     if (addresses.isEmpty) {
       return;
@@ -113,12 +112,9 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap> {
     final addressService = ref.read(addressServiceProvider);
 
     for (final address in addresses) {
-      // Reset indexer progress so sync starts from the beginning.
-      await indexerConfigStore.removeAnchor(address);
-      await indexerConfigStore.removeIndexingInfo(address);
-      await indexerConfigStore.removeLastFetchTokenTime(address);
+      await appState.clearAddressAnchor(address);
 
-      await feedConfigStore.setAddressIndexingStatus(
+      await appState.setAddressIndexingStatus(
         address: address,
         status: AddressIndexingProcessStatus(
           state: AddressIndexingProcessState.indexingTriggered,

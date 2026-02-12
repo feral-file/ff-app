@@ -19,7 +19,7 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
   FeralFileDP1FeedService({
     required super.baseUrl,
     required super.databaseService,
-    required super.feedConfigStore,
+    required super.appStateService,
     required super.apiKey,
     required this.indexerService,
     this.onChannelIngested,

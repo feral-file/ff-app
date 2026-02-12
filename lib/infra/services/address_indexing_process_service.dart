@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:logging/logging.dart';
@@ -10,16 +10,16 @@ class AddressIndexingProcessService {
   AddressIndexingProcessService({
     required IndexerService indexerService,
     required IndexerSyncService indexerSyncService,
-    required FeedConfigStore feedConfigStore,
+    required AppStateService appStateService,
     Logger? logger,
   }) : _indexerService = indexerService,
        _indexerSyncService = indexerSyncService,
-       _feedConfigStore = feedConfigStore,
+       _appStateService = appStateService,
        _log = logger ?? Logger('AddressIndexingProcessService');
 
   final IndexerService _indexerService;
   final IndexerSyncService _indexerSyncService;
-  final FeedConfigStore _feedConfigStore;
+  final AppStateService _appStateService;
   final Logger _log;
 
   static const Duration _pollDelay = Duration(seconds: 5);
@@ -221,7 +221,7 @@ class AddressIndexingProcessService {
     String? errorMessage,
     bool clearError = false,
   }) async {
-    await _feedConfigStore.setAddressIndexingStatus(
+    await _appStateService.setAddressIndexingStatus(
       address: address,
       status: AddressIndexingProcessStatus(
         state: state,

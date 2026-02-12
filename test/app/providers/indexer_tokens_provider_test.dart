@@ -3,11 +3,12 @@ import 'dart:io';
 
 import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
-import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/changes/change.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
-import 'package:app/infra/config/indexer_config_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
+import 'package:app/infra/database/objectbox_models.dart';
+import 'package:app/objectbox.g.dart' show openStore;
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
@@ -135,42 +136,59 @@ class RecordingDatabaseService extends DatabaseService {
 }
 
 void main() {
-  test('coordinator persists workflowId on ReindexAddressesListDone', () async {
-    final tempDir = Directory.systemTemp.createTempSync('idx_cfg_');
-    addTearDown(() => tempDir.deleteSync(recursive: true));
+  test(
+    'coordinator persists indexing status on ReindexAddressesListDone',
+    () async {
+      final tempDir = Directory.systemTemp.createTempSync('idx_cfg_');
+      addTearDown(() => tempDir.deleteSync(recursive: true));
+      final objectBoxStore = await openStore(directory: tempDir.path);
+      addTearDown(objectBoxStore.close);
 
-    final store = IndexerConfigStore(documentsDirFactory: () async => tempDir);
-    final worker = FakeIndexerTokensWorker();
+      final appStateService = AppStateService(
+        appStateBox: objectBoxStore.box<AppStateEntity>(),
+        appStateAddressBox: objectBoxStore.box<AppStateAddressEntity>(),
+      );
+      final worker = FakeIndexerTokensWorker();
 
-    final container = ProviderContainer.test(
-      overrides: [
-        indexerConfigStoreProvider.overrideWithValue(store),
-        indexerTokensWorkerProvider.overrideWithValue(worker),
-      ],
-    );
-    addTearDown(container.dispose);
-
-    container.read(tokensSyncCoordinatorProvider);
-
-    worker.emit(
-      const ReindexAddressesListDone(
-        'u1',
-        [
-          AddressIndexingResult(address: '0xabc', workflowId: 'wf123'),
+      final container = ProviderContainer.test(
+        overrides: [
+          appStateServiceProvider.overrideWithValue(appStateService),
+          indexerTokensWorkerProvider.overrideWithValue(worker),
         ],
-      ),
-    );
+      );
+      addTearDown(container.dispose);
 
-    await Future<void>.delayed(Duration.zero);
+      container.read(tokensSyncCoordinatorProvider);
 
-    expect(await store.getIndexingWorkflowId('0xABC'), equals('wf123'));
-  });
+      worker.emit(
+        const ReindexAddressesListDone(
+          'u1',
+          [
+            AddressIndexingResult(address: '0xabc', workflowId: 'wf123'),
+          ],
+        ),
+      );
+
+      await Future<void>.delayed(Duration.zero);
+
+      final status = await appStateService.getAddressIndexingStatus('0xABC');
+      expect(
+        status?.state,
+        equals(AddressIndexingProcessState.waitingForIndexStatus),
+      );
+    },
+  );
 
   test('coordinator uses tokenIds+owners and deletes missing cids', () async {
     final tempDir = Directory.systemTemp.createTempSync('idx_cfg_');
     addTearDown(() => tempDir.deleteSync(recursive: true));
+    final objectBoxStore = await openStore(directory: tempDir.path);
+    addTearDown(objectBoxStore.close);
 
-    final store = IndexerConfigStore(documentsDirFactory: () async => tempDir);
+    final appStateService = AppStateService(
+      appStateBox: objectBoxStore.box<AppStateEntity>(),
+      appStateAddressBox: objectBoxStore.box<AppStateAddressEntity>(),
+    );
     final worker = FakeIndexerTokensWorker();
     final fakeIndexer = FakeIndexerService();
     final db = RecordingDatabaseService();
@@ -191,7 +209,7 @@ void main() {
 
     final container = ProviderContainer.test(
       overrides: [
-        indexerConfigStoreProvider.overrideWithValue(store),
+        appStateServiceProvider.overrideWithValue(appStateService),
         indexerTokensWorkerProvider.overrideWithValue(worker),
         indexerServiceProvider.overrideWithValue(fakeIndexer),
         databaseServiceProvider.overrideWithValue(db),
@@ -256,6 +274,6 @@ void main() {
       equals(['eip155:1:erc721:0xabc:2']),
     );
 
-    expect(await store.getAnchor('0xABC'), equals(50));
+    expect(await appStateService.getAddressAnchor('0xABC'), equals(50));
   });
 }

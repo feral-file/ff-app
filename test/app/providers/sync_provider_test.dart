@@ -2,14 +2,15 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:app/app/providers/indexer_provider.dart';
-import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/sync_provider.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/changes/change.dart';
 import 'package:app/domain/models/playlist.dart';
-import 'package:app/infra/config/indexer_config_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
+import 'package:app/infra/database/objectbox_models.dart';
+import 'package:app/objectbox.g.dart' show openStore;
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
@@ -233,8 +234,11 @@ void main() {
     final dbService = DatabaseService(db);
     final tempDir = Directory.systemTemp.createTempSync('idx_cfg_');
     addTearDown(() => tempDir.deleteSync(recursive: true));
-    final configStore = IndexerConfigStore(
-      documentsDirFactory: () async => tempDir,
+    final objectBoxStore = await openStore(directory: tempDir.path);
+    addTearDown(objectBoxStore.close);
+    final appStateService = AppStateService(
+      appStateBox: objectBoxStore.box<AppStateEntity>(),
+      appStateAddressBox: objectBoxStore.box<AppStateAddressEntity>(),
     );
 
     const address = '0x1111111111111111111111111111111111111111';
@@ -291,7 +295,7 @@ void main() {
       overrides: [
         databaseServiceProvider.overrideWithValue(dbService),
         indexerServiceProvider.overrideWithValue(indexerService),
-        indexerConfigStoreProvider.overrideWithValue(configStore),
+        appStateServiceProvider.overrideWithValue(appStateService),
         indexerTokensWorkerProvider.overrideWithValue(fakeWorker),
       ],
     );

@@ -2,7 +2,7 @@ import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
-import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -99,11 +99,11 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       state = state.copyWith(message: 'Syncing curated feeds...');
       _log.info('Setting up curated channels and feed services...');
 
-      final feedConfigStore = ref.read(feedConfigStoreProvider);
+      final appState = ref.read(appStateServiceProvider);
       final feedCacheDuration = ref.read(remoteFeedCacheDurationProvider);
       final feedLastUpdatedAt = ref.read(remoteFeedLastUpdatedAtProvider);
-      await feedConfigStore.setCacheDuration(feedCacheDuration);
-      await feedConfigStore.setLastFeedUpdatedAt(feedLastUpdatedAt);
+      await appState.setCacheDuration(feedCacheDuration);
+      await appState.setLastFeedUpdatedAt(feedLastUpdatedAt);
 
       final publishers = ref.read(remoteConfigPublishersProvider);
       final curatedUrls = publishers.expand(

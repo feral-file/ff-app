@@ -1,6 +1,6 @@
 import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/infra/config/app_config.dart';
-import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_dio.dart';
@@ -19,11 +19,11 @@ final addressIndexingProcessServiceProvider =
     Provider<AddressIndexingProcessService>((ref) {
       final indexerService = ref.watch(indexerServiceProvider);
       final indexerSyncService = ref.watch(indexerSyncServiceProvider);
-      final feedConfigStore = ref.watch(feedConfigStoreProvider);
+      final appStateService = ref.watch(appStateServiceProvider);
       return AddressIndexingProcessService(
         indexerService: indexerService,
         indexerSyncService: indexerSyncService,
-        feedConfigStore: feedConfigStore,
+        appStateService: appStateService,
       );
     });
 
@@ -36,12 +36,14 @@ final addressServiceProvider = Provider<AddressService>((ref) {
   final addressIndexingProcessService = ref.watch(
     addressIndexingProcessServiceProvider,
   );
+  final appStateService = ref.watch(appStateServiceProvider);
 
   return AddressService(
     databaseService: databaseService,
     indexerSyncService: indexerSyncService,
     domainAddressService: domainAddressService,
     addressIndexingProcessService: addressIndexingProcessService,
+    appStateService: appStateService,
   );
 });
 
@@ -65,14 +67,14 @@ final bootstrapServiceProvider = Provider<BootstrapService>((ref) {
 final dp1FeedServiceProvider = Provider<FeralFileDP1FeedService>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
   final indexerService = ref.watch(indexerServiceProvider);
-  final feedConfigStore = ref.watch(feedConfigStoreProvider);
+  final appStateService = ref.watch(appStateServiceProvider);
 
   return FeralFileDP1FeedService(
     baseUrl: AppConfig.dp1FeedUrl,
     isExternalFeedService: false,
     databaseService: databaseService,
     indexerService: indexerService,
-    feedConfigStore: feedConfigStore,
+    appStateService: appStateService,
     apiKey: AppConfig.dp1FeedApiKey,
   );
 });

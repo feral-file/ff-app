@@ -160,6 +160,136 @@ final _entities = <obx_int.ModelEntity>[
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
   ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(10, 3855157679464200367),
+    name: 'AppStateAddressEntity',
+    lastPropertyId: const obx_int.IdUid(10, 7205756033359539431),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 317635060939298668),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 8540314580923552008),
+        name: 'normalizedAddress',
+        type: 9,
+        flags: 2080,
+        indexId: const obx_int.IdUid(9, 3962431394130676537),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 8877341932018307913),
+        name: 'feedBaseUrl',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 1404419168567981741),
+        name: 'feedLastRefreshAtUs',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 7031346450320634061),
+        name: 'hasIndexerAnchor',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 6219212707173673109),
+        name: 'indexerAnchor',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 385594094139718018),
+        name: 'indexingProcessStateIndex',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 545011976724115932),
+        name: 'indexingProcessUpdatedAtUs',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 3546671632087074484),
+        name: 'indexingProcessErrorMessage',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(10, 7205756033359539431),
+        name: 'updatedAtUs',
+        type: 6,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(11, 4993529541343759207),
+    name: 'AppStateEntity',
+    lastPropertyId: const obx_int.IdUid(8, 7087934475054438830),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 1602266074075108982),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 323185854255679874),
+        name: 'scope',
+        type: 9,
+        flags: 2080,
+        indexId: const obx_int.IdUid(10, 732558272281661289),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 123103053460371747),
+        name: 'globalLastRefreshEpochUs',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 3918002085832926755),
+        name: 'feedCacheDurationSeconds',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 4649454171216932893),
+        name: 'feedLastUpdatedAtUs',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 8901278758853666615),
+        name: 'hasSeenOnboarding',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 5911033282435046743),
+        name: 'hasSeenPlayToFf1Tooltip',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 7087934475054438830),
+        name: 'updatedAtUs',
+        type: 6,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
 ];
 
 /// Shortcut for [obx.Store.new] that passes [getObjectBoxModel] and for Flutter
@@ -205,11 +335,19 @@ obx_int.ModelDefinition getObjectBoxModel() {
     // Typically, this is done with `dart run build_runner build`.
     generatorVersion: obx_int.GeneratorVersion.v2025_12_16,
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(2, 7506149401476678293),
-    lastIndexId: const obx_int.IdUid(1, 1584066664369836598),
+    lastEntityId: const obx_int.IdUid(11, 4993529541343759207),
+    lastIndexId: const obx_int.IdUid(10, 732558272281661289),
     lastRelationId: const obx_int.IdUid(0, 0),
     lastSequenceId: const obx_int.IdUid(0, 0),
-    retiredEntityUids: const [],
+    retiredEntityUids: const [
+      770798788842803181,
+      621262666537860215,
+      2376011165647591893,
+      1429740381634624119,
+      841839052629614674,
+      8091506624394555565,
+      7348313918501083823,
+    ],
     retiredIndexUids: const [],
     retiredPropertyUids: const [
       4548421187535112785,
@@ -217,6 +355,36 @@ obx_int.ModelDefinition getObjectBoxModel() {
       1779253016339897687,
       5381724396762660670,
       6726641447328928585,
+      3632903845183718328,
+      3009418160042647579,
+      6534045840994551284,
+      3449299448078010116,
+      9155238587819792449,
+      1275414877543981756,
+      2750324100786103253,
+      6939807587511420123,
+      6445565942409530247,
+      8024654198762068213,
+      1704777368388386572,
+      6560765894971238813,
+      8549789255814813415,
+      8886576963508854418,
+      6889840676891888330,
+      5383483374386539172,
+      5959801751768331508,
+      5330089767041571057,
+      7285359236783854916,
+      3078368582325569633,
+      4031444646087664739,
+      1652990674434451850,
+      2256204518459881189,
+      6593212252882292596,
+      3419678040034350389,
+      7217055167862178741,
+      103208206535744154,
+      2910467538557961849,
+      8474997703388986960,
+      9024476539497481816,
     ],
     retiredRelationUids: const [],
     modelVersion: 5,
@@ -392,6 +560,172 @@ obx_int.ModelDefinition getObjectBoxModel() {
         return object;
       },
     ),
+    AppStateAddressEntity: obx_int.EntityDefinition<AppStateAddressEntity>(
+      model: _entities[2],
+      toOneRelations: (AppStateAddressEntity object) => [],
+      toManyRelations: (AppStateAddressEntity object) => {},
+      getId: (AppStateAddressEntity object) => object.id,
+      setId: (AppStateAddressEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (AppStateAddressEntity object, fb.Builder fbb) {
+        final normalizedAddressOffset = fbb.writeString(
+          object.normalizedAddress,
+        );
+        final feedBaseUrlOffset = fbb.writeString(object.feedBaseUrl);
+        final indexingProcessErrorMessageOffset = fbb.writeString(
+          object.indexingProcessErrorMessage,
+        );
+        fbb.startTable(11);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, normalizedAddressOffset);
+        fbb.addOffset(2, feedBaseUrlOffset);
+        fbb.addInt64(3, object.feedLastRefreshAtUs);
+        fbb.addBool(4, object.hasIndexerAnchor);
+        fbb.addInt64(5, object.indexerAnchor);
+        fbb.addInt64(6, object.indexingProcessStateIndex);
+        fbb.addInt64(7, object.indexingProcessUpdatedAtUs);
+        fbb.addOffset(8, indexingProcessErrorMessageOffset);
+        fbb.addInt64(9, object.updatedAtUs);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final normalizedAddressParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final feedBaseUrlParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final feedLastRefreshAtUsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          10,
+          0,
+        );
+        final hasIndexerAnchorParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          12,
+          false,
+        );
+        final indexerAnchorParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          14,
+          0,
+        );
+        final indexingProcessStateIndexParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          16,
+          0,
+        );
+        final indexingProcessUpdatedAtUsParam = const fb.Int64Reader()
+            .vTableGet(buffer, rootOffset, 18, 0);
+        final indexingProcessErrorMessageParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 20, '');
+        final updatedAtUsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          22,
+          0,
+        );
+        final object = AppStateAddressEntity(
+          normalizedAddress: normalizedAddressParam,
+          feedBaseUrl: feedBaseUrlParam,
+          feedLastRefreshAtUs: feedLastRefreshAtUsParam,
+          hasIndexerAnchor: hasIndexerAnchorParam,
+          indexerAnchor: indexerAnchorParam,
+          indexingProcessStateIndex: indexingProcessStateIndexParam,
+          indexingProcessUpdatedAtUs: indexingProcessUpdatedAtUsParam,
+          indexingProcessErrorMessage: indexingProcessErrorMessageParam,
+          updatedAtUs: updatedAtUsParam,
+        )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
+
+        return object;
+      },
+    ),
+    AppStateEntity: obx_int.EntityDefinition<AppStateEntity>(
+      model: _entities[3],
+      toOneRelations: (AppStateEntity object) => [],
+      toManyRelations: (AppStateEntity object) => {},
+      getId: (AppStateEntity object) => object.id,
+      setId: (AppStateEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (AppStateEntity object, fb.Builder fbb) {
+        final scopeOffset = fbb.writeString(object.scope);
+        fbb.startTable(9);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, scopeOffset);
+        fbb.addInt64(2, object.globalLastRefreshEpochUs);
+        fbb.addInt64(3, object.feedCacheDurationSeconds);
+        fbb.addInt64(4, object.feedLastUpdatedAtUs);
+        fbb.addBool(5, object.hasSeenOnboarding);
+        fbb.addBool(6, object.hasSeenPlayToFf1Tooltip);
+        fbb.addInt64(7, object.updatedAtUs);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final scopeParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final globalLastRefreshEpochUsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          8,
+          0,
+        );
+        final feedCacheDurationSecondsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          10,
+          0,
+        );
+        final feedLastUpdatedAtUsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          12,
+          0,
+        );
+        final hasSeenOnboardingParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          14,
+          false,
+        );
+        final hasSeenPlayToFf1TooltipParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          16,
+          false,
+        );
+        final updatedAtUsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          18,
+          0,
+        );
+        final object = AppStateEntity(
+          scope: scopeParam,
+          globalLastRefreshEpochUs: globalLastRefreshEpochUsParam,
+          feedCacheDurationSeconds: feedCacheDurationSecondsParam,
+          feedLastUpdatedAtUs: feedLastUpdatedAtUsParam,
+          hasSeenOnboarding: hasSeenOnboardingParam,
+          hasSeenPlayToFf1Tooltip: hasSeenPlayToFf1TooltipParam,
+          updatedAtUs: updatedAtUsParam,
+        )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
+
+        return object;
+      },
+    ),
   };
 
   return obx_int.ModelDefinition(model, bindings);
@@ -507,4 +841,103 @@ class RemoteAppConfigEntity_ {
       obx.QueryIntegerProperty<RemoteAppConfigEntity>(
         _entities[1].properties[6],
       );
+}
+
+/// [AppStateAddressEntity] entity fields to define ObjectBox queries.
+class AppStateAddressEntity_ {
+  /// See [AppStateAddressEntity.id].
+  static final id = obx.QueryIntegerProperty<AppStateAddressEntity>(
+    _entities[2].properties[0],
+  );
+
+  /// See [AppStateAddressEntity.normalizedAddress].
+  static final normalizedAddress =
+      obx.QueryStringProperty<AppStateAddressEntity>(
+        _entities[2].properties[1],
+      );
+
+  /// See [AppStateAddressEntity.feedBaseUrl].
+  static final feedBaseUrl = obx.QueryStringProperty<AppStateAddressEntity>(
+    _entities[2].properties[2],
+  );
+
+  /// See [AppStateAddressEntity.feedLastRefreshAtUs].
+  static final feedLastRefreshAtUs =
+      obx.QueryIntegerProperty<AppStateAddressEntity>(
+        _entities[2].properties[3],
+      );
+
+  /// See [AppStateAddressEntity.hasIndexerAnchor].
+  static final hasIndexerAnchor =
+      obx.QueryBooleanProperty<AppStateAddressEntity>(
+        _entities[2].properties[4],
+      );
+
+  /// See [AppStateAddressEntity.indexerAnchor].
+  static final indexerAnchor = obx.QueryIntegerProperty<AppStateAddressEntity>(
+    _entities[2].properties[5],
+  );
+
+  /// See [AppStateAddressEntity.indexingProcessStateIndex].
+  static final indexingProcessStateIndex =
+      obx.QueryIntegerProperty<AppStateAddressEntity>(
+        _entities[2].properties[6],
+      );
+
+  /// See [AppStateAddressEntity.indexingProcessUpdatedAtUs].
+  static final indexingProcessUpdatedAtUs =
+      obx.QueryIntegerProperty<AppStateAddressEntity>(
+        _entities[2].properties[7],
+      );
+
+  /// See [AppStateAddressEntity.indexingProcessErrorMessage].
+  static final indexingProcessErrorMessage =
+      obx.QueryStringProperty<AppStateAddressEntity>(
+        _entities[2].properties[8],
+      );
+
+  /// See [AppStateAddressEntity.updatedAtUs].
+  static final updatedAtUs = obx.QueryIntegerProperty<AppStateAddressEntity>(
+    _entities[2].properties[9],
+  );
+}
+
+/// [AppStateEntity] entity fields to define ObjectBox queries.
+class AppStateEntity_ {
+  /// See [AppStateEntity.id].
+  static final id = obx.QueryIntegerProperty<AppStateEntity>(
+    _entities[3].properties[0],
+  );
+
+  /// See [AppStateEntity.scope].
+  static final scope = obx.QueryStringProperty<AppStateEntity>(
+    _entities[3].properties[1],
+  );
+
+  /// See [AppStateEntity.globalLastRefreshEpochUs].
+  static final globalLastRefreshEpochUs =
+      obx.QueryIntegerProperty<AppStateEntity>(_entities[3].properties[2]);
+
+  /// See [AppStateEntity.feedCacheDurationSeconds].
+  static final feedCacheDurationSeconds =
+      obx.QueryIntegerProperty<AppStateEntity>(_entities[3].properties[3]);
+
+  /// See [AppStateEntity.feedLastUpdatedAtUs].
+  static final feedLastUpdatedAtUs = obx.QueryIntegerProperty<AppStateEntity>(
+    _entities[3].properties[4],
+  );
+
+  /// See [AppStateEntity.hasSeenOnboarding].
+  static final hasSeenOnboarding = obx.QueryBooleanProperty<AppStateEntity>(
+    _entities[3].properties[5],
+  );
+
+  /// See [AppStateEntity.hasSeenPlayToFf1Tooltip].
+  static final hasSeenPlayToFf1Tooltip =
+      obx.QueryBooleanProperty<AppStateEntity>(_entities[3].properties[6]);
+
+  /// See [AppStateEntity.updatedAtUs].
+  static final updatedAtUs = obx.QueryIntegerProperty<AppStateEntity>(
+    _entities[3].properties[7],
+  );
 }

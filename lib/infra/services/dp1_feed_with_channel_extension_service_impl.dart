@@ -18,7 +18,7 @@ class DP1FeedWithChannelExtensionServiceImpl extends BaseDP1FeedServiceImpl {
   DP1FeedWithChannelExtensionServiceImpl({
     required super.baseUrl,
     required super.databaseService,
-    required super.feedConfigStore,
+    required super.appStateService,
     required super.apiKey,
     super.isExternalFeedService,
     super.dio,

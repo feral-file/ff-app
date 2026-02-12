@@ -2,9 +2,9 @@ import 'package:app/app/feed/feed_manager.dart';
 import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
-import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/config/app_config.dart';
-import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
+import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -125,7 +125,7 @@ class FeedBootstrapResult {
 final feedManagerProvider = Provider<FeralFileFeedManager>((ref) {
   return FeralFileFeedManager(
     databaseService: ref.read(databaseServiceProvider),
-    feedConfigStore: ref.read(feedConfigStoreProvider),
+    appStateService: ref.read(appStateServiceProvider),
     defaultDp1FeedUrl: AppConfig.dp1FeedUrl,
     indexerService: ref.read(indexerServiceProvider),
     enrichmentScheduler: ref.read(indexerEnrichmentSchedulerServiceProvider),

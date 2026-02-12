@@ -6,7 +6,7 @@ import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/infra/config/app_config.dart';
-import 'package:app/infra/config/indexer_config_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/indexer/isolate/indexer_tokens_worker.dart';
 import 'package:app/infra/indexer/isolate/worker_messages.dart';
@@ -70,7 +70,7 @@ final indexerTokensWorkerProvider = Provider<IndexerTokensWorker>((ref) {
 class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
   late final Logger _log;
   late final IndexerTokensWorker _worker;
-  late final IndexerConfigStore _configStore;
+  late final AppStateService _appStateService;
 
   StreamSubscription<TokensWorkerMessage>? _sub;
   Timer? _pollTimer;
@@ -84,7 +84,7 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
   TokensSyncState build() {
     _log = Logger('TokensSyncCoordinator');
     _worker = ref.read(indexerTokensWorkerProvider);
-    _configStore = ref.read(indexerConfigStoreProvider);
+    _appStateService = ref.read(appStateServiceProvider);
 
     _sub = _worker.messages.listen(_handleWorkerMessage);
 
@@ -153,7 +153,7 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     // Resolve persisted anchors (default to 0 if missing).
     final anchors = <AddressAnchor>[];
     for (final address in addresses) {
-      final anchor = await _configStore.getAnchor(address) ?? 0;
+      final anchor = await _appStateService.getAddressAnchor(address) ?? 0;
       anchors.add(AddressAnchor(address: address, anchor: anchor));
     }
 
@@ -237,11 +237,6 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
       lastSyncCompleted: DateTime.now(),
     );
 
-    final now = DateTime.now().toUtc();
-    for (final address in addresses) {
-      await _configStore.setLastFetchTokenTime(address, now);
-    }
-
     final completer = _syncCompleters.remove(msg.uuid);
     if (completer != null && !completer.isCompleted) {
       completer.complete();
@@ -266,10 +261,13 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
 
   Future<void> _handleReindexAddressesDone(ReindexAddressesListDone msg) async {
     for (final result in msg.results) {
-      if (result.address.isEmpty || result.workflowId.isEmpty) continue;
-      await _configStore.setIndexingWorkflowId(
+      if (result.address.isEmpty) continue;
+      await _appStateService.setAddressIndexingStatus(
         address: result.address,
-        workflowId: result.workflowId,
+        status: AddressIndexingProcessStatus(
+          state: AddressIndexingProcessState.waitingForIndexStatus,
+          updatedAt: DateTime.now().toUtc(),
+        ),
       );
     }
   }
@@ -316,7 +314,10 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
       // Persist anchor after each page (old semantics).
       final nextAnchor = msg.changesList.nextAnchor;
       if (nextAnchor != null) {
-        await _configStore.setAnchor(address, nextAnchor);
+        await _appStateService.setAddressAnchor(
+          address: address,
+          anchor: nextAnchor,
+        );
       }
     }
   }

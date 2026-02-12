@@ -6,7 +6,7 @@ import 'package:app/domain/models/dp1/dp1_api_responses.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/pair.dart';
 import 'package:app/domain/models/playlist.dart';
-import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/drift_kinds.dart';
@@ -28,19 +28,19 @@ import 'package:synchronized/synchronized.dart';
 class FeedManager {
   FeedManager({
     required DatabaseService databaseService,
-    required FeedConfigStore feedConfigStore,
+    required AppStateService appStateService,
   }) : _databaseService = databaseService,
-       _feedConfigStore = feedConfigStore {
+       _appStateService = appStateService {
     _log = Logger('FeedManager');
   }
 
   @protected
   DatabaseService get databaseService => _databaseService;
   @protected
-  FeedConfigStore get feedConfigStore => _feedConfigStore;
+  AppStateService get appStateService => _appStateService;
 
   final DatabaseService _databaseService;
-  final FeedConfigStore _feedConfigStore;
+  final AppStateService _appStateService;
   late final Logger _log;
 
   final List<Pair<String, BaseDP1FeedServiceImpl>> _feedServices = [];
@@ -113,51 +113,32 @@ class FeedManager {
         }
       }
 
-      if (force || shouldReloadFromPolicy) {
-        await _feedConfigStore.clearSyncStages();
-      }
-
-      var bareLoaded = await _feedConfigStore.isBareItemsLoaded();
-      var tokensEnriched = await _feedConfigStore.isTokensEnriched();
-
-      if (!force && !shouldReloadFromPolicy && bareLoaded && tokensEnriched) {
-        _log.info('[FeedManager] Skip reload; all stages already complete');
+      if (!force && !shouldReloadFromPolicy) {
+        _startEnrichmentWorkerIfIdle();
+        _log.info('[FeedManager] Skip reload; cache policy is up to date');
         return;
       }
 
-      if (!bareLoaded) {
-        if (!shouldReloadFromPolicy && !force) {
-          // Cache is not stale and services report up-to-date; infer stage complete.
-          await _feedConfigStore.markBareItemsLoaded();
-          bareLoaded = true;
-        } else {
-          final reloadFutures = services
-              .map((feedService) async {
-                if (_isPaused) return;
-                try {
-                  await feedService.reloadCacheIfNeeded(
-                    force: force || shouldReloadFromPolicy,
-                  );
-                } on Exception catch (e, stack) {
-                  _log.warning(
-                    'Failed to reload cache for ${feedService.baseUrl}',
-                    e,
-                    stack,
-                  );
-                }
-              })
-              .toList(growable: false);
+      final reloadFutures = services
+          .map((feedService) async {
+            if (_isPaused) return;
+            try {
+              await feedService.reloadCacheIfNeeded(
+                force: force || shouldReloadFromPolicy,
+              );
+            } on Exception catch (e, stack) {
+              _log.warning(
+                'Failed to reload cache for ${feedService.baseUrl}',
+                e,
+                stack,
+              );
+            }
+          })
+          .toList(growable: false);
 
-          await Future.wait(reloadFutures);
-          if (_isPaused) return;
-          await _feedConfigStore.markBareItemsLoaded();
-          bareLoaded = true;
-        }
-      }
-
-      if (bareLoaded && !tokensEnriched) {
-        _startEnrichmentWorkerIfIdle();
-      }
+      await Future.wait(reloadFutures);
+      if (_isPaused) return;
+      _startEnrichmentWorkerIfIdle();
     });
   }
 
@@ -206,7 +187,7 @@ class FeedManager {
     try {
       final completed = await runGlobalEnrichment();
       if (!_isPaused && completed) {
-        await _feedConfigStore.markTokensEnriched();
+        _log.fine('[FeedManager] Enrichment cycle completed');
       }
     } on Object catch (e, stack) {
       if (_isOperationCancelled(e)) {
@@ -249,7 +230,7 @@ class FeedManager {
 
   /// Matches old repo's clearAllCache.
   Future<void> clearAllCache() async {
-    await _feedConfigStore.setLastTimeRefreshFeeds(DateTime(1970, 1, 1));
+    await _appStateService.setLastTimeRefreshFeeds(DateTime(1970, 1, 1));
     for (final feedService in feedServices) {
       await feedService.clearCache();
     }
@@ -262,7 +243,7 @@ class FeedManager {
 class FeralFileFeedManager extends FeedManager {
   FeralFileFeedManager({
     required super.databaseService,
-    required super.feedConfigStore,
+    required super.appStateService,
     required this.defaultDp1FeedUrl,
     required IndexerService indexerService,
     required IndexerEnrichmentSchedulerService enrichmentScheduler,
@@ -342,7 +323,7 @@ class FeralFileFeedManager extends FeedManager {
       final service = FeralFileDP1FeedService(
         baseUrl: endpoint,
         databaseService: databaseService,
-        feedConfigStore: feedConfigStore,
+        appStateService: appStateService,
         apiKey: _apiKey,
         indexerService: _indexerService,
         onChannelIngested: onChannelIngested,

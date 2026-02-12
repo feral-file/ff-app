@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:app/domain/models/indexer/workflow.dart';
-import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
+import 'package:app/infra/database/objectbox_models.dart';
+import 'package:app/objectbox.g.dart' show openStore;
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
@@ -10,6 +12,7 @@ import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:objectbox/objectbox.dart';
 
 class _FakeIndexerClient extends IndexerClient {
   _FakeIndexerClient() : super(endpoint: 'http://localhost');
@@ -81,14 +84,17 @@ class _FakeIndexerSyncService extends IndexerSyncService {
 void main() {
   group('AddressIndexingProcessService', () {
     late Directory tempDir;
-    late FeedConfigStore feedConfigStore;
+    late Store objectBoxStore;
+    late AppStateService appStateService;
     late _FakeDatabaseService databaseService;
     late _FakeIndexerService indexerService;
 
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('addr_idx_proc_');
-      feedConfigStore = FeedConfigStore(
-        documentsDirFactory: () async => tempDir,
+      objectBoxStore = await openStore(directory: tempDir.path);
+      appStateService = AppStateService(
+        appStateBox: objectBoxStore.box<AppStateEntity>(),
+        appStateAddressBox: objectBoxStore.box<AppStateAddressEntity>(),
       );
       databaseService = _FakeDatabaseService();
       indexerService = _FakeIndexerService();
@@ -96,6 +102,7 @@ void main() {
 
     tearDown(() async {
       await databaseService.close();
+      objectBoxStore.close();
       if (tempDir.existsSync()) {
         tempDir.deleteSync(recursive: true);
       }
@@ -117,16 +124,16 @@ void main() {
         final service = AddressIndexingProcessService(
           indexerService: indexerService,
           indexerSyncService: syncService,
-          feedConfigStore: feedConfigStore,
+          appStateService: appStateService,
         );
 
         const address = '0xabc';
         await service.start(address);
-        await _waitForFinalState(feedConfigStore, address);
+        await _waitForFinalState(appStateService, address);
 
         expect(syncService.requestedOffsets, equals([0, 50, 100]));
 
-        final status = await feedConfigStore.getAddressIndexingStatus(address);
+        final status = await appStateService.getAddressIndexingStatus(address);
         expect(status?.state, AddressIndexingProcessState.completed);
       },
     );
@@ -144,23 +151,23 @@ void main() {
       final service = AddressIndexingProcessService(
         indexerService: indexerService,
         indexerSyncService: syncService,
-        feedConfigStore: feedConfigStore,
+        appStateService: appStateService,
       );
 
       const address = '0xdef';
       await service.start(address);
-      await _waitForFinalState(feedConfigStore, address);
+      await _waitForFinalState(appStateService, address);
 
       expect(syncService.requestedOffsets, equals([0, 50]));
 
-      final status = await feedConfigStore.getAddressIndexingStatus(address);
+      final status = await appStateService.getAddressIndexingStatus(address);
       expect(status?.state, AddressIndexingProcessState.completed);
     });
   });
 }
 
 Future<void> _waitForFinalState(
-  FeedConfigStore store,
+  AppStateService store,
   String address,
 ) async {
   final startedAt = DateTime.now();

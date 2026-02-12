@@ -5,7 +5,7 @@ import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/api/dp1_feed_api.dart';
-import 'package:app/infra/config/feed_config_store.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/drift_kinds.dart';
@@ -21,12 +21,12 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
   BaseDP1FeedServiceImpl({
     required super.baseUrl,
     required DatabaseService databaseService,
-    required FeedConfigStore feedConfigStore,
+    required AppStateService appStateService,
     required String apiKey,
     this.isExternalFeedService = false,
     Dio? dio,
   }) : databaseService = databaseService,
-       feedConfigStore = feedConfigStore,
+       appStateService = appStateService,
        apiKey = apiKey,
        api = Dp1FeedApiImpl(
          dio: dio ?? Dio(),
@@ -43,7 +43,7 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
   final DatabaseService databaseService;
 
   @protected
-  final FeedConfigStore feedConfigStore;
+  final AppStateService appStateService;
 
   @protected
   final String apiKey;
@@ -170,7 +170,7 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
 
   @override
   Future<void> clearCache() async {
-    await feedConfigStore.deleteLastRefreshTime(baseUrl);
+    await appStateService.deleteLastRefreshTime(baseUrl);
     await databaseService.deleteAllPlaylistsByKindAndBaseUrl(
       kind: DriftPlaylistKind.dp1.value,
       baseUrl: baseUrl,
@@ -178,9 +178,9 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
   }
 
   Future<bool> shouldReloadCache() async {
-    final lastRefresh = await feedConfigStore.getLastRefreshTime(baseUrl);
-    final cacheDuration = await feedConfigStore.getCacheDuration();
-    final lastUpdated = await feedConfigStore.getLastFeedUpdatedAt();
+    final lastRefresh = await appStateService.getLastRefreshTime(baseUrl);
+    final cacheDuration = await appStateService.getCacheDuration();
+    final lastUpdated = await appStateService.getLastFeedUpdatedAt();
 
     final now = DateTime.now();
     final isStaleByAge = lastRefresh.isBefore(now.subtract(cacheDuration));
@@ -212,7 +212,7 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
         '[BaseDP1FeedServiceImpl] Forced cache reload for baseUrl=$baseUrl',
       );
       await reloadCache();
-      await feedConfigStore.setLastRefreshTime(baseUrl, DateTime.now());
+      await appStateService.setLastRefreshTime(baseUrl, DateTime.now());
       return;
     }
 
@@ -229,7 +229,7 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
       '[BaseDP1FeedServiceImpl] Reloading cache (policy) for baseUrl=$baseUrl',
     );
     await reloadCache();
-    await feedConfigStore.setLastRefreshTime(baseUrl, DateTime.now());
+    await appStateService.setLastRefreshTime(baseUrl, DateTime.now());
   }
 
   /// Get service name map (url -> name). Default empty.
