@@ -30,8 +30,31 @@ This repository follows strict TDD for behavior changes. Apply this sequence eve
 - Dependencies must be injectable (providers/constructors/interfaces).
 - Keep pure logic out of widgets; place in `domain/` or testable app-layer functions.
 - Provider-driven logic must support test overrides (`ProviderContainer.test()` and provider overrides).
+- Follow Riverpod testing guidance:
+  - https://riverpod.dev/docs/how_to/testing
+- Provider test baseline:
+  - Every provider file in `lib/app/providers/` must have unit-test coverage.
+  - For provider tests, use `ProviderContainer.test()` and override external dependencies.
+  - Prefer fake/mock dependency providers and fake/mock notifiers for behavior isolation.
+  - Keep auto-dispose providers alive during assertions with `container.listen(...)` when needed.
 
 ## 4) Completion gates
 - `flutter analyze` passes.
 - `flutter test` passes.
 - New behavior has both unit and integration coverage where applicable.
+
+## 5) Coverage reporting and non-regression
+- Generate business-layer unit coverage with:
+  - `scripts/report_business_coverage.sh`
+- Business-layer scope is fixed to:
+  - `lib/app`
+  - `lib/domain`
+  - `lib/infra`
+- Coverage outputs:
+  - Markdown report: `coverage/business_layer_unit_coverage.md`
+  - Metrics TSV: `coverage/business_layer_unit_coverage.metrics.tsv`
+  - Baseline TSV: `coverage/business_layer_unit_coverage.baseline.tsv`
+- Rule for pull requests:
+  - Do not degrade baseline coverage for `overall` or any `module` row.
+  - If an intentional reset is approved, refresh baseline explicitly:
+    - `scripts/report_business_coverage.sh --update-baseline`
