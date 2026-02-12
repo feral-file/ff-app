@@ -164,12 +164,6 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           if (state.isConnectedToInternet) {
             await ref
                 .read(addFF1BluetoothDeviceProvider(state.ff1device).future);
-            unawaited(
-              ref.read(
-                setActiveFF1BluetoothDeviceProvider(state.ff1device.deviceId)
-                    .future,
-              ),
-            );
 
             if (state.portalIsSet) {
               // Portal is set, show portal is set view

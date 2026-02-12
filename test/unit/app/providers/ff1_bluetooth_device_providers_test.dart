@@ -32,9 +32,6 @@ void main() {
       expect(devices.length, 1);
 
       await container.read(addFF1BluetoothDeviceProvider(device).future);
-      await container.read(
-        setActiveFF1BluetoothDeviceProvider(device.deviceId).future,
-      );
       final active = await container.read(
         activeFF1BluetoothDeviceProvider.future,
       );

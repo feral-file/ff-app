@@ -245,8 +245,6 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
 
       final updatedDevice = device.copyWith(topicId: topicId);
       await ref.read(addFF1BluetoothDeviceProvider(updatedDevice).future);
-      await ref
-          .read(setActiveFF1BluetoothDeviceProvider(device.deviceId).future);
 
       state = state.copyWith(
         status: WiFiConnectionStatus.success,

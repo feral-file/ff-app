@@ -163,11 +163,6 @@ class _EnterWiFiPasswordScreenState
           unawaited(
             ref.read(addFF1BluetoothDeviceProvider(ffDevice).future),
           );
-          unawaited(
-            ref.read(
-              setActiveFF1BluetoothDeviceProvider(ffDevice.deviceId).future,
-            ),
-          );
         }
 
         unawaited(
