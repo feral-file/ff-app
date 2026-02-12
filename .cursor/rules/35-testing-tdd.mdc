@@ -1,0 +1,37 @@
+---
+description: Mandatory TDD workflow for Flutter features and refactors
+alwaysApply: true
+globs:
+  - "lib/**/*.dart"
+  - "test/**/*.dart"
+---
+
+# Testing Rule: Mandatory TDD Sequence
+
+This repository follows strict TDD for behavior changes. Apply this sequence every time with no exception.
+
+## 1) Required implementation order
+1. Write small, single-responsibility, testable functions first.
+2. Write unit tests for those functions.
+3. Write integration tests next.
+4. Provision `.env` for integration tests before execution.
+5. Define expected integration-test outputs before implementing app flow wiring.
+6. Run tests and make sure all pass.
+7. Only then write/update app flow that composes the tested functions.
+
+## 2) Constraints
+- Do not start by wiring UI flow first.
+- Do not merge behavior changes with missing unit tests.
+- Do not skip integration tests when behavior crosses module boundaries.
+- Prefer multiple focused unit tests over one long, coupled test.
+- Integration tests can be longer and scenario-driven.
+
+## 3) Testability requirements
+- Dependencies must be injectable (providers/constructors/interfaces).
+- Keep pure logic out of widgets; place in `domain/` or testable app-layer functions.
+- Provider-driven logic must support test overrides (`ProviderContainer.test()` and provider overrides).
+
+## 4) Completion gates
+- `flutter analyze` passes.
+- `flutter test` passes.
+- New behavior has both unit and integration coverage where applicable.

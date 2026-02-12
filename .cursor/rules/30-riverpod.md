@@ -19,6 +19,7 @@ These rules apply only to the files listed in `globs` above.
 
 - Do not call transports/adapters directly from UI; route through `app/providers` and injected services.
 - Keep DP-1 nouns locked to `Channel` / `Playlist` / `Work` in domain models and storage naming.
+- Riverpod is the only shared flow driver for new app flow logic; do not introduce BLoC/get_it/singleton flow paths.
 
 ## `watch` / `read` / `listen` rules
 
@@ -110,5 +111,6 @@ testWidgets('widget reacts to provider state', (tester) async {
 ### Definition of done for provider changes
 
 - Add/update unit tests for the notifier/provider behavior.
+- Follow `.cursor/rules/35-testing-tdd.mdc` sequence before shipping provider-backed feature flow.
 - Ensure `flutter test` passes.
 - Ensure `flutter analyze` passes (`very_good_analysis`).

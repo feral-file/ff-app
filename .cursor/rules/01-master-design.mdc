@@ -16,6 +16,7 @@ You are working in a **Flutter** codebase. Follow these rules **by default** unl
 - **DP-1 terminology lock:** only **Channel / Playlist / Work** as domain objects. “Exhibition/Season/Program” are *playlist roles* (UI chrome), never new types.
 - **Deletion-first:** prefer removing legacy/duplicate concepts over extending them.
 - **OSS-first posture:** keep protocol/data surfaces portable and auditable.
+- **No legacy by default:** no migration/legacy compatibility layer unless explicitly requested and approved.
 
 (Background: Strategy + app spec + trust constraints.) 
 
@@ -30,6 +31,7 @@ Rules:
 - UI never calls transports directly.
 - Side effects live behind providers (repositories/services).
 - Domain is pure and testable (no Flutter imports).
+- Existing code that violates this should be removed/replaced, not wrapped with compatibility abstractions.
 
 ## 3) Riverpod usage rules (flow driver)
 - All cross-screen state and external device events must enter via Riverpod providers.
@@ -65,12 +67,14 @@ External events (disconnect, FF1 internet down, pairing required) must:
 - If asked to add a feature, first ask: “What can be deleted or simplified?”
 - If a new concept is proposed, map it to DP-1 terms or refuse it.
 - **Write testable code when applicable**: keep `domain/` pure, inject side-effect dependencies via providers, and avoid hidden singleton state.
+- Follow mandatory TDD flow from `.cursor/rules/35-testing-tdd.mdc`.
 
 ## 9) Out of scope (do not add)
 - Auth / passkeys / wallets
 - Localization
 - Performance benchmarks
 - Per-exhibition hacks or one-off object types
+- Legacy migration by default
 
 ## 10) Definition of Done (DoD)
 A task is considered complete when:

@@ -1,446 +1,56 @@
 ---
+description: Flutter coding style, naming, and in-file comment requirements aligned with Riverpod architecture
 alwaysApply: true
+globs:
+  - "lib/**/*.dart"
+  - "test/**/*.dart"
 ---
 
-# Cursor Rule: Flutter Code Best Practices
-
-## Purpose
-Ensure high-quality Flutter code that follows industry standards, maintains consistency, and passes all lint checks.
-
-## 🚨 ABSOLUTE REQUIREMENTS - NO EXCEPTIONS 🚨
-
-### MUST USE:
-- ✅ `AppTypography` for **ALL** text styles - every single `Text` widget
-- ✅ `LayoutConstants` for **ALL** spacing, padding, margins, dimensions
-
-### MUST NOT USE:
-- ❌ Hard-coded font sizes (e.g., `fontSize: 16`)
-- ❌ Hard-coded spacing values (e.g., `padding: 8`, `SizedBox(height: 12)`)
-- ❌ Hard-coded dimensions (e.g., `width: 44`, `size: 24`)
-- ❌ `TextStyle()` with numeric font size
-- ❌ Any numeric literal for UI sizing
-
-**Violations of these rules will result in immediate code rejection.**
-
-## Code Quality & Linting
-
-### Always run flutter lint before committing
-- Execute `flutter analyze` to check for lint issues
-- Fix all lint violations before submitting code
-- Use `flutter format` to auto-format code
-
-### Lint Rules Compliance
-Follow the `very_good_analysis` ruleset (version 6.0.0) with these exceptions:
-- `public_member_api_docs: false` (API docs not required for private app)
-- `avoid_dynamic_calls: false` (allowed for flexibility with external APIs)
-
-### Common Lint Fixes
-- **prefer_const_constructors**: Always use `const` for compile-time constants
-- **prefer_final_fields**: Mark class fields `final` when not reassigned
-- **avoid_print**: Use proper logging instead of print statements
-- **prefer_single_quotes**: Use single quotes for strings
-- **sort_child_properties_last**: Put child widgets last in widget constructors
-
-## Architecture & Patterns
-
-### BLoC Pattern
-- Use BLoC for state management in complex screens
-- Separate business logic from UI in Bloc classes
-- Use `BlocBuilder`, `BlocListener`, and `BlocConsumer` appropriately
-- Keep Bloc classes in `lib/screen/*/bloc/` directories
-
-### Clean Architecture Layers
-```
-lib/
-├── gateway/     # API clients & external data sources
-├── service/     # Business logic & data processing
-├── model/       # Data models & entities
-├── screen/      # UI screens & routing
-├── view/        # Reusable UI components
-├── util/        # Utility functions & helpers
-├── theme/       # Styling & design tokens
-└── widgets/     # Custom widgets
-```
-
-### Dependency Injection
-- Use `get_it` for dependency injection
-- Register services in `lib/common/injector.dart`
-- Access services via `injector<T>()` calls
-
-## Widget Best Practices
-
-### Widget Structure
-- Prefer `StatelessWidget` when possible, use `StatefulWidget` only when necessary
-- Use meaningful widget names (e.g., `PlaylistCarouselView`, `ArtworkItemView`)
-- Keep widgets focused on single responsibilities
-- Break complex widgets into smaller, reusable components
-
-### Constructor Best Practices
-```dart
-class MyWidget extends StatelessWidget {
-  const MyWidget({
-    super.key,
-    required this.title,
-    this.subtitle,
-    this.onTap,
-  });
-
-  final String title;
-  final String? subtitle;
-  final VoidCallback? onTap;
-
-  // Good: const constructor with proper parameter naming
-}
-```
-
-### State Management
-- Use `ValueNotifier` for simple local state
-- Use BLoC for complex state that needs to persist or be shared
-- Avoid setState() for complex state management
-- Use keys for widgets that need to maintain state across rebuilds
-
-### Touch Targets & Accessibility
-- **Minimum tappable area**: Ensure all interactive elements have at least 44x44 pixels
-- **If parent size is smaller**: Adjust padding/gaps to meet the 44x44 minimum requirement
-- **Accessibility compliance**: Follow WCAG guidelines for touch target sizes
-- **Consistent touch feedback**: Provide visual feedback for all interactive elements
-
-## Code Style & Conventions
-
-### Naming Conventions
-- **Classes**: PascalCase (e.g., `PlaylistService`, `ArtworkModel`)
-- **Methods/Functions**: camelCase (e.g., `fetchPlaylists()`, `formatDate()`)
-- **Variables**: camelCase (e.g., `playlistTitle`, `isLoading`)
-- **Constants**: UPPER_SNAKE_CASE (e.g., `MAX_RETRY_COUNT`)
-- **Private members**: Prefix with underscore (e.g., `_isLoading`)
-
-### File Organization
-- One class per file (except for closely related classes like models)
-- Group related functionality in feature directories
-- Use clear, descriptive file names
-- Keep files under 500 lines when possible
-
-### Imports
-```dart
-// Good: Group imports logically
-import 'dart:async';
-import 'dart:convert';
-
-import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-
-import 'package:autonomy_flutter/model/playlist.dart';
-import 'package:autonomy_flutter/service/playlist_service.dart';
-import 'package:autonomy_flutter/util/constants.dart';
-
-// Local imports
-import 'playlist_state.dart';
-import 'playlist_event.dart';
-```
-
-## Error Handling
-
-### Async Operations
-- Always handle errors in async functions
-- Use try-catch blocks for critical operations
-- Log errors appropriately using the logging system
-- Show user-friendly error messages
-
-```dart
-// Good: Proper error handling
-Future<void> loadData() async {
-  try {
-    final data = await apiService.fetchData();
-    emit(DataLoaded(data));
-  } catch (e) {
-    log.error('Failed to load data: $e');
-    emit(DataError('Unable to load data. Please try again.'));
-  }
-}
-```
-
-### Null Safety
-- Use null-safe operators (`?.`, `??`, `!`)
-- Prefer nullable types when data might be absent
-- Use `late` keyword only when initialization is guaranteed
-
-## Performance Optimization
-
-### Build Optimization
-- Avoid unnecessary rebuilds by using `const` constructors
-- Use `const` widgets in lists when possible
-- Implement `shouldRebuild` in custom widgets when needed
-- Use `ValueListenableBuilder` for reactive UI updates
-
-### Memory Management
-- Dispose controllers, streams, and listeners in `dispose()`
-- Cancel subscriptions and timers
-- Use weak references when appropriate
-- Avoid memory leaks from closures capturing large objects
-
-### Image Optimization
-- Use appropriate image formats (WebP preferred)
-- Implement proper caching with `cached_network_image`
-- Use `cacheWidth` and `cacheHeight` for image optimization
-- Lazy load images in lists
-
-### Rendering Performance
-- **Minimize saveLayer() calls**: Avoid `saveLayer()` when possible, use static shapes or refactor to avoid overlaps
-- **Use opacity wisely**: Prefer `AnimatedOpacity` or `FadeInImage` over `Opacity` widget, especially in animations
-- Apply opacity directly to images rather than wrapping in `Opacity` widget when possible
-- Draw shapes with semitransparent colors instead of `Opacity` widget when possible
-- **Use clipping carefully**: Clipping is expensive, use `borderRadius` instead of clipping for rounded rectangles
-- Avoid `Clip.antiAliasWithSaveLayer` unless necessary
-
-### Layout Optimization
-- **Avoid intrinsic operations**: Don't use widgets that trigger intrinsic layout passes (like `IntrinsicHeight`, `IntrinsicWidth`)
-- Set fixed sizes for grid/list cells when possible to avoid intrinsic calculations
-- Use custom `RenderObject` for complex sizing requirements instead of intrinsic operations
-
-### Animation Performance
-- Avoid `Opacity` widget in animations; use `AnimatedOpacity` instead
-- Don't put non-animated subtrees in `AnimatedBuilder.builder` function
-- Avoid clipping in animations; pre-clip images when possible
-- Use GPU fragment shaders for fading effects (`FadeInImage`)
-
-### Frame Rate Target
-- **Target 60fps**: Build and render frames in 16ms or less
-- Enable "Show widget rebuild information" in IDE Flutter Performance window
-
-## Testing
-
-### Unit Tests
-- Write tests for business logic in services
-- Use `mocktail` for mocking dependencies
-- Place tests in `test/unit-tests/`
-- Follow existing test naming conventions
-
-### Widget Tests
-- Test complex widget behavior
-- Use `flutter_test` for widget testing
-- Mock external dependencies
-- Test both success and error states
-
-## Design System Integration
-
-### ⚠️ CRITICAL RULE - READ THIS FIRST ⚠️
-
-**ALL text styles MUST use `AppTypography`**  
-**ALL spacing/sizing MUST use `LayoutConstants`**  
-**NO hard-coded numbers allowed - ZERO EXCEPTIONS**
-
-Any code with hard-coded font sizes, spacing, or dimensions will be **immediately rejected**.
-
-### Typography and Layout Constants (MANDATORY)
-**ALWAYS use `AppTypography` for text styles and `LayoutConstants` for sizing, padding, and spacing.**
-
-⚠️ **ABSOLUTE REQUIREMENT - NO EXCEPTIONS:**
-- ❌ **NEVER, EVER use hard-coded font sizes** (e.g., `fontSize: 16`)
-- ❌ **NEVER, EVER use hard-coded spacing/padding values** (e.g., `padding: 16`, `height: 44`)
-- ❌ **NEVER, EVER use TextStyle() directly** without AppTypography
-- ❌ **NEVER, EVER use numeric literals** for spacing, dimensions, or sizes
-- ✅ **ONLY use `AppTypography` methods for ALL text**
-- ✅ **ONLY use `LayoutConstants` for ALL spacing, padding, and sizing**
-
-**This is not optional. Code reviews will reject any hard-coded values.**
-
-#### AppTypography - Text Styles
-- Use `AppTypography` methods with BuildContext for all text
-- Use extension methods for colors (`.black`, `.white`, `.grey`, etc.)
-- **NO exceptions - even for one-off cases, use AppTypography**
-
-```dart
-// ✅ CORRECT: Using AppTypography
-Text(
-  'Playlist Title',
-  style: AppTypography.h2(context).black,
-)
-
-Text(
-  'Description text',
-  style: AppTypography.body(context).grey,
-)
-
-// ❌ FORBIDDEN: Hard-coded styles - WILL BE REJECTED
-Text(
-  'Playlist Title',
-  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-)
-
-// ❌ FORBIDDEN: Direct font size - WILL BE REJECTED
-Text(
-  'Description',
-  style: TextStyle(fontSize: 16, color: Colors.grey),
-)
-
-// ❌ FORBIDDEN: Any numeric font size - WILL BE REJECTED
-Text(
-  'Title',
-  style: Theme.of(context).textTheme.bodyText1?.copyWith(fontSize: 18),
-)
-```
-
-#### LayoutConstants - Spacing and Sizing
-- Use `LayoutConstants` for **ALL** spacing values - **NO numeric literals allowed**
-- Use the 4px grid system: `space1` (4px), `space2` (8px), `space3` (12px), `space4` (16px), etc.
-- Use predefined constants for touch targets and icon sizes
-- **If a spacing value isn't in LayoutConstants, add it - DON'T hard-code it**
-
-```dart
-// ✅ CORRECT: Using LayoutConstants
-Padding(
-  padding: EdgeInsets.all(LayoutConstants.space4),
-  child: Column(
-    children: [
-      Icon(
-        Icons.playlist,
-        size: LayoutConstants.iconSizeLarge,
-      ),
-      SizedBox(height: LayoutConstants.space3),
-      Text('Playlist', style: AppTypography.h3(context)),
-    ],
-  ),
-)
-
-// ✅ CORRECT: Touch target compliance
-Container(
-  height: LayoutConstants.minTouchTarget,
-  width: LayoutConstants.minTouchTarget,
-  child: IconButton(icon: Icon(Icons.more)),
-)
-
-// ❌ FORBIDDEN: Hard-coded spacing - WILL BE REJECTED
-Padding(
-  padding: EdgeInsets.all(16), // ❌ NO! Use LayoutConstants.space4
-  child: Column(
-    children: [
-      Icon(Icons.playlist, size: 24), // ❌ NO! Use LayoutConstants.iconSizeLarge
-      SizedBox(height: 12), // ❌ NO! Use LayoutConstants.space3
-      Text('Playlist'), // ❌ NO! Use AppTypography
-    ],
-  ),
-)
-
-// ❌ FORBIDDEN: Hard-coded dimensions - WILL BE REJECTED
-Container(
-  height: 44, // ❌ NO! Use LayoutConstants.minTouchTarget
-  width: 44,  // ❌ NO! Use LayoutConstants.minTouchTarget
-  child: IconButton(icon: Icon(Icons.more)),
-)
-
-// ❌ FORBIDDEN: Any numeric literals for spacing - WILL BE REJECTED
-Column(
-  children: [
-    SizedBox(height: 8),  // ❌ NO! Use LayoutConstants.space2
-    Container(padding: EdgeInsets.symmetric(horizontal: 20)), // ❌ NO!
-  ],
-)
-```
-
-#### When to Use What
-- **Headings**: Use `AppTypography.h1` through `AppTypography.h4` based on hierarchy
-- **Body text**: Use `AppTypography.body` (default) or `AppTypography.bodySmall` (sparingly)
-- **Metadata**: Use `AppTypography.caption` for low-priority information
-- **Technical text**: Use `AppTypography.mono` for addresses, code
-- **Small gaps**: `LayoutConstants.space1` or `space2` (4-8px)
-- **Default spacing**: `LayoutConstants.space4` (16px)
-- **Section spacing**: `LayoutConstants.space6` or `space8` (24-32px)
-- **Icons**: Use `iconSizeSmall`, `iconSizeDefault`, `iconSizeMedium`, `iconSizeLarge`
-
-#### 🚫 Absolutely Forbidden - Will Result in Code Rejection
-```dart
-// ❌ NEVER DO THIS - ANY OF THESE WILL BE REJECTED:
-fontSize: 16
-padding: EdgeInsets.all(20)
-height: 44
-SizedBox(width: 12)
-Icon(Icons.x, size: 24)
-TextStyle(fontSize: 14)
-Container(margin: EdgeInsets.symmetric(vertical: 8))
-```
-
-**Remember: If you're typing a number for size/spacing/font, you're doing it wrong.**
-
-### Design Tokens
-- Use design tokens from `/lib/design/build/` for consistent styling
-- Reference typography tokens for text styles via `AppTypography`
-- Use spacing tokens via `LayoutConstants`
-- Avoid hard-coded values when tokens are available
-
-### Responsive Design
-- Use `ResponsiveLayout` utilities for adaptive layouts
-- Test layouts on different screen sizes
-- Consider tablet layouts where appropriate
-- Use `MediaQuery` for responsive spacing
-
-## Code Commit Guidelines
-
-### Never Auto-Commit Code
-- **Do NOT automatically commit or stage code changes**
-- Always provide the user with a conventional commit message after making changes
-- Use the format: `type(scope): description`
-
-### Conventional Commit Format
-```
-type(scope): brief description
-
-[optional body explaining changes]
-
-[optional footer with breaking changes]
-```
-
-**Types:**
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `style`: Code style changes (formatting, etc.)
-- `refactor`: Code refactoring
-- `test`: Adding/modifying tests
-- `chore`: Maintenance tasks
-
-**Scopes (common for Flutter apps):**
-- `ui`, `widget`, `view`: UI components
-- `bloc`, `state`, `event`: State management
-- `api`, `service`, `gateway`: Data layer
-- `model`, `entity`: Data models
-- `util`, `helper`: Utility functions
-- `theme`, `style`: Styling/theming
-
-**Examples:**
-```
-feat(playlist): add carousel view for artwork display
-
-fix(auth): resolve login timeout issue
-
-refactor(playlist-service): extract common playlist operations
-
-style(artwork-widget): fix lint issues and formatting
-```
-
-## Best Practice Checklist
-
-### Code Review Checklist:
-- [ ] **CRITICAL: Zero hard-coded font sizes - ALL text uses `AppTypography`**
-- [ ] **CRITICAL: Zero hard-coded spacing/dimensions - ALL use `LayoutConstants`**
-- [ ] **CRITICAL: No numeric literals for sizes, spacing, padding, or dimensions**
-- [ ] Follows BLoC pattern where appropriate
-- [ ] Proper error handling and logging
-- [ ] Uses design tokens consistently
-- [ ] No lint violations
-- [ ] Responsive design considerations
-- [ ] Memory leaks prevented
-- [ ] Proper state management
-- [ ] Clean, readable code structure
-- [ ] Touch targets use `LayoutConstants.minTouchTarget` (not hard-coded 44)
-- [ ] Accessibility features work properly
-
-### Performance Checklist:
-- [ ] No unnecessary rebuilds
-- [ ] Efficient list rendering (lazy builders, no intrinsic operations)
-- [ ] Proper image caching
-- [ ] Minimal bundle size impact
-- [ ] Smooth animations and transitions
-- [ ] Frames render in 16ms or less (60fps target)
-- [ ] No excessive saveLayer() calls
-- [ ] Opacity and clipping used efficiently
-- [ ] No intrinsic layout passes causing performance issues
+# Cursor Rule: Flutter Coding Style (ff-app)
+
+## 1) Architecture alignment guardrails
+- Follow Riverpod-first flow: no BLoC/get_it patterns for new work.
+- Follow layered boundaries: `ui/ -> app/ -> domain/ -> infra/`.
+- Keep IO and side effects out of widgets.
+
+## 2) Design system usage (mandatory)
+- Use `AppTypography` for text styles.
+- Use `LayoutConstants` for spacing, paddings, and dimensions.
+- Avoid introducing raw UI literals when a design token exists.
+
+## 3) Naming consistency
+- Files: `snake_case.dart` and descriptive by responsibility.
+- Classes/types/enums/extensions: `PascalCase`.
+- Variables/params/functions/methods: `camelCase`.
+- Constants: `lowerCamelCase` for private consts, `UPPER_SNAKE_CASE` only for true global compile-time constants.
+- Booleans must read as predicates (`isConnected`, `hasError`, `canRetry`).
+- Async methods should be verb-first and explicit (`fetchPlaylists`, `loadChannelById`, `saveWork`).
+
+## 4) Commenting policy (in-file comments favored)
+- Prefer in-file comments over separate docs when explaining behavior, constraints, and architectural intent.
+- Favor descriptive comments that explain:
+  - why the code exists
+  - what constraints or invariants it preserves
+  - what can break if changed
+  - integration assumptions (FF1 state, transport/protocol expectations, DP-1 mapping)
+- Add comments at non-obvious boundaries: provider orchestration, conversions, concurrency, retries, and fallback logic.
+- Avoid noisy comments that only restate syntax.
+
+## 5) Dartdoc policy (official guidance)
+Based on Dart documentation (`dart.dev`), apply these key points:
+- Use `///` Dartdoc for all public APIs and any private member with non-trivial behavior.
+- Start docs with a one-line summary sentence, then details on behavior and constraints.
+- Document parameters, return behavior, and side effects in prose.
+- Use square-bracket references for symbols (for example `[Playlist]`, `[ProviderContainer]`).
+- Document thrown exceptions/failure modes and state assumptions when relevant.
+- Include short usage examples for complex APIs when it improves correctness.
+
+## 6) Testing-minded implementation style
+- Prefer small single-responsibility functions that are straightforward to unit test.
+- Keep pure logic in `domain/` or pure helpers; inject dependencies for side-effecting code.
+- Do not merge feature flow code before core unit/integration tests are in place (see `.cursor/rules/35-testing-tdd.mdc`).
+
+## 7) Quality gates before completion
+- `flutter analyze` must pass.
+- `flutter test` must pass.
+- New code must not increase lint debt.
