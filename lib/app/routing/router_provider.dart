@@ -1,4 +1,5 @@
 import 'package:app/app/route_observer.dart';
+import 'package:app/app/routing/page_transitions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/ui/screens/add_address_screen.dart';
 import 'package:app/ui/screens/add_alias_screen.dart';
@@ -19,6 +20,7 @@ import 'package:app/ui/screens/playlist_detail_screen.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
 import 'package:app/ui/screens/send_wifi_credentials_screen.dart';
 import 'package:app/ui/screens/work_detail_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
@@ -31,8 +33,10 @@ final _log = Logger('RouterProvider');
 ///
 /// Note: List views (channels, playlists, works) are now tabs in HomeIndexPage.
 /// Only detail screens have dedicated routes.
-final routerProvider =
-    Provider.family<GoRouter, String>((ref, initialLocation) {
+final routerProvider = Provider.family<GoRouter, String>((
+  ref,
+  initialLocation,
+) {
   return GoRouter(
     debugLogDiagnostics: true,
     initialLocation: initialLocation,
@@ -53,27 +57,39 @@ final routerProvider =
           GoRoute(
             path: 'introduce',
             name: RouteNames.onboardingIntroduce,
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final payload = state.extra is IntroducePagePayload
                   ? state.extra! as IntroducePagePayload
                   : IntroducePagePayload();
-              return IntroducePage(payload: payload);
+              return buildCupertinoTransitionPage(
+                context,
+                state,
+                IntroducePage(payload: payload),
+              );
             },
           ),
           GoRoute(
             path: 'add-address',
             name: RouteNames.onboardingAddAddress,
-            builder: (context, state) {
+            pageBuilder: (context, state) {
               final payload = state.extra is OnboardingAddAddressPagePayload
                   ? state.extra! as OnboardingAddAddressPagePayload
                   : OnboardingAddAddressPagePayload();
-              return OnboardingAddAddressPage(payload: payload);
+              return buildCupertinoTransitionPage(
+                context,
+                state,
+                OnboardingAddAddressPage(payload: payload),
+              );
             },
           ),
           GoRoute(
             path: 'setup-ff1',
             name: RouteNames.onboardingSetupFf1,
-            builder: (context, state) => const OnboardingSetupFf1Page(),
+            pageBuilder: (context, state) => buildCupertinoTransitionPage(
+              context,
+              state,
+              const OnboardingSetupFf1Page(),
+            ),
           ),
         ],
       ),
@@ -82,34 +98,55 @@ final routerProvider =
       GoRoute(
         path: Routes.ff1DevicePickerPage,
         name: RouteNames.ff1DevicePicker,
-        builder: (context, state) => const FF1DevicePickerPage(),
+        pageBuilder: (context, state) => buildCupertinoTransitionPage(
+          context,
+          state,
+          const FF1DevicePickerPage(),
+        ),
       ),
 
       // Add address input page
       GoRoute(
         path: Routes.addAddressPage,
         name: RouteNames.addAddress,
-        builder: (context, state) => const AddAddressScreen(),
+        pageBuilder: (context, state) => buildCupertinoTransitionPage(
+          context,
+          state,
+          const AddAddressScreen(),
+        ),
       ),
 
       // Add alias page
       GoRoute(
         path: Routes.addAliasPage,
         name: RouteNames.addAlias,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           if (state.extra == null) {
             _log.warning('AddAliasScreen: extra is null');
-            // Back to previous page
             context.pop();
+            return buildCupertinoTransitionPage(
+              context,
+              state,
+              const SizedBox.shrink(),
+            );
           }
 
           final payload = state.extra! as AddAliasScreenPayload;
           if (payload.address.isEmpty) {
             _log.warning('AddAliasScreen: address is empty');
             context.pop();
+            return buildCupertinoTransitionPage(
+              context,
+              state,
+              const SizedBox.shrink(),
+            );
           }
 
-          return AddAliasScreen(payload: payload);
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            AddAliasScreen(payload: payload),
+          );
         },
       ),
 
@@ -120,17 +157,21 @@ final routerProvider =
         builder: (context, state) => const HomeIndexPage(),
       ),
 
-      // All channels route (must be defined before channel detail so "all" isn't
-      // interpreted as a channelId).
+      // All channels route (must be defined before channel detail so "all"
+      // isn't interpreted as a channelId).
       GoRoute(
         path: Routes.allChannels,
         name: RouteNames.allChannels,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final filterParam = state.uri.queryParameters['filter'];
           final filter = filterParam == 'personal'
               ? AllChannelsFilter.personal
               : AllChannelsFilter.curated;
-          return AllChannelsScreen(filter: filter);
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            AllChannelsScreen(filter: filter),
+          );
         },
       ),
 
@@ -138,9 +179,13 @@ final routerProvider =
       GoRoute(
         path: '${Routes.channels}/:channelId',
         name: RouteNames.channelDetail,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final channelId = state.pathParameters['channelId']!;
-          return ChannelDetailScreen(channelId: channelId);
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            ChannelDetailScreen(channelId: channelId),
+          );
         },
       ),
 
@@ -149,12 +194,16 @@ final routerProvider =
       GoRoute(
         path: Routes.allPlaylists,
         name: RouteNames.allPlaylists,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final filterParam = state.uri.queryParameters['filter'];
           final filter = filterParam == 'personal'
               ? AllPlaylistsFilter.personal
               : AllPlaylistsFilter.curated;
-          return AllPlaylistsScreen(filter: filter);
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            AllPlaylistsScreen(filter: filter),
+          );
         },
       ),
 
@@ -162,9 +211,13 @@ final routerProvider =
       GoRoute(
         path: '${Routes.playlists}/:playlistId',
         name: RouteNames.playlistDetail,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final playlistId = state.pathParameters['playlistId']!;
-          return PlaylistDetailScreen(playlistId: playlistId);
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            PlaylistDetailScreen(playlistId: playlistId),
+          );
         },
       ),
 
@@ -172,9 +225,13 @@ final routerProvider =
       GoRoute(
         path: '${Routes.works}/:workId',
         name: RouteNames.workDetail,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final workId = state.pathParameters['workId']!;
-          return WorkDetailScreen(workId: workId);
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            WorkDetailScreen(workId: workId),
+          );
         },
       ),
 
@@ -182,25 +239,37 @@ final routerProvider =
       GoRoute(
         path: Routes.ff1Test,
         name: RouteNames.ff1Test,
-        builder: (context, state) => const FF1TestScreen(),
+        pageBuilder: (context, state) => buildCupertinoTransitionPage(
+          context,
+          state,
+          const FF1TestScreen(),
+        ),
       ),
 
       // Connected devices route
       GoRoute(
         path: Routes.connectedDevices,
         name: RouteNames.connectedDevices,
-        builder: (context, state) => const ConnectedDevicesScreen(),
+        pageBuilder: (context, state) => buildCupertinoTransitionPage(
+          context,
+          state,
+          const ConnectedDevicesScreen(),
+        ),
       ),
 
       // Start setup FF1 route
       GoRoute(
         path: Routes.startSetupFf1,
         name: RouteNames.startSetupFf1,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final payload = state.extra is StartSetupFf1PagePayload
               ? state.extra! as StartSetupFf1PagePayload
               : StartSetupFf1PagePayload();
-          return StartSetupFf1Page(payload: payload);
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            StartSetupFf1Page(payload: payload),
+          );
         },
       ),
 
@@ -208,15 +277,23 @@ final routerProvider =
       GoRoute(
         path: Routes.connectFF1Page,
         name: RouteNames.connectFF1,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           if (state.extra == null) {
             _log.warning('ConnectFF1Page: extra is null');
-            // Back to previous page
             context.pop();
+            return buildCupertinoTransitionPage(
+              context,
+              state,
+              const SizedBox.shrink(),
+            );
           }
 
           final payload = state.extra! as ConnectFF1PagePayload;
-          return ConnectFF1Page(payload: payload);
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            ConnectFF1Page(payload: payload),
+          );
         },
       ),
 
@@ -224,15 +301,23 @@ final routerProvider =
       GoRoute(
         path: Routes.scanWifiNetworks,
         name: RouteNames.scanWifiNetworks,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           if (state.extra == null) {
             _log.warning('ScanWiFiNetworkScreen: extra is null');
-            // Back to previous page
             context.pop();
+            return buildCupertinoTransitionPage(
+              context,
+              state,
+              const SizedBox.shrink(),
+            );
           }
 
           final payload = state.extra! as ScanWifiNetworkPagePayload;
-          return ScanWiFiNetworkScreen(payload: payload);
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            ScanWiFiNetworkScreen(payload: payload),
+          );
         },
       ),
 
@@ -240,9 +325,13 @@ final routerProvider =
       GoRoute(
         path: Routes.enterWifiPassword,
         name: RouteNames.enterWifiPassword,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final payload = state.extra! as EnterWifiPasswordPagePayload;
-          return EnterWiFiPasswordScreen(payload: payload);
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            EnterWiFiPasswordScreen(payload: payload),
+          );
         },
       ),
 
@@ -269,7 +358,11 @@ final routerProvider =
       GoRoute(
         path: Routes.ff1Updating,
         name: RouteNames.ff1Updating,
-        builder: (context, state) => const FF1UpdatingPage(),
+        pageBuilder: (context, state) => buildCupertinoTransitionPage(
+          context,
+          state,
+          const FF1UpdatingPage(),
+        ),
       ),
     ],
   );
