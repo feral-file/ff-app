@@ -23,6 +23,7 @@ const _routesThatHideNowDisplayingBar = <String>[
   Routes.enterWifiPassword,
   Routes.deviceConfiguration,
   Routes.ff1Updating,
+  Routes.nowDisplaying,
 ];
 
 /// Syncs scroll + keyboard visibility into [nowDisplayingVisibilityProvider].
