@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/feed/feed_registry_provider.dart';
+import 'package:app/app/providers/background_workers_provider.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,7 +29,16 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
       WidgetsBinding.instance.removeObserver(_observer);
     });
 
-    return WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+    final initialState =
+        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+    if (initialState == AppLifecycleState.resumed) {
+      unawaited(
+        ref
+            .read(backgroundWorkersManagerProvider)
+            .startPendingWorkOnForeground(),
+      );
+    }
+    return initialState;
   }
 
   void _onLifecycleChanged(AppLifecycleState state) {
@@ -41,12 +51,15 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
+      final workersManager = ref.read(backgroundWorkersManagerProvider);
       ref.read(feedManagerProvider).pauseWork();
+      unawaited(workersManager.pauseOnBackground());
       unawaited(_checkpointDatabase());
     } else if (state == AppLifecycleState.resumed) {
-      final feedManager = ref.read(feedManagerProvider);
-      feedManager.resumeWork();
-      unawaited(feedManager.reloadAllCache(force: false));
+      final workersManager = ref.read(backgroundWorkersManagerProvider);
+      final feedManager = ref.read(feedManagerProvider)..resumeWork();
+      unawaited(workersManager.startPendingWorkOnForeground());
+      unawaited(feedManager.reloadAllCache());
     }
   }
 
@@ -75,5 +88,5 @@ class _Observer with WidgetsBindingObserver {
 /// Provider for current app lifecycle state.
 final appLifecycleProvider =
     NotifierProvider<AppLifecycleNotifier, AppLifecycleState>(
-  AppLifecycleNotifier.new,
-);
+      AppLifecycleNotifier.new,
+    );

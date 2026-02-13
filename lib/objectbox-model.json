@@ -234,10 +234,51 @@
         }
       ],
       "relations": []
+    },
+    {
+      "id": "12:8386579186992898493",
+      "lastPropertyId": "6:5058690585758162742",
+      "name": "WorkerStateEntity",
+      "properties": [
+        {
+          "id": "1:7026421341565984040",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:7806560449660627472",
+          "name": "workerId",
+          "indexId": "11:7170931557671098195",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:8634257928218582145",
+          "name": "stateIndex",
+          "type": 6
+        },
+        {
+          "id": "4:8352808654578695977",
+          "name": "hasCheckpoint",
+          "type": 1
+        },
+        {
+          "id": "5:5237487681711859762",
+          "name": "checkpointJson",
+          "type": 9
+        },
+        {
+          "id": "6:5058690585758162742",
+          "name": "updatedAtUs",
+          "type": 6
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "11:4993529541343759207",
-  "lastIndexId": "10:732558272281661289",
+  "lastEntityId": "12:8386579186992898493",
+  "lastIndexId": "11:7170931557671098195",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",
   "modelVersion": 5,

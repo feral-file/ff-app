@@ -3,8 +3,8 @@ import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
+import 'package:app/infra/workers/worker_state_service.dart';
 import 'package:drift/native.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -16,13 +16,17 @@ void main() {
   });
 
   test('indexer compatibility providers resolve from indexer notifier', () {
-    // Unit test: verifies compatibility providers read composed services from indexer notifier.
+    // Unit test: verifies compatibility providers read composed services
+    // from indexer notifier.
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(db.close);
     final container = ProviderContainer.test(
       overrides: [
         databaseServiceProvider.overrideWith((ref) => DatabaseService(db)),
         indexerClientProvider.overrideWithValue(FakeIndexerClient()),
+        workerStateServiceProvider.overrideWithValue(
+          InMemoryWorkerStateStore(),
+        ),
       ],
     );
     addTearDown(container.dispose);

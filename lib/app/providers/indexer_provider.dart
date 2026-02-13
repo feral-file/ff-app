@@ -1,7 +1,8 @@
 import 'dart:async';
 
-import 'package:app/infra/config/app_config.dart';
+import 'package:app/app/providers/background_workers_provider.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
+import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
 import 'package:app/infra/services/dp1_playlist_items_enrichment_service.dart';
@@ -59,7 +60,9 @@ class IndexerNotifier extends Notifier<IndexerState> {
       indexerSyncService: _indexerSyncService,
       maxEnrichmentWorkers: AppConfig.indexerEnrichmentMaxThreads,
     );
-    _addressIndexingService = IndexerAddressIndexingService();
+    _addressIndexingService = IndexerAddressIndexingService(
+      worker: ref.read(indexSingleAddressWorkerProvider),
+    );
 
     ref.onDispose(() {
       unawaited(_addressIndexingService.dispose());

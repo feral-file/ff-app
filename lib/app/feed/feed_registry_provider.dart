@@ -1,4 +1,5 @@
 import 'package:app/app/feed/feed_manager.dart';
+import 'package:app/app/providers/background_workers_provider.dart';
 import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
@@ -24,7 +25,10 @@ class CuratedChannelRef {
   final String baseUrl;
 
   /// DP-1 channel ID, e.g. `ch_...`.
+  /// Parsed DP-1 channel ID.
   final String channelId;
+
+  /// Publisher ID associated with this curated channel URL.
   final int publisherId;
 
   /// Best-effort parser for curated DP-1 channel URLs.
@@ -131,6 +135,7 @@ final feedManagerProvider = Provider<FeralFileFeedManager>((ref) {
     enrichmentScheduler: ref.read(indexerEnrichmentSchedulerServiceProvider),
     apiKey: AppConfig.dp1FeedApiKey,
     onChannelPersistedInDatabase: () async {
+      await ref.read(ingestFeedChannelWorkerProvider).notifyChannelIngested();
       await ref
           .read(tokensSyncCoordinatorProvider.notifier)
           .notifyChannelIngested();
@@ -140,7 +145,8 @@ final feedManagerProvider = Provider<FeralFileFeedManager>((ref) {
 
 /// Riverpod flow-driver for feed orchestration.
 ///
-/// Delegates all operations to [FeralFileFeedManager] via [feedManagerProvider]:
+/// Delegates all operations to [FeralFileFeedManager]
+/// via [feedManagerProvider]:
 /// - setupRemoteConfigChannels() and reloadAllCache() call into the manager
 /// - State is derived from curated channel URLs for reactivity
 class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
@@ -172,7 +178,7 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
     _log.info('Setting up remote config channels: $channelCount URLs');
     final manager = ref.read(feedManagerProvider);
     await manager.setupRemoteConfigChannels(publishers);
-    await manager.reloadAllCache(force: false);
+    await manager.reloadAllCache();
     _log.info('Setup complete');
   }
 

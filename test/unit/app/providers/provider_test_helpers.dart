@@ -17,6 +17,7 @@ import 'package:app/infra/indexer/isolate/worker_messages.dart';
 import 'package:app/infra/indexer/isolate/worker_tasks.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
+import 'package:app/infra/workers/worker_state_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,7 +25,7 @@ import 'package:logging/logging.dart';
 
 Future<void> ensureDotEnvLoaded() async {
   if (!dotenv.isInitialized) {
-    await dotenv.load(fileName: '.env');
+    await dotenv.load();
   }
 }
 
@@ -198,6 +199,38 @@ class MockAppStateService implements AppStateService {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
+}
+
+class InMemoryWorkerStateStore implements WorkerStateStore {
+  final Map<String, WorkerStateSnapshot> _rows =
+      <String, WorkerStateSnapshot>{};
+
+  @override
+  Future<void> clearCheckpoint(String workerId) async {
+    final current = _rows[workerId];
+    if (current == null) {
+      _rows[workerId] = const WorkerStateSnapshot(stateIndex: 0);
+      return;
+    }
+    _rows[workerId] = WorkerStateSnapshot(stateIndex: current.stateIndex);
+  }
+
+  @override
+  Future<WorkerStateSnapshot?> load(String workerId) async {
+    return _rows[workerId];
+  }
+
+  @override
+  Future<void> save({
+    required String workerId,
+    required int stateIndex,
+    Map<String, dynamic>? checkpoint,
+  }) async {
+    _rows[workerId] = WorkerStateSnapshot(
+      stateIndex: stateIndex,
+      checkpoint: checkpoint,
+    );
+  }
 }
 
 class FakeIndexerTokensWorker extends IndexerTokensWorker {

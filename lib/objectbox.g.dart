@@ -290,6 +290,53 @@ final _entities = <obx_int.ModelEntity>[
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
   ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(12, 8386579186992898493),
+    name: 'WorkerStateEntity',
+    lastPropertyId: const obx_int.IdUid(6, 5058690585758162742),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 7026421341565984040),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 7806560449660627472),
+        name: 'workerId',
+        type: 9,
+        flags: 2080,
+        indexId: const obx_int.IdUid(11, 7170931557671098195),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 8634257928218582145),
+        name: 'stateIndex',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 8352808654578695977),
+        name: 'hasCheckpoint',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 5237487681711859762),
+        name: 'checkpointJson',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 5058690585758162742),
+        name: 'updatedAtUs',
+        type: 6,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
 ];
 
 /// Shortcut for [obx.Store.new] that passes [getObjectBoxModel] and for Flutter
@@ -335,8 +382,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
     // Typically, this is done with `dart run build_runner build`.
     generatorVersion: obx_int.GeneratorVersion.v2025_12_16,
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(11, 4993529541343759207),
-    lastIndexId: const obx_int.IdUid(10, 732558272281661289),
+    lastEntityId: const obx_int.IdUid(12, 8386579186992898493),
+    lastIndexId: const obx_int.IdUid(11, 7170931557671098195),
     lastRelationId: const obx_int.IdUid(0, 0),
     lastSequenceId: const obx_int.IdUid(0, 0),
     retiredEntityUids: const [
@@ -726,6 +773,65 @@ obx_int.ModelDefinition getObjectBoxModel() {
         return object;
       },
     ),
+    WorkerStateEntity: obx_int.EntityDefinition<WorkerStateEntity>(
+      model: _entities[4],
+      toOneRelations: (WorkerStateEntity object) => [],
+      toManyRelations: (WorkerStateEntity object) => {},
+      getId: (WorkerStateEntity object) => object.id,
+      setId: (WorkerStateEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (WorkerStateEntity object, fb.Builder fbb) {
+        final workerIdOffset = fbb.writeString(object.workerId);
+        final checkpointJsonOffset = fbb.writeString(object.checkpointJson);
+        fbb.startTable(7);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, workerIdOffset);
+        fbb.addInt64(2, object.stateIndex);
+        fbb.addBool(3, object.hasCheckpoint);
+        fbb.addOffset(4, checkpointJsonOffset);
+        fbb.addInt64(5, object.updatedAtUs);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final workerIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final stateIndexParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          8,
+          0,
+        );
+        final hasCheckpointParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          10,
+          false,
+        );
+        final checkpointJsonParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 12, '');
+        final updatedAtUsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          14,
+          0,
+        );
+        final object = WorkerStateEntity(
+          workerId: workerIdParam,
+          stateIndex: stateIndexParam,
+          hasCheckpoint: hasCheckpointParam,
+          checkpointJson: checkpointJsonParam,
+          updatedAtUs: updatedAtUsParam,
+        )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
+
+        return object;
+      },
+    ),
   };
 
   return obx_int.ModelDefinition(model, bindings);
@@ -939,5 +1045,38 @@ class AppStateEntity_ {
   /// See [AppStateEntity.updatedAtUs].
   static final updatedAtUs = obx.QueryIntegerProperty<AppStateEntity>(
     _entities[3].properties[7],
+  );
+}
+
+/// [WorkerStateEntity] entity fields to define ObjectBox queries.
+class WorkerStateEntity_ {
+  /// See [WorkerStateEntity.id].
+  static final id = obx.QueryIntegerProperty<WorkerStateEntity>(
+    _entities[4].properties[0],
+  );
+
+  /// See [WorkerStateEntity.workerId].
+  static final workerId = obx.QueryStringProperty<WorkerStateEntity>(
+    _entities[4].properties[1],
+  );
+
+  /// See [WorkerStateEntity.stateIndex].
+  static final stateIndex = obx.QueryIntegerProperty<WorkerStateEntity>(
+    _entities[4].properties[2],
+  );
+
+  /// See [WorkerStateEntity.hasCheckpoint].
+  static final hasCheckpoint = obx.QueryBooleanProperty<WorkerStateEntity>(
+    _entities[4].properties[3],
+  );
+
+  /// See [WorkerStateEntity.checkpointJson].
+  static final checkpointJson = obx.QueryStringProperty<WorkerStateEntity>(
+    _entities[4].properties[4],
+  );
+
+  /// See [WorkerStateEntity.updatedAtUs].
+  static final updatedAtUs = obx.QueryIntegerProperty<WorkerStateEntity>(
+    _entities[4].properties[5],
   );
 }
