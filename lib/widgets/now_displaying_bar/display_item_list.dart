@@ -14,13 +14,14 @@ class DisplayItemList extends StatelessWidget {
     required this.items,
     required this.selectedIndex,
     this.onItemTap,
+    this.scrollController,
     super.key,
   });
 
   final List<PlaylistItem> items;
   final int selectedIndex;
   final void Function(int index)? onItemTap;
-
+  final ScrollController? scrollController;
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
@@ -28,6 +29,7 @@ class DisplayItemList extends StatelessWidget {
     }
 
     return CustomScrollView(
+      controller: scrollController,
       shrinkWrap: true,
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
@@ -51,7 +53,8 @@ class DisplayItemList extends StatelessWidget {
                   ),
                   if (index != items.length - 1)
                     SizedBox(
-                      height: LayoutConstants.nowPlayingBarBottomDisplayItemListGap,
+                      height:
+                          LayoutConstants.nowPlayingBarBottomDisplayItemListGap,
                     ),
                 ],
               );

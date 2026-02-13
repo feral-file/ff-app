@@ -1,0 +1,125 @@
+import 'package:app/app/now_displaying/now_displaying_enrichment.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/dp1/dp1_provenance.dart';
+import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  group('buildEnrichedPlaylistItemsToSave', () {
+    /// DP1 item with cid = 'eip155:1:erc721:0xabc:1'
+    DP1PlaylistItem dp1ItemWithCid(String id, String cidSuffix) {
+      return DP1PlaylistItem(
+        id: id,
+        duration: 60,
+        title: 'Item $id',
+        provenance: DP1Provenance(
+          type: DP1ProvenanceType.onChain,
+          contract: DP1Contract(
+            chain: DP1ProvenanceChain.evm,
+            standard: DP1ProvenanceStandard.erc721,
+            address: '0xabc',
+            tokenId: cidSuffix,
+          ),
+        ),
+      );
+    }
+
+    /// DP1 item without provenance (no cid)
+    DP1PlaylistItem dp1ItemNoCid(String id) {
+      return DP1PlaylistItem(
+        id: id,
+        duration: 60,
+        title: 'Item $id',
+      );
+    }
+
+    AssetToken tokenWithCid(String cid) {
+      return AssetToken(
+        id: 1,
+        cid: cid,
+        chain: 'eip155:1',
+        standard: 'ERC-721',
+        contractAddress: '0xabc',
+        tokenNumber: '1',
+        metadata: TokenMetadata(
+          name: 'Token $cid',
+          imageUrl: 'https://example.com/$cid.jpg',
+        ),
+      );
+    }
+
+    test('returns empty when missingItems is empty', () {
+      final tokens = [tokenWithCid('eip155:1:erc721:0xabc:1')];
+      final result = buildEnrichedPlaylistItemsToSave(
+        missingItems: [],
+        tokens: tokens,
+      );
+      expect(result, isEmpty);
+    });
+
+    test('returns empty when tokens is empty', () {
+      final items = [
+        dp1ItemWithCid('item_1', '1'),
+      ];
+      final result = buildEnrichedPlaylistItemsToSave(
+        missingItems: items,
+        tokens: [],
+      );
+      expect(result, isEmpty);
+    });
+
+    test('includes only items that have a matching token by cid', () {
+      // Item with cid eip155:1:erc721:0xabc:1
+      final item1 = dp1ItemWithCid('item_1', '1');
+      // Item with cid eip155:1:erc721:0xabc:2
+      final item2 = dp1ItemWithCid('item_2', '2');
+      // Item without cid
+      final item3 = dp1ItemNoCid('item_3');
+
+      final tokens = [
+        tokenWithCid('eip155:1:erc721:0xabc:1'),
+        // No token for item_2's cid
+      ];
+
+      final result = buildEnrichedPlaylistItemsToSave(
+        missingItems: [item1, item2, item3],
+        tokens: tokens,
+      );
+
+      expect(result.length, 1);
+      expect(result.single.id, 'item_1');
+      expect(result.single.thumbnailUrl, isNotNull);
+    });
+
+    test('includes all items that have a matching token', () {
+      final item1 = dp1ItemWithCid('item_1', '1');
+      final item2 = dp1ItemWithCid('item_2', '2');
+
+      final tokens = [
+        tokenWithCid('eip155:1:erc721:0xabc:1'),
+        tokenWithCid('eip155:1:erc721:0xabc:2'),
+      ];
+
+      final result = buildEnrichedPlaylistItemsToSave(
+        missingItems: [item1, item2],
+        tokens: tokens,
+      );
+
+      expect(result.length, 2);
+      final ids = result.map((p) => p.id).toSet();
+      expect(ids, containsAll(['item_1', 'item_2']));
+    });
+
+    test('skips items with no cid', () {
+      final itemNoCid = dp1ItemNoCid('item_x');
+      final tokens = [tokenWithCid('eip155:1:erc721:0xabc:1')];
+
+      final result = buildEnrichedPlaylistItemsToSave(
+        missingItems: [itemNoCid],
+        tokens: tokens,
+      );
+
+      expect(result, isEmpty);
+    });
+  });
+}

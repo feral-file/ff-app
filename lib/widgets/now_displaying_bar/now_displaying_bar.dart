@@ -247,4 +247,3 @@ class _NowPlayingSleepBar extends ConsumerWidget {
     );
   }
 }
-

@@ -1,6 +1,7 @@
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -56,7 +57,7 @@ class NowDisplayingDisplayItem extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        item.subtitle ?? 'Unknown artist',
+                        item.artistName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppTypography.body(context).white,
