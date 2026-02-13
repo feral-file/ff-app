@@ -50,9 +50,6 @@ abstract class Routes {
   /// FF1 test route path (for development/testing).
   static const ff1Test = '/ff1-test';
 
-  /// Connected devices route path.
-  static const connectedDevices = '/connected-devices';
-
   /// Start setup FF1 route path
   static const startSetupFf1 = '/start-setup-ff1';
 
@@ -134,9 +131,6 @@ abstract class RouteNames {
 
   /// FF1 test route name (for development/testing).
   static const ff1Test = 'ff1-test';
-
-  /// Connected devices route name.
-  static const connectedDevices = 'connected-devices';
 
   /// Start setup FF1 route name.
   static const startSetupFf1 = 'start-setup-ff1';

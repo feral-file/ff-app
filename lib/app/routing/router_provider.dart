@@ -6,7 +6,6 @@ import 'package:app/ui/screens/add_alias_screen.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
 import 'package:app/ui/screens/all_playlists_screen.dart';
 import 'package:app/ui/screens/channel_detail_screen.dart';
-import 'package:app/ui/screens/connected_devices_screen.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
 import 'package:app/ui/screens/ff1_setup/ff1_device_picker_page.dart';
 import 'package:app/ui/screens/ff1_setup/ff1_updating_page.dart';
@@ -245,17 +244,6 @@ final routerProvider = Provider.family<GoRouter, String>((
           context,
           state,
           const FF1TestScreen(),
-        ),
-      ),
-
-      // Connected devices route
-      GoRoute(
-        path: Routes.connectedDevices,
-        name: RouteNames.connectedDevices,
-        pageBuilder: (context, state) => buildCupertinoTransitionPage(
-          context,
-          state,
-          const ConnectedDevicesScreen(),
         ),
       ),
 

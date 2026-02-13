@@ -7,6 +7,7 @@ import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
+import 'package:app/widgets/now_displaying_bar/now_displaying_quick_setting_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +18,7 @@ import 'package:go_router/go_router.dart';
 ///
 /// UI copied exactly from old repo (now_displaying_page.dart).
 /// Data from [nowDisplayingProvider]. Interact opens keyboard control.
+/// More button opens FF1 Settings (Rotate/Fit/Fill) dialog.
 class NowDisplayingScreen extends ConsumerWidget {
   const NowDisplayingScreen({super.key});
 
@@ -24,30 +26,78 @@ class NowDisplayingScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(nowDisplayingProvider);
 
+    final showMoreIcon = status is NowDisplayingSuccess;
+
     return Scaffold(
       appBar: MainAppBar(
         centeredTitle: 'Now playing',
         backgroundColor: AppColor.auGreyBackground,
-        actions: [
-          IconButton(
-            padding: EdgeInsets.zero,
-            onPressed: () => context.push(Routes.connectedDevices),
-            constraints: BoxConstraints(
-              minWidth: LayoutConstants.minTouchTarget,
-              minHeight: LayoutConstants.minTouchTarget,
-              maxWidth: LayoutConstants.minTouchTarget,
-              maxHeight: LayoutConstants.minTouchTarget,
-            ),
-            icon: SvgPicture.asset(
-              'assets/images/more_circle.svg',
-              width: LayoutConstants.iconSizeMedium,
-              height: LayoutConstants.iconSizeMedium,
-            ),
-          ),
-        ],
+        actions: showMoreIcon
+            ? [
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: () => _onMorePressed(context, status),
+                  constraints: BoxConstraints(
+                    minWidth: LayoutConstants.minTouchTarget,
+                    minHeight: LayoutConstants.minTouchTarget,
+                    maxWidth: LayoutConstants.minTouchTarget,
+                    maxHeight: LayoutConstants.minTouchTarget,
+                  ),
+                  icon: SvgPicture.asset(
+                    'assets/images/more_circle.svg',
+                    width: LayoutConstants.iconSizeMedium,
+                    height: LayoutConstants.iconSizeMedium,
+                  ),
+                ),
+              ]
+            : const [],
       ),
       backgroundColor: AppColor.auGreyBackground,
       body: _Body(status: status),
+    );
+  }
+}
+
+/// Opens FF1 Settings (Rotate/Fit/Fill) when a device is casting;
+/// otherwise shows a message that user should pair an FF1.
+void _onMorePressed(BuildContext context, NowDisplayingStatus status) {
+  if (status is NowDisplayingSuccess &&
+      status.object is DP1NowDisplayingObject) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: PrimitivesTokens.colorsBlack,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(LayoutConstants.space4),
+        ),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.all(LayoutConstants.space4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'FF1 Settings',
+                style: AppTypography.h4(context).white,
+              ),
+              SizedBox(height: LayoutConstants.space4),
+              const NowDisplayingQuickSettingView(),
+            ],
+          ),
+        ),
+      ),
+    );
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Pair an FF1 to adjust display settings',
+          style: AppTypography.body(context).white,
+        ),
+        backgroundColor: PrimitivesTokens.colorsDarkGrey,
+      ),
     );
   }
 }
