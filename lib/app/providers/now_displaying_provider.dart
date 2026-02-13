@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:app/app/now_displaying/now_displaying_enrichment.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/app/providers/indexer_provider.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -21,10 +24,10 @@ final nowDisplayingItemIdsProvider = Provider<List<String>>((ref) {
 /// Used to show enriched data (e.g. thumbnail, artists) when available locally.
 final nowDisplayingCachedPlaylistItemsProvider =
     FutureProvider<List<PlaylistItem>>((ref) async {
-  final ids = ref.watch(nowDisplayingItemIdsProvider);
-  if (ids.isEmpty) return [];
-  return ref.read(databaseServiceProvider).getPlaylistItemsByIds(ids);
-});
+      final ids = ref.watch(nowDisplayingItemIdsProvider);
+      if (ids.isEmpty) return [];
+      return ref.read(databaseServiceProvider).getPlaylistItemsByIds(ids);
+    });
 
 /// Now displaying state derived from FF1 device + player status.
 ///
@@ -68,19 +71,25 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   }
 
   void _recompute() {
-    state = _computeStatus();
+    unawaited(
+      Future.microtask(() async {
+        final status = await _computeStatus();
+        state = status;
+      }),
+    );
   }
 
-  NowDisplayingStatus _computeStatus() {
+  Future<NowDisplayingStatus> _computeStatus() async {
     final activeDevice = ref.read(activeFF1BluetoothDeviceProvider);
     return activeDevice.when(
-      data: (device) => _computeForDevice(device),
+      data: (device) =>
+          _computeForDevice(device).then((value) => state = value),
       loading: () => const LoadingNowDisplaying(),
       error: (error, _) => NowDisplayingError(error),
     );
   }
 
-  NowDisplayingStatus _computeForDevice(FF1Device? device) {
+  Future<NowDisplayingStatus> _computeForDevice(FF1Device? device) async {
     if (device == null) {
       return const NoDevicePaired();
     }
@@ -125,9 +134,19 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         cachedById[p.id] = p;
       }
     }
+
+    // Trigger background enrichment for items not yet in cache.
+    final missing = items
+        .where((dp1) => !cachedById.containsKey(dp1.id))
+        .toList();
+    final enriched = missing.isNotEmpty
+        ? await _enrichMissingNowDisplayingItems(missing)
+        : <String, PlaylistItem>{};
+
     final playlistItems = [
       for (var i = 0; i < items.length; i++)
-        cachedById[items[i].id] ??
+        enriched[items[i].id] ??
+            cachedById[items[i].id] ??
             PlaylistItem(
               id: items[i].id,
               kind: PlaylistItemKind.dp1Item,
@@ -144,6 +163,30 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         isSleeping: status.isPaused,
       ),
     );
+  }
+
+  /// Fetches tokens for missing DP1 items from the indexer, builds enriched
+  /// [PlaylistItem]s (only for items that have a token), and persists them.
+  /// Does not invalidate the cache to avoid an infinite recompute loop.
+  /// Returns a map of item id to enriched [PlaylistItem] for the saved items.
+  Future<Map<String, PlaylistItem>> _enrichMissingNowDisplayingItems(
+    List<DP1PlaylistItem> missing,
+  ) async {
+    final databaseService = ref.read(databaseServiceProvider);
+    final indexerService = ref.read(indexerServiceProvider);
+
+    final cids = databaseService.extractDP1ItemCids(missing);
+    if (cids.isEmpty) return <String, PlaylistItem>{};
+
+    final tokens = await indexerService.fetchTokensByCIDs(tokenCids: cids);
+    final toSave = buildEnrichedPlaylistItemsToSave(
+      missingItems: missing,
+      tokens: tokens,
+    );
+    if (toSave.isEmpty) return <String, PlaylistItem>{};
+
+    await databaseService.upsertPlaylistItemsEnriched(toSave);
+    return {for (final p in toSave) p.id: p};
   }
 }
 
