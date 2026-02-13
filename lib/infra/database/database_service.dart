@@ -460,6 +460,27 @@ class DatabaseService {
     }
   }
 
+  /// Get playlist items by a list of IDs.
+  ///
+  /// Returns domain [PlaylistItem]s for each ID found in the database.
+  /// Order of the result follows the order of [ids]; IDs not found are skipped.
+  Future<List<PlaylistItem>> getPlaylistItemsByIds(List<String> ids) async {
+    if (ids.isEmpty) return [];
+    try {
+      final data = await _db.getItemsByIds(ids);
+      final byId = {
+        for (final d in data) d.id: DatabaseConverters.itemDataToDomain(d),
+      };
+      return [
+        for (final id in ids)
+          if (byId.containsKey(id)) byId[id]!,
+      ];
+    } catch (e, stack) {
+      _log.severe('Failed to get playlist items by ids', e, stack);
+      rethrow;
+    }
+  }
+
   /// Watch a single playlist item by ID; emits when the row changes or is removed.
   Stream<PlaylistItem?> watchPlaylistItemById(String id) {
     return _db

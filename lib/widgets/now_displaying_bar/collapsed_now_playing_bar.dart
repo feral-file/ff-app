@@ -17,11 +17,13 @@ class CollapsedNowPlayingBar extends StatefulWidget {
   const CollapsedNowPlayingBar({
     required this.playingObject,
     this.onToggle,
+    this.onTap,
     super.key,
   });
 
   final DP1NowDisplayingObject playingObject;
   final void Function()? onToggle;
+  final VoidCallback? onTap;
 
   @override
   State<CollapsedNowPlayingBar> createState() =>
@@ -49,7 +51,7 @@ class _CollapsedNowPlayingBarState extends State<CollapsedNowPlayingBar>
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final content = Container(
       padding: EdgeInsets.only(
         top: LayoutConstants.nowPlayingBarPaddingTop,
         right: LayoutConstants.nowPlayingBarPaddingHorizontal,
@@ -91,5 +93,13 @@ class _CollapsedNowPlayingBarState extends State<CollapsedNowPlayingBar>
         child: const NowDisplayingQuickSettingView(),
       ),
     );
+
+    if (widget.onTap != null) {
+      return GestureDetector(
+        onTap: widget.onTap,
+        child: content,
+      );
+    }
+    return content;
   }
 }

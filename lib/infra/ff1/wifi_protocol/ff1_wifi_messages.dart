@@ -8,6 +8,7 @@
 library;
 
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
 
 // ============================================================================
@@ -404,6 +405,19 @@ class FF1WifiPreviousArtworkRequest extends FF1WifiCommandRequest {
   Map<String, dynamic> get params => {};
 }
 
+/// Move to artwork at index (jump to item in playlist).
+class FF1WifiMoveToArtworkRequest extends FF1WifiCommandRequest {
+  const FF1WifiMoveToArtworkRequest({required this.index});
+
+  final int index;
+
+  @override
+  String get command => 'moveToArtwork';
+
+  @override
+  Map<String, dynamic> get params => {'index': index};
+}
+
 /// Show/hide pairing QR code command.
 class FF1WifiShowPairingQRCodeRequest extends FF1WifiCommandRequest {
   /// Creates a show/hide pairing QR code request.
@@ -420,6 +434,72 @@ class FF1WifiShowPairingQRCodeRequest extends FF1WifiCommandRequest {
   @override
   Map<String, dynamic> get params => {'show': show};
 }
+
+/// Update art framing (fit/fill) command.
+class FF1WifiUpdateArtFramingRequest extends FF1WifiCommandRequest {
+  /// Creates an update art framing request.
+  ///
+  /// [framing] — fitToScreen (0) or cropToFill (1)
+  const FF1WifiUpdateArtFramingRequest({required this.framing});
+
+  /// Art framing mode.
+  final ArtFraming framing;
+
+  @override
+  String get command => 'updateArtFraming';
+
+  @override
+  Map<String, dynamic> get params => {'frameConfig': framing.value};
+}
+
+/// Keyboard event command (send key code to device).
+/// Command name must match old repo: sendKeyboardEvent.
+class FF1WifiKeyboardEventRequest extends FF1WifiCommandRequest {
+  const FF1WifiKeyboardEventRequest({required this.code});
+
+  final int code;
+
+  @override
+  String get command => 'sendKeyboardEvent';
+
+  @override
+  Map<String, dynamic> get params => {'code': code};
+}
+
+/// Tap gesture command. Name must match old repo: tapGesture.
+class FF1WifiTapRequest extends FF1WifiCommandRequest {
+  const FF1WifiTapRequest();
+
+  @override
+  String get command => 'tapGesture';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
+/// Drag gesture command (cursor offsets).
+/// Command name must match old repo: dragGesture.
+/// dx/dy rounded to 2 decimals like old CursorOffset.toJson().
+class FF1WifiDragRequest extends FF1WifiCommandRequest {
+  const FF1WifiDragRequest({required this.cursorOffsets});
+
+  final List<Map<String, double>> cursorOffsets;
+
+  @override
+  String get command => 'dragGesture';
+
+  @override
+  Map<String, dynamic> get params => {
+        'cursorOffsets': cursorOffsets
+            .map((o) => {
+                  'dx': _round2(o['dx']!),
+                  'dy': _round2(o['dy']!),
+                })
+            .toList(),
+      };
+}
+
+double _round2(double v) => double.parse(v.toStringAsFixed(2));
 
 /// Base class for command responses.
 class FF1CommandResponse {

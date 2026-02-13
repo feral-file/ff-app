@@ -19,6 +19,8 @@ import 'package:app/ui/screens/onboarding/setup_ff1_page.dart';
 import 'package:app/ui/screens/playlist_detail_screen.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
 import 'package:app/ui/screens/send_wifi_credentials_screen.dart';
+import 'package:app/ui/screens/keyboard_control_screen.dart';
+import 'package:app/ui/screens/now_displaying_screen.dart';
 import 'package:app/ui/screens/work_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -254,6 +256,28 @@ final routerProvider = Provider.family<GoRouter, String>((
           context,
           state,
           const ConnectedDevicesScreen(),
+        ),
+      ),
+
+      // Now displaying (full-screen) route
+      GoRoute(
+        path: Routes.nowDisplaying,
+        name: RouteNames.nowDisplaying,
+        pageBuilder: (context, state) => buildCupertinoTransitionPage(
+          context,
+          state,
+          const NowDisplayingScreen(),
+        ),
+      ),
+
+      // Keyboard control (interact) route
+      GoRoute(
+        path: Routes.keyboardControl,
+        name: RouteNames.keyboardControl,
+        pageBuilder: (context, state) => buildCupertinoTransitionPage(
+          context,
+          state,
+          const KeyboardControlScreen(),
         ),
       ),
 

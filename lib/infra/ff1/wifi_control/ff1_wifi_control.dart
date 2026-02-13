@@ -12,7 +12,9 @@
 library;
 
 import 'dart:async';
+import 'dart:ui' show Offset;
 
+import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
@@ -395,6 +397,35 @@ class FF1WifiControl {
     }
   }
 
+  /// Move to artwork at [index] in the playlist (jump to item).
+  ///
+  /// [topicId] — device identifier on the relayer
+  /// [index] — zero-based index of the artwork in the playlist
+  Future<FF1CommandResponse> moveToArtwork({
+    required String topicId,
+    required int index,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending moveToArtwork($index) to device');
+      final request = FF1WifiMoveToArtworkRequest(index: index);
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send moveToArtwork command: $e');
+      rethrow;
+    }
+  }
+
   /// Show or hide pairing QR code on device.
   ///
   /// [topicId] — device topic ID
@@ -424,6 +455,117 @@ class FF1WifiControl {
       return FF1CommandResponse.fromJson(response);
     } catch (e) {
       _log.severe('Failed to send showPairingQRCode command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send update art framing (fit/fill) command to the device.
+  ///
+  /// [topicId] — device identifier on the relayer
+  /// [framing] — ArtFraming.fitToScreen or ArtFraming.cropToFill
+  Future<FF1CommandResponse> updateArtFraming({
+    required String topicId,
+    required ArtFraming framing,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending updateArtFraming(${framing.name}) command to device');
+
+      final request = FF1WifiUpdateArtFramingRequest(framing: framing);
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send updateArtFraming command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send keyboard event (key code) to the device.
+  ///
+  /// [topicId] — device identifier on the relayer
+  /// [code] — key code (e.g. from [String.codeUnitAt])
+  Future<FF1CommandResponse> keyboardEvent({
+    required String topicId,
+    required int code,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+    try {
+      _log.info('Sending keyboardEvent($code) to device');
+      final request = FF1WifiKeyboardEventRequest(code: code);
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send keyboardEvent command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send tap gesture to the device.
+  Future<FF1CommandResponse> tap({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+    try {
+      _log.info('Sending tap to device');
+      const request = FF1WifiTapRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send tap command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send drag gesture (cursor offsets) to the device.
+  Future<FF1CommandResponse> drag({
+    required String topicId,
+    required List<Offset> cursorOffsets,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+    if (cursorOffsets.isEmpty) return FF1CommandResponse();
+    try {
+      _log.info('Sending drag(${cursorOffsets.length} offsets) to device');
+      final request = FF1WifiDragRequest(
+        cursorOffsets: cursorOffsets
+            .map((o) => <String, double>{'dx': o.dx, 'dy': o.dy})
+            .toList(),
+      );
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send drag command: $e');
       rethrow;
     }
   }

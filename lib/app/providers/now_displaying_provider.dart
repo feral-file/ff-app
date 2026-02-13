@@ -5,16 +5,34 @@ import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+/// Item IDs from current FF1 player status (for cache lookup).
+final nowDisplayingItemIdsProvider = Provider<List<String>>((ref) {
+  final status = ref.watch(ff1CurrentPlayerStatusProvider);
+  final items = status?.items;
+  if (items == null || items.isEmpty) return [];
+  return items.map((e) => e.id).toList();
+});
+
+/// Cached [PlaylistItem]s for the current now-displaying item IDs.
+/// Used to show enriched data (e.g. thumbnail, artists) when available locally.
+final nowDisplayingCachedPlaylistItemsProvider =
+    FutureProvider<List<PlaylistItem>>((ref) async {
+  final ids = ref.watch(nowDisplayingItemIdsProvider);
+  if (ids.isEmpty) return [];
+  return ref.read(databaseServiceProvider).getPlaylistItemsByIds(ids);
+});
 
 /// Now displaying state derived from FF1 device + player status.
 ///
 /// This replaces the legacy `NowDisplayingManager` stream-based implementation.
 final nowDisplayingProvider =
     NotifierProvider<NowDisplayingNotifier, NowDisplayingStatus>(
-  NowDisplayingNotifier.new,
-);
+      NowDisplayingNotifier.new,
+    );
 
 class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   @override
@@ -36,6 +54,10 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     );
     ref.listen<AsyncValue<FF1ConnectionStatus>>(
       ff1ConnectionStatusStreamProvider,
+      (_, __) => unawaited(Future.microtask(_recompute)),
+    );
+    ref.listen<AsyncValue<List<PlaylistItem>>>(
+      nowDisplayingCachedPlaylistItemsProvider,
       (_, __) => unawaited(Future.microtask(_recompute)),
     );
 
@@ -95,16 +117,24 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       );
     }
 
-    final playlistItems = items
-        .map(
-          (e) => PlaylistItem(
-            id: e.id,
-            kind: PlaylistItemKind.dp1Item,
-            title: e.title,
-            duration: e.duration,
-          ),
-        )
-        .toList(growable: false);
+    // Use cached PlaylistItems when available; otherwise fall back to device payload.
+    final cachedAsync = ref.read(nowDisplayingCachedPlaylistItemsProvider);
+    final cachedById = <String, PlaylistItem>{};
+    if (cachedAsync.hasValue && cachedAsync.value != null) {
+      for (final p in cachedAsync.value!) {
+        cachedById[p.id] = p;
+      }
+    }
+    final playlistItems = [
+      for (var i = 0; i < items.length; i++)
+        cachedById[items[i].id] ??
+            PlaylistItem(
+              id: items[i].id,
+              kind: PlaylistItemKind.dp1Item,
+              title: items[i].title,
+              duration: items[i].duration,
+            ),
+    ];
 
     return NowDisplayingSuccess(
       DP1NowDisplayingObject(
@@ -159,4 +189,3 @@ class NowDisplayingError extends NowDisplayingStatus {
 class NoDevicePaired extends NowDisplayingStatus {
   const NoDevicePaired();
 }
-
