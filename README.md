@@ -1,7 +1,7 @@
 # Feral File — Mobile App (Flutter)
 
 The Feral File mobile app is the controller for the **Feral File Art System**:
-- **FF1** (art computer) + any screen, or **FF1 + FF2** (full system)
+- **FF1** (art computer) + any screen, or **FF1 + FFP** (full system)
 - Setup, pairing, remote control, and library/discovery surfaces
 
 Product goal: make it *silly-easy* to live with digital art every day.
@@ -114,9 +114,9 @@ Typical values (names are illustrative—use your repo’s actual config system)
 ### Gold Path
 A new person should go from power-on → pairing → playing a meaningful artwork quickly, with obvious success and reversible steps. (Exact readiness thresholds live in business gates.)
 
-### Pairing & device management (FF1 / FF2)
+### Pairing & device management (FF1 / FFP)
 - Pair FF1 via QR (and recovery reconnect flows)
-- Control path validation for FF2 (sleep/wake + brightness, with documented behavior)
+- Control path validation for FFP (sleep/wake + brightness, with documented behavior)
 
 ### Collection & indexing
 - “Add Address” and large-wallet indexing behavior (progress is clear; no stalls/loops)
