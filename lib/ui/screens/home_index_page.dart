@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:app/app/providers/services_provider.dart';
-import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
@@ -17,7 +16,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:go_router/go_router.dart';
 
 // Global keys for each page to preserve state
 final GlobalKey<PlaylistsTabPageState> _playlistsPageKey =
@@ -193,20 +191,6 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
             Navigator.of(context).pop();
           },
         ),
-      // FF1 Setting
-      OptionItem(
-        title: 'FF1 Art Computer',
-        icon: SvgPicture.asset(
-          'assets/images/portal_setting.svg',
-          width: LayoutConstants.iconSizeMedium,
-          height: LayoutConstants.iconSizeMedium,
-          colorFilter: const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
-        ),
-        onTap: () {
-          Navigator.of(context).pop();
-          context.push(Routes.connectedDevices);
-        },
-      ),
       // Personal Preferences & Data, Security Management
       OptionItem(
         title: 'Account',
