@@ -1,11 +1,13 @@
 import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'collapsed_now_playing_bar.dart';
 import 'expanded_now_playing_bar.dart';
@@ -16,8 +18,15 @@ import 'two_stop_draggable_sheet.dart';
 /// Global bottom overlay for FF1 Now Displaying.
 ///
 /// This widget is UI-only and reads data from [nowDisplayingProvider].
+/// [router] is required so the overlay can navigate without relying on
+/// [BuildContext] (the overlay is built outside the Navigator subtree).
 class NowDisplayingBarOverlay extends ConsumerWidget {
-  const NowDisplayingBarOverlay({super.key});
+  const NowDisplayingBarOverlay({
+    required this.router,
+    super.key,
+  });
+
+  final GoRouter router;
 
   double get _collapsedHeight =>
       LayoutConstants.nowDisplayingBarCollapsedHeight;
@@ -50,6 +59,7 @@ class NowDisplayingBarOverlay extends ConsumerWidget {
           collapsedHeight: _collapsedHeight,
           expandedHeight: _expandedHeight,
           status: status,
+          router: router,
         ),
       ),
     );
@@ -61,11 +71,13 @@ class _NowDisplayingBarCard extends StatelessWidget {
     required this.collapsedHeight,
     required this.expandedHeight,
     required this.status,
+    required this.router,
   });
 
   final double collapsedHeight;
   final double expandedHeight;
   final NowDisplayingStatus status;
+  final GoRouter router;
 
   @override
   Widget build(BuildContext context) {
@@ -108,6 +120,7 @@ class _NowDisplayingBarCard extends StatelessWidget {
             collapsedBuilder: (context, _) {
               return CollapsedNowPlayingBar(
                 playingObject: object,
+                onTap: () => router.push(Routes.nowDisplaying),
               );
             },
             expandedBuilder: (context, scrollController) {

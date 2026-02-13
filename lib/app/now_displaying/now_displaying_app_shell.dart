@@ -45,7 +45,7 @@ class NowDisplayingAppShell extends StatelessWidget {
               );
             },
           ),
-          const NowDisplayingBarOverlay(),
+          NowDisplayingBarOverlay(router: router),
         ],
       ),
     );

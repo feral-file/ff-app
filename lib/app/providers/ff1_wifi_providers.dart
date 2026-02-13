@@ -245,16 +245,24 @@ final ff1ConnectionStatusStreamProvider = StreamProvider<FF1ConnectionStatus>(
 ///
 /// Returns the most recent player status or null if none received.
 final ff1CurrentPlayerStatusProvider = Provider<FF1PlayerStatus?>((ref) {
-  final control = ref.watch(ff1WifiControlProvider);
-  return control.currentPlayerStatus;
+  final controlAsync = ref.watch(ff1PlayerStatusStreamProvider);
+  return controlAsync.when(
+    data: (status) => status,
+    loading: () => null,
+    error: (_, __) => null,
+  );
 });
 
 /// Current device status provider (last received value)
 ///
 /// Returns the most recent device status or null if none received.
 final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
-  final control = ref.watch(ff1WifiControlProvider);
-  return control.currentDeviceStatus;
+  final controlAsync = ref.watch(ff1DeviceStatusStreamProvider);
+  return controlAsync.when(
+    data: (status) => status,
+    loading: () => null,
+    error: (_, __) => null,
+  );
 });
 
 /// Device connected provider (per connection notification)

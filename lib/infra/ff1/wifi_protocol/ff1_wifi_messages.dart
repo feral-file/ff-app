@@ -8,6 +8,7 @@
 library;
 
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
 
 // ============================================================================
@@ -419,6 +420,67 @@ class FF1WifiShowPairingQRCodeRequest extends FF1WifiCommandRequest {
 
   @override
   Map<String, dynamic> get params => {'show': show};
+}
+
+/// Update art framing (fit/fill) command.
+class FF1WifiUpdateArtFramingRequest extends FF1WifiCommandRequest {
+  /// Creates an update art framing request.
+  ///
+  /// [framing] — fitToScreen (0) or cropToFill (1)
+  const FF1WifiUpdateArtFramingRequest({required this.framing});
+
+  /// Art framing mode.
+  final ArtFraming framing;
+
+  @override
+  String get command => 'updateArtFraming';
+
+  @override
+  Map<String, dynamic> get params => {'frameConfig': framing.value};
+}
+
+/// Keyboard event command (send key code to device).
+class FF1WifiKeyboardEventRequest extends FF1WifiCommandRequest {
+  const FF1WifiKeyboardEventRequest({required this.code});
+
+  final int code;
+
+  @override
+  String get command => 'keyboardEvent';
+
+  @override
+  Map<String, dynamic> get params => {'code': code};
+}
+
+/// Tap gesture command.
+class FF1WifiTapRequest extends FF1WifiCommandRequest {
+  const FF1WifiTapRequest();
+
+  @override
+  String get command => 'tap';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
+/// Drag gesture command (cursor offsets).
+class FF1WifiDragRequest extends FF1WifiCommandRequest {
+  const FF1WifiDragRequest({required this.cursorOffsets});
+
+  final List<Map<String, double>> cursorOffsets;
+
+  @override
+  String get command => 'drag';
+
+  @override
+  Map<String, dynamic> get params => {
+        'cursorOffsets': cursorOffsets
+            .map((o) => {
+                  'dx': o['dx']!,
+                  'dy': o['dy']!,
+                })
+            .toList(),
+      };
 }
 
 /// Base class for command responses.
