@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -258,6 +260,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     return ElevatedButton(
       onPressed: () {
         Navigator.of(context).pop();
+        unawaited(context.push(Routes.addAddressPage));
       },
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.transparent,
