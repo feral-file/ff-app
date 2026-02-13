@@ -102,9 +102,14 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     final title = widget.filter == AllChannelsFilter.curated
         ? 'Curated'
         : 'Personal';
+    // Descriptions from Feral File app (old repo) for consistency.
     final description = widget.filter == AllChannelsFilter.curated
-        ? 'Channels curated from DP-1 feeds.'
-        : 'Channels saved on this device.';
+        ? 'A small set of Channels selected by Feral File and invited '
+            'collaborators. These are early recommendations designed to give '
+            'you strong entry points into digital art.'
+        : 'Public Channels gathered from across the ecosystem. '
+            'They\'re not ranked or popularity-based—they simply give you a '
+            'wide view of what\'s out there, organized by source.';
     final iconAsset = widget.filter == AllChannelsFilter.curated
         ? 'assets/images/D.svg'
         : 'assets/images/icon_account.svg';
