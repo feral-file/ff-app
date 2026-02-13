@@ -20,10 +20,10 @@ class FF1WifiRestClient {
     required String castApiUrl,
     required String apiKey,
     Logger? logger,
-  })  : _castApiUrl = castApiUrl,
-        _apiKey = apiKey,
-        _logger = logger ?? Logger('FF1WifiRestClient'),
-        _dio = Dio();
+  }) : _castApiUrl = castApiUrl,
+       _apiKey = apiKey,
+       _logger = logger ?? Logger('FF1WifiRestClient'),
+       _dio = Dio();
 
   final String _castApiUrl;
   final String _apiKey;
@@ -57,7 +57,7 @@ class FF1WifiRestClient {
       final url = '$_castApiUrl/api/cast';
       final body = {
         'command': command,
-        'params': params,
+        'request': params,
       };
 
       _logger.fine(

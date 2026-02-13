@@ -1,5 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
+
+final log = Logger('NowDisplayingVisibilityProvider');
 
 @immutable
 class NowDisplayingVisibilityState {
@@ -21,11 +24,19 @@ class NowDisplayingVisibilityState {
   final bool bottomSheetVisibility;
   final bool keyboardVisibility;
 
-  bool get shouldShow =>
-      shouldShowNowDisplaying &&
-      nowDisplayingVisibility &&
-      !bottomSheetVisibility &&
-      !keyboardVisibility;
+  bool get shouldShow {
+    final shouldShow =
+        shouldShowNowDisplaying &&
+        nowDisplayingVisibility &&
+        !bottomSheetVisibility &&
+        !keyboardVisibility;
+    if (shouldShow) {
+      log.info('shouldShow: $shouldShow');
+    } else {
+      log.info('shouldShow: $shouldShow');
+    }
+    return shouldShow;
+  }
 
   NowDisplayingVisibilityState copyWith({
     bool? shouldShowNowDisplaying,

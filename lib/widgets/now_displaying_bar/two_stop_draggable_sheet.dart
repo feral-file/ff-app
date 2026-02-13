@@ -123,33 +123,39 @@ class _TwoStopDraggableSheetState extends State<TwoStopDraggableSheet> {
       snap: true,
       snapSizes: [widget.minSize, widget.maxSize],
       builder: (context, scrollController) {
-        return Stack(
-          children: [
-            ValueListenableBuilder<bool>(
-              valueListenable: isNowDisplayingBarExpanded,
-              builder: (context, value, child) {
-                return Container(
-                  child: value
-                      ? SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          controller: scrollController,
-                          child: widget.expandedBuilder(
-                            context,
-                            scrollController,
+        // Consume scroll notifications from inside the sheet so they do not
+        // bubble to the app shell. Otherwise scrolling inside the expanded bar
+        // would trigger hide-now-displaying in [NowDisplayingVisibilitySync].
+        return NotificationListener<UserScrollNotification>(
+          onNotification: (_) => true,
+          child: Stack(
+            children: [
+              ValueListenableBuilder<bool>(
+                valueListenable: isNowDisplayingBarExpanded,
+                builder: (context, value, child) {
+                  return Container(
+                    child: value
+                        ? SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            controller: scrollController,
+                            child: widget.expandedBuilder(
+                              context,
+                              scrollController,
+                            ),
+                          )
+                        : SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            controller: scrollController,
+                            child: widget.collapsedBuilder(
+                              context,
+                              scrollController,
+                            ),
                           ),
-                        )
-                      : SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          controller: scrollController,
-                          child: widget.collapsedBuilder(
-                            context,
-                            scrollController,
-                          ),
-                        ),
-                );
-              },
-            ),
-          ],
+                  );
+                },
+              ),
+            ],
+          ),
         );
       },
     );

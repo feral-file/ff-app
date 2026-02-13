@@ -397,6 +397,35 @@ class FF1WifiControl {
     }
   }
 
+  /// Move to artwork at [index] in the playlist (jump to item).
+  ///
+  /// [topicId] — device identifier on the relayer
+  /// [index] — zero-based index of the artwork in the playlist
+  Future<FF1CommandResponse> moveToArtwork({
+    required String topicId,
+    required int index,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending moveToArtwork($index) to device');
+      final request = FF1WifiMoveToArtworkRequest(index: index);
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send moveToArtwork command: $e');
+      rethrow;
+    }
+  }
+
   /// Show or hide pairing QR code on device.
   ///
   /// [topicId] — device topic ID

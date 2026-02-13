@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -66,7 +69,7 @@ class NowDisplayingBarOverlay extends ConsumerWidget {
   }
 }
 
-class _NowDisplayingBarCard extends StatelessWidget {
+class _NowDisplayingBarCard extends ConsumerWidget {
   const _NowDisplayingBarCard({
     required this.collapsedHeight,
     required this.expandedHeight,
@@ -80,7 +83,7 @@ class _NowDisplayingBarCard extends StatelessWidget {
   final GoRouter router;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     switch (status) {
       case NoDevicePaired():
         return const _NowPlayingStatusBar(
@@ -110,6 +113,8 @@ class _NowDisplayingBarCard extends StatelessWidget {
         }
 
         final minSize = collapsedHeight / expandedHeight;
+        final topicId = object.connectedDevice.topicId;
+        final wifiControl = ref.read(ff1WifiControlProvider);
 
         return SizedBox(
           height: expandedHeight,
@@ -126,6 +131,14 @@ class _NowDisplayingBarCard extends StatelessWidget {
             expandedBuilder: (context, scrollController) {
               return ExpandedNowPlayingBar(
                 playingObject: object,
+                onItemTap: (index) {
+                  unawaited(
+                    wifiControl.moveToArtwork(
+                      topicId: topicId,
+                      index: index,
+                    ),
+                  );
+                },
               );
             },
           ),
