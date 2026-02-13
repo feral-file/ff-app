@@ -53,10 +53,13 @@ class _ExpandedNowPlayingBarState extends ConsumerState<ExpandedNowPlayingBar> {
     final pixels = position.pixels;
     final viewportHeight = position.viewportDimension;
     final listOffset = (pixels - headerHeight).clamp(0.0, double.infinity);
-    final firstVisible =
-        (listOffset / itemHeight).floor().clamp(0, totalItems - 1);
-    final lastVisibleRaw =
-        ((listOffset + viewportHeight) / itemHeight).ceil().toInt();
+    final firstVisible = (listOffset / itemHeight).floor().clamp(
+      0,
+      totalItems - 1,
+    );
+    final lastVisibleRaw = ((listOffset + viewportHeight) / itemHeight)
+        .ceil()
+        .toInt();
     final lastVisible = (lastVisibleRaw - 1).clamp(0, totalItems - 1);
 
     // Extend when scroll is about to reach the start or end of the current window
@@ -83,13 +86,45 @@ class _ExpandedNowPlayingBarState extends ConsumerState<ExpandedNowPlayingBar> {
 
   late final ScrollController _scrollController;
 
+  /// Scrolls the list so the item at [playingObject.index] is visible (centered when possible).
+  /// Uses the same row height as [DisplayItemList]: thumbnail height + gap between items.
+  void _scrollToSelectedIndex() {
+    if (!_scrollController.hasClients) return;
+    final index = widget.playingObject.index;
+    final totalItems = widget.playingObject.items.length;
+    if (totalItems == 0 || index < 0 || index >= totalItems) return;
+
+    // Match DisplayItemList layout: each row = NowDisplayingDisplayItem (thumb height) + gap.
+    final itemHeight = 60;
+    // LayoutConstants.nowDisplayingDisplayItemThumbHeight +
+    // LayoutConstants.nowPlayingBarBottomDisplayItemListGap;
+    final position = _scrollController.position;
+    final viewportHeight = position.viewportDimension;
+    final maxExtent = position.maxScrollExtent;
+
+    // Center the selected item in the viewport when possible.
+    final offset = (index * itemHeight * 1.0).clamp(
+      0.0,
+      maxExtent,
+    );
+    _scrollController.jumpTo(offset);
+  }
+
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
     _scrollController.addListener(_onScroll);
-    // Set initial window from visible range after first layout.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToSelectedIndex();
+      _onScroll();
+      // Retry scroll next frame if controller was not attached yet (e.g. list in Expanded).
+      if (!_scrollController.hasClients) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _scrollToSelectedIndex(),
+        );
+      }
+    });
   }
 
   @override
