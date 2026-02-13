@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:app/domain/models/base_object.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
@@ -7,7 +8,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 ///
 /// Represents a physical FF1 device that can be paired and controlled
 /// via Bluetooth. This is a domain model independent of Flutter framework.
-class FF1Device {
+class FF1Device implements BaseObject {
   /// Creates a FF1 device.
   const FF1Device({
     required this.name,
@@ -112,6 +113,18 @@ class FF1Device {
 
   /// Storage value (JSON encoded)
   String get storageValue => jsonEncode(toJson());
+
+  @override
+  String get key => deviceId;
+
+  @override
+  String get value => storageValue;
+
+  @override
+  Map<String, String> get toKeyValue => {
+        'key': key,
+        'value': value,
+      };
 }
 
 /// Extension methods for FF1Device
@@ -126,7 +139,7 @@ extension FF1DeviceExt on FF1Device {
   bool get isQEMU => branchName.toLowerCase().contains('qemu');
 
   /// Whether device has cloud connectivity (topicId set)
-  bool get hasCloudConnection => topicId != null && topicId!.isNotEmpty;
+  bool get hasCloudConnection => topicId.isNotEmpty;
 
   /// Convert to BluetoothDevice for flutter_blue_plus operations
   BluetoothDevice toBluetoothDevice() => BluetoothDevice.fromId(remoteId);

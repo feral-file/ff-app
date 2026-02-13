@@ -1,4 +1,6 @@
 import 'package:app/app/feed/feed_registry_provider.dart';
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
@@ -115,18 +117,25 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
             publishers,
           );
 
-      await curatedSetupFuture;
-
-      _log.info('✓ Curated feeds setup and reloaded');
-
-      state = BootstrapStatus(
-        state: BootstrapState.success,
-        message:
-            'Bootstrap completed: '
-            '${curatedUrls.length} channels',
+      // conect to relayer
+      final ff1WifiConnectionNotifier = ref.read(
+        ff1WifiConnectionProvider.notifier,
       );
-
-      _log.info('Bootstrap completed successfully');
+      final activeDevice = ref.read(activeFF1BluetoothDeviceProvider);
+      activeDevice.when(
+        data: (device) {
+          if (device != null) {
+            ff1WifiConnectionNotifier.connect(
+              device: device,
+              userId: 'user_id',
+              apiKey: AppConfig.ff1RelayerApiKey,
+            );
+          }
+        },
+        error: (error, stack) =>
+            _log.severe('Error connecting to relayer', error, stack),
+        loading: () => _log.info('Loading active device'),
+      );
     } on Exception catch (e, stack) {
       if (_isOperationCancelled(e)) {
         _log.info('Bootstrap cancelled');

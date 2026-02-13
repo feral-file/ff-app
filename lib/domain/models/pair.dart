@@ -1,8 +1,8 @@
-/// Simple pair of two values.
-/// Matches old repo's [Pair] for FeedManager storage.
+/// General-purpose pair of two values.
+/// Used for FeedManager storage, canvas notification manager, and similar.
 class Pair<T1, T2> {
   Pair(this.first, this.second);
 
-  final T1 first;
-  final T2 second;
+  T1 first;
+  T2 second;
 }

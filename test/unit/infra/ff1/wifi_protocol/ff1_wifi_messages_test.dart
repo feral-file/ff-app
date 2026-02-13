@@ -1,3 +1,5 @@
+import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -143,11 +145,8 @@ void main() {
         'items': [
           {
             'id': 'wk_1',
-            'call': {
-              'title': 'Work Title',
-              'artist_name': 'Artist Name',
-              'thumbnail_url': 'https://example.com/thumb.jpg',
-            },
+            'duration': 0,
+            'title': 'Work Title',
           },
         ],
       };
@@ -197,39 +196,53 @@ void main() {
     });
   });
 
-  group('FF1PlaylistItem', () {
-    test('fromJson parses item with DP1 call structure', () {
+  group('FF1PlayerStatus items via fromJson', () {
+    test('parses items with FF1 call structure', () {
       final json = {
-        'id': 'wk_abc',
-        'call': {
-          'title': 'Artwork Title',
-          'artist_name': 'Artist',
-          'thumbnail_url': 'https://example.com/thumb.jpg',
-        },
+        'playlistId': 'pl_abc',
+        'index': 0,
+        'items': [
+          {
+            'id': 'wk_abc',
+            'duration': 0,
+            'title': 'Artwork Title',
+            'thumbnail_url': 'https://example.com/thumb.jpg',
+          },
+        ],
       };
 
-      final item = FF1PlaylistItem.fromJson(json);
+      final status = FF1PlayerStatus.fromJson(json);
 
-      expect(item.id, 'wk_abc');
-      expect(item.title, 'Artwork Title');
-      expect(item.artistName, 'Artist');
-      expect(item.thumbnailUrl, 'https://example.com/thumb.jpg');
+      expect(status.items, isNotNull);
+      expect(status.items!.length, 1);
+      expect(status.items![0].id, 'wk_abc');
+      expect(status.items![0].title, 'Artwork Title');
+      expect(status.items![0].duration, 0);
     });
+  });
 
-    test('toJson serializes correctly', () {
-      const item = FF1PlaylistItem(
-        id: 'wk_test',
-        title: 'Test Work',
-        artistName: 'Test Artist',
-        thumbnailUrl: 'https://example.com/test.jpg',
+  group('FF1PlayerStatus toJson with items', () {
+    test('serializes items in FF1 wire format', () {
+      final status = FF1PlayerStatus(
+        playlistId: 'pl_test',
+        currentWorkIndex: 0,
+        isPaused: false,
+        connectedDeviceId: 'dev_123',
+        items: [
+          DP1PlaylistItem(
+            id: 'wk_test',
+            duration: 0,
+            title: 'Test Work',
+          ),
+        ],
       );
 
-      final json = item.toJson();
+      final json = status.toJson();
 
-      expect(json['id'], 'wk_test');
-      expect(json['call']['title'], 'Test Work');
-      expect(json['call']['artist_name'], 'Test Artist');
-      expect(json['call']['thumbnail_url'], 'https://example.com/test.jpg');
+      expect(json['items'], isNotNull);
+      expect((json['items'] as List).length, 1);
+      expect((json['items'] as List)[0]['id'], 'wk_test');
+      expect((json['items'] as List)[0]['title'], 'Test Work');
     });
   });
 
@@ -246,7 +259,7 @@ void main() {
       final status = FF1DeviceStatus.fromJson(json);
 
       expect(status.connectedWifi, 'MyWiFi');
-      expect(status.screenRotation, 'landscape');
+      expect(status.screenRotation, ScreenOrientation.landscape);
       expect(status.installedVersion, '1.2.3');
       expect(status.latestVersion, '1.3.0');
       expect(status.internetConnected, true);
@@ -255,7 +268,7 @@ void main() {
     test('toJson serializes correctly', () {
       const status = FF1DeviceStatus(
         connectedWifi: 'TestNetwork',
-        screenRotation: 'portrait',
+        screenRotation: ScreenOrientation.portrait,
         installedVersion: '2.0.0',
         latestVersion: '2.1.0',
         internetConnected: false,
