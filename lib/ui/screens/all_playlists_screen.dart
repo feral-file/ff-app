@@ -101,9 +101,13 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     final title = widget.filter == AllPlaylistsFilter.curated
         ? 'Curated'
         : 'Personal';
+    // Descriptions from Feral File app (old repo) for consistency.
     final description = widget.filter == AllPlaylistsFilter.curated
-        ? 'Playlists curated from DP-1 feeds.'
-        : 'Playlists from your saved addresses.';
+        ? 'Playlists assembled by Feral File and a small group of invited '
+            'artists and curators. These are early recommendations to help you '
+            'explore digital art as we build toward deeper, global curation.'
+        : 'Playlists built from the wallet addresses you add. Use it to browse '
+            'the works you own or to explore any address you\'re curious about.';
     final iconAsset = widget.filter == AllPlaylistsFilter.curated
         ? 'assets/images/D.svg'
         : 'assets/images/icon_account.svg';
