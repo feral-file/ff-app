@@ -7,6 +7,9 @@
 /// Messages can be serialized/deserialized and tested independently.
 library;
 
+import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/ff1/screen_orientation.dart';
+
 // ============================================================================
 // Message envelope types (top-level message wrapper)
 // ============================================================================
@@ -17,7 +20,8 @@ enum FF1WifiMessageType {
   notification('notification'),
 
   /// App-to-device RPC command (future).
-  rpc('RPC');
+  rpc('RPC')
+  ;
 
   const FF1WifiMessageType(this.value);
 
@@ -44,7 +48,8 @@ enum FF1NotificationType {
   deviceStatus('device_status'),
 
   /// Connection status notification (device online/offline).
-  connection('connection');
+  connection('connection')
+  ;
 
   const FF1NotificationType(this.value);
 
@@ -185,12 +190,12 @@ class FF1PlayerStatus {
       isPaused: json['isPaused'] as bool? ?? false,
       connectedDeviceId: json['connectedDevice']?['device_id'] as String?,
       items: json['items'] != null
-          ? (json['items'] as List)
-              .map(
-                (dynamic item) =>
-                    FF1PlaylistItem.fromJson(item as Map<String, dynamic>),
-              )
-              .toList()
+          ? (json['items'] as List<dynamic>)
+                .map(
+                  (item) =>
+                      DP1PlaylistItem.fromJson(item as Map<String, dynamic>),
+                )
+                .toList()
           : null,
     );
   }
@@ -208,70 +213,23 @@ class FF1PlayerStatus {
   final String? connectedDeviceId;
 
   /// Playlist items.
-  final List<FF1PlaylistItem>? items;
+  final List<DP1PlaylistItem>? items;
 
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
-
-        'playlistId': playlistId,
-        'index': currentWorkIndex,
-        'isPaused': isPaused,
-        'connectedDevice': connectedDeviceId != null
-            ? {'device_id': connectedDeviceId}
-            : null,
-        'items': items?.map((item) => item.toJson()).toList(),
-      };
+    'playlistId': playlistId,
+    'index': currentWorkIndex,
+    'isPaused': isPaused,
+    'connectedDevice': connectedDeviceId != null
+        ? {'device_id': connectedDeviceId}
+        : null,
+    'items': items?.map((item) => item.toJson()).toList(),
+  };
 
   @override
   String toString() =>
       'FF1PlayerStatus(playlist: $playlistId, index: $currentWorkIndex, '
       'paused: $isPaused)';
-}
-
-/// Playlist item (work in DP1 playlist).
-class FF1PlaylistItem {
-  /// Creates a playlist item.
-  const FF1PlaylistItem({
-    required this.id,
-    this.title,
-    this.artistName,
-    this.thumbnailUrl,
-  });
-
-  /// Deserialize from JSON.
-  factory FF1PlaylistItem.fromJson(Map<String, dynamic> json) {
-    // Handle DP1 item structure
-    final call = json['call'] as Map<String, dynamic>?;
-    return FF1PlaylistItem(
-      id: json['id'] as String? ?? '',
-      title: call?['title'] as String?,
-      artistName: call?['artist_name'] as String?,
-      thumbnailUrl: call?['thumbnail_url'] as String?,
-    );
-  }
-
-  /// Work ID.
-  final String id;
-
-  /// Work title.
-  final String? title;
-
-  /// Artist name.
-  final String? artistName;
-
-  /// Thumbnail URL.
-  final String? thumbnailUrl;
-
-  /// Serialize to JSON.
-  Map<String, dynamic> toJson() => {
-
-        'id': id,
-        'call': {
-          'title': title,
-          'artist_name': artistName,
-          'thumbnail_url': thumbnailUrl,
-        },
-      };
 }
 
 /// Device status notification payload.
@@ -287,9 +245,19 @@ class FF1DeviceStatus {
 
   /// Deserialize from JSON.
   factory FF1DeviceStatus.fromJson(Map<String, dynamic> json) {
+    final rawRotation = json['screenRotation'] as String?;
+    ScreenOrientation? rotation;
+    if (rawRotation != null && rawRotation.isNotEmpty) {
+      try {
+        rotation = ScreenOrientation.fromString(rawRotation);
+      } on ArgumentError {
+        rotation = null;
+      }
+    }
+
     return FF1DeviceStatus(
       connectedWifi: json['connectedWifi'] as String?,
-      screenRotation: json['screenRotation'] as String?,
+      screenRotation: rotation,
       installedVersion: json['installedVersion'] as String?,
       latestVersion: json['latestVersion'] as String?,
       internetConnected: json['internetConnected'] as bool?,
@@ -300,7 +268,7 @@ class FF1DeviceStatus {
   final String? connectedWifi;
 
   /// Screen rotation (landscape, portrait).
-  final String? screenRotation;
+  final ScreenOrientation? screenRotation;
 
   /// Installed version.
   final String? installedVersion;
@@ -313,13 +281,12 @@ class FF1DeviceStatus {
 
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
-
-        'connectedWifi': connectedWifi,
-        'screenRotation': screenRotation,
-        'installedVersion': installedVersion,
-        'latestVersion': latestVersion,
-        'internetConnected': internetConnected,
-      };
+    'connectedWifi': connectedWifi,
+    'screenRotation': screenRotation?.name,
+    'installedVersion': installedVersion,
+    'latestVersion': latestVersion,
+    'internetConnected': internetConnected,
+  };
 
   @override
   String toString() =>
@@ -343,9 +310,8 @@ class FF1ConnectionStatus {
 
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
-
-        'isConnected': isConnected,
-      };
+    'isConnected': isConnected,
+  };
 
   @override
   String toString() => 'FF1ConnectionStatus(connected: $isConnected)';
@@ -368,9 +334,9 @@ abstract class FF1WifiCommandRequest {
 
   /// Convert to JSON for sending via API.
   Map<String, dynamic> toJson() => {
-        'command': command,
-        'params': params,
-      };
+    'command': command,
+    'params': params,
+  };
 }
 
 /// Rotate device command.
@@ -479,11 +445,10 @@ class FF1CommandResponse {
 
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
-        if (status != null) 'status': status,
-        if (data != null) 'data': data,
-      };
+    if (status != null) 'status': status,
+    if (data != null) 'data': data,
+  };
 
   @override
   String toString() => 'FF1CommandResponse(status: $status, data: $data)';
 }
-

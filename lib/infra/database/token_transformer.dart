@@ -12,6 +12,9 @@ class TokenTransformer {
   }) {
     final title = token.displayTitle ?? 'Untitled';
     final artists = token.enrichmentSource?.artists ?? token.metadata?.artists;
+    final subtitle = artists == null || artists.isEmpty
+        ? null
+        : artists.map((a) => a.name).where((n) => n.isNotEmpty).join(', ');
 
     final dp1Artists = artists
         ?.map((a) => DP1Artist(name: a.name, id: a.did))
@@ -27,6 +30,7 @@ class TokenTransformer {
       id: token.cid,
       kind: PlaylistItemKind.indexerToken,
       title: title,
+      subtitle: subtitle,
       thumbnailUrl: token.getGalleryThumbnailUrl(),
       tokenData: token.toRestJson(),
       sortKeyUs: sortKeyUs,

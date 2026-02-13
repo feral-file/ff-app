@@ -203,6 +203,20 @@ class AppTypography {
       letterSpacing: 0,
     );
   }
+
+  /// Display Item Device Name (6px) - From DisplayItemTokens.textDeviceFontSize
+  /// lineHeight 8.4, bold. Used for device name in Now Displaying bar.
+  static TextStyle displayItemDeviceName(BuildContext context) {
+    const fontSize = 6.0;
+    const lineHeight = 8.4;
+    return TextStyle(
+      fontFamily: ppMori,
+      fontSize: fontSize,
+      fontWeight: FontWeight.w700,
+      height: lineHeight / fontSize,
+      letterSpacing: 0,
+    );
+  }
 }
 
 /// Color extensions for TextStyle

@@ -129,7 +129,7 @@ void main() {
           title: 'Test Item',
           subtitle: 'Test Artist',
           thumbnailUrl: 'https://example.com/thumb.jpg',
-          durationSec: 120,
+          duration: 120,
           updatedAt: DateTime(2024, 1, 1),
         );
 
@@ -169,7 +169,7 @@ void main() {
         expect(item.title, 'Test Item');
         expect(item.subtitle, 'Test Artist');
         expect(item.thumbnailUrl, 'https://example.com/thumb.jpg');
-        expect(item.durationSec, 120);
+        expect(item.duration, 120);
       });
     });
 

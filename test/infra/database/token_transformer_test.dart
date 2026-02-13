@@ -89,7 +89,7 @@ void main() {
         );
 
         // Should use the latest timestamp where toAddress matches owner.
-        expect(item.provenance?['sortKeyUs'], 2000000);
+        expect(item.sortKeyUs, 2000000);
       });
 
       test('returns 0 sort key when no matching provenance', () {
@@ -119,7 +119,7 @@ void main() {
           ownerAddress: '0xABCD',
         );
 
-        expect(item.provenance?['sortKeyUs'], 0);
+        expect(item.sortKeyUs, 0);
       });
     });
 

@@ -37,9 +37,9 @@ class FF1WifiControl {
     required FF1WifiTransport transport,
     dynamic restClient,
     Logger? logger,
-  })  : _transport = transport,
-        _restClient = restClient,
-        _log = logger ?? Logger('FF1WifiControl') {
+  }) : _transport = transport,
+       _restClient = restClient,
+       _log = logger ?? Logger('FF1WifiControl') {
     _startListening();
   }
 
@@ -180,8 +180,9 @@ class FF1WifiControl {
         _deviceStatusController.add(deviceStatus);
 
       case FF1NotificationType.connection:
-        final connectionStatus =
-            FF1ConnectionStatus.fromJson(notification.message);
+        final connectionStatus = FF1ConnectionStatus.fromJson(
+          notification.message,
+        );
         _isDeviceConnected = connectionStatus.isConnected;
         _connectionStatusController.add(connectionStatus);
     }
@@ -192,10 +193,19 @@ class FF1WifiControl {
     _log.info('Connection state changed: $isConnected');
 
     if (!isConnected) {
+      // if disconnected from transport
+      // update connection status
       // Clear state on disconnect
       _currentPlayerStatus = null;
       _currentDeviceStatus = null;
       _isDeviceConnected = false;
+      _connectionStatusController.add(
+        FF1ConnectionStatus(isConnected: isConnected),
+      );
+    } else {
+      // device connected to transport
+      // connection status is already updated by _handleNotification
+      // nothing to do
     }
   }
 
@@ -262,11 +272,13 @@ class FF1WifiControl {
       _log.info('Sending rotate command (angle: $angle) to device');
 
       final request = FF1WifiRotateRequest(angle: angle);
-      final response = await _restClient.sendCommand(
-        topicId: topicId,
-        command: request.command,
-        params: request.params,
-      ) as Map<String, dynamic>;
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
 
       return FF1CommandResponse.fromJson(response);
     } catch (e) {
@@ -287,11 +299,13 @@ class FF1WifiControl {
       _log.info('Sending pause command to device');
 
       final request = const FF1WifiPauseRequest();
-      final response = await _restClient.sendCommand(
-        topicId: topicId,
-        command: request.command,
-        params: request.params,
-      ) as Map<String, dynamic>;
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
 
       return FF1CommandResponse.fromJson(response);
     } catch (e) {
@@ -312,11 +326,13 @@ class FF1WifiControl {
       _log.info('Sending play command to device');
 
       final request = const FF1WifiPlayRequest();
-      final response = await _restClient.sendCommand(
-        topicId: topicId,
-        command: request.command,
-        params: request.params,
-      ) as Map<String, dynamic>;
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
 
       return FF1CommandResponse.fromJson(response);
     } catch (e) {
@@ -337,11 +353,13 @@ class FF1WifiControl {
       _log.info('Sending nextArtwork command to device');
 
       final request = const FF1WifiNextArtworkRequest();
-      final response = await _restClient.sendCommand(
-        topicId: topicId,
-        command: request.command,
-        params: request.params,
-      ) as Map<String, dynamic>;
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
 
       return FF1CommandResponse.fromJson(response);
     } catch (e) {
@@ -362,11 +380,13 @@ class FF1WifiControl {
       _log.info('Sending previousArtwork command to device');
 
       final request = const FF1WifiPreviousArtworkRequest();
-      final response = await _restClient.sendCommand(
-        topicId: topicId,
-        command: request.command,
-        params: request.params,
-      ) as Map<String, dynamic>;
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
 
       return FF1CommandResponse.fromJson(response);
     } catch (e) {
@@ -393,11 +413,13 @@ class FF1WifiControl {
       _log.info('Sending showPairingQRCode($show) command to device');
 
       final request = FF1WifiShowPairingQRCodeRequest(show: show);
-      final response = await _restClient.sendCommand(
-        topicId: topicId,
-        command: request.command,
-        params: request.params,
-      ) as Map<String, dynamic>;
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
 
       return FF1CommandResponse.fromJson(response);
     } catch (e) {
@@ -406,8 +428,3 @@ class FF1WifiControl {
     }
   }
 }
-
-/// Helper to ignore unawaited futures (for cleanup operations).
-void unawaited(Future<void>? future) {}
-
-

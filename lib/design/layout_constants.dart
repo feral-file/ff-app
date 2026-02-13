@@ -126,4 +126,82 @@ class LayoutConstants {
   /// Large icon size (24px)
   static final double iconSizeLarge = PrimitivesTokens.iconSizesLarge
       .toDouble();
+
+  // Now Displaying bar (approximate sizing)
+  //
+  // Per repo rules: avoid hard-coded numeric sizing in widgets.
+  // Per app preference: do not add new `const` sizing to LayoutConstants.
+  //
+  // These getters use the nearest available spacing values.
+
+  /// Collapsed bar height (nearest to legacy 57px).
+  static double get nowDisplayingBarCollapsedHeight => space12 + space2;
+
+  /// Expanded bar height (nearest to legacy 316px).
+  static double get nowDisplayingBarExpandedHeight =>
+      space20 + space20 + space20 + space20;
+
+  /// Card corner radius (nearest to legacy 5px).
+  static double get nowDisplayingBarCornerRadius => space1;
+
+  /// Card padding top (nearest to legacy 5px).
+  static double get nowDisplayingBarPaddingTop => space1;
+
+  /// Card padding horizontal (nearest to legacy 10px).
+  static double get nowDisplayingBarPaddingHorizontal => space3;
+
+  /// Card padding bottom (legacy token already matches spacing scale: 8px).
+  static double get nowDisplayingBarPaddingBottom => space2;
+
+  /// Top line width.
+  static double get nowDisplayingBarTopLineWidth => space8;
+
+  /// Top line height.
+  static double get nowDisplayingBarTopLineHeight =>
+      dividerThickness + dividerThickness;
+
+  /// Bottom offset used by the global overlay.
+  static double get nowDisplayingBarOverlayBottomOffset => space2;
+
+  /// Reserved height to keep scrollable content above the overlay.
+  static double get nowDisplayingBarReservedHeight =>
+      nowDisplayingBarCollapsedHeight + nowDisplayingBarOverlayBottomOffset;
+
+  // Now Displaying display item (from DisplayItemTokens)
+  /// Thumbnail width (65.78 from DisplayItemTokens.thumbWidth).
+  static const double nowDisplayingDisplayItemThumbWidth = 65.78;
+
+  /// Thumbnail height (37 from DisplayItemTokens.thumbHeight).
+  static const double nowDisplayingDisplayItemThumbHeight = 37;
+
+  /// Gap between thumbnail and text (12 from DisplayItemTokens.gap).
+  static double get nowDisplayingDisplayItemGap => space3;
+
+  /// Vertical offset between artist and title text (-3 from DisplayItemTokens.textArtworkGap).
+  static const double nowDisplayingDisplayItemTextArtworkGap = -3;
+
+  /// Gap between list items in expanded bar (20 from NowPlayingBarTokens.bottomDisplayItemListGap).
+  static double get nowDisplayingExpandedItemGap => space5;
+
+  /// Vertical gap between sections in expanded bar (20 from NowPlayingBarTokens.bottomVerticalGap).
+  static double get nowDisplayingExpandedVerticalGap => space5;
+
+  // Now Playing Bar tokens (from NowPlayingBarTokens)
+  static double get nowPlayingBarBottomDeviceNavGap => space3;
+  static double get nowPlayingBarBottomDisplayItemListGap => space5;
+  static double get nowPlayingBarBottomVerticalGap => space5;
+  static double get nowPlayingBarCollapseHeight => space12 + space2;
+  static double get nowPlayingBarCornerRadius => space1;
+  static double get nowPlayingBarExpandedHeight => space20 * 4;
+  static double get nowPlayingBarPaddingBottom => space2;
+  static double get nowPlayingBarPaddingHorizontal => space3;
+  static double get nowPlayingBarPaddingTop => space1;
+  static double get nowPlayingBarTopLineCornerRadius => space2;
+  static double get nowPlayingBarTopLineHeight => dividerThickness * 2;
+  static double get nowPlayingBarTopLineStrokeWeight => dividerThickness * 2;
+  static double get nowPlayingBarTopLineWidth => space8;
+
+  // Sleep Mode Indicator tokens (from SleepModeIndicatorTokens)
+  static double get sleepModeIndicatorSize => space6 + space1;
+  static double get sleepModeIndicatorPadding => space3;
 }

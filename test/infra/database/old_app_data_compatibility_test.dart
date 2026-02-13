@@ -176,7 +176,7 @@ void main() {
           NULL,
           'https://source.com/item',
           'https://ref.com/item',
-          'CC BY 4.0',
+          'open',
           NULL,
           NULL,
           NULL,
@@ -193,9 +193,9 @@ void main() {
       expect(item.title, equals('Old DP1 Item'));
       expect(item.subtitle, equals('Old Artist'));
       expect(item.thumbnailUrl, equals('https://old.com/thumb.jpg'));
-      expect(item.durationSec, equals(120));
-      expect(item.sourceUri, equals('https://source.com/item'));
-      expect(item.license, equals('CC BY 4.0'));
+      expect(item.duration, equals(120));
+      expect(item.source, equals('https://source.com/item'));
+      expect(item.license?.value, equals('open'));
     });
 
     test('can read item (indexer token) from old app format', () async {
@@ -507,7 +507,7 @@ void main() {
           1704153600000000,
           '["sig1", "sig2", "sig3"]',
           '{"color": "red", "size": 100}',
-          '{"query": "SELECT * FROM tokens"}',
+          '[{"endpoint": "https://indexer.com/graphql", "params": {"owners": "0xabc"}}]',
           NULL,
           NULL,
           0,
@@ -559,7 +559,7 @@ void main() {
       expect(item!.title, equals('Minimal Item'));
       expect(item.subtitle, isNull);
       expect(item.thumbnailUrl, isNull);
-      expect(item.durationSec, isNull);
+      expect(item.duration, equals(0));
       expect(item.provenance, isNull);
       expect(item.tokenData, isNull);
     });

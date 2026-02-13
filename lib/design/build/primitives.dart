@@ -23,6 +23,19 @@ class PrimitivesTokens {
   static const colorsLightRed = Color(0xFFF44336);
   static const colorsWhite = Color(0xFFFFFFFF);
 
+  // Now Playing Bar (from old repo tokens)
+  /// Top line color (from NowPlayingBarTokens.topLineColor).
+  static const colorsTopLine = Color(0xFFE3E3E3);
+
+  /// Sleep bar background (from NowPlayingBarTokens.bgInactiveColor).
+  static const colorsNowPlayingBarInactive = Color(0xFF1D1D1D);
+
+  /// Sleep mode indicator active (from SleepModeIndicatorTokens.bgActiveColor).
+  static const colorsSleepModeActive = Color(0xFF00FF33);
+
+  /// Sleep mode indicator inactive (from SleepModeIndicatorTokens.bgInactiveColor).
+  static const colorsSleepModeInactive = Color(0xFFA0A0A0);
+
   // font families
   static const fontFamiliesIbmPlexMono = 'IBMPlexMono';
   static const fontFamiliesPpMori = 'PP Mori';

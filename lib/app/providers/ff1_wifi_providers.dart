@@ -13,7 +13,7 @@ import 'package:logging/logging.dart';
 // ============================================================================
 
 /// Retry logic for WiFi operations (connect, commands).
-/// 
+///
 /// Retries up to 5 times with exponential backoff (200ms to 3.2s).
 /// Does not retry on Errors (programming bugs).
 Duration? _wifiRetry(int retryCount, Object error) {
@@ -21,10 +21,10 @@ Duration? _wifiRetry(int retryCount, Object error) {
   if (error is Error) {
     return null;
   }
-  
+
   // Max 5 retries
   if (retryCount >= 5) return null;
-  
+
   // Exponential backoff: 200ms, 400ms, 800ms, 1.6s, 3.2s
   return Duration(milliseconds: 200 * (1 << retryCount));
 }
@@ -70,7 +70,7 @@ final ff1WifiRestClientProvider = Provider<FF1WifiRestClient>((ref) {
 final ff1WifiControlProvider = Provider<FF1WifiControl>((ref) {
   final transport = ref.watch(ff1WifiTransportProvider);
   final restClient = ref.watch(ff1WifiRestClientProvider);
-  
+
   final control = FF1WifiControl(
     transport: transport,
     restClient: restClient,
@@ -205,8 +205,8 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
 /// FF1 WiFi connection state provider
 final ff1WifiConnectionProvider =
     NotifierProvider<FF1WifiConnectionNotifier, FF1WifiConnectionState>(
-  FF1WifiConnectionNotifier.new,
-);
+      FF1WifiConnectionNotifier.new,
+    );
 
 // ============================================================================
 // FF1 WiFi device state providers (player status, device status)
@@ -260,9 +260,16 @@ final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
 /// Device connected provider (per connection notification)
 ///
 /// Returns true if device sent "connected" status, false otherwise.
+/// Uses connection status stream so UI reacts when FF1WifiControl receives
+/// connection notifications (Provider over FF1WifiControl does not notify on
+/// internal state changes).
 final ff1DeviceConnectedProvider = Provider<bool>((ref) {
-  final control = ref.watch(ff1WifiControlProvider);
-  return control.isDeviceConnected;
+  final connectionStatusAsync = ref.watch(ff1ConnectionStatusStreamProvider);
+  return connectionStatusAsync.when(
+    data: (status) => status.isConnected,
+    loading: () => false,
+    error: (_, __) => false,
+  );
 });
 
 // ============================================================================
@@ -294,10 +301,10 @@ class FF1WifiConnectParams {
 }
 
 /// Connect to FF1 device via WiFi (auto-dispose, with retry).
-/// 
+///
 /// This provider automatically disposes after use.
 /// Uses Riverpod's automatic retry mechanism (5 attempts with exponential backoff).
-/// 
+///
 /// Usage:
 /// ```dart
 /// await ref.read(
@@ -310,17 +317,17 @@ class FF1WifiConnectParams {
 /// ```
 final ff1WifiConnectOperationProvider = FutureProvider.autoDispose
     .family<void, FF1WifiConnectParams>(
-  retry: _wifiRetry,
-  (ref, params) async {
-    final control = ref.watch(ff1WifiControlProvider);
-    
-    await control.connect(
-      device: params.device,
-      userId: params.userId,
-      apiKey: params.apiKey,
+      retry: _wifiRetry,
+      (ref, params) async {
+        final control = ref.watch(ff1WifiControlProvider);
+
+        await control.connect(
+          device: params.device,
+          userId: params.userId,
+          apiKey: params.apiKey,
+        );
+      },
     );
-  },
-);
 
 /// Parameters for WiFi command execution
 class FF1WifiCommandParams<T> {
@@ -344,10 +351,10 @@ class FF1WifiCommandParams<T> {
 }
 
 /// Send WiFi command to device (auto-dispose, with retry).
-/// 
+///
 /// This provider automatically disposes after use.
 /// Uses Riverpod's automatic retry mechanism.
-/// 
+///
 /// Usage:
 /// ```dart
 /// final response = await ref.read(
@@ -359,10 +366,10 @@ class FF1WifiCommandParams<T> {
 /// ```
 final ff1WifiSendCommandProvider = FutureProvider.autoDispose
     .family<dynamic, FF1WifiCommandParams<dynamic>>(
-  retry: _wifiRetry,
-  (ref, params) async {
-    final control = ref.watch(ff1WifiControlProvider);
-    
-    return params.commandFn(control, params.topicId);
-  },
-);
+      retry: _wifiRetry,
+      (ref, params) async {
+        final control = ref.watch(ff1WifiControlProvider);
+
+        return params.commandFn(control, params.topicId);
+      },
+    );

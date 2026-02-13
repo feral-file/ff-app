@@ -16,7 +16,7 @@ class DP1PlaylistItem {
     this.display,
   }); // e.g., "open", "restricted", etc.
 
-// from JSON
+  // from JSON
   factory DP1PlaylistItem.fromJson(Map<String, dynamic> json) {
     try {
       return DP1PlaylistItem(
@@ -90,16 +90,16 @@ class DP1PlaylistItem {
 
   @override
   int get hashCode => Object.hash(
-        id,
-        title,
-        source,
-        duration,
-        license,
-        ref,
-        display,
-        repro,
-        provenance,
-      );
+    id,
+    title,
+    source,
+    duration,
+    license,
+    ref,
+    display,
+    repro,
+    provenance,
+  );
 }
 
 class DP1PlaylistDisplay {
@@ -130,20 +130,21 @@ class DP1PlaylistDisplay {
         loop: json['loop'] as bool? ?? true,
         interaction: json['interaction'] != null
             ? DP1PlaylistInteraction.fromJson(
-                json['interaction'] as Map<String, dynamic>)
+                json['interaction'] as Map<String, dynamic>,
+              )
             : null,
         userOverrides: json['userOverrides'] as bool? ?? true,
       );
 
   Map<String, dynamic> toJson() => {
-        'scaling': scaling,
-        'margin': margin,
-        'background': background,
-        'autoplay': autoplay,
-        'loop': loop,
-        if (interaction != null) 'interaction': interaction!.toJson(),
-        'userOverrides': userOverrides,
-      };
+    'scaling': scaling,
+    'margin': margin,
+    'background': background,
+    'autoplay': autoplay,
+    'loop': loop,
+    if (interaction != null) 'interaction': interaction!.toJson(),
+    'userOverrides': userOverrides,
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -159,14 +160,14 @@ class DP1PlaylistDisplay {
 
   @override
   int get hashCode => Object.hash(
-        scaling,
-        margin,
-        background,
-        autoplay,
-        loop,
-        interaction,
-        userOverrides,
-      );
+    scaling,
+    margin,
+    background,
+    autoplay,
+    loop,
+    interaction,
+    userOverrides,
+  );
 }
 
 class DP1PlaylistInteraction {
@@ -180,20 +181,22 @@ class DP1PlaylistInteraction {
 
   factory DP1PlaylistInteraction.fromJson(Map<String, dynamic> json) =>
       DP1PlaylistInteraction(
-        keyboard: (json['keyboard'] as List<dynamic>?)
+        keyboard:
+            (json['keyboard'] as List<dynamic>?)
                 ?.map((e) => e as String)
                 .toList() ??
             [],
         mouse: json['mouse'] != null
             ? DP1PlaylistMouseInteraction.fromJson(
-                json['mouse'] as Map<String, dynamic>)
+                json['mouse'] as Map<String, dynamic>,
+              )
             : null,
       );
 
   Map<String, dynamic> toJson() => {
-        'keyboard': keyboard,
-        if (mouse != null) 'mouse': mouse!.toJson(),
-      };
+    'keyboard': keyboard,
+    if (mouse != null) 'mouse': mouse!.toJson(),
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -228,11 +231,11 @@ class DP1PlaylistMouseInteraction {
       );
 
   Map<String, dynamic> toJson() => {
-        'click': click,
-        'scroll': scroll,
-        'drag': drag,
-        'hover': hover,
-      };
+    'click': click,
+    'scroll': scroll,
+    'drag': drag,
+    'hover': hover,
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -261,25 +264,26 @@ class ReproBlock {
   final ReproFrameHash? frameHash;
 
   factory ReproBlock.fromJson(Map<String, dynamic> json) => ReproBlock(
-        engineVersion: json['engineVersion'] != null
-            ? ReproEngineVersion.fromJson(
-                json['engineVersion'] as Map<String, dynamic>)
-            : null,
-        seed: json['seed'] as String?,
-        assetsSHA256: (json['assetsSHA256'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList(),
-        frameHash: json['frameHash'] != null
-            ? ReproFrameHash.fromJson(json['frameHash'] as Map<String, dynamic>)
-            : null,
-      );
+    engineVersion: json['engineVersion'] != null
+        ? ReproEngineVersion.fromJson(
+            json['engineVersion'] as Map<String, dynamic>,
+          )
+        : null,
+    seed: json['seed'] as String?,
+    assetsSHA256: (json['assetsSHA256'] as List<dynamic>?)
+        ?.map((e) => e as String)
+        .toList(),
+    frameHash: json['frameHash'] != null
+        ? ReproFrameHash.fromJson(json['frameHash'] as Map<String, dynamic>)
+        : null,
+  );
 
   Map<String, dynamic> toJson() => {
-        if (engineVersion != null) 'engineVersion': engineVersion!.toJson(),
-        if (seed != null) 'seed': seed,
-        if (assetsSHA256 != null) 'assetsSHA256': assetsSHA256,
-        if (frameHash != null) 'frameHash': frameHash!.toJson(),
-      };
+    if (engineVersion != null) 'engineVersion': engineVersion!.toJson(),
+    if (seed != null) 'seed': seed,
+    if (assetsSHA256 != null) 'assetsSHA256': assetsSHA256,
+    if (frameHash != null) 'frameHash': frameHash!.toJson(),
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -287,16 +291,19 @@ class ReproBlock {
       other is ReproBlock &&
           engineVersion == other.engineVersion &&
           seed == other.seed &&
-          const ListEquality<String>().equals(assetsSHA256, other.assetsSHA256) &&
+          const ListEquality<String>().equals(
+            assetsSHA256,
+            other.assetsSHA256,
+          ) &&
           frameHash == other.frameHash;
 
   @override
   int get hashCode => Object.hash(
-        engineVersion,
-        seed,
-        Object.hashAll(assetsSHA256 ?? []),
-        frameHash,
-      );
+    engineVersion,
+    seed,
+    Object.hashAll(assetsSHA256 ?? []),
+    frameHash,
+  );
 }
 
 class ReproEngineVersion {
@@ -312,8 +319,8 @@ class ReproEngineVersion {
       );
 
   Map<String, dynamic> toJson() => {
-        if (chromium != null) 'chromium': chromium,
-      };
+    if (chromium != null) 'chromium': chromium,
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -334,21 +341,19 @@ class ReproFrameHash {
   final String? phash;
 
   factory ReproFrameHash.fromJson(Map<String, dynamic> json) => ReproFrameHash(
-        sha256: json['sha256'] as String?,
-        phash: json['phash'] as String?,
-      );
+    sha256: json['sha256'] as String?,
+    phash: json['phash'] as String?,
+  );
 
   Map<String, dynamic> toJson() => {
-        if (sha256 != null) 'sha256': sha256,
-        if (phash != null) 'phash': phash,
-      };
+    if (sha256 != null) 'sha256': sha256,
+    if (phash != null) 'phash': phash,
+  };
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ReproFrameHash &&
-          sha256 == other.sha256 &&
-          phash == other.phash;
+      other is ReproFrameHash && sha256 == other.sha256 && phash == other.phash;
 
   @override
   int get hashCode => Object.hash(sha256, phash);
@@ -356,7 +361,8 @@ class ReproFrameHash {
 
 enum ArtworkDisplayLicense {
   open,
-  restricted;
+  restricted
+  ;
 
   String get value {
     switch (this) {
@@ -408,5 +414,3 @@ extension DP1PlaylistItemListExtension on List<DP1PlaylistItem> {
     return uniqueItems;
   }
 }
-
-

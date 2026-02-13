@@ -12,6 +12,8 @@ import 'package:app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:app/app/now_displaying/now_displaying_app_shell.dart';
+
 /// Root application widget.
 /// Consumes the router provider to configure navigation.
 class App extends ConsumerWidget {
@@ -37,7 +39,10 @@ class App extends ConsumerWidget {
       theme: AppTheme.lightTheme(),
       builder: (context, child) {
         return _AppStartupBootstrap(
-          child: child ?? const SizedBox.shrink(),
+          child: NowDisplayingAppShell(
+            router: router,
+            child: child ?? const SizedBox.shrink(),
+          ),
         );
       },
     );
