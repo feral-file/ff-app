@@ -77,7 +77,7 @@ If a flow feels complex, assume the constraints are wrong and simplify until the
 ### Clone & install
 ```bash
 git clone <REPO_URL>
-cd feralfile-app
+cd ff-app
 flutter pub get
 ```
 
