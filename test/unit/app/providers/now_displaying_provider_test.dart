@@ -8,6 +8,7 @@ import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -85,12 +86,7 @@ void main() {
             FakeIndexerService(tokensByCid: [token]),
           ),
           activeFF1BluetoothDeviceProvider.overrideWithValue(
-            const AsyncData(FF1Device(
-              name: 'FF1',
-              remoteId: 'r1',
-              deviceId: 'device_1',
-              topicId: 'topic_1',
-            )),
+            AsyncData(device),
           ),
           ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
           ff1PlayerStatusStreamProvider.overrideWith(
@@ -136,11 +132,157 @@ void main() {
       expect(saved.id, 'item_1');
       expect(saved.thumbnailUrl, isNotNull);
     });
+
+    test('loads cache and enriches only items in window around current index',
+        () async {
+      const deviceId = 'device_1';
+      const halfSize = 50;
+      const currentIndex = 100;
+      const totalItems = 200;
+      final device = FF1Device(
+        name: 'FF1',
+        remoteId: 'r1',
+        deviceId: deviceId,
+        topicId: 'topic_1',
+      );
+
+      final items = List.generate(
+        totalItems,
+        (i) => DP1PlaylistItem(
+          id: 'item_$i',
+          duration: 60,
+          title: 'Work $i',
+        ),
+      );
+
+      final status = FF1PlayerStatus(
+        playlistId: 'pl_1',
+        currentWorkIndex: currentIndex,
+        items: items,
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          databaseServiceProvider.overrideWith((ref) => recordingDb),
+          indexerServiceProvider.overrideWithValue(
+            FakeIndexerService(tokensByCid: []),
+          ),
+          activeFF1BluetoothDeviceProvider.overrideWithValue(
+            AsyncData(device),
+          ),
+          ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+          ff1PlayerStatusStreamProvider.overrideWith(
+            (ref) => Stream.value(status),
+          ),
+          ff1CurrentPlayerStatusProvider.overrideWithValue(status),
+          ff1ConnectionStatusStreamProvider.overrideWith(
+            (ref) => Stream.value(FF1ConnectionStatus(isConnected: true)),
+          ),
+          ff1DeviceConnectedProvider.overrideWithValue(true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(nowDisplayingProvider);
+      await Future<void>.delayed(Duration.zero);
+
+      final state = container.read(nowDisplayingProvider);
+      expect(state, isA<NowDisplayingSuccess>());
+
+      final success = state as NowDisplayingSuccess;
+      final object = success.object as DP1NowDisplayingObject;
+
+      expect(object.items.length, totalItems);
+      expect(object.index, currentIndex);
+      expect(object.currentItem.id, 'item_$currentIndex');
+
+      final expectedStart =
+          (currentIndex - halfSize).clamp(0, totalItems).toInt();
+      final expectedEnd =
+          (currentIndex + halfSize + 1).clamp(0, totalItems).toInt();
+      final expectedWindowSize = expectedEnd - expectedStart;
+
+      expect(
+        recordingDb.getPlaylistItemsByIdsCalls,
+        hasLength(1),
+        reason: 'getPlaylistItemsByIds should be called once with window IDs',
+      );
+      final idsPassed = recordingDb.getPlaylistItemsByIdsCalls.single;
+      expect(
+        idsPassed.length,
+        expectedWindowSize,
+        reason: 'Only window IDs should be requested, not all $totalItems',
+      );
+      for (var i = 0; i < idsPassed.length; i++) {
+        expect(idsPassed[i], 'item_${expectedStart + i}');
+      }
+    });
+
+    test('full list has correct length and currentItem is in window', () async {
+      const totalItems = 10;
+      const currentIndex = 3;
+      final device = FF1Device(
+        name: 'FF1',
+        remoteId: 'r1',
+        deviceId: 'device_1',
+        topicId: 'topic_1',
+      );
+
+      final items = List.generate(
+        totalItems,
+        (i) => DP1PlaylistItem(
+          id: 'item_$i',
+          duration: 60,
+          title: 'Title $i',
+        ),
+      );
+
+      final status = FF1PlayerStatus(
+        playlistId: 'pl_1',
+        currentWorkIndex: currentIndex,
+        items: items,
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          databaseServiceProvider.overrideWith((ref) => recordingDb),
+          indexerServiceProvider.overrideWithValue(
+            FakeIndexerService(tokensByCid: []),
+          ),
+          activeFF1BluetoothDeviceProvider.overrideWithValue(
+            AsyncData(device),
+          ),
+          ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+          ff1PlayerStatusStreamProvider.overrideWith(
+            (ref) => Stream.value(status),
+          ),
+          ff1CurrentPlayerStatusProvider.overrideWithValue(status),
+          ff1ConnectionStatusStreamProvider.overrideWith(
+            (ref) => Stream.value(FF1ConnectionStatus(isConnected: true)),
+          ),
+          ff1DeviceConnectedProvider.overrideWithValue(true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(nowDisplayingProvider);
+      await Future<void>.delayed(Duration.zero);
+
+      final state = container.read(nowDisplayingProvider);
+      expect(state, isA<NowDisplayingSuccess>());
+
+      final success = state as NowDisplayingSuccess;
+      final object = success.object as DP1NowDisplayingObject;
+
+      expect(object.items.length, status.items!.length);
+      expect(object.currentItem.id, 'item_$currentIndex');
+      expect(object.currentItem.title, 'Title $currentIndex');
+    });
   });
 }
 
 /// DatabaseService that returns no cached items and records upsertPlaylistItemsEnriched
-/// so tests can assert enrichment was called with the expected list.
+/// and getPlaylistItemsByIds arguments for tests.
 class _RecordingDatabaseService extends DatabaseService {
   _RecordingDatabaseService(super.db);
 
@@ -148,8 +290,11 @@ class _RecordingDatabaseService extends DatabaseService {
 
   List<PlaylistItem>? savedEnriched;
 
+  final List<List<String>> getPlaylistItemsByIdsCalls = [];
+
   @override
   Future<List<PlaylistItem>> getPlaylistItemsByIds(List<String> ids) async {
+    getPlaylistItemsByIdsCalls.add(List<String>.from(ids));
     return [];
   }
 

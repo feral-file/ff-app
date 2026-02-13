@@ -12,6 +12,11 @@ import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// Half-size of the now-displaying items window (index ± this value).
+/// Only items in this window are loaded from cache and enriched; the rest use
+/// DP1 fallback to avoid loading thousands of items at once.
+const int nowDisplayingWindowHalfSize = 50;
+
 /// Item IDs from current FF1 player status (for cache lookup).
 final nowDisplayingItemIdsProvider = Provider<List<String>>((ref) {
   final status = ref.watch(ff1CurrentPlayerStatusProvider);
@@ -20,11 +25,75 @@ final nowDisplayingItemIdsProvider = Provider<List<String>>((ref) {
   return items.map((e) => e.id).toList();
 });
 
-/// Cached [PlaylistItem]s for the current now-displaying item IDs.
+/// User-requested range from scrolling in the expanded bar.
+/// When set, the effective window is merged with the base window (around current index).
+final nowDisplayingRequestedRangeProvider =
+    NotifierProvider<NowDisplayingRequestedRangeNotifier, ({int start, int end})?>(
+  NowDisplayingRequestedRangeNotifier.new,
+);
+
+/// Notifier for scroll-requested window range; updated when user scrolls in expanded bar.
+class NowDisplayingRequestedRangeNotifier
+    extends Notifier<({int start, int end})?> {
+  @override
+  ({int start, int end})? build() => null;
+
+  /// Merges [start, end) into the current requested range (expands to include the new range).
+  void expandTo(int start, int end) {
+    final prev = state;
+    if (prev == null) {
+      state = (start: start, end: end);
+      return;
+    }
+    final mergedStart = start < prev.start ? start : prev.start;
+    final mergedEnd = end > prev.end ? end : prev.end;
+    state = (start: mergedStart, end: mergedEnd);
+  }
+}
+
+/// Window of indices [start, end) around currentWorkIndex, merged with scroll-requested range.
+/// Only items in this range are fetched from cache and enriched.
+final nowDisplayingWindowProvider =
+    Provider<({int start, int end})?>((ref) {
+  final status = ref.watch(ff1CurrentPlayerStatusProvider);
+  final items = status?.items;
+  final index = status?.currentWorkIndex;
+  final ({int start, int end})? requested =
+      ref.watch(nowDisplayingRequestedRangeProvider);
+  if (items == null ||
+      items.isEmpty ||
+      index == null ||
+      index < 0 ||
+      index >= items.length) {
+    return null;
+  }
+  final int baseStart =
+      (index - nowDisplayingWindowHalfSize).clamp(0, items.length);
+  final int baseEnd =
+      (index + nowDisplayingWindowHalfSize + 1).clamp(0, items.length);
+  if (requested == null) {
+    return (start: baseStart, end: baseEnd);
+  }
+  final int start = (requested.start < baseStart ? requested.start : baseStart)
+      .clamp(0, items.length);
+  final int end = (requested.end > baseEnd ? requested.end : baseEnd)
+      .clamp(0, items.length);
+  return (start: start, end: end);
+});
+
+/// Item IDs in the current window only (for cache and enrichment).
+final nowDisplayingWindowItemIdsProvider = Provider<List<String>>((ref) {
+  final ids = ref.watch(nowDisplayingItemIdsProvider);
+  final window = ref.watch(nowDisplayingWindowProvider);
+  if (ids.isEmpty || window == null) return [];
+  return ids.sublist(window.start, window.end);
+});
+
+/// Cached [PlaylistItem]s for the current now-displaying item IDs in window only.
 /// Used to show enriched data (e.g. thumbnail, artists) when available locally.
 final nowDisplayingCachedPlaylistItemsProvider =
     FutureProvider<List<PlaylistItem>>((ref) async {
-      final ids = ref.watch(nowDisplayingItemIdsProvider);
+      final ids = ref.watch(nowDisplayingWindowItemIdsProvider);
       if (ids.isEmpty) return [];
       return ref.read(databaseServiceProvider).getPlaylistItemsByIds(ids);
     });
@@ -61,6 +130,10 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     );
     ref.listen<AsyncValue<List<PlaylistItem>>>(
       nowDisplayingCachedPlaylistItemsProvider,
+      (_, __) => unawaited(Future.microtask(_recompute)),
+    );
+    ref.listen<({int start, int end})?>(
+      nowDisplayingRequestedRangeProvider,
       (_, __) => unawaited(Future.microtask(_recompute)),
     );
 
@@ -126,7 +199,12 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       );
     }
 
-    // Use cached PlaylistItems when available; otherwise fall back to device payload.
+    // Window for pagination: only load cache and enrich items in [start, end).
+    final window = ref.read(nowDisplayingWindowProvider);
+    final start = window?.start ?? 0;
+    final end = window?.end ?? items.length;
+
+    // Use cached PlaylistItems (window only) when available; otherwise fall back to device payload.
     final cachedAsync = ref.read(nowDisplayingCachedPlaylistItemsProvider);
     final cachedById = <String, PlaylistItem>{};
     if (cachedAsync.hasValue && cachedAsync.value != null) {
@@ -135,24 +213,33 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       }
     }
 
-    // Trigger background enrichment for items not yet in cache.
-    final missing = items
+    // Enrich only missing items within the window.
+    final windowItems = items.sublist(start, end);
+    final missing = windowItems
         .where((dp1) => !cachedById.containsKey(dp1.id))
         .toList();
     final enriched = missing.isNotEmpty
         ? await _enrichMissingNowDisplayingItems(missing)
         : <String, PlaylistItem>{};
 
+    // Build full list: window = enriched/cached/fallback; outside window = DP1 fallback only.
     final playlistItems = [
       for (var i = 0; i < items.length; i++)
-        enriched[items[i].id] ??
-            cachedById[items[i].id] ??
-            PlaylistItem(
-              id: items[i].id,
-              kind: PlaylistItemKind.dp1Item,
-              title: items[i].title,
-              duration: items[i].duration,
-            ),
+        (i >= start && i < end)
+            ? (enriched[items[i].id] ??
+                cachedById[items[i].id] ??
+                PlaylistItem(
+                  id: items[i].id,
+                  kind: PlaylistItemKind.dp1Item,
+                  title: items[i].title,
+                  duration: items[i].duration,
+                ))
+            : PlaylistItem(
+                id: items[i].id,
+                kind: PlaylistItemKind.dp1Item,
+                title: items[i].title,
+                duration: items[i].duration,
+              ),
     ];
 
     return NowDisplayingSuccess(

@@ -201,6 +201,16 @@ class LayoutConstants {
   static double get nowPlayingBarTopLineStrokeWeight => dividerThickness * 2;
   static double get nowPlayingBarTopLineWidth => space8;
 
+  /// Approximate height of the header above the list in the expanded bar
+  /// (TopLine + gaps + DeviceSubNav). Used to estimate visible list indices from scroll offset.
+  static const double nowDisplayingExpandedListHeaderHeight = 80;
+
+  /// Approximate height per row in the expanded bar list (thumbnail row + gap).
+  static const double nowDisplayingExpandedListItemHeight = 64;
+
+  /// Extra items to include when expanding the window on scroll (above and below visible).
+  static const int nowDisplayingScrollMarginItems = 10;
+
   // Sleep Mode Indicator tokens (from SleepModeIndicatorTokens)
   static double get sleepModeIndicatorSize => space6 + space1;
   static double get sleepModeIndicatorPadding => space3;
