@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
@@ -16,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 
 // Global keys for each page to preserve state
 final GlobalKey<PlaylistsTabPageState> _playlistsPageKey =
