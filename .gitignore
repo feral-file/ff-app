@@ -123,6 +123,7 @@ app.*.symbols
 # Reference only
 old_ff_app
 .env*
+!.env.example
 
 .DS_Store
 .idea/
