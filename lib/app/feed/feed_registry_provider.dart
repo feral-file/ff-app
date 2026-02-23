@@ -132,10 +132,9 @@ final feedManagerProvider = Provider<FeralFileFeedManager>((ref) {
     appStateService: ref.read(appStateServiceProvider),
     defaultDp1FeedUrl: AppConfig.dp1FeedUrl,
     indexerService: ref.read(indexerServiceProvider),
-    enrichmentScheduler: ref.read(indexerEnrichmentSchedulerServiceProvider),
     apiKey: AppConfig.dp1FeedApiKey,
     onChannelPersistedInDatabase: () async {
-      await ref.read(ingestFeedChannelWorkerProvider).notifyChannelIngested();
+      await ref.read(workerSchedulerProvider).onFeedIngested();
       await ref
           .read(tokensSyncCoordinatorProvider.notifier)
           .notifyChannelIngested();

@@ -557,7 +557,7 @@ void main() {
 
     group('Enrichment priority queries', () {
       test(
-        'loadHighPriorityBareItems interleaves by publisher round instead of draining one publisher first',
+        'loadHighPriorityBareItems orders newest-playlist-first within each batch',
         () async {
           final older = DateTime.now().subtract(const Duration(hours: 1));
           final newer = DateTime.now();
@@ -633,33 +633,140 @@ void main() {
           await db.upsertItems(itemCompanions);
           await db.upsertPlaylistEntries(entryCompanions);
 
+          // Two playlists, both fit within the maxItems=48 cap.
+          // High-priority = first 8 items per playlist.
+          // Expected order: all 8 from pl_new (newest) then all 8 from pl_old.
           final high = await service.loadHighPriorityBareItems(
             maxPerPlaylist: 8,
-            maxTotal: 50,
+            maxItems: 48,
           );
           expect(high, hasLength(16));
-
           for (var i = 0; i < 8; i++) {
-            final base = i * 2;
-            expect(high[base].$3, equals('pl_new'));
-            expect(high[base].$1, equals('new_$i'));
-            expect(high[base + 1].$3, equals('pl_old'));
-            expect(high[base + 1].$1, equals('old_$i'));
+            expect(high[i].$3, equals('pl_new'), reason: 'row $i playlist');
+            expect(high[i].$1, equals('new_$i'), reason: 'row $i item');
+          }
+          for (var i = 0; i < 8; i++) {
+            expect(
+              high[8 + i].$3,
+              equals('pl_old'),
+              reason: 'row ${8 + i} playlist',
+            );
+            expect(
+              high[8 + i].$1,
+              equals('old_$i'),
+              reason: 'row ${8 + i} item',
+            );
           }
 
+          // Low-priority = items 9-11 per playlist, newest-playlist-first.
           final low = await service.loadLowPriorityBareItems(
             maxPerPlaylist: 8,
             maxTotal: 50,
           );
           expect(low, hasLength(8));
-
           for (var i = 0; i < 4; i++) {
-            final base = i * 2;
-            expect(low[base].$3, equals('pl_new'));
-            expect(low[base].$1, equals('new_${i + 8}'));
-            expect(low[base + 1].$3, equals('pl_old'));
-            expect(low[base + 1].$1, equals('old_${i + 8}'));
+            expect(low[i].$3, equals('pl_new'), reason: 'low row $i playlist');
+            expect(
+              low[i].$1,
+              equals('new_${i + 8}'),
+              reason: 'low row $i item',
+            );
           }
+          for (var i = 0; i < 4; i++) {
+            expect(
+              low[4 + i].$3,
+              equals('pl_old'),
+              reason: 'low row ${4 + i} playlist',
+            );
+            expect(
+              low[4 + i].$1,
+              equals('old_${i + 8}'),
+              reason: 'low row ${4 + i} item',
+            );
+          }
+        },
+      );
+
+      test(
+        'loadHighPriorityBareItems: newest playlist first (UI order)',
+        () async {
+          // Two playlists from the same feed server (same base_url → same
+          // publisher partition). The UI renders the newer playlist first
+          // (created_at_us DESC); enrichment must follow the same order.
+          final older =
+              DateTime.now().subtract(const Duration(hours: 2));
+          final newer = DateTime.now();
+
+          await service.ingestPlaylists([
+            Playlist(
+              id: 'pl_older',
+              name: 'Older',
+              type: PlaylistType.dp1,
+              baseUrl: 'https://same.example',
+              sortMode: PlaylistSortMode.position,
+              createdAt: older,
+              updatedAt: older,
+            ),
+            Playlist(
+              id: 'pl_newer',
+              name: 'Newer',
+              type: PlaylistType.dp1,
+              baseUrl: 'https://same.example',
+              sortMode: PlaylistSortMode.position,
+              createdAt: newer,
+              updatedAt: newer,
+            ),
+          ]);
+
+          final nowUs =
+              BigInt.from(DateTime.now().microsecondsSinceEpoch);
+          const provenance =
+              '{"type":"onChain","contract":{"chain":"evm",'
+              '"standard":"erc721","address":"0xabc","tokenId":"1"}}';
+
+          await db.upsertItems([
+            ItemsCompanion(
+              id: const Value('item_from_older'),
+              kind: const Value(0),
+              title: const Value('Old item'),
+              provenanceJson: const Value(provenance),
+              updatedAtUs: Value(nowUs),
+            ),
+            ItemsCompanion(
+              id: const Value('item_from_newer'),
+              kind: const Value(0),
+              title: const Value('New item'),
+              provenanceJson: const Value(provenance),
+              updatedAtUs: Value(nowUs),
+            ),
+          ]);
+
+          await db.upsertPlaylistEntries([
+            PlaylistEntriesCompanion.insert(
+              playlistId: 'pl_older',
+              itemId: 'item_from_older',
+              position: const Value(0),
+              sortKeyUs: BigInt.zero,
+              updatedAtUs: nowUs,
+            ),
+            PlaylistEntriesCompanion.insert(
+              playlistId: 'pl_newer',
+              itemId: 'item_from_newer',
+              position: const Value(0),
+              sortKeyUs: BigInt.zero,
+              updatedAtUs: nowUs,
+            ),
+          ]);
+
+          final high = await service.loadHighPriorityBareItems(
+            maxPerPlaylist: 8,
+            maxItems: 48,
+          );
+
+          expect(high, hasLength(2));
+          // Newer playlist item must come before older playlist item.
+          expect(high[0].$3, equals('pl_newer'));
+          expect(high[1].$3, equals('pl_older'));
         },
       );
 
@@ -710,7 +817,7 @@ void main() {
 
           final high = await service.loadHighPriorityBareItems(
             maxPerPlaylist: 2,
-            maxTotal: 10,
+            maxItems: 48,
           );
 
           expect(high, hasLength(2));

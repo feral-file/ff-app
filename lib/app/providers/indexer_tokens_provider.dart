@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/app_lifecycle_provider.dart';
+import 'package:app/app/providers/background_workers_provider.dart';
 import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/infra/config/app_config.dart';
@@ -218,9 +219,9 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     }
 
     if (message is ChannelIngestedAck) {
-      unawaited(
-        ref.read(indexerProvider.notifier).processFeedEnrichmentUntilIdle(),
-      );
+      // Route through scheduler so enrichment runs in the worker fleet,
+      // not on the main isolate.
+      unawaited(ref.read(workerSchedulerProvider).onFeedIngested());
       return;
     }
   }

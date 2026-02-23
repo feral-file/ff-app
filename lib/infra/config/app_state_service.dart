@@ -213,6 +213,41 @@ class AppStateService {
     });
   }
 
+  /// Whether initial DP1 bare ingest completed successfully for one feed.
+  Future<bool> hasFeedBareIngestCompleted(String baseUrl) async {
+    return _lock.synchronized(() {
+      final query = _appStateAddressBox
+          .query(AppStateAddressEntity_.feedBaseUrl.equals(baseUrl))
+          .build();
+      final rows = query.find();
+      query.close();
+      if (rows.isEmpty) {
+        return false;
+      }
+      return rows.any((row) => row.hasFeedBareIngestCompleted);
+    });
+  }
+
+  /// Mark initial DP1 bare ingest completion status for one feed.
+  Future<void> setFeedBareIngestCompleted({
+    required String baseUrl,
+    required bool completed,
+    DateTime? completedAt,
+  }) async {
+    await _lock.synchronized(() async {
+      final key = 'FEED::$baseUrl';
+      final nowUs = DateTime.now().toUtc().microsecondsSinceEpoch;
+      final row = _getOrCreateAddressState(key)
+        ..feedBaseUrl = baseUrl
+        ..hasFeedBareIngestCompleted = completed
+        ..feedBareIngestCompletedAtUs = completed
+            ? (completedAt ?? DateTime.now()).toUtc().microsecondsSinceEpoch
+            : 0
+        ..updatedAtUs = nowUs;
+      _appStateAddressBox.put(row);
+    });
+  }
+
   /// Remove feed refresh timestamp for one base URL.
   Future<void> deleteLastRefreshTime(String baseUrl) async {
     await _lock.synchronized(() async {
@@ -222,7 +257,12 @@ class AppStateService {
       final rows = query.find();
       query.close();
       for (final row in rows) {
-        _appStateAddressBox.remove(row.id);
+        row
+          ..feedLastRefreshAtUs = 0
+          ..hasFeedBareIngestCompleted = false
+          ..feedBareIngestCompletedAtUs = 0
+          ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
+        _appStateAddressBox.put(row);
       }
     });
   }

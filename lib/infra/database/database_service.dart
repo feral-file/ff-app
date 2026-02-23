@@ -16,6 +16,7 @@ import 'package:app/infra/database/token_transformer.dart';
 import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:wallet/wallet.dart' as wallet;
 
 /// Database service providing high-level operations for data ingestion.
 /// Handles offline-first storage for DP-1 entities and relationships.
@@ -32,6 +33,9 @@ class DatabaseService {
 
   final AppDatabase _db;
   late final Logger _log;
+  static const int enrichmentStatusPending = 0;
+  static const int enrichmentStatusEnriched = 1;
+  static const int enrichmentStatusFailed = 2;
 
   Future<T> _runWriteTaskOnDriftIsolate<T>({
     required Future<T> Function(AppDatabase db) task,
@@ -1153,15 +1157,20 @@ class DatabaseService {
     int? publisherId,
   }) async {
     try {
-      await _runWriteTaskOnDriftIsolate<void>(
-        task: (db) => _ingestDP1ChannelWithPlaylistsBareOnDatabase(
-          db: db,
+      // Avoid computeWithDatabase() here: opening a short-lived extra
+      // connection can contend with worker writes and trigger SQLITE_BUSY.
+      // NativeDatabase.createInBackground already runs writes off the UI
+      // isolate, so execute on the current Drift executor and retry
+      // transient lock errors.
+      await _runWithDatabaseLockedRetry<void>(() {
+        return _ingestDP1ChannelWithPlaylistsBareOnDatabase(
+          db: _db,
           baseUrl: baseUrl,
           channel: channel,
           playlists: playlists,
           publisherId: publisherId,
-        ),
-      );
+        );
+      });
 
       _log.info(
         'Ingested channel ${channel.id} with ${playlists.length} playlists '
@@ -1256,6 +1265,40 @@ class DatabaseService {
     });
   }
 
+  Future<T> _runWithDatabaseLockedRetry<T>(
+    Future<T> Function() action, {
+    int maxAttempts = 3,
+  }) async {
+    Object? lastError;
+    StackTrace? lastStack;
+
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await action();
+      } on Object catch (e, stack) {
+        lastError = e;
+        lastStack = stack;
+        final isLocked = e.toString().contains('database is locked');
+        if (!isLocked || attempt == maxAttempts) {
+          rethrow;
+        }
+        final delayMs = 100 * attempt;
+        _log.warning(
+          'Database locked during write (attempt $attempt/$maxAttempts); '
+          'retrying in ${delayMs}ms',
+          e,
+          stack,
+        );
+        await Future<void>.delayed(Duration(milliseconds: delayMs));
+      }
+    }
+
+    if (lastError != null && lastStack != null) {
+      Error.throwWithStackTrace(lastError, lastStack);
+    }
+    throw StateError('Unreachable database retry state');
+  }
+
   /// Ingest a DP1 playlist wire model into the database.
   ///
   /// When [fetchTokens] is provided and playlist items have CIDs, tokens are
@@ -1304,28 +1347,62 @@ class DatabaseService {
   // Enrichment queries (SQLite as single source of truth)
   // ===========================================================================
 
+  /// Returns true if any playlist entry still has an unenriched item.
+  ///
+  /// Failed items are excluded because they are intentionally not retried.
+  Future<bool> hasUnenrichedItemsRemain() async {
+    try {
+      final query = _db.customSelect(
+        '''
+        SELECT 1
+        FROM playlist_entries pe
+        JOIN items i ON pe.item_id = i.id
+        WHERE i.thumbnail_uri IS NULL
+          AND i.list_artist_json IS NULL
+          AND i.enrichment_status != ?1
+        LIMIT 1
+        ''',
+        variables: [Variable.withInt(enrichmentStatusFailed)],
+      );
+      final rows = await query.get();
+      return rows.isNotEmpty;
+    } catch (e, stack) {
+      if (_isOperationCancelled(e)) {
+        _log.fine('Unenriched-items probe cancelled');
+        return false;
+      }
+      _log.severe('Failed probing unenriched items', e, stack);
+      rethrow;
+    }
+  }
+
   /// Load high-priority bare items from database.
   ///
-  /// Returns first [maxPerPlaylist] bare items per playlist that haven't been
-  /// enriched yet, ordered by creation order (playlist entry order).
-  /// Max [maxTotal] items across all playlists.
+  /// Loads high-priority bare items for enrichment.
+  ///
+  /// Selects the first [maxPerPlaylist] items from every playlist that has
+  /// unenriched items, ordering results newest-playlist-first (matching UI
+  /// display order), then by item position within each playlist. The result
+  /// is capped at [maxItems] total rows.
+  ///
+  /// Unlike a fixed-playlist-count approach, this fills the target batch size
+  /// across as many playlists as needed so that small playlists do not leave
+  /// the batch under-populated.
   Future<List<(String, String?, String, int)>> loadHighPriorityBareItems({
     required int maxPerPlaylist,
-    required int maxTotal,
+    required int maxItems,
   }) async {
     try {
       final query = _db.customSelect(
         '''
         WITH ranked AS (
+          -- Top N items per playlist (by position), across all playlists.
           SELECT
             pe.playlist_id,
             pe.item_id,
             i.provenance_json,
             pe.position,
-            c.publisher_id,
-            p.base_url,
-            p.created_at_us,
-            p.id AS playlist_sort_id,
+            p.created_at_us AS playlist_created_at,
             ROW_NUMBER() OVER (
               PARTITION BY pe.playlist_id
               ORDER BY
@@ -1334,42 +1411,21 @@ class DatabaseService {
             ) AS item_rank
           FROM playlist_entries pe
           JOIN playlists p ON pe.playlist_id = p.id
-          LEFT JOIN channels c ON p.channel_id = c.id
           JOIN items i ON pe.item_id = i.id
           WHERE i.thumbnail_uri IS NULL
             AND i.list_artist_json IS NULL
-        ),
-        interleaved AS (
-          SELECT
-            *,
-            ROW_NUMBER() OVER (
-              PARTITION BY COALESCE(CAST(publisher_id AS TEXT), COALESCE(base_url, ''))
-              ORDER BY
-                created_at_us ASC,
-                playlist_sort_id ASC,
-                item_rank ASC
-            ) AS publisher_round
-          FROM ranked
+            AND i.enrichment_status != ?3
         )
-        SELECT
-          playlist_id,
-          item_id,
-          provenance_json,
-          position
-        FROM interleaved
+        SELECT playlist_id, item_id, provenance_json, position
+        FROM ranked
         WHERE item_rank <= ?1
-        ORDER BY
-          publisher_round ASC,
-          COALESCE(publisher_id, 2147483647) ASC,
-          COALESCE(base_url, '') ASC,
-          created_at_us ASC,
-          playlist_sort_id ASC,
-          item_rank ASC
+        ORDER BY playlist_created_at DESC, playlist_id ASC, item_rank ASC
         LIMIT ?2
         ''',
         variables: [
           Variable.withInt(maxPerPlaylist),
-          Variable.withInt(maxTotal),
+          Variable.withInt(maxItems),
+          Variable.withInt(enrichmentStatusFailed),
         ],
       );
 
@@ -1396,10 +1452,11 @@ class DatabaseService {
     }
   }
 
-  /// Load low-priority bare items from database.
+  /// Loads low-priority bare items for enrichment.
   ///
-  /// Returns bare items beyond the first [maxPerPlaylist] items per playlist.
-  /// Max [maxTotal] items across all playlists.
+  /// Returns bare items beyond the first [maxPerPlaylist] items per playlist,
+  /// ordered by newest-playlist-first (matching UI display order) and then by
+  /// item position within each playlist. Up to [maxTotal] items are returned.
   Future<List<(String, String?, String, int)>> loadLowPriorityBareItems({
     required int maxPerPlaylist,
     required int maxTotal,
@@ -1413,10 +1470,7 @@ class DatabaseService {
             pe.item_id,
             i.provenance_json,
             pe.position,
-            c.publisher_id,
-            p.base_url,
-            p.created_at_us,
-            p.id AS playlist_sort_id,
+            p.created_at_us AS playlist_created_at,
             ROW_NUMBER() OVER (
               PARTITION BY pe.playlist_id
               ORDER BY
@@ -1425,42 +1479,21 @@ class DatabaseService {
             ) AS item_rank
           FROM playlist_entries pe
           JOIN playlists p ON pe.playlist_id = p.id
-          LEFT JOIN channels c ON p.channel_id = c.id
           JOIN items i ON pe.item_id = i.id
           WHERE i.thumbnail_uri IS NULL
             AND i.list_artist_json IS NULL
-        ),
-        interleaved AS (
-          SELECT
-            *,
-            ROW_NUMBER() OVER (
-              PARTITION BY COALESCE(CAST(publisher_id AS TEXT), COALESCE(base_url, ''))
-              ORDER BY
-                created_at_us ASC,
-                playlist_sort_id ASC,
-                item_rank ASC
-            ) AS publisher_round
-          FROM ranked
+            AND i.enrichment_status != ?3
         )
-        SELECT
-          playlist_id,
-          item_id,
-          provenance_json,
-          position
-        FROM interleaved
+        SELECT playlist_id, item_id, provenance_json, position
+        FROM ranked
         WHERE item_rank > ?1
-        ORDER BY
-          publisher_round ASC,
-          COALESCE(publisher_id, 2147483647) ASC,
-          COALESCE(base_url, '') ASC,
-          created_at_us ASC,
-          playlist_sort_id ASC,
-          item_rank ASC
+        ORDER BY playlist_created_at DESC, playlist_id ASC, item_rank ASC
         LIMIT ?2
         ''',
         variables: [
           Variable.withInt(maxPerPlaylist),
           Variable.withInt(maxTotal),
+          Variable.withInt(enrichmentStatusFailed),
         ],
       );
 
@@ -1515,6 +1548,7 @@ class DatabaseService {
               )
             : const Value(null),
         tokenDataJson: Value(jsonEncode(token.toRestJson())),
+        enrichmentStatus: const Value(enrichmentStatusEnriched),
         updatedAtUs: Value(BigInt.from(DateTime.now().microsecondsSinceEpoch)),
       );
 
@@ -1551,6 +1585,31 @@ class DatabaseService {
     }
   }
 
+  /// Marks items as failed to enrich so query workers skip retrying them.
+  Future<void> markPlaylistItemsEnrichmentFailed(List<String> itemIds) async {
+    if (itemIds.isEmpty) return;
+
+    try {
+      final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+      await _db.transaction(() async {
+        for (final itemId in itemIds) {
+          await (_db.update(
+            _db.items,
+          )..where((t) => t.id.equals(itemId))).write(
+            ItemsCompanion(
+              enrichmentStatus: const Value(enrichmentStatusFailed),
+              updatedAtUs: Value(nowUs),
+            ),
+          );
+        }
+      });
+      _log.info('Marked ${itemIds.length} items as enrichment-failed');
+    } catch (e, stack) {
+      _log.severe('Failed to mark enrichment-failed items', e, stack);
+      rethrow;
+    }
+  }
+
   static Future<void> _enrichPlaylistItemsWithTokensBatchOnDatabase({
     required AppDatabase db,
     required List<(String, AssetToken)> enrichments,
@@ -1579,6 +1638,7 @@ class DatabaseService {
                   )
                 : const Value(null),
             tokenDataJson: Value(jsonEncode(token.toRestJson())),
+            enrichmentStatus: const Value(enrichmentStatusEnriched),
             updatedAtUs: Value(nowUs),
           );
         })
@@ -1672,19 +1732,27 @@ String? _buildTokenCidFromProvenanceJson(String? provenanceJson) {
     if (address == null || address.isEmpty) {
       return null;
     }
+    final normalizedAddress = _normalizeCidAddress(prefix, address);
 
     final tokenId = contract['tokenId']?.toString();
     if (tokenId == null || tokenId.isEmpty) {
       return null;
     }
 
-    return '$prefix:$standard:$address:$tokenId';
+    return '$prefix:$standard:$normalizedAddress:$tokenId';
   } on Object {
     return null;
   }
 }
 
 String? _cidPrefixForChain(String chain) {
+  if (chain.startsWith('eip155:')) {
+    return chain;
+  }
+  if (chain.startsWith('tezos:')) {
+    return chain;
+  }
+
   switch (chain) {
     case 'evm':
     case 'ethereum':
@@ -1695,5 +1763,23 @@ String? _cidPrefixForChain(String chain) {
       return 'tezos:mainnet';
     default:
       return null;
+  }
+}
+
+String _normalizeCidAddress(String chainPrefix, String address) {
+  if (!chainPrefix.startsWith('eip155:')) {
+    return address;
+  }
+
+  try {
+    final parsed = wallet.EthereumAddress.fromHex(
+      address,
+      enforceEip55: true,
+    );
+    return parsed.eip55With0x;
+  } on Object {
+    // Preserve the original address when normalization fails so a valid CID
+    // is still attempted for non-standard address formats.
+    return address;
   }
 }

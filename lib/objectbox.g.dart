@@ -163,7 +163,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(10, 3855157679464200367),
     name: 'AppStateAddressEntity',
-    lastPropertyId: const obx_int.IdUid(10, 7205756033359539431),
+    lastPropertyId: const obx_int.IdUid(12, 3462060407990166466),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -224,6 +224,18 @@ final _entities = <obx_int.ModelEntity>[
       obx_int.ModelProperty(
         id: const obx_int.IdUid(10, 7205756033359539431),
         name: 'updatedAtUs',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(11, 671751466930742228),
+        name: 'hasFeedBareIngestCompleted',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(12, 3462060407990166466),
+        name: 'feedBareIngestCompletedAtUs',
         type: 6,
         flags: 0,
       ),
@@ -623,7 +635,7 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final indexingProcessErrorMessageOffset = fbb.writeString(
           object.indexingProcessErrorMessage,
         );
-        fbb.startTable(11);
+        fbb.startTable(13);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, normalizedAddressOffset);
         fbb.addOffset(2, feedBaseUrlOffset);
@@ -634,6 +646,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
         fbb.addInt64(7, object.indexingProcessUpdatedAtUs);
         fbb.addOffset(8, indexingProcessErrorMessageOffset);
         fbb.addInt64(9, object.updatedAtUs);
+        fbb.addBool(10, object.hasFeedBareIngestCompleted);
+        fbb.addInt64(11, object.feedBareIngestCompletedAtUs);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -652,6 +666,14 @@ obx_int.ModelDefinition getObjectBoxModel() {
           10,
           0,
         );
+        final hasFeedBareIngestCompletedParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          24,
+          false,
+        );
+        final feedBareIngestCompletedAtUsParam = const fb.Int64Reader()
+            .vTableGet(buffer, rootOffset, 26, 0);
         final hasIndexerAnchorParam = const fb.BoolReader().vTableGet(
           buffer,
           rootOffset,
@@ -685,6 +707,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
           normalizedAddress: normalizedAddressParam,
           feedBaseUrl: feedBaseUrlParam,
           feedLastRefreshAtUs: feedLastRefreshAtUsParam,
+          hasFeedBareIngestCompleted: hasFeedBareIngestCompletedParam,
+          feedBareIngestCompletedAtUs: feedBareIngestCompletedAtUsParam,
           hasIndexerAnchor: hasIndexerAnchorParam,
           indexerAnchor: indexerAnchorParam,
           indexingProcessStateIndex: indexingProcessStateIndexParam,
@@ -1006,6 +1030,18 @@ class AppStateAddressEntity_ {
   static final updatedAtUs = obx.QueryIntegerProperty<AppStateAddressEntity>(
     _entities[2].properties[9],
   );
+
+  /// See [AppStateAddressEntity.hasFeedBareIngestCompleted].
+  static final hasFeedBareIngestCompleted =
+      obx.QueryBooleanProperty<AppStateAddressEntity>(
+        _entities[2].properties[10],
+      );
+
+  /// See [AppStateAddressEntity.feedBareIngestCompletedAtUs].
+  static final feedBareIngestCompletedAtUs =
+      obx.QueryIntegerProperty<AppStateAddressEntity>(
+        _entities[2].properties[11],
+      );
 }
 
 /// [AppStateEntity] entity fields to define ObjectBox queries.

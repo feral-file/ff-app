@@ -1,6 +1,10 @@
 // Reason: base worker contract uses concise method names by design.
 // ignore_for_file: public_member_api_docs, avoid_redundant_argument_values
 
+import 'dart:async';
+import 'dart:isolate';
+
+import 'package:app/infra/workers/worker_message.dart';
 import 'package:app/infra/workers/worker_state_service.dart';
 import 'package:logging/logging.dart';
 
@@ -26,19 +30,61 @@ abstract class BackgroundWorker {
   final Logger _log;
 
   BackgroundWorkerState _state = BackgroundWorkerState.idle;
+  Future<void>? _startInFlight;
+
+  // Isolate infrastructure (for isolate-backed workers).
+  Isolate? _isolate;
+  ReceivePort? _receivePort;
+  ReceivePort? _errorPort;
+  ReceivePort? _exitPort;
+  SendPort? _sendPort;
 
   BackgroundWorkerState get state => _state;
+
+  /// Returns true if the isolate is running AND the handshake has completed
+  /// (i.e. the main isolate has a [SendPort] to reach the worker).
+  ///
+  /// Checking only [_isolate] != null is insufficient because there is a brief
+  /// window between [Isolate.spawn] returning and the handshake [SendPort]
+  /// arriving during which [_isolate] is set but [_sendPort] is still null.
+  bool get isIsolateRunning => _isolate != null && _sendPort != null;
 
   /// Returns true when this worker still has unprocessed work.
   bool get hasRemainingWork;
 
-  /// Starts worker runtime and resumes processing from restored checkpoint.
+  /// Starts worker runtime.
+  ///
+  /// Resume behavior: restores checkpoint if resuming from pause on this
+  /// instance. Fresh start: ignores checkpoint if this is a new worker
+  /// instance.
   Future<void> start() async {
+    final inFlight = _startInFlight;
+    if (inFlight != null) {
+      await inFlight;
+      return;
+    }
+
+    final startFuture = _startInternal();
+    _startInFlight = startFuture;
+    try {
+      await startFuture;
+    } finally {
+      if (identical(_startInFlight, startFuture)) {
+        _startInFlight = null;
+      }
+    }
+  }
+
+  Future<void> _startInternal() async {
     if (_state == BackgroundWorkerState.started) {
       return;
     }
 
-    await restoreCheckpoint();
+    // Only restore checkpoint if THIS instance was paused (not from storage).
+    if (_state == BackgroundWorkerState.paused) {
+      await restoreCheckpoint();
+    }
+
     await onStart();
     _state = BackgroundWorkerState.started;
     await _workerStateService.save(
@@ -107,11 +153,147 @@ abstract class BackgroundWorker {
     return BackgroundWorkerState.values[index];
   }
 
+  /// Sends a message to the worker isolate.
+  ///
+  /// Throws [StateError] if isolate is not running.
+  void sendMessage(WorkerMessage message) {
+    if (_sendPort == null) {
+      final error = 'Cannot send message: isolate not ready for $workerId';
+      throw StateError(error);
+    }
+    _sendPort!.send(message.toList());
+  }
+
+  /// Sends a raw list message to the worker isolate.
+  ///
+  /// For compatibility with simpler message formats.
+  void sendRaw(List<Object?> message) {
+    if (_sendPort == null) {
+      final error = 'Cannot send message: isolate not ready for $workerId';
+      throw StateError(error);
+    }
+    _sendPort!.send(message);
+  }
+
+  /// Spawns worker isolate with given entry point and arguments.
+  ///
+  /// Subclasses should call this in [onStart] to spawn their isolate.
+  ///
+  /// The [handshakeTimeout] is generous (30 s by default) because iOS
+  /// simulator can delay isolate scheduling when several isolates start
+  /// concurrently at app launch. If the isolate crashes before sending the
+  /// handshake [SendPort], the error port fires and the completer is
+  /// completed with an error immediately (no need to wait the full timeout).
+  Future<void> spawnIsolate({
+    required void Function(List<Object?>) entryPoint,
+    required List<Object?> args,
+    Duration handshakeTimeout = const Duration(seconds: 30),
+  }) async {
+    if (_isolate != null) {
+      return;
+    }
+
+    _receivePort = ReceivePort();
+    _errorPort = ReceivePort();
+    _exitPort = ReceivePort();
+
+    _receivePort!.listen(_handleIsolateMessage);
+    _errorPort!.listen((dynamic error) {
+      _log.warning('Isolate error for $workerId: $error');
+      // If the isolate crashes before sending the handshake SendPort, fail
+      // the handshake immediately rather than waiting for the full timeout.
+      if (_handshakeCompleter != null && !_handshakeCompleter!.isCompleted) {
+        _handshakeCompleter!.completeError(
+          StateError('Isolate crashed before handshake for $workerId: $error'),
+        );
+      }
+    });
+    _exitPort!.listen((dynamic message) {
+      _log.fine('Isolate exited for $workerId');
+    });
+
+    _isolate = await Isolate.spawn<List<Object?>>(
+      entryPoint,
+      <Object?>[
+        _receivePort!.sendPort,
+        ...args,
+      ],
+      errorsAreFatal: false,
+      onError: _errorPort!.sendPort,
+      onExit: _exitPort!.sendPort,
+    );
+
+    // Wait for handshake (isolate sends back its SendPort)
+    await _waitForHandshake(handshakeTimeout);
+  }
+
+  Future<void> _waitForHandshake(Duration timeout) async {
+    final completer = Completer<void>();
+    Timer? timer;
+
+    timer = Timer(timeout, () {
+      if (!completer.isCompleted) {
+        final error = 'Isolate handshake timeout for $workerId';
+        completer.completeError(TimeoutException(error));
+      }
+    });
+
+    // _handleIsolateMessage will complete this when SendPort arrives
+    _handshakeCompleter = completer;
+
+    try {
+      await completer.future;
+    } finally {
+      timer.cancel();
+      _handshakeCompleter = null;
+    }
+  }
+
+  Completer<void>? _handshakeCompleter;
+
+  void _handleIsolateMessage(dynamic message) {
+    // Handshake: isolate sends back its SendPort
+    if (message is SendPort) {
+      _sendPort = message;
+      _handshakeCompleter?.complete();
+      return;
+    }
+
+    // Delegate to subclass for message handling
+    onIsolateMessage(message);
+  }
+
+  /// Kills worker isolate and cleans up ports.
+  ///
+  /// Subclasses should call this in [onStop] or [onPause] to kill isolate.
+  Future<void> killIsolate() async {
+    _isolate?.kill(priority: Isolate.immediate);
+    _isolate = null;
+    _sendPort = null;
+
+    _receivePort?.close();
+    _receivePort = null;
+
+    _errorPort?.close();
+    _errorPort = null;
+
+    _exitPort?.close();
+    _exitPort = null;
+  }
+
+  /// Called when isolate sends a message to main isolate.
+  ///
+  /// Subclasses override this to handle worker-specific messages.
+  void onIsolateMessage(dynamic message) {
+    _log.warning('Unhandled isolate message for $workerId: $message');
+  }
+
   Future<void> onStart();
   Future<void> onPause();
   Future<void> onStop();
 
   Future<Map<String, dynamic>> buildCheckpoint();
+
   Future<void> restoreFromCheckpoint(Map<String, dynamic> checkpoint);
 
   Future<void> resetWorkState();

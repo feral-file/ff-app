@@ -103,7 +103,7 @@ void main() {
       final remainingBare = await context.databaseService
           .loadHighPriorityBareItems(
             maxPerPlaylist: 8,
-            maxTotal: 100,
+            maxItems: 10000,
           );
       expect(remainingBare, isEmpty);
     },

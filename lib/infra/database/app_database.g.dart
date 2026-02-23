@@ -2189,6 +2189,18 @@ class $ItemsTable extends Items with TableInfo<$ItemsTable, ItemData> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _enrichmentStatusMeta = const VerificationMeta(
+    'enrichmentStatus',
+  );
+  @override
+  late final GeneratedColumn<int> enrichmentStatus = GeneratedColumn<int>(
+    'enrichment_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _updatedAtUsMeta = const VerificationMeta(
     'updatedAtUs',
   );
@@ -2217,6 +2229,7 @@ class $ItemsTable extends Items with TableInfo<$ItemsTable, ItemData> {
     displayJson,
     tokenDataJson,
     listArtistJson,
+    enrichmentStatus,
     updatedAtUs,
   ];
   @override
@@ -2343,6 +2356,15 @@ class $ItemsTable extends Items with TableInfo<$ItemsTable, ItemData> {
         ),
       );
     }
+    if (data.containsKey('enrichment_status')) {
+      context.handle(
+        _enrichmentStatusMeta,
+        enrichmentStatus.isAcceptableOrUnknown(
+          data['enrichment_status']!,
+          _enrichmentStatusMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at_us')) {
       context.handle(
         _updatedAtUsMeta,
@@ -2423,6 +2445,10 @@ class $ItemsTable extends Items with TableInfo<$ItemsTable, ItemData> {
         DriftSqlType.string,
         data['${effectivePrefix}list_artist_json'],
       ),
+      enrichmentStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}enrichment_status'],
+      )!,
       updatedAtUs: attachedDatabase.typeMapping.read(
         DriftSqlType.bigInt,
         data['${effectivePrefix}updated_at_us'],
@@ -2482,6 +2508,9 @@ class ItemData extends DataClass implements Insertable<ItemData> {
   /// List of artists as JSON (List<DP1Artist>).
   final String? listArtistJson;
 
+  /// Enrichment status: 0 = pending, 1 = enriched, 2 = failed.
+  final int enrichmentStatus;
+
   /// Last update timestamp in microseconds.
   final BigInt updatedAtUs;
   const ItemData({
@@ -2500,6 +2529,7 @@ class ItemData extends DataClass implements Insertable<ItemData> {
     this.displayJson,
     this.tokenDataJson,
     this.listArtistJson,
+    required this.enrichmentStatus,
     required this.updatedAtUs,
   });
   @override
@@ -2546,6 +2576,7 @@ class ItemData extends DataClass implements Insertable<ItemData> {
     if (!nullToAbsent || listArtistJson != null) {
       map['list_artist_json'] = Variable<String>(listArtistJson);
     }
+    map['enrichment_status'] = Variable<int>(enrichmentStatus);
     map['updated_at_us'] = Variable<BigInt>(updatedAtUs);
     return map;
   }
@@ -2593,6 +2624,7 @@ class ItemData extends DataClass implements Insertable<ItemData> {
       listArtistJson: listArtistJson == null && nullToAbsent
           ? const Value.absent()
           : Value(listArtistJson),
+      enrichmentStatus: Value(enrichmentStatus),
       updatedAtUs: Value(updatedAtUs),
     );
   }
@@ -2618,6 +2650,7 @@ class ItemData extends DataClass implements Insertable<ItemData> {
       displayJson: serializer.fromJson<String?>(json['displayJson']),
       tokenDataJson: serializer.fromJson<String?>(json['tokenDataJson']),
       listArtistJson: serializer.fromJson<String?>(json['listArtistJson']),
+      enrichmentStatus: serializer.fromJson<int>(json['enrichmentStatus']),
       updatedAtUs: serializer.fromJson<BigInt>(json['updatedAtUs']),
     );
   }
@@ -2640,6 +2673,7 @@ class ItemData extends DataClass implements Insertable<ItemData> {
       'displayJson': serializer.toJson<String?>(displayJson),
       'tokenDataJson': serializer.toJson<String?>(tokenDataJson),
       'listArtistJson': serializer.toJson<String?>(listArtistJson),
+      'enrichmentStatus': serializer.toJson<int>(enrichmentStatus),
       'updatedAtUs': serializer.toJson<BigInt>(updatedAtUs),
     };
   }
@@ -2660,6 +2694,7 @@ class ItemData extends DataClass implements Insertable<ItemData> {
     Value<String?> displayJson = const Value.absent(),
     Value<String?> tokenDataJson = const Value.absent(),
     Value<String?> listArtistJson = const Value.absent(),
+    int? enrichmentStatus,
     BigInt? updatedAtUs,
   }) => ItemData(
     id: id ?? this.id,
@@ -2683,6 +2718,7 @@ class ItemData extends DataClass implements Insertable<ItemData> {
     listArtistJson: listArtistJson.present
         ? listArtistJson.value
         : this.listArtistJson,
+    enrichmentStatus: enrichmentStatus ?? this.enrichmentStatus,
     updatedAtUs: updatedAtUs ?? this.updatedAtUs,
   );
   ItemData copyWithCompanion(ItemsCompanion data) {
@@ -2716,6 +2752,9 @@ class ItemData extends DataClass implements Insertable<ItemData> {
       listArtistJson: data.listArtistJson.present
           ? data.listArtistJson.value
           : this.listArtistJson,
+      enrichmentStatus: data.enrichmentStatus.present
+          ? data.enrichmentStatus.value
+          : this.enrichmentStatus,
       updatedAtUs: data.updatedAtUs.present
           ? data.updatedAtUs.value
           : this.updatedAtUs,
@@ -2740,6 +2779,7 @@ class ItemData extends DataClass implements Insertable<ItemData> {
           ..write('displayJson: $displayJson, ')
           ..write('tokenDataJson: $tokenDataJson, ')
           ..write('listArtistJson: $listArtistJson, ')
+          ..write('enrichmentStatus: $enrichmentStatus, ')
           ..write('updatedAtUs: $updatedAtUs')
           ..write(')'))
         .toString();
@@ -2762,6 +2802,7 @@ class ItemData extends DataClass implements Insertable<ItemData> {
     displayJson,
     tokenDataJson,
     listArtistJson,
+    enrichmentStatus,
     updatedAtUs,
   );
   @override
@@ -2783,6 +2824,7 @@ class ItemData extends DataClass implements Insertable<ItemData> {
           other.displayJson == this.displayJson &&
           other.tokenDataJson == this.tokenDataJson &&
           other.listArtistJson == this.listArtistJson &&
+          other.enrichmentStatus == this.enrichmentStatus &&
           other.updatedAtUs == this.updatedAtUs);
 }
 
@@ -2802,6 +2844,7 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
   final Value<String?> displayJson;
   final Value<String?> tokenDataJson;
   final Value<String?> listArtistJson;
+  final Value<int> enrichmentStatus;
   final Value<BigInt> updatedAtUs;
   final Value<int> rowid;
   const ItemsCompanion({
@@ -2820,6 +2863,7 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
     this.displayJson = const Value.absent(),
     this.tokenDataJson = const Value.absent(),
     this.listArtistJson = const Value.absent(),
+    this.enrichmentStatus = const Value.absent(),
     this.updatedAtUs = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -2839,6 +2883,7 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
     this.displayJson = const Value.absent(),
     this.tokenDataJson = const Value.absent(),
     this.listArtistJson = const Value.absent(),
+    this.enrichmentStatus = const Value.absent(),
     required BigInt updatedAtUs,
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -2860,6 +2905,7 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
     Expression<String>? displayJson,
     Expression<String>? tokenDataJson,
     Expression<String>? listArtistJson,
+    Expression<int>? enrichmentStatus,
     Expression<BigInt>? updatedAtUs,
     Expression<int>? rowid,
   }) {
@@ -2879,6 +2925,7 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
       if (displayJson != null) 'display_json': displayJson,
       if (tokenDataJson != null) 'token_data_json': tokenDataJson,
       if (listArtistJson != null) 'list_artist_json': listArtistJson,
+      if (enrichmentStatus != null) 'enrichment_status': enrichmentStatus,
       if (updatedAtUs != null) 'updated_at_us': updatedAtUs,
       if (rowid != null) 'rowid': rowid,
     });
@@ -2900,6 +2947,7 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
     Value<String?>? displayJson,
     Value<String?>? tokenDataJson,
     Value<String?>? listArtistJson,
+    Value<int>? enrichmentStatus,
     Value<BigInt>? updatedAtUs,
     Value<int>? rowid,
   }) {
@@ -2919,6 +2967,7 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
       displayJson: displayJson ?? this.displayJson,
       tokenDataJson: tokenDataJson ?? this.tokenDataJson,
       listArtistJson: listArtistJson ?? this.listArtistJson,
+      enrichmentStatus: enrichmentStatus ?? this.enrichmentStatus,
       updatedAtUs: updatedAtUs ?? this.updatedAtUs,
       rowid: rowid ?? this.rowid,
     );
@@ -2972,6 +3021,9 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
     if (listArtistJson.present) {
       map['list_artist_json'] = Variable<String>(listArtistJson.value);
     }
+    if (enrichmentStatus.present) {
+      map['enrichment_status'] = Variable<int>(enrichmentStatus.value);
+    }
     if (updatedAtUs.present) {
       map['updated_at_us'] = Variable<BigInt>(updatedAtUs.value);
     }
@@ -2999,6 +3051,7 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
           ..write('displayJson: $displayJson, ')
           ..write('tokenDataJson: $tokenDataJson, ')
           ..write('listArtistJson: $listArtistJson, ')
+          ..write('enrichmentStatus: $enrichmentStatus, ')
           ..write('updatedAtUs: $updatedAtUs, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -4593,6 +4646,7 @@ typedef $$ItemsTableCreateCompanionBuilder =
       Value<String?> displayJson,
       Value<String?> tokenDataJson,
       Value<String?> listArtistJson,
+      Value<int> enrichmentStatus,
       required BigInt updatedAtUs,
       Value<int> rowid,
     });
@@ -4613,6 +4667,7 @@ typedef $$ItemsTableUpdateCompanionBuilder =
       Value<String?> displayJson,
       Value<String?> tokenDataJson,
       Value<String?> listArtistJson,
+      Value<int> enrichmentStatus,
       Value<BigInt> updatedAtUs,
       Value<int> rowid,
     });
@@ -4697,6 +4752,11 @@ class $$ItemsTableFilterComposer extends Composer<_$AppDatabase, $ItemsTable> {
 
   ColumnFilters<String> get listArtistJson => $composableBuilder(
     column: $table.listArtistJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get enrichmentStatus => $composableBuilder(
+    column: $table.enrichmentStatus,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4790,6 +4850,11 @@ class $$ItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get enrichmentStatus => $composableBuilder(
+    column: $table.enrichmentStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<BigInt> get updatedAtUs => $composableBuilder(
     column: $table.updatedAtUs,
     builder: (column) => ColumnOrderings(column),
@@ -4864,6 +4929,11 @@ class $$ItemsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get enrichmentStatus => $composableBuilder(
+    column: $table.enrichmentStatus,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<BigInt> get updatedAtUs => $composableBuilder(
     column: $table.updatedAtUs,
     builder: (column) => column,
@@ -4913,6 +4983,7 @@ class $$ItemsTableTableManager
                 Value<String?> displayJson = const Value.absent(),
                 Value<String?> tokenDataJson = const Value.absent(),
                 Value<String?> listArtistJson = const Value.absent(),
+                Value<int> enrichmentStatus = const Value.absent(),
                 Value<BigInt> updatedAtUs = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ItemsCompanion(
@@ -4931,6 +5002,7 @@ class $$ItemsTableTableManager
                 displayJson: displayJson,
                 tokenDataJson: tokenDataJson,
                 listArtistJson: listArtistJson,
+                enrichmentStatus: enrichmentStatus,
                 updatedAtUs: updatedAtUs,
                 rowid: rowid,
               ),
@@ -4951,6 +5023,7 @@ class $$ItemsTableTableManager
                 Value<String?> displayJson = const Value.absent(),
                 Value<String?> tokenDataJson = const Value.absent(),
                 Value<String?> listArtistJson = const Value.absent(),
+                Value<int> enrichmentStatus = const Value.absent(),
                 required BigInt updatedAtUs,
                 Value<int> rowid = const Value.absent(),
               }) => ItemsCompanion.insert(
@@ -4969,6 +5042,7 @@ class $$ItemsTableTableManager
                 displayJson: displayJson,
                 tokenDataJson: tokenDataJson,
                 listArtistJson: listArtistJson,
+                enrichmentStatus: enrichmentStatus,
                 updatedAtUs: updatedAtUs,
                 rowid: rowid,
               ),

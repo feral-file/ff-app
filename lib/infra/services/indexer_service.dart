@@ -156,6 +156,7 @@ class IndexerService {
       try {
         final tokens = await _fetchTokens(
           tokenCids: batch,
+          chains: null,
           limit: batch.length.clamp(1, _maxUint8Limit),
           offset: 0,
         );
@@ -192,6 +193,7 @@ class IndexerService {
     for (final batch in _batchesOf(tokenIds, _maxUint8Limit)) {
       final tokens = await _fetchTokens(
         tokenIds: batch,
+        chains: _defaultChains,
         owners: owners.isEmpty ? null : owners,
         limit: batch.length.clamp(1, _maxUint8Limit),
         offset: 0,
@@ -215,7 +217,9 @@ class IndexerService {
     if (tokenIds != null) vars['token_ids'] = tokenIds;
     if (owners != null) vars['owners'] = owners;
     if (tokenCids != null) vars['token_cids'] = tokenCids;
-    vars['chains'] = chains ?? _defaultChains;
+    if (chains != null) {
+      vars['chains'] = chains;
+    }
     if (limit != null) vars['limit'] = limit;
     if (offset != null) vars['offset'] = offset;
 

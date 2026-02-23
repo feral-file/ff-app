@@ -16,8 +16,8 @@ void main() {
   });
 
   test('indexer compatibility providers resolve from indexer notifier', () {
-    // Unit test: verifies compatibility providers read composed services
-    // from indexer notifier.
+    // Verifies that service compatibility providers delegate to the notifier.
+    // Enrichment now flows through WorkerScheduler; no direct service provider.
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(db.close);
     final container = ProviderContainer.test(
@@ -34,6 +34,5 @@ void main() {
     container.read(indexerProvider);
     expect(container.read(indexerServiceProvider), isA<Object>());
     expect(container.read(indexerSyncServiceProvider), isA<Object>());
-    expect(container.read(indexerAddressIndexingServiceProvider), isNotNull);
   });
 }

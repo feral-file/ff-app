@@ -202,7 +202,7 @@ void main() {
       expect(client.lastVars['token_cids'], equals(['cid1', 'cid2', 'cid3']));
       expect(client.lastVars['limit'], equals(3));
       expect(client.lastVars['offset'], equals(0));
-      expect(client.lastVars['chains'], equals(['eip155:1', 'tezos:mainnet']));
+      expect(client.lastVars.containsKey('chains'), isFalse);
     },
   );
 

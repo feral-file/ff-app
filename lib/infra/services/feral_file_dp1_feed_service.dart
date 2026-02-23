@@ -122,6 +122,10 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
       _log.info('Skip remote-config cache reload while paused');
       return;
     }
+    await appStateService.setFeedBareIngestCompleted(
+      baseUrl: baseUrl,
+      completed: false,
+    );
     await clearCache();
 
     var fetchedChannelCount = 0;
@@ -175,6 +179,11 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
       'Reloaded cache with remote config channels: '
       '$fetchedChannelCount channels, '
       '$fetchedPlaylistCount playlists',
+    );
+    await appStateService.setFeedBareIngestCompleted(
+      baseUrl: baseUrl,
+      completed: true,
+      completedAt: DateTime.now(),
     );
   }
 

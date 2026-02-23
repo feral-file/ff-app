@@ -48,9 +48,9 @@ class _MockDatabaseService extends DatabaseService {
   @override
   Future<List<(String, String?, String, int)>> loadHighPriorityBareItems({
     required int maxPerPlaylist,
-    required int maxTotal,
+    required int maxItems,
   }) async {
-    return highRows.take(maxTotal).toList(growable: false);
+    return highRows.take(maxItems).toList(growable: false);
   }
 
   @override
@@ -246,10 +246,12 @@ void main() {
       );
       expect(totalUpdated, equals(120));
       expect(db.highRows, isEmpty);
+      // Each DB query covers 6 playlists × 8 items = 48 items per round.
+      // 120 total → rounds of 48, 48, 24.
       expect(indexer.requestedCidBatches, hasLength(3));
-      expect(indexer.requestedCidBatches[0], hasLength(50));
-      expect(indexer.requestedCidBatches[1], hasLength(50));
-      expect(indexer.requestedCidBatches[2], hasLength(20));
+      expect(indexer.requestedCidBatches[0], hasLength(48));
+      expect(indexer.requestedCidBatches[1], hasLength(48));
+      expect(indexer.requestedCidBatches[2], hasLength(24));
 
       await db.close();
     });

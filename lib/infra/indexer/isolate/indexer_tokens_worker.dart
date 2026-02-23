@@ -74,8 +74,10 @@ class IndexerTokensWorker {
       onExit: _exitPort!.sendPort,
     );
 
-    // Wait for handshake
-    await ready.timeout(const Duration(seconds: 5));
+    // Wait for handshake. 30 seconds accommodates iOS simulator which can
+    // experience significant scheduling delays when multiple isolates start
+    // concurrently during app initialisation.
+    await ready.timeout(const Duration(seconds: 30));
   }
 
   void sendRaw(List<Object?> message) {
@@ -179,9 +181,14 @@ class IndexerTokensWorker {
       return;
     }
 
-    // Mirror old repo behavior: allow string errors from isolate guard zone.
+    // Zone-body errors from the isolate arrive as strings before the handshake
+    // SendPort is ever sent. Complete _ready with an error so start() fails
+    // fast (instead of waiting the full timeout) and the error is surfaced.
     if (message is String && message.startsWith('UNHANDLED_ERROR:')) {
       _log.warning('Isolate reported: $message');
+      if (!_ready.isCompleted) {
+        _ready.completeError(StateError(message));
+      }
       return;
     }
 
