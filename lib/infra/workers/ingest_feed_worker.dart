@@ -37,6 +37,10 @@ class IngestFeedWorker extends BackgroundWorker {
 
   /// Signal that a feed channel was ingested and items need enrichment.
   Future<void> onFeedIngested() async {
+    if (state == BackgroundWorkerState.stopped) {
+      return;
+    }
+
     _pendingSignalsCount++;
     await checkpoint();
 
@@ -74,12 +78,12 @@ class IngestFeedWorker extends BackgroundWorker {
 
   @override
   Future<void> onPause() async {
-    await killIsolate();
+    await shutdownIsolateGracefully(opcode: WorkerOpcode.pause);
   }
 
   @override
   Future<void> onStop() async {
-    await killIsolate();
+    await shutdownIsolateGracefully(opcode: WorkerOpcode.stop);
   }
 
   @override
@@ -114,8 +118,10 @@ class IngestFeedWorker extends BackgroundWorker {
 
     if (type == 'queryNeeded') {
       // Decrement pending count for the processed signal.
-      _pendingSignalsCount =
-          (_pendingSignalsCount - 1).clamp(0, _pendingSignalsCount);
+      _pendingSignalsCount = (_pendingSignalsCount - 1).clamp(
+        0,
+        _pendingSignalsCount,
+      );
       unawaited(checkpoint());
 
       // Only forward queryNeeded once ALL pending signals are processed.
@@ -140,17 +146,19 @@ class IngestFeedWorker extends BackgroundWorker {
 
   static late SendPort _mainSendPort;
   static late Logger _isolateLog;
+  static bool _isShuttingDown = false;
+  static ReceivePort? _isolateReceivePort;
 
   static void _isolateEntry(List<Object?> args) {
     final sendPort = args[0]! as SendPort;
 
     _isolateLog = Logger('IngestFeedWorker[Isolate]');
     _mainSendPort = sendPort;
+    _isShuttingDown = false;
 
     // Send handshake
-    final isolateReceivePort = ReceivePort()
-      ..listen(_handleMessageInIsolate);
-    _mainSendPort.send(isolateReceivePort.sendPort);
+    _isolateReceivePort = ReceivePort()..listen(_handleMessageInIsolate);
+    _mainSendPort.send(_isolateReceivePort!.sendPort);
   }
 
   static void _handleMessageInIsolate(dynamic message) {
@@ -161,11 +169,21 @@ class IngestFeedWorker extends BackgroundWorker {
     try {
       final workerMessage = WorkerMessage.fromList(message);
 
-      if (workerMessage.opcode == WorkerOpcode.enqueueWork) {
-        // Signal received, send queryNeeded back
+      if (workerMessage.opcode == WorkerOpcode.pause ||
+          workerMessage.opcode == WorkerOpcode.stop) {
+        _isShuttingDown = true;
+        _isolateReceivePort?.close();
+        _isolateReceivePort = null;
         _mainSendPort.send(<String, Object>{
-          'type': 'queryNeeded',
+          'type': 'lifecycleAck',
+          'action': workerMessage.opcode.name,
         });
+        return;
+      }
+
+      if (workerMessage.opcode == WorkerOpcode.enqueueWork &&
+          !_isShuttingDown) {
+        _mainSendPort.send(<String, Object>{'type': 'queryNeeded'});
       }
     } on Object catch (e, stack) {
       _isolateLog.warning('Failed to handle message in isolate', e, stack);

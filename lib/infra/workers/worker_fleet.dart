@@ -91,7 +91,8 @@ class IndexAddressWorkersFleet {
             endpoint: indexerEndpoint,
             defaultHeaders: <String, String>{
               'Content-Type': 'application/json',
-              if (indexerApiKey.isNotEmpty) 'Authorization': indexerApiKey,
+              if (indexerApiKey.isNotEmpty)
+                'Authorization': _formatApiKeyHeaderValue(indexerApiKey),
             },
           ),
         ),
@@ -107,7 +108,7 @@ class IndexAddressWorkersFleet {
   Future<void> startAll() async {
     for (final worker in _workers.values) {
       if (worker.state == BackgroundWorkerState.paused) {
-        await worker.start();
+        await worker.resume();
       }
     }
   }
@@ -127,6 +128,13 @@ class IndexAddressWorkersFleet {
       await worker.stop();
     }
     _workers.clear();
+  }
+
+  String _formatApiKeyHeaderValue(String apiKey) {
+    if (apiKey.startsWith('ApiKey ')) {
+      return apiKey;
+    }
+    return 'ApiKey $apiKey';
   }
 }
 
@@ -165,6 +173,7 @@ class EnrichItemWorkersFleet {
       worker.updateConnectPort(port);
     }
   }
+
   final String indexerEndpoint;
   final String indexerApiKey;
   final int poolSize;
@@ -219,7 +228,7 @@ class EnrichItemWorkersFleet {
   Future<void> startAll() async {
     for (final worker in _workers) {
       if (worker.state == BackgroundWorkerState.paused) {
-        await worker.start();
+        await worker.resume();
       }
     }
   }

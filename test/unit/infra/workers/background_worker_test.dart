@@ -186,4 +186,36 @@ void main() {
     expect(worker.state, BackgroundWorkerState.started);
     expect(worker.onStartCalls, 1);
   });
+
+  test('resume restores paused checkpoint from persisted state', () async {
+    final store = _InMemoryWorkerStateStore();
+    await store.save(
+      workerId: 'test_worker',
+      stateIndex: BackgroundWorkerState.paused.index,
+      checkpoint: <String, dynamic>{'pending': 7},
+    );
+
+    final worker = _TestWorker(workerStateStore: store);
+    await worker.resume();
+
+    expect(worker.state, BackgroundWorkerState.started);
+    expect(worker.pending, 7);
+  });
+
+  test('freshStart clears old checkpoint and starts clean', () async {
+    final store = _InMemoryWorkerStateStore();
+    await store.save(
+      workerId: 'test_worker',
+      stateIndex: BackgroundWorkerState.paused.index,
+      checkpoint: <String, dynamic>{'pending': 9},
+    );
+
+    final worker = _TestWorker(workerStateStore: store);
+    await worker.freshStart();
+
+    expect(worker.state, BackgroundWorkerState.started);
+    expect(worker.pending, 0);
+    final snapshot = await store.load('test_worker');
+    expect(snapshot?.checkpoint?['pending'], 0);
+  });
 }

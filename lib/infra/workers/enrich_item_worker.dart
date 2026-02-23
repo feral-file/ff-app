@@ -69,6 +69,10 @@ class EnrichItemWorker extends BackgroundWorker {
 
   /// Enqueue an enrichment batch assignment.
   Future<void> enqueueAssignment(Map<String, String> cidToItemId) async {
+    if (state == BackgroundWorkerState.stopped) {
+      return;
+    }
+
     if (cidToItemId.isEmpty) {
       return;
     }
@@ -125,12 +129,12 @@ class EnrichItemWorker extends BackgroundWorker {
       _inFlightAssignment = null;
     }
 
-    await killIsolate();
+    await shutdownIsolateGracefully(opcode: WorkerOpcode.pause);
   }
 
   @override
   Future<void> onStop() async {
-    await killIsolate();
+    await shutdownIsolateGracefully(opcode: WorkerOpcode.stop);
   }
 
   @override
@@ -238,6 +242,8 @@ class EnrichItemWorker extends BackgroundWorker {
   static late Logger _isolateLog;
   static late IndexerService _indexerService;
   static DatabaseService? _dbService;
+  static bool _isShuttingDown = false;
+  static ReceivePort? _isolateReceivePort;
 
   static void _isolateEntry(List<Object?> args) {
     final sendPort = args[0]! as SendPort;
@@ -248,13 +254,15 @@ class EnrichItemWorker extends BackgroundWorker {
 
     _isolateLog = Logger('EnrichItemWorker[Isolate]');
     _mainSendPort = sendPort;
+    _isShuttingDown = false;
 
     _indexerService = IndexerService(
       client: IndexerClient(
         endpoint: endpoint,
         defaultHeaders: <String, String>{
           'Content-Type': 'application/json',
-          if (apiKey.isNotEmpty) 'Authorization': apiKey,
+          if (apiKey.isNotEmpty)
+            'Authorization': _formatApiKeyHeaderValue(apiKey),
         },
       ),
     );
@@ -268,8 +276,15 @@ class EnrichItemWorker extends BackgroundWorker {
   ) async {
     _dbService = await _openDatabase(connectPort, databasePath);
 
-    final receivePort = ReceivePort()..listen(_handleMessageInIsolate);
-    _mainSendPort.send(receivePort.sendPort);
+    _isolateReceivePort = ReceivePort()..listen(_handleMessageInIsolate);
+    _mainSendPort.send(_isolateReceivePort!.sendPort);
+  }
+
+  static String _formatApiKeyHeaderValue(String apiKey) {
+    if (apiKey.startsWith('ApiKey ')) {
+      return apiKey;
+    }
+    return 'ApiKey $apiKey';
   }
 
   /// Opens a [DatabaseService] connection inside this isolate.
@@ -323,6 +338,15 @@ class EnrichItemWorker extends BackgroundWorker {
     try {
       final workerMessage = WorkerMessage.fromList(message);
 
+      if (workerMessage.opcode == WorkerOpcode.pause ||
+          workerMessage.opcode == WorkerOpcode.stop) {
+        unawaited(_shutdownIsolate(workerMessage.opcode.name));
+        return;
+      }
+      if (_isShuttingDown) {
+        return;
+      }
+
       if (workerMessage.opcode == WorkerOpcode.enqueueWork) {
         final batch = workerMessage.payload['batch'] as Map?;
         if (batch != null) {
@@ -337,6 +361,10 @@ class EnrichItemWorker extends BackgroundWorker {
 
   static Future<void> _enrichBatch(Map<String, String> cidToItemId) async {
     try {
+      if (_isShuttingDown) {
+        return;
+      }
+
       final requestedCount = cidToItemId.length;
       _isolateLog.info('Enriching batch: requested=$requestedCount');
 
@@ -400,24 +428,57 @@ class EnrichItemWorker extends BackgroundWorker {
         _isolateLog.warning('No DB service — skipping enrichment writes');
       }
 
-      _mainSendPort.send(<String, Object>{
-        'type': 'workComplete',
-        'enrichedCount': enrichments.length,
-        'requestedCount': requestedCount,
-        'retrievedCount': retrievedCount,
-        'matchedCount': matchedCount,
-        'failedCount': failedCount,
-        'requestedByChain': requestedByChain,
-        'retrievedByChain': retrievedByChain,
-        'missingByChain': missingByChain,
-        'missingCidSamples': missingCidSamples,
-      });
+      if (!_isShuttingDown) {
+        _mainSendPort.send(<String, Object>{
+          'type': 'workComplete',
+          'enrichedCount': enrichments.length,
+          'requestedCount': requestedCount,
+          'retrievedCount': retrievedCount,
+          'matchedCount': matchedCount,
+          'failedCount': failedCount,
+          'requestedByChain': requestedByChain,
+          'retrievedByChain': retrievedByChain,
+          'missingByChain': missingByChain,
+          'missingCidSamples': missingCidSamples,
+        });
+      }
     } on Object catch (e, stack) {
       _isolateLog.warning('Failed to enrich batch', e, stack);
-      _mainSendPort.send(<String, Object>{
-        'type': 'workFailed',
-        'error': e.toString(),
-      });
+      if (!_isShuttingDown) {
+        _mainSendPort.send(<String, Object>{
+          'type': 'workFailed',
+          'error': e.toString(),
+        });
+      }
+    }
+  }
+
+  static Future<void> _shutdownIsolate(String action) async {
+    if (_isShuttingDown) {
+      return;
+    }
+    _isShuttingDown = true;
+
+    await _closeDatabase();
+    _isolateReceivePort?.close();
+    _isolateReceivePort = null;
+
+    _mainSendPort.send(<String, Object>{
+      'type': 'lifecycleAck',
+      'action': action,
+    });
+  }
+
+  static Future<void> _closeDatabase() async {
+    final service = _dbService;
+    _dbService = null;
+    if (service == null) {
+      return;
+    }
+    try {
+      await service.close();
+    } on Object catch (e, stack) {
+      _isolateLog.warning('Failed closing enrich worker database', e, stack);
     }
   }
 }

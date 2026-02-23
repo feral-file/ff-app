@@ -309,7 +309,7 @@ void main() {
       // Enqueue same address multiple times
       await worker.enqueueAddress('0xABC');
       expect(worker.hasRemainingWork, true);
-      
+
       await worker.enqueueAddress('0xABC');
       await worker.enqueueAddress('0xABC');
 
@@ -317,6 +317,26 @@ void main() {
       expect(worker.hasRemainingWork, true);
 
       // Note: Actual deduplication verification requires integration test
+    });
+
+    test('ignores new addresses when stopped', () async {
+      final fakeService = _FakeIndexerService();
+      final worker = IndexAddressWorker(
+        workerId: 'index_address_worker::0xABC',
+        workerStateService: stateStore,
+        indexerServiceFactory: () => fakeService,
+        databasePath: ':memory:',
+        indexerEndpoint: 'http://test',
+        indexerApiKey: '',
+      );
+
+      await worker.start();
+      await worker.stop();
+      await worker.enqueueAddress('0xDEF');
+
+      expect(worker.hasRemainingWork, isFalse);
+      final snapshot = stateStore.getSnapshot('index_address_worker::0xABC');
+      expect(snapshot?.checkpoint, isNull);
     });
   });
 }

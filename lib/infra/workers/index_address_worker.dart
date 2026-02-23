@@ -79,7 +79,11 @@ class IndexAddressWorker extends BackgroundWorker {
 
   /// Enqueue an address for indexing.
   Future<void> enqueueAddress(String address) async {
-    final normalized = address.trim().toUpperCase();
+    if (state == BackgroundWorkerState.stopped) {
+      return;
+    }
+
+    final normalized = _normalizeAddress(address);
     if (normalized.isEmpty) {
       return;
     }
@@ -96,6 +100,21 @@ class IndexAddressWorker extends BackgroundWorker {
     if (state == BackgroundWorkerState.started && isIsolateRunning) {
       _sendWorkToIsolate();
     }
+  }
+
+  String _normalizeAddress(String address) {
+    final trimmed = address.trim();
+    if (_isEthereumAddress(trimmed)) {
+      if (trimmed.startsWith('0X')) {
+        return '0x${trimmed.substring(2)}'.toLowerCase();
+      }
+      return trimmed.toLowerCase();
+    }
+    return trimmed;
+  }
+
+  bool _isEthereumAddress(String address) {
+    return address.startsWith('0x') || address.startsWith('0X');
   }
 
   void _sendWorkToIsolate() {
@@ -123,7 +142,7 @@ class IndexAddressWorker extends BackgroundWorker {
         _indexerEndpoint,
         _indexerApiKey,
         _databaseConnectPort, // SendPort? — null in tests
-        _databasePath,        // fallback path used when connectPort is null
+        _databasePath, // fallback path used when connectPort is null
       ],
     );
 
@@ -142,12 +161,12 @@ class IndexAddressWorker extends BackgroundWorker {
       _inFlightAddress = null;
     }
 
-    await killIsolate();
+    await shutdownIsolateGracefully(opcode: WorkerOpcode.pause);
   }
 
   @override
   Future<void> onStop() async {
-    await killIsolate();
+    await shutdownIsolateGracefully(opcode: WorkerOpcode.stop);
   }
 
   @override
@@ -188,10 +207,17 @@ class IndexAddressWorker extends BackgroundWorker {
     final address = message['address']?.toString() ?? '';
 
     if (type == 'workComplete') {
+      Logger(
+        'IndexAddressWorker',
+      ).info('Index worker completed address=$address');
       _inFlightAddress = null;
       _sendWorkToIsolate(); // Send next work item if available
       unawaited(checkpoint());
     } else if (type == 'workFailed') {
+      final error = message['error']?.toString() ?? 'Unknown error';
+      Logger(
+        'IndexAddressWorker',
+      ).warning('Index worker failed address=$address error=$error');
       // Re-queue failed address
       if (address.isNotEmpty && !_pendingAddresses.contains(address)) {
         _pendingAddresses.addFirst(address);
@@ -217,6 +243,8 @@ class IndexAddressWorker extends BackgroundWorker {
   static late Logger _isolateLog;
   static late IndexerService _indexerService;
   static DatabaseService? _dbService;
+  static bool _isShuttingDown = false;
+  static ReceivePort? _isolateReceivePort;
 
   static void _isolateEntry(List<Object?> args) {
     final sendPort = args[0]! as SendPort;
@@ -227,13 +255,15 @@ class IndexAddressWorker extends BackgroundWorker {
 
     _isolateLog = Logger('IndexAddressWorker[Isolate]');
     _mainSendPort = sendPort;
+    _isShuttingDown = false;
 
     _indexerService = IndexerService(
       client: IndexerClient(
         endpoint: endpoint,
         defaultHeaders: <String, String>{
           'Content-Type': 'application/json',
-          if (apiKey.isNotEmpty) 'Authorization': apiKey,
+          if (apiKey.isNotEmpty)
+            'Authorization': _formatApiKeyHeaderValue(apiKey),
         },
       ),
     );
@@ -251,8 +281,8 @@ class IndexAddressWorker extends BackgroundWorker {
   ) async {
     _dbService = await _openDatabase(connectPort, databasePath);
 
-    final receivePort = ReceivePort()..listen(_handleMessageInIsolate);
-    _mainSendPort.send(receivePort.sendPort);
+    _isolateReceivePort = ReceivePort()..listen(_handleMessageInIsolate);
+    _mainSendPort.send(_isolateReceivePort!.sendPort);
   }
 
   /// Opens a [DatabaseService] connection inside this isolate.
@@ -269,8 +299,9 @@ class IndexAddressWorker extends BackgroundWorker {
   ) async {
     if (connectPort != null) {
       try {
-        final connection =
-            await DriftIsolate.fromConnectPort(connectPort).connect();
+        final connection = await DriftIsolate.fromConnectPort(
+          connectPort,
+        ).connect();
         _isolateLog.info('Connected to shared DriftIsolate');
         return DatabaseService(AppDatabase.fromConnection(connection));
       } on Object catch (e, stack) {
@@ -309,6 +340,15 @@ class IndexAddressWorker extends BackgroundWorker {
     try {
       final workerMessage = WorkerMessage.fromList(message);
 
+      if (workerMessage.opcode == WorkerOpcode.pause ||
+          workerMessage.opcode == WorkerOpcode.stop) {
+        unawaited(_shutdownIsolate(workerMessage.opcode.name));
+        return;
+      }
+      if (_isShuttingDown) {
+        return;
+      }
+
       if (workerMessage.opcode == WorkerOpcode.enqueueWork) {
         final address = workerMessage.payload['address'] as String?;
         if (address != null && address.isNotEmpty) {
@@ -324,9 +364,35 @@ class IndexAddressWorker extends BackgroundWorker {
 
   static Future<void> _processAddress(String address) async {
     try {
+      if (_isShuttingDown) {
+        return;
+      }
+
       _isolateLog.info('Processing address: $address');
 
-      // Step 1: Trigger indexing
+      // Step 1: Fast-path by reading already-indexed tokens first.
+      final existingTokens = await _indexerService.fetchTokensByAddresses(
+        addresses: <String>[address],
+        limit: 250,
+        offset: 0,
+      );
+      if (existingTokens.isNotEmpty) {
+        await _writeTokensToDB(address, existingTokens);
+        if (!_isShuttingDown) {
+          _mainSendPort.send(<String, Object>{
+            'type': 'workComplete',
+            'address': address,
+            'tokenCount': existingTokens.length,
+          });
+        }
+        _isolateLog.info(
+          'Completed indexing address via fast-path: $address '
+          '(tokens=${existingTokens.length})',
+        );
+        return;
+      }
+
+      // Step 2: Trigger indexing when no tokens are available yet.
       final results = await _indexerService.indexAddressesList(<String>[
         address,
       ]);
@@ -343,9 +409,12 @@ class IndexAddressWorker extends BackgroundWorker {
         throw Exception('No workflow ID returned for address: $address');
       }
 
-      // Step 2: Poll workflow status
+      // Step 3: Poll workflow status
       const maxAttempts = 60; // 5 minutes with 5-second intervals
       for (var attempt = 0; attempt < maxAttempts; attempt++) {
+        if (_isShuttingDown) {
+          return;
+        }
         final status = await _indexerService.getAddressIndexingJobStatus(
           workflowId: workflowId,
         );
@@ -362,31 +431,39 @@ class IndexAddressWorker extends BackgroundWorker {
         await Future<void>.delayed(const Duration(seconds: 5));
       }
 
-      // Step 3: Fetch tokens
+      if (_isShuttingDown) {
+        return;
+      }
+
+      // Step 4: Fetch tokens
       final tokens = await _indexerService.fetchTokensByAddresses(
         addresses: <String>[address],
-        limit: 1000,
+        limit: 250,
         offset: 0,
       );
 
-      // Step 4: Write to database
+      // Step 5: Write to database
       await _writeTokensToDB(address, tokens);
 
-      // Step 5: Send completion message
-      _mainSendPort.send(<String, Object>{
-        'type': 'workComplete',
-        'address': address,
-        'tokenCount': tokens.length,
-      });
+      // Step 6: Send completion message
+      if (!_isShuttingDown) {
+        _mainSendPort.send(<String, Object>{
+          'type': 'workComplete',
+          'address': address,
+          'tokenCount': tokens.length,
+        });
+      }
 
       _isolateLog.info('Completed indexing address: $address');
     } on Object catch (e, stack) {
       _isolateLog.warning('Failed to process address: $address', e, stack);
-      _mainSendPort.send(<String, Object>{
-        'type': 'workFailed',
-        'address': address,
-        'error': e.toString(),
-      });
+      if (!_isShuttingDown) {
+        _mainSendPort.send(<String, Object>{
+          'type': 'workFailed',
+          'address': address,
+          'error': e.toString(),
+        });
+      }
     }
   }
 
@@ -403,6 +480,35 @@ class IndexAddressWorker extends BackgroundWorker {
     _isolateLog.info('Wrote ${tokens.length} tokens for $address to DB');
   }
 
+  static Future<void> _shutdownIsolate(String action) async {
+    if (_isShuttingDown) {
+      return;
+    }
+    _isShuttingDown = true;
+
+    await _closeDatabase();
+    _isolateReceivePort?.close();
+    _isolateReceivePort = null;
+
+    _mainSendPort.send(<String, Object>{
+      'type': 'lifecycleAck',
+      'action': action,
+    });
+  }
+
+  static Future<void> _closeDatabase() async {
+    final service = _dbService;
+    _dbService = null;
+    if (service == null) {
+      return;
+    }
+    try {
+      await service.close();
+    } on Object catch (e, stack) {
+      _isolateLog.warning('Failed closing index worker database', e, stack);
+    }
+  }
+
   static bool _addressesEqual(String left, String right) {
     final leftIsEth = left.startsWith('0x') || left.startsWith('0X');
     final rightIsEth = right.startsWith('0x') || right.startsWith('0X');
@@ -410,5 +516,12 @@ class IndexAddressWorker extends BackgroundWorker {
       return left.toLowerCase() == right.toLowerCase();
     }
     return left == right;
+  }
+
+  static String _formatApiKeyHeaderValue(String apiKey) {
+    if (apiKey.startsWith('ApiKey ')) {
+      return apiKey;
+    }
+    return 'ApiKey $apiKey';
   }
 }

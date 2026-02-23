@@ -110,5 +110,23 @@ void main() {
       await worker.stop();
       expect(worker.isIsolateRunning, false);
     });
+
+    test('ignores new assignments when stopped', () async {
+      final worker = EnrichItemWorker(
+        workerId: 'enrich_worker_1',
+        workerStateService: stateStore,
+        databasePath: ':memory:',
+        indexerEndpoint: 'http://test',
+        indexerApiKey: '',
+      );
+
+      await worker.start();
+      await worker.stop();
+      await worker.enqueueAssignment(<String, String>{'cid1': 'item1'});
+
+      expect(worker.hasRemainingWork, isFalse);
+      final snapshot = stateStore.getSnapshot('enrich_worker_1');
+      expect(snapshot?.checkpoint, isNull);
+    });
   });
 }

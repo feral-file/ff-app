@@ -38,6 +38,7 @@ abstract class BackgroundWorker {
   ReceivePort? _errorPort;
   ReceivePort? _exitPort;
   SendPort? _sendPort;
+  Completer<void>? _shutdownCompleter;
 
   BackgroundWorkerState get state => _state;
 
@@ -73,6 +74,34 @@ abstract class BackgroundWorker {
         _startInFlight = null;
       }
     }
+  }
+
+  /// Resumes worker runtime from persisted paused checkpoint, if present.
+  Future<void> resume() async {
+    final snapshot = await _workerStateService.load(workerId);
+    if (snapshot != null) {
+      _state = _stateFromIndex(snapshot.stateIndex);
+      if (_state == BackgroundWorkerState.paused) {
+        final checkpoint = snapshot.checkpoint;
+        if (checkpoint != null) {
+          await restoreFromCheckpoint(checkpoint);
+        }
+      }
+    }
+    await start();
+  }
+
+  /// Clears persisted status/checkpoint and starts from a clean state.
+  Future<void> freshStart() async {
+    await onStop();
+    await resetWorkState();
+    _state = BackgroundWorkerState.idle;
+    await _workerStateService.save(
+      workerId: workerId,
+      stateIndex: _state.index,
+      checkpoint: null,
+    );
+    await start();
   }
 
   Future<void> _startInternal() async {
@@ -252,6 +281,17 @@ abstract class BackgroundWorker {
   Completer<void>? _handshakeCompleter;
 
   void _handleIsolateMessage(dynamic message) {
+    if (message is Map) {
+      final type = message['type']?.toString() ?? '';
+      if (type == 'lifecycleAck') {
+        final completer = _shutdownCompleter;
+        if (completer != null && !completer.isCompleted) {
+          completer.complete();
+        }
+        return;
+      }
+    }
+
     // Handshake: isolate sends back its SendPort
     if (message is SendPort) {
       _sendPort = message;
@@ -279,6 +319,45 @@ abstract class BackgroundWorker {
 
     _exitPort?.close();
     _exitPort = null;
+    _shutdownCompleter = null;
+  }
+
+  /// Requests a graceful isolate shutdown and waits for ack before killing.
+  Future<void> shutdownIsolateGracefully({
+    required WorkerOpcode opcode,
+    Duration timeout = const Duration(seconds: 2),
+  }) async {
+    if (_isolate == null) {
+      return;
+    }
+
+    final port = _sendPort;
+    if (port != null) {
+      final completer = Completer<void>();
+      _shutdownCompleter = completer;
+      try {
+        port.send(
+          WorkerMessage(
+            opcode: opcode,
+            workerId: workerId,
+            payload: const <String, dynamic>{},
+          ).toList(),
+        );
+        await completer.future.timeout(timeout);
+      } on Object catch (e, stack) {
+        _log.warning(
+          'Graceful isolate shutdown timed out for $workerId',
+          e,
+          stack,
+        );
+      } finally {
+        if (identical(_shutdownCompleter, completer)) {
+          _shutdownCompleter = null;
+        }
+      }
+    }
+
+    await killIsolate();
   }
 
   /// Called when isolate sends a message to main isolate.

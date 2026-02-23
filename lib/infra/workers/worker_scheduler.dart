@@ -170,7 +170,7 @@ class WorkerScheduler {
     _log.info('startOnForeground');
 
     if (_ingestFeedWorker.state == BackgroundWorkerState.paused) {
-      await _ingestFeedWorker.start();
+      await _ingestFeedWorker.resume();
     }
 
     final hasUnenrichedItems = await _hasUnenrichedItemsRemain();

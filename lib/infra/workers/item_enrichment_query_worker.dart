@@ -98,6 +98,10 @@ class ItemEnrichmentQueryWorker extends BackgroundWorker {
   /// [_hasPendingQuery] and returns without dispatching a second concurrent
   /// query. The pending query is dispatched once the in-flight one responds.
   Future<void> onQueryNeeded() async {
+    if (state == BackgroundWorkerState.stopped) {
+      return;
+    }
+
     // A new query cycle means there may be new items — clear finished flag.
     _isFinished = false;
     _hasPendingQuery = true;
@@ -181,14 +185,14 @@ class ItemEnrichmentQueryWorker extends BackgroundWorker {
     // trigger on the next foreground transition.
     _inFlightBatchCount = 0;
     _queryInFlight = false;
-    await killIsolate();
+    await shutdownIsolateGracefully(opcode: WorkerOpcode.pause);
   }
 
   @override
   Future<void> onStop() async {
     _inFlightBatchCount = 0;
     _queryInFlight = false;
-    await killIsolate();
+    await shutdownIsolateGracefully(opcode: WorkerOpcode.stop);
   }
 
   @override
@@ -275,6 +279,8 @@ class ItemEnrichmentQueryWorker extends BackgroundWorker {
   static late SendPort _mainSendPort;
   static late Logger _isolateLog;
   static DatabaseService? _dbService;
+  static bool _isShuttingDown = false;
+  static ReceivePort? _isolateReceivePort;
 
   // ── Enrichment batch tuning ───────────────────────────────────────────────
   //
@@ -301,6 +307,7 @@ class ItemEnrichmentQueryWorker extends BackgroundWorker {
 
     _isolateLog = Logger('ItemEnrichmentQueryWorker[Isolate]');
     _mainSendPort = sendPort;
+    _isShuttingDown = false;
 
     unawaited(_connectAndHandshake(connectPort, databasePath));
   }
@@ -311,8 +318,8 @@ class ItemEnrichmentQueryWorker extends BackgroundWorker {
   ) async {
     _dbService = await _openDatabase(connectPort, databasePath);
 
-    final receivePort = ReceivePort()..listen(_handleMessageInIsolate);
-    _mainSendPort.send(receivePort.sendPort);
+    _isolateReceivePort = ReceivePort()..listen(_handleMessageInIsolate);
+    _mainSendPort.send(_isolateReceivePort!.sendPort);
   }
 
   /// Opens a [DatabaseService] connection for bare-item queries.
@@ -367,6 +374,16 @@ class ItemEnrichmentQueryWorker extends BackgroundWorker {
     try {
       final workerMessage = WorkerMessage.fromList(message);
 
+      if (workerMessage.opcode == WorkerOpcode.pause ||
+          workerMessage.opcode == WorkerOpcode.stop) {
+        unawaited(_shutdownIsolate(workerMessage.opcode.name));
+        return;
+      }
+
+      if (_isShuttingDown) {
+        return;
+      }
+
       if (workerMessage.opcode == WorkerOpcode.enqueueWork) {
         unawaited(_queryAndBuildBatches());
       }
@@ -377,10 +394,16 @@ class ItemEnrichmentQueryWorker extends BackgroundWorker {
 
   static Future<void> _queryAndBuildBatches() async {
     try {
+      if (_isShuttingDown) {
+        return;
+      }
+
       final service = _dbService;
       if (service == null) {
         _isolateLog.warning('No DB service — cannot query bare items');
-        _mainSendPort.send(<String, Object>{'type': 'noBareItems'});
+        if (!_isShuttingDown) {
+          _mainSendPort.send(<String, Object>{'type': 'noBareItems'});
+        }
         return;
       }
 
@@ -444,7 +467,9 @@ class ItemEnrichmentQueryWorker extends BackgroundWorker {
           'No CIDs extractable — high: ${highRows.length}, '
           'low: ${lowRows.length}',
         );
-        _mainSendPort.send(<String, Object>{'type': 'noBareItems'});
+        if (!_isShuttingDown) {
+          _mainSendPort.send(<String, Object>{'type': 'noBareItems'});
+        }
         return;
       }
 
@@ -453,13 +478,46 @@ class ItemEnrichmentQueryWorker extends BackgroundWorker {
         'queried=$totalRowsQueried (high=${highRows.length}, low=${lowRows.length}), '
         'sent=$totalItemsSent (rowsWithCid=$totalRowsWithCid)',
       );
-      _mainSendPort.send(<String, Object>{
-        'type': 'batchesReady',
-        'batches': batches,
-      });
+      if (!_isShuttingDown) {
+        _mainSendPort.send(<String, Object>{
+          'type': 'batchesReady',
+          'batches': batches,
+        });
+      }
     } on Object catch (e, stack) {
       _isolateLog.warning('Failed to query and build batches', e, stack);
-      _mainSendPort.send(<String, Object>{'type': 'noBareItems'});
+      if (!_isShuttingDown) {
+        _mainSendPort.send(<String, Object>{'type': 'noBareItems'});
+      }
+    }
+  }
+
+  static Future<void> _shutdownIsolate(String action) async {
+    if (_isShuttingDown) {
+      return;
+    }
+    _isShuttingDown = true;
+
+    await _closeDatabase();
+    _isolateReceivePort?.close();
+    _isolateReceivePort = null;
+
+    _mainSendPort.send(<String, Object>{
+      'type': 'lifecycleAck',
+      'action': action,
+    });
+  }
+
+  static Future<void> _closeDatabase() async {
+    final service = _dbService;
+    _dbService = null;
+    if (service == null) {
+      return;
+    }
+    try {
+      await service.close();
+    } on Object catch (e, stack) {
+      _isolateLog.warning('Failed closing query worker database', e, stack);
     }
   }
 }

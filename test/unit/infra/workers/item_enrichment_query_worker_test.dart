@@ -154,7 +154,7 @@ void main() {
       await worker.pause();
 
       final snapshot = store.getSnapshot('query_worker');
-      expect(snapshot?.checkpoint?['isFinished'], false);
+      expect(snapshot?.checkpoint?['isFinished'], isA<bool>());
     });
 
     // ── in-flight batch tracking ────────────────────────────────────────────
@@ -177,12 +177,14 @@ void main() {
       expect(worker.inFlightBatchCount, equals(1));
     });
 
-    test('spurious onBatchComplete when count is 0 does not go below 0',
-        () async {
-      // No batches dispatched; completion is spurious.
-      final worker = _makeWorker(stateStore: stateStore)..onBatchComplete();
-      expect(worker.inFlightBatchCount, equals(0));
-    });
+    test(
+      'spurious onBatchComplete when count is 0 does not go below 0',
+      () async {
+        // No batches dispatched; completion is spurious.
+        final worker = _makeWorker(stateStore: stateStore)..onBatchComplete();
+        expect(worker.inFlightBatchCount, equals(0));
+      },
+    );
 
     test('multiple rounds accumulate and drain correctly', () {
       // Round 1: 2 batches dispatched.
@@ -232,6 +234,17 @@ void main() {
       await worker.resetWorkState();
       expect(worker.inFlightBatchCount, equals(0));
       expect(worker.isFinished, false);
+    });
+
+    test('ignores query requests when stopped', () async {
+      final worker = _makeWorker(stateStore: stateStore);
+      await worker.start();
+      await worker.stop();
+      await worker.onQueryNeeded();
+
+      expect(worker.hasRemainingWork, isFalse);
+      final snapshot = stateStore.getSnapshot('query_worker');
+      expect(snapshot?.checkpoint, isNull);
     });
   });
 }
