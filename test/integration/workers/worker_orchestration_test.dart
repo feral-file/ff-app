@@ -549,12 +549,24 @@ Future<void> _waitUntil({
 }) async {
   final deadline = DateTime.now().add(timeout);
   while (DateTime.now().isBefore(deadline)) {
-    if (await condition()) {
-      return;
+    try {
+      if (await condition()) {
+        return;
+      }
+    } catch (error) {
+      if (!_isTransientSqliteLock(error)) {
+        rethrow;
+      }
     }
     await Future<void>.delayed(interval);
   }
   fail('Timed out waiting for worker integration condition.');
+}
+
+bool _isTransientSqliteLock(Object error) {
+  final message = error.toString().toLowerCase();
+  return message.contains('database is locked') ||
+      message.contains('sqliteexception(5)');
 }
 
 Future<bool> _hasNoMissingThumbnails({
