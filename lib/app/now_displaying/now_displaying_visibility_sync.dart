@@ -13,6 +13,7 @@ const _routesThatHideNowDisplayingBar = <String>[
   Routes.onboardingIntroducePage,
   Routes.onboardingAddAddressPage,
   Routes.onboardingSetupFf1Page,
+  Routes.globalToast,
   Routes.ff1DevicePickerPage,
   Routes.handleBluetoothDeviceScanDeeplinkPage,
   Routes.connectFF1Page,

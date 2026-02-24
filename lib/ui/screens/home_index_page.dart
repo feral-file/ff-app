@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/providers/forget_local_data_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -10,6 +11,7 @@ import 'package:app/ui/screens/tabs/channels_tab_page.dart';
 import 'package:app/ui/screens/tabs/playlists_tab_page.dart';
 import 'package:app/ui/screens/tabs/search_tab_page.dart';
 import 'package:app/ui/screens/tabs/works_tab_page.dart';
+import 'package:app/ui/screens/global_toast_overlay_screen.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/home_index_header.dart';
@@ -239,6 +241,14 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           Navigator.of(context).pop();
         },
       ),
+      OptionItem(
+        title: 'Forget I exist',
+        icon: const Icon(
+          Icons.delete_forever_outlined,
+          color: AppColor.white,
+        ),
+        onTap: _forgetIExist,
+      ),
     ];
   }
 
@@ -302,6 +312,25 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         ),
       );
     }
+  }
+
+  Future<void> _forgetIExist() async {
+    Navigator.of(context).pop();
+
+    final router = GoRouter.of(context);
+    unawaited(
+      router.pushNamed(
+        RouteNames.globalToast,
+        extra: const GlobalToastPayload(message: 'Deleting local data...'),
+      ),
+    );
+
+    await ref.read(forgetLocalDataServiceProvider).forgetIExist();
+
+    if (!mounted) {
+      return;
+    }
+    context.go(Routes.onboardingIntroducePage);
   }
 
   Widget _buildContent() {

@@ -1,9 +1,12 @@
 import 'dart:io';
 
 import 'package:app/domain/extensions/playlist_ext.dart';
+import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
+import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/api/dp1_feed_api.dart';
+import 'package:app/infra/services/forget_local_data_service.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
@@ -115,6 +118,88 @@ void main() {
         await scheduler.startOnForeground();
         await scheduler.onFeedIngested();
         await scheduler.stopAll();
+      },
+    );
+
+    test(
+      'forget I exist clears workers, sqlite, and objectbox local data',
+      () async {
+        final scheduler = WorkerScheduler(
+          databasePathResolver: () async => context.databaseFile.path,
+          workerStateService: workerStateStore,
+          indexerEndpoint: 'http://invalid-for-this-test',
+          indexerApiKey: '',
+          maxEnrichmentWorkers: 1,
+        );
+
+        final now = DateTime.now().toUtc();
+        await context.databaseService.ingestPublisher(id: 1, name: 'Publisher');
+        await context.databaseService.ingestChannel(
+          Channel(
+            id: 'ch_forget',
+            name: 'Forget Channel',
+            type: ChannelType.dp1,
+            publisherId: 1,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+        await context.databaseService.ingestPlaylist(
+          Playlist(
+            id: 'pl_forget',
+            name: 'Forget Playlist',
+            type: PlaylistType.dp1,
+            channelId: 'ch_forget',
+            sortMode: PlaylistSortMode.position,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+
+        await scheduler.startOnForeground();
+        await scheduler.onFeedIngested();
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+
+        final fakeObjectBoxRows = <String, int>{
+          'app_state': 1,
+          'app_state_address': 1,
+          'worker_state': 1,
+          'ff1_device': 1,
+          'remote_config': 1,
+        };
+
+        final service = ForgetLocalDataService(
+          stopWorkersGracefully: scheduler.stopAll,
+          checkpointDatabase: context.databaseService.checkpoint,
+          truncateDatabase: context.databaseService.clearAll,
+          clearObjectBoxData: () async {
+            fakeObjectBoxRows.updateAll((key, value) => 0);
+          },
+          pauseFeedWork: () {},
+          pauseTokenPolling: () {},
+        );
+
+        await service.forgetIExist();
+
+        final channelsCount = await context.database
+            .customSelect('SELECT COUNT(*) AS count FROM channels')
+            .getSingle();
+        expect(channelsCount.read<int>('count'), equals(0));
+
+        final playlistsCount = await context.database
+            .customSelect('SELECT COUNT(*) AS count FROM playlists')
+            .getSingle();
+        expect(playlistsCount.read<int>('count'), equals(0));
+
+        final stopped = await workerStateStore.load('ingest_feed_worker');
+        expect(stopped, isNotNull);
+        expect(stopped!.stateIndex, BackgroundWorkerState.stopped.index);
+        expect(stopped.checkpoint, isNull);
+
+        expect(
+          fakeObjectBoxRows.values.every((count) => count == 0),
+          isTrue,
+        );
       },
     );
 

@@ -33,4 +33,21 @@ void main() {
     expect(state.syncingAddresses, isEmpty);
     expect(state.errorMessage, isNull);
   });
+
+  test('tokens sync coordinator can stop and drain for reset', () async {
+    final container = ProviderContainer.test(
+      overrides: [
+        appStateServiceProvider.overrideWithValue(MockAppStateService()),
+        indexerTokensWorkerProvider.overrideWithValue(
+          FakeIndexerTokensWorker(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(tokensSyncCoordinatorProvider.notifier);
+    await notifier.stopAndDrainForReset();
+    final state = container.read(tokensSyncCoordinatorProvider);
+    expect(state.syncingAddresses, isEmpty);
+  });
 }

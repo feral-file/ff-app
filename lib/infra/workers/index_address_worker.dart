@@ -503,6 +503,7 @@ class IndexAddressWorker extends BackgroundWorker {
       return;
     }
     try {
+      await service.checkpoint();
       await service.close();
     } on Object catch (e, stack) {
       _isolateLog.warning('Failed closing index worker database', e, stack);

@@ -145,6 +145,16 @@ class FeedManager {
     _log.info('[FeedManager] Work paused');
   }
 
+  /// Pause feed work and wait for any in-flight reload to settle.
+  ///
+  /// Forget-local-data flow uses this to avoid DP1 ingest writes racing
+  /// SQLite truncation.
+  Future<void> pauseAndDrainWork() async {
+    pauseWork();
+    await _reloadLock.synchronized(() async {});
+    _log.info('[FeedManager] In-flight reload drained');
+  }
+
   /// Resume feed and enrichment work.
   void resumeWork() {
     _isPaused = false;

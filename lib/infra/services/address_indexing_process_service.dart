@@ -28,6 +28,33 @@ class AddressIndexingProcessService {
 
   final Map<String, _AddressProcess> _processes = <String, _AddressProcess>{};
 
+  /// Stops all active address indexing processes and waits for them to settle.
+  ///
+  /// Used by local-data reset flow to guarantee no in-flight page ingestion
+  /// races with SQLite truncation.
+  Future<void> stopAllAndDrainForReset() async {
+    final processes = _processes.values.toList(growable: false);
+    if (processes.isEmpty) {
+      return;
+    }
+
+    for (final process in processes) {
+      process.cancelled = true;
+      process.paused = false;
+      await _setState(process.address, AddressIndexingProcessState.stopped);
+    }
+
+    final running = processes
+        .map((process) => process.running)
+        .whereType<Future<void>>()
+        .toList(growable: false);
+    if (running.isNotEmpty) {
+      await Future.wait<void>(running);
+    }
+
+    _processes.removeWhere((_, process) => process.cancelled);
+  }
+
   Future<void> start(String address) async {
     final normalizedAddress = _normalizeAddress(address);
     if (normalizedAddress.isEmpty) {

@@ -476,6 +476,7 @@ class EnrichItemWorker extends BackgroundWorker {
       return;
     }
     try {
+      await service.checkpoint();
       await service.close();
     } on Object catch (e, stack) {
       _isolateLog.warning('Failed closing enrich worker database', e, stack);

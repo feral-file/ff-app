@@ -159,6 +159,7 @@ void main() {
           overrideJson: null,
           displayJson: null,
           tokenDataJson: null,
+          enrichmentStatus: 0,
           updatedAtUs: BigInt.from(DateTime(2024, 1, 1).microsecondsSinceEpoch),
         );
 

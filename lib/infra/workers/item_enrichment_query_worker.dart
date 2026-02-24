@@ -515,6 +515,7 @@ class ItemEnrichmentQueryWorker extends BackgroundWorker {
       return;
     }
     try {
+      await service.checkpoint();
       await service.close();
     } on Object catch (e, stack) {
       _isolateLog.warning('Failed closing query worker database', e, stack);

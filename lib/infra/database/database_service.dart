@@ -697,28 +697,47 @@ class DatabaseService {
       final normalizedAddress = address.toUpperCase();
 
       final playlists = await getAddressPlaylists();
-      final addressPlaylist = playlists.firstWhere(
-        (p) => p.ownerAddress?.toUpperCase() == normalizedAddress,
-        orElse: () => throw Exception(
-          'Address playlist not found for $address',
-        ),
-      );
-
-      for (final cid in cids) {
-        if (cid.isEmpty) continue;
-        await _db.deletePlaylistEntry(
-          playlistId: addressPlaylist.id,
-          itemId: cid,
-        );
+      Playlist? addressPlaylist;
+      for (final playlist in playlists) {
+        if (playlist.ownerAddress?.toUpperCase() == normalizedAddress) {
+          addressPlaylist = playlist;
+          break;
+        }
       }
+      if (addressPlaylist == null) {
+        _log.info(
+          'Address playlist not found for $address while deleting tokens; '
+          'skipping stale change batch.',
+        );
+        return;
+      }
+      final addressPlaylistId = addressPlaylist.id;
 
-      await _db.updatePlaylistItemCount(addressPlaylist.id);
-      await _db.checkpoint();
+      await _runWithDatabaseLockedRetry<void>(() async {
+        for (final cid in cids) {
+          if (cid.isEmpty) continue;
+          await _db.deletePlaylistEntry(
+            playlistId: addressPlaylistId,
+            itemId: cid,
+          );
+        }
+        await _db.updatePlaylistItemCount(addressPlaylistId);
+        await _db.checkpoint();
+      });
 
       _log.info(
         'Deleted ${cids.length} tokens from address playlist for $address',
       );
     } catch (e, stack) {
+      if (_isDatabaseLockedError(e)) {
+        _log.warning(
+          'Database remained locked deleting tokens for $address; '
+          'dropping batch during reset/teardown.',
+          e,
+          stack,
+        );
+        return;
+      }
       _log.severe('Failed to delete tokens for address $address', e, stack);
       rethrow;
     }
@@ -752,12 +771,21 @@ class DatabaseService {
 
       // Find the address playlist
       final playlists = await getAddressPlaylists();
-      final addressPlaylist = playlists.firstWhere(
-        (p) => p.ownerAddress?.toUpperCase() == normalizedAddress,
-        orElse: () => throw Exception(
-          'Address playlist not found for $address',
-        ),
-      );
+      Playlist? addressPlaylist;
+      for (final playlist in playlists) {
+        if (playlist.ownerAddress?.toUpperCase() == normalizedAddress) {
+          addressPlaylist = playlist;
+          break;
+        }
+      }
+      if (addressPlaylist == null) {
+        _log.info(
+          'Address playlist not found for $address while ingesting tokens; '
+          'skipping stale change batch.',
+        );
+        return;
+      }
+      final addressPlaylistId = addressPlaylist.id;
 
       // Filter tokens by owner
       final ownedTokens = TokenTransformer.filterTokensByOwner(
@@ -781,20 +809,25 @@ class DatabaseService {
       // Create playlist entries (sort key from item.sortKeyUs)
       final entries = items.map((item) {
         return DatabaseConverters.createPlaylistEntry(
-          playlistId: addressPlaylist.id,
+          playlistId: addressPlaylistId,
           itemId: item.id,
           position: null, // No position for provenance-based sorting
           sortKeyUs: item.sortKeyUs ?? 0,
         );
       }).toList();
 
-      // Batch insert
-      await ingestPlaylistItems(items);
-      await _db.upsertPlaylistEntries(entries);
-      await _db.updatePlaylistItemCount(addressPlaylist.id);
+      final itemCompanions = items
+          .map(DatabaseConverters.playlistItemToCompanion)
+          .toList();
 
-      // Checkpoint WAL to ensure data is written to main database
-      await _db.checkpoint();
+      await _runWithDatabaseLockedRetry<void>(() async {
+        await _db.transaction(() async {
+          await _db.upsertItems(itemCompanions);
+          await _db.upsertPlaylistEntries(entries);
+          await _db.updatePlaylistItemCount(addressPlaylistId);
+        });
+        await _db.checkpoint();
+      });
 
       _log.info(
         'Ingested ${items.length} tokens for address $address',
@@ -803,6 +836,15 @@ class DatabaseService {
       if (_isOperationCancelled(e)) {
         _log.info(
           'Token ingest cancelled for address $address (non-fatal): $e',
+        );
+        return;
+      }
+      if (_isDatabaseLockedError(e)) {
+        _log.warning(
+          'Database remained locked ingesting tokens for $address; '
+          'dropping batch during reset/teardown.',
+          e,
+          stack,
         );
         return;
       }
@@ -1672,6 +1714,10 @@ class DatabaseService {
 
 bool _isIsolateSendFailure(ArgumentError error) {
   return error.toString().contains('Illegal argument in isolate message');
+}
+
+bool _isDatabaseLockedError(Object error) {
+  return error.toString().contains('database is locked');
 }
 
 bool _isOperationCancelled(Object error) {
