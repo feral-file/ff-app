@@ -1,17 +1,17 @@
 import 'dart:async';
 
-import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/local_data_cleanup_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/screens/global_toast_overlay_screen.dart';
 import 'package:app/ui/screens/tabs/channels_tab_page.dart';
 import 'package:app/ui/screens/tabs/playlists_tab_page.dart';
 import 'package:app/ui/screens/tabs/search_tab_page.dart';
 import 'package:app/ui/screens/tabs/works_tab_page.dart';
-import 'package:app/ui/screens/global_toast_overlay_screen.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/home_index_header.dart';
@@ -125,14 +125,13 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
 
           return [
             SliverAppBar(
-              pinned: false,
               floating: true,
               snap: true,
               elevation: 0,
               toolbarHeight: height,
               expandedHeight: height,
               flexibleSpace: FlexibleSpaceBar(
-                background: Container(
+                background: ColoredBox(
                   color: AppColor.auGreyBackground,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -215,9 +214,9 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           valueListenable: ValueNotifier<List<int>?>(null),
           builder:
               (
-                BuildContext context,
-                List<int>? numberOfIssuesInfo,
-                Widget? child,
+                context,
+                numberOfIssuesInfo,
+                child,
               ) => const Icon(
                 Icons.help_outline,
                 color: AppColor.white,
@@ -239,6 +238,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         ),
         onTap: () {
           Navigator.of(context).pop();
+          unawaited(context.push(Routes.releaseNotes));
         },
       ),
       OptionItem(
@@ -268,7 +268,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
       },
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.transparent,
-        side: BorderSide(color: PrimitivesTokens.colorsLightBlue),
+        side: const BorderSide(color: PrimitivesTokens.colorsLightBlue),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(32),
         ),

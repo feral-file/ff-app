@@ -1,6 +1,7 @@
 import 'package:app/app/route_observer.dart';
 import 'package:app/app/routing/page_transitions.dart';
 import 'package:app/app/routing/routes.dart';
+import 'package:app/infra/services/release_notes_service.dart';
 import 'package:app/ui/screens/add_address_screen.dart';
 import 'package:app/ui/screens/add_alias_screen.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
@@ -13,14 +14,16 @@ import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/ui/screens/ff1_test_screen.dart';
 import 'package:app/ui/screens/global_toast_overlay_screen.dart';
 import 'package:app/ui/screens/home_index_page.dart';
+import 'package:app/ui/screens/keyboard_control_screen.dart';
+import 'package:app/ui/screens/now_displaying_screen.dart';
 import 'package:app/ui/screens/onboarding/introduce_page.dart';
 import 'package:app/ui/screens/onboarding/onboarding_add_address_page.dart';
 import 'package:app/ui/screens/onboarding/setup_ff1_page.dart';
 import 'package:app/ui/screens/playlist_detail_screen.dart';
+import 'package:app/ui/screens/release_note_detail_screen.dart';
+import 'package:app/ui/screens/release_notes_screen.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
 import 'package:app/ui/screens/send_wifi_credentials_screen.dart';
-import 'package:app/ui/screens/keyboard_control_screen.dart';
-import 'package:app/ui/screens/now_displaying_screen.dart';
 import 'package:app/ui/screens/work_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,7 +38,8 @@ final _log = Logger('RouterProvider');
 ///
 /// Note: List views (channels, playlists, works) are now tabs in HomeIndexPage.
 /// Only detail screens have dedicated routes.
-final routerProvider = Provider.family<GoRouter, String>((
+final Provider<GoRouter> Function(String)
+routerProvider = Provider.family<GoRouter, String>((
   ref,
   initialLocation,
 ) {
@@ -106,7 +110,6 @@ final routerProvider = Provider.family<GoRouter, String>((
           return CustomTransitionPage<void>(
             key: state.pageKey,
             opaque: false,
-            barrierDismissible: false,
             barrierColor: Colors.transparent,
             child: GlobalToastOverlayScreen(payload: payload),
             transitionsBuilder:
@@ -177,6 +180,41 @@ final routerProvider = Provider.family<GoRouter, String>((
         path: Routes.home,
         name: RouteNames.home,
         builder: (context, state) => const HomeIndexPage(),
+      ),
+
+      // Release notes list route.
+      GoRoute(
+        path: Routes.releaseNotes,
+        name: RouteNames.releaseNotes,
+        pageBuilder: (context, state) => buildCupertinoTransitionPage(
+          context,
+          state,
+          const ReleaseNotesScreen(),
+        ),
+      ),
+
+      // Release note detail route.
+      GoRoute(
+        path: Routes.releaseNoteDetail,
+        name: RouteNames.releaseNoteDetail,
+        pageBuilder: (context, state) {
+          if (state.extra is! ReleaseNoteEntry) {
+            _log.warning('ReleaseNoteDetailScreen: extra is invalid');
+            context.pop();
+            return buildCupertinoTransitionPage(
+              context,
+              state,
+              const SizedBox.shrink(),
+            );
+          }
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            ReleaseNoteDetailScreen(
+              releaseNote: state.extra! as ReleaseNoteEntry,
+            ),
+          );
+        },
       ),
 
       // All channels route (must be defined before channel detail so "all"

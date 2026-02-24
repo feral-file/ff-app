@@ -73,6 +73,12 @@ abstract class Routes {
 
   /// Keyboard control (interact) route path.
   static const keyboardControl = '/keyboard-control';
+
+  /// Release notes list route path.
+  static const releaseNotes = '/release-notes';
+
+  /// Release note detail route path.
+  static const releaseNoteDetail = '/release-notes/detail';
 }
 
 /// Named routes for type-safe navigation.
@@ -158,4 +164,10 @@ abstract class RouteNames {
 
   /// Keyboard control route name.
   static const keyboardControl = 'keyboard-control';
+
+  /// Release notes list route name.
+  static const releaseNotes = 'release-notes';
+
+  /// Release note detail route name.
+  static const releaseNoteDetail = 'release-note-detail';
 }

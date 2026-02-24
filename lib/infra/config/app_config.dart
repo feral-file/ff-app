@@ -104,6 +104,12 @@ class AppConfig {
   static String get remoteConfigUrl =>
       dotenv.get('REMOTE_CONFIG_URL', fallback: '');
 
+  /// Release notes markdown URL (or docs base URL) used by changelog fetcher.
+  static String get releaseNotesMarkdownUrl => dotenv.get(
+    'RELEASE_NOTES_MARKDOWN_URL',
+    fallback: dotenv.get('PUBDOC_URL', fallback: ''),
+  );
+
   /// Check if configuration is valid (all required keys present).
   static bool get isValid =>
       dp1FeedUrl.isNotEmpty &&
