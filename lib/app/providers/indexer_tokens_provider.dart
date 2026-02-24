@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/app_lifecycle_provider.dart';
+import 'package:app/app/providers/background_workers_provider.dart';
 import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/infra/config/app_config.dart';
@@ -79,6 +80,7 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
   final Map<String, Completer<void>> _syncCompleters = {};
   final Map<String, List<String>> _syncAddressesByUuid = {};
   final Map<String, Future<void>> _inFlightByUuid = {};
+  bool _isStoppingForReset = false;
 
   @override
   TokensSyncState build() {
@@ -133,6 +135,7 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
 
   /// Poll all known addresses once (no timer).
   Future<void> pollAllAddressesOnce() async {
+    if (_isStoppingForReset) return;
     final database = ref.read(databaseServiceProvider);
     final playlists = await database.getAddressPlaylists();
     final addresses = playlists
@@ -145,6 +148,7 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
 
   /// Sync a list of addresses.
   Future<void> syncAddresses(List<String> addresses) async {
+    if (_isStoppingForReset) return;
     if (addresses.isEmpty) return;
 
     // Ensure isolate is ready.
@@ -174,6 +178,7 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
 
   /// Trigger indexing for a list of addresses.
   Future<void> reindexAddresses(List<String> addresses) async {
+    if (_isStoppingForReset) return;
     if (addresses.isEmpty) return;
     await _worker.ready;
     final uuid = DateTime.now().microsecondsSinceEpoch.toString();
@@ -182,12 +187,17 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
 
   /// Notify isolate when a new channel was ingested.
   Future<void> notifyChannelIngested() async {
+    if (_isStoppingForReset) return;
     await _worker.ready;
     final uuid = DateTime.now().microsecondsSinceEpoch.toString();
     _worker.notifyChannelIngested(uuid: uuid);
   }
 
   void _handleWorkerMessage(TokensWorkerMessage message) {
+    if (_isStoppingForReset) {
+      return;
+    }
+
     if (message is UpdateTokensData) {
       // Serialize per-uuid work so UpdateTokensSuccess can await completion.
       final prev = _inFlightByUuid[message.uuid] ?? Future<void>.value();
@@ -218,9 +228,9 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     }
 
     if (message is ChannelIngestedAck) {
-      unawaited(
-        ref.read(indexerProvider.notifier).processFeedEnrichmentUntilIdle(),
-      );
+      // Route through scheduler so enrichment runs in the worker fleet,
+      // not on the main isolate.
+      unawaited(ref.read(workerSchedulerProvider).onFeedIngested());
       return;
     }
   }
@@ -229,6 +239,13 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     // Ensure all pending UpdateTokensData work is finished for this uuid.
     await (_inFlightByUuid[msg.uuid] ?? Future<void>.value());
     _inFlightByUuid.remove(msg.uuid);
+
+    // Durability: flush final page writes for this sync run.
+    try {
+      await ref.read(databaseServiceProvider).checkpoint();
+    } on Exception catch (e, stack) {
+      _log.warning('Checkpoint failed after token sync success', e, stack);
+    }
 
     final addresses = _syncAddressesByUuid.remove(msg.uuid) ?? const <String>[];
     final remaining = {...state.syncingAddresses}..removeAll(addresses);
@@ -320,6 +337,34 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
         );
       }
     }
+  }
+
+  /// Stops token sync activity and waits for in-flight DB writes to settle.
+  ///
+  /// Used by local-data reset flows to guarantee no pending personal-playlist
+  /// writes race with SQLite truncation.
+  Future<void> stopAndDrainForReset() async {
+    _isStoppingForReset = true;
+    pausePolling();
+
+    await _worker.stop();
+
+    final pendingWrites = _inFlightByUuid.values.toList(growable: false);
+    if (pendingWrites.isNotEmpty) {
+      await Future.wait<void>(pendingWrites);
+    }
+    _inFlightByUuid.clear();
+
+    if (ref.mounted) {
+      state = const TokensSyncState(syncingAddresses: <String>{});
+    }
+    for (final completer in _syncCompleters.values) {
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
+    }
+    _syncCompleters.clear();
+    _syncAddressesByUuid.clear();
   }
 }
 

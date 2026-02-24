@@ -28,6 +28,7 @@ class WorksTabPage extends ConsumerStatefulWidget {
 class WorksTabPageState extends ConsumerState<WorksTabPage>
     with AutomaticKeepAliveClientMixin {
   late ScrollController _scrollController;
+  late WorksNotifier _worksNotifier;
   WorksState _cachedState = WorksState.initial();
   int _lastSeededVisibleCount = -1;
 
@@ -38,9 +39,10 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    _worksNotifier = ref.read(worksProvider.notifier);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(worksProvider.notifier).setActive(widget.isActive);
+      _worksNotifier.setActive(widget.isActive);
     });
   }
 
@@ -50,14 +52,14 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
     if (oldWidget.isActive != widget.isActive) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        ref.read(worksProvider.notifier).setActive(widget.isActive);
+        _worksNotifier.setActive(widget.isActive);
       });
     }
   }
 
   @override
   void dispose() {
-    ref.read(worksProvider.notifier).setActive(false);
+    _worksNotifier.setActive(false);
     _scrollController.dispose();
     super.dispose();
   }
@@ -68,13 +70,13 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
     // Handle scroll position update from parent
     if (position.pixels + 100 >= position.maxScrollExtent &&
         position.maxScrollExtent > 0) {
-      ref.read(worksProvider.notifier).loadMore();
+      _worksNotifier.loadMore();
     }
   }
 
   Future<void> _onRefresh() async {
     if (!widget.isActive) return;
-    await ref.read(worksProvider.notifier).refresh();
+    await _worksNotifier.refresh();
   }
 
   @override
@@ -118,7 +120,7 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
             child: ErrorView(
               error:
                   'We couldn’t load works. Check your connection, then Retry.',
-              onRetry: () => ref.read(worksProvider.notifier).loadWorks(),
+              onRetry: _worksNotifier.loadWorks,
             ),
           ),
         ],
@@ -167,12 +169,10 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
     if (_lastSeededVisibleCount == worksCount) return;
     _lastSeededVisibleCount = worksCount;
     final end = (worksCount - 1).clamp(0, 23);
-    ref
-        .read(worksProvider.notifier)
-        .updateVisibleRange(
-          startIndex: 0,
-          endIndex: end,
-        );
+    _worksNotifier.updateVisibleRange(
+      startIndex: 0,
+      endIndex: end,
+    );
   }
 
   void _updateVisibleRange(ScrollPosition position) {
@@ -194,12 +194,10 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
     final end = (((firstVisibleRow + visibleRowCount) * crossAxisCount) - 1)
         .clamp(start, worksCount - 1);
 
-    ref
-        .read(worksProvider.notifier)
-        .updateVisibleRange(
-          startIndex: start,
-          endIndex: end,
-        );
+    _worksNotifier.updateVisibleRange(
+      startIndex: start,
+      endIndex: end,
+    );
   }
 }
 

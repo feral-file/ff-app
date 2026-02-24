@@ -1,0 +1,41 @@
+---
+description: Worker architecture and lifecycle contract for isolate workers
+globs:
+  - "lib/infra/workers/**/*.dart"
+alwaysApply: true
+---
+
+# Cursor Rule: Workers Design Contract
+
+When editing any Dart file under `lib/infra/workers`, you must follow
+`docs/workers.md` as the canonical design document.
+
+## Mandatory constraints
+
+- Preserve the four core worker workflows:
+  - `IngestFeedWorker`
+  - `ItemEnrichmentQueryWorker`
+  - `EnrichItemWorker`
+  - `IndexAddressWorker`
+- Keep `WorkerScheduler` as the central coordinator for lifecycle and routing;
+  workers remain execution units.
+- Use message-passing (`WorkerMessage`/opcodes) for cross-worker interaction.
+  Do not introduce direct worker-to-worker business method coupling.
+- Preserve graceful lifecycle semantics:
+  - `pause`: checkpoint -> isolate pause request -> lifecycle ack -> paused state
+  - `stop`: isolate stop request -> lifecycle ack -> reset state -> clear checkpoint
+- Ensure worker isolates close active DB runtime before lifecycle ack on pause/stop.
+- Keep resume/fresh-start semantics consistent with `docs/workers.md`:
+  - `resume()` restores paused checkpointed state
+  - `freshStart()` clears persisted state/checkpoint and starts clean
+- Stopped workers must reject new business inputs.
+
+## Change process requirements
+
+- Follow strict TDD order from `.cursor/rules/35-testing-tdd.mdc`:
+  1. small testable functions
+  2. unit tests
+  3. integration tests
+  4. implementation wiring
+- Update `docs/workers.md` in the same change when lifecycle, routing, or worker
+  responsibility boundaries are changed.

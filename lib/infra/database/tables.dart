@@ -174,6 +174,9 @@ class Items extends Table {
   /// List of artists as JSON (List<DP1Artist>).
   TextColumn get listArtistJson => text().nullable()();
 
+  /// Enrichment status: 0 = pending, 1 = enriched, 2 = failed.
+  IntColumn get enrichmentStatus => integer().withDefault(const Constant(0))();
+
   /// Last update timestamp in microseconds.
   Int64Column get updatedAtUs => int64()();
 

@@ -113,7 +113,7 @@ class _RecordingDatabaseService extends DatabaseService {
   @override
   Future<List<(String, String?, String, int)>> loadHighPriorityBareItems({
     required int maxPerPlaylist,
-    required int maxTotal,
+    required int maxItems,
   }) async {
     highPriorityReadCount++;
     if (highPriorityRows.isEmpty) {

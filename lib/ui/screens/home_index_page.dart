@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -10,6 +11,7 @@ import 'package:app/ui/screens/tabs/channels_tab_page.dart';
 import 'package:app/ui/screens/tabs/playlists_tab_page.dart';
 import 'package:app/ui/screens/tabs/search_tab_page.dart';
 import 'package:app/ui/screens/tabs/works_tab_page.dart';
+import 'package:app/ui/screens/global_toast_overlay_screen.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/home_index_header.dart';
@@ -239,6 +241,22 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           Navigator.of(context).pop();
         },
       ),
+      OptionItem(
+        title: 'Clear local data',
+        icon: const Icon(
+          Icons.delete_forever_outlined,
+          color: AppColor.white,
+        ),
+        onTap: _clearLocalDataAndRestartOnboarding,
+      ),
+      OptionItem(
+        title: 'Rebuild metadata',
+        icon: const Icon(
+          Icons.refresh,
+          color: AppColor.white,
+        ),
+        onTap: _rebuildMetadata,
+      ),
     ];
   }
 
@@ -301,6 +319,53 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           content: Text('Could not open email client.'),
         ),
       );
+    }
+  }
+
+  Future<void> _clearLocalDataAndRestartOnboarding() async {
+    Navigator.of(context).pop();
+
+    final router = GoRouter.of(context);
+    unawaited(
+      router.pushNamed(
+        RouteNames.globalToast,
+        extra: const GlobalToastPayload(message: 'Cleaning local data...'),
+      ),
+    );
+    await WidgetsBinding.instance.endOfFrame;
+
+    try {
+      await ref.read(localDataCleanupServiceProvider).clearLocalData();
+    } finally {
+      if (mounted && router.canPop()) {
+        router.pop();
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+    context.go(Routes.onboardingIntroducePage);
+  }
+
+  Future<void> _rebuildMetadata() async {
+    Navigator.of(context).pop();
+
+    final router = GoRouter.of(context);
+    unawaited(
+      router.pushNamed(
+        RouteNames.globalToast,
+        extra: const GlobalToastPayload(message: 'Cleaning metadata...'),
+      ),
+    );
+    await WidgetsBinding.instance.endOfFrame;
+
+    try {
+      await ref.read(localDataCleanupServiceProvider).rebuildMetadata();
+    } finally {
+      if (mounted && router.canPop()) {
+        router.pop();
+      }
     }
   }
 

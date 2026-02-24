@@ -125,7 +125,7 @@
     },
     {
       "id": "10:3855157679464200367",
-      "lastPropertyId": "10:7205756033359539431",
+      "lastPropertyId": "12:3462060407990166466",
       "name": "AppStateAddressEntity",
       "properties": [
         {
@@ -179,6 +179,16 @@
         {
           "id": "10:7205756033359539431",
           "name": "updatedAtUs",
+          "type": 6
+        },
+        {
+          "id": "11:671751466930742228",
+          "name": "hasFeedBareIngestCompleted",
+          "type": 1
+        },
+        {
+          "id": "12:3462060407990166466",
+          "name": "feedBareIngestCompletedAtUs",
           "type": 6
         }
       ],

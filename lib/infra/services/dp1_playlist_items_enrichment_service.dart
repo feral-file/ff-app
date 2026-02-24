@@ -31,6 +31,9 @@ class DP1PlaylistItemsEnrichmentService {
   /// Maximum high-priority items per playlist.
   static const int highPriorityPerPlaylist = 8;
 
+  /// Total high-priority items per batch (across all playlists).
+  static const int highPriorityMaxItems = 48;
+
   /// Maximum items to load and process per batch.
   static const int maxBatchSize = 50;
 
@@ -129,7 +132,7 @@ class DP1PlaylistItemsEnrichmentService {
     if (!_shouldContinue()) return 0;
     late final List<EnrichmentWorkItem> highItems;
     try {
-      highItems = await loadHighPriorityWorkItems(limit: maxBatchSize);
+      highItems = await loadHighPriorityWorkItems();
     } on Exception catch (e, stack) {
       if (_isOperationCancelled(e)) {
         _log.info('High-priority enrichment query cancelled');
@@ -174,14 +177,14 @@ class DP1PlaylistItemsEnrichmentService {
 
   /// Load high-priority bare items from database.
   ///
-  /// Returns first [highPriorityPerPlaylist] items per playlist that are bare
-  /// (have only title set, no enrichment fields), ordered by creation date.
-  Future<List<EnrichmentWorkItem>> loadHighPriorityWorkItems({
-    required int limit,
-  }) async {
+  /// Returns first [highPriorityPerPlaylist] items from every playlist with
+  /// unenriched items, ordered newest-playlist-first (UI order), capped at
+  /// [highPriorityMaxItems] total. Spans as many playlists as needed to fill
+  /// the batch, so small playlists do not leave the batch under-populated.
+  Future<List<EnrichmentWorkItem>> loadHighPriorityWorkItems() async {
     final rows = await _databaseService.loadHighPriorityBareItems(
       maxPerPlaylist: highPriorityPerPlaylist,
-      maxTotal: limit,
+      maxItems: highPriorityMaxItems,
     );
     final rowsWithCid = await _databaseService.extractTokenCidsFromBareRows(
       rows: rows,

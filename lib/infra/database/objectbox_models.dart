@@ -217,6 +217,12 @@ class AppStateAddressEntity {
   /// Last refresh timestamp for [feedBaseUrl].
   int feedLastRefreshAtUs;
 
+  /// Whether initial DP1 bare ingest completed successfully for this feed.
+  bool hasFeedBareIngestCompleted;
+
+  /// Completion timestamp for initial DP1 bare ingest.
+  int feedBareIngestCompletedAtUs;
+
   /// Whether [indexerAnchor] is set.
   bool hasIndexerAnchor;
 
@@ -239,6 +245,8 @@ class AppStateAddressEntity {
     required this.normalizedAddress,
     this.feedBaseUrl = '',
     this.feedLastRefreshAtUs = 0,
+    this.hasFeedBareIngestCompleted = false,
+    this.feedBareIngestCompletedAtUs = 0,
     this.hasIndexerAnchor = false,
     this.indexerAnchor = 0,
     this.indexingProcessStateIndex = 0,

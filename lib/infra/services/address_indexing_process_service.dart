@@ -28,6 +28,33 @@ class AddressIndexingProcessService {
 
   final Map<String, _AddressProcess> _processes = <String, _AddressProcess>{};
 
+  /// Stops all active address indexing processes and waits for them to settle.
+  ///
+  /// Used by local-data reset flow to guarantee no in-flight page ingestion
+  /// races with SQLite truncation.
+  Future<void> stopAllAndDrainForReset() async {
+    final processes = _processes.values.toList(growable: false);
+    if (processes.isEmpty) {
+      return;
+    }
+
+    for (final process in processes) {
+      process.cancelled = true;
+      process.paused = false;
+      await _setState(process.address, AddressIndexingProcessState.stopped);
+    }
+
+    final running = processes
+        .map((process) => process.running)
+        .whereType<Future<void>>()
+        .toList(growable: false);
+    if (running.isNotEmpty) {
+      await Future.wait<void>(running);
+    }
+
+    _processes.removeWhere((_, process) => process.cancelled);
+  }
+
   Future<void> start(String address) async {
     final normalizedAddress = _normalizeAddress(address);
     if (normalizedAddress.isEmpty) {
@@ -133,7 +160,10 @@ class AddressIndexingProcessService {
         final ready = await _waitForWorkflow(process);
         if (!ready) {
           if (process.cancelled || process.paused) return;
-          throw Exception('Indexing workflow did not complete successfully');
+          _log.warning(
+            'Indexing workflow not ready for ${process.address}; '
+            'continuing with token sync fallback.',
+          );
         }
         process.indexingDone = true;
       }
@@ -201,11 +231,21 @@ class AddressIndexingProcessService {
     }
     final startedAt = DateTime.now();
     while (!process.cancelled && !process.paused) {
-      final status = await _indexerService.getAddressIndexingJobStatus(
-        workflowId: workflowId,
-      );
-      if (status.status.isDone) {
-        return status.status.isSuccess;
+      try {
+        final status = await _indexerService.getAddressIndexingJobStatus(
+          workflowId: workflowId,
+        );
+        if (status.status.isDone) {
+          return status.status.isSuccess;
+        }
+      } on Object catch (e, stack) {
+        _log.warning(
+          'Workflow status check failed for ${process.address}; '
+          'falling back to token sync.',
+          e,
+          stack,
+        );
+        return false;
       }
       if (DateTime.now().difference(startedAt) > _indexingTimeout) {
         return false;

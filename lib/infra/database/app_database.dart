@@ -16,7 +16,7 @@ final _log = Logger('AppDatabase');
 /// Large limit used when only offset is set (skip N rows, return the rest).
 const _maxLimitForOffset = 0x7FFFFFFF;
 const _maxReadPoolSize = 4;
-const _schemaVersionV1 = 2;
+const _schemaVersionV1 = 3;
 const _dbResetReindexMarkerFile = 'db_reset_requires_reindex.flag';
 
 /// Main application database using Drift.
@@ -48,6 +48,11 @@ class AppDatabase extends _$AppDatabase {
         await _createIndexes();
         await _createFtsInfrastructure();
         await _rebuildFtsIndexes();
+      },
+      onUpgrade: (Migrator m, int from, int to) async {
+        if (from < 3) {
+          await m.addColumn(items, items.enrichmentStatus);
+        }
       },
       beforeOpen: (OpeningDetails details) async {
         await _createIndexes();
@@ -1104,6 +1109,9 @@ bool _isSchemaCompatibleV1(sqlite3.Database db) {
     return false;
   }
   if (!_tableHasColumn(db, 'items', 'list_artist_json')) {
+    return false;
+  }
+  if (!_tableHasColumn(db, 'items', 'enrichment_status')) {
     return false;
   }
 

@@ -81,9 +81,44 @@ class _TestWorker extends BackgroundWorker {
   }
 }
 
+class _SlowStartWorker extends BackgroundWorker {
+  _SlowStartWorker({
+    required WorkerStateStore workerStateStore,
+  }) : super(
+         workerId: 'slow_start_worker',
+         workerStateService: workerStateStore,
+       );
+
+  int onStartCalls = 0;
+
+  @override
+  bool get hasRemainingWork => false;
+
+  @override
+  Future<Map<String, dynamic>> buildCheckpoint() async => <String, dynamic>{};
+
+  @override
+  Future<void> onPause() async {}
+
+  @override
+  Future<void> onStart() async {
+    onStartCalls++;
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+
+  @override
+  Future<void> onStop() async {}
+
+  @override
+  Future<void> resetWorkState() async {}
+
+  @override
+  Future<void> restoreFromCheckpoint(Map<String, dynamic> checkpoint) async {}
+}
+
 void main() {
   test(
-    'background worker checkpoints on pause and restores on start',
+    'background worker checkpoints on pause and can be manually restored',
     () async {
       final store = _InMemoryWorkerStateStore();
       final worker = _TestWorker(workerStateStore: store);
@@ -94,11 +129,31 @@ void main() {
       await worker.pause();
       expect(worker.state, BackgroundWorkerState.paused);
 
-      final restoredWorker = _TestWorker(workerStateStore: store);
-      await restoredWorker.start();
+      // New instances start fresh by default (no automatic restore)
+      final freshWorker = _TestWorker(workerStateStore: store);
+      await freshWorker.start();
+      expect(freshWorker.pending, 0); // starts fresh, didn't restore
 
-      expect(restoredWorker.pending, 3);
-      expect(restoredWorker.state, BackgroundWorkerState.started);
+      // But can manually restore checkpoint if needed
+      await freshWorker.stop();
+
+      final restoredWorker = _TestWorker(workerStateStore: store);
+      // Need to restore BEFORE saving a new checkpoint
+      await restoredWorker.restoreCheckpoint();
+      expect(restoredWorker.pending, 0); // freshWorker overwrote checkpoint
+
+      // To properly test restore, don't start a fresh worker first
+      await store.save(
+        workerId: 'test_worker',
+        stateIndex: BackgroundWorkerState.paused.index,
+        checkpoint: <String, dynamic>{'pending': 5},
+      );
+
+      final properlyRestoredWorker = _TestWorker(workerStateStore: store);
+      await properlyRestoredWorker.restoreCheckpoint();
+      expect(properlyRestoredWorker.pending, 5);
+      await properlyRestoredWorker.start();
+      expect(properlyRestoredWorker.state, BackgroundWorkerState.started);
     },
   );
 
@@ -116,5 +171,51 @@ void main() {
 
     expect(restoredWorker.pending, 0);
     expect(restoredWorker.state, BackgroundWorkerState.started);
+  });
+
+  test('background worker coalesces concurrent start calls', () async {
+    final store = _InMemoryWorkerStateStore();
+    final worker = _SlowStartWorker(workerStateStore: store);
+
+    await Future.wait(<Future<void>>[
+      worker.start(),
+      worker.start(),
+      worker.start(),
+    ]);
+
+    expect(worker.state, BackgroundWorkerState.started);
+    expect(worker.onStartCalls, 1);
+  });
+
+  test('resume restores paused checkpoint from persisted state', () async {
+    final store = _InMemoryWorkerStateStore();
+    await store.save(
+      workerId: 'test_worker',
+      stateIndex: BackgroundWorkerState.paused.index,
+      checkpoint: <String, dynamic>{'pending': 7},
+    );
+
+    final worker = _TestWorker(workerStateStore: store);
+    await worker.resume();
+
+    expect(worker.state, BackgroundWorkerState.started);
+    expect(worker.pending, 7);
+  });
+
+  test('freshStart clears old checkpoint and starts clean', () async {
+    final store = _InMemoryWorkerStateStore();
+    await store.save(
+      workerId: 'test_worker',
+      stateIndex: BackgroundWorkerState.paused.index,
+      checkpoint: <String, dynamic>{'pending': 9},
+    );
+
+    final worker = _TestWorker(workerStateStore: store);
+    await worker.freshStart();
+
+    expect(worker.state, BackgroundWorkerState.started);
+    expect(worker.pending, 0);
+    final snapshot = await store.load('test_worker');
+    expect(snapshot?.checkpoint?['pending'], 0);
   });
 }

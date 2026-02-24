@@ -11,6 +11,7 @@ import 'package:app/ui/screens/ff1_setup/ff1_device_picker_page.dart';
 import 'package:app/ui/screens/ff1_setup/ff1_updating_page.dart';
 import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/ui/screens/ff1_test_screen.dart';
+import 'package:app/ui/screens/global_toast_overlay_screen.dart';
 import 'package:app/ui/screens/home_index_page.dart';
 import 'package:app/ui/screens/onboarding/introduce_page.dart';
 import 'package:app/ui/screens/onboarding/onboarding_add_address_page.dart';
@@ -93,6 +94,26 @@ final routerProvider = Provider.family<GoRouter, String>((
             ),
           ),
         ],
+      ),
+
+      GoRoute(
+        path: Routes.globalToast,
+        name: RouteNames.globalToast,
+        pageBuilder: (context, state) {
+          final payload = state.extra is GlobalToastPayload
+              ? state.extra! as GlobalToastPayload
+              : const GlobalToastPayload(message: '');
+          return CustomTransitionPage<void>(
+            key: state.pageKey,
+            opaque: false,
+            barrierDismissible: false,
+            barrierColor: Colors.transparent,
+            child: GlobalToastOverlayScreen(payload: payload),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) =>
+                    FadeTransition(opacity: animation, child: child),
+          );
+        },
       ),
 
       // FF1 device picker page route path.

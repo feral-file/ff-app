@@ -5,6 +5,8 @@ import 'package:app/domain/models/playlist_item.dart';
 
 /// Transforms indexer tokens to PlaylistItem domain models.
 class TokenTransformer {
+  static const String _fallbackThumbnailUri = 'assets/images/no_thumbnail.svg';
+
   /// Transform an [AssetToken] (indexer model) into a [PlaylistItem].
   static PlaylistItem assetTokenToPlaylistItem({
     required AssetToken token,
@@ -31,7 +33,7 @@ class TokenTransformer {
       kind: PlaylistItemKind.indexerToken,
       title: title,
       subtitle: subtitle,
-      thumbnailUrl: token.getGalleryThumbnailUrl(),
+      thumbnailUrl: _resolveThumbnailUrl(token),
       tokenData: token.toRestJson(),
       sortKeyUs: sortKeyUs,
       updatedAt: DateTime.now(),
@@ -149,5 +151,38 @@ class TokenTransformer {
       // If reconstruction fails, return null
       return null;
     }
+  }
+
+  static String? _resolveThumbnailUrl(AssetToken token) {
+    final gallery = token.getGalleryThumbnailUrl();
+    if (gallery != null && gallery.isNotEmpty) {
+      return gallery;
+    }
+
+    final preview = token.getPreviewUrl();
+    if (preview != null && preview.isNotEmpty) {
+      return preview;
+    }
+
+    final mediaAssets = <MediaAsset>[
+      ...?token.enrichmentSourceMediaAssets,
+      ...?token.metadataMediaAssets,
+    ];
+    for (final mediaAsset in mediaAssets) {
+      final firstVariant = mediaAsset.variantUrls.values
+          .map((value) => value.toString())
+          .firstWhere(
+            (value) => value.isNotEmpty,
+            orElse: () => '',
+          );
+      if (firstVariant.isNotEmpty) {
+        return firstVariant;
+      }
+      if (mediaAsset.sourceUrl.isNotEmpty) {
+        return mediaAsset.sourceUrl;
+      }
+    }
+
+    return _fallbackThumbnailUri;
   }
 }

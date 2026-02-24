@@ -16,6 +16,9 @@ abstract class Routes {
   /// Onboarding setup FF1 page route path.
   static const onboardingSetupFf1Page = '/onboarding/setup-ff1';
 
+  /// Global toast overlay route path.
+  static const globalToast = '/global-toast';
+
   /// FF1 device picker page route path.
   static const ff1DevicePickerPage = '/ff1-device-picker';
 
@@ -88,6 +91,9 @@ abstract class RouteNames {
 
   /// Onboarding setup FF1 page route name.
   static const onboardingSetupFf1 = 'onboarding-setup-ff1';
+
+  /// Global toast overlay route name.
+  static const globalToast = 'global-toast';
 
   /// FF1 device picker page route name.
   static const ff1DevicePicker = 'ff1-device-picker';
