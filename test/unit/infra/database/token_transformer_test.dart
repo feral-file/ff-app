@@ -29,7 +29,7 @@ void main() {
         expect(item.id, 'cid_test123');
         expect(item.kind, PlaylistItemKind.indexerToken);
         expect(item.title, 'Test Artwork');
-        expect(item.subtitle, isNull);
+        expect(item.subtitle, 'Artist 1, Artist 2');
         expect(item.artists?.map((a) => a.name), ['Artist 1', 'Artist 2']);
         expect(item.thumbnailUrl, 'https://example.com/thumb.jpg');
         expect(item.tokenData, isNotNull);
