@@ -1,13 +1,14 @@
-import 'package:drift/drift.dart' show Value;
-import 'package:drift/native.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/dp1/dp1_manifest.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
+import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('DatabaseService', () {
@@ -75,7 +76,6 @@ void main() {
           id: 'pl_test',
           name: 'Test Playlist',
           type: PlaylistType.dp1,
-          sortMode: PlaylistSortMode.position,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         );
@@ -95,7 +95,6 @@ void main() {
             name: 'Playlist 1',
             type: PlaylistType.dp1,
             channelId: 'ch_test',
-            sortMode: PlaylistSortMode.position,
             createdAt: DateTime.now(),
             updatedAt: DateTime.now(),
           ),
@@ -104,7 +103,6 @@ void main() {
             name: 'Playlist 2',
             type: PlaylistType.dp1,
             channelId: 'ch_test',
-            sortMode: PlaylistSortMode.position,
             createdAt: DateTime.now(),
             updatedAt: DateTime.now(),
           ),
@@ -113,7 +111,6 @@ void main() {
             name: 'Playlist 3',
             type: PlaylistType.dp1,
             channelId: 'ch_other',
-            sortMode: PlaylistSortMode.position,
             createdAt: DateTime.now(),
             updatedAt: DateTime.now(),
           ),
@@ -135,7 +132,6 @@ void main() {
               id: 'pl_dp1',
               name: 'DP1 Playlist',
               type: PlaylistType.dp1,
-              sortMode: PlaylistSortMode.position,
               createdAt: DateTime.now(),
               updatedAt: DateTime.now(),
             ),
@@ -183,7 +179,6 @@ void main() {
           id: 'pl_test',
           name: 'Test Playlist',
           type: PlaylistType.dp1,
-          sortMode: PlaylistSortMode.position,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         );
@@ -290,7 +285,6 @@ void main() {
               name: 'Playlist pub20 old',
               type: PlaylistType.dp1,
               channelId: 'ch_pub20_old',
-              sortMode: PlaylistSortMode.position,
               createdAt: t2024.add(const Duration(minutes: 1)),
               updatedAt: t2024.add(const Duration(minutes: 1)),
             ),
@@ -299,7 +293,6 @@ void main() {
               name: 'Playlist pub20 new',
               type: PlaylistType.dp1,
               channelId: 'ch_pub20_new',
-              sortMode: PlaylistSortMode.position,
               createdAt: t2025.add(const Duration(minutes: 1)),
               updatedAt: t2025.add(const Duration(minutes: 1)),
             ),
@@ -308,7 +301,6 @@ void main() {
               name: 'Playlist pub10',
               type: PlaylistType.dp1,
               channelId: 'ch_pub10',
-              sortMode: PlaylistSortMode.position,
               createdAt: t2026.add(const Duration(minutes: 1)),
               updatedAt: t2026.add(const Duration(minutes: 1)),
             ),
@@ -409,7 +401,6 @@ void main() {
               name: 'Playlist A',
               type: PlaylistType.dp1,
               channelId: 'ch_test',
-              sortMode: PlaylistSortMode.position,
               createdAt: DateTime.now(),
               updatedAt: DateTime.now(),
             ),
@@ -420,7 +411,6 @@ void main() {
               name: 'Playlist B',
               type: PlaylistType.dp1,
               channelId: 'ch_test',
-              sortMode: PlaylistSortMode.position,
               createdAt: DateTime.now(),
               updatedAt: DateTime.now(),
             ),
@@ -541,7 +531,6 @@ void main() {
         await service.ingestDP1Playlist(
           playlist: dp1Playlist,
           baseUrl: 'https://example.com',
-          tokens: null,
         );
 
         final retrievedPlaylist = await service.getPlaylistById('pl_test');
@@ -568,7 +557,6 @@ void main() {
               name: 'Old',
               type: PlaylistType.dp1,
               baseUrl: 'https://b.example',
-              sortMode: PlaylistSortMode.position,
               createdAt: older,
               updatedAt: older,
             ),
@@ -577,7 +565,6 @@ void main() {
               name: 'New',
               type: PlaylistType.dp1,
               baseUrl: 'https://a.example',
-              sortMode: PlaylistSortMode.position,
               createdAt: newer,
               updatedAt: newer,
             ),
@@ -693,8 +680,7 @@ void main() {
           // Two playlists from the same feed server (same base_url → same
           // publisher partition). The UI renders the newer playlist first
           // (created_at_us DESC); enrichment must follow the same order.
-          final older =
-              DateTime.now().subtract(const Duration(hours: 2));
+          final older = DateTime.now().subtract(const Duration(hours: 2));
           final newer = DateTime.now();
 
           await service.ingestPlaylists([
@@ -703,7 +689,6 @@ void main() {
               name: 'Older',
               type: PlaylistType.dp1,
               baseUrl: 'https://same.example',
-              sortMode: PlaylistSortMode.position,
               createdAt: older,
               updatedAt: older,
             ),
@@ -712,14 +697,12 @@ void main() {
               name: 'Newer',
               type: PlaylistType.dp1,
               baseUrl: 'https://same.example',
-              sortMode: PlaylistSortMode.position,
               createdAt: newer,
               updatedAt: newer,
             ),
           ]);
 
-          final nowUs =
-              BigInt.from(DateTime.now().microsecondsSinceEpoch);
+          final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
           const provenance =
               '{"type":"onChain","contract":{"chain":"evm",'
               '"standard":"erc721","address":"0xabc","tokenId":"1"}}';
@@ -855,7 +838,6 @@ void main() {
             id: 'pl_fts_1',
             name: 'Moonlight Playlist',
             type: PlaylistType.dp1,
-            sortMode: PlaylistSortMode.position,
             createdAt: now,
             updatedAt: now,
           ),
@@ -878,6 +860,39 @@ void main() {
         expect(channels.map((c) => c.id), isNot(contains('ch_fts_2')));
         expect(playlists.map((p) => p.id), contains('pl_fts_1'));
         expect(works.map((w) => w.id), contains('wk_fts_1'));
+      });
+
+      test('searches artist names and returns matching works', () async {
+        final now = DateTime.now();
+
+        await service.ingestPlaylistItem(
+          PlaylistItem(
+            id: 'wk_artist_1',
+            kind: PlaylistItemKind.dp1Item,
+            title: 'Untitled Work',
+            artists: const [
+              DP1Artist(name: 'Yayoi Kusama', id: 'artist_1'),
+            ],
+            updatedAt: now,
+          ),
+        );
+
+        await service.ingestPlaylistItem(
+          PlaylistItem(
+            id: 'wk_artist_2',
+            kind: PlaylistItemKind.dp1Item,
+            title: 'Different Work',
+            artists: const [
+              DP1Artist(name: 'Takashi Murakami', id: 'artist_2'),
+            ],
+            updatedAt: now,
+          ),
+        );
+
+        final works = await service.searchItemsByTitle('kusama');
+
+        expect(works.map((w) => w.id), contains('wk_artist_1'));
+        expect(works.map((w) => w.id), isNot(contains('wk_artist_2')));
       });
     });
 

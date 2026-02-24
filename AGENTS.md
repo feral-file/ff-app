@@ -32,14 +32,14 @@ For any feature/refactor touching behavior:
 3. Write integration tests next, with `.env` provisioned, and define expected integration outputs before implementation.
 4. Run tests and ensure they all pass.
 5. Implement/compose app flow that uses the tested functions.
-6. After finishing code updates, run `dart fix --apply` to auto-fix lint/style issues where possible before final validation.
+6. After finishing code updates, run `dart fix --apply` only on files modified by the task (do not run repo-wide fixes) to auto-fix lint/style issues where possible before final validation.
 
 No exception path for skipping the above sequence.
 
 ## 4) Definition of done
 A task is complete only when:
 1. `flutter build` succeeds for Android and iOS targets.
-2. `dart fix --apply` has been executed after the final code update.
+2. `dart fix --apply` has been executed after the final code update, scoped only to files modified by the task.
 3. `flutter analyze` passes with zero new lint violations (very_good_analysis).
 4. `flutter test` passes.
 5. Architecture/layering and DP-1 terminology constraints remain intact.
