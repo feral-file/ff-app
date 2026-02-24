@@ -173,7 +173,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                     itemBuilder: (context, index) => PlaylistRowItem(
                       playlist: playlists[index],
                       onItemTap: (item) {
-                        context.push('${Routes.playlists}/${item.id}');
+                        context.push('${Routes.works}/${item.id}');
                       },
                       isActive: true,
                     ),
