@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/services_provider.dart';
-import 'package:app/app/providers/forget_local_data_provider.dart';
+import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -242,12 +242,20 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         },
       ),
       OptionItem(
-        title: 'Forget I exist',
+        title: 'Clear local data',
         icon: const Icon(
           Icons.delete_forever_outlined,
           color: AppColor.white,
         ),
-        onTap: _forgetIExist,
+        onTap: _clearLocalDataAndRestartOnboarding,
+      ),
+      OptionItem(
+        title: 'Rebuild metadata',
+        icon: const Icon(
+          Icons.refresh,
+          color: AppColor.white,
+        ),
+        onTap: _rebuildMetadata,
       ),
     ];
   }
@@ -314,23 +322,51 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     }
   }
 
-  Future<void> _forgetIExist() async {
+  Future<void> _clearLocalDataAndRestartOnboarding() async {
     Navigator.of(context).pop();
 
     final router = GoRouter.of(context);
     unawaited(
       router.pushNamed(
         RouteNames.globalToast,
-        extra: const GlobalToastPayload(message: 'Deleting local data...'),
+        extra: const GlobalToastPayload(message: 'Cleaning local data...'),
       ),
     );
+    await WidgetsBinding.instance.endOfFrame;
 
-    await ref.read(forgetLocalDataServiceProvider).forgetIExist();
+    try {
+      await ref.read(localDataCleanupServiceProvider).clearLocalData();
+    } finally {
+      if (mounted && router.canPop()) {
+        router.pop();
+      }
+    }
 
     if (!mounted) {
       return;
     }
     context.go(Routes.onboardingIntroducePage);
+  }
+
+  Future<void> _rebuildMetadata() async {
+    Navigator.of(context).pop();
+
+    final router = GoRouter.of(context);
+    unawaited(
+      router.pushNamed(
+        RouteNames.globalToast,
+        extra: const GlobalToastPayload(message: 'Cleaning metadata...'),
+      ),
+    );
+    await WidgetsBinding.instance.endOfFrame;
+
+    try {
+      await ref.read(localDataCleanupServiceProvider).rebuildMetadata();
+    } finally {
+      if (mounted && router.canPop()) {
+        router.pop();
+      }
+    }
   }
 
   Widget _buildContent() {

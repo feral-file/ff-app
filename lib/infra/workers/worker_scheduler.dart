@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:app/infra/database/app_database.dart';
-import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/workers/background_worker.dart';
 import 'package:app/infra/workers/ingest_feed_worker.dart';
 import 'package:app/infra/workers/item_enrichment_query_worker.dart';
@@ -173,12 +171,10 @@ class WorkerScheduler {
       await _ingestFeedWorker.resume();
     }
 
-    final hasUnenrichedItems = await _hasUnenrichedItemsRemain();
-    if (hasUnenrichedItems) {
-      await _triggerEnrichmentQueryAsync();
-    } else {
-      _log.fine('No unenriched items remain; skip query worker trigger');
-    }
+    // Always trigger query worker on foreground. The worker itself no-ops when
+    // no unenriched items remain, and this avoids creating extra AppDatabase
+    // wrappers on the shared executor (Drift duplicate-db warning).
+    await _triggerEnrichmentQueryAsync();
 
     await _indexAddressFleet.startAll();
     await _enrichFleet.startAll();
@@ -364,30 +360,5 @@ class WorkerScheduler {
 
   void _triggerEnrichmentQuery() {
     unawaited(_triggerEnrichmentQueryAsync());
-  }
-
-  Future<bool> _hasUnenrichedItemsRemain() async {
-    final driftIsolate = _workerDriftIsolate;
-    if (driftIsolate == null) {
-      // Conservative fallback: if probe cannot run, keep enrichment enabled.
-      return true;
-    }
-
-    AppDatabase? db;
-    try {
-      final connection = await driftIsolate.connect();
-      db = AppDatabase.fromConnection(connection);
-      final service = DatabaseService(db);
-      return await service.hasUnenrichedItemsRemain();
-    } on Object catch (e, stack) {
-      _log.warning(
-        'Failed probing unenriched items; default to triggering query worker',
-        e,
-        stack,
-      );
-      return true;
-    } finally {
-      await db?.close();
-    }
   }
 }

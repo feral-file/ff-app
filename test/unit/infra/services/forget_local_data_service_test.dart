@@ -1,11 +1,11 @@
-import 'package:app/infra/services/forget_local_data_service.dart';
+import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('forgetIExist executes stop and cleanup sequence in order', () async {
+  test('clearLocalData executes stop and cleanup sequence in order', () async {
     final events = <String>[];
 
-    final service = ForgetLocalDataService(
+    final service = LocalDataCleanupService(
       stopWorkersGracefully: () async {
         events.add('stop-workers');
       },
@@ -18,6 +18,12 @@ void main() {
       clearObjectBoxData: () async {
         events.add('clear-objectbox');
       },
+      clearCachedImages: () async {
+        events.add('clear-cached-images');
+      },
+      getPersonalAddresses: () async => const <String>[],
+      restorePersonalAddressPlaylists: (_) async {},
+      refetchFromBeginning: (_) async {},
       pauseFeedWork: () {
         events.add('pause-feed');
       },
@@ -27,7 +33,7 @@ void main() {
       postDrainSettleDuration: Duration.zero,
     );
 
-    await service.forgetIExist();
+    await service.clearLocalData();
 
     expect(events, <String>[
       'pause-feed',
@@ -37,15 +43,16 @@ void main() {
       'truncate-db',
       'checkpoint',
       'clear-objectbox',
+      'clear-cached-images',
       'truncate-db',
       'checkpoint',
     ]);
   });
 
-  test('forgetIExist runs post-reset callback after cleanup', () async {
+  test('clearLocalData runs post-reset callback after cleanup', () async {
     final events = <String>[];
 
-    final service = ForgetLocalDataService(
+    final service = LocalDataCleanupService(
       stopWorkersGracefully: () async {
         events.add('stop-workers');
       },
@@ -58,6 +65,12 @@ void main() {
       clearObjectBoxData: () async {
         events.add('clear-objectbox');
       },
+      clearCachedImages: () async {
+        events.add('clear-cached-images');
+      },
+      getPersonalAddresses: () async => const <String>[],
+      restorePersonalAddressPlaylists: (_) async {},
+      refetchFromBeginning: (_) async {},
       pauseFeedWork: () {
         events.add('pause-feed');
       },
@@ -70,8 +83,68 @@ void main() {
       postDrainSettleDuration: Duration.zero,
     );
 
-    await service.forgetIExist();
+    await service.clearLocalData();
 
     expect(events.last, equals('on-reset-completed'));
   });
+
+  test(
+    'rebuildMetadata clears sqlite and refetches while keeping addresses',
+    () async {
+      final events = <String>[];
+
+      final service = LocalDataCleanupService(
+        stopWorkersGracefully: () async {
+          events.add('stop-workers');
+        },
+        checkpointDatabase: () async {
+          events.add('checkpoint');
+        },
+        truncateDatabase: () async {
+          events.add('truncate-db');
+        },
+        clearObjectBoxData: () async {
+          events.add('clear-objectbox');
+        },
+        clearCachedImages: () async {
+          events.add('clear-cached-images');
+        },
+        getPersonalAddresses: () async {
+          events.add('get-addresses');
+          return <String>['0xabc'];
+        },
+        restorePersonalAddressPlaylists: (addresses) async {
+          events.add('restore:${addresses.join(",")}');
+        },
+        refetchFromBeginning: (addresses) async {
+          events.add('refetch:${addresses.join(",")}');
+        },
+        pauseFeedWork: () {
+          events.add('pause-feed');
+        },
+        pauseTokenPolling: () {
+          events.add('pause-token-polling');
+        },
+        postDrainSettleDuration: Duration.zero,
+      );
+
+      await service.rebuildMetadata();
+
+      expect(events, <String>[
+        'pause-feed',
+        'pause-token-polling',
+        'stop-workers',
+        'get-addresses',
+        'checkpoint',
+        'truncate-db',
+        'checkpoint',
+        'truncate-db',
+        'checkpoint',
+        'restore:0xabc',
+        'clear-cached-images',
+        'refetch:0xabc',
+      ]);
+      expect(events.where((event) => event == 'clear-objectbox'), isEmpty);
+    },
+  );
 }

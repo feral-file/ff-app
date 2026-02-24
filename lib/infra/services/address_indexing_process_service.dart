@@ -160,7 +160,10 @@ class AddressIndexingProcessService {
         final ready = await _waitForWorkflow(process);
         if (!ready) {
           if (process.cancelled || process.paused) return;
-          throw Exception('Indexing workflow did not complete successfully');
+          _log.warning(
+            'Indexing workflow not ready for ${process.address}; '
+            'continuing with token sync fallback.',
+          );
         }
         process.indexingDone = true;
       }
@@ -228,11 +231,21 @@ class AddressIndexingProcessService {
     }
     final startedAt = DateTime.now();
     while (!process.cancelled && !process.paused) {
-      final status = await _indexerService.getAddressIndexingJobStatus(
-        workflowId: workflowId,
-      );
-      if (status.status.isDone) {
-        return status.status.isSuccess;
+      try {
+        final status = await _indexerService.getAddressIndexingJobStatus(
+          workflowId: workflowId,
+        );
+        if (status.status.isDone) {
+          return status.status.isSuccess;
+        }
+      } on Object catch (e, stack) {
+        _log.warning(
+          'Workflow status check failed for ${process.address}; '
+          'falling back to token sync.',
+          e,
+          stack,
+        );
+        return false;
       }
       if (DateTime.now().difference(startedAt) > _indexingTimeout) {
         return false;

@@ -13,7 +13,7 @@ import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/indexer/isolate/indexer_tokens_worker.dart';
 import 'package:app/infra/indexer/isolate/worker_messages.dart';
 import 'package:app/infra/indexer/isolate/worker_tasks.dart';
-import 'package:app/infra/services/forget_local_data_service.dart';
+import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -257,11 +257,15 @@ void main() {
         final syncFuture = notifier.syncAddresses(const <String>[address]);
         await Future<void>.delayed(const Duration(milliseconds: 10));
 
-        final service = ForgetLocalDataService(
+        final service = LocalDataCleanupService(
           stopWorkersGracefully: worker.stop,
           checkpointDatabase: dbService.checkpoint,
           truncateDatabase: dbService.clearAll,
           clearObjectBoxData: () async {},
+          clearCachedImages: () async {},
+          getPersonalAddresses: () async => const <String>[],
+          restorePersonalAddressPlaylists: (_) async {},
+          refetchFromBeginning: (_) async {},
           pauseFeedWork: () {},
           pauseTokenPolling: () {},
           enablePostDrainSweep: false,
@@ -284,7 +288,7 @@ void main() {
           }),
         );
 
-        await service.forgetIExist();
+        await service.clearLocalData();
         await Future<void>.delayed(const Duration(milliseconds: 120));
         await syncFuture.catchError((_) {});
 
@@ -297,11 +301,15 @@ void main() {
       final syncFuture = notifier.syncAddresses(const <String>[address]);
       await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      final service = ForgetLocalDataService(
+      final service = LocalDataCleanupService(
         stopWorkersGracefully: notifier.stopAndDrainForReset,
         checkpointDatabase: dbService.checkpoint,
         truncateDatabase: dbService.clearAll,
         clearObjectBoxData: () async {},
+        clearCachedImages: () async {},
+        getPersonalAddresses: () async => const <String>[],
+        restorePersonalAddressPlaylists: (_) async {},
+        refetchFromBeginning: (_) async {},
         pauseFeedWork: () {},
         pauseTokenPolling: notifier.pausePolling,
         postDrainSettleDuration: const Duration(milliseconds: 100),
@@ -324,7 +332,7 @@ void main() {
         }),
       );
 
-      await service.forgetIExist();
+      await service.clearLocalData();
       await Future<void>.delayed(const Duration(milliseconds: 120));
       await syncFuture;
 
@@ -336,11 +344,15 @@ void main() {
       final syncFuture = notifier.syncAddresses(const <String>[address]);
       await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      final service = ForgetLocalDataService(
+      final service = LocalDataCleanupService(
         stopWorkersGracefully: notifier.stopAndDrainForReset,
         checkpointDatabase: dbService.checkpoint,
         truncateDatabase: dbService.clearAll,
         clearObjectBoxData: () async {},
+        clearCachedImages: () async {},
+        getPersonalAddresses: () async => const <String>[],
+        restorePersonalAddressPlaylists: (_) async {},
+        refetchFromBeginning: (_) async {},
         pauseFeedWork: () {},
         pauseTokenPolling: notifier.pausePolling,
         postDrainSettleDuration: const Duration(milliseconds: 120),
@@ -377,7 +389,7 @@ void main() {
         }),
       );
 
-      await service.forgetIExist();
+      await service.clearLocalData();
       await Future<void>.delayed(const Duration(milliseconds: 160));
       await syncFuture;
 

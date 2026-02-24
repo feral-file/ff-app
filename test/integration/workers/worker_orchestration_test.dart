@@ -6,7 +6,7 @@ import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/api/dp1_feed_api.dart';
-import 'package:app/infra/services/forget_local_data_service.dart';
+import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
@@ -168,18 +168,22 @@ void main() {
           'remote_config': 1,
         };
 
-        final service = ForgetLocalDataService(
+        final service = LocalDataCleanupService(
           stopWorkersGracefully: scheduler.stopAll,
           checkpointDatabase: context.databaseService.checkpoint,
           truncateDatabase: context.databaseService.clearAll,
           clearObjectBoxData: () async {
             fakeObjectBoxRows.updateAll((key, value) => 0);
           },
+          clearCachedImages: () async {},
+          getPersonalAddresses: () async => const <String>[],
+          restorePersonalAddressPlaylists: (_) async {},
+          refetchFromBeginning: (_) async {},
           pauseFeedWork: () {},
           pauseTokenPolling: () {},
         );
 
-        await service.forgetIExist();
+        await service.clearLocalData();
 
         final channelsCount = await context.database
             .customSelect('SELECT COUNT(*) AS count FROM channels')

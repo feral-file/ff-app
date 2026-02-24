@@ -3,13 +3,12 @@ import 'dart:async';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
-import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/address_indexing_process_service.dart';
-import 'package:app/infra/services/forget_local_data_service.dart';
+import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -194,11 +193,15 @@ void main() {
         await processService.start(address);
         await syncService.lastBatchStarted.future;
 
-        final forget = ForgetLocalDataService(
+        final forget = LocalDataCleanupService(
           stopWorkersGracefully: () async {},
           checkpointDatabase: context.databaseService.checkpoint,
           truncateDatabase: context.databaseService.clearAll,
           clearObjectBoxData: () async {},
+          clearCachedImages: () async {},
+          getPersonalAddresses: () async => const <String>[],
+          restorePersonalAddressPlaylists: (_) async {},
+          refetchFromBeginning: (_) async {},
           pauseFeedWork: () {},
           pauseTokenPolling: () {},
           enablePostDrainSweep: false,
@@ -210,7 +213,7 @@ void main() {
           }),
         );
 
-        await forget.forgetIExist();
+        await forget.clearLocalData();
         await Future<void>.delayed(const Duration(milliseconds: 180));
 
         expect(await personalEntryCount(), equals(4));
@@ -237,11 +240,15 @@ void main() {
         await processService.start(address);
         await syncService.lastBatchStarted.future;
 
-        final forget = ForgetLocalDataService(
+        final forget = LocalDataCleanupService(
           stopWorkersGracefully: processService.stopAllAndDrainForReset,
           checkpointDatabase: context.databaseService.checkpoint,
           truncateDatabase: context.databaseService.clearAll,
           clearObjectBoxData: () async {},
+          clearCachedImages: () async {},
+          getPersonalAddresses: () async => const <String>[],
+          restorePersonalAddressPlaylists: (_) async {},
+          refetchFromBeginning: (_) async {},
           pauseFeedWork: () {},
           pauseTokenPolling: () {},
           enablePostDrainSweep: false,
@@ -253,7 +260,7 @@ void main() {
           }),
         );
 
-        await forget.forgetIExist();
+        await forget.clearLocalData();
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
         expect(await personalEntryCount(), equals(0));
