@@ -51,6 +51,7 @@ Based on Dart documentation (`dart.dev`), apply these key points:
 - Do not merge feature flow code before core unit/integration tests are in place (see `.cursor/rules/35-testing-tdd.mdc`).
 
 ## 7) Quality gates before completion
+- After finishing code updates, run `dart fix --apply`.
 - `flutter analyze` must pass.
 - `flutter test` must pass.
 - New code must not increase lint debt.
