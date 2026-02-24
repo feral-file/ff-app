@@ -1,13 +1,12 @@
 import 'dart:io';
 
+import 'package:app/infra/database/tables.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
-import 'package:path/path.dart' as p;
-
-import 'tables.dart';
 
 part 'app_database.g.dart';
 
@@ -32,7 +31,7 @@ class AppDatabase extends _$AppDatabase {
   ///
   /// Used by `computeWithDatabase` to run heavy DB work in a short-lived
   /// isolate while reusing the same sqlite connection.
-  AppDatabase.fromConnection(DatabaseConnection e) : super(e);
+  AppDatabase.fromConnection(DatabaseConnection super.e);
 
   /// Creates an AppDatabase instance with a custom executor (for testing).
   AppDatabase.forTesting(super.e);
@@ -43,18 +42,18 @@ class AppDatabase extends _$AppDatabase {
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
-      onCreate: (Migrator m) async {
+      onCreate: (m) async {
         await m.createAll();
         await _createIndexes();
         await _createFtsInfrastructure();
         await _rebuildFtsIndexes();
       },
-      onUpgrade: (Migrator m, int from, int to) async {
+      onUpgrade: (m, from, to) async {
         if (from < 3) {
           await m.addColumn(items, items.enrichmentStatus);
         }
       },
-      beforeOpen: (OpeningDetails details) async {
+      beforeOpen: (details) async {
         await _createIndexes();
         await _createFtsInfrastructure();
         if (details.wasCreated || details.hadUpgrade) {
@@ -136,6 +135,15 @@ class AppDatabase extends _$AppDatabase {
     ''');
 
     await customStatement('''
+      CREATE VIRTUAL TABLE IF NOT EXISTS item_artists_fts
+      USING fts5(
+        id UNINDEXED,
+        artist_name,
+        tokenize = 'unicode61 remove_diacritics 2'
+      )
+    ''');
+
+    await customStatement('''
       CREATE TRIGGER IF NOT EXISTS channels_ai AFTER INSERT ON channels BEGIN
         INSERT INTO channels_fts(id, title) VALUES (new.id, new.title);
       END
@@ -169,20 +177,40 @@ class AppDatabase extends _$AppDatabase {
       END
     ''');
 
-    await customStatement('''
+    await customStatement(r'''
       CREATE TRIGGER IF NOT EXISTS items_ai AFTER INSERT ON items BEGIN
         INSERT INTO items_fts(id, title) VALUES (new.id, COALESCE(new.title, ''));
+        INSERT INTO item_artists_fts(id, artist_name)
+        SELECT new.id, COALESCE(json_extract(j.value, '$.name'), '')
+        FROM json_each(
+          CASE
+            WHEN json_valid(new.list_artist_json) THEN new.list_artist_json
+            ELSE '[]'
+          END
+        ) AS j
+        WHERE COALESCE(json_extract(j.value, '$.name'), '') != '';
       END
     ''');
     await customStatement('''
       CREATE TRIGGER IF NOT EXISTS items_ad AFTER DELETE ON items BEGIN
         DELETE FROM items_fts WHERE id = old.id;
+        DELETE FROM item_artists_fts WHERE id = old.id;
       END
     ''');
-    await customStatement('''
+    await customStatement(r'''
       CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE ON items BEGIN
         DELETE FROM items_fts WHERE id = old.id;
         INSERT INTO items_fts(id, title) VALUES (new.id, COALESCE(new.title, ''));
+        DELETE FROM item_artists_fts WHERE id = old.id;
+        INSERT INTO item_artists_fts(id, artist_name)
+        SELECT new.id, COALESCE(json_extract(j.value, '$.name'), '')
+        FROM json_each(
+          CASE
+            WHEN json_valid(new.list_artist_json) THEN new.list_artist_json
+            ELSE '[]'
+          END
+        ) AS j
+        WHERE COALESCE(json_extract(j.value, '$.name'), '') != '';
       END
     ''');
   }
@@ -203,15 +231,29 @@ class AppDatabase extends _$AppDatabase {
     await customStatement('DELETE FROM items_fts');
     await customStatement(
       'INSERT INTO items_fts(id, title) '
-      'SELECT id, COALESCE(title, \'\') FROM items',
+      "SELECT id, COALESCE(title, '') FROM items",
     );
+
+    await customStatement('DELETE FROM item_artists_fts');
+    await customStatement(r'''
+      INSERT INTO item_artists_fts(id, artist_name)
+      SELECT i.id, COALESCE(json_extract(j.value, '$.name'), '')
+      FROM items i,
+           json_each(
+             CASE
+               WHEN json_valid(i.list_artist_json) THEN i.list_artist_json
+               ELSE '[]'
+             END
+           ) j
+      WHERE COALESCE(json_extract(j.value, '$.name'), '') != ''
+    ''');
   }
 
   String _buildFtsMatchQuery(String rawQuery) {
     final tokens = rawQuery
         .trim()
         .split(RegExp(r'\s+'))
-        .map((token) => token.replaceAll(RegExp(r'[^A-Za-z0-9_]'), ''))
+        .map((token) => token.replaceAll(RegExp('[^A-Za-z0-9_]'), ''))
         .where((token) => token.isNotEmpty)
         .toList(growable: false);
     if (tokens.isEmpty) {
@@ -233,7 +275,7 @@ class AppDatabase extends _$AppDatabase {
     int? type,
     int? limit,
   }) {
-    final publisherOrderExpr = CustomExpression<int>(
+    const publisherOrderExpr = CustomExpression<int>(
       'COALESCE(channels.publisher_id, 2147483647)',
     );
     final query = select(channels)
@@ -241,7 +283,6 @@ class AppDatabase extends _$AppDatabase {
         (t) => OrderingTerm.asc(publisherOrderExpr),
         (t) => OrderingTerm(
           expression: t.sortOrder,
-          mode: OrderingMode.asc,
           nulls: NullsOrder.last,
         ),
         (t) => OrderingTerm.asc(t.id),
@@ -269,7 +310,7 @@ class AppDatabase extends _$AppDatabase {
     String? ownerAddress,
     int? limit,
   }) {
-    final publisherOrderExpr = CustomExpression<int>(
+    const publisherOrderExpr = CustomExpression<int>(
       '''
       COALESCE(
         (
@@ -327,7 +368,6 @@ class AppDatabase extends _$AppDatabase {
           ..orderBy([
             OrderingTerm(
               expression: playlistEntries.position,
-              mode: OrderingMode.asc,
               nulls: NullsOrder.last,
             ),
             OrderingTerm.asc(playlistEntries.itemId),
@@ -376,14 +416,13 @@ class AppDatabase extends _$AppDatabase {
   // Channel queries
   /// Get all channels ordered by sort order.
   Future<List<ChannelData>> getAllChannels() async {
-    final publisherOrderExpr = CustomExpression<int>(
+    const publisherOrderExpr = CustomExpression<int>(
       'COALESCE(channels.publisher_id, 2147483647)',
     );
     return (select(channels)..orderBy([
           (t) => OrderingTerm.asc(publisherOrderExpr),
           (t) => OrderingTerm(
             expression: t.sortOrder,
-            mode: OrderingMode.asc,
             nulls: NullsOrder.last,
           ),
           (t) => OrderingTerm.asc(t.id),
@@ -398,7 +437,7 @@ class AppDatabase extends _$AppDatabase {
     int? limit,
     int offset = 0,
   }) async {
-    final publisherOrderExpr = CustomExpression<int>(
+    const publisherOrderExpr = CustomExpression<int>(
       'COALESCE(channels.publisher_id, 2147483647)',
     );
     final query = select(channels)
@@ -407,7 +446,6 @@ class AppDatabase extends _$AppDatabase {
         (t) => OrderingTerm.asc(publisherOrderExpr),
         (t) => OrderingTerm(
           expression: t.sortOrder,
-          mode: OrderingMode.asc,
           nulls: NullsOrder.last,
         ),
         (t) => OrderingTerm.asc(t.id),
@@ -471,7 +509,7 @@ class AppDatabase extends _$AppDatabase {
 
   /// Get all playlists.
   Future<List<PlaylistData>> getAllPlaylists() async {
-    final publisherOrderExpr = CustomExpression<int>(
+    const publisherOrderExpr = CustomExpression<int>(
       '''
       COALESCE(
         (
@@ -582,7 +620,6 @@ class AppDatabase extends _$AppDatabase {
           ..orderBy([
             OrderingTerm(
               expression: playlistEntries.position,
-              mode: OrderingMode.asc,
               nulls: NullsOrder.last,
             ),
             OrderingTerm.asc(playlistEntries.itemId),
@@ -651,7 +688,6 @@ class AppDatabase extends _$AppDatabase {
             OrderingTerm.asc(playlists.id),
             OrderingTerm(
               expression: playlistEntries.position,
-              mode: OrderingMode.asc,
               nulls: NullsOrder.last,
             ),
             OrderingTerm.asc(playlistEntries.itemId),
@@ -690,7 +726,6 @@ class AppDatabase extends _$AppDatabase {
             OrderingTerm.asc(playlists.id),
             OrderingTerm(
               expression: playlistEntries.position,
-              mode: OrderingMode.asc,
               nulls: NullsOrder.last,
             ),
             OrderingTerm.asc(playlistEntries.itemId),
@@ -780,14 +815,28 @@ class AppDatabase extends _$AppDatabase {
 
     final rows = await customSelect(
       '''
+      WITH matched_items AS (
+        SELECT f.id AS item_id, bm25(items_fts) AS rank
+        FROM items_fts f
+        WHERE items_fts MATCH ?
+        UNION ALL
+        SELECT f.id AS item_id, bm25(item_artists_fts) AS rank
+        FROM item_artists_fts f
+        WHERE item_artists_fts MATCH ?
+      ),
+      ranked_items AS (
+        SELECT item_id, MIN(rank) AS rank
+        FROM matched_items
+        GROUP BY item_id
+      )
       SELECT i.*
-      FROM items_fts f
-      INNER JOIN items i ON i.id = f.id
-      WHERE items_fts MATCH ?
-      ORDER BY bm25(items_fts), i.updated_at_us DESC, i.id ASC
+      FROM ranked_items r
+      INNER JOIN items i ON i.id = r.item_id
+      ORDER BY r.rank ASC, i.updated_at_us DESC, i.id ASC
       LIMIT ?
       ''',
       variables: [
+        Variable.withString(matchQuery),
         Variable.withString(matchQuery),
         Variable.withInt(limit),
       ],
@@ -943,7 +992,7 @@ class AppDatabase extends _$AppDatabase {
       ),
       orElse: Constant(baseUrls.length),
     );
-    final publisherOrderExpr = CustomExpression<int>(
+    const publisherOrderExpr = CustomExpression<int>(
       '''
       COALESCE(
         (
