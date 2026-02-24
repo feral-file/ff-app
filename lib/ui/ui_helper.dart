@@ -90,54 +90,60 @@ class UIHelper {
       context: context,
       builder: (context) {
         final screenWidth = MediaQuery.of(context).size.width;
-        return Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: screenWidth * 0.62,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(5),
-                    color: PrimitivesTokens.colorsDarkGrey,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      padding: EdgeInsets.zero,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: options.length,
-                      itemBuilder: (BuildContext context, int index) {
-                        final option = options[index];
-                        if (option.builder != null) {
-                          return option.builder!.call(context, option);
-                        }
-                        return _CenterMenuItem(option: option);
-                      },
-                      separatorBuilder: (context, index) => const SizedBox(
-                        height: 24,
+        return Material(
+          type: MaterialType.transparency,
+          child: DefaultTextStyle(
+            style: AppTypography.body(context).white,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: screenWidth * 0.62,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(5),
+                        color: PrimitivesTokens.colorsDarkGrey,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          padding: EdgeInsets.zero,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: options.length,
+                          itemBuilder: (context, index) {
+                            final option = options[index];
+                            if (option.builder != null) {
+                              return option.builder!.call(context, option);
+                            }
+                            return _CenterMenuItem(option: option);
+                          },
+                          separatorBuilder: (context, index) => const SizedBox(
+                            height: 24,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                    if (bottomWidget != null) ...[
+                      const SizedBox(height: 10),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(5),
+                          color: PrimitivesTokens.colorsDarkGrey,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: bottomWidget,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                if (bottomWidget != null) ...[
-                  const SizedBox(height: 10),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(5),
-                      color: PrimitivesTokens.colorsDarkGrey,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: bottomWidget,
-                    ),
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
         );
@@ -163,24 +169,26 @@ class _CenterMenuItemState extends State<_CenterMenuItem> {
     final option = widget.option;
     final baseTextStyle =
         option.titleStyle ?? AppTypography.body(context).white;
-    final processingTextStyle = option.titleStyleOnPrecessing ??
+    final processingTextStyle =
+        option.titleStyleOnPrecessing ??
         baseTextStyle.copyWith(color: AppColor.disabledColor);
-    final disabledTextStyle = option.titleStyleOnDisable ??
+    final disabledTextStyle =
+        option.titleStyleOnDisable ??
         baseTextStyle.copyWith(color: AppColor.disabledColor);
     final textStyle = !option.isEnable
         ? disabledTextStyle
         : _isProcessing
-            ? processingTextStyle
-            : baseTextStyle;
+        ? processingTextStyle
+        : baseTextStyle;
     final icon = !option.isEnable
         ? option.iconOnDisable
         : _isProcessing
-            ? (option.iconOnProcessing ??
-                loadingIndicator(
-                  valueColor: AppColor.disabledColor,
-                  size: LayoutConstants.iconSizeSmall,
-                ))
-            : option.icon;
+        ? (option.iconOnProcessing ??
+              loadingIndicator(
+                valueColor: AppColor.disabledColor,
+                size: LayoutConstants.iconSizeSmall,
+              ))
+        : option.icon;
 
     return GestureDetector(
       onTap: () async {
@@ -246,42 +254,40 @@ Widget loadingIndicator({
   Color valueColor = Colors.black,
   Color backgroundColor = Colors.black54,
   double strokeWidth = 2.0,
-}) =>
-    SizedBox(
-      width: size,
-      height: size,
-      child: CircularProgressIndicator(
-        backgroundColor: backgroundColor,
-        color: valueColor,
-        strokeWidth: strokeWidth,
-      ),
-    );
+}) => SizedBox(
+  width: size,
+  height: size,
+  child: CircularProgressIndicator(
+    backgroundColor: backgroundColor,
+    color: valueColor,
+    strokeWidth: strokeWidth,
+  ),
+);
 
 Widget redDotIcon() => dotIcon(color: Colors.red);
 
 Widget dotIcon({required Color color, double size = 10}) => Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-      ),
-    );
+  width: size,
+  height: size,
+  decoration: BoxDecoration(
+    color: color,
+    shape: BoxShape.circle,
+  ),
+);
 
 Widget iconWithRedDot({
   required Widget icon,
   EdgeInsetsGeometry? padding,
   bool withReddot = true,
-}) =>
-    withReddot
-        ? Stack(
-            alignment: Alignment.topRight,
-            children: [
-              Padding(
-                padding: padding ?? const EdgeInsets.only(right: 5),
-                child: icon,
-              ),
-              redDotIcon(),
-            ],
-          )
-        : icon;
+}) => withReddot
+    ? Stack(
+        alignment: Alignment.topRight,
+        children: [
+          Padding(
+            padding: padding ?? const EdgeInsets.only(right: 5),
+            child: icon,
+          ),
+          redDotIcon(),
+        ],
+      )
+    : icon;

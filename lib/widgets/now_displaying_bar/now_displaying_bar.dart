@@ -8,15 +8,14 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
+import 'package:app/widgets/now_displaying_bar/collapsed_now_playing_bar.dart';
+import 'package:app/widgets/now_displaying_bar/expanded_now_playing_bar.dart';
+import 'package:app/widgets/now_displaying_bar/sleep_mode_indicator.dart';
+import 'package:app/widgets/now_displaying_bar/top_line.dart';
+import 'package:app/widgets/now_displaying_bar/two_stop_draggable_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-import 'collapsed_now_playing_bar.dart';
-import 'expanded_now_playing_bar.dart';
-import 'sleep_mode_indicator.dart';
-import 'top_line.dart';
-import 'two_stop_draggable_sheet.dart';
 
 /// Global bottom overlay for FF1 Now Displaying.
 ///
@@ -54,15 +53,21 @@ class NowDisplayingBarOverlay extends ConsumerWidget {
       right: LayoutConstants.pageHorizontalDefault,
       bottom:
           bottomPadding + LayoutConstants.nowDisplayingBarOverlayBottomOffset,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: _expandedHeight,
-        ),
-        child: _NowDisplayingBarCard(
-          collapsedHeight: _collapsedHeight,
-          expandedHeight: _expandedHeight,
-          status: status,
-          router: router,
+      child: Material(
+        type: MaterialType.transparency,
+        child: DefaultTextStyle(
+          style: AppTypography.body(context).white,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: _expandedHeight,
+            ),
+            child: _NowDisplayingBarCard(
+              collapsedHeight: _collapsedHeight,
+              expandedHeight: _expandedHeight,
+              status: status,
+              router: router,
+            ),
+          ),
         ),
       ),
     );
@@ -222,7 +227,7 @@ class _NowPlayingSleepBar extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(child: TopLine(color: PrimitivesTokens.colorsGrey)),
+            const Center(child: TopLine(color: PrimitivesTokens.colorsGrey)),
             SizedBox(height: LayoutConstants.space2),
             Expanded(
               child: Row(
@@ -235,7 +240,7 @@ class _NowPlayingSleepBar extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  SleepModeIndicator(
+                  const SleepModeIndicator(
                     isSleeping: true,
                   ),
                 ],

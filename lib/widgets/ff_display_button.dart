@@ -122,34 +122,40 @@ class _FFDisplayButtonState extends ConsumerState<FFDisplayButton>
     final right = screenWidth - (offset.dx + size.width);
 
     _overlayEntry = OverlayEntry(
-      builder: (context) => Stack(
-        children: [
-          Positioned.fill(
-            child: AbsorbPointer(
-              child: Container(
-                color: PrimitivesTokens.colorsBlack.withValues(alpha: 0.6),
+      builder: (context) => Material(
+        type: MaterialType.transparency,
+        child: DefaultTextStyle(
+          style: AppTypography.body(context).white,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: AbsorbPointer(
+                  child: Container(
+                    color: PrimitivesTokens.colorsBlack.withValues(alpha: 0.6),
+                  ),
+                ),
               ),
-            ),
-          ),
-          Positioned(
-            right: right,
-            top: offset.dy,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                PlayButton(
-                  isProcessing: _isProcessing,
-                  onTap: _handlePlayTap,
+              Positioned(
+                right: right,
+                top: offset.dy,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    PlayButton(
+                      isProcessing: _isProcessing,
+                      onTap: _handlePlayTap,
+                    ),
+                    SizedBox(height: LayoutConstants.space5),
+                    PlayToFF1Tooltip(
+                      onDismiss: _dismissTooltip,
+                    ),
+                  ],
                 ),
-                SizedBox(height: LayoutConstants.space5),
-                PlayToFF1Tooltip(
-                  onDismiss: _dismissTooltip,
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
 
@@ -197,7 +203,7 @@ class _FFDisplayButtonState extends ConsumerState<FFDisplayButton>
     final activeAsync = ref.watch(activeFF1BluetoothDeviceProvider);
 
     return activeAsync.when(
-      data: (FF1Device? device) {
+      data: (device) {
         if (device == null) {
           return const SizedBox.shrink();
         }
@@ -212,7 +218,7 @@ class _FFDisplayButtonState extends ConsumerState<FFDisplayButton>
         );
       },
       loading: () => const SizedBox.shrink(),
-      error: (Object e, StackTrace s) => const SizedBox.shrink(),
+      error: (e, s) => const SizedBox.shrink(),
     );
   }
 }

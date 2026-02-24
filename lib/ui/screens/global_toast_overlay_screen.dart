@@ -26,28 +26,36 @@ class GlobalToastOverlayScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: SafeArea(
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: AppColor.primaryBlack,
-                borderRadius: BorderRadius.circular(12),
-              ),
+    return Material(
+      type: MaterialType.transparency,
+      child: DefaultTextStyle(
+        style: AppTypography.body(context).copyWith(
+          color: AppColor.white,
+        ),
+        child: IgnorePointer(
+          child: SafeArea(
+            child: Align(
+              alignment: Alignment.bottomCenter,
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: Text(
-                  payload.message,
-                  style: AppTypography.body(context).copyWith(
-                    color: AppColor.white,
+                padding: const EdgeInsets.only(bottom: 24),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppColor.primaryBlack,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  textAlign: TextAlign.center,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Text(
+                      payload.message,
+                      style: AppTypography.body(context).copyWith(
+                        color: AppColor.white,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 ),
               ),
             ),
