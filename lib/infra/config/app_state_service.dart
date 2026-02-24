@@ -61,18 +61,58 @@ class AddressIndexingProcessStatus {
   }
 }
 
+/// Abstract contract for app-level and per-address state services.
+///
+/// Declares the public API only; implementations live in [AppStateService].
+abstract class AppStateServiceBase {
+  Future<DateTime> getLastRefreshTime(String baseUrl);
+  Future<void> setLastTimeRefreshFeeds(DateTime time);
+  Future<void> setLastRefreshTime(String baseUrl, DateTime time);
+  Future<bool> hasFeedBareIngestCompleted(String baseUrl);
+  Future<void> setFeedBareIngestCompleted({
+    required String baseUrl,
+    required bool completed,
+    DateTime? completedAt,
+  });
+  Future<void> deleteLastRefreshTime(String baseUrl);
+  Future<Duration> getCacheDuration();
+  Future<void> setCacheDuration(Duration duration);
+  Future<DateTime> getLastFeedUpdatedAt();
+  Future<void> setLastFeedUpdatedAt(DateTime time);
+  Future<bool> hasSeenOnboarding();
+  Future<void> setHasSeenOnboarding({required bool hasSeen});
+  Future<bool> hasSeenPlayToFf1Tooltip();
+  Future<void> setHasSeenPlayToFf1Tooltip({required bool hasSeen});
+  Future<int?> getAddressAnchor(String address);
+  Future<void> setAddressAnchor({
+    required String address,
+    required int anchor,
+  });
+  Future<void> clearAddressAnchor(String address);
+  Future<AddressIndexingProcessStatus?> getAddressIndexingStatus(String address);
+  Future<void> setAddressIndexingStatus({
+    required String address,
+    required AddressIndexingProcessStatus status,
+  });
+  Future<void> clearAddressIndexingStatus(String address);
+  Future<void> clearAddressState(String address);
+  Future<Map<String, AddressIndexingProcessStatus>>
+      getAllAddressIndexingStatuses();
+  void debugLogSummary();
+}
+
 /// Single typed state service for app-level + per-address local state.
 ///
 /// This service intentionally stores only non-SQLite state. Address ownership
 /// and token/playlist content remain source-of-truth in SQLite.
-class AppStateService {
+class AppStateService extends AppStateServiceBase {
   AppStateService({
     required Box<AppStateEntity> appStateBox,
     required Box<AppStateAddressEntity> appStateAddressBox,
     Logger? logger,
-  }) : _appStateBox = appStateBox,
-       _appStateAddressBox = appStateAddressBox,
-       _log = logger ?? Logger('AppStateService');
+  })  : _appStateBox = appStateBox,
+        _appStateAddressBox = appStateAddressBox,
+        _log = logger ?? Logger('AppStateService');
 
   static const _scope = 'app';
   static const _defaultCacheDurationSeconds = 86400;
@@ -92,7 +132,6 @@ class AppStateService {
     if (existing != null) {
       return existing;
     }
-
     final created = AppStateEntity(
       updatedAtUs: DateTime.now().toUtc().microsecondsSinceEpoch,
     );
@@ -116,7 +155,6 @@ class AppStateService {
     if (existing != null) {
       return existing;
     }
-
     final created = AppStateAddressEntity(
       normalizedAddress: normalizedAddress,
       updatedAtUs: DateTime.now().toUtc().microsecondsSinceEpoch,
@@ -141,7 +179,6 @@ class AppStateService {
                 AddressIndexingProcessState.values.length
         ? AddressIndexingProcessState.values[entity.indexingProcessStateIndex]
         : AddressIndexingProcessState.idle;
-
     return AddressIndexingProcessStatus(
       state: state,
       updatedAt: _fromUs(
@@ -154,7 +191,7 @@ class AppStateService {
     );
   }
 
-  /// Feed cache refresh timestamp for one feed base URL.
+  @override
   Future<DateTime> getLastRefreshTime(String baseUrl) async {
     return _lock.synchronized(() {
       final app = _getOrCreateSingleton();
@@ -187,6 +224,7 @@ class AppStateService {
   }
 
   /// Mark all feed URLs stale by setting one global epoch.
+  @override
   Future<void> setLastTimeRefreshFeeds(DateTime time) async {
     await _lock.synchronized(() async {
       final app = _getOrCreateSingleton()
@@ -197,6 +235,7 @@ class AppStateService {
   }
 
   /// Update refresh timestamp for one feed base URL.
+  @override
   Future<void> setLastRefreshTime(String baseUrl, DateTime time) async {
     await _lock.synchronized(() async {
       final app = _getOrCreateSingleton()
@@ -214,6 +253,7 @@ class AppStateService {
   }
 
   /// Whether initial DP1 bare ingest completed successfully for one feed.
+  @override
   Future<bool> hasFeedBareIngestCompleted(String baseUrl) async {
     return _lock.synchronized(() {
       final query = _appStateAddressBox
@@ -229,6 +269,7 @@ class AppStateService {
   }
 
   /// Mark initial DP1 bare ingest completion status for one feed.
+  @override
   Future<void> setFeedBareIngestCompleted({
     required String baseUrl,
     required bool completed,
@@ -249,6 +290,7 @@ class AppStateService {
   }
 
   /// Remove feed refresh timestamp for one base URL.
+  @override
   Future<void> deleteLastRefreshTime(String baseUrl) async {
     await _lock.synchronized(() async {
       final query = _appStateAddressBox
@@ -268,6 +310,7 @@ class AppStateService {
   }
 
   /// Global feed cache TTL.
+  @override
   Future<Duration> getCacheDuration() async {
     return _lock.synchronized(() {
       final app = _getOrCreateSingleton();
@@ -279,6 +322,7 @@ class AppStateService {
   }
 
   /// Set global feed cache TTL.
+  @override
   Future<void> setCacheDuration(Duration duration) async {
     await _lock.synchronized(() async {
       final app = _getOrCreateSingleton()
@@ -289,6 +333,7 @@ class AppStateService {
   }
 
   /// Global feed last-updated timestamp from remote config.
+  @override
   Future<DateTime> getLastFeedUpdatedAt() async {
     return _lock.synchronized(() {
       final app = _getOrCreateSingleton();
@@ -300,6 +345,7 @@ class AppStateService {
   }
 
   /// Set global feed last-updated timestamp from remote config.
+  @override
   Future<void> setLastFeedUpdatedAt(DateTime time) async {
     await _lock.synchronized(() async {
       final app = _getOrCreateSingleton()
@@ -310,6 +356,7 @@ class AppStateService {
   }
 
   /// Whether user completed onboarding.
+  @override
   Future<bool> hasSeenOnboarding() async {
     return _lock.synchronized(() {
       return _getOrCreateSingleton().hasSeenOnboarding;
@@ -317,6 +364,7 @@ class AppStateService {
   }
 
   /// Persist onboarding completion.
+  @override
   Future<void> setHasSeenOnboarding({required bool hasSeen}) async {
     await _lock.synchronized(() async {
       final app = _getOrCreateSingleton()
@@ -327,6 +375,7 @@ class AppStateService {
   }
 
   /// Whether user already saw the Play-to-FF1 tooltip.
+  @override
   Future<bool> hasSeenPlayToFf1Tooltip() async {
     return _lock.synchronized(() {
       return _getOrCreateSingleton().hasSeenPlayToFf1Tooltip;
@@ -334,6 +383,7 @@ class AppStateService {
   }
 
   /// Persist Play-to-FF1 tooltip seen state.
+  @override
   Future<void> setHasSeenPlayToFf1Tooltip({required bool hasSeen}) async {
     await _lock.synchronized(() async {
       final app = _getOrCreateSingleton()
@@ -344,6 +394,7 @@ class AppStateService {
   }
 
   /// Get incremental indexer anchor for an address.
+  @override
   Future<int?> getAddressAnchor(String address) async {
     return _lock.synchronized(() {
       final row = _findAddressState(_normalizeAddressKey(address));
@@ -355,6 +406,7 @@ class AppStateService {
   }
 
   /// Persist incremental indexer anchor for an address.
+  @override
   Future<void> setAddressAnchor({
     required String address,
     required int anchor,
@@ -369,6 +421,7 @@ class AppStateService {
   }
 
   /// Remove incremental indexer anchor for an address.
+  @override
   Future<void> clearAddressAnchor(String address) async {
     await _lock.synchronized(() async {
       final row = _findAddressState(_normalizeAddressKey(address));
@@ -384,6 +437,7 @@ class AppStateService {
   }
 
   /// Get per-address indexing process status.
+  @override
   Future<AddressIndexingProcessStatus?> getAddressIndexingStatus(
     String address,
   ) async {
@@ -397,6 +451,7 @@ class AppStateService {
   }
 
   /// Persist per-address indexing process status.
+  @override
   Future<void> setAddressIndexingStatus({
     required String address,
     required AddressIndexingProcessStatus status,
@@ -414,6 +469,7 @@ class AppStateService {
   }
 
   /// Remove per-address indexing process status.
+  @override
   Future<void> clearAddressIndexingStatus(String address) async {
     await _lock.synchronized(() async {
       final row = _findAddressState(_normalizeAddressKey(address));
@@ -430,6 +486,7 @@ class AppStateService {
   }
 
   /// Remove all app-state row data for a specific address key.
+  @override
   Future<void> clearAddressState(String address) async {
     await _lock.synchronized(() async {
       final row = _findAddressState(_normalizeAddressKey(address));
@@ -440,6 +497,7 @@ class AppStateService {
   }
 
   /// Returns all persisted indexing statuses keyed by normalized address.
+  @override
   Future<Map<String, AddressIndexingProcessStatus>>
   getAllAddressIndexingStatuses() async {
     return _lock.synchronized(() {
@@ -457,6 +515,7 @@ class AppStateService {
     });
   }
 
+  @override
   void debugLogSummary() {
     _log.fine(
       'AppState summary: app=${_appStateBox.count()}, address=${_appStateAddressBox.count()}',
