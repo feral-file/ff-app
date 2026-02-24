@@ -83,13 +83,20 @@ flutter pub get
 
 ### Run (dev)
 ```bash
+# Android (development flavor)
+flutter run --flavor development
+
+# iOS
 flutter run
 ```
 
 ### Build
 ```bash
-# Android
-flutter build apk --release
+# Android (production)
+flutter build apk --flavor production --release
+
+# Android (development)
+flutter build apk --flavor development --release
 
 # iOS
 flutter build ios --release
@@ -101,11 +108,28 @@ flutter build ios --release
 
 > **Note:** Keep secrets out of git. Use per-environment configs.
 
+Required keys (ask team for dev/staging values):
+- `DP1_FEED_URL`
+- `INDEXER_API_URL`
+- `DP1_FEED_API_KEY`
+- `INDEXER_API_KEY`
+- `FF1_RELAYER_API_KEY` (or `TV_API_KEY`)
+- `REMOTE_CONFIG_URL`
+
+If any required key is missing, the app will show a configuration error screen on launch.
+
+Starter template: copy `.env.example` to `.env` and fill in values.
+
 Typical values (names are illustrative—use your repo’s actual config system):
 - `API_BASE_URL` — Discovery/Content API base URL
 - `DP1_BASE_URL` — DP-1 endpoints (e.g., play)
 - `FEATURE_FLAGS` — enable/disable Orbit features (e.g., curator Star tools)
 - `LOG_LEVEL` — debug/info/warn/error
+
+### Local dev quickstart
+1) Create `.env` with the required keys above (do not commit).
+2) `flutter pub get`
+3) `flutter run --flavor development`
 
 ---
 
