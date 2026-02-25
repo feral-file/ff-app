@@ -5,6 +5,7 @@ import 'package:app/infra/ff1/ble_transport/ff1_ble_transport.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:riverpod/src/providers/future_provider.dart';
 
 // ============================================================================
 // Custom Retry Logic for BLE Operations
@@ -326,7 +327,7 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
   }) async {
     if (state.isScanning) return;
 
-    state = state.copyWith(isScanning: true, error: null);
+    state = state.copyWith(isScanning: true);
 
     try {
       final devices = await _control.scan(timeout: timeout);
@@ -351,7 +352,7 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
 }
 
 /// FF1 scan state provider
-final ff1ScanProvider =
+final NotifierProvider<FF1ScanNotifier, FF1ScanState> ff1ScanProvider =
     NotifierProvider.autoDispose<FF1ScanNotifier, FF1ScanState>(
   FF1ScanNotifier.new,
 );
@@ -389,7 +390,7 @@ class FF1BleConnectParams {
 ///   ff1BleConnectProvider(FF1BleConnectParams(device: device)).future,
 /// );
 /// ```
-final ff1BleConnectProvider =
+final FutureProviderFamily<void, FF1BleConnectParams> ff1BleConnectProvider =
     FutureProvider.autoDispose.family<void, FF1BleConnectParams>(
   retry: _bleRetry,
   (ref, params) async {
@@ -447,7 +448,7 @@ class FF1BleCommandParams<T extends FF1BleRequest> {
 ///   )).future,
 /// );
 /// ```
-final ff1BleSendCommandProvider =
+final FutureProviderFamily<FF1BleResponse, FF1BleCommandParams<FF1BleRequest>> ff1BleSendCommandProvider =
     FutureProvider.autoDispose.family<FF1BleResponse, FF1BleCommandParams>(
   retry: _bleRetry,
   (ref, params) async {

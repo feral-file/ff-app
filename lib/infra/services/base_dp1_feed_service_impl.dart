@@ -8,7 +8,6 @@ import 'package:app/infra/api/dp1_feed_api.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/database_service.dart';
-import 'package:app/infra/database/drift_kinds.dart';
 import 'package:app/infra/services/base_dp1_feed_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -114,7 +113,7 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
   @override
   Future<List<(Playlist, List<PlaylistItem>)>> getAllCachedPlaylists() async {
     return databaseService.getPlaylistRowsWithItems(
-      kind: DriftPlaylistKind.dp1.value,
+      type: PlaylistType.dp1,
       baseUrl: baseUrl,
     );
   }
@@ -172,7 +171,7 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
   Future<void> clearCache() async {
     await appStateService.deleteLastRefreshTime(baseUrl);
     await databaseService.deleteAllPlaylistsByKindAndBaseUrl(
-      kind: DriftPlaylistKind.dp1.value,
+      type: PlaylistType.dp1,
       baseUrl: baseUrl,
     );
   }

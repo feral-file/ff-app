@@ -11,7 +11,6 @@ import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/converters.dart';
-import 'package:app/infra/database/drift_kinds.dart';
 import 'package:app/infra/database/token_transformer.dart';
 import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
@@ -37,31 +36,6 @@ class DatabaseService {
   static const int enrichmentStatusEnriched = 1;
   static const int enrichmentStatusFailed = 2;
 
-  Future<T> _runWriteTaskOnDriftIsolate<T>({
-    required Future<T> Function(AppDatabase db) task,
-  }) async {
-    try {
-      return await _db.computeWithDatabase<T, AppDatabase>(
-        connect: AppDatabase.fromConnection,
-        computation: task,
-      );
-    } on Object catch (e) {
-      if (e is UnsupportedError) {
-        _log.warning(
-          'computeWithDatabase unsupported, running on current isolate: $e',
-        );
-        return task(_db);
-      }
-      if (e is ArgumentError && _isIsolateSendFailure(e)) {
-        _log.warning(
-          'Failed to send payload to drift isolate, running locally: $e',
-        );
-        return task(_db);
-      }
-      rethrow;
-    }
-  }
-
   // ===========================================================================
   // Watch operations (reactive streams)
   // ===========================================================================
@@ -75,7 +49,7 @@ class DatabaseService {
   }) {
     return _db
         .watchChannels(type: type?.index, limit: limit)
-        .debounceTime(Duration(milliseconds: 300))
+        .debounceTime(const Duration(milliseconds: 300))
         .map(
           (rows) => rows.map(DatabaseConverters.channelDataToDomain).toList(),
         );
@@ -97,7 +71,7 @@ class DatabaseService {
           ownerAddress: ownerAddress,
           limit: limit,
         )
-        .debounceTime(Duration(milliseconds: 300))
+        .debounceTime(const Duration(milliseconds: 300))
         .map(
           (rows) =>
               rows.map(DatabaseConverters.playlistDataToDomainPreview).toList(),
@@ -212,7 +186,7 @@ class DatabaseService {
           limit: limit,
           offset: offset ?? 0,
         )
-        .debounceTime(Duration(milliseconds: 300))
+        .debounceTime(const Duration(milliseconds: 300))
         .map(
           (rows) => rows.map(DatabaseConverters.itemDataToDomain).toList(),
         );
@@ -310,7 +284,7 @@ class DatabaseService {
   Stream<Channel?> watchChannelById(String id) {
     return _db
         .watchChannelById(id)
-        .debounceTime(Duration(milliseconds: 300))
+        .debounceTime(const Duration(milliseconds: 300))
         .map(
           (data) => data != null
               ? DatabaseConverters.channelDataToDomain(data)
@@ -377,13 +351,18 @@ class DatabaseService {
   }
 
   /// Get all playlists.
-  Future<List<Playlist>> getAllPlaylists() async {
+  ///
+  /// When [type] is provided, results are filtered by playlist type.
+  Future<List<Playlist>> getAllPlaylists({PlaylistType? type}) async {
     try {
-      final data = await _db.getAllPlaylists();
+      final data = await _db.getAllPlaylists(type: type);
       final playlists = data
           .map(DatabaseConverters.playlistDataToDomain)
           .toList();
-      _log.info('Retrieved ${playlists.length} playlists from database');
+      _log.info(
+        'Retrieved ${playlists.length} playlists from database'
+        '${type != null ? ' (type: ${type.name})' : ''}',
+      );
       return playlists;
     } catch (e, stack) {
       _log.severe('Failed to get all playlists', e, stack);
@@ -489,7 +468,7 @@ class DatabaseService {
   Stream<PlaylistItem?> watchPlaylistItemById(String id) {
     return _db
         .watchItemById(id)
-        .debounceTime(Duration(milliseconds: 300))
+        .debounceTime(const Duration(milliseconds: 300))
         .map((data) {
           if (data == null) return null;
           try {
@@ -811,7 +790,6 @@ class DatabaseService {
         return DatabaseConverters.createPlaylistEntry(
           playlistId: addressPlaylistId,
           itemId: item.id,
-          position: null, // No position for provenance-based sorting
           sortKeyUs: item.sortKeyUs ?? 0,
         );
       }).toList();
@@ -887,7 +865,6 @@ class DatabaseService {
         // Convert without token enrichment (thumbnail/artists will be null)
         final playlistItem = DatabaseConverters.dp1PlaylistItemToPlaylistItem(
           item,
-          token: null,
         );
         playlistItems.add(playlistItem);
         entries.add(
@@ -1018,7 +995,7 @@ class DatabaseService {
   Future<List<(Playlist, List<PlaylistItem>, String)>>
   getPlaylistRowsByBaseUrls({
     required List<String> baseUrls,
-    int? kind,
+    PlaylistType? type,
     int? offset,
     int? limit,
   }) async {
@@ -1026,7 +1003,7 @@ class DatabaseService {
 
     final rows = await _db.getPlaylistsByBaseUrlsOrdered(
       baseUrls: baseUrls,
-      type: kind ?? DriftPlaylistKind.dp1.value,
+      type: type?.value,
       offset: offset,
       limit: limit,
     );
@@ -1070,19 +1047,16 @@ class DatabaseService {
   /// Get playlists with items by channel/kind/baseUrl (domain only).
   Future<List<(Playlist, List<PlaylistItem>)>> getPlaylistRowsWithItems({
     String? channelId,
-    int? kind,
+    PlaylistType? type,
     String? baseUrl,
   }) async {
     List<PlaylistData> rows;
     if (channelId != null) {
       rows = await _db.getPlaylistsByChannel(channelId);
     } else {
-      rows = await _db.getAllPlaylists();
+      rows = await _db.getAllPlaylists(type: type);
     }
 
-    if (kind != null) {
-      rows = rows.where((p) => p.type == kind).toList();
-    }
     if (baseUrl != null) {
       rows = rows.where((p) => p.baseUrl == baseUrl).toList();
     }
@@ -1111,19 +1085,25 @@ class DatabaseService {
   /// Delete all playlists of given kind and baseUrl.
   /// Matches old repo's deleteAllPlaylists(kind, baseUrl).
   Future<void> deleteAllPlaylistsByKindAndBaseUrl({
-    required int kind,
+    required PlaylistType type,
     required String baseUrl,
   }) async {
-    await _db.deletePlaylistsByTypeAndBaseUrl(type: kind, baseUrl: baseUrl);
+    await _db.deletePlaylistsByTypeAndBaseUrl(
+      type: type,
+      baseUrl: baseUrl,
+    );
   }
 
   /// Delete all channels of given kind and baseUrl.
   /// Matches old repo's deleteAllChannels(kind, baseUrl).
   Future<void> deleteAllChannelsByKindAndBaseUrl({
-    required int type,
+    required ChannelType type,
     required String baseUrl,
   }) async {
-    await _db.deleteChannelsByTypeAndBaseUrl(type: type, baseUrl: baseUrl);
+    await _db.deleteChannelsByTypeAndBaseUrl(
+      type: type.value,
+      baseUrl: baseUrl,
+    );
   }
 
   /// Clear all data from the database (for testing/reset).
@@ -1271,7 +1251,6 @@ class DatabaseService {
       for (var i = 0; i < playlist.items.length; i++) {
         final bareItem = DatabaseConverters.dp1PlaylistItemToPlaylistItem(
           playlist.items[i],
-          token: null,
         );
         itemCompanions.add(
           DatabaseConverters.playlistItemToCompanion(bareItem),
@@ -1577,7 +1556,7 @@ class DatabaseService {
       // Create companion with enriched data
       final companion = ItemsCompanion(
         id: Value(itemId),
-        kind: Value(1), // indexer token
+        kind: const Value(1), // indexer token
         title: Value(enrichedItem.title),
         subtitle: Value(enrichedItem.subtitle),
         thumbnailUri: Value(enrichedItem.thumbnailUrl),
@@ -1710,10 +1689,6 @@ class DatabaseService {
   String? buildTokenCidFromProvenanceJson(String? provenanceJson) {
     return _buildTokenCidFromProvenanceJson(provenanceJson);
   }
-}
-
-bool _isIsolateSendFailure(ArgumentError error) {
-  return error.toString().contains('Illegal argument in isolate message');
 }
 
 bool _isDatabaseLockedError(Object error) {

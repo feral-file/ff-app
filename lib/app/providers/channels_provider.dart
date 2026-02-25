@@ -6,6 +6,8 @@ import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:riverpod/src/providers/future_provider.dart';
+import 'package:riverpod/src/providers/notifier.dart';
 
 /// State for a single channel type (curated or personal).
 /// Aligns with old repo: one list per ChannelType,
@@ -21,27 +23,6 @@ class ChannelsState {
     this.total,
     this.error,
   });
-
-  /// Channels for this type (domain).
-  final List<Channel> channels;
-
-  /// Whether channels are being loaded.
-  final bool isLoading;
-
-  /// Whether more channels are being loaded (pagination).
-  final bool isLoadingMore;
-
-  /// Whether there are more channels to load (pagination).
-  final bool hasMore;
-
-  /// Cursor for pagination (stringified offset).
-  final String? cursor;
-
-  /// Total count when known (optional).
-  final int? total;
-
-  /// Error if loading failed.
-  final String? error;
 
   /// Initial state.
   factory ChannelsState.initial() {
@@ -93,6 +74,27 @@ class ChannelsState {
       error: error,
     );
   }
+
+  /// Channels for this type (domain).
+  final List<Channel> channels;
+
+  /// Whether channels are being loaded.
+  final bool isLoading;
+
+  /// Whether more channels are being loaded (pagination).
+  final bool isLoadingMore;
+
+  /// Whether there are more channels to load (pagination).
+  final bool hasMore;
+
+  /// Cursor for pagination (stringified offset).
+  final String? cursor;
+
+  /// Total count when known (optional).
+  final int? total;
+
+  /// Error if loading failed.
+  final String? error;
 
   /// Copy with new values.
   ChannelsState copyWith({
@@ -207,7 +209,6 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
           channels: page,
           hasMore: hasMore,
           cursor: nextCursor,
-          total: null,
         );
         _log.info(
           'Curated channels: ${page.length}, hasMore: $hasMore, cursor: $nextCursor',
@@ -308,7 +309,7 @@ bool _isOperationCancelled(Object error) {
 }
 
 /// Provider for channels state by type (dp1 = curated, localVirtual = personal).
-final channelsProvider =
+final NotifierProviderFamily<ChannelsNotifier, ChannelsState, ChannelType> channelsProvider =
     NotifierProvider.family<ChannelsNotifier, ChannelsState, ChannelType>(
       ChannelsNotifier.new,
     );
@@ -332,7 +333,7 @@ final loadMoreChannelsMutationProvider =
     );
 
 /// Provider for a specific channel by ID.
-final channelByIdProvider = FutureProvider.family<Channel?, String>((
+final FutureProviderFamily<Channel?, String> channelByIdProvider = FutureProvider.family<Channel?, String>((
   ref,
   channelId,
 ) async {

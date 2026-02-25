@@ -128,26 +128,26 @@ class Playlist {
 
   @override
   int get hashCode => Object.hash(
-        id,
-        name,
-        type,
-        description,
-        channelId,
-        playlistRole,
-        playlistSource,
-        baseUrl,
-        dpVersion,
-        slug,
-        createdAt,
-        updatedAt,
-        Object.hashAll(signatures ?? []),
-        defaults != null ? _deepEquality.hash(defaults) : null,
-        Object.hashAll(dynamicQueries ?? []),
-        ownerAddress,
-        ownerChain,
-        sortMode,
-        itemCount,
-      );
+    id,
+    name,
+    type,
+    description,
+    channelId,
+    playlistRole,
+    playlistSource,
+    baseUrl,
+    dpVersion,
+    slug,
+    createdAt,
+    updatedAt,
+    Object.hashAll(signatures ?? []),
+    defaults != null ? _deepEquality.hash(defaults) : null,
+    Object.hashAll(dynamicQueries ?? []),
+    ownerAddress,
+    ownerChain,
+    sortMode,
+    itemCount,
+  );
 
   /// Creates a copy with updated values.
   Playlist copyWith({
@@ -200,10 +200,15 @@ class Playlist {
 /// Playlist type enumeration.
 enum PlaylistType {
   /// DP1 playlist from feed server.
-  dp1,
+  dp1(0),
 
   /// Address-based playlist (user's collection).
-  addressBased,
+  addressBased(1)
+  ;
+
+  final int value;
+
+  const PlaylistType(this.value);
 }
 
 /// Playlist role for UI chrome (not a separate domain object).

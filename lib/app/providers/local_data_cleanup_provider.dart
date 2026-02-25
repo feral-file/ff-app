@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/background_workers_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/domain/extensions/playlist_ext.dart';
+import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_local_data_cleaner.dart';
-import 'package:app/domain/extensions/playlist_ext.dart';
-import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/painting.dart';
@@ -115,7 +115,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       for (final address in normalizedAddresses) {
         await appState.clearAddressAnchor(address);
       }
-      await appState.setLastTimeRefreshFeeds(DateTime(1970, 1, 1));
+      await appState.setLastTimeRefreshFeeds(DateTime(1970));
 
       final feedManager = ref.read(feedManagerProvider);
       final workerScheduler = ref.read(workerSchedulerProvider);
@@ -143,7 +143,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     },
     onResetCompleted: () async {
       final appState = ref.read(appStateServiceProvider);
-      await appState.setLastTimeRefreshFeeds(DateTime(1970, 1, 1));
+      await appState.setLastTimeRefreshFeeds(DateTime(1970));
 
       final feedManager = ref.read(feedManagerProvider);
       feedManager.resumeWork();

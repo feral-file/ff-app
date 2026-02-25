@@ -1,5 +1,4 @@
 import 'package:app/app/feed/feed_registry_provider.dart';
-import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
@@ -108,34 +107,15 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       await appState.setLastFeedUpdatedAt(feedLastUpdatedAt);
 
       final publishers = ref.read(remoteConfigPublishersProvider);
-      final curatedUrls = publishers.expand(
-        (publisher) => publisher.channelUrls,
-      );
-      final curatedSetupFuture = ref
+      await ref
           .read(feedRegistryProvider.notifier)
           .setupRemoteConfigChannels(
             publishers,
           );
 
-      // conect to relayer
-      final ff1WifiConnectionNotifier = ref.read(
-        ff1WifiConnectionProvider.notifier,
-      );
-      final activeDevice = ref.read(activeFF1BluetoothDeviceProvider);
-      activeDevice.when(
-        data: (device) {
-          if (device != null) {
-            ff1WifiConnectionNotifier.connect(
-              device: device,
-              userId: 'user_id',
-              apiKey: AppConfig.ff1RelayerApiKey,
-            );
-          }
-        },
-        error: (error, stack) =>
-            _log.severe('Error connecting to relayer', error, stack),
-        loading: () => _log.info('Loading active device'),
-      );
+      // Keep the auto-connect watcher alive to automatically connect to relayer
+      // when active FF1 device changes
+      ref.watch(ff1AutoConnectWatcherProvider);
     } on Exception catch (e, stack) {
       if (_isOperationCancelled(e)) {
         _log.info('Bootstrap cancelled');

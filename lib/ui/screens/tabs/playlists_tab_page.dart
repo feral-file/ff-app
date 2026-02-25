@@ -112,16 +112,12 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
       _cachedPersonalState = nextPersonalState;
     }
     final curatedPlaylists = curatedState.playlists;
-    final channelPublisherById = ref.watch(
-      dp1ChannelPublisherByIdProvider,
-    );
     final curatedSectionPlaylists = curatedPlaylists.where((playlist) {
       final channelId = playlist.channelId;
       if (channelId == null || channelId.isEmpty) {
         return false;
       }
-      final publisherId = channelPublisherById.asData?.value[channelId];
-      return publisherId == 0;
+      return true;
     }).toList();
     final personalPlaylists = personalState.playlists;
     final error = curatedState.error ?? personalState.error;

@@ -39,7 +39,7 @@ class AddAddressNotifier extends AsyncNotifier<Address?> {
 }
 
 /// Provider for adding address
-final addAddressProvider =
+final AsyncNotifierProvider<AddAddressNotifier, Address?> addAddressProvider =
     AsyncNotifierProvider.autoDispose<AddAddressNotifier, Address?>(
   AddAddressNotifier.new,
 );
@@ -81,7 +81,7 @@ class AddAliasNotifier extends AsyncNotifier<void> {
 }
 
 /// Provider for adding alias
-final addAliasProvider =
+final AsyncNotifierProvider<AddAliasNotifier, void> addAliasProvider =
     AsyncNotifierProvider.autoDispose<AddAliasNotifier, void>(
   AddAliasNotifier.new,
 );

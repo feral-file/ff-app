@@ -1,4 +1,4 @@
-// ignore_for_file: public_member_api_docs, lines_longer_than_80_chars, cascade_invocations, avoid_redundant_argument_values, unawaited_futures, omit_local_variable_types // Reason: orchestration glue; keep compact + stable.
+// ignore_for_file: public_member_api_docs, lines_longer_than_80_chars, cascade_invocations, avoid_redundant_argument_values, unawaited_futures // Reason: orchestration glue; keep compact + stable.
 
 import 'dart:async';
 
@@ -325,7 +325,7 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     if (tokenIds.isEmpty) {
       tokens = const <AssetToken>[];
     } else {
-      final fetchUuid = Uuid().v1();
+      final fetchUuid = const Uuid().v1();
       final completer = Completer<List<AssetToken>>();
       _fetchManualTokenCompleters[fetchUuid] = completer;
       _worker.getManualTokens(

@@ -1,3 +1,4 @@
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
@@ -7,6 +8,7 @@ import 'package:app/infra/ff1/wifi_transport/ff1_relayer_transport.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:riverpod/src/providers/future_provider.dart';
 
 // ============================================================================
 // Custom Retry Logic for WiFi Operations
@@ -281,6 +283,56 @@ final ff1DeviceConnectedProvider = Provider<bool>((ref) {
 });
 
 // ============================================================================
+// Auto-connect to active FF1 device
+// ============================================================================
+
+/// Auto-connect watcher provider
+///
+/// This provider watches the active FF1 device and automatically connects
+/// to the relayer when the active device changes.
+/// It also disconnects when there is no active device.
+///
+/// This provider should be kept alive by the app
+/// (e.g., in bootstrap or root).
+final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
+  final logger = Logger('FF1AutoConnectWatcher');
+  final activeDeviceAsync = ref.watch(activeFF1BluetoothDeviceProvider);
+  final connectionNotifier = ref.read(ff1WifiConnectionProvider.notifier);
+
+  activeDeviceAsync.when(
+    data: (device) {
+      // Use Future.microtask to defer the connection call
+      // to avoid modifying other providers during build phase
+      Future.microtask(() {
+        if (device != null) {
+          logger.info(
+            'Active device changed: ${device.deviceId}, connecting...',
+          );
+          // Intentionally not awaiting to avoid blocking
+          // ignore: discarded_futures
+          connectionNotifier.connect(
+            device: device,
+            userId: 'user_id',
+            apiKey: AppConfig.ff1RelayerApiKey,
+          );
+        } else {
+          logger.info('No active device, disconnecting...');
+          // Intentionally not awaiting to avoid blocking
+          // ignore: discarded_futures
+          connectionNotifier.disconnect();
+        }
+      });
+    },
+    error: (error, stack) {
+      logger.severe('Error loading active device', error, stack);
+    },
+    loading: () {
+      logger.info('Loading active device...');
+    },
+  );
+});
+
+// ============================================================================
 // Auto-dispose WiFi Operation Providers (with automatic retry)
 // ============================================================================
 
@@ -323,7 +375,7 @@ class FF1WifiConnectParams {
 ///   )).future,
 /// );
 /// ```
-final ff1WifiConnectOperationProvider = FutureProvider.autoDispose
+final FutureProviderFamily<void, FF1WifiConnectParams> ff1WifiConnectOperationProvider = FutureProvider.autoDispose
     .family<void, FF1WifiConnectParams>(
       retry: _wifiRetry,
       (ref, params) async {
@@ -372,7 +424,7 @@ class FF1WifiCommandParams<T> {
 ///   )).future,
 /// );
 /// ```
-final ff1WifiSendCommandProvider = FutureProvider.autoDispose
+final FutureProviderFamily<dynamic, FF1WifiCommandParams<dynamic>> ff1WifiSendCommandProvider = FutureProvider.autoDispose
     .family<dynamic, FF1WifiCommandParams<dynamic>>(
       retry: _wifiRetry,
       (ref, params) async {

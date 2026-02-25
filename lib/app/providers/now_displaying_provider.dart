@@ -60,7 +60,7 @@ final nowDisplayingWindowProvider = Provider<({int start, int end})?>((ref) {
   final status = ref.watch(ff1CurrentPlayerStatusProvider);
   final items = status?.items;
   final index = status?.currentWorkIndex;
-  final ({int start, int end})? requested = ref.watch(
+  final requested = ref.watch(
     nowDisplayingRequestedRangeProvider,
   );
   if (items == null ||
@@ -70,20 +70,20 @@ final nowDisplayingWindowProvider = Provider<({int start, int end})?>((ref) {
       index >= items.length) {
     return null;
   }
-  final int baseStart = (index - nowDisplayingWindowHalfSize).clamp(
+  final baseStart = (index - nowDisplayingWindowHalfSize).clamp(
     0,
     items.length,
   );
-  final int baseEnd = (index + nowDisplayingWindowHalfSize + 1).clamp(
+  final baseEnd = (index + nowDisplayingWindowHalfSize + 1).clamp(
     0,
     items.length,
   );
   if (requested == null) {
     return (start: baseStart, end: baseEnd);
   }
-  final int start = (requested.start < baseStart ? requested.start : baseStart)
+  final start = (requested.start < baseStart ? requested.start : baseStart)
       .clamp(0, items.length);
-  final int end = (requested.end > baseEnd ? requested.end : baseEnd).clamp(
+  final end = (requested.end > baseEnd ? requested.end : baseEnd).clamp(
     0,
     items.length,
   );

@@ -135,8 +135,13 @@ class Channel {
 /// Channel type enumeration.
 enum ChannelType {
   /// DP1 channel from feed server.
-  dp1,
+  dp1(0),
 
   /// Local virtual channel (e.g., My Collection).
-  localVirtual,
+  localVirtual(1)
+  ;
+
+  final int value;
+
+  const ChannelType(this.value);
 }

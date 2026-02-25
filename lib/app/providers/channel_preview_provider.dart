@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:riverpod/src/providers/notifier.dart';
 
 /// Page size for channel preview items (aligns with old repo ChannelPreviewBloc).
 const int channelPreviewPageSize = 10;
@@ -20,21 +20,6 @@ class ChannelPreviewState {
     required this.isLoadingMore,
     this.error,
   });
-
-  /// Preview works (domain) for the channel.
-  final List<PlaylistItem> works;
-
-  /// Whether there are more works to load.
-  final bool hasMore;
-
-  /// Whether initial load is in progress.
-  final bool isLoading;
-
-  /// Whether load-more is in progress.
-  final bool isLoadingMore;
-
-  /// Error message if load failed.
-  final String? error;
 
   /// Initial state.
   factory ChannelPreviewState.initial() {
@@ -79,6 +64,21 @@ class ChannelPreviewState {
       error: error,
     );
   }
+
+  /// Preview works (domain) for the channel.
+  final List<PlaylistItem> works;
+
+  /// Whether there are more works to load.
+  final bool hasMore;
+
+  /// Whether initial load is in progress.
+  final bool isLoading;
+
+  /// Whether load-more is in progress.
+  final bool isLoadingMore;
+
+  /// Error message if load failed.
+  final String? error;
 
   ChannelPreviewState copyWith({
     List<PlaylistItem>? works,
@@ -238,7 +238,6 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
       state = state.copyWith(
         isLoadingMore: false,
         error: e.toString(),
-        clearError: false,
       );
     }
   }
@@ -246,7 +245,7 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
 
 /// Provider for channel preview state (family by channelId).
 /// Auto-dispose when no longer watched.
-final channelPreviewProvider = NotifierProvider.autoDispose
+final NotifierProviderFamily<ChannelPreviewNotifier, ChannelPreviewState, String> channelPreviewProvider = NotifierProvider.autoDispose
     .family<ChannelPreviewNotifier, ChannelPreviewState, String>(
       ChannelPreviewNotifier.new,
     );

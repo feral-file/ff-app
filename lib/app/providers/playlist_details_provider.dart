@@ -6,6 +6,7 @@ import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:riverpod/src/providers/notifier.dart';
 
 /// Data-only state for playlist details (loading/error from AsyncValue).
 class PlaylistDetailsState {
@@ -79,9 +80,7 @@ class PlaylistDetailsNotifier
     });
 
     unawaited(
-      Future.microtask(() {
-        _setupDatabaseListener();
-      }),
+      Future.microtask(_setupDatabaseListener),
     );
     return const AsyncValue.loading();
   }
@@ -133,7 +132,6 @@ class PlaylistDetailsNotifier
           total: fullList.length,
           hasMore: fullList.length > loadedCount,
           offset: loadedCount,
-          isLoadingMore: false,
         ),
       );
     } else {
@@ -165,7 +163,6 @@ class PlaylistDetailsNotifier
           total: items.length,
           hasMore: items.length >= limit,
           offset: nextOffset,
-          isLoadingMore: false,
         ),
       );
     } catch (e, stack) {
@@ -207,7 +204,6 @@ class PlaylistDetailsNotifier
           total: newItemsList.length,
           hasMore: newItems.length >= _pageSize,
           offset: current.offset + newItems.length,
-          isLoadingMore: false,
         ),
       );
     } catch (e, stack) {
@@ -219,7 +215,7 @@ class PlaylistDetailsNotifier
 }
 
 /// Provider for playlist details state (single source; includes items, total, pagination).
-final playlistDetailsProvider = NotifierProvider.autoDispose
+final NotifierProviderFamily<PlaylistDetailsNotifier, AsyncValue<PlaylistDetailsState>, String> playlistDetailsProvider = NotifierProvider.autoDispose
     .family<PlaylistDetailsNotifier, AsyncValue<PlaylistDetailsState>, String>(
       PlaylistDetailsNotifier.new,
     );

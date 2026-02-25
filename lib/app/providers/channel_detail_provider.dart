@@ -1,7 +1,7 @@
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/database_provider.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod/src/providers/stream_provider.dart';
 import 'package:rxdart/rxdart.dart';
 
 /// View model for channel details (domain only).
@@ -20,7 +20,7 @@ class ChannelDetails {
 
 /// Provider for channel details state.
 /// Watches the database so the UI updates when channel or playlists change.
-final channelDetailsProvider =
+final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
     StreamProvider.family<ChannelDetails, String>((ref, channelId) {
   final databaseService = ref.read(databaseServiceProvider);
 

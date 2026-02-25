@@ -55,7 +55,6 @@ final dp1FeedServiceProvider = Provider<FeralFileDP1FeedService>((ref) {
 
   return FeralFileDP1FeedService(
     baseUrl: AppConfig.dp1FeedUrl,
-    isExternalFeedService: false,
     databaseService: databaseService,
     appStateService: appStateService,
     apiKey: AppConfig.dp1FeedApiKey,

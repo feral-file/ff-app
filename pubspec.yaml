@@ -119,6 +119,7 @@ dependencies:
   cupertino_icons: 1.0.8
   rxdart: ^0.28.0
 
+  riverpod: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

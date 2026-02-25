@@ -1,7 +1,7 @@
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/domain/models/ff1_device.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:riverpod/src/providers/future_provider.dart';
 
 final _log = Logger('FF1ConnectionProviders');
 // ============================================================================
@@ -14,7 +14,7 @@ final connectedFF1DevicesProvider = FutureProvider<List<FF1Device>>((
 ) async {
   final allDevices = await ref.watch(allFF1BluetoothDevicesProvider.future);
   return allDevices
-      .where((device) => device.topicId != null && device.topicId!.isNotEmpty)
+      .where((device) => device.topicId.isNotEmpty)
       .toList();
 });
 
@@ -24,7 +24,7 @@ final disconnectedFF1DevicesProvider = FutureProvider<List<FF1Device>>((
 ) async {
   final allDevices = await ref.watch(allFF1BluetoothDevicesProvider.future);
   return allDevices
-      .where((device) => device.topicId == null || device.topicId!.isEmpty)
+      .where((device) => device.topicId.isEmpty)
       .toList();
 });
 
@@ -33,7 +33,7 @@ final disconnectedFF1DevicesProvider = FutureProvider<List<FF1Device>>((
 // ============================================================================
 
 /// Forget (remove) a connected device
-final forgetFF1DeviceProvider = FutureProvider.family<void, String>((
+final FutureProviderFamily<void, String> forgetFF1DeviceProvider = FutureProvider.family<void, String>((
   ref,
   deviceId,
 ) async {
@@ -46,7 +46,7 @@ final forgetFF1DeviceProvider = FutureProvider.family<void, String>((
 });
 
 /// Disconnect device (remove topicId but keep device in storage)
-final disconnectFF1DeviceProvider = FutureProvider.family<void, String>((
+final FutureProviderFamily<void, String> disconnectFF1DeviceProvider = FutureProvider.family<void, String>((
   ref,
   deviceId,
 ) async {

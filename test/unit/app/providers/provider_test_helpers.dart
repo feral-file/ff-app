@@ -111,6 +111,7 @@ class FakeIndexerSyncService extends IndexerSyncService {
 class MockFF1BluetoothDeviceService implements FF1BluetoothDeviceService {
   List<FF1Device> devices = <FF1Device>[];
   String? activeId;
+  String? activeDeviceId;
 
   @override
   List<FF1Device> getAllDevices() => List<FF1Device>.from(devices);
@@ -125,7 +126,7 @@ class MockFF1BluetoothDeviceService implements FF1BluetoothDeviceService {
 
   @override
   FF1Device? getActiveDevice() {
-    final id = activeId;
+    final id = activeDeviceId ?? activeId;
     if (id == null) return null;
     return getDeviceById(id);
   }
@@ -158,6 +159,7 @@ class MockFF1BluetoothDeviceService implements FF1BluetoothDeviceService {
   @override
   Future<void> setActiveDevice(String deviceId) async {
     activeId = deviceId;
+    activeDeviceId = deviceId;
   }
 
   @override
@@ -378,4 +380,25 @@ class FakeWifiControl extends FF1WifiControl {
         transport: FakeWifiTransport(),
         logger: Logger('FakeWifiControl'),
       );
+
+  bool connectCalled = false;
+  bool disconnectCalled = false;
+  FF1Device? lastConnectedDevice;
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+  }) async {
+    connectCalled = true;
+    lastConnectedDevice = device;
+    await super.connect(device: device, userId: userId, apiKey: apiKey);
+  }
+
+  @override
+  Future<void> disconnect() async {
+    disconnectCalled = true;
+    await super.disconnect();
+  }
 }

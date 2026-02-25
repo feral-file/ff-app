@@ -7,6 +7,8 @@ import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:riverpod/src/providers/future_provider.dart';
+import 'package:riverpod/src/providers/notifier.dart';
 import 'package:sentry/sentry.dart';
 
 /// State for a single playlist type (curated or personal).
@@ -23,27 +25,6 @@ class PlaylistsState {
     this.total,
     this.error,
   });
-
-  /// Playlists for this type (domain).
-  final List<Playlist> playlists;
-
-  /// Whether playlists are being loaded.
-  final bool isLoading;
-
-  /// Whether more playlists are being loaded (pagination).
-  final bool isLoadingMore;
-
-  /// Whether there are more playlists to load (pagination).
-  final bool hasMore;
-
-  /// Cursor for pagination (stringified offset).
-  final String? cursor;
-
-  /// Total count when known (optional, from DB/API).
-  final int? total;
-
-  /// Error if loading failed.
-  final String? error;
 
   /// Initial state.
   factory PlaylistsState.initial() {
@@ -95,6 +76,27 @@ class PlaylistsState {
       error: error,
     );
   }
+
+  /// Playlists for this type (domain).
+  final List<Playlist> playlists;
+
+  /// Whether playlists are being loaded.
+  final bool isLoading;
+
+  /// Whether more playlists are being loaded (pagination).
+  final bool isLoadingMore;
+
+  /// Whether there are more playlists to load (pagination).
+  final bool hasMore;
+
+  /// Cursor for pagination (stringified offset).
+  final String? cursor;
+
+  /// Total count when known (optional, from DB/API).
+  final int? total;
+
+  /// Error if loading failed.
+  final String? error;
 
   /// Copy with new values.
   PlaylistsState copyWith({
@@ -200,10 +202,8 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
             total: result.length,
           );
           _log.info('Curated playlists: ${result.length}');
-          break;
         case PlaylistType.addressBased:
           await _loadAddressBasedPlaylists();
-          break;
       }
     } catch (e, stack) {
       if (!ref.mounted) return;
@@ -221,19 +221,19 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
   /// Caller sets state; watch will emit updates when DB changes.
   Future<List<Playlist>> _loadDp1Playlists() async {
     final startTime = DateTime.now();
-    final feedManager = ref.read(databaseServiceProvider);
-    final refs = await feedManager.getAllPlaylists();
+    final databaseService = ref.read(databaseServiceProvider);
+    final refs = await databaseService.getAllPlaylists(type: PlaylistType.dp1);
     final duration = DateTime.now().difference(startTime);
     if (duration > _slowQueryThreshold) {
       _log.warning(
-        'Slow getAllPlaylists(): ${duration.inMilliseconds}ms '
+        'Slow getAllPlaylists(type: dp1): ${duration.inMilliseconds}ms '
         '(returned: ${refs.length})',
       );
       unawaited(
         Sentry.captureEvent(
           SentryEvent(
             message: SentryMessage(
-              'Slow getAllPlaylists(): ${duration.inMilliseconds}ms '
+              'Slow getAllPlaylists(type: dp1): ${duration.inMilliseconds}ms '
               '(returned: ${refs.length})',
             ),
             level: SentryLevel.warning,
@@ -271,7 +271,8 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
 }
 
 /// Provider for playlists state by type (dp1 = curated, addressBased = personal).
-final playlistsProvider =
+final NotifierProviderFamily<PlaylistsNotifier, PlaylistsState, PlaylistType>
+playlistsProvider =
     NotifierProvider.family<PlaylistsNotifier, PlaylistsState, PlaylistType>(
       PlaylistsNotifier.new,
     );
@@ -300,20 +301,21 @@ final loadMorePlaylistsMutationProvider =
     );
 
 /// Provider for playlists in a specific channel.
-final playlistsByChannelProvider =
+final FutureProviderFamily<List<Playlist>, String> playlistsByChannelProvider =
     FutureProvider.family<List<Playlist>, String>((ref, channelId) async {
       final databaseService = ref.watch(databaseServiceProvider);
       return databaseService.getPlaylistsByChannel(channelId);
     });
 
 /// Provider for a specific playlist by ID.
-final playlistByIdProvider = FutureProvider.family<Playlist?, String>((
-  ref,
-  playlistId,
-) async {
-  final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService.getPlaylistById(playlistId);
-});
+final FutureProviderFamily<Playlist?, String> playlistByIdProvider =
+    FutureProvider.family<Playlist?, String>((
+      ref,
+      playlistId,
+    ) async {
+      final databaseService = ref.watch(databaseServiceProvider);
+      return databaseService.getPlaylistById(playlistId);
+    });
 
 /// Watch DP-1 channel publisher ids keyed by channel id.
 final dp1ChannelPublisherByIdProvider = StreamProvider<Map<String, int>>((

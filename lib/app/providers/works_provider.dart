@@ -1,17 +1,20 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:logging/logging.dart';
-
+import 'package:app/app/providers/channel_preview_provider.dart' show ChannelPreviewNotifier, ChannelPreviewState;
 import 'package:app/app/providers/mutations.dart';
+import 'package:app/app/providers/playlist_details_provider.dart' show PlaylistDetailsNotifier;
 import 'package:app/app/providers/services_provider.dart';
-import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:app/domain/extensions/playlist_item_ext.dart';
+import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/util/content_type_resolver.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
+import 'package:riverpod/src/providers/future_provider.dart';
+import 'package:riverpod/src/providers/notifier.dart';
 
 /// Page size for works list (aligns with [ChannelPreviewNotifier] pattern).
 const int worksPageSize = 50;
@@ -28,21 +31,6 @@ class WorksState {
     required this.isLoadingMore,
     this.error,
   });
-
-  /// List of works (domain).
-  final List<PlaylistItem> works;
-
-  /// Whether there are more works to load.
-  final bool hasMore;
-
-  /// Whether initial load is in progress.
-  final bool isLoading;
-
-  /// Whether load-more is in progress.
-  final bool isLoadingMore;
-
-  /// Error if loading failed.
-  final String? error;
 
   /// Initial state.
   factory WorksState.initial() {
@@ -87,6 +75,21 @@ class WorksState {
       error: error,
     );
   }
+
+  /// List of works (domain).
+  final List<PlaylistItem> works;
+
+  /// Whether there are more works to load.
+  final bool hasMore;
+
+  /// Whether initial load is in progress.
+  final bool isLoading;
+
+  /// Whether load-more is in progress.
+  final bool isLoadingMore;
+
+  /// Error if loading failed.
+  final String? error;
 
   /// Copy with new values.
   WorksState copyWith({
@@ -425,7 +428,6 @@ class WorksNotifier extends Notifier<WorksState> {
       state = state.copyWith(
         isLoadingMore: false,
         error: e.toString(),
-        clearError: false,
       );
     }
   }
@@ -467,7 +469,7 @@ final loadMoreWorksMutationProvider =
     );
 
 /// Provider for playlist items in a specific playlist.
-final playlistItemsProvider = FutureProvider.family<List<PlaylistItem>, String>(
+final FutureProviderFamily<List<PlaylistItem>, String> playlistItemsProvider = FutureProvider.family<List<PlaylistItem>, String>(
   (ref, playlistId) async {
     final databaseService = ref.watch(databaseServiceProvider);
     return databaseService.getPlaylistItems(playlistId);
@@ -533,12 +535,12 @@ class WorkDetailNotifier extends Notifier<AsyncValue<WorkDetailData?>> {
   void _onItemChanged(PlaylistItem? item) {
     if (!ref.mounted) return;
     if (item == null) {
-      state = AsyncValue.data(null);
+      state = const AsyncValue.data(null);
       return;
     }
     final hasChanged = item != state.value?.item;
     state = AsyncValue.data(
-      WorkDetailData(item: item, token: null, mimeType: null),
+      WorkDetailData(item: item),
     );
     if (hasChanged) {
       unawaited(_loadAndEmit(item));
@@ -553,7 +555,7 @@ class WorkDetailNotifier extends Notifier<AsyncValue<WorkDetailData?>> {
 
     if (!ref.mounted) return;
     state = AsyncValue.data(
-      WorkDetailData(item: item, token: null, mimeType: mimeType),
+      WorkDetailData(item: item, mimeType: mimeType),
     );
 
     AssetToken? token;
@@ -575,7 +577,7 @@ class WorkDetailNotifier extends Notifier<AsyncValue<WorkDetailData?>> {
 
 /// Provider for work detail screen. Listens to the database so UI refreshes
 /// when the item changes (e.g. enrichment). Auto-disposes when no longer listened.
-final workDetailStateProvider = NotifierProvider.autoDispose
+final NotifierProviderFamily<WorkDetailNotifier, AsyncValue<WorkDetailData?>, String> workDetailStateProvider = NotifierProvider.autoDispose
     .family<WorkDetailNotifier, AsyncValue<WorkDetailData?>, String>(
       WorkDetailNotifier.new,
     );

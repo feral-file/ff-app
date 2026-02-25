@@ -154,6 +154,73 @@ void main() {
           expect(retrieved[0].ownerAddress, '0xABCD');
         },
       );
+
+      test('getAllPlaylists returns all playlists when type is null', () async {
+        final playlists = [
+          Playlist(
+            id: 'pl_dp1',
+            name: 'DP1 Playlist',
+            type: PlaylistType.dp1,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+          Playlist(
+            id: 'pl_addr',
+            name: 'Address Playlist',
+            type: PlaylistType.addressBased,
+            ownerAddress: '0xABCD',
+            sortMode: PlaylistSortMode.provenance,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+        ];
+
+        await service.ingestPlaylists(playlists);
+
+        final retrieved = await service.getAllPlaylists();
+        expect(
+          retrieved.map((p) => p.id).toSet(),
+          equals({'pl_dp1', 'pl_addr'}),
+        );
+      });
+
+      test('getAllPlaylists filters playlists by type', () async {
+        final playlists = [
+          Playlist(
+            id: 'pl_dp1',
+            name: 'DP1 Playlist',
+            type: PlaylistType.dp1,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+          Playlist(
+            id: 'pl_addr',
+            name: 'Address Playlist',
+            type: PlaylistType.addressBased,
+            ownerAddress: '0xABCD',
+            sortMode: PlaylistSortMode.provenance,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+        ];
+
+        await service.ingestPlaylists(playlists);
+
+        final dp1 = await service.getAllPlaylists(type: PlaylistType.dp1);
+        expect(dp1, hasLength(1));
+        expect(dp1.single.id, equals('pl_dp1'));
+        expect(dp1.single.type, equals(PlaylistType.dp1));
+
+        final addressBased = await service.getAllPlaylists(
+          type: PlaylistType.addressBased,
+        );
+        expect(addressBased, hasLength(1));
+        expect(addressBased.single.id, equals('pl_addr'));
+        expect(
+          addressBased.single.type,
+          equals(PlaylistType.addressBased),
+        );
+      });
     });
 
     group('PlaylistItem operations', () {

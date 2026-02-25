@@ -13,21 +13,23 @@ class ErrorView extends StatelessWidget {
 
   /// Error message to display.
   final String error;
-  
+
   /// Optional retry callback.
   final void Function()? onRetry;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: LayoutConstants.pageHorizontalDefault),
+      padding: EdgeInsets.symmetric(
+        horizontal: LayoutConstants.pageHorizontalDefault,
+      ),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
               error,
-              style: AppTypography.body(context).grey,
+              style: AppTypography.bodySmall(context).white,
               textAlign: TextAlign.center,
             ),
             if (onRetry != null) ...[
@@ -36,7 +38,7 @@ class ErrorView extends StatelessWidget {
                 onPressed: onRetry,
                 child: Text(
                   'Retry',
-                  style: AppTypography.body(context).white,
+                  style: AppTypography.bodySmall(context).white,
                 ),
               ),
             ],

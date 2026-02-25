@@ -9,7 +9,6 @@ import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/database/database_service.dart';
-import 'package:app/infra/database/drift_kinds.dart';
 import 'package:app/infra/services/base_dp1_feed_service_impl.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:collection/collection.dart';
@@ -176,7 +175,7 @@ class FeedManager {
 
     final rows = await _databaseService.getPlaylistRowsByBaseUrls(
       baseUrls: baseUrls,
-      kind: DriftPlaylistKind.dp1.value,
+      type: PlaylistType.dp1,
       offset: offset,
       limit: limit,
     );

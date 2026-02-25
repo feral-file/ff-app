@@ -7,7 +7,6 @@ import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/converters.dart';
-import 'package:app/infra/database/drift_kinds.dart';
 import 'package:app/infra/services/base_dp1_feed_service_impl.dart';
 import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
@@ -59,7 +58,7 @@ class DP1FeedWithChannelExtensionServiceImpl extends BaseDP1FeedServiceImpl {
   ) async {
     return databaseService.getPlaylistRowsWithItems(
       channelId: channelId,
-      kind: DriftPlaylistKind.dp1.value,
+      type: PlaylistType.dp1,
       baseUrl: baseUrl,
     );
   }
@@ -283,7 +282,7 @@ class DP1FeedWithChannelExtensionServiceImpl extends BaseDP1FeedServiceImpl {
   Future<void> clearCache() async {
     await super.clearCache();
     await databaseService.deleteAllChannelsByKindAndBaseUrl(
-      type: DriftChannelKind.dp1.value,
+      type: ChannelType.dp1,
       baseUrl: baseUrl,
     );
   }

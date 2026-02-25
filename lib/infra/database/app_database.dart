@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/tables.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
@@ -508,7 +509,11 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Get all playlists.
-  Future<List<PlaylistData>> getAllPlaylists() async {
+  ///
+  /// When [type] is provided, results are filtered by playlist type:
+  /// - 0 = DP1
+  /// - 1 = address-based
+  Future<List<PlaylistData>> getAllPlaylists({PlaylistType? type}) async {
     const publisherOrderExpr = CustomExpression<int>(
       '''
       COALESCE(
@@ -521,12 +526,18 @@ class AppDatabase extends _$AppDatabase {
       )
       ''',
     );
-    return (select(playlists)..orderBy([
-          (t) => OrderingTerm.asc(publisherOrderExpr),
-          (t) => OrderingTerm.desc(t.createdAtUs),
-          (t) => OrderingTerm.asc(t.id),
-        ]))
-        .get();
+    final query = select(playlists);
+    if (type != null) {
+      query.where((t) => t.type.equals(type.value));
+    }
+
+    query.orderBy([
+      (t) => OrderingTerm.asc(publisherOrderExpr),
+      (t) => OrderingTerm.desc(t.createdAtUs),
+      (t) => OrderingTerm.asc(t.id),
+    ]);
+
+    return query.get();
   }
 
   /// Get address-based playlists.
@@ -1030,12 +1041,13 @@ class AppDatabase extends _$AppDatabase {
   /// Delete all playlists of given type and baseUrl.
   /// Matches old repo's deleteAllPlaylists(kind, baseUrl).
   Future<int> deletePlaylistsByTypeAndBaseUrl({
-    required int type,
+    required PlaylistType type,
     required String baseUrl,
   }) async {
     return (delete(
-      playlists,
-    )..where((p) => p.type.equals(type) & p.baseUrl.equals(baseUrl))).go();
+          playlists,
+        )..where((p) => p.type.equals(type.value) & p.baseUrl.equals(baseUrl)))
+        .go();
   }
 
   /// Delete all channels of given type and baseUrl.

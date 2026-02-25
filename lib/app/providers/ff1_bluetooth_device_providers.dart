@@ -1,6 +1,7 @@
-import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod/src/providers/future_provider.dart';
 
 /// Service for managing FF1 Bluetooth device persistence.
 ///
@@ -43,7 +44,7 @@ final allFF1BluetoothDevicesProvider =
 /// ```dart
 /// final device = ref.watch(ff1BluetoothDeviceByIdProvider('device123'));
 /// ```
-final ff1BluetoothDeviceByIdProvider =
+final FutureProviderFamily<FF1Device?, String> ff1BluetoothDeviceByIdProvider =
     FutureProvider.family<FF1Device?, String>((ref, deviceId) async {
   final service = ref.watch(ff1BluetoothDeviceServiceProvider);
   return service.getDeviceById(deviceId);
@@ -69,7 +70,7 @@ final activeFF1BluetoothDeviceProvider =
 ///   ff1BluetoothDeviceByRemoteIdProvider('AA:BB:CC:DD:EE:FF'),
 /// );
 /// ```
-final ff1BluetoothDeviceByRemoteIdProvider =
+final FutureProviderFamily<FF1Device?, String> ff1BluetoothDeviceByRemoteIdProvider =
     FutureProvider.family<FF1Device?, String>((ref, remoteId) async {
   final service = ref.watch(ff1BluetoothDeviceServiceProvider);
   return service.getDeviceByRemoteId(remoteId);
@@ -83,7 +84,7 @@ final ff1BluetoothDeviceByRemoteIdProvider =
 ///   addFF1BluetoothDeviceProvider(device).future,
 /// );
 /// ```
-final addFF1BluetoothDeviceProvider =
+final FutureProviderFamily<void, FF1Device> addFF1BluetoothDeviceProvider =
     FutureProvider.family<void, FF1Device>((ref, device) async {
   final service = ref.watch(ff1BluetoothDeviceServiceProvider);
   await service.putDevice(device);
@@ -92,7 +93,7 @@ final addFF1BluetoothDeviceProvider =
 });
 
 /// Remove a device from storage.
-final removeFF1BluetoothDeviceProvider =
+final FutureProviderFamily<void, String> removeFF1BluetoothDeviceProvider =
     FutureProvider.family<void, String>((ref, deviceId) async {
   final service = ref.watch(ff1BluetoothDeviceServiceProvider);
   await service.removeDevice(deviceId);
@@ -101,7 +102,7 @@ final removeFF1BluetoothDeviceProvider =
 });
 
 /// Set a device as active.
-final setActiveFF1BluetoothDeviceProvider =
+final FutureProviderFamily<void, String> setActiveFF1BluetoothDeviceProvider =
     FutureProvider.family<void, String>((ref, deviceId) async {
   final service = ref.watch(ff1BluetoothDeviceServiceProvider);
   await service.setActiveDevice(deviceId);
@@ -110,7 +111,7 @@ final setActiveFF1BluetoothDeviceProvider =
 });
 
 /// Update device connection state.
-final updateFF1DeviceConnectionStateProvider =
+final FutureProviderFamily<void, ({String deviceId, int state})> updateFF1DeviceConnectionStateProvider =
     FutureProvider.family<void, ({String deviceId, int state})>(
   (ref, params) async {
     final service = ref.watch(ff1BluetoothDeviceServiceProvider);
@@ -120,7 +121,7 @@ final updateFF1DeviceConnectionStateProvider =
 );
 
 /// Record a failed connection attempt.
-final recordFF1FailedConnectionProvider =
+final FutureProviderFamily<void, String> recordFF1FailedConnectionProvider =
     FutureProvider.family<void, String>((ref, deviceId) async {
   final service = ref.watch(ff1BluetoothDeviceServiceProvider);
   await service.recordFailedConnection(deviceId);
@@ -128,7 +129,7 @@ final recordFF1FailedConnectionProvider =
 });
 
 /// Update device topic ID (cloud connectivity).
-final updateFF1DeviceTopicIdProvider =
+final FutureProviderFamily<void, ({String deviceId, String topicId})> updateFF1DeviceTopicIdProvider =
     FutureProvider.family<void, ({String deviceId, String topicId})>(
   (ref, params) async {
     final service = ref.watch(ff1BluetoothDeviceServiceProvider);
@@ -138,7 +139,7 @@ final updateFF1DeviceTopicIdProvider =
 );
 
 /// Update device metadata.
-final updateFF1DeviceMetadataProvider = FutureProvider.family<void,
+final FutureProviderFamily<void, ({String deviceId, Map<String, dynamic> metadata})> updateFF1DeviceMetadataProvider = FutureProvider.family<void,
     ({String deviceId, Map<String, dynamic> metadata})>(
   (ref, params) async {
     final service = ref.watch(ff1BluetoothDeviceServiceProvider);

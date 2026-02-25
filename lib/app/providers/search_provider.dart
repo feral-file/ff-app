@@ -69,8 +69,8 @@ final searchResultsProvider = FutureProvider<SearchResults>((ref) async {
   try {
     final databaseService = ref.watch(databaseServiceProvider);
     final results = await Future.wait([
-      databaseService.searchChannelsByTitle(query, limit: 20),
-      databaseService.searchPlaylistsByTitle(query, limit: 20),
+      databaseService.searchChannelsByTitle(query),
+      databaseService.searchPlaylistsByTitle(query),
       databaseService.searchItemsByTitle(query, limit: 40),
     ]);
 

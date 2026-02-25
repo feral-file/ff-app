@@ -26,8 +26,7 @@ class CollapsedNowPlayingBar extends StatefulWidget {
   final VoidCallback? onTap;
 
   @override
-  State<CollapsedNowPlayingBar> createState() =>
-      _CollapsedNowPlayingBarState();
+  State<CollapsedNowPlayingBar> createState() => _CollapsedNowPlayingBarState();
 }
 
 class _CollapsedNowPlayingBarState extends State<CollapsedNowPlayingBar>
@@ -71,6 +70,7 @@ class _CollapsedNowPlayingBarState extends State<CollapsedNowPlayingBar>
           children: [
             const TopLine(),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: NowDisplayingDisplayItem(
