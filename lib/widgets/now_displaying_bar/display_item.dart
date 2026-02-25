@@ -60,7 +60,7 @@ class NowDisplayingDisplayItem extends StatelessWidget {
                         item.artistName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTypography.body(context).white,
+                        style: AppTypography.bodySmall(context).white,
                       ),
                       Transform.translate(
                         offset: Offset(
@@ -73,8 +73,10 @@ class NowDisplayingDisplayItem extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: isInExpandedView
-                              ? AppTypography.body(context).white.bold.italic
-                              : AppTypography.body(context).white,
+                              ? AppTypography.bodySmall(
+                                  context,
+                                ).white.bold.italic
+                              : AppTypography.bodySmall(context).white,
                         ),
                       ),
                     ],

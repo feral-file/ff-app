@@ -65,10 +65,10 @@ class TypographyTokens {
 
   // BodySmall
   static const bodySmallFontFamily = 'PP Mori';
-  static const bodySmallFontSize = 14;
+  static const bodySmallFontSize = 12;
   static const bodySmallFontWeight = 'Regular';
   static const bodySmallLetterSpacing = 0;
-  static const bodySmallLineHeight = 19.6;
+  static const bodySmallLineHeight = 16.8;
   static const bodySmallParagraphIndent = 0;
   static const bodySmallParagraphSpacing = 8;
 

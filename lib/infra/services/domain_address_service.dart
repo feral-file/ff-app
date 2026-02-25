@@ -134,6 +134,7 @@ class DomainAddressService {
           if (_resolverApiKey.isNotEmpty) 'X-API-KEY': _resolverApiKey,
         },
       ),
+      queryRequestTimeout: const Duration(seconds: 10),
     );
 
     try {
