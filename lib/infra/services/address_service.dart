@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/database/database_service.dart';
@@ -63,7 +65,7 @@ class AddressService {
       final existing = await _getAddressPlaylistByOwner(normalizedAddress);
       if (existing != null) {
         _log.info('Address playlist already exists: ${existing.id}');
-        await _workerScheduler.onAddressAdded(normalizedAddress);
+        _scheduleAddressIndexing(normalizedAddress);
         return existing;
       }
 
@@ -73,7 +75,7 @@ class AddressService {
       );
 
       await _databaseService.ingestPlaylist(playlist);
-      await _workerScheduler.onAddressAdded(normalizedAddress);
+      _scheduleAddressIndexing(normalizedAddress);
 
       _log.info('Added address playlist: ${playlist.id}');
       return playlist;
@@ -81,6 +83,21 @@ class AddressService {
       _log.severe('Failed to add address $walletAddress', e, stack);
       rethrow;
     }
+  }
+
+  void _scheduleAddressIndexing(String normalizedAddress) {
+    unawaited(
+      _workerScheduler.onAddressAdded(normalizedAddress).catchError((
+        Object error,
+        StackTrace stack,
+      ) {
+        _log.warning(
+          'Background indexing schedule failed for $normalizedAddress',
+          error,
+          stack,
+        );
+      }),
+    );
   }
 
   /// Remove an address and its playlist.
