@@ -6,6 +6,11 @@ import 'package:app/util/svg_utils.dart';
 import 'package:flutter/material.dart';
 
 class ImageNFTRenderingWidget extends NFTRenderingWidget {
+  final String previewURL;
+  final VoidCallback? onLoaded;
+  final Widget? noPreviewUrlWidget;
+  final Widget? errorWidget;
+  final ImageLoadingBuilder? loadingBuilder;
 
   const ImageNFTRenderingWidget({
     required this.previewURL,
@@ -15,11 +20,6 @@ class ImageNFTRenderingWidget extends NFTRenderingWidget {
     this.errorWidget,
     this.loadingBuilder,
   });
-  final String previewURL;
-  final VoidCallback? onLoaded;
-  final Widget? noPreviewUrlWidget;
-  final Widget? errorWidget;
-  final ImageLoadingBuilder? loadingBuilder;
 
   @override
   State<ImageNFTRenderingWidget> createState() =>

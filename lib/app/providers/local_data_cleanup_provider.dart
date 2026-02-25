@@ -115,6 +115,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       for (final address in normalizedAddresses) {
         await appState.clearAddressAnchor(address);
       }
+      await appState.setLastTimeRefreshFeeds(DateTime(1970));
 
       final feedManager = ref.read(feedManagerProvider);
       final workerScheduler = ref.read(workerSchedulerProvider);
@@ -141,6 +142,9 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       ref.read(tokensSyncCoordinatorProvider.notifier).pausePolling();
     },
     onResetCompleted: () async {
+      final appState = ref.read(appStateServiceProvider);
+      await appState.setLastTimeRefreshFeeds(DateTime(1970));
+
       final feedManager = ref.read(feedManagerProvider);
       feedManager.resumeWork();
       unawaited(feedManager.reloadAllCache(force: true));

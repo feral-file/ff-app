@@ -188,14 +188,14 @@ class EnrichItemWorker extends BackgroundWorker {
         workerId: workerId,
         payload: <String, dynamic>{
           'enrichedCount': enrichedCount ?? 0,
-          'requestedCount': ?requestedCount,
-          'retrievedCount': ?retrievedCount,
-          'matchedCount': ?matchedCount,
-          'failedCount': ?failedCount,
-          'requestedByChain': ?requestedByChain,
-          'retrievedByChain': ?retrievedByChain,
-          'missingByChain': ?missingByChain,
-          'missingCidSamples': ?missingCidSamples,
+          if (requestedCount != null) 'requestedCount': requestedCount,
+          if (retrievedCount != null) 'retrievedCount': retrievedCount,
+          if (matchedCount != null) 'matchedCount': matchedCount,
+          if (failedCount != null) 'failedCount': failedCount,
+          if (requestedByChain != null) 'requestedByChain': requestedByChain,
+          if (retrievedByChain != null) 'retrievedByChain': retrievedByChain,
+          if (missingByChain != null) 'missingByChain': missingByChain,
+          if (missingCidSamples != null) 'missingCidSamples': missingCidSamples,
         },
       );
       _onMessageSent?.call(completeMessage);

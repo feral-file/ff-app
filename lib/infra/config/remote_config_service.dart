@@ -68,13 +68,13 @@ class RemoteConfigService {
         config: config,
         etag: entity.etag,
       );
-    } on FormatException {
+    } on FormatException catch (e, stack) {
       _log.info(
         'Ignoring invalid cached remote config; refetching from network.',
       );
       _box.remove(entity.id);
       return null;
-    } on Object {
+    } on Object catch (e, stack) {
       _log.info(
         'Failed to decode cached remote config; refetching from network.',
       );
@@ -151,6 +151,7 @@ class RemoteConfigService {
   }) {
     final existing = _getEntity();
     final entity = RemoteAppConfigEntity(
+      scope: 'app',
       etag: etag,
       curatedChannelUrlsJson: jsonEncode(
         config.publishers.map((publisher) => publisher.toJson()).toList(),

@@ -19,7 +19,7 @@ class DeviceInfoService {
   String _deviceOSName = '';
   String _deviceOSVersion = '';
   bool _didInitialized = false;
-  final Map<String, String> _appleModelIdentifier = {};
+  Map<String, String> _appleModelIdentifier = {};
 
   Future<void> init() async {
     _log.info('[DeviceInfoService] init');

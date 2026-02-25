@@ -35,7 +35,9 @@ class NowDisplayingAppShell extends StatelessWidget {
               return Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.translucent,
-                  onTap: NowDisplayingSheetController.collapse,
+                  onTap: () {
+                    NowDisplayingSheetController.collapse();
+                  },
                   child: const ColoredBox(
                     color: Colors.transparent,
                   ),

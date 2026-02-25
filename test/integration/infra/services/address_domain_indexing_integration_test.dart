@@ -65,11 +65,13 @@ void main() {
       final ensTokens = await fetchAllTokensByOffsetCursor(
         indexerService: indexerService,
         address: ensAddress,
+        pageSize: 50,
         maxPages: 40,
       );
       final tnsTokens = await fetchAllTokensByOffsetCursor(
         indexerService: indexerService,
         address: tnsAddress,
+        pageSize: 50,
         maxPages: 40,
       );
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:sentry/sentry.dart';
 import 'package:video_player/video_player.dart';
@@ -9,9 +10,6 @@ final _log = Logger('VideoControllerManager');
 final videoControllerManager = VideoControllerManager(maxVideoControllers: 1);
 
 class VideoControllerManager {
-
-  // Constructor to set the maximum number of controllers
-  VideoControllerManager({this.maxVideoControllers = 2});
   // Map to store video positions when users switch between videos
   final Map<String, Duration> _videoSeekPositionMap = {};
 
@@ -31,6 +29,9 @@ class VideoControllerManager {
   final Map<String, Completer<VideoPlayerController>>
       _requestVideoControllerCompleters = {};
 
+  // Constructor to set the maximum number of controllers
+  VideoControllerManager({this.maxVideoControllers = 2});
+
   final Map<String, bool> _cyclingUriMap = {};
 
   final Map<String, int> _controllerRefCount =
@@ -39,7 +40,7 @@ class VideoControllerManager {
   Future<void> _recycleUri(Uri videoUri,
       {bool resetSeekPosition = false}) async {
     final videoPath = videoUri.toString();
-    if (_cyclingUriMap[videoPath] ?? false) {
+    if (_cyclingUriMap[videoPath] == true) {
       _log.info('[VideoControllerManager] Recycling video controller '
           'for $videoUri is already in progress');
       return;
@@ -93,7 +94,7 @@ class VideoControllerManager {
       await _recycleUri(videoUri, resetSeekPosition: resetSeekPosition);
     } else {
       // Dispose all controllers
-      for (final controller in _videoControllers.values) {
+      for (var controller in _videoControllers.values) {
         final videoPath = _controllerPool.firstWhere(
           (path) => _videoControllers[path] == controller,
           orElse: () => '',
@@ -118,7 +119,7 @@ class VideoControllerManager {
     _log.info(
         '[VideoControllerManager] Requesting video controller for $videoUri');
     final videoPath = videoUri.toString();
-    var completer =
+    Completer<VideoPlayerController>? completer =
         _requestVideoControllerCompleters[videoPath];
     if (completer != null) {
       return completer.future;

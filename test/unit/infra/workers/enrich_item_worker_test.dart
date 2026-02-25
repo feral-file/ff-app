@@ -76,7 +76,7 @@ void main() {
         databasePath: ':memory:',
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
-        onMessageSent: messagesSent.add,
+        onMessageSent: (msg) => messagesSent.add(msg),
       );
 
       await worker.start();

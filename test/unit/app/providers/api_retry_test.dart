@@ -1,6 +1,11 @@
 import 'package:app/app/providers/api_retry_strategy.dart';
 import 'package:app/infra/config/app_config.dart';
+import 'package:app/infra/database/app_database.dart';
+import 'package:app/infra/database/database_provider.dart';
+import 'package:app/infra/database/database_service.dart';
 import 'package:dio/dio.dart';
+import 'package:drift/native.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Tests for Riverpod automatic retry functionality.

@@ -15,20 +15,20 @@ class LayoutConstants {
   /// Height for DP-1 carousel rows (65.0 from DP1CarouselTokens.itemHeight).
   ///
   /// This is a UI layout constant used by list rows to reserve space.
-  static const double dp1CarouselHeight = 65;
+  static const double dp1CarouselHeight = 65.0;
 
   /// Content padding horizontal for DP-1 carousel (12.0 from DP1CarouselTokens).
-  static const double dp1CarouselContentPaddingHorizontal = 12;
+  static const double dp1CarouselContentPaddingHorizontal = 12.0;
 
   /// Content padding vertical for DP-1 carousel (0.0 from DP1CarouselTokens).
-  static const double dp1CarouselContentPaddingVertical = 0;
+  static const double dp1CarouselContentPaddingVertical = 0.0;
 
   // Work item thumbnail sizes (from ArtworkItemTokens)
   /// Container width for work thumbnails in carousel (51.83 from ArtworkItemTokens.containerWidth).
   static const double workThumbnailContainerWidth = 51.83;
 
   /// Container height for work thumbnails in carousel (65.0 from ArtworkItemTokens.containerHeight).
-  static const double workThumbnailContainerHeight = 65;
+  static const double workThumbnailContainerHeight = 65.0;
 
   /// Container padding for work thumbnails (2.76 from ArtworkItemTokens.containerPadding).
   static const double workThumbnailContainerPadding = 2.76;

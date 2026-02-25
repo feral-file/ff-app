@@ -2,11 +2,12 @@ import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
-import 'package:app/widgets/now_displaying_bar/device_sub_nav.dart';
-import 'package:app/widgets/now_displaying_bar/display_item_list.dart';
-import 'package:app/widgets/now_displaying_bar/top_line.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'device_sub_nav.dart';
+import 'display_item_list.dart';
+import 'top_line.dart';
 
 /// Expanded now playing bar matching old repo structure.
 ///
@@ -58,7 +59,7 @@ class _ExpandedNowPlayingBarState extends ConsumerState<ExpandedNowPlayingBar> {
     );
     final lastVisibleRaw = ((listOffset + viewportHeight) / itemHeight)
         .ceil()
-        ;
+        .toInt();
     final lastVisible = (lastVisibleRaw - 1).clamp(0, totalItems - 1);
 
     // Extend when scroll is about to reach the start or end of the current window
@@ -68,8 +69,8 @@ class _ExpandedNowPlayingBarState extends ConsumerState<ExpandedNowPlayingBar> {
 
     if (!nearWindowStart && !nearWindowEnd) return;
 
-    var newStart = window.start;
-    var newEnd = window.end;
+    int newStart = window.start;
+    int newEnd = window.end;
     if (nearWindowStart && window.start > 0) {
       newStart = (window.start - _pageSize).clamp(0, totalItems);
     }
@@ -94,7 +95,7 @@ class _ExpandedNowPlayingBarState extends ConsumerState<ExpandedNowPlayingBar> {
     if (totalItems == 0 || index < 0 || index >= totalItems) return;
 
     // Match DisplayItemList layout: each row = NowDisplayingDisplayItem (thumb height) + gap.
-    const itemHeight = 60;
+    final itemHeight = 60;
     // LayoutConstants.nowDisplayingDisplayItemThumbHeight +
     // LayoutConstants.nowPlayingBarBottomDisplayItemListGap;
     final position = _scrollController.position;

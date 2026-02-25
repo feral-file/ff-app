@@ -1,8 +1,9 @@
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/widgets/now_displaying_bar/display_item.dart';
 import 'package:flutter/material.dart';
+
+import 'display_item.dart';
 
 /// Display item list for expanded now playing bar.
 ///
@@ -41,6 +42,7 @@ class DisplayItemList extends StatelessWidget {
                 children: [
                   NowDisplayingDisplayItem(
                     item: item,
+                    deviceName: null,
                     isPlaying: index == selectedIndex,
                     isInExpandedView: true,
                     onTap: () {

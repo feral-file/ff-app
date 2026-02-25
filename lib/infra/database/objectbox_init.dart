@@ -1,7 +1,8 @@
-import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/objectbox.g.dart' show getObjectBoxModel;
 import 'package:objectbox/objectbox.dart';
 import 'package:path_provider/path_provider.dart';
+
+import 'package:app/infra/database/objectbox_models.dart';
 
 Store? _sharedStore;
 

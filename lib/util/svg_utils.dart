@@ -39,7 +39,7 @@ class SvgUtils {
   /// Removes <style> tag and applies styles directly to elements
   static String convertCssClassesToInlineStyles(String svgString) {
     // Extract style definitions from <style> tag
-    final stylePattern = RegExp('<style>(.*?)</style>', dotAll: true);
+    final stylePattern = RegExp(r'<style>(.*?)</style>', dotAll: true);
     final styleMatch = stylePattern.firstMatch(svgString);
 
     if (styleMatch == null) {
@@ -47,7 +47,7 @@ class SvgUtils {
     }
 
     final styleContent = styleMatch.group(1)!;
-    final classStyles = <String, String>{};
+    final Map<String, String> classStyles = {};
 
     // Parse CSS class definitions: .c0{fill:rgb(255, 255, 153)}
     final classPattern = RegExp(r'\.(\w+)\{([^}]+)\}');

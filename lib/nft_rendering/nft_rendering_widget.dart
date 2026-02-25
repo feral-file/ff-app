@@ -1,3 +1,4 @@
+// ignore_for_file: discarded_futures
 
 import 'package:flutter/material.dart';
 
@@ -171,9 +172,9 @@ class NoPreviewUrlWidget extends StatelessWidget {
 class RectangleClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
-    const double radius = 14;
+    double radius = 14;
 
-    final path = Path()
+    Path path = Path()
       ..lineTo(0, 0)
       ..lineTo(size.width - radius, 0)
       ..lineTo(size.width, radius)

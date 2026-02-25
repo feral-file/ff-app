@@ -94,14 +94,14 @@ class _TwoStopDraggableSheetState extends State<TwoStopDraggableSheet> {
   void didUpdateWidget(covariant TwoStopDraggableSheet oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.minSize != oldWidget.minSize) {
-      final isCurrentlyExpanded = isNowDisplayingBarExpanded.value;
-      final shouldClampToMin =
+      final bool isCurrentlyExpanded = isNowDisplayingBarExpanded.value;
+      final bool shouldClampToMin =
           !isCurrentlyExpanded || _controller.size < widget.minSize;
 
       if (shouldClampToMin) {
         _isAdjustingSize = true;
-        final distance = (widget.minSize - _controller.size).abs();
-        final ms = (120 + distance * 200).clamp(80, 300).toInt();
+        final double distance = (widget.minSize - _controller.size).abs();
+        final int ms = (120 + distance * 200).clamp(80, 300).toInt();
         collapseSheet(duration: Duration(milliseconds: ms));
       }
     }

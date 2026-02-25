@@ -1,4 +1,4 @@
-// ignore_for_file: public_member_api_docs, sort_constructors_first, one_member_abstracts // Reason: protocol-shaped indexer models; keep stable + auditable.
+// ignore_for_file: public_member_api_docs, sort_constructors_first, lines_longer_than_80_chars, one_member_abstracts // Reason: protocol-shaped indexer models; keep stable + auditable.
 
 /// Base type for parsed change metadata.
 ///

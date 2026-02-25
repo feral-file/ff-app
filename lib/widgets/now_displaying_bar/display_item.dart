@@ -63,7 +63,7 @@ class NowDisplayingDisplayItem extends StatelessWidget {
                         style: AppTypography.bodySmall(context).white,
                       ),
                       Transform.translate(
-                        offset: const Offset(
+                        offset: Offset(
                           0,
                           LayoutConstants
                               .nowDisplayingDisplayItemTextArtworkGap,

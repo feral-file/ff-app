@@ -180,9 +180,10 @@ void main() {
     });
 
     test('toJson serializes correctly', () {
-      const status = FF1PlayerStatus(
+      final status = FF1PlayerStatus(
         playlistId: 'pl_test',
         currentWorkIndex: 2,
+        isPaused: false,
         connectedDeviceId: 'dev_123',
       );
 
@@ -225,6 +226,7 @@ void main() {
       final status = FF1PlayerStatus(
         playlistId: 'pl_test',
         currentWorkIndex: 0,
+        isPaused: false,
         connectedDeviceId: 'dev_123',
         items: [
           DP1PlaylistItem(

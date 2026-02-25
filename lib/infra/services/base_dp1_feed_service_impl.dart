@@ -162,7 +162,6 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
         hasMore = resp.hasMore;
         cursor = resp.cursor;
       }
-      await appStateService.setLastRefreshTime(baseUrl, DateTime.now());
     } finally {
       _isReloadingCache = false;
     }
@@ -212,6 +211,7 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
         '[BaseDP1FeedServiceImpl] Forced cache reload for baseUrl=$baseUrl',
       );
       await reloadCache();
+      await appStateService.setLastRefreshTime(baseUrl, DateTime.now());
       return;
     }
 
@@ -228,6 +228,7 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
       '[BaseDP1FeedServiceImpl] Reloading cache (policy) for baseUrl=$baseUrl',
     );
     await reloadCache();
+    await appStateService.setLastRefreshTime(baseUrl, DateTime.now());
   }
 
   /// Get service name map (url -> name). Default empty.

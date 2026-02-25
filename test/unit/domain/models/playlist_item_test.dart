@@ -25,7 +25,7 @@ void main() {
         id: 'item_456',
         kind: PlaylistItemKind.dp1Item,
         title: 'Complete Item',
-        artists: const [DP1Artist(name: 'Test Artist', id: 'artist_123')],
+        artists: [DP1Artist(name: 'Test Artist', id: 'artist_123')],
         thumbnailUrl: 'https://example.com/thumb.jpg',
         source: 'https://example.com/media.mp4',
       );
@@ -47,7 +47,7 @@ void main() {
 
       final updated = original.copyWith(
         title: 'Updated Item',
-        artists: [const DP1Artist(name: 'New Artist', id: 'artist_456')],
+        artists: [DP1Artist(name: 'New Artist', id: 'artist_456')],
       );
 
       expect(updated.id, equals('item_123'));

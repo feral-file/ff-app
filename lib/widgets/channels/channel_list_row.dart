@@ -2,6 +2,7 @@ import 'package:app/app/providers/channel_preview_provider.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/channel_item.dart';
 import 'package:app/widgets/dp1_carousel.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -14,7 +15,8 @@ class ChannelRowData {
   const ChannelRowData({
     required this.channelId,
     required this.channelTitle,
-    required this.works, this.channelSummary,
+    this.channelSummary,
+    required this.works,
   });
 
   /// Channel ID.
@@ -100,7 +102,9 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
     final works = widget.channelData.works.isNotEmpty
         ? widget.channelData.works
         : previewState.works;
-    final hasMore = !widget.channelData.works.isNotEmpty && previewState.hasMore;
+    final hasMore = widget.channelData.works.isNotEmpty
+        ? false
+        : previewState.hasMore;
     final isLoadingMore =
         widget.channelData.works.isEmpty && previewState.isLoadingMore;
     final isLoading =
@@ -108,10 +112,11 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
     final error = widget.channelData.works.isEmpty ? previewState.error : null;
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            
+            color: AppColor.primaryBlack,
+            width: LayoutConstants.dividerThickness,
           ),
         ),
       ),
@@ -130,7 +135,7 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
             Padding(
               padding: EdgeInsets.only(top: LayoutConstants.space2),
               child: Text(
-                "We couldn't load this channel's works. Tap to retry.",
+                'We couldn\'t load this channel\'s works. Tap to retry.',
                 style: AppTypography.caption(context).grey,
               ),
             ),

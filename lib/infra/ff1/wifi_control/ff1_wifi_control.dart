@@ -300,7 +300,7 @@ class FF1WifiControl {
     try {
       _log.info('Sending pause command to device');
 
-      const request = FF1WifiPauseRequest();
+      final request = const FF1WifiPauseRequest();
       final response =
           await _restClient.sendCommand(
                 topicId: topicId,
@@ -327,7 +327,7 @@ class FF1WifiControl {
     try {
       _log.info('Sending play command to device');
 
-      const request = FF1WifiPlayRequest();
+      final request = const FF1WifiPlayRequest();
       final response =
           await _restClient.sendCommand(
                 topicId: topicId,
@@ -354,7 +354,7 @@ class FF1WifiControl {
     try {
       _log.info('Sending nextArtwork command to device');
 
-      const request = FF1WifiNextArtworkRequest();
+      final request = const FF1WifiNextArtworkRequest();
       final response =
           await _restClient.sendCommand(
                 topicId: topicId,
@@ -381,7 +381,7 @@ class FF1WifiControl {
     try {
       _log.info('Sending previousArtwork command to device');
 
-      const request = FF1WifiPreviousArtworkRequest();
+      final request = const FF1WifiPreviousArtworkRequest();
       final response =
           await _restClient.sendCommand(
                 topicId: topicId,

@@ -66,11 +66,14 @@ void main() {
       await waitForAddressIndexingCompletion(
         indexerService: indexerService,
         address: address,
+        timeout: const Duration(minutes: 15),
       );
 
       final tokens = await fetchAllTokensByOffsetCursor(
         indexerService: indexerService,
         address: address,
+        pageSize: 50,
+        maxPages: 100,
       );
 
       expect(

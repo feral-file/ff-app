@@ -67,7 +67,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
   }
 
   /// Handle QR scan
-  Future<void> _handleQRScan() async {
+  void _handleQRScan() async {
     // TODO: Implement QR scan navigation
     // For now, this is a placeholder
     _log.info('QR scan not yet implemented');

@@ -21,7 +21,7 @@ final indexerClientProvider = Provider<IndexerClient>((ref) {
     endpoint: endpoint,
     defaultHeaders: {
       'Content-Type': 'application/json',
-      'Authorization': ?authorization,
+      if (authorization != null) 'Authorization': authorization,
     },
   );
 

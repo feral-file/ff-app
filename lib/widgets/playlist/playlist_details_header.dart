@@ -109,7 +109,7 @@ class PlaylistDetailsHeader extends StatelessWidget {
             ),
           ),
           if (showDivider)
-            const Divider(
+            Divider(
               height: LayoutConstants.dividerThickness,
               thickness: LayoutConstants.dividerThickness,
               color: AppColor.primaryBlack,

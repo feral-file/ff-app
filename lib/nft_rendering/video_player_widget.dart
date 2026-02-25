@@ -14,6 +14,16 @@ import 'package:video_player/video_player.dart';
 final _log = Logger('VideoNFTRenderingWidget');
 
 class VideoNFTRenderingWidget extends NFTRenderingWidget {
+  final String previewURL; // The URL of the video to play
+  final String? thumbnailURL; // The URL of the thumbnail to display
+  final bool isMute; // Mute state of the video
+  final Widget loadingWidget; // Custom loading widget
+  final Widget errorWidget; // Custom error widget
+  final Widget
+      noPreviewUrlWidget; // Widget to show when no preview URL is provided
+  final Function? onLoaded; // Callback for when the video is loaded
+  final Function? onDispose; // Callback for when the widget is disposed
+  final bool resumeWhenPopNext;
 
   const VideoNFTRenderingWidget({
     required this.previewURL,
@@ -27,16 +37,6 @@ class VideoNFTRenderingWidget extends NFTRenderingWidget {
     this.onDispose,
     this.resumeWhenPopNext = true,
   });
-  final String previewURL; // The URL of the video to play
-  final String? thumbnailURL; // The URL of the thumbnail to display
-  final bool isMute; // Mute state of the video
-  final Widget loadingWidget; // Custom loading widget
-  final Widget errorWidget; // Custom error widget
-  final Widget
-      noPreviewUrlWidget; // Widget to show when no preview URL is provided
-  final Function? onLoaded; // Callback for when the video is loaded
-  final Function? onDispose; // Callback for when the widget is disposed
-  final bool resumeWhenPopNext;
 
   @override
   State<VideoNFTRenderingWidget> createState() =>

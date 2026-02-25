@@ -1,6 +1,7 @@
-import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:app/theme/app_color.dart';
 
 /// Dark empty app bar (zero height, dark status bar).
 /// Used by keyboard control screen to match old repo UI.

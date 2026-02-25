@@ -5,7 +5,7 @@
 //  that can be found in the LICENSE file.
 //
 
-// ignore_for_file: public_member_api_docs, constant_identifier_names // Reason: copied from the legacy mobile app to keep constants stable/portable.
+// ignore_for_file: public_member_api_docs, constant_identifier_names, eol_at_end_of_file // Reason: copied from the legacy mobile app to keep constants stable/portable.
 
 // NOTE: This file is a minimal subset extracted from the old mobile app.
 // Keep identifiers stable to reduce churn when copying extensions/models.

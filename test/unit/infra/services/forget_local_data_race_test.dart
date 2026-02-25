@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
@@ -13,8 +12,8 @@ import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/indexer/isolate/indexer_tokens_worker.dart';
 import 'package:app/infra/indexer/isolate/worker_messages.dart';
 import 'package:app/infra/indexer/isolate/worker_tasks.dart';
-import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/local_data_cleanup_service.dart';
+import 'package:app/infra/services/indexer_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

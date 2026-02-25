@@ -213,8 +213,8 @@ class _EnterWiFiPasswordScreenState
           unawaited(
             UIHelper.showInfoDialog(
               context,
-              "Can't reach FF1",
-              "FF1 didn't respond in time. Make sure FF1 is nearby and try again.",
+              'Can\'t reach FF1',
+              'FF1 didn\'t respond in time. Make sure FF1 is nearby and try again.',
             ).then((_) {
               widget.payload.onSubmitted?.call(null, error);
             }),
@@ -224,7 +224,7 @@ class _EnterWiFiPasswordScreenState
             UIHelper.showInfoDialog(
               context,
               'Wi‑Fi setup failed',
-              "FF1 couldn't complete Wi‑Fi setup because of an unexpected issue. Contact support for help.",
+              'FF1 couldn\'t complete Wi‑Fi setup because of an unexpected issue. Contact support for help.',
               closeButton: 'Contact support',
               onClose: () async {
                 unawaited(UIHelper.showCustomerSupport(context));
@@ -297,6 +297,7 @@ class _EnterWiFiPasswordScreenState
                               vertical: LayoutConstants.space3 +
                                   LayoutConstants.space1,
                             ),
+                            enabled: true,
                             onTap: _handleSendCredentials,
                             text: 'Submit',
                           ),

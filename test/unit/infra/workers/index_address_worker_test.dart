@@ -1,5 +1,6 @@
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
+import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/workers/background_worker.dart';
 import 'package:app/infra/workers/index_address_worker.dart';
@@ -42,6 +43,8 @@ class _FakeIndexerService implements IndexerService {
   _FakeIndexerService({
     this.tokensToReturn = const <AssetToken>[],
     this.shouldFailIndexing = false,
+    this.shouldFailFetchTokens = false,
+    this.indexingWorkflowStatus = IndexingJobStatus.completed,
   });
 
   final List<AssetToken> tokensToReturn;
@@ -122,7 +125,7 @@ void main() {
       final worker = IndexAddressWorker(
         workerId: 'index_address_worker::0xTEST',
         workerStateService: stateStore,
-        indexerServiceFactory: _FakeIndexerService.new,
+        indexerServiceFactory: () => _FakeIndexerService(),
         databasePath: ':memory:',
         indexerEndpoint: 'http://test',
         indexerApiKey: '',

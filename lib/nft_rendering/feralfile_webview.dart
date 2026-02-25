@@ -15,20 +15,6 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 final _log = Logger('FeralFileWebview');
 
 class FeralFileWebview extends StatefulWidget {
-
-  const FeralFileWebview({
-    required this.uri,
-    super.key,
-    this.overriddenHtml,
-    this.isMute = false,
-    this.backgroundColor = Colors.transparent,
-    this.userAgent,
-    this.onLoaded,
-    this.onStarted,
-    this.onResourceError,
-    this.onHttpError,
-    this.onConsoleMessage,
-  });
   final Uri uri;
   final String? overriddenHtml;
   final bool isMute;
@@ -43,13 +29,27 @@ class FeralFileWebview extends StatefulWidget {
   final void Function(WebViewController webViewController,
       JavaScriptConsoleMessage consoleMessage)? onConsoleMessage;
 
+  const FeralFileWebview({
+    required this.uri,
+    super.key,
+    this.overriddenHtml,
+    this.isMute = false,
+    this.backgroundColor = Colors.transparent,
+    this.userAgent,
+    this.onLoaded,
+    this.onStarted,
+    this.onResourceError,
+    this.onHttpError,
+    this.onConsoleMessage,
+  });
+
   @override
   State<FeralFileWebview> createState() => FeralFileWebviewState();
 }
 
 class FeralFileWebviewState extends State<FeralFileWebview> {
   late WebViewController _webViewController;
-  double _loadingProgress = 0;
+  double _loadingProgress = 0.0;
 
   @override
   void initState() {
@@ -62,7 +62,7 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
   }
 
   Widget _buildLoadingWidget() {
-    return ColoredBox(
+    return Container(
       color: widget.backgroundColor,
       child: Center(
         child: Column(
@@ -86,9 +86,9 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
             child: WebViewWidget(
               key: Key(widget.uri.toString()),
               controller: _webViewController,
-              gestureRecognizers: const {
+              gestureRecognizers: {
                 Factory<OneSequenceGestureRecognizer>(
-                  EagerGestureRecognizer.new,
+                  () => EagerGestureRecognizer(),
                 ),
               },
             ),

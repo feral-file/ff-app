@@ -171,7 +171,7 @@ class FF1BleTransport {
             rethrow;
           }
 
-          _log.info('Retry ${attempt + 1}/$maxRetries after 2s...');
+          _log.info('Retry ${attempt + 1}/${maxRetries} after 2s...');
           await Future<void>.delayed(const Duration(seconds: 2));
         }
       }
@@ -316,7 +316,8 @@ class FF1BleTransport {
   /// [timeout] - scan duration
   /// [onDevice] - callback for each discovered device (return true to stop scan)
   Future<void> scan({
-    required FutureOr<bool> Function(List<BluetoothDevice>) onDevice, Duration timeout = const Duration(seconds: 30),
+    Duration timeout = const Duration(seconds: 30),
+    required FutureOr<bool> Function(List<BluetoothDevice>) onDevice,
   }) async {
     _log.info('Starting scan (timeout: ${timeout.inSeconds}s)');
 

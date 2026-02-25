@@ -36,10 +36,10 @@ class ChannelHeader extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         if (clickable) {
-          context.push('${Routes.channels}/$channelId');
+          context.push('${Routes.channels}/${channelId}');
         }
       },
-      child: ColoredBox(
+      child: Container(
         color: Colors.transparent,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

@@ -11,7 +11,7 @@ void main() {
     () async {
       // Unit test: verifies FF1 bluetooth device providers delegate to injected device service.
       final service = MockFF1BluetoothDeviceService();
-      const device = FF1Device(
+      final device = const FF1Device(
         name: 'FF1',
         remoteId: 'remote-1',
         deviceId: 'device-1',

@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/models/ff1_device.dart';

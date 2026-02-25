@@ -16,10 +16,10 @@ import 'package:app/nft_rendering/svg_rendering_widget.dart';
 import 'package:app/nft_rendering/video_player_widget.dart';
 import 'package:app/nft_rendering/webview_rendering_widget.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/widgets/work_detail/artwork_details_header.dart';
 import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/gallery_thumbnail_widgets.dart';
 import 'package:app/widgets/loading_view.dart';
-import 'package:app/widgets/work_detail/artwork_details_header.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -54,7 +54,7 @@ class WorkDetailBackLayer extends StatelessWidget {
           child: Stack(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(
+                padding: EdgeInsets.symmetric(
                   horizontal: LayoutConstants.dp1CarouselContentPaddingHorizontal,
                 ),
                 child: Center(
@@ -257,6 +257,8 @@ class _WorkPreviewWidgetState extends State<WorkPreviewWidget> {
             _currentRenderingWidget = VideoNFTRenderingWidget(
               previewURL: previewURL,
               thumbnailURL: widget.item.thumbnailUrl,
+              isMute: false,
+              resumeWhenPopNext: true,
             );
             return InteractiveViewer(
               minScale: 1,
@@ -298,6 +300,7 @@ class _WorkPreviewWidgetState extends State<WorkPreviewWidget> {
             _currentRenderingWidget = AudioNFTRenderingWidget(
               previewURL: previewURL,
               thumbnailURL: widget.item.thumbnailUrl,
+              isMute: false,
             );
             return Center(
               child: _currentRenderingWidget,
@@ -305,6 +308,7 @@ class _WorkPreviewWidgetState extends State<WorkPreviewWidget> {
           default:
             _currentRenderingWidget = WebviewNFTRenderingWidget(
               previewUri: Uri.parse(previewURL),
+              isMute: false,
             );
             return Center(
               child: _currentRenderingWidget,

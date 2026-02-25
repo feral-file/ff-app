@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/database/objectbox_models.dart';
+import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/objectbox.g.dart' show FF1BluetoothDeviceEntity_;
 import 'package:logging/logging.dart';
 import 'package:objectbox/objectbox.dart';

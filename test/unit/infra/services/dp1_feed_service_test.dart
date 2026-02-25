@@ -127,7 +127,7 @@ void main() {
       // Build the CID lookup map (as in database_service.dart)
       final tokensByCID = <String, Map<String, dynamic>>{};
       for (final token in enrichmentTokens) {
-        final cid = token['token_cid']!;
+        final cid = token['token_cid'] as String;
         tokensByCID[cid] = token;
       }
 
@@ -154,7 +154,7 @@ void main() {
       expect(correctToken?['title'], equals('Artwork #1'));
 
       // WRONG way (THE BUG): lookup by item['id']
-      final itemId = dp1Item['id']!;
+      final itemId = dp1Item['id'] as String;
       final wrongToken = tokensByCID[itemId];
 
       print('\n❌ WRONG lookup (using item["id"]):');

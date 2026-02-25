@@ -11,7 +11,11 @@ import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
-class PDFNFTRenderingWidget extends NFTRenderingWidget { // Added parameter for noPreviewUrlWidget
+class PDFNFTRenderingWidget extends NFTRenderingWidget {
+  final String previewURL;
+  final Widget errorWidget;
+  final Widget loadingWidget;
+  final Widget noPreviewUrlWidget; // Added parameter for noPreviewUrlWidget
 
   const PDFNFTRenderingWidget({
     required this.previewURL,
@@ -20,10 +24,6 @@ class PDFNFTRenderingWidget extends NFTRenderingWidget { // Added parameter for 
     this.noPreviewUrlWidget = const NoPreviewUrlWidget(),
     super.key,
   });
-  final String previewURL;
-  final Widget errorWidget;
-  final Widget loadingWidget;
-  final Widget noPreviewUrlWidget;
 
   @override
   State<PDFNFTRenderingWidget> createState() => _PDFNFTRenderingWidgetState();
@@ -39,6 +39,7 @@ class _PDFNFTRenderingWidgetState extends State<PDFNFTRenderingWidget> {
   @override
   void initState() {
     super.initState();
+    // ignore: discarded_futures
     _pdfFileFuture = _createFileOfPdfUrl();
   }
 
@@ -67,9 +68,9 @@ class _PDFNFTRenderingWidgetState extends State<PDFNFTRenderingWidget> {
   Widget _buildPDFView(File file) => PDFView(
         key: Key(widget.previewURL),
         filePath: file.path,
-        gestureRecognizers: const <Factory<OneSequenceGestureRecognizer>>{
+        gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
           Factory<VerticalDragGestureRecognizer>(
-            VerticalDragGestureRecognizer.new,
+            () => VerticalDragGestureRecognizer(),
           ),
         },
         pageFling: false,
@@ -82,7 +83,9 @@ class _PDFNFTRenderingWidgetState extends State<PDFNFTRenderingWidget> {
         onPageError: (page, error) {
           _error.value = error;
         },
-        onViewCreated: _controller.complete,
+        onViewCreated: (PDFViewController pdfViewController) {
+          _controller.complete(pdfViewController);
+        },
         onLinkHandler: (String? uri) {},
         onPageChanged: (int? page, int? total) {},
       );
@@ -91,7 +94,7 @@ class _PDFNFTRenderingWidgetState extends State<PDFNFTRenderingWidget> {
         valueListenable: _error,
         builder: (context, error, child) => Visibility(
           visible: error != null,
-          child: ColoredBox(
+          child: Container(
             color: Colors.black,
             child: widget.errorWidget,
           ),
@@ -102,7 +105,7 @@ class _PDFNFTRenderingWidgetState extends State<PDFNFTRenderingWidget> {
         valueListenable: _isReady,
         builder: (context, isReady, child) => Visibility(
           visible: !isReady,
-          child: ColoredBox(
+          child: Container(
             color: Colors.black,
             child: widget.loadingWidget,
           ),
@@ -110,7 +113,7 @@ class _PDFNFTRenderingWidgetState extends State<PDFNFTRenderingWidget> {
       );
 
   Future<File> _createFileOfPdfUrl() async {
-    final completer = Completer<File>();
+    final Completer<File> completer = Completer<File>();
     try {
       final url = widget.previewURL;
       final filename = url.substring(url.lastIndexOf('/') + 1);

@@ -17,7 +17,7 @@ class TopRightRectangleClipper extends CustomClipper<Path> {
 
   @override
   Path getClip(Size size) {
-    final radius = customRadius == null ? 14 : customRadius!;
+    double radius = customRadius == null ? 14 : customRadius!;
 
     final path = Path()
       ..lineTo(0, 0)

@@ -1,6 +1,6 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
-import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/database/app_database.dart';

@@ -38,13 +38,13 @@ Page<void> buildCupertinoTransitionPage(
       Animation<double> secondaryAnimation,
       Widget child,
     ) {
-      final textDirection = Directionality.of(context);
-      final primaryPosition = CurvedAnimation(
+      final TextDirection textDirection = Directionality.of(context);
+      final Animation<Offset> primaryPosition = CurvedAnimation(
         parent: animation,
         curve: Curves.fastEaseInToSlowEaseOut,
         reverseCurve: Curves.fastEaseInToSlowEaseOut.flipped,
       ).drive(_kRightMiddleTween);
-      final secondaryPosition = CurvedAnimation(
+      final Animation<Offset> secondaryPosition = CurvedAnimation(
         parent: secondaryAnimation,
         curve: Curves.linearToEaseOut,
         reverseCurve: Curves.easeInToLinear,

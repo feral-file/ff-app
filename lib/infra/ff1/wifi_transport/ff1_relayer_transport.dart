@@ -101,7 +101,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
     required String apiKey,
   }) async {
     // Validate topicId
-    if (device.topicId.isEmpty) {
+    if (device.topicId == null || device.topicId!.isEmpty) {
       throw const FF1WifiTransportUnavailableError(
         'Device topicId is required for relayer connection',
       );
@@ -195,7 +195,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
     _reconnectAttempts = 0;
 
     // Send disconnect control message
-    const control = _RelayerControlMessage(
+    final control = _RelayerControlMessage(
       type: _RelayerControlType.disconnect,
     );
     _isolateSendPort?.send(control.toJson());
@@ -294,7 +294,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
   void _scheduleReconnect() {
     if (_reconnectAttempts >= _maxReconnectAttempts) {
       _log.severe('Max reconnect attempts reached, giving up');
-      const error = FF1WifiConnectionError(
+      final error = FF1WifiConnectionError(
         'Failed to reconnect after $_maxReconnectAttempts attempts',
       );
       _errorController.add(error);

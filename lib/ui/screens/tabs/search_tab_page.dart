@@ -169,7 +169,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
                 // Results available - render sections
                 return _buildResults(results);
               },
-              loading: _buildLoading,
+              loading: () => _buildLoading(),
               error: (error, stack) => _buildError(error.toString()),
             ),
           ),
@@ -290,21 +290,21 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
         // Channels section
         if (results.channels.isNotEmpty) ...[
           _buildSectionHeader('Channels (${results.channels.length})'),
-          ...results.channels.map(_buildChannelTile),
+          ...results.channels.map((channel) => _buildChannelTile(channel)),
           SizedBox(height: LayoutConstants.space4),
         ],
 
         // Playlists section
         if (results.playlists.isNotEmpty) ...[
           _buildSectionHeader('Playlists (${results.playlists.length})'),
-          ...results.playlists.map(_buildPlaylistTile),
+          ...results.playlists.map((playlist) => _buildPlaylistTile(playlist)),
           SizedBox(height: LayoutConstants.space4),
         ],
 
         // Works section
         if (results.works.isNotEmpty) ...[
           _buildSectionHeader('Works (${results.works.length})'),
-          ...results.works.map(_buildWorkTile),
+          ...results.works.map((work) => _buildWorkTile(work)),
         ],
       ],
     );

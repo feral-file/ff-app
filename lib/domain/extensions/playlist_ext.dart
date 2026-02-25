@@ -14,7 +14,7 @@ extension PlaylistExt on Playlist {
     String? name,
     String? description,
   }) {
-    final id = const Uuid().v4();
+    final id = Uuid().v4();
     return Playlist(
       id: id,
       name: name ?? 'Works',

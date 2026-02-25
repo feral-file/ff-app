@@ -1,6 +1,6 @@
 import 'package:app/domain/models/blockchain.dart';
 
-// ignore_for_file: public_member_api_docs // Reason: copied from the legacy mobile app; keep DP-1 provenance wire model stable.
+// ignore_for_file: public_member_api_docs, eol_at_end_of_file // Reason: copied from the legacy mobile app; keep DP-1 provenance wire model stable.
 
 class DP1Provenance {
   DP1Provenance({
