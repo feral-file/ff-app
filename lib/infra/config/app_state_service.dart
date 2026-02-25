@@ -66,7 +66,6 @@ class AddressIndexingProcessStatus {
 /// Declares the public API only; implementations live in [AppStateService].
 abstract class AppStateServiceBase {
   Future<DateTime> getLastRefreshTime(String baseUrl);
-  Future<void> setLastTimeRefreshFeeds(DateTime time);
   Future<void> setLastRefreshTime(String baseUrl, DateTime time);
   Future<bool> hasFeedBareIngestCompleted(String baseUrl);
   Future<void> setFeedBareIngestCompleted({
@@ -221,17 +220,6 @@ class AppStateService extends AppStateServiceBase {
       }
 
       return DateTime.fromMicrosecondsSinceEpoch(latestUs, isUtc: true);
-    });
-  }
-
-  /// Mark all feed URLs stale by setting one global epoch.
-  @override
-  Future<void> setLastTimeRefreshFeeds(DateTime time) async {
-    await _lock.synchronized(() async {
-      final app = _getOrCreateSingleton()
-        ..globalLastRefreshEpochUs = time.toUtc().microsecondsSinceEpoch
-        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
-      _appStateBox.put(app);
     });
   }
 
