@@ -22,7 +22,7 @@ class TopRightRectangleClipper extends CustomClipper<Path> {
     final path = Path()
       ..lineTo(0, 0)
       ..lineTo(size.width - radius, 0)
-      ..lineTo(size.width, radius)
+      ..lineTo(size.width, radius.toDouble())
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..lineTo(0, 0)
