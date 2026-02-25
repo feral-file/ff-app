@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/background_workers_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
-import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/objectbox_init.dart';
@@ -39,15 +38,11 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     stopWorkersGracefully: () async {
       await ref.read(feedManagerProvider).pauseAndDrainWork();
       await ref
-          .read(addressIndexingProcessServiceProvider)
-          .stopAllAndDrainForReset();
-      await ref
           .read(tokensSyncCoordinatorProvider.notifier)
           .stopAndDrainForReset();
       await ref.read(workerSchedulerProvider).stopAll();
       final r = ref;
       r
-        ..invalidate(addressIndexingProcessServiceProvider)
         ..invalidate(workerSchedulerProvider)
         ..invalidate(indexerTokensWorkerProvider)
         ..invalidate(tokensSyncCoordinatorProvider);
@@ -123,13 +118,11 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       await appState.setLastTimeRefreshFeeds(DateTime(1970, 1, 1));
 
       final feedManager = ref.read(feedManagerProvider);
-      final addressProcessService = ref.read(
-        addressIndexingProcessServiceProvider,
-      );
+      final workerScheduler = ref.read(workerSchedulerProvider);
       feedManager.resumeWork();
 
       for (final address in normalizedAddresses) {
-        await addressProcessService.start(address);
+        await workerScheduler.onAddressAdded(address);
       }
 
       await Future.wait<void>([

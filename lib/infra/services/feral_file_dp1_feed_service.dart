@@ -21,14 +21,11 @@ class FeralFileDP1FeedService extends DP1FeedWithChannelExtensionServiceImpl {
     required super.databaseService,
     required super.appStateService,
     required super.apiKey,
-    required this.indexerService,
     this.onChannelIngested,
     super.isExternalFeedService,
     super.dio,
   }) : _log = Logger('FeralFileDP1FeedService[$baseUrl]');
 
-  /// Indexer service for token enrichment.
-  final IndexerService indexerService;
   final void Function()? onChannelIngested;
 
   late final Logger _log;

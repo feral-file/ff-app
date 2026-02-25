@@ -75,9 +75,11 @@ class UpdateTokensFailure extends TokensWorkerFailure {
   final List<String> addresses;
 }
 
-/// Manual token fetch (by CID list).
+/// Consolidated manual token fetch response.
 ///
-/// Kept for back-compat with legacy flows (e.g. manual refresh / deep links).
+/// This is used for both:
+/// - token IDs + owners (incremental sync)
+/// - token CIDs (DP1 item enrichment)
 class FetchManualTokensDone extends TokensWorkerMessage {
   const FetchManualTokensDone(super.uuid, this.tokens);
 

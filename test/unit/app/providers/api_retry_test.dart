@@ -1,4 +1,3 @@
-import 'package:app/app/providers/api_providers.dart';
 import 'package:app/app/providers/api_retry_strategy.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/database/app_database.dart';

@@ -89,15 +89,16 @@ abstract class AppStateServiceBase {
     required int anchor,
   });
   Future<void> clearAddressAnchor(String address);
-  Future<AddressIndexingProcessStatus?> getAddressIndexingStatus(String address);
+  Future<AddressIndexingProcessStatus?> getAddressIndexingStatus(
+    String address,
+  );
   Future<void> setAddressIndexingStatus({
     required String address,
     required AddressIndexingProcessStatus status,
   });
-  Future<void> clearAddressIndexingStatus(String address);
   Future<void> clearAddressState(String address);
   Future<Map<String, AddressIndexingProcessStatus>>
-      getAllAddressIndexingStatuses();
+  getAllAddressIndexingStatuses();
   void debugLogSummary();
 }
 
@@ -110,9 +111,9 @@ class AppStateService extends AppStateServiceBase {
     required Box<AppStateEntity> appStateBox,
     required Box<AppStateAddressEntity> appStateAddressBox,
     Logger? logger,
-  })  : _appStateBox = appStateBox,
-        _appStateAddressBox = appStateAddressBox,
-        _log = logger ?? Logger('AppStateService');
+  }) : _appStateBox = appStateBox,
+       _appStateAddressBox = appStateAddressBox,
+       _log = logger ?? Logger('AppStateService');
 
   static const _scope = 'app';
   static const _defaultCacheDurationSeconds = 86400;
@@ -463,23 +464,6 @@ class AppStateService extends AppStateServiceBase {
             .toUtc()
             .microsecondsSinceEpoch
         ..indexingProcessErrorMessage = status.errorMessage ?? ''
-        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
-      _appStateAddressBox.put(row);
-    });
-  }
-
-  /// Remove per-address indexing process status.
-  @override
-  Future<void> clearAddressIndexingStatus(String address) async {
-    await _lock.synchronized(() async {
-      final row = _findAddressState(_normalizeAddressKey(address));
-      if (row == null) {
-        return;
-      }
-      row
-        ..indexingProcessStateIndex = AddressIndexingProcessState.idle.index
-        ..indexingProcessUpdatedAtUs = 0
-        ..indexingProcessErrorMessage = ''
         ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
       _appStateAddressBox.put(row);
     });

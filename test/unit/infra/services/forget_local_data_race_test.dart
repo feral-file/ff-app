@@ -1,7 +1,6 @@
 import 'dart:async';
-
-import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/changes/change.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -33,14 +32,16 @@ class _DelayedIndexerService extends IndexerService {
   final Duration delay;
 
   @override
-  Future<List<AssetToken>> fetchTokensByTokenIds({
-    required List<int> tokenIds,
-    List<String> owners = const [],
+  Future<List<AssetToken>> getManualTokens({
+    List<int>? tokenIds,
+    List<String>? owners,
+    List<String>? tokenCids,
     int? limit,
     int? offset,
   }) async {
     await Future<void>.delayed(delay);
-    return tokenIds
+    final ids = tokenIds ?? const <int>[];
+    return ids
         .map(
           (id) => AssetToken(
             id: id,
@@ -159,6 +160,37 @@ class _ControlledIndexerTokensWorker extends IndexerTokensWorker {
     _controller.add(UpdateTokensData(uuid, changes, <String>[address]));
     Future<void>.delayed(const Duration(milliseconds: 5), () {
       _controller.add(UpdateTokensSuccess(uuid));
+    });
+  }
+
+  @override
+  void getManualTokens({
+    required String uuid,
+    List<int>? tokenIds,
+    List<String>? owners,
+    List<String>? tokenCids,
+  }) {
+    final ids = tokenIds ?? const <int>[];
+    final owner = (owners ?? const <String>[]).isEmpty
+        ? ''
+        : (owners ?? const <String>[]).first;
+
+    // Simulate late-arriving indexer responses even after a reset has started.
+    Future<void>.delayed(const Duration(milliseconds: 80), () {
+      final tokens = ids
+          .map(
+            (id) => AssetToken(
+              id: id,
+              cid: 'eip155:1:0xcontract:$id',
+              chain: 'eip155:1',
+              standard: 'erc721',
+              contractAddress: '0xcontract',
+              tokenNumber: '$id',
+              currentOwner: owner.toUpperCase(),
+            ),
+          )
+          .toList(growable: false);
+      _controller.add(FetchManualTokensDone(uuid, tokens));
     });
   }
 

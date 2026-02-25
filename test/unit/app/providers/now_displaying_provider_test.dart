@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:app/domain/models/ff1_device.dart';
@@ -114,7 +114,8 @@ void main() {
       expect(
         state,
         isA<NowDisplayingSuccess>(),
-        reason: 'Expected NowDisplayingSuccess so _computeForDevice ran with '
+        reason:
+            'Expected NowDisplayingSuccess so _computeForDevice ran with '
             'device+connected+status; got $state',
       );
 
@@ -133,90 +134,94 @@ void main() {
       expect(saved.thumbnailUrl, isNotNull);
     });
 
-    test('loads cache and enriches only items in window around current index',
-        () async {
-      const deviceId = 'device_1';
-      const halfSize = 50;
-      const currentIndex = 100;
-      const totalItems = 200;
-      final device = FF1Device(
-        name: 'FF1',
-        remoteId: 'r1',
-        deviceId: deviceId,
-        topicId: 'topic_1',
-      );
+    test(
+      'loads cache and enriches only items in window around current index',
+      () async {
+        const deviceId = 'device_1';
+        const halfSize = 50;
+        const currentIndex = 100;
+        const totalItems = 200;
+        final device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: deviceId,
+          topicId: 'topic_1',
+        );
 
-      final items = List.generate(
-        totalItems,
-        (i) => DP1PlaylistItem(
-          id: 'item_$i',
-          duration: 60,
-          title: 'Work $i',
-        ),
-      );
-
-      final status = FF1PlayerStatus(
-        playlistId: 'pl_1',
-        currentWorkIndex: currentIndex,
-        items: items,
-      );
-
-      final container = ProviderContainer.test(
-        overrides: [
-          databaseServiceProvider.overrideWith((ref) => recordingDb),
-          indexerServiceProvider.overrideWithValue(
-            FakeIndexerService(tokensByCid: []),
+        final items = List.generate(
+          totalItems,
+          (i) => DP1PlaylistItem(
+            id: 'item_$i',
+            duration: 60,
+            title: 'Work $i',
           ),
-          activeFF1BluetoothDeviceProvider.overrideWithValue(
-            AsyncData(device),
-          ),
-          ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
-          ff1PlayerStatusStreamProvider.overrideWith(
-            (ref) => Stream.value(status),
-          ),
-          ff1CurrentPlayerStatusProvider.overrideWithValue(status),
-          ff1ConnectionStatusStreamProvider.overrideWith(
-            (ref) => Stream.value(FF1ConnectionStatus(isConnected: true)),
-          ),
-          ff1DeviceConnectedProvider.overrideWithValue(true),
-        ],
-      );
-      addTearDown(container.dispose);
+        );
 
-      container.read(nowDisplayingProvider);
-      await Future<void>.delayed(Duration.zero);
+        final status = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: currentIndex,
+          items: items,
+        );
 
-      final state = container.read(nowDisplayingProvider);
-      expect(state, isA<NowDisplayingSuccess>());
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingDb),
+            indexerServiceProvider.overrideWithValue(
+              FakeIndexerService(tokensByCid: const <AssetToken>[]),
+            ),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => Stream.value(status),
+            ),
+            ff1CurrentPlayerStatusProvider.overrideWithValue(status),
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) => Stream.value(FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
 
-      final success = state as NowDisplayingSuccess;
-      final object = success.object as DP1NowDisplayingObject;
+        container.read(nowDisplayingProvider);
+        await Future<void>.delayed(Duration.zero);
 
-      expect(object.items.length, totalItems);
-      expect(object.index, currentIndex);
-      expect(object.currentItem.id, 'item_$currentIndex');
+        final state = container.read(nowDisplayingProvider);
+        expect(state, isA<NowDisplayingSuccess>());
 
-      final expectedStart =
-          (currentIndex - halfSize).clamp(0, totalItems).toInt();
-      final expectedEnd =
-          (currentIndex + halfSize + 1).clamp(0, totalItems).toInt();
-      final expectedWindowSize = expectedEnd - expectedStart;
+        final success = state as NowDisplayingSuccess;
+        final object = success.object as DP1NowDisplayingObject;
 
-      expect(
-        recordingDb.getPlaylistItemsByIdsCalls,
-        hasLength(1),
-        reason: 'getPlaylistItemsByIds should be called once with window IDs',
-      );
-      final idsPassed = recordingDb.getPlaylistItemsByIdsCalls.single;
-      expect(
-        idsPassed.length,
-        expectedWindowSize,
-        reason: 'Only window IDs should be requested, not all $totalItems',
-      );
-      for (var i = 0; i < idsPassed.length; i++) {
-        expect(idsPassed[i], 'item_${expectedStart + i}');
-      }
-    });
+        expect(object.items.length, totalItems);
+        expect(object.index, currentIndex);
+        expect(object.currentItem.id, 'item_$currentIndex');
+
+        final expectedStart = (currentIndex - halfSize)
+            .clamp(0, totalItems)
+            .toInt();
+        final expectedEnd = (currentIndex + halfSize + 1)
+            .clamp(0, totalItems)
+            .toInt();
+        final expectedWindowSize = expectedEnd - expectedStart;
+
+        expect(
+          recordingDb.getPlaylistItemsByIdsCalls,
+          hasLength(1),
+          reason: 'getPlaylistItemsByIds should be called once with window IDs',
+        );
+        final idsPassed = recordingDb.getPlaylistItemsByIdsCalls.single;
+        expect(
+          idsPassed.length,
+          expectedWindowSize,
+          reason: 'Only window IDs should be requested, not all $totalItems',
+        );
+        for (var i = 0; i < idsPassed.length; i++) {
+          expect(idsPassed[i], 'item_${expectedStart + i}');
+        }
+      },
+    );
 
     test('full list has correct length and currentItem is in window', () async {
       const totalItems = 10;
@@ -247,7 +252,7 @@ void main() {
         overrides: [
           databaseServiceProvider.overrideWith((ref) => recordingDb),
           indexerServiceProvider.overrideWithValue(
-            FakeIndexerService(tokensByCid: []),
+            FakeIndexerService(tokensByCid: const <AssetToken>[]),
           ),
           activeFF1BluetoothDeviceProvider.overrideWithValue(
             AsyncData(device),

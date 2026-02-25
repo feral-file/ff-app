@@ -133,16 +133,21 @@ class IndexerTokensWorker {
     ]);
   }
 
-  /// Fetch tokens by CID list inside isolate.
+  /// Fetch tokens in the background isolate, using either token IDs (and owners)
+  /// or token CIDs.
   ///
-  /// Kept for back-compat with legacy flows.
-  void fetchManualTokens({
+  /// This is the consolidated entrypoint that maps to [IndexerService.getManualTokens].
+  void getManualTokens({
     required String uuid,
-    required List<String> tokenCids,
+    List<int>? tokenIds,
+    List<String>? owners,
+    List<String>? tokenCids,
   }) {
     sendRaw(<Object?>[
       WorkerOpcodes.fetchManualTokens,
       uuid,
+      tokenIds,
+      owners,
       tokenCids,
     ]);
   }
@@ -316,10 +321,21 @@ class IndexerTokensWorker {
           break;
 
         case WorkerOpcodes.fetchManualTokens:
+          final rawTokenIds = message[2];
+          final rawOwners = message[3];
+          final rawTokenCids = message[4];
           unawaited(
-            _fetchManualTokens(
+            _getManualTokens(
               uuid: message[1] as String,
-              tokenCids: List<String>.from(message[2] as List),
+              tokenIds: rawTokenIds == null
+                  ? null
+                  : List<int>.from(rawTokenIds as List),
+              owners: rawOwners == null
+                  ? null
+                  : List<String>.from(rawOwners as List),
+              tokenCids: rawTokenCids == null
+                  ? null
+                  : List<String>.from(rawTokenCids as List),
             ),
           );
           break;
@@ -450,12 +466,16 @@ class IndexerTokensWorker {
     }
   }
 
-  static Future<void> _fetchManualTokens({
+  static Future<void> _getManualTokens({
     required String uuid,
-    required List<String> tokenCids,
+    List<int>? tokenIds,
+    List<String>? owners,
+    List<String>? tokenCids,
   }) async {
     try {
-      final tokens = await _indexerService.fetchTokensByCIDs(
+      final tokens = await _indexerService.getManualTokens(
+        tokenIds: tokenIds,
+        owners: owners,
         tokenCids: tokenCids,
       );
       _isolateSendPort?.send(FetchManualTokensDone(uuid, tokens));

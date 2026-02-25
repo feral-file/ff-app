@@ -370,7 +370,7 @@ class EnrichItemWorker extends BackgroundWorker {
 
       // Fetch tokens by CIDs from the indexer API
       final cids = cidToItemId.keys.toList();
-      final tokens = await _indexerService.fetchTokensByCIDs(tokenCids: cids);
+      final tokens = await _indexerService.getManualTokens(tokenCids: cids);
       final retrievedCount = tokens.length;
       final requestedByChain = _countByChainPrefix(cids);
       final retrievedByChain = _countByChainPrefix(

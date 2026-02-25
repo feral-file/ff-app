@@ -19,11 +19,16 @@ class _FakeIndexerService extends IndexerService {
   final List<List<String>> requestedCidBatches = <List<String>>[];
 
   @override
-  Future<List<AssetToken>> fetchTokensByCIDs({
-    required List<String> tokenCids,
+  Future<List<AssetToken>> getManualTokens({
+    List<int>? tokenIds,
+    List<String>? owners,
+    List<String>? tokenCids,
+    int? limit,
+    int? offset,
   }) async {
-    requestedCidBatches.add(List<String>.from(tokenCids));
-    return tokenCids
+    final cids = tokenCids ?? const <String>[];
+    requestedCidBatches.add(List<String>.from(cids));
+    return cids
         .map((cid) => tokensByCid[cid])
         .whereType<AssetToken>()
         .toList(growable: false);

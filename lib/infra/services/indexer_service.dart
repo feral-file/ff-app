@@ -58,24 +58,78 @@ class IndexerService {
     }
   }
 
-  /// Fetch tokens by CIDs (for enriching DP1 items).
+  /// Fetch tokens either by indexer token IDs (optionally scoped to owners),
+  /// or by token CIDs (legacy/manual enrichment).
   ///
-  /// On timeout or network failure, returns an empty list so enrichment
-  /// can continue for other batches instead of propagating and triggering
-  /// Flutter's uncaught-exception handler.
-  Future<List<AssetToken>> fetchTokensByCIDs({
-    required List<String> tokenCids,
+  /// This consolidates the two fetch surfaces used across the app:
+  /// - `fetchTokensByTokenIds` for change-journal incremental sync
+  /// - `fetchTokensByCIDs` for DP1 item enrichment flows
+  ///
+  /// Behavior is intentionally preserved:
+  /// - ID fetches propagate errors (callers typically surface sync failures).
+  /// - CID fetches fail-open and return an empty list on network failures.
+  ///
+  /// If both [tokenIds] and [tokenCids] are provided, results are concatenated
+  /// in that order and deduped by CID (stable).
+  Future<List<AssetToken>> getManualTokens({
+    List<int>? tokenIds,
+    List<String>? owners,
+    List<String>? tokenCids,
+    int? limit,
+    int? offset,
   }) async {
-    try {
-      _log.info('Fetching ${tokenCids.length} tokens by tokenCids');
-      final tokens = await _fetchTokensByCids(tokenCids: tokenCids);
-      _log.info('Fetched ${tokens.length} tokens');
-      return tokens;
-    } catch (e, stack) {
-      // Fail-open for enrichment flows: do not propagate indexer outages to UI.
-      _log.warning('Failed to fetch tokens by CIDs; returning empty', e, stack);
-      return const <AssetToken>[];
+    final ids = tokenIds ?? const <int>[];
+    final cids = tokenCids ?? const <String>[];
+    final hasIds = ids.isNotEmpty;
+    final hasCids = cids.isNotEmpty;
+    if (!hasIds && !hasCids) return const <AssetToken>[];
+
+    final results = <AssetToken>[];
+
+    if (hasIds) {
+      // If tokenIds > 255, we must batch. We always fetch the full set then apply
+      // offset/limit on the merged result to keep caller semantics stable.
+      final fetched = <AssetToken>[];
+      final effectiveOwners = owners ?? const <String>[];
+      for (final batch in _batchesOf(ids, _maxUint8Limit)) {
+        final tokens = await _fetchTokens(
+          tokenIds: batch,
+          chains: _defaultChains,
+          owners: effectiveOwners.isEmpty ? null : effectiveOwners,
+          limit: batch.length.clamp(1, _maxUint8Limit),
+          offset: 0,
+        );
+        fetched.addAll(tokens);
+      }
+
+      final ordered = _orderTokensById(fetched, ids);
+      results.addAll(_applyOffsetLimit(ordered, offset: offset, limit: limit));
     }
+
+    if (hasCids) {
+      final seenCids = results.map((t) => t.cid).toSet();
+      var more = const <AssetToken>[];
+      try {
+        _log.info('Fetching ${cids.length} tokens by tokenCids');
+        more = await _fetchTokensByCids(tokenCids: cids);
+        _log.info('Fetched ${more.length} tokens');
+      } catch (e, stack) {
+        // Fail-open for enrichment flows: do not propagate indexer outages to UI.
+        _log.warning(
+          'Failed to fetch tokens by CIDs; returning empty',
+          e,
+          stack,
+        );
+        more = const <AssetToken>[];
+      }
+      for (final t in more) {
+        if (seenCids.add(t.cid)) {
+          results.add(t);
+        }
+      }
+    }
+
+    return results;
   }
 
   /// Fetch tokens by owner addresses without ingesting.
@@ -173,36 +227,6 @@ class IndexerService {
 
     // Preserve requested order and dedupe by CID.
     return _orderTokensByCid(results, tokenCids);
-  }
-
-  /// Fetch tokens by indexer token IDs, optionally scoped to owners.
-  ///
-  /// This mirrors the old repo's `QueryListTokensRequest(tokenIds: ..., owners: ...)`
-  /// usage in change-journal incremental sync.
-  Future<List<AssetToken>> fetchTokensByTokenIds({
-    required List<int> tokenIds,
-    List<String> owners = const [],
-    int? limit,
-    int? offset,
-  }) async {
-    if (tokenIds.isEmpty) return const <AssetToken>[];
-
-    // If tokenIds > 255, we must batch. We always fetch the full set then apply
-    // offset/limit on the merged result to keep caller semantics stable.
-    final results = <AssetToken>[];
-    for (final batch in _batchesOf(tokenIds, _maxUint8Limit)) {
-      final tokens = await _fetchTokens(
-        tokenIds: batch,
-        chains: _defaultChains,
-        owners: owners.isEmpty ? null : owners,
-        limit: batch.length.clamp(1, _maxUint8Limit),
-        offset: 0,
-      );
-      results.addAll(tokens);
-    }
-
-    final ordered = _orderTokensById(results, tokenIds);
-    return _applyOffsetLimit(ordered, offset: offset, limit: limit);
   }
 
   Future<List<AssetToken>> _fetchTokens({
@@ -364,11 +388,11 @@ class IndexerService {
 
   /// Get a single token by CID.
   ///
-  /// Note: This uses `fetchTokensByCIDs` under the hood to keep the client
+  /// Note: This uses `getManualTokens` under the hood to keep the client
   /// surface minimal and auditable.
   Future<AssetToken?> getTokenByCid(String cid) async {
     if (cid.isEmpty) return null;
-    final tokens = await fetchTokensByCIDs(tokenCids: [cid]);
+    final tokens = await getManualTokens(tokenCids: [cid]);
     if (tokens.isEmpty) return null;
     return tokens.first;
   }

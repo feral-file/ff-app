@@ -240,6 +240,17 @@ class WorkerScheduler {
     await worker.enqueueAddress(address);
   }
 
+  /// Called when an address is removed by the user.
+  ///
+  /// Stops the per-address IndexAddressWorker, clears its checkpoint, and
+  /// removes it from the fleet.
+  Future<void> onAddressRemoved(String address) async {
+    if (_databasePath.isEmpty) return;
+    _log.fine('onAddressRemoved: $address');
+
+    await _indexAddressFleet.stopWorker(address);
+  }
+
   /// Called when a feed channel has been ingested and items need enrichment.
   Future<void> onFeedIngested({String? channelId}) async {
     await _ensureInitialized();

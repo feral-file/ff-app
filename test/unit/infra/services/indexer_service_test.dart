@@ -152,7 +152,7 @@ void main() {
   );
 
   test(
-    'IndexerService.fetchTokensByCIDs maps token_cids + limit + offset',
+    'IndexerService.getManualTokens(tokenCids) maps token_cids + limit + offset',
     () async {
       final client = FakeIndexerClient()
         ..tokensPayload = <String, dynamic>{
@@ -192,7 +192,7 @@ void main() {
         };
 
       final service = IndexerService(client: client);
-      final tokens = await service.fetchTokensByCIDs(
+      final tokens = await service.getManualTokens(
         tokenCids: const ['cid1', 'cid2', 'cid3'],
       );
 
@@ -207,7 +207,7 @@ void main() {
   );
 
   test(
-    'IndexerService.fetchTokensByCIDs batches in chunks of 40 '
+    'IndexerService.getManualTokens(tokenCids) batches in chunks of 40 '
     'when list is large',
     () async {
       final client = FakeIndexerClient()
@@ -232,7 +232,7 @@ void main() {
 
       final service = IndexerService(client: client);
       final cids = List<String>.generate(85, (i) => 'cid$i');
-      final tokens = await service.fetchTokensByCIDs(tokenCids: cids);
+      final tokens = await service.getManualTokens(tokenCids: cids);
 
       expect(tokens, hasLength(85));
       expect(tokens.first.cid, equals('cid0'));
@@ -263,7 +263,7 @@ void main() {
   );
 
   test(
-    'IndexerService.fetchTokensByTokenIds batches at 255 and applies offset/limit after merge',
+    'IndexerService.getManualTokens(tokenIds) batches at 255 and applies offset/limit after merge',
     () async {
       final client = FakeIndexerClient()
         ..tokensPayloadBuilder = (vars) {
@@ -288,7 +288,7 @@ void main() {
       final service = IndexerService(client: client);
       final tokenIds = List<int>.generate(300, (i) => i + 1);
 
-      final tokens = await service.fetchTokensByTokenIds(
+      final tokens = await service.getManualTokens(
         tokenIds: tokenIds,
         offset: 10,
         limit: 20,
@@ -317,22 +317,20 @@ void main() {
   );
 
   test(
-    'IndexerService.fetchTokensByCIDs returns empty on GraphQL failure',
+    'IndexerService.getManualTokens(tokenCids) returns empty on GraphQL failure',
     () async {
       final client = FakeIndexerClient()
         ..tokensPayloadBuilder = (_) => throw Exception('GraphQL 500');
 
       final service = IndexerService(client: client);
-      final tokens = await service.fetchTokensByCIDs(
-        tokenCids: const ['cid1', 'cid2'],
-      );
+      final tokens = await service.getManualTokens(tokenCids: const ['cid1', 'cid2']);
 
       expect(tokens, isEmpty);
     },
   );
 
   test(
-    'IndexerService.fetchTokensByCIDs skips failed CID batch and continues',
+    'IndexerService.getManualTokens(tokenCids) skips failed CID batch and continues',
     () async {
       final client = FakeIndexerClient()
         ..tokensPayloadBuilder = (vars) {
@@ -363,10 +361,62 @@ void main() {
         ...List<String>.generate(5, (i) => 'cid${40 + i}'),
       ];
 
-      final tokens = await service.fetchTokensByCIDs(tokenCids: cids);
+      final tokens = await service.getManualTokens(tokenCids: cids);
 
       expect(tokens, hasLength(5));
       expect(tokens.map((t) => t.cid), equals(cids.skip(40).toList()));
+    },
+  );
+
+  test(
+    'IndexerService.getManualTokens concatenates ids then cids and dedupes by cid',
+    () async {
+      final client = FakeIndexerClient()
+        ..tokensPayloadBuilder = (vars) {
+          if (vars.containsKey('token_ids')) {
+            final ids = List<int>.from(vars['token_ids'] as List);
+            return <String, dynamic>{
+              'items': [
+                for (final id in ids)
+                  {
+                    'id': id.toString(),
+                    'chain': 'eip155:1',
+                    'contract_address': '0xabc',
+                    'standard': 'erc721',
+                    'token_cid': 'shared',
+                    'token_number': '1',
+                    'current_owner': '0x111',
+                  },
+              ],
+              'offset': 0,
+            };
+          }
+          final cids = List<String>.from(vars['token_cids'] as List);
+          return <String, dynamic>{
+            'items': [
+              for (final cid in cids)
+                {
+                  'id': cid == 'shared' ? '999' : cid.replaceFirst('cid', ''),
+                  'chain': 'eip155:1',
+                  'contract_address': '0xabc',
+                  'standard': 'erc721',
+                  'token_cid': cid,
+                  'token_number': '1',
+                  'current_owner': '0x111',
+                },
+            ],
+            'offset': 0,
+          };
+        };
+
+      final service = IndexerService(client: client);
+      final tokens = await service.getManualTokens(
+        tokenIds: const [1],
+        tokenCids: const ['shared', 'cid2'],
+      );
+
+      // Keep ID tokens first, then append non-duplicate CIDs.
+      expect(tokens.map((t) => t.cid), equals(const ['shared', 'cid2']));
     },
   );
 }

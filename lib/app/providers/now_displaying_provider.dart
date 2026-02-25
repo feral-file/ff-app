@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:app/app/now_displaying/now_displaying_enrichment.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/app/providers/indexer_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
@@ -28,9 +28,12 @@ final nowDisplayingItemIdsProvider = Provider<List<String>>((ref) {
 /// User-requested range from scrolling in the expanded bar.
 /// When set, the effective window is merged with the base window (around current index).
 final nowDisplayingRequestedRangeProvider =
-    NotifierProvider<NowDisplayingRequestedRangeNotifier, ({int start, int end})?>(
-  NowDisplayingRequestedRangeNotifier.new,
-);
+    NotifierProvider<
+      NowDisplayingRequestedRangeNotifier,
+      ({int start, int end})?
+    >(
+      NowDisplayingRequestedRangeNotifier.new,
+    );
 
 /// Notifier for scroll-requested window range; updated when user scrolls in expanded bar.
 class NowDisplayingRequestedRangeNotifier
@@ -53,13 +56,13 @@ class NowDisplayingRequestedRangeNotifier
 
 /// Window of indices [start, end) around currentWorkIndex, merged with scroll-requested range.
 /// Only items in this range are fetched from cache and enriched.
-final nowDisplayingWindowProvider =
-    Provider<({int start, int end})?>((ref) {
+final nowDisplayingWindowProvider = Provider<({int start, int end})?>((ref) {
   final status = ref.watch(ff1CurrentPlayerStatusProvider);
   final items = status?.items;
   final index = status?.currentWorkIndex;
-  final ({int start, int end})? requested =
-      ref.watch(nowDisplayingRequestedRangeProvider);
+  final ({int start, int end})? requested = ref.watch(
+    nowDisplayingRequestedRangeProvider,
+  );
   if (items == null ||
       items.isEmpty ||
       index == null ||
@@ -67,17 +70,23 @@ final nowDisplayingWindowProvider =
       index >= items.length) {
     return null;
   }
-  final int baseStart =
-      (index - nowDisplayingWindowHalfSize).clamp(0, items.length);
-  final int baseEnd =
-      (index + nowDisplayingWindowHalfSize + 1).clamp(0, items.length);
+  final int baseStart = (index - nowDisplayingWindowHalfSize).clamp(
+    0,
+    items.length,
+  );
+  final int baseEnd = (index + nowDisplayingWindowHalfSize + 1).clamp(
+    0,
+    items.length,
+  );
   if (requested == null) {
     return (start: baseStart, end: baseEnd);
   }
   final int start = (requested.start < baseStart ? requested.start : baseStart)
       .clamp(0, items.length);
-  final int end = (requested.end > baseEnd ? requested.end : baseEnd)
-      .clamp(0, items.length);
+  final int end = (requested.end > baseEnd ? requested.end : baseEnd).clamp(
+    0,
+    items.length,
+  );
   return (start: start, end: end);
 });
 
@@ -227,13 +236,13 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       for (var i = 0; i < items.length; i++)
         (i >= start && i < end)
             ? (enriched[items[i].id] ??
-                cachedById[items[i].id] ??
-                PlaylistItem(
-                  id: items[i].id,
-                  kind: PlaylistItemKind.dp1Item,
-                  title: items[i].title,
-                  duration: items[i].duration,
-                ))
+                  cachedById[items[i].id] ??
+                  PlaylistItem(
+                    id: items[i].id,
+                    kind: PlaylistItemKind.dp1Item,
+                    title: items[i].title,
+                    duration: items[i].duration,
+                  ))
             : PlaylistItem(
                 id: items[i].id,
                 kind: PlaylistItemKind.dp1Item,
@@ -265,7 +274,7 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     final cids = databaseService.extractDP1ItemCids(missing);
     if (cids.isEmpty) return <String, PlaylistItem>{};
 
-    final tokens = await indexerService.fetchTokensByCIDs(tokenCids: cids);
+    final tokens = await indexerService.getManualTokens(tokenCids: cids);
     final toSave = buildEnrichedPlaylistItemsToSave(
       missingItems: missing,
       tokens: tokens,

@@ -75,11 +75,16 @@ class _FakeIndexerService extends IndexerService {
   final List<int> requestBatchSizes = <int>[];
 
   @override
-  Future<List<AssetToken>> fetchTokensByCIDs({
-    required List<String> tokenCids,
+  Future<List<AssetToken>> getManualTokens({
+    List<int>? tokenIds,
+    List<String>? owners,
+    List<String>? tokenCids,
+    int? limit,
+    int? offset,
   }) async {
-    requestBatchSizes.add(tokenCids.length);
-    return tokenCids
+    final cids = tokenCids ?? const <String>[];
+    requestBatchSizes.add(cids.length);
+    return cids
         .map(
           (cid) => AssetToken(
             id: cid.hashCode,

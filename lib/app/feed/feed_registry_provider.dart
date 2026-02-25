@@ -1,6 +1,5 @@
 import 'package:app/app/feed/feed_manager.dart';
 import 'package:app/app/providers/background_workers_provider.dart';
-import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/infra/config/app_config.dart';
@@ -131,7 +130,6 @@ final feedManagerProvider = Provider<FeralFileFeedManager>((ref) {
     databaseService: ref.read(databaseServiceProvider),
     appStateService: ref.read(appStateServiceProvider),
     defaultDp1FeedUrl: AppConfig.dp1FeedUrl,
-    indexerService: ref.read(indexerServiceProvider),
     apiKey: AppConfig.dp1FeedApiKey,
     onChannelPersistedInDatabase: () async {
       await ref.read(workerSchedulerProvider).onFeedIngested();

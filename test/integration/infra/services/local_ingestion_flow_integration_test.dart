@@ -115,10 +115,15 @@ class _DeterministicIndexerService extends IndexerService {
     : super(client: IndexerClient(endpoint: 'http://localhost'));
 
   @override
-  Future<List<AssetToken>> fetchTokensByCIDs({
-    required List<String> tokenCids,
+  Future<List<AssetToken>> getManualTokens({
+    List<int>? tokenIds,
+    List<String>? owners,
+    List<String>? tokenCids,
+    int? limit,
+    int? offset,
   }) async {
-    return tokenCids
+    final cids = tokenCids ?? const <String>[];
+    return cids
         .map(
           (cid) => AssetToken(
             id: cid.hashCode,

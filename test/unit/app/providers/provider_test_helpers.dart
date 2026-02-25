@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:app/domain/models/indexer/changes/change.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/config/remote_config_service.dart';
@@ -51,8 +52,12 @@ class FakeIndexerService extends IndexerService {
   List<String>? lastTokenCids;
 
   @override
-  Future<List<AssetToken>> fetchTokensByCIDs({
-    required List<String> tokenCids,
+  Future<List<AssetToken>> getManualTokens({
+    List<int>? tokenIds,
+    List<String>? owners,
+    List<String>? tokenCids,
+    int? limit,
+    int? offset,
   }) async {
     lastTokenCids = tokenCids;
     return tokensByCid;
@@ -239,6 +244,15 @@ class FakeIndexerTokensWorker extends IndexerTokensWorker {
 
   final StreamController<TokensWorkerMessage> _controller =
       StreamController<TokensWorkerMessage>.broadcast();
+  ChangeList? updateTokensDataResponse;
+  List<String>? updateTokensAddressesOverride;
+  Object? updateTokensFailure;
+  bool emitUpdateTokensSuccess = true;
+  List<AssetToken> manualTokenResponse = const <AssetToken>[];
+  Object? manualTokenError;
+  List<int>? lastRequestedTokenIds;
+  List<String>? lastRequestedTokenOwners;
+  List<String>? lastRequestedTokenCids;
 
   @override
   Stream<TokensWorkerMessage> get messages => _controller.stream;
@@ -259,7 +273,23 @@ class FakeIndexerTokensWorker extends IndexerTokensWorker {
     required String uuid,
     required List<AddressAnchor> addressAnchors,
   }) {
-    _controller.add(UpdateTokensSuccess(uuid));
+    final addresses =
+        updateTokensAddressesOverride ??
+        addressAnchors.map((anchor) => anchor.address).toList(growable: false);
+    final changesList = updateTokensDataResponse;
+    if (changesList != null) {
+      _controller.add(UpdateTokensData(uuid, changesList, addresses));
+    }
+
+    final failure = updateTokensFailure;
+    if (failure != null) {
+      _controller.add(UpdateTokensFailure(uuid, addresses, failure));
+      return;
+    }
+
+    if (emitUpdateTokensSuccess) {
+      _controller.add(UpdateTokensSuccess(uuid));
+    }
   }
 
   @override
@@ -275,6 +305,31 @@ class FakeIndexerTokensWorker extends IndexerTokensWorker {
   @override
   void notifyChannelIngested({required String uuid}) {
     _controller.add(ChannelIngestedAck(uuid));
+  }
+
+  @override
+  void getManualTokens({
+    required String uuid,
+    List<int>? tokenIds,
+    List<String>? owners,
+    List<String>? tokenCids,
+  }) {
+    lastRequestedTokenIds = tokenIds == null ? null : List<int>.from(tokenIds);
+    lastRequestedTokenOwners =
+        owners == null ? null : List<String>.from(owners);
+    lastRequestedTokenCids =
+        tokenCids == null ? null : List<String>.from(tokenCids);
+
+    final error = manualTokenError;
+    if (error != null) {
+      _controller.add(FetchManualTokensFailure(uuid, error));
+      return;
+    }
+    _controller.add(FetchManualTokensDone(uuid, manualTokenResponse));
+  }
+
+  void emitMessage(TokensWorkerMessage message) {
+    _controller.add(message);
   }
 }
 

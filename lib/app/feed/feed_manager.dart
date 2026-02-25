@@ -12,7 +12,6 @@ import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/drift_kinds.dart';
 import 'package:app/infra/services/base_dp1_feed_service_impl.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
-import 'package:app/infra/services/indexer_service.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
@@ -206,16 +205,13 @@ class FeralFileFeedManager extends FeedManager {
     required super.databaseService,
     required super.appStateService,
     required this.defaultDp1FeedUrl,
-    required IndexerService indexerService,
     required String apiKey,
     this.onChannelPersistedInDatabase,
-  }) : _indexerService = indexerService,
-       _apiKey = apiKey;
+  }) : _apiKey = apiKey;
 
   @override
   final String defaultDp1FeedUrl;
 
-  final IndexerService _indexerService;
   final String _apiKey;
   final Future<void> Function()? onChannelPersistedInDatabase;
 
@@ -283,7 +279,6 @@ class FeralFileFeedManager extends FeedManager {
         databaseService: databaseService,
         appStateService: appStateService,
         apiKey: _apiKey,
-        indexerService: _indexerService,
         onChannelIngested: onChannelIngested,
       );
       service.setPaused(isPaused);

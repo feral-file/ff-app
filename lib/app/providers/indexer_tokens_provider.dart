@@ -4,7 +4,6 @@ import 'dart:async';
 
 import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/background_workers_provider.dart';
-import 'package:app/app/providers/indexer_provider.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -15,6 +14,7 @@ import 'package:app/infra/indexer/isolate/worker_tasks.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:uuid/uuid.dart';
 
 /// State for the tokens sync coordinator.
 class TokensSyncState {
@@ -80,6 +80,8 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
   final Map<String, Completer<void>> _syncCompleters = {};
   final Map<String, List<String>> _syncAddressesByUuid = {};
   final Map<String, Future<void>> _inFlightByUuid = {};
+  final Map<String, Completer<List<AssetToken>>> _fetchManualTokenCompleters =
+      {};
   bool _isStoppingForReset = false;
 
   @override
@@ -207,6 +209,22 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
       return;
     }
 
+    if (message is FetchManualTokensDone) {
+      final completer = _fetchManualTokenCompleters.remove(message.uuid);
+      if (completer != null && !completer.isCompleted) {
+        completer.complete(message.tokens);
+      }
+      return;
+    }
+
+    if (message is FetchManualTokensFailure) {
+      final completer = _fetchManualTokenCompleters.remove(message.uuid);
+      if (completer != null && !completer.isCompleted) {
+        completer.completeError(message.exception);
+      }
+      return;
+    }
+
     if (message is UpdateTokensSuccess) {
       unawaited(_handleUpdateTokensSuccess(message));
       return;
@@ -290,10 +308,9 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
   }
 
   Future<void> _handleUpdateTokensData(UpdateTokensData msg) async {
-    final indexer = ref.read(indexerServiceProvider);
     final database = ref.read(databaseServiceProvider);
 
-    // Extract tokenIds + tokenCids from changes.
+    // Extract tokenIds/tokenCids from changes.
     final tokenIds = <int>{};
     final tokenCids = <String>{};
     for (final change in msg.changesList.items) {
@@ -303,13 +320,26 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
       if (tokenCid != null && tokenCid.isNotEmpty) tokenCids.add(tokenCid);
     }
 
-    // Old semantics: fetch by tokenIds + owners, then delete missing CIDs.
-    final List<AssetToken> tokens = tokenIds.isEmpty
-        ? const <AssetToken>[]
-        : await indexer.fetchTokensByTokenIds(
-            tokenIds: tokenIds.toList(),
-            owners: msg.addresses,
-          );
+    // Fetch tokens via worker isolate using token IDs + owners.
+    final List<AssetToken> tokens;
+    if (tokenIds.isEmpty) {
+      tokens = const <AssetToken>[];
+    } else {
+      final fetchUuid = Uuid().v1();
+      final completer = Completer<List<AssetToken>>();
+      _fetchManualTokenCompleters[fetchUuid] = completer;
+      _worker.getManualTokens(
+        uuid: fetchUuid,
+        tokenIds: tokenIds.toList(),
+        owners: msg.addresses,
+      );
+      try {
+        tokens = await completer.future;
+      } on Exception catch (e) {
+        state = state.copyWith(errorMessage: e.toString());
+        return;
+      }
+    }
 
     final returnedCids = tokens.map((t) => t.cid).toSet();
     final missingCids = tokenCids
@@ -348,6 +378,16 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     pausePolling();
 
     await _worker.stop();
+
+    // Unblock any in-flight UpdateTokensData handlers that are awaiting a token
+    // fetch response. We complete these before awaiting pending DB writes to
+    // avoid deadlocks where stop waits for work that is itself waiting on stop.
+    for (final completer in _fetchManualTokenCompleters.values) {
+      if (!completer.isCompleted) {
+        completer.complete(const <AssetToken>[]);
+      }
+    }
+    _fetchManualTokenCompleters.clear();
 
     final pendingWrites = _inFlightByUuid.values.toList(growable: false);
     if (pendingWrites.isNotEmpty) {

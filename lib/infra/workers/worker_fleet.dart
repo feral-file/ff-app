@@ -122,6 +122,16 @@ class IndexAddressWorkersFleet {
     }
   }
 
+  /// Stops the worker for a specific address, clears its checkpoint, and
+  /// removes it from the fleet.
+  Future<void> stopWorker(String address) async {
+    final worker = _workers[address];
+    if (worker == null) return;
+
+    await worker.stop();
+    _workers.remove(address);
+  }
+
   /// Stops all workers (clears checkpoints) and removes them from the fleet.
   Future<void> stopAll() async {
     for (final worker in _workers.values) {

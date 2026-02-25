@@ -1,10 +1,9 @@
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/models.dart';
-import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
-import 'package:app/infra/services/address_indexing_process_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
+import 'package:app/infra/workers/worker_scheduler.dart';
 import 'package:logging/logging.dart';
 
 /// Service for managing user wallet addresses and address-based playlists.
@@ -14,20 +13,17 @@ class AddressService {
     required DatabaseService databaseService,
     required IndexerSyncService indexerSyncService,
     required DomainAddressService domainAddressService,
-    required AddressIndexingProcessService addressIndexingProcessService,
-    required AppStateService appStateService,
+    required WorkerScheduler workerScheduler,
   }) : _databaseService = databaseService,
        _domainAddressService = domainAddressService,
-       _addressIndexingProcessService = addressIndexingProcessService,
-       _appStateService = appStateService {
+       _workerScheduler = workerScheduler {
     _indexerSyncService = indexerSyncService;
     _log = Logger('AddressService');
   }
 
   final DatabaseService _databaseService;
   final DomainAddressService _domainAddressService;
-  final AddressIndexingProcessService _addressIndexingProcessService;
-  final AppStateService _appStateService;
+  final WorkerScheduler _workerScheduler;
   late final IndexerSyncService _indexerSyncService;
   late final Logger _log;
 
@@ -67,7 +63,7 @@ class AddressService {
       final existing = await _getAddressPlaylistByOwner(normalizedAddress);
       if (existing != null) {
         _log.info('Address playlist already exists: ${existing.id}');
-        await _addressIndexingProcessService.start(normalizedAddress);
+        await _workerScheduler.onAddressAdded(normalizedAddress);
         return existing;
       }
 
@@ -77,7 +73,7 @@ class AddressService {
       );
 
       await _databaseService.ingestPlaylist(playlist);
-      await _addressIndexingProcessService.start(normalizedAddress);
+      await _workerScheduler.onAddressAdded(normalizedAddress);
 
       _log.info('Added address playlist: ${playlist.id}');
       return playlist;
@@ -100,7 +96,7 @@ class AddressService {
       final playlistId = PlaylistExt.addressPlaylistId(normalizedAddress);
 
       _log.info('Removing address: $normalizedAddress');
-      await _addressIndexingProcessService.stop(normalizedAddress);
+      await _workerScheduler.onAddressRemoved(normalizedAddress);
 
       final playlist = await _databaseService.getPlaylistById(playlistId);
       if (playlist == null) {
@@ -114,7 +110,6 @@ class AddressService {
       }
 
       await _databaseService.deletePlaylist(playlistId);
-      await _appStateService.clearAddressState(normalizedAddress);
 
       _log.info('Removed address playlist: $playlistId');
     } catch (e, stack) {
@@ -185,18 +180,6 @@ class AddressService {
   Future<List<String>> getAllAddresses() async {
     final playlists = await _databaseService.getAddressPlaylists();
     return playlists.map((p) => p.ownerAddress).whereType<String>().toList();
-  }
-
-  /// Pause indexing/sync process for an address.
-  Future<void> pauseAddressProcessing(String address) async {
-    final normalizedAddress = _normalizeAddressForChain(address);
-    await _addressIndexingProcessService.pause(normalizedAddress);
-  }
-
-  /// Resume indexing/sync process for an address.
-  Future<void> resumeAddressProcessing(String address) async {
-    final normalizedAddress = _normalizeAddressForChain(address);
-    await _addressIndexingProcessService.resume(normalizedAddress);
   }
 
   Future<Playlist?> _getAddressPlaylistByOwner(String normalizedAddress) async {

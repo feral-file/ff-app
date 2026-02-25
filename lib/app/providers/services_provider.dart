@@ -1,31 +1,20 @@
-import 'package:app/app/providers/indexer_provider.dart';
+import 'package:app/app/providers/background_workers_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_dio.dart';
+import 'package:app/infra/graphql/indexer_client_provider.dart';
 import 'package:app/infra/services/address_service.dart';
-import 'package:app/infra/services/address_indexing_process_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/canvas_client_service_v2.dart';
 import 'package:app/infra/services/device_info_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
+import 'package:app/infra/services/indexer_service.dart';
+import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-/// Provider for per-address index + sync process orchestration.
-final addressIndexingProcessServiceProvider =
-    Provider<AddressIndexingProcessService>((ref) {
-      final indexerService = ref.watch(indexerServiceProvider);
-      final indexerSyncService = ref.watch(indexerSyncServiceProvider);
-      final appStateService = ref.watch(appStateServiceProvider);
-      return AddressIndexingProcessService(
-        indexerService: indexerService,
-        indexerSyncService: indexerSyncService,
-        appStateService: appStateService,
-      );
-    });
 
 /// Provider for the AddressService.
 /// Manages user wallet addresses and address-based playlists.
@@ -33,17 +22,13 @@ final addressServiceProvider = Provider<AddressService>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
   final indexerSyncService = ref.watch(indexerSyncServiceProvider);
   final domainAddressService = ref.watch(domainAddressServiceProvider);
-  final addressIndexingProcessService = ref.watch(
-    addressIndexingProcessServiceProvider,
-  );
-  final appStateService = ref.watch(appStateServiceProvider);
+  final workerScheduler = ref.watch(workerSchedulerProvider);
 
   return AddressService(
     databaseService: databaseService,
     indexerSyncService: indexerSyncService,
     domainAddressService: domainAddressService,
-    addressIndexingProcessService: addressIndexingProcessService,
-    appStateService: appStateService,
+    workerScheduler: workerScheduler,
   );
 });
 
@@ -66,14 +51,12 @@ final bootstrapServiceProvider = Provider<BootstrapService>((ref) {
 /// Fetches playlists from DP1 feed servers with cache policy support.
 final dp1FeedServiceProvider = Provider<FeralFileDP1FeedService>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
-  final indexerService = ref.watch(indexerServiceProvider);
   final appStateService = ref.watch(appStateServiceProvider);
 
   return FeralFileDP1FeedService(
     baseUrl: AppConfig.dp1FeedUrl,
     isExternalFeedService: false,
     databaseService: databaseService,
-    indexerService: indexerService,
     appStateService: appStateService,
     apiKey: AppConfig.dp1FeedApiKey,
   );
@@ -104,5 +87,21 @@ final canvasClientServiceV2Provider = Provider<CanvasClientServiceV2>((ref) {
     deviceInfoService,
     tvCastApi,
     dp1FeedBaseUrl: AppConfig.dp1FeedUrl,
+  );
+});
+
+/// Provider for IndexerService (network-only).
+final indexerServiceProvider = Provider<IndexerService>((ref) {
+  final client = ref.watch(indexerClientProvider);
+  return IndexerService(client: client);
+});
+
+/// Provider for IndexerSyncService (fetch + local ingestion).
+final indexerSyncServiceProvider = Provider<IndexerSyncService>((ref) {
+  final indexerService = ref.watch(indexerServiceProvider);
+  final databaseService = ref.watch(databaseServiceProvider);
+  return IndexerSyncService(
+    indexerService: indexerService,
+    databaseService: databaseService,
   );
 });

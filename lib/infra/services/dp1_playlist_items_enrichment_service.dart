@@ -266,7 +266,7 @@ class DP1PlaylistItemsEnrichmentService {
 
     final cids = chunk.map((entry) => entry.key).toList(growable: false);
     _log.fine('Fetching ${cids.length} tokens from indexer...');
-    final tokens = await _indexerService.fetchTokensByCIDs(tokenCids: cids);
+    final tokens = await _indexerService.getManualTokens(tokenCids: cids);
     final tokensByCid = <String, AssetToken>{};
     for (final token in tokens) {
       tokensByCid[token.cid] = token;
