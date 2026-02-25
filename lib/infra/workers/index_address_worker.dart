@@ -2,43 +2,42 @@
 // ignore_for_file: public_member_api_docs, use_super_parameters
 import 'dart:async';
 import 'dart:collection';
-import 'dart:io';
 import 'dart:isolate';
 
 import 'package:app/domain/models/indexer/asset_token.dart';
-import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/workers/background_worker.dart';
 import 'package:app/infra/workers/worker_message.dart';
 import 'package:app/infra/workers/worker_state_service.dart';
-import 'package:drift/isolate.dart';
-import 'package:drift/native.dart';
 import 'package:logging/logging.dart';
 
 /// Self-contained worker for indexing blockchain addresses.
 ///
 /// Pipeline:
 /// 1. Receive address from scheduler
-/// 2. Trigger indexing via IndexerService
-/// 3. Poll indexing workflow status until complete
-/// 4. Fetch tokens for address
-/// 5. Write tokens to Drift DB inside isolate
-/// 6. Send workComplete message to scheduler
+/// 2. Trigger indexing via IndexerService (in isolate)
+/// 3. Poll indexing workflow status until complete (in isolate)
+/// 4. Fetch tokens for address (in isolate)
+/// 5. Send serialised token payload to main isolate as 'writeResult'
+/// 6. Main isolate forwards raw JSON to DatabaseService.ingestTokensForAddressFromRaw
+/// 7. DatabaseWriteQueue isolate: deserialise → transform → SQL write
+/// 8. Main isolate emits workComplete to scheduler
+///
+/// No deserialization or DB work happens on the main isolate; it only
+/// forwards the payload to the always-on write-queue isolate.
 class IndexAddressWorker extends BackgroundWorker {
   IndexAddressWorker({
     required String workerId,
     required WorkerStateStore workerStateService,
     required IndexerService Function() indexerServiceFactory,
-    required String databasePath,
+    required DatabaseService databaseService,
     required String indexerEndpoint,
     required String indexerApiKey,
-    SendPort? databaseConnectPort,
     Logger? logger,
   }) : _indexerServiceFactory = indexerServiceFactory,
-       _databasePath = databasePath,
-       _databaseConnectPort = databaseConnectPort,
+       _databaseService = databaseService,
        _indexerEndpoint = indexerEndpoint,
        _indexerApiKey = indexerApiKey,
        super(
@@ -51,22 +50,9 @@ class IndexAddressWorker extends BackgroundWorker {
   // IndexerService from endpoint/apiKey args at spawn time.
   // ignore: unused_field
   final IndexerService Function() _indexerServiceFactory;
-  final String _databasePath;
 
-  /// Updates the shared DriftIsolate [SendPort].
-  ///
-  /// Must be called by the scheduler before [start] when the shared Drift
-  /// isolate is available. Safe to call multiple times; subsequent calls
-  /// only affect future [start] invocations.
-  // ignore: use_setters_to_change_properties
-  void updateConnectPort(SendPort port) => _databaseConnectPort = port;
-
-  /// [SendPort] for the shared [DriftIsolate].
-  ///
-  /// Set to null at construction; injected by the scheduler via
-  /// [updateConnectPort] before [start] is called. When null the isolate
-  /// falls back to a direct [NativeDatabase] connection (used in tests).
-  SendPort? _databaseConnectPort;
+  /// Database service on the main isolate used to persist token results.
+  final DatabaseService _databaseService;
   final String _indexerEndpoint;
   final String _indexerApiKey;
 
@@ -88,7 +74,6 @@ class IndexAddressWorker extends BackgroundWorker {
       return;
     }
 
-    // Deduplicate
     if (_pendingAddresses.contains(normalized) ||
         _inFlightAddress == normalized) {
       return;
@@ -136,17 +121,16 @@ class IndexAddressWorker extends BackgroundWorker {
 
   @override
   Future<void> onStart() async {
+    // The isolate no longer connects to a DB at entry — handshake is
+    // synchronous, completing without waiting for a DriftIsolate round-trip.
     await spawnIsolate(
       entryPoint: _isolateEntry,
       args: <Object?>[
         _indexerEndpoint,
         _indexerApiKey,
-        _databaseConnectPort, // SendPort? — null in tests
-        _databasePath, // fallback path used when connectPort is null
       ],
     );
 
-    // Send any pending work to isolate
     if (_pendingAddresses.isNotEmpty) {
       _sendWorkToIsolate();
     }
@@ -154,7 +138,7 @@ class IndexAddressWorker extends BackgroundWorker {
 
   @override
   Future<void> onPause() async {
-    // Save in-flight address back to queue for resume
+    // Save in-flight address back to queue for resume.
     final inFlight = _inFlightAddress;
     if (inFlight != null && !_pendingAddresses.contains(inFlight)) {
       _pendingAddresses.addFirst(inFlight);
@@ -206,19 +190,19 @@ class IndexAddressWorker extends BackgroundWorker {
     final type = message['type']?.toString() ?? '';
     final address = message['address']?.toString() ?? '';
 
-    if (type == 'workComplete') {
-      Logger(
-        'IndexAddressWorker',
-      ).info('Index worker completed address=$address');
-      _inFlightAddress = null;
-      _sendWorkToIsolate(); // Send next work item if available
-      unawaited(checkpoint());
-    } else if (type == 'workFailed') {
+    if (type == 'writeResult') {
+      // Isolate fetched tokens successfully; write to DB on the main isolate.
+      unawaited(
+        _processWriteResult(Map<dynamic, dynamic>.from(message)),
+      );
+      return;
+    }
+
+    if (type == 'workFailed') {
       final error = message['error']?.toString() ?? 'Unknown error';
-      Logger(
-        'IndexAddressWorker',
-      ).warning('Index worker failed address=$address error=$error');
-      // Re-queue failed address
+      Logger('IndexAddressWorker').warning(
+        'Index worker failed address=$address error=$error',
+      );
       if (address.isNotEmpty && !_pendingAddresses.contains(address)) {
         _pendingAddresses.addFirst(address);
       }
@@ -228,6 +212,50 @@ class IndexAddressWorker extends BackgroundWorker {
     }
   }
 
+  /// Forwards the raw token payload from the worker isolate to the background
+  /// write queue via DatabaseService.ingestTokensForAddressFromRaw.
+  ///
+  /// No deserialization or transformation happens on the main isolate.
+  /// All CPU-heavy work (JSON parsing, domain transformation, companion
+  /// building, SQL writes) runs in the always-on write-queue isolate.
+  Future<void> _processWriteResult(Map<dynamic, dynamic> message) async {
+    if (state != BackgroundWorkerState.started) return;
+
+    final address = message['address']?.toString() ?? '';
+    final rawTokens = (message['tokens'] as List? ?? const []).cast<Object?>();
+    final tokenCount = message['tokenCount'] as int? ?? 0;
+
+    try {
+      await _databaseService.ingestTokensForAddressFromRaw(
+        address: address,
+        rawTokensJson: rawTokens,
+      );
+    } on Object catch (e, stack) {
+      Logger('IndexAddressWorker').warning(
+        'DB write failed for address=$address',
+        e,
+        stack,
+      );
+      if (state != BackgroundWorkerState.started) return;
+      if (address.isNotEmpty && !_pendingAddresses.contains(address)) {
+        _pendingAddresses.addFirst(address);
+      }
+      _inFlightAddress = null;
+      _sendWorkToIsolate();
+      unawaited(checkpoint());
+      return;
+    }
+
+    if (state != BackgroundWorkerState.started) return;
+
+    Logger('IndexAddressWorker').info(
+      'Completed indexing address=$address tokens=$tokenCount',
+    );
+    _inFlightAddress = null;
+    _sendWorkToIsolate();
+    unawaited(checkpoint());
+  }
+
   List<String> _asStringList(Object? value) {
     if (value is! List) {
       return const <String>[];
@@ -235,14 +263,13 @@ class IndexAddressWorker extends BackgroundWorker {
     return value.map((entry) => entry.toString()).toList(growable: false);
   }
 
-  // ----------------
-  // Isolate entry point and worker logic
-  // ----------------
+  // ─────────────────────────────────────────────
+  // Isolate entry point — no DB connection here.
+  // ─────────────────────────────────────────────
 
   static late SendPort _mainSendPort;
   static late Logger _isolateLog;
   static late IndexerService _indexerService;
-  static DatabaseService? _dbService;
   static bool _isShuttingDown = false;
   static ReceivePort? _isolateReceivePort;
 
@@ -250,8 +277,6 @@ class IndexAddressWorker extends BackgroundWorker {
     final sendPort = args[0]! as SendPort;
     final endpoint = args[1]! as String;
     final apiKey = args[2]! as String;
-    final connectPort = args[3] as SendPort?;
-    final databasePath = args[4]! as String;
 
     _isolateLog = Logger('IndexAddressWorker[Isolate]');
     _mainSendPort = sendPort;
@@ -268,68 +293,9 @@ class IndexAddressWorker extends BackgroundWorker {
       ),
     );
 
-    // Connect to DB asynchronously, then send the handshake.
-    unawaited(_connectAndHandshake(connectPort, databasePath));
-  }
-
-  /// Connects to the database (via [DriftIsolate] if [connectPort] is
-  /// provided, otherwise directly via [NativeDatabase]), then sends the
-  /// isolate handshake [SendPort] to the main isolate.
-  static Future<void> _connectAndHandshake(
-    SendPort? connectPort,
-    String databasePath,
-  ) async {
-    _dbService = await _openDatabase(connectPort, databasePath);
-
+    // Handshake is now synchronous — no DB connection to await.
     _isolateReceivePort = ReceivePort()..listen(_handleMessageInIsolate);
     _mainSendPort.send(_isolateReceivePort!.sendPort);
-  }
-
-  /// Opens a [DatabaseService] connection inside this isolate.
-  ///
-  /// When [connectPort] is provided, connects to the shared [DriftIsolate]
-  /// spawned by the scheduler so all worker writes are serialised through
-  /// a single Drift executor (no concurrent SQLite write-lock contention).
-  ///
-  /// Falls back to a direct [NativeDatabase] connection (used in tests where
-  /// no [DriftIsolate] is available).
-  static Future<DatabaseService?> _openDatabase(
-    SendPort? connectPort,
-    String path,
-  ) async {
-    if (connectPort != null) {
-      try {
-        final connection = await DriftIsolate.fromConnectPort(
-          connectPort,
-        ).connect();
-        _isolateLog.info('Connected to shared DriftIsolate');
-        return DatabaseService(AppDatabase.fromConnection(connection));
-      } on Object catch (e, stack) {
-        _isolateLog.warning('DriftIsolate connect failed', e, stack);
-        return null;
-      }
-    }
-    // Fallback: direct file connection (tests pass databasePath: ':memory:').
-    if (path.isEmpty) {
-      return null;
-    }
-    try {
-      final db = AppDatabase.forTesting(
-        NativeDatabase(
-          File(path),
-          setup: (rawDb) {
-            rawDb
-              ..execute('PRAGMA busy_timeout = 5000')
-              ..execute('PRAGMA journal_mode = WAL');
-          },
-        ),
-      );
-      _isolateLog.info('Opened direct NativeDatabase at $path');
-      return DatabaseService(db);
-    } on Object catch (e, stack) {
-      _isolateLog.warning('Failed to open NativeDatabase at $path', e, stack);
-      return null;
-    }
   }
 
   static void _handleMessageInIsolate(dynamic message) {
@@ -370,29 +336,22 @@ class IndexAddressWorker extends BackgroundWorker {
 
       _isolateLog.info('Processing address: $address');
 
-      // Step 1: Fast-path by reading already-indexed tokens first.
+      // Fast-path: read already-indexed tokens first to avoid a polling round.
       final existingTokens = await _indexerService.fetchTokensByAddresses(
         addresses: <String>[address],
         limit: 250,
         offset: 0,
       );
       if (existingTokens.isNotEmpty) {
-        await _writeTokensToDB(address, existingTokens);
-        if (!_isShuttingDown) {
-          _mainSendPort.send(<String, Object>{
-            'type': 'workComplete',
-            'address': address,
-            'tokenCount': existingTokens.length,
-          });
-        }
+        _sendWriteResult(address, existingTokens);
         _isolateLog.info(
-          'Completed indexing address via fast-path: $address '
-          '(tokens=${existingTokens.length})',
+          'Fast-path completed address=$address '
+          'tokens=${existingTokens.length}',
         );
         return;
       }
 
-      // Step 2: Trigger indexing when no tokens are available yet.
+      // Trigger indexing when no tokens are available yet.
       final results = await _indexerService.indexAddressesList(<String>[
         address,
       ]);
@@ -409,8 +368,7 @@ class IndexAddressWorker extends BackgroundWorker {
         throw Exception('No workflow ID returned for address: $address');
       }
 
-      // Step 3: Poll workflow status
-      const maxAttempts = 60; // 5 minutes with 5-second intervals
+      const maxAttempts = 60;
       for (var attempt = 0; attempt < maxAttempts; attempt++) {
         if (_isShuttingDown) {
           return;
@@ -435,26 +393,14 @@ class IndexAddressWorker extends BackgroundWorker {
         return;
       }
 
-      // Step 4: Fetch tokens
       final tokens = await _indexerService.fetchTokensByAddresses(
         addresses: <String>[address],
         limit: 250,
         offset: 0,
       );
 
-      // Step 5: Write to database
-      await _writeTokensToDB(address, tokens);
-
-      // Step 6: Send completion message
-      if (!_isShuttingDown) {
-        _mainSendPort.send(<String, Object>{
-          'type': 'workComplete',
-          'address': address,
-          'tokenCount': tokens.length,
-        });
-      }
-
-      _isolateLog.info('Completed indexing address: $address');
+      _sendWriteResult(address, tokens);
+      _isolateLog.info('Completed indexing address=$address');
     } on Object catch (e, stack) {
       _isolateLog.warning('Failed to process address: $address', e, stack);
       if (!_isShuttingDown) {
@@ -467,17 +413,15 @@ class IndexAddressWorker extends BackgroundWorker {
     }
   }
 
-  static Future<void> _writeTokensToDB(
-    String address,
-    List<AssetToken> tokens,
-  ) async {
-    final service = _dbService;
-    if (service == null) {
-      _isolateLog.warning('No DB service — skipping token write for $address');
-      return;
-    }
-    await service.ingestTokensForAddress(address: address, tokens: tokens);
-    _isolateLog.info('Wrote ${tokens.length} tokens for $address to DB');
+  /// Sends fetched tokens to the main isolate for DB persistence.
+  static void _sendWriteResult(String address, List<AssetToken> tokens) {
+    if (_isShuttingDown) return;
+    _mainSendPort.send(<String, Object?>{
+      'type': 'writeResult',
+      'address': address,
+      'tokens': tokens.map((t) => t.toRestJson()).toList(growable: false),
+      'tokenCount': tokens.length,
+    });
   }
 
   static Future<void> _shutdownIsolate(String action) async {
@@ -486,7 +430,7 @@ class IndexAddressWorker extends BackgroundWorker {
     }
     _isShuttingDown = true;
 
-    await _closeDatabase();
+    // No DB to close — shutdown is now synchronous.
     _isolateReceivePort?.close();
     _isolateReceivePort = null;
 
@@ -494,20 +438,6 @@ class IndexAddressWorker extends BackgroundWorker {
       'type': 'lifecycleAck',
       'action': action,
     });
-  }
-
-  static Future<void> _closeDatabase() async {
-    final service = _dbService;
-    _dbService = null;
-    if (service == null) {
-      return;
-    }
-    try {
-      await service.checkpoint();
-      await service.close();
-    } on Object catch (e, stack) {
-      _isolateLog.warning('Failed closing index worker database', e, stack);
-    }
   }
 
   static bool _addressesEqual(String left, String right) {

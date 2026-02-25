@@ -428,7 +428,7 @@ class ItemEnrichmentQueryWorker extends BackgroundWorker {
           : const <(String, String?, String, int)>[];
 
       final batches = <Map<String, String>>[];
-      var totalRowsQueried = highRows.length + lowRows.length;
+      final totalRowsQueried = highRows.length + lowRows.length;
       var totalItemsSent = 0;
       var totalRowsWithCid = 0;
 

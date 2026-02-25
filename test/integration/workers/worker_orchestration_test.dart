@@ -68,6 +68,7 @@ void main() {
         final scheduler = WorkerScheduler(
           databasePathResolver: () async => context.databaseFile.path,
           workerStateService: workerStateStore,
+          databaseService: context.databaseService,
           indexerEndpoint: 'http://invalid-for-this-test',
           indexerApiKey: '',
           maxEnrichmentWorkers: 1,
@@ -103,6 +104,7 @@ void main() {
         final scheduler = WorkerScheduler(
           databasePathResolver: () async => context.databaseFile.path,
           workerStateService: workerStateStore,
+          databaseService: context.databaseService,
           indexerEndpoint: 'http://invalid-for-this-test',
           indexerApiKey: '',
           maxEnrichmentWorkers: 1,
@@ -127,6 +129,7 @@ void main() {
         final scheduler = WorkerScheduler(
           databasePathResolver: () async => context.databaseFile.path,
           workerStateService: workerStateStore,
+          databaseService: context.databaseService,
           indexerEndpoint: 'http://invalid-for-this-test',
           indexerApiKey: '',
           maxEnrichmentWorkers: 1,
@@ -266,6 +269,7 @@ void main() {
         final scheduler = WorkerScheduler(
           databasePathResolver: () async => context.databaseFile.path,
           workerStateService: workerStateStore,
+          databaseService: context.databaseService,
           indexerEndpoint: AppConfig.indexerApiUrl,
           indexerApiKey: AppConfig.indexerApiKey,
           maxEnrichmentWorkers: AppConfig.indexerEnrichmentMaxThreads,
@@ -456,6 +460,7 @@ void main() {
         final scheduler = WorkerScheduler(
           databasePathResolver: () async => context.databaseFile.path,
           workerStateService: workerStateStore,
+          databaseService: context.databaseService,
           indexerEndpoint: AppConfig.indexerApiUrl,
           indexerApiKey: AppConfig.indexerApiKey,
           maxEnrichmentWorkers: AppConfig.indexerEnrichmentMaxThreads,

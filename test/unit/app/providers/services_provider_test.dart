@@ -17,7 +17,7 @@ import 'provider_test_helpers.dart';
 
 void main() {
   test('services providers assemble from dependency overrides', () {
-    // Unit test: verifies service-composition providers resolve with test doubles.
+    // Verifies service-composition providers resolve with test doubles.
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(db.close);
     final dbService = DatabaseService(db);
@@ -38,6 +38,7 @@ void main() {
           (ref) => WorkerScheduler(
             databasePathResolver: () async => '',
             workerStateService: ref.read(workerStateServiceProvider),
+            databaseService: ref.read(databaseServiceProvider),
             indexerEndpoint: '',
             indexerApiKey: '',
             maxEnrichmentWorkers: 1,

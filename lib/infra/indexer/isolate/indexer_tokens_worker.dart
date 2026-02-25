@@ -54,6 +54,9 @@ class IndexerTokensWorker {
   Future<void> start() async {
     if (_isolate != null) return;
 
+    final sw = Stopwatch()..start();
+    _log.info('[handshake] start() called — t=0');
+
     _receivePort = ReceivePort();
     _errorPort = ReceivePort();
     _exitPort = ReceivePort();
@@ -74,10 +77,42 @@ class IndexerTokensWorker {
       onExit: _exitPort!.sendPort,
     );
 
+    _log.info(
+      '[handshake] Isolate.spawn returned — '
+      't=${sw.elapsedMilliseconds}ms (awaiting SendPort)',
+    );
+
     // Wait for handshake. 30 seconds accommodates iOS simulator which can
     // experience significant scheduling delays when multiple isolates start
     // concurrently during app initialisation.
-    await ready.timeout(const Duration(seconds: 30));
+    try {
+      await ready.timeout(const Duration(seconds: 30));
+      _log.info('[handshake] ready — t=${sw.elapsedMilliseconds}ms');
+    } on TimeoutException {
+      _log.severe(
+        '[handshake] TIMED OUT after ${sw.elapsedMilliseconds}ms — '
+        'isolate was spawned but never sent its SendPort. '
+        'Check concurrent isolate count at startup.',
+      );
+      // Propagate to _ready so any awaiter of ready (e.g. syncAddresses)
+      // unblocks immediately instead of hanging forever.
+      if (!_ready.isCompleted) {
+        _ready.completeError(
+          TimeoutException(
+            'IndexerTokensWorker handshake timed out',
+            const Duration(seconds: 30),
+          ),
+        );
+      }
+      rethrow;
+    } catch (e) {
+      // stop() was called before the handshake completed (StateError).
+      // This is expected during cleanup flows — exit quietly.
+      _log.info(
+        '[handshake] cancelled before ready at '
+        '${sw.elapsedMilliseconds}ms: $e',
+      );
+    }
   }
 
   void sendRaw(List<Object?> message) {
@@ -161,6 +196,16 @@ class IndexerTokensWorker {
   }
 
   Future<void> stop() async {
+    // Unblock any concurrent start() awaiting the handshake. Without this,
+    // a unawaited start() that was fired just before stop() (e.g. via
+    // pauseTokenPolling → tokensSyncCoordinatorProvider creation) would
+    // hold the 30-second timeout open after the isolate is already dead.
+    if (!_ready.isCompleted) {
+      _ready.completeError(
+        StateError('IndexerTokensWorker stopped before handshake completed'),
+      );
+    }
+
     _isolate?.kill(priority: Isolate.immediate);
     _isolate = null;
 
@@ -177,6 +222,7 @@ class IndexerTokensWorker {
   void _handleMainMessage(dynamic message) {
     if (message is SendPort) {
       _sendPort = message;
+      _log.info('[handshake] SendPort received from isolate — handshake done');
       if (!_ready.isCompleted) _ready.complete();
       return;
     }
@@ -219,6 +265,12 @@ class IndexerTokensWorker {
   static void _isolateEntry(List<Object?> args) {
     runZonedGuarded(
       () {
+        // ignore: avoid_print // Logger not yet configured in this isolate.
+        print(
+          '[IndexerTokensWorker][handshake] isolate executing at '
+          '${DateTime.now().toIso8601String()}',
+        );
+
         final sendPort = args[0] as SendPort;
         final endpoint = args[1] as String;
         final apiKey = args[2] as String;
@@ -237,6 +289,11 @@ class IndexerTokensWorker {
         _indexerService = IndexerService(client: client);
 
         final receivePort = ReceivePort()..listen(_handleMessageInIsolate);
+        // ignore: avoid_print // Logger not yet configured in this isolate.
+        print(
+          '[IndexerTokensWorker][handshake] sending SendPort at '
+          '${DateTime.now().toIso8601String()}',
+        );
         _isolateSendPort?.send(receivePort.sendPort);
       },
       (error, stackTrace) {

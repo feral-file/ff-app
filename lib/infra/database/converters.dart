@@ -26,7 +26,6 @@ class DatabaseConverters {
       name: data.title,
       type: ChannelType.values[data.type],
       description: data.summary,
-      isPinned: false, // TODO: Add isPinned field to database
       baseUrl: data.baseUrl,
       slug: data.slug,
       publisherId: data.publisherId,
@@ -132,9 +131,6 @@ class DatabaseConverters {
       slug: data.slug,
       createdAt: DateTime.fromMicrosecondsSinceEpoch(data.createdAtUs.toInt()),
       updatedAt: DateTime.fromMicrosecondsSinceEpoch(data.updatedAtUs.toInt()),
-      signatures: null, // Skipped: heavy JSON decode
-      defaults: null, // Skipped: heavy JSON decode
-      dynamicQueries: null, // Skipped: heavy JSON decode
       ownerAddress: data.ownerAddress,
       ownerChain: data.ownerChain,
       sortMode: PlaylistSortMode.values[data.sortMode],
@@ -293,16 +289,11 @@ class DatabaseConverters {
       subtitle: data.subtitle,
       thumbnailUrl: data.thumbnailUri,
       duration: data.durationSec ?? 0,
-      provenance: null, // Skipped: heavy JSON decode
       source: data.sourceUri,
       ref: data.refUri,
       license: data.license != null
           ? ArtworkDisplayLicense.fromString(data.license!)
           : null,
-      repro: null, // Skipped: heavy JSON decode
-      override: null, // Skipped: heavy JSON decode
-      display: null, // Skipped: heavy JSON decode
-      tokenData: null, // Skipped: heavy JSON decode
       artists: artists,
       updatedAt: DateTime.fromMicrosecondsSinceEpoch(data.updatedAtUs.toInt()),
     );
@@ -361,8 +352,7 @@ class DatabaseConverters {
   static PlaylistEntriesCompanion createPlaylistEntry({
     required String playlistId,
     required String itemId,
-    int? position,
-    required int sortKeyUs,
+    required int sortKeyUs, int? position,
   }) {
     return PlaylistEntriesCompanion.insert(
       playlistId: playlistId,
@@ -405,7 +395,7 @@ class DatabaseConverters {
       created: playlist.createdAt ?? DateTime.now(),
       defaults: playlist.defaults,
       items: dp1Items,
-      signature: playlist.signatures?.isNotEmpty == true
+      signature: playlist.signatures?.isNotEmpty ?? false
           ? playlist.signatures!.first
           : '',
       dynamicQueries: playlist.dynamicQueries ?? const [],

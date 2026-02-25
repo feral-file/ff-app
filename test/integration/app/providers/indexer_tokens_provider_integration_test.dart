@@ -3,8 +3,9 @@ import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart';
-import 'package:app/infra/indexer/isolate/indexer_tokens_worker.dart';
+import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
+import 'package:app/infra/indexer/isolate/indexer_tokens_worker.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/workers/worker_scheduler.dart';
@@ -43,7 +44,6 @@ class _InMemoryWorkerStateStore implements WorkerStateStore {
     final current = _rows[workerId];
     _rows[workerId] = WorkerStateSnapshot(
       stateIndex: current?.stateIndex ?? 0,
-      checkpoint: null,
     );
   }
 
@@ -63,11 +63,17 @@ class _InMemoryWorkerStateStore implements WorkerStateStore {
   }
 }
 
+class _FakeDatabaseService implements DatabaseService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 class _NoopWorkerScheduler extends WorkerScheduler {
   _NoopWorkerScheduler()
     : super(
         databasePathResolver: () async => '',
         workerStateService: _InMemoryWorkerStateStore(),
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: '',
         indexerApiKey: '',
         maxEnrichmentWorkers: 1,
@@ -175,8 +181,6 @@ void main() {
       final baselineTokens = await fetchAllTokensByOffsetCursor(
         indexerService: indexerService,
         address: resolvedAddress,
-        pageSize: 50,
-        maxPages: 100,
       );
       expect(
         baselineTokens.length,

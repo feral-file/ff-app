@@ -1,7 +1,6 @@
 // ignore_for_file: public_member_api_docs // fleet wiring is self-descriptive
 
-import 'dart:isolate';
-
+import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/workers/background_worker.dart';
@@ -39,43 +38,30 @@ abstract class WorkerFleet<T> {
 ///
 /// Maintains one worker per address, created on-demand via [getOrCreateWorker].
 /// Workers share a common [WorkerStateStore] so each checkpoints independently.
+///
+/// DB writes are routed to the main isolate via the injected [DatabaseService];
+/// worker isolates carry no database connection.
 class IndexAddressWorkersFleet {
   /// Creates a fleet using the given dependencies.
   ///
-  /// [databasePath] is the on-disk SQLite path; passed through to each worker's
-  /// isolate so tokens can be written to the shared database.
+  /// [databaseService] is the main-isolate [DatabaseService] used to persist
+  /// token results after each address-indexing round completes.
   IndexAddressWorkersFleet({
     required this.workerStateService,
-    required this.databasePath,
+    required this.databaseService,
     required this.indexerEndpoint,
     required this.indexerApiKey,
-    this.databaseConnectPort,
   });
 
   final WorkerStateStore workerStateService;
-  final String databasePath;
+
+  /// Main-isolate database service for token ingestion writes.
+  final DatabaseService databaseService;
+
   final String indexerEndpoint;
   final String indexerApiKey;
 
-  /// [SendPort] to the shared Drift database isolate.
-  ///
-  /// When non-null, worker isolates connect via Drift's isolate protocol
-  /// instead of opening an independent SQLite connection, eliminating
-  /// concurrent write-lock contention.
-  ///
-  /// Updated lazily by the scheduler after the DriftIsolate is ready.
-  SendPort? databaseConnectPort;
-
   final Map<String, IndexAddressWorker> _workers = {};
-
-  /// Propagates a new DriftIsolate [SendPort] to all existing workers and
-  /// stores it for workers created in the future.
-  void updateConnectPort(SendPort port) {
-    databaseConnectPort = port;
-    for (final worker in _workers.values) {
-      worker.updateConnectPort(port);
-    }
-  }
 
   /// Returns the worker for [address], creating it if it doesn't exist yet.
   IndexAddressWorker getOrCreateWorker(String address) {
@@ -96,8 +82,7 @@ class IndexAddressWorkersFleet {
             },
           ),
         ),
-        databasePath: databasePath,
-        databaseConnectPort: databaseConnectPort,
+        databaseService: databaseService,
         indexerEndpoint: indexerEndpoint,
         indexerApiKey: indexerApiKey,
       ),
@@ -152,6 +137,9 @@ class IndexAddressWorkersFleet {
 ///
 /// Workers are created eagerly in [initialize] up to [poolSize].
 /// Work is distributed round-robin via [enqueueAssignment].
+///
+/// DB writes are routed to the main isolate via the injected [DatabaseService];
+/// worker isolates carry no database connection.
 class EnrichItemWorkersFleet {
   /// Creates the fleet.
   ///
@@ -159,30 +147,17 @@ class EnrichItemWorkersFleet {
   /// auto-initialize if needed.
   EnrichItemWorkersFleet({
     required this.workerStateService,
-    required this.databasePath,
+    required this.databaseService,
     required this.indexerEndpoint,
     required this.indexerApiKey,
     required this.poolSize,
-    this.databaseConnectPort,
     this.onMessage,
   });
 
   final WorkerStateStore workerStateService;
-  final String databasePath;
 
-  /// [SendPort] to the shared Drift database isolate.
-  ///
-  /// Updated lazily by the scheduler after the DriftIsolate is ready.
-  SendPort? databaseConnectPort;
-
-  /// Propagates a new DriftIsolate [SendPort] to all existing workers and
-  /// stores it for workers created in the future.
-  void updateConnectPort(SendPort port) {
-    databaseConnectPort = port;
-    for (final worker in _workers) {
-      worker.updateConnectPort(port);
-    }
-  }
+  /// Main-isolate database service for enrichment writes.
+  final DatabaseService databaseService;
 
   final String indexerEndpoint;
   final String indexerApiKey;
@@ -205,8 +180,7 @@ class EnrichItemWorkersFleet {
         EnrichItemWorker(
           workerId: 'enrich_item_worker::$i',
           workerStateService: workerStateService,
-          databasePath: databasePath,
-          databaseConnectPort: databaseConnectPort,
+          databaseService: databaseService,
           indexerEndpoint: indexerEndpoint,
           indexerApiKey: indexerApiKey,
           onMessageSent: onMessage,

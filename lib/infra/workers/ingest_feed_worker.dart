@@ -2,7 +2,6 @@
 // ignore_for_file: public_member_api_docs, use_super_parameters
 
 import 'dart:async';
-import 'dart:isolate';
 
 import 'package:app/infra/workers/background_worker.dart';
 import 'package:app/infra/workers/worker_message.dart';
@@ -11,10 +10,17 @@ import 'package:logging/logging.dart';
 
 /// Lightweight signal handler for feed ingestion events.
 ///
+/// No isolate is spawned — all logic runs on the main isolate to avoid
+/// competing for OS thread slots during the app-startup window.
+///
 /// Pipeline:
 /// 1. Receive feedIngested signal from scheduler
-/// 2. Send queryNeeded message to scheduler (routed to QueryWorker)
-/// 3. Done
+/// 2. Debounce rapid signals (Timer(Duration.zero)) into one flush
+/// 3. Emit a single queryNeeded to the scheduler once the queue drains
+///
+/// The debounce ensures that N rapid feed-ingested events (e.g. multiple
+/// channels refreshed at once) produce exactly one queryNeeded, so
+/// enrichment does not start before all feed writes are committed.
 class IngestFeedWorker extends BackgroundWorker {
   IngestFeedWorker({
     required String workerId,
@@ -32,6 +38,11 @@ class IngestFeedWorker extends BackgroundWorker {
 
   int _pendingSignalsCount = 0;
 
+  // Timer used to coalesce back-to-back onFeedIngested() calls into one flush.
+  // Duration.zero fires on the next event-loop turn, after all synchronous and
+  // microtask work (including sequential await-chains in callers) completes.
+  Timer? _queryNeededTimer;
+
   @override
   bool get hasRemainingWork => _pendingSignalsCount > 0;
 
@@ -44,46 +55,58 @@ class IngestFeedWorker extends BackgroundWorker {
     _pendingSignalsCount++;
     await checkpoint();
 
-    if (state == BackgroundWorkerState.started && isIsolateRunning) {
-      _sendQuerySignalToIsolate();
+    if (state == BackgroundWorkerState.started) {
+      _scheduleQueryNeededFlush();
     }
   }
 
-  void _sendQuerySignalToIsolate() {
-    if (_pendingSignalsCount <= 0) {
+  /// Cancels any pending timer and schedules a new Duration.zero flush.
+  ///
+  /// Called after each [onFeedIngested] while started, and from [onStart]
+  /// when there are pending signals. The timer fires once after the current
+  /// async activity drains, coalescing all rapid signals into one emission.
+  void _scheduleQueryNeededFlush() {
+    _queryNeededTimer?.cancel();
+    _queryNeededTimer = Timer(Duration.zero, _flushPendingSignals);
+  }
+
+  void _flushPendingSignals() {
+    _queryNeededTimer = null;
+    if (_pendingSignalsCount <= 0 || state != BackgroundWorkerState.started) {
       return;
     }
-
-    sendMessage(
+    _pendingSignalsCount = 0;
+    _onMessageSent?.call(
       WorkerMessage(
-        opcode: WorkerOpcode.enqueueWork,
+        opcode: WorkerOpcode.queryNeeded,
         workerId: workerId,
-        payload: <String, dynamic>{'signal': 'feedIngested'},
+        payload: const <String, dynamic>{},
       ),
     );
+    unawaited(checkpoint());
   }
 
   @override
   Future<void> onStart() async {
-    await spawnIsolate(
-      entryPoint: _isolateEntry,
-      args: const <Object?>[],
-    );
-
-    // Process pending signals
-    while (_pendingSignalsCount > 0 && state == BackgroundWorkerState.started) {
-      _sendQuerySignalToIsolate();
+    // No isolate to spawn. If signals arrived before start, schedule flush.
+    if (_pendingSignalsCount > 0) {
+      _scheduleQueryNeededFlush();
     }
   }
 
   @override
   Future<void> onPause() async {
-    await shutdownIsolateGracefully(opcode: WorkerOpcode.pause);
+    // Cancel pending flush so it does not fire after the worker is paused.
+    // The pending count is preserved and saved by buildCheckpoint() before
+    // this method is called by the base pause() flow.
+    _queryNeededTimer?.cancel();
+    _queryNeededTimer = null;
   }
 
   @override
   Future<void> onStop() async {
-    await shutdownIsolateGracefully(opcode: WorkerOpcode.stop);
+    _queryNeededTimer?.cancel();
+    _queryNeededTimer = null;
   }
 
   @override
@@ -110,83 +133,6 @@ class IngestFeedWorker extends BackgroundWorker {
 
   @override
   void onIsolateMessage(dynamic message) {
-    if (message is! Map) {
-      return;
-    }
-
-    final type = message['type']?.toString() ?? '';
-
-    if (type == 'queryNeeded') {
-      // Decrement pending count for the processed signal.
-      _pendingSignalsCount = (_pendingSignalsCount - 1).clamp(
-        0,
-        _pendingSignalsCount,
-      );
-      unawaited(checkpoint());
-
-      // Only forward queryNeeded once ALL pending signals are processed.
-      // This ensures the full DB state (publishers, channels, playlists,
-      // playlist items, bare item entries) is written before enrichment
-      // queries begin.
-      if (_pendingSignalsCount == 0) {
-        _onMessageSent?.call(
-          WorkerMessage(
-            opcode: WorkerOpcode.queryNeeded,
-            workerId: workerId,
-            payload: <String, dynamic>{},
-          ),
-        );
-      }
-    }
-  }
-
-  // ----------------
-  // Isolate entry point
-  // ----------------
-
-  static late SendPort _mainSendPort;
-  static late Logger _isolateLog;
-  static bool _isShuttingDown = false;
-  static ReceivePort? _isolateReceivePort;
-
-  static void _isolateEntry(List<Object?> args) {
-    final sendPort = args[0]! as SendPort;
-
-    _isolateLog = Logger('IngestFeedWorker[Isolate]');
-    _mainSendPort = sendPort;
-    _isShuttingDown = false;
-
-    // Send handshake
-    _isolateReceivePort = ReceivePort()..listen(_handleMessageInIsolate);
-    _mainSendPort.send(_isolateReceivePort!.sendPort);
-  }
-
-  static void _handleMessageInIsolate(dynamic message) {
-    if (message is! List || message.length < 3) {
-      return;
-    }
-
-    try {
-      final workerMessage = WorkerMessage.fromList(message);
-
-      if (workerMessage.opcode == WorkerOpcode.pause ||
-          workerMessage.opcode == WorkerOpcode.stop) {
-        _isShuttingDown = true;
-        _isolateReceivePort?.close();
-        _isolateReceivePort = null;
-        _mainSendPort.send(<String, Object>{
-          'type': 'lifecycleAck',
-          'action': workerMessage.opcode.name,
-        });
-        return;
-      }
-
-      if (workerMessage.opcode == WorkerOpcode.enqueueWork &&
-          !_isShuttingDown) {
-        _mainSendPort.send(<String, Object>{'type': 'queryNeeded'});
-      }
-    } on Object catch (e, stack) {
-      _isolateLog.warning('Failed to handle message in isolate', e, stack);
-    }
+    // No isolate — this method is never invoked.
   }
 }

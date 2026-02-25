@@ -2,40 +2,39 @@
 // ignore_for_file: public_member_api_docs, use_super_parameters
 import 'dart:async';
 import 'dart:collection';
-import 'dart:io';
 import 'dart:isolate';
 
-import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/workers/background_worker.dart';
 import 'package:app/infra/workers/worker_message.dart';
 import 'package:app/infra/workers/worker_state_service.dart';
-import 'package:drift/isolate.dart';
-import 'package:drift/native.dart';
 import 'package:logging/logging.dart';
 
 /// Executes item enrichment batches.
 ///
 /// Pipeline:
 /// 1. Receive batch (CID → itemId map) from scheduler
-/// 2. Call IndexerService.fetchTokensByCIDs to get metadata
-/// 3. Parse AssetToken list from response
-/// 4. Write to Drift DB (update playlist_item rows) inside isolate
-/// 5. Send workComplete message to scheduler
+/// 2. Call IndexerService.getManualTokens to fetch metadata (in isolate)
+/// 3. Send serialised token payload back to the main isolate as 'writeResult'
+/// 4. Main isolate writes to DB via the injected [DatabaseService]
+/// 5. Main isolate emits workComplete to scheduler
+///
+/// Keeping the DB write on the main isolate eliminates the DB connection from
+/// the worker isolate entirely. This removes the async DriftIsolate handshake
+/// from the isolate startup path, making the worker handshake synchronous and
+/// preventing OS thread-slot contention during app startup.
 class EnrichItemWorker extends BackgroundWorker {
   EnrichItemWorker({
     required String workerId,
     required WorkerStateStore workerStateService,
-    required String databasePath,
+    required DatabaseService databaseService,
     required String indexerEndpoint,
     required String indexerApiKey,
-    SendPort? databaseConnectPort,
     void Function(WorkerMessage)? onMessageSent,
     Logger? logger,
-  }) : _databasePath = databasePath,
-       _databaseConnectPort = databaseConnectPort,
+  }) : _databaseService = databaseService,
        _indexerEndpoint = indexerEndpoint,
        _indexerApiKey = indexerApiKey,
        _onMessageSent = onMessageSent,
@@ -45,20 +44,12 @@ class EnrichItemWorker extends BackgroundWorker {
          logger: logger,
        );
 
-  final String _databasePath;
-
-  /// [SendPort] for the shared [DriftIsolate].
-  ///
-  /// Injected by the scheduler via [updateConnectPort] before [start].
-  /// Null until set; falls back to direct [NativeDatabase] in tests.
-  SendPort? _databaseConnectPort;
-
-  /// Updates the shared DriftIsolate [SendPort].
-  // ignore: use_setters_to_change_properties
-  void updateConnectPort(SendPort port) => _databaseConnectPort = port;
+  /// Database service on the main isolate used to persist enrichment results.
+  final DatabaseService _databaseService;
   final String _indexerEndpoint;
   final String _indexerApiKey;
   final void Function(WorkerMessage)? _onMessageSent;
+  final Logger _log = Logger('EnrichItemWorker');
 
   final Queue<Map<String, String>> _pendingAssignments = Queue();
   Map<String, String>? _inFlightAssignment;
@@ -104,17 +95,17 @@ class EnrichItemWorker extends BackgroundWorker {
 
   @override
   Future<void> onStart() async {
+    // The isolate no longer connects to a DB at entry — handshake is
+    // synchronous, completing in microseconds rather than waiting for a
+    // DriftIsolate round-trip.
     await spawnIsolate(
       entryPoint: _isolateEntry,
       args: <Object?>[
         _indexerEndpoint,
         _indexerApiKey,
-        _databaseConnectPort, // SendPort? — null in tests
-        _databasePath, // fallback path used when connectPort is null
       ],
     );
 
-    // Send pending work to isolate
     if (_pendingAssignments.isNotEmpty) {
       _sendWorkToIsolate();
     }
@@ -122,7 +113,9 @@ class EnrichItemWorker extends BackgroundWorker {
 
   @override
   Future<void> onPause() async {
-    // Save in-flight assignment back to queue for resume
+    // Save in-flight assignment back to queue for resume.
+    // The write may still be in progress on the main isolate; after it
+    // completes, _processWriteResult guards against state != started.
     final inFlight = _inFlightAssignment;
     if (inFlight != null) {
       _pendingAssignments.addFirst(inFlight);
@@ -172,38 +165,17 @@ class EnrichItemWorker extends BackgroundWorker {
     }
 
     final type = message['type']?.toString() ?? '';
-    final enrichedCount = message['enrichedCount'];
-    final requestedCount = message['requestedCount'];
-    final retrievedCount = message['retrievedCount'];
-    final matchedCount = message['matchedCount'];
-    final failedCount = message['failedCount'];
-    final requestedByChain = message['requestedByChain'];
-    final retrievedByChain = message['retrievedByChain'];
-    final missingByChain = message['missingByChain'];
-    final missingCidSamples = message['missingCidSamples'];
 
-    if (type == 'workComplete') {
-      final completeMessage = WorkerMessage(
-        opcode: WorkerOpcode.workComplete,
-        workerId: workerId,
-        payload: <String, dynamic>{
-          'enrichedCount': enrichedCount ?? 0,
-          if (requestedCount != null) 'requestedCount': requestedCount,
-          if (retrievedCount != null) 'retrievedCount': retrievedCount,
-          if (matchedCount != null) 'matchedCount': matchedCount,
-          if (failedCount != null) 'failedCount': failedCount,
-          if (requestedByChain != null) 'requestedByChain': requestedByChain,
-          if (retrievedByChain != null) 'retrievedByChain': retrievedByChain,
-          if (missingByChain != null) 'missingByChain': missingByChain,
-          if (missingCidSamples != null) 'missingCidSamples': missingCidSamples,
-        },
+    if (type == 'writeResult') {
+      // Isolate has finished the HTTP fetch; write results to DB on the main
+      // isolate, then emit workComplete (or workFailed on DB error).
+      unawaited(
+        _processWriteResult(Map<dynamic, dynamic>.from(message)),
       );
-      _onMessageSent?.call(completeMessage);
+      return;
+    }
 
-      _inFlightAssignment = null;
-      _sendWorkToIsolate();
-      unawaited(checkpoint());
-    } else if (type == 'workFailed') {
+    if (type == 'workFailed') {
       final failedMessage = WorkerMessage(
         opcode: WorkerOpcode.workFailed,
         workerId: workerId,
@@ -213,7 +185,6 @@ class EnrichItemWorker extends BackgroundWorker {
       );
       _onMessageSent?.call(failedMessage);
 
-      // Re-queue failed assignment
       final inFlight = _inFlightAssignment;
       if (inFlight != null) {
         _pendingAssignments.addFirst(inFlight);
@@ -222,6 +193,82 @@ class EnrichItemWorker extends BackgroundWorker {
       _sendWorkToIsolate();
       unawaited(checkpoint());
     }
+  }
+
+  /// Forwards enrichment results from the isolate to the background write queue.
+  ///
+  /// No deserialization happens on the main isolate. Raw JSON payloads are
+  /// forwarded to DatabaseService.enrichBatchFromRaw, which routes them to
+  /// the always-on write-queue isolate where all CPU and SQL work occurs.
+  Future<void> _processWriteResult(Map<dynamic, dynamic> message) async {
+    if (state != BackgroundWorkerState.started) return;
+
+    final enrichedCount = message['enrichedCount'] as int? ?? 0;
+    final requestedCount = message['requestedCount'];
+    final retrievedCount = message['retrievedCount'];
+    final matchedCount = message['matchedCount'];
+    final failedCount = message['failedCount'];
+    final requestedByChain = message['requestedByChain'];
+    final retrievedByChain = message['retrievedByChain'];
+    final missingByChain = message['missingByChain'];
+    final missingCidSamples = message['missingCidSamples'];
+
+    final rawEnrichments =
+        (message['enrichments'] as List? ?? const []).cast<Object?>();
+    final failedItemIds =
+        (message['failedItemIds'] as List? ?? const [])
+            .map((e) => e.toString())
+            .toList(growable: false);
+
+    try {
+      await _databaseService.enrichBatchFromRaw(
+        rawEnrichments: rawEnrichments,
+        failedItemIds: failedItemIds,
+      );
+    } on Object catch (e, stack) {
+      _log.warning('DB write failed for enrichment batch', e, stack);
+      // Re-check state after await; pause may have fired while we were writing.
+      if (state != BackgroundWorkerState.started) return;
+      _onMessageSent?.call(
+        WorkerMessage(
+          opcode: WorkerOpcode.workFailed,
+          workerId: workerId,
+          payload: <String, dynamic>{'error': e.toString()},
+        ),
+      );
+      final inFlight = _inFlightAssignment;
+      if (inFlight != null) {
+        _pendingAssignments.addFirst(inFlight);
+      }
+      _inFlightAssignment = null;
+      _sendWorkToIsolate();
+      unawaited(checkpoint());
+      return;
+    }
+
+    // Re-check: a pause/stop may have fired while the DB write was in progress.
+    if (state != BackgroundWorkerState.started) return;
+
+    _onMessageSent?.call(
+      WorkerMessage(
+        opcode: WorkerOpcode.workComplete,
+        workerId: workerId,
+        payload: <String, dynamic>{
+          'enrichedCount': enrichedCount,
+          'requestedCount': ?requestedCount,
+          'retrievedCount': ?retrievedCount,
+          'matchedCount': ?matchedCount,
+          'failedCount': ?failedCount,
+          'requestedByChain': ?requestedByChain,
+          'retrievedByChain': ?retrievedByChain,
+          'missingByChain': ?missingByChain,
+          'missingCidSamples': ?missingCidSamples,
+        },
+      ),
+    );
+    _inFlightAssignment = null;
+    _sendWorkToIsolate();
+    unawaited(checkpoint());
   }
 
   List<Map<String, String>> _asAssignmentList(Object? value) {
@@ -234,14 +281,13 @@ class EnrichItemWorker extends BackgroundWorker {
         .toList(growable: false);
   }
 
-  // ----------------
-  // Isolate entry point
-  // ----------------
+  // ─────────────────────────────────────────────
+  // Isolate entry point — no DB connection here.
+  // ─────────────────────────────────────────────
 
   static late SendPort _mainSendPort;
   static late Logger _isolateLog;
   static late IndexerService _indexerService;
-  static DatabaseService? _dbService;
   static bool _isShuttingDown = false;
   static ReceivePort? _isolateReceivePort;
 
@@ -249,8 +295,6 @@ class EnrichItemWorker extends BackgroundWorker {
     final sendPort = args[0]! as SendPort;
     final endpoint = args[1]! as String;
     final apiKey = args[2]! as String;
-    final connectPort = args[3] as SendPort?;
-    final databasePath = args[4]! as String;
 
     _isolateLog = Logger('EnrichItemWorker[Isolate]');
     _mainSendPort = sendPort;
@@ -267,15 +311,7 @@ class EnrichItemWorker extends BackgroundWorker {
       ),
     );
 
-    unawaited(_connectAndHandshake(connectPort, databasePath));
-  }
-
-  static Future<void> _connectAndHandshake(
-    SendPort? connectPort,
-    String databasePath,
-  ) async {
-    _dbService = await _openDatabase(connectPort, databasePath);
-
+    // Handshake is now synchronous — no DB connection to await.
     _isolateReceivePort = ReceivePort()..listen(_handleMessageInIsolate);
     _mainSendPort.send(_isolateReceivePort!.sendPort);
   }
@@ -285,49 +321,6 @@ class EnrichItemWorker extends BackgroundWorker {
       return apiKey;
     }
     return 'ApiKey $apiKey';
-  }
-
-  /// Opens a [DatabaseService] connection inside this isolate.
-  ///
-  /// Prefers the shared [DriftIsolate] via [connectPort] so all worker
-  /// writes are serialised through one executor. Falls back to a direct
-  /// [NativeDatabase] when [connectPort] is null (tests).
-  static Future<DatabaseService?> _openDatabase(
-    SendPort? connectPort,
-    String path,
-  ) async {
-    if (connectPort != null) {
-      try {
-        final connection = await DriftIsolate.fromConnectPort(
-          connectPort,
-        ).connect();
-        _isolateLog.info('Connected to shared DriftIsolate');
-        return DatabaseService(AppDatabase.fromConnection(connection));
-      } on Object catch (e, stack) {
-        _isolateLog.warning('DriftIsolate connect failed', e, stack);
-        return null;
-      }
-    }
-    if (path.isEmpty) {
-      return null;
-    }
-    try {
-      final db = AppDatabase.forTesting(
-        NativeDatabase(
-          File(path),
-          setup: (rawDb) {
-            rawDb
-              ..execute('PRAGMA busy_timeout = 5000')
-              ..execute('PRAGMA journal_mode = WAL');
-          },
-        ),
-      );
-      _isolateLog.info('Opened direct NativeDatabase at $path');
-      return DatabaseService(db);
-    } on Object catch (e, stack) {
-      _isolateLog.warning('Failed to open NativeDatabase at $path', e, stack);
-      return null;
-    }
   }
 
   static void _handleMessageInIsolate(dynamic message) {
@@ -359,6 +352,11 @@ class EnrichItemWorker extends BackgroundWorker {
     }
   }
 
+  /// Fetches token metadata for the given CID→itemId batch and sends the
+  /// results back to the main isolate as 'writeResult'.
+  ///
+  /// The main isolate is responsible for persisting the data via its own
+  /// DatabaseService, keeping this isolate free of any DB connection.
   static Future<void> _enrichBatch(Map<String, String> cidToItemId) async {
     try {
       if (_isShuttingDown) {
@@ -368,8 +366,7 @@ class EnrichItemWorker extends BackgroundWorker {
       final requestedCount = cidToItemId.length;
       _isolateLog.info('Enriching batch: requested=$requestedCount');
 
-      // Fetch tokens by CIDs from the indexer API
-      final cids = cidToItemId.keys.toList();
+      final cids = cidToItemId.keys.toList(growable: false);
       final tokens = await _indexerService.getManualTokens(tokenCids: cids);
       final retrievedCount = tokens.length;
       final requestedByChain = _countByChainPrefix(cids);
@@ -377,71 +374,56 @@ class EnrichItemWorker extends BackgroundWorker {
         tokens.map((t) => t.cid).toList(growable: false),
       );
 
-      // Match returned tokens to their item IDs and write to DB
-      final enrichments = tokens
-          .where((t) => cidToItemId.containsKey(t.cid))
-          .map((t) => (cidToItemId[t.cid]!, t))
-          .toList(growable: false);
+      final enrichments =
+          tokens
+              .where((t) => cidToItemId.containsKey(t.cid))
+              .map((t) => (cidToItemId[t.cid]!, t))
+              .toList(growable: false);
       final matchedCount = enrichments.length;
       final returnedCidSet = tokens.map((t) => t.cid).toSet();
-      final missingCids = cids.where((cid) => !returnedCidSet.contains(cid));
-      final missingByChain = _countByChainPrefix(missingCids.toList());
+      final missingCids =
+          cids.where((cid) => !returnedCidSet.contains(cid)).toList();
+      final missingByChain = _countByChainPrefix(missingCids);
       final missingCidSamples = missingCids.take(3).toList(growable: false);
-      final failedItemIds = cids
-          .where((cid) => !returnedCidSet.contains(cid))
-          .map((cid) => cidToItemId[cid])
-          .whereType<String>()
-          .toList(growable: false);
+      final failedItemIds =
+          missingCids
+              .map((cid) => cidToItemId[cid])
+              .whereType<String>()
+              .toList(growable: false);
       final failedCount = failedItemIds.length;
 
-      final service = _dbService;
-      if (service != null && enrichments.isNotEmpty) {
-        await service.enrichPlaylistItemsWithTokensBatch(
-          enrichments: enrichments,
-        );
-        if (failedItemIds.isNotEmpty) {
-          await service.markPlaylistItemsEnrichmentFailed(failedItemIds);
-        }
-        _isolateLog.info(
-          'Enrichment result: requested=$requestedCount, '
-          'retrieved=$retrievedCount, matched=$matchedCount, '
-          'failed=$failedCount, '
-          'requestedByChain=$requestedByChain, '
-          'retrievedByChain=$retrievedByChain, '
-          'missingByChain=$missingByChain, '
-          'missingCidSamples=$missingCidSamples',
-        );
-      } else if (enrichments.isEmpty) {
-        if (service != null && failedItemIds.isNotEmpty) {
-          await service.markPlaylistItemsEnrichmentFailed(failedItemIds);
-        }
-        _isolateLog.fine(
-          'Enrichment result: requested=$requestedCount, '
-          'retrieved=$retrievedCount, matched=0, '
-          'failed=$failedCount, '
-          'requestedByChain=$requestedByChain, '
-          'retrievedByChain=$retrievedByChain, '
-          'missingByChain=$missingByChain, '
-          'missingCidSamples=$missingCidSamples',
-        );
-      } else {
-        _isolateLog.warning('No DB service — skipping enrichment writes');
+      _isolateLog.fine(
+        'Enrichment fetched: requested=$requestedCount, '
+        'retrieved=$retrievedCount, matched=$matchedCount, '
+        'failed=$failedCount',
+      );
+
+      if (_isShuttingDown) {
+        return;
       }
 
-      if (!_isShuttingDown) {
-        _mainSendPort.send(<String, Object>{
-          'type': 'workComplete',
-          'enrichedCount': enrichments.length,
-          'requestedCount': requestedCount,
-          'retrievedCount': retrievedCount,
-          'matchedCount': matchedCount,
-          'failedCount': failedCount,
-          'requestedByChain': requestedByChain,
-          'retrievedByChain': retrievedByChain,
-          'missingByChain': missingByChain,
-          'missingCidSamples': missingCidSamples,
-        });
-      }
+      // Send serialised results to main isolate for DB persistence.
+      _mainSendPort.send(<String, Object?>{
+        'type': 'writeResult',
+        'enrichments': enrichments
+            .map(
+              (e) => <String, Object?>{
+                'itemId': e.$1,
+                'tokenJson': e.$2.toRestJson(),
+              },
+            )
+            .toList(growable: false),
+        'failedItemIds': failedItemIds,
+        'enrichedCount': matchedCount,
+        'requestedCount': requestedCount,
+        'retrievedCount': retrievedCount,
+        'matchedCount': matchedCount,
+        'failedCount': failedCount,
+        'requestedByChain': requestedByChain,
+        'retrievedByChain': retrievedByChain,
+        'missingByChain': missingByChain,
+        'missingCidSamples': missingCidSamples,
+      });
     } on Object catch (e, stack) {
       _isolateLog.warning('Failed to enrich batch', e, stack);
       if (!_isShuttingDown) {
@@ -459,7 +441,7 @@ class EnrichItemWorker extends BackgroundWorker {
     }
     _isShuttingDown = true;
 
-    await _closeDatabase();
+    // No DB to close — shutdown is now synchronous.
     _isolateReceivePort?.close();
     _isolateReceivePort = null;
 
@@ -467,20 +449,6 @@ class EnrichItemWorker extends BackgroundWorker {
       'type': 'lifecycleAck',
       'action': action,
     });
-  }
-
-  static Future<void> _closeDatabase() async {
-    final service = _dbService;
-    _dbService = null;
-    if (service == null) {
-      return;
-    }
-    try {
-      await service.checkpoint();
-      await service.close();
-    } on Object catch (e, stack) {
-      _isolateLog.warning('Failed closing enrich worker database', e, stack);
-    }
   }
 }
 

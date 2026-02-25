@@ -46,6 +46,12 @@ class TokensSyncState {
 /// This is kept alive by [tokensSyncCoordinatorProvider] to ensure the isolate
 /// persists across screens.
 final indexerTokensWorkerProvider = Provider<IndexerTokensWorker>((ref) {
+  final log = Logger('indexerTokensWorkerProvider');
+  log.info(
+    '[handshake] provider created — new IndexerTokensWorker instance, '
+    'spawning isolate now',
+  );
+
   final worker = IndexerTokensWorker(
     endpoint: AppConfig.indexerApiUrl,
     apiKey: AppConfig.indexerApiKey,
@@ -56,6 +62,7 @@ final indexerTokensWorkerProvider = Provider<IndexerTokensWorker>((ref) {
   unawaited(worker.start());
 
   ref.onDispose(() {
+    log.info('[handshake] provider disposed — stopping worker');
     unawaited(worker.stop());
   });
 
@@ -69,9 +76,12 @@ final indexerTokensWorkerProvider = Provider<IndexerTokensWorker>((ref) {
 /// - Main isolate extracts tokenIds/tokenCids, fetches tokens, ingests, deletes missing
 /// - Anchor persisted per address after each page
 class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
-  late final Logger _log;
-  late final IndexerTokensWorker _worker;
-  late final AppStateService _appStateService;
+  // late final is wrong here: Notifier.build() can be called again on
+  // provider invalidation, which would re-assign these and throw
+  // LateInitializationError. Use plain late (mutable) instead.
+  late Logger _log;
+  late IndexerTokensWorker _worker;
+  late AppStateService _appStateService;
 
   StreamSubscription<TokensWorkerMessage>? _sub;
   Timer? _pollTimer;
@@ -154,7 +164,9 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     if (addresses.isEmpty) return;
 
     // Ensure isolate is ready.
+    _log.info('[handshake] syncAddresses: awaiting _worker.ready');
     await _worker.ready;
+    _log.info('[handshake] syncAddresses: _worker.ready resolved');
 
     // Resolve persisted anchors (default to 0 if missing).
     final anchors = <AddressAnchor>[];

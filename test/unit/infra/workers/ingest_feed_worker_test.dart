@@ -49,16 +49,15 @@ void main() {
       final worker = IngestFeedWorker(
         workerId: 'ingest_feed_worker',
         workerStateService: stateStore,
-        onMessageSent: (msg) => messagesSent.add(msg),
+        onMessageSent: messagesSent.add,
       );
 
       await worker.start();
       await worker.onFeedIngested();
 
-      // Give isolate time to process
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+      // Give the Duration.zero debounce timer a chance to fire.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
 
-      // One signal → exactly one queryNeeded forwarded to scheduler.
       final queryMessages = messagesSent
           .where((msg) => msg.opcode == WorkerOpcode.queryNeeded)
           .toList();
@@ -73,14 +72,14 @@ void main() {
 
       await worker.start();
 
-      // Enqueue multiple signals
+      // Enqueue multiple signals — timer has not fired yet when we pause.
       await worker.onFeedIngested();
       await worker.onFeedIngested();
       await worker.onFeedIngested();
 
       await worker.pause();
 
-      // Verify checkpoint saved with signal count
+      // Checkpoint must record the pending signal count.
       final snapshot = stateStore.getSnapshot('ingest_feed_worker');
       expect(snapshot, isNotNull);
       expect(snapshot!.checkpoint, isNotNull);
@@ -95,7 +94,7 @@ void main() {
         final worker = IngestFeedWorker(
           workerId: 'ingest_feed_worker',
           workerStateService: stateStore,
-          onMessageSent: (msg) => messagesSent.add(msg),
+          onMessageSent: messagesSent.add,
         );
 
         await stateStore.save(
@@ -105,13 +104,16 @@ void main() {
         );
         await worker.restoreCheckpoint();
 
-        // Resume - worker should restore checkpoint
+        // Resume — pending count restored, hasRemainingWork is true.
         await worker.start();
-
-        // Verify worker indicates remaining work
         expect(worker.hasRemainingWork, true);
 
-        // Unit test verifies checkpoint restore only.
+        // Timer fires: one queryNeeded emitted for the restored batch.
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        final queryMessages = messagesSent
+            .where((msg) => msg.opcode == WorkerOpcode.queryNeeded)
+            .toList();
+        expect(queryMessages, hasLength(1));
       },
     );
 
@@ -126,25 +128,27 @@ void main() {
 
       await worker.stop();
 
-      // Verify checkpoint cleared
       final snapshot = stateStore.getSnapshot('ingest_feed_worker');
       expect(snapshot, isNotNull);
       expect(snapshot!.checkpoint, isNull);
       expect(worker.hasRemainingWork, false);
     });
 
-    test('spawns isolate on start, kills on stop', () async {
+    test('runs on the main isolate — no background isolate spawned', () async {
       final worker = IngestFeedWorker(
         workerId: 'ingest_feed_worker',
         workerStateService: stateStore,
       );
 
+      // IngestFeedWorker never spawns a background isolate.
       expect(worker.isIsolateRunning, false);
 
       await worker.start();
-      expect(worker.isIsolateRunning, true);
+      expect(worker.state, BackgroundWorkerState.started);
+      expect(worker.isIsolateRunning, false);
 
       await worker.stop();
+      expect(worker.state, BackgroundWorkerState.stopped);
       expect(worker.isIsolateRunning, false);
     });
 
@@ -159,20 +163,18 @@ void main() {
 
       await worker.start();
 
-      // Enqueue many signals rapidly (simulates multiple channels ingested)
+      // 10 rapid signals: the debounce timer is cancelled and rescheduled on
+      // each call, so it fires exactly once after all calls complete.
       for (var i = 0; i < 10; i++) {
         await worker.onFeedIngested();
       }
 
       await Future<void>.delayed(const Duration(milliseconds: 300));
 
-      // All signals processed → exactly ONE queryNeeded forwarded to scheduler.
-      // Enrichment must not start until every channel is fully ingested.
-      final queryMessages = messagesSent
+      final queryCount = messagesSent
           .where((msg) => msg.opcode == WorkerOpcode.queryNeeded)
           .length;
-
-      expect(queryMessages, equals(1));
+      expect(queryCount, equals(1));
     });
 
     test('single feed ingested sends exactly one queryNeeded', () async {
@@ -188,11 +190,10 @@ void main() {
       await worker.onFeedIngested();
       await Future<void>.delayed(const Duration(milliseconds: 100));
 
-      final queryMessages = messagesSent
+      final queryCount = messagesSent
           .where((msg) => msg.opcode == WorkerOpcode.queryNeeded)
           .length;
-
-      expect(queryMessages, equals(1));
+      expect(queryCount, equals(1));
     });
 
     test('ignores feed signals when stopped', () async {

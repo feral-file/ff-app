@@ -351,11 +351,19 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
   Future<void> _rebuildMetadata() async {
     Navigator.of(context).pop();
 
+    // Set tab to Playlists and pop all detailed screens before showing toast.
+    setState(() => _selectedTab = HomeIndexHeaderTab.playlists);
     final router = GoRouter.of(context);
+    while (router.canPop()) {
+      router.pop();
+    }
+
     unawaited(
       router.pushNamed(
         RouteNames.globalToast,
-        extra: const GlobalToastPayload(message: 'Cleaning metadata...'),
+        extra: const GlobalToastPayload(
+          message: 'Cleaning metadata...',
+        ),
       ),
     );
     await WidgetsBinding.instance.endOfFrame;
@@ -363,6 +371,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     try {
       await ref.read(localDataCleanupServiceProvider).rebuildMetadata();
     } finally {
+      // Dismiss toast immediately after cleaning completes (no wait for refetch).
       if (mounted && router.canPop()) {
         router.pop();
       }

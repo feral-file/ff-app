@@ -1,3 +1,4 @@
+import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/workers/background_worker.dart';
 import 'package:app/infra/workers/enrich_item_worker.dart';
 import 'package:app/infra/workers/worker_message.dart';
@@ -35,6 +36,16 @@ class _InMemoryWorkerStateStore implements WorkerStateStore {
   WorkerStateSnapshot? getSnapshot(String workerId) => _rows[workerId];
 }
 
+/// Minimal fake DatabaseService for tests.
+///
+/// In unit tests the indexer HTTP call always fails (endpoint 'http://test'),
+/// so the isolate sends workFailed and the DatabaseService methods are never
+/// reached. This fake satisfies the constructor without requiring a real DB.
+class _FakeDatabaseService implements DatabaseService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
   group('EnrichItemWorker', () {
     late _InMemoryWorkerStateStore stateStore;
@@ -47,7 +58,7 @@ void main() {
       final worker = EnrichItemWorker(
         workerId: 'enrich_worker_1',
         workerStateService: stateStore,
-        databasePath: ':memory:',
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
       );
@@ -61,22 +72,21 @@ void main() {
 
       await worker.pause();
 
-      // Verify checkpoint includes assignments
       final snapshot = stateStore.getSnapshot('enrich_worker_1');
       expect(snapshot, isNotNull);
       expect(snapshot!.checkpoint, isNotNull);
     });
 
-    test('sends workComplete with enrichedCount', () async {
+    test('sends workComplete or workFailed after processing', () async {
       final messagesSent = <WorkerMessage>[];
 
       final worker = EnrichItemWorker(
         workerId: 'enrich_worker_1',
         workerStateService: stateStore,
-        databasePath: ':memory:',
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
-        onMessageSent: (msg) => messagesSent.add(msg),
+        onMessageSent: messagesSent.add,
       );
 
       await worker.start();
@@ -84,7 +94,7 @@ void main() {
 
       await Future<void>.delayed(const Duration(seconds: 1));
 
-      // Should have sent workComplete or workFailed
+      // HTTP call to 'http://test' fails → isolate sends workFailed.
       final hasCompleteMessage = messagesSent.any(
         (msg) =>
             msg.opcode == WorkerOpcode.workComplete ||
@@ -97,7 +107,7 @@ void main() {
       final worker = EnrichItemWorker(
         workerId: 'enrich_worker_1',
         workerStateService: stateStore,
-        databasePath: ':memory:',
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
       );
@@ -115,7 +125,7 @@ void main() {
       final worker = EnrichItemWorker(
         workerId: 'enrich_worker_1',
         workerStateService: stateStore,
-        databasePath: ':memory:',
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
       );

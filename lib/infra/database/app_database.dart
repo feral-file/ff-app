@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/tables.dart';
 import 'package:drift/drift.dart';
+import 'package:drift/isolate.dart';
 import 'package:drift/native.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
@@ -15,9 +17,13 @@ final _log = Logger('AppDatabase');
 
 /// Large limit used when only offset is set (skip N rows, return the rest).
 const _maxLimitForOffset = 0x7FFFFFFF;
-const _maxReadPoolSize = 4;
 const _schemaVersionV1 = 3;
 const _dbResetReindexMarkerFile = 'db_reset_requires_reindex.flag';
+
+// The DriftIsolate that backs the production AppDatabase instance.
+// Set lazily the first time the LazyDatabase opens (first DB operation).
+// Null for test instances created via AppDatabase.forTesting / fromConnection.
+DriftIsolate? _appDriftIsolate;
 
 /// Main application database using Drift.
 /// Implements offline-first storage for DP-1 entities and relationships.
@@ -36,6 +42,16 @@ class AppDatabase extends _$AppDatabase {
 
   /// Creates an AppDatabase instance with a custom executor (for testing).
   AppDatabase.forTesting(super.e);
+
+  /// The [SendPort] for the background Drift server that backs this database.
+  ///
+  /// Non-null only after the first database operation on a production
+  /// instance (the LazyDatabase defers opening). Returns null for test
+  /// instances created via forTesting or fromConnection. Background write
+  /// workers (e.g. DatabaseWriteQueue) use this port to connect to the
+  /// same Drift server so writes propagate stream-update notifications to
+  /// all subscribers on the main connection.
+  static SendPort? get driftConnectPort => _appDriftIsolate?.connectPort;
 
   @override
   int get schemaVersion => _schemaVersionV1;
@@ -1063,32 +1079,38 @@ class AppDatabase extends _$AppDatabase {
 }
 
 /// Opens the database connection.
+// Creates the NativeDatabase executor for a given file with standard PRAGMAs.
+NativeDatabase _makeNativeDatabase(File file) {
+  return NativeDatabase(
+    file,
+    setup: (db) {
+      db.execute('PRAGMA busy_timeout = 5000');
+      db.execute('PRAGMA journal_mode = WAL');
+      db.execute('PRAGMA wal_autocheckpoint = 1000');
+      _log.info('Database opened with WAL mode enabled');
+    },
+  );
+}
+
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'playlist_cache.sqlite'));
-    final readPoolSize = _resolveReadPoolSize();
     await _resetDatabaseIfSchemaConflicts(file, dbFolder);
 
-    _log.info(
-      'Opening database at: ${file.path} '
-      '(write isolate + $readPoolSize read isolates)',
-    );
+    _log.info('Opening database at: ${file.path}');
 
+    // Use DriftIsolate.spawn so the connect port is accessible for the
+    // DatabaseWriteQueue. The write queue connects to the same server so its
+    // writes trigger stream-update notifications on the main connection.
+    // singleClientMode: false allows additional clients (write queue) to
+    // connect without closing the server when they disconnect.
     try {
-      return NativeDatabase.createInBackground(
-        file,
-        readPool: readPoolSize,
-        setup: (db) {
-          // Set busy timeout first, before enabling WAL
-          db.execute('PRAGMA busy_timeout = 5000');
-          // Enable WAL mode for better concurrency
-          db.execute('PRAGMA journal_mode = WAL');
-          // Set WAL autocheckpoint to happen more frequently (every 1000 pages, ~4MB)
-          db.execute('PRAGMA wal_autocheckpoint = 1000');
-          _log.info('Database opened with WAL mode enabled');
-        },
+      final driftIsolate = await DriftIsolate.spawn(
+        () => _makeNativeDatabase(file),
       );
+      _appDriftIsolate = driftIsolate;
+      return driftIsolate.connect();
     } on Object catch (e, st) {
       _log.warning(
         'Failed to open database. Recreating from scratch and retrying once.',
@@ -1097,16 +1119,11 @@ LazyDatabase _openConnection() {
       );
       await _deleteDatabaseFiles(file);
       await _markDatabaseResetForReindex(dbFolder);
-      return NativeDatabase.createInBackground(
-        file,
-        readPool: readPoolSize,
-        setup: (db) {
-          db.execute('PRAGMA busy_timeout = 5000');
-          db.execute('PRAGMA journal_mode = WAL');
-          db.execute('PRAGMA wal_autocheckpoint = 1000');
-          _log.info('Database reopened from scratch with WAL mode enabled');
-        },
+      final driftIsolate = await DriftIsolate.spawn(
+        () => _makeNativeDatabase(file),
       );
+      _appDriftIsolate = driftIsolate;
+      return driftIsolate.connect();
     }
   });
 }
@@ -1214,15 +1231,4 @@ Future<bool> consumeDatabaseResetReindexMarker() async {
   }
   await marker.delete();
   return true;
-}
-
-int _resolveReadPoolSize() {
-  // Keep one core for UI/other async work, then cap reader isolates.
-  final availableForReaders = Platform.numberOfProcessors - 2;
-  if (availableForReaders <= 0) {
-    return 0;
-  }
-  return availableForReaders > _maxReadPoolSize
-      ? _maxReadPoolSize
-      : availableForReaders;
 }

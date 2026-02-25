@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/workers/background_worker.dart';
 import 'package:app/infra/workers/ingest_feed_worker.dart';
 import 'package:app/infra/workers/item_enrichment_query_worker.dart';
@@ -25,21 +26,31 @@ import 'package:logging/logging.dart';
 class WorkerScheduler {
   /// Creates a scheduler.
   ///
-  /// [databasePathResolver] is called once when workers first start; it should
-  /// return the absolute path of the shared SQLite database file.
+  /// [databasePathResolver] is called once when the query worker first starts;
+  /// it should return the absolute path of the shared SQLite database file.
+  /// [databaseService] is the main-isolate [DatabaseService] passed to enrich
+  /// and address workers so their DB writes stay on the main isolate.
   WorkerScheduler({
     required this.databasePathResolver,
     required this.workerStateService,
+    required this.databaseService,
     required this.indexerEndpoint,
     required this.indexerApiKey,
     required this.maxEnrichmentWorkers,
   });
 
-  /// Resolves the on-disk database path the first time workers start.
+  /// Resolves the on-disk database path the first time the query worker starts.
   final Future<String> Function() databasePathResolver;
 
   /// Shared checkpoint store for all workers.
   final WorkerStateStore workerStateService;
+
+  /// Main-isolate database service forwarded to enrich/address worker fleets.
+  ///
+  /// Enrich and address workers no longer open DB connections in their
+  /// isolates; instead they send write payloads back to the main isolate
+  /// where this service persists them.
+  final DatabaseService databaseService;
 
   /// Indexer API endpoint forwarded to worker isolates.
   final String indexerEndpoint;
@@ -52,7 +63,16 @@ class WorkerScheduler {
 
   late final Logger _log = Logger('WorkerScheduler');
 
-  // Empty string acts as "not yet resolved" sentinel; use _ensureInitialized.
+  // Memoises the initialization future so concurrent callers await the same
+  // promise. Avoids two problems:
+  // 1. Double-entry: _databasePath was set mid-init but workers weren't yet
+  //    assigned, causing LateInitializationError on guards that only check
+  //    _databasePath.isEmpty.
+  // 2. Double-init: two concurrent callers both enter before _databasePath
+  //    was set, running full init twice and orphaning the first set of workers.
+  // Reset to null in stopAll() so a re-start after stop re-initialises cleanly.
+  Future<void>? _initFuture;
+
   String _databasePath = '';
 
   // Shared Drift-managed database isolate for all worker DB operations.
@@ -79,9 +99,11 @@ class WorkerScheduler {
   /// Resolves the database path and creates all worker instances.
   ///
   /// No isolates are spawned here; workers remain idle until started.
-  Future<void> _ensureInitialized() async {
-    if (_databasePath.isNotEmpty) return;
+  /// Concurrent callers share a single in-flight future so initialization
+  /// runs exactly once per lifecycle (reset by [stopAll]).
+  Future<void> _ensureInitialized() => _initFuture ??= _doInitialize();
 
+  Future<void> _doInitialize() async {
     _databasePath = await databasePathResolver();
     _log.info('Scheduler initialised. DB: $_databasePath');
 
@@ -105,10 +127,11 @@ class WorkerScheduler {
       onMessageSent: handleWorkerMessage,
     );
 
-    // Enrichment worker pool — connectPort injected later via startOnForeground
+    // Enrichment workers write via the main-isolate DatabaseService; no
+    // DriftIsolate connect port needed.
     _enrichFleet = EnrichItemWorkersFleet(
       workerStateService: workerStateService,
-      databasePath: _databasePath,
+      databaseService: databaseService,
       indexerEndpoint: indexerEndpoint,
       indexerApiKey: indexerApiKey,
       poolSize: maxEnrichmentWorkers,
@@ -116,10 +139,10 @@ class WorkerScheduler {
     );
     await _enrichFleet.initialize();
 
-    // Address indexing fleet — connectPort injected later via startOnForeground
+    // Address workers also write via the main-isolate DatabaseService.
     _indexAddressFleet = IndexAddressWorkersFleet(
       workerStateService: workerStateService,
-      databasePath: _databasePath,
+      databaseService: databaseService,
       indexerEndpoint: indexerEndpoint,
       indexerApiKey: indexerApiKey,
     );
@@ -151,10 +174,9 @@ class WorkerScheduler {
     );
     _log.info('Worker DriftIsolate ready');
 
-    final connectPort = _workerDriftIsolate!.connectPort;
-    _queryWorker.updateConnectPort(connectPort);
-    _enrichFleet.updateConnectPort(connectPort);
-    _indexAddressFleet.updateConnectPort(connectPort);
+    // Only the query worker still reads from the shared Drift isolate.
+    // Enrich and address workers no longer hold DB connections in isolates.
+    _queryWorker.updateConnectPort(_workerDriftIsolate!.connectPort);
   }
 
   /// Resumes workers when the app returns to the foreground.
@@ -164,8 +186,8 @@ class WorkerScheduler {
   /// the query worker first, then starts enrichment workers.
   Future<void> startOnForeground() async {
     await _ensureInitialized();
-    await _ensureWorkerDriftIsolate();
     _log.info('startOnForeground');
+    // DriftIsolate is ensured lazily inside _triggerEnrichmentQueryAsync.
 
     if (_ingestFeedWorker.state == BackgroundWorkerState.paused) {
       await _ingestFeedWorker.resume();
@@ -183,7 +205,8 @@ class WorkerScheduler {
   /// Checkpoints and pauses all running workers on app background.
   Future<void> pauseOnBackground() async {
     // Not yet initialised — nothing to pause.
-    if (_databasePath.isEmpty) return;
+    if (_initFuture == null) return;
+    await _initFuture;
     _log.info('pauseOnBackground');
 
     // Clear in-flight count unconditionally. The query worker's start() may
@@ -205,7 +228,8 @@ class WorkerScheduler {
   ///
   /// Also shuts down the shared [DriftIsolate] used for worker DB access.
   Future<void> stopAll() async {
-    if (_databasePath.isEmpty) return;
+    if (_initFuture == null) return;
+    await _initFuture;
     _log.info('stopAll');
 
     _queryWorker.clearInFlightState();
@@ -220,6 +244,8 @@ class WorkerScheduler {
     await _workerDriftIsolate?.shutdownAll();
     _workerDriftIsolate = null;
     _databasePath = '';
+    // Reset so _ensureInitialized() re-runs on next start after this stop.
+    _initFuture = null;
   }
 
   // ── Events ───────────────────────────────────────────────────────────────
@@ -230,7 +256,7 @@ class WorkerScheduler {
   /// already running, and enqueues the address for indexing.
   Future<void> onAddressAdded(String address) async {
     await _ensureInitialized();
-    await _ensureWorkerDriftIsolate();
+    // No DriftIsolate needed — IndexAddressWorker writes via DatabaseService.
     _log.fine('onAddressAdded: $address');
 
     final worker = _indexAddressFleet.getOrCreateWorker(address);
@@ -245,7 +271,8 @@ class WorkerScheduler {
   /// Stops the per-address IndexAddressWorker, clears its checkpoint, and
   /// removes it from the fleet.
   Future<void> onAddressRemoved(String address) async {
-    if (_databasePath.isEmpty) return;
+    if (_initFuture == null) return;
+    await _initFuture;
     _log.fine('onAddressRemoved: $address');
 
     await _indexAddressFleet.stopWorker(address);
@@ -254,7 +281,9 @@ class WorkerScheduler {
   /// Called when a feed channel has been ingested and items need enrichment.
   Future<void> onFeedIngested({String? channelId}) async {
     await _ensureInitialized();
-    await _ensureWorkerDriftIsolate();
+    // IngestFeedWorker runs on the main isolate — no DriftIsolate needed here.
+    // The DriftIsolate is ensured lazily in _triggerEnrichmentQueryAsync when
+    // the downstream queryNeeded arrives.
     _log.fine('onFeedIngested: $channelId');
 
     final worker = _ingestFeedWorker;
@@ -357,12 +386,15 @@ class WorkerScheduler {
     }
   }
 
-  /// Starts the query worker (if not already running) and enqueues a query.
+  /// Ensures the DriftIsolate is ready, starts the query worker if needed,
+  /// then enqueues a query.
   ///
   /// The worker's onQueryNeeded resets [ItemEnrichmentQueryWorker.isFinished]
   /// so that a fresh drain round is started even after a previous session
   /// marked everything as done.
   Future<void> _triggerEnrichmentQueryAsync() async {
+    // Query worker still uses the shared DriftIsolate for reads.
+    await _ensureWorkerDriftIsolate();
     if (_queryWorker.state != BackgroundWorkerState.started) {
       await _queryWorker.start();
     }

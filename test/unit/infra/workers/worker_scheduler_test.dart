@@ -2,11 +2,17 @@
 // In-flight batch counting lives in ItemEnrichmentQueryWorker; the scheduler
 // exposes it via a forwarding getter for test assertions.
 
+import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/workers/background_worker.dart';
 import 'package:app/infra/workers/worker_message.dart';
 import 'package:app/infra/workers/worker_scheduler.dart';
 import 'package:app/infra/workers/worker_state_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+class _FakeDatabaseService implements DatabaseService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 class _InMemoryWorkerStateStore implements WorkerStateStore {
   final Map<String, WorkerStateSnapshot> _rows =
@@ -72,6 +78,7 @@ void main() {
       scheduler = WorkerScheduler(
         databasePathResolver: () async => ':memory:',
         workerStateService: stateStore,
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: '',
         indexerApiKey: '',
         maxEnrichmentWorkers: 1,

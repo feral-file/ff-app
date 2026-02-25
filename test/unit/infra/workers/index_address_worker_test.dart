@@ -1,6 +1,6 @@
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
-import 'package:app/infra/graphql/indexer_client.dart';
+import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/workers/background_worker.dart';
 import 'package:app/infra/workers/index_address_worker.dart';
@@ -103,6 +103,16 @@ class _FakeIndexerService implements IndexerService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// Minimal fake DatabaseService for tests.
+///
+/// In unit tests the indexer HTTP call always fails (endpoint 'http://test'),
+/// so the isolate sends workFailed and DatabaseService methods are never
+/// reached. This fake satisfies the constructor without a real DB.
+class _FakeDatabaseService implements DatabaseService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
   group('IndexAddressWorker', () {
     late _InMemoryWorkerStateStore stateStore;
@@ -112,7 +122,6 @@ void main() {
     });
 
     test('start() ignores existing checkpoint and starts fresh', () async {
-      // Setup: Save old checkpoint with address queue
       await stateStore.save(
         workerId: 'index_address_worker::0xTEST',
         stateIndex: BackgroundWorkerState.paused.index,
@@ -121,57 +130,49 @@ void main() {
         },
       );
 
-      // Worker starts fresh (should not restore checkpoint on first start)
       final worker = IndexAddressWorker(
         workerId: 'index_address_worker::0xTEST',
         workerStateService: stateStore,
-        indexerServiceFactory: () => _FakeIndexerService(),
-        databasePath: ':memory:',
+        indexerServiceFactory: _FakeIndexerService.new,
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
       );
 
       await worker.start();
 
-      // Verify: Started with idle state, did NOT restore old queue
       expect(worker.state, BackgroundWorkerState.started);
       expect(worker.hasRemainingWork, false);
     });
 
     test('pause() stops processing and checkpoints queue', () async {
-      final fakeService = _FakeIndexerService();
       final worker = IndexAddressWorker(
         workerId: 'index_address_worker::0xABC',
         workerStateService: stateStore,
-        indexerServiceFactory: () => fakeService,
-        databasePath: ':memory:',
+        indexerServiceFactory: _FakeIndexerService.new,
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
       );
 
       await worker.start();
-
-      // Enqueue address
       await worker.enqueueAddress('0xABC');
 
-      // Pause before completion
       await worker.pause();
       expect(worker.state, BackgroundWorkerState.paused);
 
-      // Verify checkpoint saved with address in queue
       final snapshot = stateStore.getSnapshot('index_address_worker::0xABC');
       expect(snapshot, isNotNull);
       expect(snapshot!.checkpoint, isNotNull);
-      expect(snapshot.checkpoint!['queue'], isA<List>());
+      expect(snapshot.checkpoint!['queue'], isA<List<dynamic>>());
     });
 
     test('start() after pause() restores checkpoint and resumes', () async {
-      final fakeService = _FakeIndexerService();
       final worker = IndexAddressWorker(
         workerId: 'index_address_worker::0xABC',
         workerStateService: stateStore,
-        indexerServiceFactory: () => fakeService,
-        databasePath: ':memory:',
+        indexerServiceFactory: _FakeIndexerService.new,
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
       );
@@ -179,25 +180,21 @@ void main() {
       await worker.start();
       await worker.enqueueAddress('0xABC');
 
-      // Pause mid-work
       await worker.pause();
 
-      // Restart and verify it resumes from checkpoint
       await worker.start();
       expect(worker.state, BackgroundWorkerState.started);
       expect(worker.hasRemainingWork, true);
 
-      // Wait for work to complete
       await Future<void>.delayed(const Duration(milliseconds: 500));
     });
 
     test('stop() clears checkpoint and state completely', () async {
-      final fakeService = _FakeIndexerService();
       final worker = IndexAddressWorker(
         workerId: 'index_address_worker::0xABC',
         workerStateService: stateStore,
-        indexerServiceFactory: () => fakeService,
-        databasePath: ':memory:',
+        indexerServiceFactory: _FakeIndexerService.new,
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
       );
@@ -208,22 +205,18 @@ void main() {
       await worker.stop();
       expect(worker.state, BackgroundWorkerState.stopped);
 
-      // Verify checkpoint cleared
       final snapshot = stateStore.getSnapshot('index_address_worker::0xABC');
       expect(snapshot, isNotNull);
       expect(snapshot!.checkpoint, isNull);
-
-      // Verify no remaining work
       expect(worker.hasRemainingWork, false);
     });
 
     test('spawns isolate on start and kills on stop', () async {
-      final fakeService = _FakeIndexerService();
       final worker = IndexAddressWorker(
         workerId: 'index_address_worker::0xABC',
         workerStateService: stateStore,
-        indexerServiceFactory: () => fakeService,
-        databasePath: ':memory:',
+        indexerServiceFactory: _FakeIndexerService.new,
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
       );
@@ -238,47 +231,42 @@ void main() {
     });
 
     test('enqueues multiple addresses and tracks pending work', () async {
-      final fakeService = _FakeIndexerService(
-        tokensToReturn: <AssetToken>[
-          AssetToken(
-            id: 1,
-            cid: 'cid1',
-            chain: 'ethereum',
-            standard: 'ERC721',
-            contractAddress: '0xContract',
-            tokenNumber: '1',
-          ),
-        ],
-      );
-
       final worker = IndexAddressWorker(
         workerId: 'index_address_worker::0xABC',
         workerStateService: stateStore,
-        indexerServiceFactory: () => fakeService,
-        databasePath: ':memory:',
+        indexerServiceFactory: () => _FakeIndexerService(
+          tokensToReturn: <AssetToken>[
+            AssetToken(
+              id: 1,
+              cid: 'cid1',
+              chain: 'ethereum',
+              standard: 'ERC721',
+              contractAddress: '0xContract',
+              tokenNumber: '1',
+            ),
+          ],
+        ),
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
       );
 
       await worker.start();
 
-      // Enqueue multiple addresses
       await worker.enqueueAddress('0xABC');
       await worker.enqueueAddress('0xDEF');
 
       expect(worker.hasRemainingWork, true);
-
-      // Note: Actual isolate processing is integration-level testing
-      // Unit tests verify queue management only
     });
 
     test('handles indexing failure gracefully', () async {
-      final fakeService = _FakeIndexerService(shouldFailIndexing: true);
       final worker = IndexAddressWorker(
         workerId: 'index_address_worker::0xABC',
         workerStateService: stateStore,
-        indexerServiceFactory: () => fakeService,
-        databasePath: ':memory:',
+        indexerServiceFactory: () => _FakeIndexerService(
+          shouldFailIndexing: true,
+        ),
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
       );
@@ -286,46 +274,38 @@ void main() {
       await worker.start();
       await worker.enqueueAddress('0xABC');
 
-      // Wait for processing attempt
       await Future<void>.delayed(const Duration(milliseconds: 500));
 
-      // Worker should still be running despite failure
       expect(worker.state, BackgroundWorkerState.started);
     });
 
     test('deduplicates addresses in queue', () async {
-      final fakeService = _FakeIndexerService();
       final worker = IndexAddressWorker(
         workerId: 'index_address_worker::0xABC',
         workerStateService: stateStore,
-        indexerServiceFactory: () => fakeService,
-        databasePath: ':memory:',
+        indexerServiceFactory: _FakeIndexerService.new,
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
       );
 
       await worker.start();
 
-      // Enqueue same address multiple times
       await worker.enqueueAddress('0xABC');
       expect(worker.hasRemainingWork, true);
 
       await worker.enqueueAddress('0xABC');
       await worker.enqueueAddress('0xABC');
 
-      // Queue should still have work but deduplicated
       expect(worker.hasRemainingWork, true);
-
-      // Note: Actual deduplication verification requires integration test
     });
 
     test('ignores new addresses when stopped', () async {
-      final fakeService = _FakeIndexerService();
       final worker = IndexAddressWorker(
         workerId: 'index_address_worker::0xABC',
         workerStateService: stateStore,
-        indexerServiceFactory: () => fakeService,
-        databasePath: ':memory:',
+        indexerServiceFactory: _FakeIndexerService.new,
+        databaseService: _FakeDatabaseService(),
         indexerEndpoint: 'http://test',
         indexerApiKey: '',
       );
