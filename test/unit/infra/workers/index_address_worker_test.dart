@@ -42,8 +42,6 @@ class _FakeIndexerService implements IndexerService {
   _FakeIndexerService({
     this.tokensToReturn = const <AssetToken>[],
     this.shouldFailIndexing = false,
-    this.shouldFailFetchTokens = false,
-    this.indexingWorkflowStatus = IndexingJobStatus.completed,
   });
 
   final List<AssetToken> tokensToReturn;
