@@ -79,7 +79,7 @@ External events (disconnect, FF1 internet down, pairing required) must:
 ## 10) Definition of Done (DoD)
 A task is considered complete when:
 1. **Buildable** — `flutter build` succeeds without errors on both Android and iOS targets.
-2. **Auto-fix applied** — Run `dart fix --apply` after finishing code updates.
+2. **Auto-fix applied** — Run `dart fix --apply` only on changed files after finishing code updates.
 3. **Code lint passes** — `flutter analyze` reports zero lint violations (must pass `very_good_analysis` rules).
 4. **Unit tests pass** — `flutter test` succeeds (no failing tests).
 5. **No pre-existing lints introduced** — New code does not add additional lints; fixes existing ones if trivial.
