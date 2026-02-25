@@ -36,7 +36,7 @@ void main() {
 
     test('enriches missing items and persists only those with token', () async {
       const deviceId = 'device_1';
-      final device = FF1Device(
+      const device = FF1Device(
         name: 'FF1',
         remoteId: 'r1',
         deviceId: deviceId,
@@ -86,7 +86,7 @@ void main() {
             FakeIndexerService(tokensByCid: [token]),
           ),
           activeFF1BluetoothDeviceProvider.overrideWithValue(
-            AsyncData(device),
+            const AsyncData(device),
           ),
           ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
           ff1PlayerStatusStreamProvider.overrideWith(
@@ -94,7 +94,7 @@ void main() {
           ),
           ff1CurrentPlayerStatusProvider.overrideWithValue(status),
           ff1ConnectionStatusStreamProvider.overrideWith(
-            (ref) => Stream.value(FF1ConnectionStatus(isConnected: true)),
+            (ref) => Stream.value(const FF1ConnectionStatus(isConnected: true)),
           ),
           ff1DeviceConnectedProvider.overrideWithValue(true),
           // Ensure cache is ready (empty) when _computeForDevice runs so missing = [dp1Item]
@@ -141,7 +141,7 @@ void main() {
         const halfSize = 50;
         const currentIndex = 100;
         const totalItems = 200;
-        final device = FF1Device(
+        const device = FF1Device(
           name: 'FF1',
           remoteId: 'r1',
           deviceId: deviceId,
@@ -167,10 +167,10 @@ void main() {
           overrides: [
             databaseServiceProvider.overrideWith((ref) => recordingDb),
             indexerServiceProvider.overrideWithValue(
-              FakeIndexerService(tokensByCid: const <AssetToken>[]),
+              FakeIndexerService(),
             ),
             activeFF1BluetoothDeviceProvider.overrideWithValue(
-              AsyncData(device),
+              const AsyncData(device),
             ),
             ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
             ff1PlayerStatusStreamProvider.overrideWith(
@@ -178,7 +178,7 @@ void main() {
             ),
             ff1CurrentPlayerStatusProvider.overrideWithValue(status),
             ff1ConnectionStatusStreamProvider.overrideWith(
-              (ref) => Stream.value(FF1ConnectionStatus(isConnected: true)),
+              (ref) => Stream.value(const FF1ConnectionStatus(isConnected: true)),
             ),
             ff1DeviceConnectedProvider.overrideWithValue(true),
           ],
@@ -200,10 +200,10 @@ void main() {
 
         final expectedStart = (currentIndex - halfSize)
             .clamp(0, totalItems)
-            .toInt();
+            ;
         final expectedEnd = (currentIndex + halfSize + 1)
             .clamp(0, totalItems)
-            .toInt();
+            ;
         final expectedWindowSize = expectedEnd - expectedStart;
 
         expect(
@@ -226,7 +226,7 @@ void main() {
     test('full list has correct length and currentItem is in window', () async {
       const totalItems = 10;
       const currentIndex = 3;
-      final device = FF1Device(
+      const device = FF1Device(
         name: 'FF1',
         remoteId: 'r1',
         deviceId: 'device_1',
@@ -252,10 +252,10 @@ void main() {
         overrides: [
           databaseServiceProvider.overrideWith((ref) => recordingDb),
           indexerServiceProvider.overrideWithValue(
-            FakeIndexerService(tokensByCid: const <AssetToken>[]),
+            FakeIndexerService(),
           ),
           activeFF1BluetoothDeviceProvider.overrideWithValue(
-            AsyncData(device),
+            const AsyncData(device),
           ),
           ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
           ff1PlayerStatusStreamProvider.overrideWith(
@@ -263,7 +263,7 @@ void main() {
           ),
           ff1CurrentPlayerStatusProvider.overrideWithValue(status),
           ff1ConnectionStatusStreamProvider.overrideWith(
-            (ref) => Stream.value(FF1ConnectionStatus(isConnected: true)),
+            (ref) => Stream.value(const FF1ConnectionStatus(isConnected: true)),
           ),
           ff1DeviceConnectedProvider.overrideWithValue(true),
         ],

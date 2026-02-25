@@ -1,13 +1,13 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' show Variable;
-import 'package:drift/native.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
+import 'package:drift/drift.dart' show Variable;
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -365,7 +365,7 @@ void main() {
       // Old app stored timestamps as INTEGER (microseconds since epoch)
       // New app uses Int64Column which also stores as INTEGER in SQLite
 
-      final testTimestamp = DateTime(2024, 1, 1).microsecondsSinceEpoch;
+      final testTimestamp = DateTime(2024).microsecondsSinceEpoch;
 
       // Write using new app
       await db.customStatement('''

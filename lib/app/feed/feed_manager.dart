@@ -4,8 +4,10 @@ import 'package:app/app/feed/feed_reference_models.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_api_responses.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/models.dart' show PlaylistItem;
 import 'package:app/domain/models/pair.dart';
 import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/playlist_item.dart' show PlaylistItem;
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/database/database_service.dart';
@@ -189,7 +191,6 @@ class FeedManager {
 
   /// Matches old repo's clearAllCache.
   Future<void> clearAllCache() async {
-    await _appStateService.setLastTimeRefreshFeeds(DateTime(1970, 1, 1));
     for (final feedService in feedServices) {
       await feedService.clearCache();
     }
@@ -349,8 +350,8 @@ class FeralFileFeedManager extends FeedManager {
       return DP1PlaylistItemsResponse([], false, null);
     }
 
-    int currentChannelIndex = 0;
-    String? currentChannelCursor = cursor;
+    var currentChannelIndex = 0;
+    var currentChannelCursor = cursor;
 
     if (cursor != null && cursor.contains(':')) {
       final parts = cursor.split(':');
@@ -372,7 +373,7 @@ class FeralFileFeedManager extends FeedManager {
         final remainingLimit = limit != null ? limit - allItems.length : limit;
 
         final feedService =
-            getFeedServiceByUrl(channel.endpoint) as FeralFileDP1FeedService;
+            getFeedServiceByUrl(channel.endpoint)! as FeralFileDP1FeedService;
 
         final response = await feedService.getPlaylistItemsOfChannel(
           channelId: channel.channelId,
@@ -386,7 +387,7 @@ class FeralFileFeedManager extends FeedManager {
         if (limit != null && allItems.length >= limit) {
           if (response.hasMore) {
             hasMore = true;
-            nextCursor = '${i}:${response.cursor ?? ''}';
+            nextCursor = '$i:${response.cursor ?? ''}';
           } else if (i < channels.length - 1) {
             hasMore = true;
             nextCursor = '${i + 1}:';
@@ -396,7 +397,7 @@ class FeralFileFeedManager extends FeedManager {
 
         if (response.hasMore) {
           hasMore = true;
-          nextCursor = '${i}:${response.cursor ?? ''}';
+          nextCursor = '$i:${response.cursor ?? ''}';
           break;
         } else if (i < channels.length - 1) {
           hasMore = true;

@@ -1,7 +1,6 @@
+import 'package:app/domain/models/channel.dart';
+import 'package:app/infra/database/database_service.dart';
 import 'package:logging/logging.dart';
-
-import '../../domain/models/channel.dart';
-import '../database/database_service.dart';
 
 /// Service for bootstrapping the application data.
 /// Creates initial channels and structures.

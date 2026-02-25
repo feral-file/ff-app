@@ -86,7 +86,7 @@ class _SectionExpandedWidgetState extends State<SectionExpandedWidget> {
                     _isExpanded = !_isExpanded;
                   });
                 },
-                child: Container(
+                child: ColoredBox(
                   color: Colors.transparent,
                   child: Padding(
                     padding: widget.headerPadding ??

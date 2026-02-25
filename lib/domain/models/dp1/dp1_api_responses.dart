@@ -2,7 +2,7 @@ import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 
-// ignore_for_file: public_member_api_docs, always_put_required_named_parameters_first, unnecessary_parenthesis, sort_constructors_first, avoid_equals_and_hash_code_on_mutable_classes, hash_and_equals, lines_longer_than_80_chars, prefer_collection_literals, eol_at_end_of_file
+// ignore_for_file: public_member_api_docs, unnecessary_parenthesis, lines_longer_than_80_chars
 //
 // Reason: copied from the legacy mobile app response shapes; keep DP-1 wire
 // response models stable and portable.

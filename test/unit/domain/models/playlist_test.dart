@@ -8,7 +8,6 @@ void main() {
         id: 'pl_123',
         name: 'Test Playlist',
         type: PlaylistType.dp1,
-        sortMode: PlaylistSortMode.position,
       );
 
       expect(playlist.id, equals('pl_123'));
@@ -28,7 +27,6 @@ void main() {
         channelId: 'ch_789',
         playlistRole: PlaylistRole.exhibition,
         playlistSource: PlaylistSource.curated,
-        sortMode: PlaylistSortMode.position,
       );
 
       expect(playlist.id, equals('pl_456'));
@@ -42,7 +40,6 @@ void main() {
         id: 'pl_123',
         name: 'Test Playlist',
         type: PlaylistType.dp1,
-        sortMode: PlaylistSortMode.position,
       );
 
       final updated = original.copyWith(

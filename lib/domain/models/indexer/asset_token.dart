@@ -5,7 +5,7 @@
 //  that can be found in the LICENSE file.
 //
 
-// ignore_for_file: public_member_api_docs, sort_constructors_first, always_put_required_named_parameters_first, avoid_catches_without_on_clauses, avoid_equals_and_hash_code_on_mutable_classes, hash_and_equals, annotate_overrides, eol_at_end_of_file // Reason: copied from the legacy mobile app; keep models stable and auditable.
+// ignore_for_file: public_member_api_docs, sort_constructors_first, always_put_required_named_parameters_first, avoid_catches_without_on_clauses, avoid_equals_and_hash_code_on_mutable_classes, hash_and_equals, annotate_overrides // Reason: copied from the legacy mobile app; keep models stable and auditable.
 
 import 'package:app/domain/models/blockchain.dart';
 

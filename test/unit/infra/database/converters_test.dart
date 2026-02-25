@@ -1,9 +1,9 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/app_database.dart';
+import 'package:app/infra/database/converters.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('DatabaseConverters', () {
@@ -18,7 +18,7 @@ void main() {
           slug: 'test-channel',
           curator: 'Test Curator',
           coverImageUrl: 'https://example.com/cover.jpg',
-          createdAt: DateTime(2024, 1, 1),
+          createdAt: DateTime(2024),
           updatedAt: DateTime(2024, 1, 2),
           sortOrder: 1,
         );
@@ -45,7 +45,7 @@ void main() {
           slug: 'test-channel',
           curator: 'Test Curator',
           coverImageUri: 'https://example.com/cover.jpg',
-          createdAtUs: BigInt.from(DateTime(2024, 1, 1).microsecondsSinceEpoch),
+          createdAtUs: BigInt.from(DateTime(2024).microsecondsSinceEpoch),
           updatedAtUs: BigInt.from(DateTime(2024, 1, 2).microsecondsSinceEpoch),
           sortOrder: 1,
         );
@@ -73,9 +73,8 @@ void main() {
           baseUrl: 'https://example.com',
           dpVersion: '1.0',
           slug: 'test-playlist',
-          sortMode: PlaylistSortMode.position,
           itemCount: 5,
-          createdAt: DateTime(2024, 1, 1),
+          createdAt: DateTime(2024),
           updatedAt: DateTime(2024, 1, 2),
         );
 
@@ -102,12 +101,8 @@ void main() {
           sortMode: 0,
           itemCount: 5,
           signaturesJson: '[]',
-          createdAtUs: BigInt.from(DateTime(2024, 1, 1).microsecondsSinceEpoch),
+          createdAtUs: BigInt.from(DateTime(2024).microsecondsSinceEpoch),
           updatedAtUs: BigInt.from(DateTime(2024, 1, 2).microsecondsSinceEpoch),
-          defaultsJson: null,
-          dynamicQueriesJson: null,
-          ownerAddress: null,
-          ownerChain: null,
         );
 
         final playlist = DatabaseConverters.playlistDataToDomain(data);
@@ -130,7 +125,7 @@ void main() {
           subtitle: 'Test Artist',
           thumbnailUrl: 'https://example.com/thumb.jpg',
           duration: 120,
-          updatedAt: DateTime(2024, 1, 1),
+          updatedAt: DateTime(2024),
         );
 
         final companion = DatabaseConverters.playlistItemToCompanion(item);
@@ -151,16 +146,8 @@ void main() {
           subtitle: 'Test Artist',
           thumbnailUri: 'https://example.com/thumb.jpg',
           durationSec: 120,
-          provenanceJson: null,
-          sourceUri: null,
-          refUri: null,
-          license: null,
-          reproJson: null,
-          overrideJson: null,
-          displayJson: null,
-          tokenDataJson: null,
           enrichmentStatus: 0,
-          updatedAtUs: BigInt.from(DateTime(2024, 1, 1).microsecondsSinceEpoch),
+          updatedAtUs: BigInt.from(DateTime(2024).microsecondsSinceEpoch),
         );
 
         final item = DatabaseConverters.itemDataToDomain(data);

@@ -209,7 +209,7 @@ class AppTypography {
   static TextStyle displayItemDeviceName(BuildContext context) {
     const fontSize = 6.0;
     const lineHeight = 8.4;
-    return TextStyle(
+    return const TextStyle(
       fontFamily: ppMori,
       fontSize: fontSize,
       fontWeight: FontWeight.w700,

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/infra/services/dp1_feed_with_channel_extension_service_impl.dart';
-import 'package:app/infra/services/indexer_service.dart';
 import 'package:logging/logging.dart';
 
 /// DP1 feed service with remote config channel support.

@@ -10,11 +10,6 @@ import 'package:sentry/sentry.dart';
 final _log = Logger('GifNFTRenderingWidget');
 
 class GifNFTRenderingWidget extends NFTRenderingWidget {
-  final String previewURL;
-  final Widget? noPreviewUrlWidget;
-  final Widget? loadingWidget;
-  final Widget? errorWidget;
-  final VoidCallback? onLoaded;
 
   const GifNFTRenderingWidget({
     required this.previewURL,
@@ -24,6 +19,11 @@ class GifNFTRenderingWidget extends NFTRenderingWidget {
     this.errorWidget,
     this.onLoaded,
   });
+  final String previewURL;
+  final Widget? noPreviewUrlWidget;
+  final Widget? loadingWidget;
+  final Widget? errorWidget;
+  final VoidCallback? onLoaded;
 
   @override
   State<GifNFTRenderingWidget> createState() => _GifNFTRenderingWidgetState();

@@ -63,10 +63,6 @@ abstract class FF1ResponseError extends FF1Error {
     this.shouldShowSupport = false,
   }) : super(message);
 
-  final String title;
-  final bool shouldGoBack;
-  final bool shouldShowSupport;
-
   factory FF1ResponseError.fromCode(int errorCode) {
     final code = FF1ResponseErrorCode.fromCode(errorCode);
     switch (code) {
@@ -86,6 +82,10 @@ abstract class FF1ResponseError extends FF1Error {
         return UnknownWifiError(errorCode);
     }
   }
+
+  final String title;
+  final bool shouldGoBack;
+  final bool shouldShowSupport;
 }
 
 /// Wrong WiFi password

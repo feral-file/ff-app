@@ -10,8 +10,8 @@ import 'package:app/infra/database/converters.dart' show DatabaseConverters;
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
-import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
+import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/ff_display_button.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/playlist_details_header.dart';
@@ -65,7 +65,7 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
   Widget build(BuildContext context) {
     final detailsAsync = ref.watch(playlistDetailsProvider(widget.playlistId));
 
-    final PlaylistDetailsState? state = detailsAsync.hasValue
+    final state = detailsAsync.hasValue
         ? detailsAsync.value
         : null;
     final hasPlaylist = state?.playlist != null && state?.items != null;
@@ -129,7 +129,7 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
 
             // Playlist (domain) uses name; channel for subtitle
             final channelId = playlist.channelId;
-            final AsyncValue<Channel?> channelAsync = channelId == null
+            final channelAsync = channelId == null
                 ? const AsyncValue<Channel?>.data(null)
                 : ref.watch(channelByIdProvider(channelId));
 

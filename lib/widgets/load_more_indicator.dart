@@ -1,5 +1,5 @@
-import 'package:app/theme/app_color.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:flutter/material.dart';
 

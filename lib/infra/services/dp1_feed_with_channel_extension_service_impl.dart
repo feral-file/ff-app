@@ -72,8 +72,8 @@ class DP1FeedWithChannelExtensionServiceImpl extends BaseDP1FeedServiceImpl {
       return DP1PlaylistResponse(<DP1Playlist>[], false, null);
     }
 
-    int currentChannelIndex = 0;
-    String? currentChannelCursor = cursor;
+    var currentChannelIndex = 0;
+    var currentChannelCursor = cursor;
     if (cursor != null && cursor.contains(':')) {
       final parts = cursor.split(':');
       if (parts.length == 2) {

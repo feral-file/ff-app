@@ -46,7 +46,7 @@ Widget _loadingIndicator({
       width: size,
       height: size,
       child: CircularProgressIndicator(
-        strokeWidth: 2.0,
+        strokeWidth: 2,
         color: valueColor,
       ),
     );
@@ -85,7 +85,6 @@ class _DrawerItemState extends State<DrawerItem> {
         ? (item.iconOnDisable ?? item.icon)
         : isProcessing
             ? (item.iconOnProcessing ?? _loadingIndicator(
-                valueColor: AppColor.disabledColor,
                 size: LayoutConstants.iconSizeSmall,
               ))
             : item.icon;

@@ -2,9 +2,9 @@ import 'package:app/app/providers/works_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/load_more_indicator.dart';
-import 'package:app/ui/ui_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -180,7 +180,7 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
     if (worksCount == 0) return;
 
     final viewportWidth = MediaQuery.sizeOf(context).width;
-    final crossAxisCount = 2;
+    const crossAxisCount = 2;
     final crossAxisSpacing = LayoutConstants.space4;
     final mainAxisSpacing = LayoutConstants.space4;
     final tileWidth = (viewportWidth - crossAxisSpacing) / crossAxisCount;

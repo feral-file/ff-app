@@ -1,11 +1,11 @@
 import 'dart:async';
 
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
-import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
 import 'package:app/domain/models/ff1/dp1_intent.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
+import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_service.dart';
 import 'package:app/infra/services/device_info_service.dart';

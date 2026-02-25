@@ -7,13 +7,6 @@ import 'package:logging/logging.dart';
 final _log = Logger('SvgImage');
 
 class SvgImage extends StatefulWidget {
-  final String url;
-  final bool fallbackToWebView;
-  final WidgetBuilder? loadingWidgetBuilder;
-  final WidgetBuilder? errorWidgetBuilder;
-  final WidgetBuilder? unsupportWidgetBuilder;
-  final VoidCallback? onLoaded;
-  final VoidCallback? onError;
 
   const SvgImage({
     required this.url,
@@ -25,6 +18,13 @@ class SvgImage extends StatefulWidget {
     this.onError,
     this.unsupportWidgetBuilder,
   });
+  final String url;
+  final bool fallbackToWebView;
+  final WidgetBuilder? loadingWidgetBuilder;
+  final WidgetBuilder? errorWidgetBuilder;
+  final WidgetBuilder? unsupportWidgetBuilder;
+  final VoidCallback? onLoaded;
+  final VoidCallback? onError;
 
   String getHtml(String svgImageURL) {
     // Escape HTML entities to prevent XSS/injection attacks
@@ -128,7 +128,7 @@ class _SvgImageState extends State<SvgImage> {
 }
 
 class SvgNotSupported {
-  final String svgData;
 
   SvgNotSupported(this.svgData);
+  final String svgData;
 }

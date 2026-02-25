@@ -84,8 +84,8 @@ class Dp1FeedApiImpl implements DP1FeedApi {
     final uri = Uri.parse('$baseUrl/api/v1/playlists');
     final queryParams = <String, String>{
       if (limit != null) 'limit': limit.toString(),
-      if (cursor != null) 'cursor': cursor,
-      if (channelId != null) 'channel': channelId,
+      'cursor': ?cursor,
+      'channel': ?channelId,
     };
     final finalUri = uri.replace(queryParameters: queryParams);
     final response = await dio.getUri<Map<String, dynamic>>(
@@ -111,8 +111,8 @@ class Dp1FeedApiImpl implements DP1FeedApi {
     final uri = Uri.parse('$baseUrl/api/v1/playlist-items');
     final queryParams = <String, String>{
       if (limit != null) 'limit': limit.toString(),
-      if (cursor != null) 'cursor': cursor,
-      if (channelId != null) 'channel': channelId,
+      'cursor': ?cursor,
+      'channel': ?channelId,
     };
     final finalUri = uri.replace(queryParameters: queryParams);
     final response = await dio.getUri<Map<String, dynamic>>(
@@ -148,7 +148,7 @@ class Dp1FeedApiImpl implements DP1FeedApi {
     final uri = Uri.parse('$baseUrl/api/v1/channels');
     final queryParams = <String, String>{
       if (limit != null) 'limit': limit.toString(),
-      if (cursor != null) 'cursor': cursor,
+      'cursor': ?cursor,
     };
     final finalUri = uri.replace(queryParameters: queryParams);
     final response = await dio.getUri<Map<String, dynamic>>(

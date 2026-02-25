@@ -99,8 +99,6 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap> {
     final appState = ref.read(appStateServiceProvider);
     final databaseService = ref.read(databaseServiceProvider);
 
-    await appState.setLastTimeRefreshFeeds(DateTime(1970));
-
     // Read known addresses from SQLite source of truth.
     final addressPlaylists = await databaseService.getAddressPlaylists();
     final addresses = addressPlaylists

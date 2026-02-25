@@ -1,8 +1,7 @@
+import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 
 /// Bottom spacing widget for consistent spacing at the bottom of scrollable content.
 class BottomSpacing extends ConsumerWidget {

@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/extensions/asset_token_ext.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
@@ -10,12 +11,10 @@ import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'package:app/domain/extensions/asset_token_ext.dart';
-
 // Dividers matching old artwork detail page (non-const to use LayoutConstants)
 final Widget _artworkDataDivider = Divider(
   height: LayoutConstants.space8,
-  color: Color.fromRGBO(255, 255, 255, 0.3),
+  color: const Color.fromRGBO(255, 255, 255, 0.3),
   thickness: LayoutConstants.dividerThickness,
 );
 
@@ -155,13 +154,13 @@ class MetaDataItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    VoidCallback? onValueTap = onTap;
+    var onValueTap = onTap;
     if (onValueTap == null && tapLink != null && tapLink!.isNotEmpty) {
       final uri = Uri.parse(tapLink!);
       onValueTap = () async {
         await launchUrl(
           uri,
-          mode: forceSafariVC == true
+          mode: forceSafariVC ?? false
               ? LaunchMode.externalApplication
               : LaunchMode.platformDefault,
         );
@@ -221,13 +220,13 @@ class ProvenanceItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    VoidCallback? onValueTap = onTap;
+    var onValueTap = onTap;
     if (onValueTap == null && tapLink != null && tapLink!.isNotEmpty) {
       final uri = Uri.parse(tapLink!);
       onValueTap = () async {
         await launchUrl(
           uri,
-          mode: forceSafariVC == true
+          mode: forceSafariVC ?? false
               ? LaunchMode.externalApplication
               : LaunchMode.platformDefault,
         );

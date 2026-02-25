@@ -39,7 +39,7 @@ class IndexerSyncService {
       offset: offset,
     );
 
-    int totalIngested = 0;
+    var totalIngested = 0;
     for (final address in queryAddresses) {
       await _databaseService.ingestTokensForAddress(
         address: address,

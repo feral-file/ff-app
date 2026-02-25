@@ -3,7 +3,6 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/dp1_carousel.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/playlist/playlist_title.dart';
@@ -107,11 +106,10 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
               context.push('${Routes.playlists}/${playlist.id}');
             },
       child: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: AppColor.primaryBlack,
-              width: LayoutConstants.dividerThickness,
+              
             ),
           ),
         ),
@@ -181,9 +179,7 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
 
     return DP1Carousel(
       items: placeholderItems,
-      onItemTap: null,
       scrollController: _carouselScrollController,
-      isLoadingMore: false,
     );
   }
 }

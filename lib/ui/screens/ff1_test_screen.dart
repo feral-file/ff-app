@@ -343,7 +343,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
       _log.info('Testing WiFi connection with topicId: $_topicId');
 
       // Rotate 4 times to test the connection
-      for (int i = 1; i <= 4; i++) {
+      for (var i = 1; i <= 4; i++) {
         try {
           _log.info('Rotation $i/4 - Sending rotate command...');
 

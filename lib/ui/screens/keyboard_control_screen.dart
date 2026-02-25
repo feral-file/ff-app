@@ -5,14 +5,14 @@ import 'package:app/app/keyboard_visibility_override.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/route_observer.dart';
-import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/view/get_dark_empty_app_bar.dart';
 import 'package:app/widgets/touchpad.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Keyboard control (interact) screen. Data from [nowDisplayingProvider].
 /// UI copied from old repo; devices = [connectedDevice] when now displaying success.

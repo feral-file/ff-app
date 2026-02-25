@@ -1,16 +1,15 @@
+import 'package:app/infra/database/app_database.dart';
+import 'package:app/infra/database/database_service.dart';
+import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
+import 'package:app/infra/database/objectbox_init.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:objectbox/objectbox.dart';
-
-import 'app_database.dart';
-import 'database_service.dart';
-import 'ff1_bluetooth_device_service.dart';
-import 'objectbox_init.dart';
 
 /// Provider for the Drift database instance.
 /// Override this in tests with a memory database.
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
-  ref.onDispose(() => db.close());
+  ref.onDispose(db.close);
   return db;
 });
 
@@ -31,7 +30,7 @@ final databaseServiceProvider = Provider<DatabaseService>((ref) {
 /// ```
 final objectBoxStoreProvider = FutureProvider<Store>((ref) async {
   final store = await initializeObjectBox();
-  ref.onDispose(() => store.close());
+  ref.onDispose(store.close);
   return store;
 });
 

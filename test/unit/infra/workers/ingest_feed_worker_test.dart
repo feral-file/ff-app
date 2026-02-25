@@ -49,7 +49,7 @@ void main() {
       final worker = IngestFeedWorker(
         workerId: 'ingest_feed_worker',
         workerStateService: stateStore,
-        onMessageSent: (msg) => messagesSent.add(msg),
+        onMessageSent: messagesSent.add,
       );
 
       await worker.start();
@@ -95,7 +95,7 @@ void main() {
         final worker = IngestFeedWorker(
           workerId: 'ingest_feed_worker',
           workerStateService: stateStore,
-          onMessageSent: (msg) => messagesSent.add(msg),
+          onMessageSent: messagesSent.add,
         );
 
         await stateStore.save(

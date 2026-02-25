@@ -15,19 +15,6 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 final _log = Logger('FeralFileWebview');
 
 class FeralFileWebview extends StatefulWidget {
-  final Uri uri;
-  final String? overriddenHtml;
-  final bool isMute;
-  final Color backgroundColor;
-  final String? userAgent;
-  final void Function(WebViewController webViewController)? onLoaded;
-  final void Function(WebViewController webViewController)? onStarted;
-  final void Function(WebViewController webViewController, WebResourceError error)?
-      onResourceError;
-  final void Function(WebViewController webViewController, HttpResponseError error)?
-      onHttpError;
-  final void Function(WebViewController webViewController,
-      JavaScriptConsoleMessage consoleMessage)? onConsoleMessage;
 
   const FeralFileWebview({
     required this.uri,
@@ -42,6 +29,19 @@ class FeralFileWebview extends StatefulWidget {
     this.onHttpError,
     this.onConsoleMessage,
   });
+  final Uri uri;
+  final String? overriddenHtml;
+  final bool isMute;
+  final Color backgroundColor;
+  final String? userAgent;
+  final void Function(WebViewController webViewController)? onLoaded;
+  final void Function(WebViewController webViewController)? onStarted;
+  final void Function(WebViewController webViewController, WebResourceError error)?
+      onResourceError;
+  final void Function(WebViewController webViewController, HttpResponseError error)?
+      onHttpError;
+  final void Function(WebViewController webViewController,
+      JavaScriptConsoleMessage consoleMessage)? onConsoleMessage;
 
   @override
   State<FeralFileWebview> createState() => FeralFileWebviewState();
@@ -49,7 +49,7 @@ class FeralFileWebview extends StatefulWidget {
 
 class FeralFileWebviewState extends State<FeralFileWebview> {
   late WebViewController _webViewController;
-  double _loadingProgress = 0.0;
+  double _loadingProgress = 0;
 
   @override
   void initState() {
@@ -62,7 +62,7 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
   }
 
   Widget _buildLoadingWidget() {
-    return Container(
+    return ColoredBox(
       color: widget.backgroundColor,
       child: Center(
         child: Column(
@@ -86,9 +86,9 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
             child: WebViewWidget(
               key: Key(widget.uri.toString()),
               controller: _webViewController,
-              gestureRecognizers: {
+              gestureRecognizers: const {
                 Factory<OneSequenceGestureRecognizer>(
-                  () => EagerGestureRecognizer(),
+                  EagerGestureRecognizer.new,
                 ),
               },
             ),

@@ -4,11 +4,6 @@ import 'package:app/nft_rendering/svg_image.dart';
 import 'package:flutter/material.dart';
 
 class SVGNFTRenderingWidget extends NFTRenderingWidget {
-  final String previewURL;
-  final Widget? noPreviewUrlWidget;
-  final Widget? loadingWidget;
-  final VoidCallback? onLoaded;
-  final VoidCallback? onError;
 
   const SVGNFTRenderingWidget({
     required this.previewURL,
@@ -18,6 +13,11 @@ class SVGNFTRenderingWidget extends NFTRenderingWidget {
     this.onLoaded,
     this.onError,
   });
+  final String previewURL;
+  final Widget? noPreviewUrlWidget;
+  final Widget? loadingWidget;
+  final VoidCallback? onLoaded;
+  final VoidCallback? onError;
 
   @override
   State<SVGNFTRenderingWidget> createState() => _SVGNFTRenderingWidgetState();

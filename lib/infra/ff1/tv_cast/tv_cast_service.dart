@@ -1,10 +1,9 @@
 import 'dart:async';
 
-import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
+import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
 import 'package:logging/logging.dart';
-import 'package:dio/dio.dart';
 
 abstract class TvCastService {
   Future<CheckCastingStatusReply> status(

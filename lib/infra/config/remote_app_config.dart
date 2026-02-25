@@ -8,13 +8,6 @@ class RemoteConfigPublisher {
     required this.feedLastUpdatedAt,
   });
 
-  /// Publisher id persisted as publisher array index (`0`, `1`, ...).
-  final int id;
-  final String name;
-  final List<String> channelUrls;
-  final Duration feedCacheDuration;
-  final DateTime feedLastUpdatedAt;
-
   factory RemoteConfigPublisher.fromJson(
     Map<String, dynamic> json, {
     required int id,
@@ -49,6 +42,13 @@ class RemoteConfigPublisher {
       feedLastUpdatedAt: feedLastUpdatedAt,
     );
   }
+
+  /// Publisher id persisted as publisher array index (`0`, `1`, ...).
+  final int id;
+  final String name;
+  final List<String> channelUrls;
+  final Duration feedCacheDuration;
+  final DateTime feedLastUpdatedAt;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,
@@ -101,6 +101,16 @@ class RemoteAppConfig {
     required this.publishers,
   });
 
+  factory RemoteAppConfig.fromJson(Map<String, dynamic> json) {
+    final publishers = _readPublishers(json);
+    if (publishers.isEmpty) {
+      throw const FormatException('Missing publishers in remote config.');
+    }
+    return RemoteAppConfig(
+      publishers: publishers,
+    );
+  }
+
   final List<RemoteConfigPublisher> publishers;
 
   /// Flattened channel URLs in publisher order.
@@ -136,16 +146,6 @@ class RemoteAppConfig {
   static const String dp1PlaylistChannelUrlsKey = 'channel_urls';
   static const String dp1PlaylistFeedCacheDurationKey = 'feed_cache_duration';
   static const String dp1PlaylistFeedLastUpdatedKey = 'feed_last_updated';
-
-  factory RemoteAppConfig.fromJson(Map<String, dynamic> json) {
-    final publishers = _readPublishers(json);
-    if (publishers.isEmpty) {
-      throw const FormatException('Missing publishers in remote config.');
-    }
-    return RemoteAppConfig(
-      publishers: publishers,
-    );
-  }
 
   static List<RemoteConfigPublisher> _readPublishers(
     Map<String, dynamic> json,

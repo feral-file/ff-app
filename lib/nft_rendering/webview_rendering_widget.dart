@@ -10,12 +10,6 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 class WebviewNFTRenderingWidget extends NFTRenderingWidget {
-  final Uri previewUri;
-  final String? overriddenHtml;
-  final bool isMute;
-  final Widget loadingWidget;
-  final FocusNode? focusNode;
-  final void Function(WebViewController)? onLoaded;
 
   const WebviewNFTRenderingWidget({
     required this.previewUri,
@@ -26,6 +20,12 @@ class WebviewNFTRenderingWidget extends NFTRenderingWidget {
     this.focusNode,
     this.onLoaded,
   });
+  final Uri previewUri;
+  final String? overriddenHtml;
+  final bool isMute;
+  final Widget loadingWidget;
+  final FocusNode? focusNode;
+  final void Function(WebViewController)? onLoaded;
 
   @override
   State<WebviewNFTRenderingWidget> createState() =>
@@ -128,7 +128,7 @@ class _WebviewNFTRenderingWidgetState
       );
 
   Widget _buildWebView() => FeralFileWebview(
-        key: Key('FeralFileWebview_${widget.previewUri.toString()}'),
+        key: Key('FeralFileWebview_${widget.previewUri}'),
         uri: widget.overriddenHtml != null
             ? Uri.parse('about:blank')
             : widget.previewUri,
@@ -144,9 +144,9 @@ class _WebviewNFTRenderingWidgetState
 
           widget.onLoaded?.call(controller);
 
-          String viewportContent =
+          final viewportContent =
               Platform.isIOS ? 'width=device-width, initial-scale=1.0' : '';
-          String javascriptString = '''
+          final javascriptString = '''
           var viewportmeta = document.querySelector('meta[name="viewport"]');
           if (!viewportmeta) {
             var head = document.getElementsByTagName('head')[0];

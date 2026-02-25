@@ -3,10 +3,10 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/channel_item.dart';
 import 'package:app/widgets/error_view.dart';
-import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/playlist_list_row.dart';
 import 'package:flutter/material.dart';
@@ -33,7 +33,7 @@ class ChannelDetailScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
-      appBar: MainAppBar(
+      appBar: const MainAppBar(
         backTitle: 'Channels',
         backgroundColor: AppColor.auGreyBackground,
       ),
@@ -49,7 +49,7 @@ class ChannelDetailScreen extends ConsumerWidget {
                 error: (error, _) => ErrorView(
                   error:
                       'We couldn’t load this channel. Check your connection, then Retry.',
-                  onRetry: () => onRefresh(),
+                  onRetry: onRefresh,
                 ),
                 data: (details) {
                   final channel = details.channel;

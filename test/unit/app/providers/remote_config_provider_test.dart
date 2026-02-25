@@ -15,7 +15,7 @@ void main() {
           name: 'Feral File',
           channelUrls: const ['https://example.com/channel.json'],
           feedCacheDuration: const Duration(hours: 6),
-          feedLastUpdatedAt: DateTime.utc(2025, 1, 1),
+          feedLastUpdatedAt: DateTime.utc(2025),
         ),
       ],
     );
@@ -40,7 +40,7 @@ void main() {
     );
     expect(
       container.read(remoteFeedLastUpdatedAtProvider),
-      DateTime.utc(2025, 1, 1),
+      DateTime.utc(2025),
     );
   });
 }

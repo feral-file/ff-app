@@ -6,10 +6,10 @@ import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/api/dp1_feed_api.dart';
-import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
+import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:app/infra/workers/background_worker.dart';
 import 'package:app/infra/workers/worker_scheduler.dart';
 import 'package:app/infra/workers/worker_state_service.dart';
@@ -150,7 +150,6 @@ void main() {
             name: 'Forget Playlist',
             type: PlaylistType.dp1,
             channelId: 'ch_forget',
-            sortMode: PlaylistSortMode.position,
             createdAt: now,
             updatedAt: now,
           ),

@@ -147,7 +147,7 @@ void main() {
       );
 
       // Second batch should take from high (0 remaining) + low (50)
-      final remainingHigh = highQueueSize - firstBatchSize;
+      const remainingHigh = highQueueSize - firstBatchSize;
       final secondBatchSize = (remainingHigh + batchSize)
           .clamp(0, remainingHigh + lowQueueSize);
       expect(
