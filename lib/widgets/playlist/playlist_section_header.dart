@@ -35,12 +35,10 @@ class PlaylistSectionHeader extends StatelessWidget {
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // Left: Section name with icon
           Row(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               sectionIcon ??
                   SvgPicture.asset(
@@ -66,7 +64,7 @@ class PlaylistSectionHeader extends StatelessWidget {
             GestureDetector(
               onTap: onViewAllTap,
               behavior: HitTestBehavior.opaque,
-              child: Container(
+              child: ColoredBox(
                 color: Colors.transparent,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
@@ -75,7 +73,6 @@ class PlaylistSectionHeader extends StatelessWidget {
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       SvgPicture.asset(
                         'assets/images/icon_arrow_left.svg',

@@ -3,7 +3,6 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/dp1_carousel.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/playlist/playlist_title.dart';
@@ -92,11 +91,22 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
     final playlistTitle = playlist.name;
     final creator = widget.playlistCreator ?? '';
 
-    final detailsAsync = widget.isActive
+    final nextDetailsAsync = widget.isActive
         ? ref.watch(playlistDetailsProvider(playlist.id))
         : _cachedDetailsAsync;
-    if (widget.isActive) {
-      _cachedDetailsAsync = detailsAsync;
+
+    // When the autoDispose provider is recreated after a tab switch it starts
+    // in AsyncLoading. If we already have data in cache, keep showing it until
+    // the new provider delivers fresh data — prevents a skeleton flash on every
+    // tab switch.
+    final shouldKeepCached = widget.isActive &&
+        _cachedDetailsAsync is AsyncData<PlaylistDetailsState> &&
+        nextDetailsAsync.isLoading;
+
+    final detailsAsync =
+        shouldKeepCached ? _cachedDetailsAsync : nextDetailsAsync;
+    if (widget.isActive && !shouldKeepCached) {
+      _cachedDetailsAsync = nextDetailsAsync;
     }
     final isLoading = detailsAsync.isLoading;
 
@@ -107,11 +117,10 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
               context.push('${Routes.playlists}/${playlist.id}');
             },
       child: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: AppColor.primaryBlack,
-              width: LayoutConstants.dividerThickness,
+              
             ),
           ),
         ),
@@ -181,9 +190,7 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
 
     return DP1Carousel(
       items: placeholderItems,
-      onItemTap: null,
       scrollController: _carouselScrollController,
-      isLoadingMore: false,
     );
   }
 }

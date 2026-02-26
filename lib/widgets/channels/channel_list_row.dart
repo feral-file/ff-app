@@ -2,10 +2,8 @@ import 'package:app/app/providers/channel_preview_provider.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/channel_item.dart';
 import 'package:app/widgets/dp1_carousel.dart';
-import 'package:app/widgets/loading_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,8 +13,7 @@ class ChannelRowData {
   const ChannelRowData({
     required this.channelId,
     required this.channelTitle,
-    this.channelSummary,
-    required this.works,
+    required this.works, this.channelSummary,
   });
 
   /// Channel ID.
@@ -59,16 +56,23 @@ class ChannelListRow extends ConsumerStatefulWidget {
 }
 
 class _ChannelListRowState extends ConsumerState<ChannelListRow> {
+  static const int _loadingItemsCount = 8;
+
   ChannelPreviewState _cachedPreviewState = ChannelPreviewState.initial();
 
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
+  Widget _buildLoadingCarousel() {
+    final placeholderItems = List<PlaylistItem>.generate(
+      _loadingItemsCount,
+      (index) => PlaylistItem(
+        id: 'ch_loading_$index',
+        kind: PlaylistItemKind.dp1Item,
+        title: 'Loading',
+      ),
+      growable: false,
+    );
+    return DP1Carousel(
+      items: placeholderItems,
+    );
   }
 
   @override
@@ -92,19 +96,30 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
   @override
   Widget build(BuildContext context) {
     final channelId = widget.channelData.channelId;
-    final previewState = widget.isActive
+    final nextPreviewState = widget.isActive
         ? ref.watch(channelPreviewProvider(channelId))
         : _cachedPreviewState;
-    if (widget.isActive) {
-      _cachedPreviewState = previewState;
+
+    // When the autoDispose provider is recreated after a tab switch it returns
+    // initial() — isLoading: false, works: [] — before the DB watch delivers
+    // data. Keep showing cached works during that gap to avoid a height
+    // collapse that makes the list jumpy.
+    final shouldKeepCached = widget.isActive &&
+        _cachedPreviewState.works.isNotEmpty &&
+        nextPreviewState.works.isEmpty &&
+        nextPreviewState.error == null;
+
+    final previewState =
+        shouldKeepCached ? _cachedPreviewState : nextPreviewState;
+    if (widget.isActive && !shouldKeepCached) {
+      _cachedPreviewState = nextPreviewState;
     }
 
     final works = widget.channelData.works.isNotEmpty
         ? widget.channelData.works
         : previewState.works;
-    final hasMore = widget.channelData.works.isNotEmpty
-        ? false
-        : previewState.hasMore;
+    final hasMore =
+        widget.channelData.works.isEmpty && previewState.hasMore;
     final isLoadingMore =
         widget.channelData.works.isEmpty && previewState.isLoadingMore;
     final isLoading =
@@ -112,11 +127,10 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
     final error = widget.channelData.works.isEmpty ? previewState.error : null;
 
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: AppColor.primaryBlack,
-            width: LayoutConstants.dividerThickness,
+            
           ),
         ),
       ),
@@ -135,7 +149,7 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
             Padding(
               padding: EdgeInsets.only(top: LayoutConstants.space2),
               child: Text(
-                'We couldn\'t load this channel\'s works. Tap to retry.',
+                "We couldn't load this channel's works. Tap to retry.",
                 style: AppTypography.caption(context).grey,
               ),
             ),
@@ -152,12 +166,11 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
                 ),
               ),
             ),
+          // Show a skeleton carousel while loading so the layout height is
+          // reserved and no jump occurs when the real carousel appears.
           if (isLoading && works.isEmpty)
-            Padding(
-              padding: EdgeInsets.only(top: LayoutConstants.space2),
-              child: const LoadingView(),
-            ),
-          if (works.isNotEmpty)
+            _buildLoadingCarousel()
+          else if (works.isNotEmpty)
             DP1Carousel(
               items: works,
               onItemTap: widget.onItemTap,
