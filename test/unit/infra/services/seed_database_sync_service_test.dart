@@ -24,7 +24,7 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
   Future<String> headRemoteEtag() async {
     if (throwOnHead) {
       throw DioException(
-        requestOptions: RequestOptions(path: seedDatabaseUrl),
+        requestOptions: RequestOptions(path: 'https://example.invalid/seed.sqlite'),
         message: 'offline',
       );
     }
@@ -34,6 +34,7 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
   @override
   Future<String> downloadToTemporaryFile({
     void Function(double progress)? onProgress,
+    int? maxBytes,
   }) async {
     downloadCalls += 1;
     onProgress?.call(1);
