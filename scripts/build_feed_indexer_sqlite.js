@@ -96,10 +96,12 @@ query getTokens(
   }
 }
 `;
+const REMOTE_CONFIG_URL = 'https://feralfile-remote-configs.pages.dev/ff-app.json';
+const INDEXER_API_URL = 'https://indexer-v2.feralfile.com';
+const INDEXER_BATCH_SIZE = 50;
 
 const ARGS = parseArgs(process.argv.slice(2));
 const ROOT_DIR = findRepoRoot();
-const ENV_PATH = path.resolve(ROOT_DIR, ARGS.envPath || '.env');
 
 const NOW_US = String(Date.now() * 1000);
 const FALLBACK_THUMBNAIL_URI = 'assets/images/no_thumbnail.svg';
@@ -112,21 +114,8 @@ main().catch((error) => {
 async function main() {
   ensureSqliteCli();
 
-  const env = loadDotEnv(ENV_PATH);
-  const feedBaseUrl = (ARGS.feedBaseUrl || env.DP1_FEED_URL || '').trim();
-  const feedApiKey = (ARGS.feedApiKey || env.DP1_FEED_API_KEY || '').trim();
-  const indexerApiUrl = (ARGS.indexerApiUrl || env.INDEXER_API_URL || '').trim();
-  const indexerApiKey = (ARGS.indexerApiKey || env.INDEXER_API_KEY || '').trim();
-
-  if (!feedBaseUrl) {
-    throw new Error('Missing DP1_FEED_URL (or --feed-base-url).');
-  }
-  if (!indexerApiUrl && !ARGS.skipIndexer) {
-    throw new Error('Missing INDEXER_API_URL (or --indexer-api-url).');
-  }
-  if (!indexerApiKey && !ARGS.skipIndexer) {
-    throw new Error('Missing INDEXER_API_KEY (or --indexer-api-key).');
-  }
+  const env = process.env;
+  const indexerApiUrl = INDEXER_API_URL;
 
   const outputPath = path.resolve(ROOT_DIR, ARGS.outPath || DEFAULT_OUTPUT);
   const s3Config = resolveS3Config({
@@ -140,16 +129,15 @@ async function main() {
     fs.unlinkSync(outputPath);
   }
 
-  console.log(`[build] feed=${feedBaseUrl}`);
-  console.log(`[build] indexer=${ARGS.skipIndexer ? '(skipped)' : indexerApiUrl}`);
+  console.log(`[build] remote_config=${REMOTE_CONFIG_URL}`);
+  console.log(`[build] indexer=${indexerApiUrl}`);
   console.log(`[build] out=${outputPath}`);
 
-  const channels = await fetchChannels(feedBaseUrl, feedApiKey);
-  const selectedChannels = filterChannels(channels, ARGS.channelIds, ARGS.maxChannels);
-  if (selectedChannels.length === 0) {
-    throw new Error('No channels selected/fetched from feed.');
+  const channels = await fetchChannelsFromRemoteConfig();
+  if (channels.length === 0) {
+    throw new Error('No channels fetched from remote config.');
   }
-  console.log(`[feed] channels=${selectedChannels.length}`);
+  console.log(`[feed] channels=${channels.length}`);
   const threads = normalizeThreads(ARGS.threads);
   console.log(`[build] threads=${threads}`);
 
@@ -161,18 +149,24 @@ async function main() {
     channelItemIds: new Map(),
   };
 
-  const fetchedByOrder = new Array(selectedChannels.length);
+  const fetchedByOrder = new Array(channels.length);
   await runWithConcurrency(
-    selectedChannels.map((channel, index) => ({channel, index})),
+    channels.map((channelRef, index) => ({channelRef, index})),
     threads,
-    async ({channel, index}) => {
+    async ({channelRef, index}) => {
+      const channel = await fetchChannelById(
+        channelRef.baseUrl,
+        channelRef.id,
+      );
+      if (!channel?.id) {
+        return;
+      }
       const channelPlaylists = await fetchPlaylistsForChannel(
-        feedBaseUrl,
+        channelRef.baseUrl,
         channel.id,
-        feedApiKey,
         ARGS.maxPlaylistsPerChannel,
       );
-      fetchedByOrder[index] = {channel, channelPlaylists};
+      fetchedByOrder[index] = {channel, channelPlaylists, baseUrl: channelRef.baseUrl};
     },
   );
 
@@ -185,12 +179,12 @@ async function main() {
     if (!fetched) {
       continue;
     }
-    ingestChannel(data, fetched.channel, feedBaseUrl, channelSortOrder);
+    ingestChannel(data, fetched.channel, fetched.baseUrl, channelSortOrder);
     ingestChannelPlaylists(
       data,
       fetched.channel,
       fetched.channelPlaylists,
-      feedBaseUrl,
+      fetched.baseUrl,
     );
     console.log(
       `[feed] channel=${fetched.channel.id} playlists=${fetched.channelPlaylists.length}`,
@@ -202,7 +196,7 @@ async function main() {
     `[feed] items=${data.items.size} entries=${data.entries.size} cids=${cidToItemIds.size}`,
   );
 
-  if (!ARGS.skipIndexer && cidToItemIds.size > 0) {
+  if (cidToItemIds.size > 0) {
     const channelTasks = buildChannelEnrichmentTasks({
       channelItemIds: data.channelItemIds,
       items: data.items,
@@ -213,9 +207,8 @@ async function main() {
     await runWithConcurrency(channelTasks, threads, async (task) => {
       const tokensByCid = await fetchIndexerTokensByCids({
         indexerApiUrl,
-        indexerApiKey,
         cids: task.cids,
-        batchSize: ARGS.indexerBatchSize,
+        batchSize: INDEXER_BATCH_SIZE,
         channelId: task.channelId,
       });
       applyIndexerEnrichment(data.items, task.cidToItemIds, tokensByCid);
@@ -248,25 +241,12 @@ async function main() {
 function parseArgs(argv) {
   const out = {
     outPath: undefined,
-    envPath: undefined,
-    feedBaseUrl: undefined,
-    feedApiKey: undefined,
-    indexerApiUrl: undefined,
-    indexerApiKey: undefined,
     s3AccessKeyId: undefined,
     s3SecretAccessKey: undefined,
-    s3SessionToken: undefined,
-    s3Region: undefined,
-    s3Bucket: undefined,
     s3Endpoint: undefined,
     s3ObjectKey: undefined,
-    s3PathStyle: undefined,
-    channelIds: [],
-    maxChannels: undefined,
     maxPlaylistsPerChannel: undefined,
-    indexerBatchSize: 200,
     threads: Math.max(1, Math.min(8, os.cpus().length || 4)),
-    skipIndexer: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -274,26 +254,6 @@ function parseArgs(argv) {
     switch (arg) {
       case '--out':
         out.outPath = next;
-        i += 1;
-        break;
-      case '--env':
-        out.envPath = next;
-        i += 1;
-        break;
-      case '--feed-base-url':
-        out.feedBaseUrl = next;
-        i += 1;
-        break;
-      case '--feed-api-key':
-        out.feedApiKey = next;
-        i += 1;
-        break;
-      case '--indexer-api-url':
-        out.indexerApiUrl = next;
-        i += 1;
-        break;
-      case '--indexer-api-key':
-        out.indexerApiKey = next;
         i += 1;
         break;
       case '--s3-access-key-id':
@@ -304,18 +264,6 @@ function parseArgs(argv) {
         out.s3SecretAccessKey = next;
         i += 1;
         break;
-      case '--s3-session-token':
-        out.s3SessionToken = next;
-        i += 1;
-        break;
-      case '--s3-region':
-        out.s3Region = next;
-        i += 1;
-        break;
-      case '--s3-bucket':
-        out.s3Bucket = next;
-        i += 1;
-        break;
       case '--s3-endpoint':
         out.s3Endpoint = next;
         i += 1;
@@ -324,34 +272,13 @@ function parseArgs(argv) {
         out.s3ObjectKey = next;
         i += 1;
         break;
-      case '--s3-path-style':
-        out.s3PathStyle = true;
-        break;
-      case '--s3-virtual-hosted':
-        out.s3PathStyle = false;
-        break;
-      case '--channel-id':
-        out.channelIds.push(next);
-        i += 1;
-        break;
-      case '--max-channels':
-        out.maxChannels = Number(next);
-        i += 1;
-        break;
       case '--max-playlists-per-channel':
         out.maxPlaylistsPerChannel = Number(next);
-        i += 1;
-        break;
-      case '--indexer-batch-size':
-        out.indexerBatchSize = Number(next);
         i += 1;
         break;
       case '--threads':
         out.threads = Number(next);
         i += 1;
-        break;
-      case '--skip-indexer':
-        out.skipIndexer = true;
         break;
       default:
         if (arg.startsWith('-')) {
@@ -377,38 +304,6 @@ function findRepoRoot() {
   }
 }
 
-function loadDotEnv(filePath) {
-  if (!fs.existsSync(filePath)) {
-    return {};
-  }
-  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/u);
-  const env = {};
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) {
-      continue;
-    }
-    const idx = line.indexOf('=');
-    if (idx <= 0) {
-      continue;
-    }
-    const key = line.slice(0, idx).trim();
-    const value = line.slice(idx + 1).trim();
-    env[key] = stripQuotes(value);
-  }
-  return env;
-}
-
-function stripQuotes(value) {
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
-
 function ensureSqliteCli() {
   try {
     execFileSync('sqlite3', ['-version'], {stdio: 'ignore'});
@@ -417,24 +312,77 @@ function ensureSqliteCli() {
   }
 }
 
-async function fetchChannels(feedBaseUrl, feedApiKey) {
-  return fetchFeedPages({
-    feedBaseUrl,
-    route: '/api/v1/channels',
-    feedApiKey,
-  });
+async function fetchChannelsFromRemoteConfig() {
+  const payload = await fetchJson(REMOTE_CONFIG_URL);
+  const publishers = payload?.dp1_playlist?.publishers;
+  if (!Array.isArray(publishers)) {
+    throw new Error('Invalid remote config: missing dp1_playlist.publishers');
+  }
+
+  const channels = [];
+  for (const publisher of publishers) {
+    const channelUrls = Array.isArray(publisher?.channel_urls)
+      ? publisher.channel_urls
+      : [];
+    for (const rawChannelUrl of channelUrls) {
+      const parsed = parseChannelUrl(rawChannelUrl);
+      if (parsed) {
+        channels.push(parsed);
+      }
+    }
+  }
+
+  const deduped = new Map();
+  for (const channel of channels) {
+    deduped.set(`${channel.baseUrl}::${channel.id}`, channel);
+  }
+  return [...deduped.values()];
+}
+
+function parseChannelUrl(rawChannelUrl) {
+  if (typeof rawChannelUrl !== 'string' || !rawChannelUrl.trim()) {
+    return null;
+  }
+  try {
+    const uri = new URL(rawChannelUrl);
+    const pathSegments = uri.pathname.split('/').filter(Boolean);
+    const channelsIndex = pathSegments.lastIndexOf('channels');
+    if (channelsIndex < 0 || channelsIndex >= pathSegments.length - 1) {
+      return null;
+    }
+    const channelId = pathSegments[channelsIndex + 1];
+    if (!channelId) {
+      return null;
+    }
+    return {
+      id: channelId,
+      baseUrl: uri.origin,
+      channelUrl: rawChannelUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchChannelById(feedBaseUrl, channelId) {
+  return fetchJson(
+    `${trimSlash(feedBaseUrl)}/api/v1/channels/${encodeURIComponent(channelId)}`,
+    {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    },
+  );
 }
 
 async function fetchPlaylistsForChannel(
   feedBaseUrl,
   channelId,
-  feedApiKey,
   maxPlaylistsPerChannel,
 ) {
   const playlists = await fetchFeedPages({
     feedBaseUrl,
     route: '/api/v1/playlists',
-    feedApiKey,
     extraParams: {channel: channelId},
     maxItems: maxPlaylistsPerChannel,
   });
@@ -444,7 +392,6 @@ async function fetchPlaylistsForChannel(
 async function fetchFeedPages({
   feedBaseUrl,
   route,
-  feedApiKey,
   extraParams = {},
   maxItems,
 }) {
@@ -463,7 +410,6 @@ async function fetchFeedPages({
     const payload = await fetchJson(url, {
       headers: {
         'Content-Type': 'application/json',
-        ...(feedApiKey ? {'Authorization': `Bearer ${feedApiKey}`} : {}),
       },
     });
     const pageItems = Array.isArray(payload?.items) ? payload.items : [];
@@ -480,18 +426,6 @@ async function fetchFeedPages({
     }
   }
   return items;
-}
-
-function filterChannels(channels, selectedIds, maxChannels) {
-  let out = channels;
-  if (selectedIds && selectedIds.length > 0) {
-    const set = new Set(selectedIds);
-    out = out.filter((c) => set.has(c.id));
-  }
-  if (Number.isFinite(maxChannels) && maxChannels > 0) {
-    out = out.slice(0, maxChannels);
-  }
-  return out;
 }
 
 function ingestChannel(data, channel, baseUrl, sortOrder) {
@@ -681,9 +615,8 @@ function provenanceToCid(provenance) {
 
 async function fetchIndexerTokensByCids({
   indexerApiUrl,
-  indexerApiKey,
   cids,
-  batchSize = 200,
+  batchSize = 50,
   channelId = '',
 }) {
   const out = new Map();
@@ -695,7 +628,6 @@ async function fetchIndexerTokensByCids({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `ApiKey ${indexerApiKey}`,
       },
       body: JSON.stringify({
         query: INDEXER_GET_TOKENS_QUERY,
@@ -1319,28 +1251,12 @@ function resolveS3Config({args, env, outputPath}) {
   const accessKeyId = (
     args.s3AccessKeyId ||
     env.S3_ACCESS_KEY_ID ||
-    env.AWS_ACCESS_KEY_ID ||
     ''
   ).trim();
   const secretAccessKey = (
     args.s3SecretAccessKey ||
     env.S3_SECRET_ACCESS_KEY ||
-    env.AWS_SECRET_ACCESS_KEY ||
     ''
-  ).trim();
-  const sessionToken = (
-    args.s3SessionToken ||
-    env.S3_SESSION_TOKEN ||
-    env.AWS_SESSION_TOKEN ||
-    ''
-  ).trim();
-  const bucket = (args.s3Bucket || env.S3_BUCKET || '').trim();
-  const region = (
-    args.s3Region ||
-    env.S3_REGION ||
-    env.AWS_REGION ||
-    env.AWS_DEFAULT_REGION ||
-    'us-east-1'
   ).trim();
   const endpoint = (args.s3Endpoint || env.S3_ENDPOINT || '').trim();
   const objectKey = (
@@ -1348,33 +1264,10 @@ function resolveS3Config({args, env, outputPath}) {
     env.S3_OBJECT_KEY ||
     path.basename(outputPath)
   ).replace(/^\/+/u, '');
-  let normalizedBucket = bucket;
-  let normalizedEndpoint = endpoint;
-  let inferredPathStyle = endpoint.length > 0;
-
-  // Support S3_BUCKET as full URL, e.g.
-  // https://<account>.r2.cloudflarestorage.com/<bucket-name>
-  if (normalizedBucket.startsWith('http://') || normalizedBucket.startsWith('https://')) {
-    const parsed = new URL(normalizedBucket);
-    const pathBucket = parsed.pathname.replace(/^\/+/u, '').split('/')[0];
-    if (!pathBucket) {
-      throw new Error('S3 bucket URL must include bucket name in path.');
-    }
-    normalizedBucket = pathBucket;
-    normalizedEndpoint = `${parsed.protocol}//${parsed.host}`;
-    inferredPathStyle = true;
-  }
-
-  const pathStyle =
-    typeof args.s3PathStyle === 'boolean'
-      ? args.s3PathStyle
-      : inferredPathStyle;
 
   const hasAnyS3Input = [
     accessKeyId,
     secretAccessKey,
-    sessionToken,
-    bucket,
     endpoint,
     args.s3ObjectKey || env.S3_OBJECT_KEY || '',
   ].some((value) => String(value).trim().length > 0);
@@ -1382,21 +1275,29 @@ function resolveS3Config({args, env, outputPath}) {
   if (!hasAnyS3Input) {
     return null;
   }
-  if (!accessKeyId || !secretAccessKey || !bucket) {
+  if (!accessKeyId || !secretAccessKey || !endpoint) {
     throw new Error(
-      'Incomplete S3 config. Required: access key, secret key, and bucket.',
+      'Incomplete S3 config. Required: access key, secret key, and endpoint.',
+    );
+  }
+  const parsedEndpoint = new URL(endpoint);
+  const pathBucket = parsedEndpoint.pathname.replace(/^\/+/u, '').split('/')[0];
+  if (!pathBucket) {
+    throw new Error(
+      'S3_ENDPOINT must include bucket in path, e.g. '
+      + 'https://<account>.r2.cloudflarestorage.com/<bucket-name>',
     );
   }
 
   return {
     accessKeyId,
     secretAccessKey,
-    sessionToken: sessionToken || null,
-    bucket: normalizedBucket,
-    region,
-    endpoint: normalizedEndpoint || null,
+    sessionToken: null,
+    bucket: pathBucket,
+    region: 'auto',
+    endpoint: `${parsedEndpoint.protocol}//${parsedEndpoint.host}`,
     objectKey,
-    pathStyle,
+    pathStyle: true,
   };
 }
 
