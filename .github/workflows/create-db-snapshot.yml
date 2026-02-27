@@ -19,9 +19,7 @@ jobs:
     steps:
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
-          cache: 'npm'
-          cache-dependency-path: subdir/package-lock.json
+          package-manager-cache: false
 
       - name: Verify sqlite3
         run: sqlite3 -version
