@@ -142,6 +142,7 @@ async function main() {
   console.log(`[build] threads=${threads}`);
 
   const data = {
+    publishers: new Map(),
     channels: new Map(),
     playlists: new Map(),
     items: new Map(),
@@ -166,7 +167,13 @@ async function main() {
         channel.id,
         ARGS.maxPlaylistsPerChannel,
       );
-      fetchedByOrder[index] = {channel, channelPlaylists, baseUrl: channelRef.baseUrl};
+      fetchedByOrder[index] = {
+        channel,
+        channelPlaylists,
+        baseUrl: channelRef.baseUrl,
+        publisherId: channelRef.publisherId,
+        publisherTitle: channelRef.publisherTitle,
+      };
     },
   );
 
@@ -179,7 +186,14 @@ async function main() {
     if (!fetched) {
       continue;
     }
-    ingestChannel(data, fetched.channel, fetched.baseUrl, channelSortOrder);
+    ingestChannel(
+      data,
+      fetched.channel,
+      fetched.baseUrl,
+      channelSortOrder,
+      fetched.publisherId,
+      fetched.publisherTitle,
+    );
     ingestChannelPlaylists(
       data,
       fetched.channel,
@@ -220,6 +234,7 @@ async function main() {
   ensureAllItemsHaveThumbnail(data.items);
 
   const sql = buildSql({
+    publishers: data.publishers,
     channels: data.channels,
     playlists: data.playlists,
     items: data.items,
@@ -320,14 +335,21 @@ async function fetchChannelsFromRemoteConfig() {
   }
 
   const channels = [];
-  for (const publisher of publishers) {
+  for (let i = 0; i < publishers.length; i += 1) {
+    const publisher = publishers[i];
+    const publisherId = i + 1;
+    const publisherTitle = String(publisher?.name || '').trim() || `Publisher ${publisherId}`;
     const channelUrls = Array.isArray(publisher?.channel_urls)
       ? publisher.channel_urls
       : [];
     for (const rawChannelUrl of channelUrls) {
       const parsed = parseChannelUrl(rawChannelUrl);
       if (parsed) {
-        channels.push(parsed);
+        channels.push({
+          ...parsed,
+          publisherId,
+          publisherTitle,
+        });
       }
     }
   }
@@ -428,9 +450,24 @@ async function fetchFeedPages({
   return items;
 }
 
-function ingestChannel(data, channel, baseUrl, sortOrder) {
+function ingestChannel(
+  data,
+  channel,
+  baseUrl,
+  sortOrder,
+  publisherId,
+  publisherTitle,
+) {
   if (!channel?.id) {
     return;
+  }
+  if (Number.isFinite(publisherId) && publisherId > 0) {
+    data.publishers.set(publisherId, {
+      id: publisherId,
+      title: publisherTitle || `Publisher ${publisherId}`,
+      created_at_us: NOW_US,
+      updated_at_us: NOW_US,
+    });
   }
   const createdAtUs = toMicros(channel.created) || NOW_US;
   data.channels.set(channel.id, {
@@ -438,7 +475,9 @@ function ingestChannel(data, channel, baseUrl, sortOrder) {
     type: 0,
     base_url: baseUrl,
     slug: channel.slug || null,
-    publisher_id: null,
+    publisher_id: Number.isFinite(publisherId) && publisherId > 0
+      ? publisherId
+      : null,
     title: channel.title || '',
     curator: channel.curator || null,
     summary: channel.summary || null,
@@ -903,7 +942,7 @@ function ensureAllItemsHaveThumbnail(itemsMap) {
   }
 }
 
-function buildSql({channels, playlists, items, entries}) {
+function buildSql({publishers, channels, playlists, items, entries}) {
   const lines = [];
   lines.push('PRAGMA foreign_keys = ON;');
   lines.push('PRAGMA journal_mode = WAL;');
@@ -1101,6 +1140,15 @@ CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE ON items BEGIN
   ) AS j
   WHERE COALESCE(json_extract(j.value, '$.name'), '') != '';
 END;`);
+
+  for (const row of publishers.values()) {
+    lines.push(insertUpsertSql('publishers', [
+      'id',
+      'title',
+      'created_at_us',
+      'updated_at_us',
+    ], row, ['id']));
+  }
 
   for (const row of channels.values()) {
     lines.push(insertUpsertSql('channels', [
