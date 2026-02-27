@@ -10,9 +10,10 @@ const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
 
 const SCHEMA_VERSION = 3;
+const SEED_FILENAME = 'ff_feed_indexer_seed.sqlite';
 const DEFAULT_OUTPUT = path.resolve(
   __dirname,
-  'ff_feed_indexer_seed.sqlite',
+  SEED_FILENAME,
 );
 const INDEXER_GET_TOKENS_QUERY = `
 query getTokens(
@@ -101,7 +102,6 @@ const INDEXER_API_URL = 'https://indexer-v2.feralfile.com';
 const INDEXER_BATCH_SIZE = 50;
 
 const ARGS = parseArgs(process.argv.slice(2));
-const ROOT_DIR = findRepoRoot();
 
 const NOW_US = String(Date.now() * 1000);
 const FALLBACK_THUMBNAIL_URI = 'assets/images/no_thumbnail.svg';
@@ -117,11 +117,10 @@ async function main() {
   const env = process.env;
   const indexerApiUrl = INDEXER_API_URL;
 
-  const outputPath = path.resolve(ROOT_DIR, ARGS.outPath || DEFAULT_OUTPUT);
+  const outputPath = DEFAULT_OUTPUT;
   const s3Config = resolveS3Config({
     args: ARGS,
     env,
-    outputPath,
   });
   fs.mkdirSync(path.dirname(outputPath), {recursive: true});
   removeSqliteSidecars(outputPath);
@@ -255,11 +254,9 @@ async function main() {
 
 function parseArgs(argv) {
   const out = {
-    outPath: undefined,
     s3AccessKeyId: undefined,
     s3SecretAccessKey: undefined,
     s3Endpoint: undefined,
-    s3ObjectKey: undefined,
     maxPlaylistsPerChannel: undefined,
     threads: Math.max(1, Math.min(8, os.cpus().length || 4)),
   };
@@ -267,10 +264,6 @@ function parseArgs(argv) {
     const arg = argv[i];
     const next = argv[i + 1];
     switch (arg) {
-      case '--out':
-        out.outPath = next;
-        i += 1;
-        break;
       case '--s3-access-key-id':
         out.s3AccessKeyId = next;
         i += 1;
@@ -281,10 +274,6 @@ function parseArgs(argv) {
         break;
       case '--s3-endpoint':
         out.s3Endpoint = next;
-        i += 1;
-        break;
-      case '--s3-object-key':
-        out.s3ObjectKey = next;
         i += 1;
         break;
       case '--max-playlists-per-channel':
@@ -1295,7 +1284,7 @@ SELECT count(*) FROM items WHERE thumbnail_uri IS NULL OR trim(thumbnail_uri) = 
   }
 }
 
-function resolveS3Config({args, env, outputPath}) {
+function resolveS3Config({args, env}) {
   const accessKeyId = (
     args.s3AccessKeyId ||
     env.S3_ACCESS_KEY_ID ||
@@ -1307,17 +1296,12 @@ function resolveS3Config({args, env, outputPath}) {
     ''
   ).trim();
   const endpoint = (args.s3Endpoint || env.S3_ENDPOINT || '').trim();
-  const objectKey = (
-    args.s3ObjectKey ||
-    env.S3_OBJECT_KEY ||
-    path.basename(outputPath)
-  ).replace(/^\/+/u, '');
+  const objectKey = SEED_FILENAME;
 
   const hasAnyS3Input = [
     accessKeyId,
     secretAccessKey,
     endpoint,
-    args.s3ObjectKey || env.S3_OBJECT_KEY || '',
   ].some((value) => String(value).trim().length > 0);
 
   if (!hasAnyS3Input) {

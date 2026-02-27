@@ -7,11 +7,7 @@ on:
         description: Worker threads
         required: false
         type: string
-        default: '4'
-      s3_object_key:
-        description: S3 object key (empty = ff_feed_indexer_seed.sqlite)
-        required: false
-        type: string
+        default: '8'
 
 jobs:
   snapshot:
@@ -35,11 +31,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          args=("--out" "scripts/ff_feed_indexer_seed.sqlite" "--threads" "${{ inputs.threads }}")
-
-          if [ -n "${{ inputs.s3_object_key }}" ]; then
-            args+=("--s3-object-key" "${{ inputs.s3_object_key }}")
-          fi
+          args=("--threads" "${{ inputs.threads }}")
 
           node scripts/build_feed_indexer_sqlite.js "${args[@]}"
 
@@ -81,9 +73,9 @@ jobs:
               LEFT JOIN channels c ON c.id = pl.channel_id
               LEFT JOIN publishers p ON p.id = c.publisher_id
               ORDER BY
-                LOWER(COALESCE(p.title, '')),
-                LOWER(COALESCE(c.title, '')),
-                LOWER(COALESCE(pl.title, ''));
+                COALESCE(c.publisher_id, 2147483647) ASC,
+                pl.created_at_us DESC,
+                pl.id ASC;
             "
           } >> "$GITHUB_STEP_SUMMARY"
 

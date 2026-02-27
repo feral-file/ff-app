@@ -130,3 +130,6 @@ old_ff_app
 
 # Cursor
 .cursor/codebase-rule.mdc
+
+# Database snapshot
+scripts/ff_feed_indexer_seed.sqlite
