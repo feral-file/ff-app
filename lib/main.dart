@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:app/app/app.dart';
 import 'package:app/app/providers/app_provider_observer.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
@@ -10,9 +12,12 @@ import 'package:app/infra/config/remote_config_service.dart';
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
+import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/logging/app_logger.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 Future<void> main() async {
   // Ensure Flutter bindings are initialized
@@ -147,6 +152,23 @@ Future<void> main() async {
       await tempContainer.read(hasDoneOnboardingProvider.future);
   tempContainer.dispose();
 
+  // If the database file already exists (returning user), open the gate
+  // immediately so no DB operation is ever delayed. On a fresh install the gate
+  // stays locked and is opened by SeedDownloadNotifier once the background
+  // download completes (or fails).
+  final dbFolder = await getApplicationDocumentsDirectory();
+  final dbFile = File(p.join(dbFolder.path, 'playlist_cache.sqlite'));
+  if (dbFile.existsSync()) {
+    SeedDatabaseGate.complete();
+  }
+
+  final String initialLocation;
+  if (hasDoneOnboarding) {
+    initialLocation = Routes.home;
+  } else {
+    initialLocation = Routes.onboardingIntroducePage;
+  }
+
   runApp(
     ProviderScope(
       observers: [AppProviderObserver()],
@@ -160,9 +182,7 @@ Future<void> main() async {
         initialRemoteAppConfigProvider.overrideWithValue(initialRemoteConfig),
       ],
       child: App(
-        initialLocation: hasDoneOnboarding
-            ? Routes.home
-            : Routes.onboardingIntroducePage,
+        initialLocation: initialLocation,
       ),
     ),
   );

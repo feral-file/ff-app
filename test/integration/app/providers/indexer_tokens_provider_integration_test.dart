@@ -71,12 +71,10 @@ class _FakeDatabaseService implements DatabaseService {
 class _NoopWorkerScheduler extends WorkerScheduler {
   _NoopWorkerScheduler()
     : super(
-        databasePathResolver: () async => '',
         workerStateService: _InMemoryWorkerStateStore(),
         databaseService: _FakeDatabaseService(),
         indexerEndpoint: '',
         indexerApiKey: '',
-        maxEnrichmentWorkers: 1,
       );
 
   @override
@@ -88,8 +86,6 @@ class _NoopWorkerScheduler extends WorkerScheduler {
   @override
   Future<void> stopAll() async {}
 
-  @override
-  Future<void> onFeedIngested({String? channelId}) async {}
 }
 
 void main() {

@@ -1,11 +1,13 @@
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
+import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/address_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
+import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/workers/worker_scheduler.dart';
 import 'package:app/infra/workers/worker_state_service.dart';
 import 'package:drift/native.dart';
@@ -44,16 +46,31 @@ class _InMemoryWorkerStateStore implements WorkerStateStore {
   }
 }
 
+class _FakePendingAddressesStore extends PendingAddressesStore {
+  final List<String> stored = <String>[];
+
+  @override
+  Future<List<String>> getAddresses() async => List.unmodifiable(stored);
+
+  @override
+  Future<void> addAddress(String address) async {
+    if (!stored.any((a) => a.toLowerCase() == address.toLowerCase())) {
+      stored.add(address);
+    }
+  }
+
+  @override
+  Future<void> clear() async => stored.clear();
+}
+
 class _DelayedWorkerScheduler extends WorkerScheduler {
   _DelayedWorkerScheduler({
     required this.delay,
     required super.databaseService,
     required super.workerStateService,
   }) : super(
-         databasePathResolver: () async => '',
          indexerEndpoint: '',
          indexerApiKey: '',
-         maxEnrichmentWorkers: 1,
        );
 
   final Duration delay;
@@ -77,6 +94,9 @@ void main() {
   });
 
   setUp(() {
+    // The gate must be open so AddressService uses the normal SQLite path.
+    SeedDatabaseGate.complete();
+
     database = AppDatabase.forTesting(NativeDatabase.memory());
     databaseService = DatabaseService(database);
 
@@ -101,11 +121,14 @@ void main() {
         resolverApiKey: '',
       ),
       workerScheduler: workerScheduler,
+      pendingAddressesStore: _FakePendingAddressesStore(),
     );
   });
 
   tearDown(() async {
     await database.close();
+    // Reset the gate for subsequent test files in the same process.
+    SeedDatabaseGate.resetForTesting();
   });
 
   test(

@@ -1,10 +1,7 @@
-// Scheduler unit tests verify message routing and lifecycle behavior.
-// In-flight batch counting lives in ItemEnrichmentQueryWorker; the scheduler
-// exposes it via a forwarding getter for test assertions.
+// Scheduler unit tests verify lifecycle and address-worker delegation behavior.
 
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/workers/background_worker.dart';
-import 'package:app/infra/workers/worker_message.dart';
 import 'package:app/infra/workers/worker_scheduler.dart';
 import 'package:app/infra/workers/worker_state_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -45,28 +42,14 @@ class _InMemoryWorkerStateStore implements WorkerStateStore {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-WorkerMessage _batchesReadyMsg(int batchCount) => WorkerMessage(
-  opcode: WorkerOpcode.batchesReady,
-  workerId: 'item_enrichment_query_worker',
-  payload: <String, dynamic>{
-    'batches': <Map<String, String>>[
-      for (var i = 0; i < batchCount; i++)
-        <String, String>{'cid_$i': 'item_$i'},
-    ],
-  },
-);
-
-WorkerMessage _workCompleteMsg() => const WorkerMessage(
-  opcode: WorkerOpcode.workComplete,
-  workerId: 'enrich_item_worker::0',
-  payload: <String, dynamic>{},
-);
-
-WorkerMessage _workFailedMsg() => const WorkerMessage(
-  opcode: WorkerOpcode.workFailed,
-  workerId: 'enrich_item_worker::0',
-  payload: <String, dynamic>{},
-);
+WorkerScheduler _makeScheduler(_InMemoryWorkerStateStore stateStore) {
+  return WorkerScheduler(
+    workerStateService: stateStore,
+    databaseService: _FakeDatabaseService(),
+    indexerEndpoint: '',
+    indexerApiKey: '',
+  );
+}
 
 void main() {
   group('WorkerScheduler', () {
@@ -75,96 +58,55 @@ void main() {
 
     setUp(() {
       stateStore = _InMemoryWorkerStateStore();
-      scheduler = WorkerScheduler(
-        databasePathResolver: () async => ':memory:',
-        workerStateService: stateStore,
-        databaseService: _FakeDatabaseService(),
-        indexerEndpoint: '',
-        indexerApiKey: '',
-        maxEnrichmentWorkers: 1,
-      );
+      scheduler = _makeScheduler(stateStore);
     });
 
     tearDown(() async {
       await scheduler.stopAll();
     });
 
-    group('in-flight batch tracking', () {
-      test('batchesReady increments inFlightBatchCount by batch count',
-          () async {
-        await scheduler.startOnForeground();
-
-        scheduler.handleWorkerMessage(_batchesReadyMsg(3));
-        expect(scheduler.inFlightBatchCount, equals(3));
+    group('lifecycle', () {
+      test('startOnForeground initialises without error', () async {
+        // Should not throw even when no addresses are registered yet.
+        await expectLater(scheduler.startOnForeground(), completes);
       });
 
-      test('workComplete decrements inFlightBatchCount', () async {
-        await scheduler.startOnForeground();
-
-        scheduler.handleWorkerMessage(_batchesReadyMsg(2));
-        expect(scheduler.inFlightBatchCount, equals(2));
-
-        scheduler.handleWorkerMessage(_workCompleteMsg());
-        expect(scheduler.inFlightBatchCount, equals(1));
+      test('pauseOnBackground is a no-op before initialisation', () async {
+        // Not yet initialised — should return without error.
+        await expectLater(scheduler.pauseOnBackground(), completes);
       });
 
-      test('workFailed also decrements inFlightBatchCount', () async {
-        await scheduler.startOnForeground();
-
-        scheduler.handleWorkerMessage(_batchesReadyMsg(1));
-        expect(scheduler.inFlightBatchCount, equals(1));
-
-        scheduler.handleWorkerMessage(_workFailedMsg());
-        expect(scheduler.inFlightBatchCount, equals(0));
+      test('stopAll is a no-op before initialisation', () async {
+        await expectLater(scheduler.stopAll(), completes);
       });
 
-      test('count does not go below zero on extra completions', () async {
+      test('stopAll then startOnForeground re-initialises cleanly', () async {
         await scheduler.startOnForeground();
-        // No batches dispatched, but spurious workComplete arrives.
-        scheduler.handleWorkerMessage(_workCompleteMsg());
-        expect(scheduler.inFlightBatchCount, equals(0));
-      });
-
-      test('multiple rounds accumulate and drain correctly', () async {
-        await scheduler.startOnForeground();
-
-        // Round 1: 2 batches dispatched
-        scheduler.handleWorkerMessage(_batchesReadyMsg(2));
-        expect(scheduler.inFlightBatchCount, equals(2));
-
-        scheduler.handleWorkerMessage(_workCompleteMsg());
-        expect(scheduler.inFlightBatchCount, equals(1));
-
-        // Round 1 done → count hits 0, re-query triggered internally
-        scheduler.handleWorkerMessage(_workCompleteMsg());
-        expect(scheduler.inFlightBatchCount, equals(0));
-
-        // Round 2: a new batchesReady arrives from the re-query
-        scheduler.handleWorkerMessage(_batchesReadyMsg(1));
-        expect(scheduler.inFlightBatchCount, equals(1));
-
-        scheduler.handleWorkerMessage(_workCompleteMsg());
-        expect(scheduler.inFlightBatchCount, equals(0));
+        await scheduler.stopAll();
+        // A second start should succeed without stale state.
+        await expectLater(scheduler.startOnForeground(), completes);
       });
     });
 
-    group('lifecycle resets', () {
-      test('pauseOnBackground resets inFlightBatchCount', () async {
+    group('address events', () {
+      test('onAddressAdded does not throw', () async {
         await scheduler.startOnForeground();
-        scheduler.handleWorkerMessage(_batchesReadyMsg(3));
-        expect(scheduler.inFlightBatchCount, equals(3));
-
-        await scheduler.pauseOnBackground();
-        expect(scheduler.inFlightBatchCount, equals(0));
+        // IndexAddressWorker will attempt real network; just verify no throw
+        // in the scheduler path up to worker creation.
+        await expectLater(
+          // Use a fresh scheduler with invalid endpoint to stay offline.
+          _makeScheduler(stateStore).onAddressAdded('0xDEAD'),
+          completes,
+        );
       });
 
-      test('stopAll resets inFlightBatchCount', () async {
+      test('onAddressRemoved is a no-op for unknown address', () async {
         await scheduler.startOnForeground();
-        scheduler.handleWorkerMessage(_batchesReadyMsg(2));
-        expect(scheduler.inFlightBatchCount, equals(2));
+        await expectLater(scheduler.onAddressRemoved('0xUNKNOWN'), completes);
+      });
 
-        await scheduler.stopAll();
-        expect(scheduler.inFlightBatchCount, equals(0));
+      test('onAddressRemoved before init does not throw', () async {
+        await expectLater(scheduler.onAddressRemoved('0xUNKNOWN'), completes);
       });
     });
   });

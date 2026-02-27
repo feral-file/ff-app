@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/database/database_service.dart';
+import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
+import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/workers/worker_scheduler.dart';
 import 'package:logging/logging.dart';
 
@@ -16,9 +18,11 @@ class AddressService {
     required IndexerSyncService indexerSyncService,
     required DomainAddressService domainAddressService,
     required WorkerScheduler workerScheduler,
+    required PendingAddressesStore pendingAddressesStore,
   }) : _databaseService = databaseService,
        _domainAddressService = domainAddressService,
-       _workerScheduler = workerScheduler {
+       _workerScheduler = workerScheduler,
+       _pendingAddressesStore = pendingAddressesStore {
     _indexerSyncService = indexerSyncService;
     _log = Logger('AddressService');
   }
@@ -26,6 +30,7 @@ class AddressService {
   final DatabaseService _databaseService;
   final DomainAddressService _domainAddressService;
   final WorkerScheduler _workerScheduler;
+  final PendingAddressesStore _pendingAddressesStore;
   late final IndexerSyncService _indexerSyncService;
   late final Logger _log;
 
@@ -49,7 +54,12 @@ class AddressService {
   }
 
   /// Add a wallet address and create its playlist.
-  /// This creates an address-based playlist in the "My Collection" channel.
+  ///
+  /// If the `SeedDatabaseGate` is not yet open (i.e. the seed database is
+  /// still downloading on a fresh install), the address is stored in
+  /// `PendingAddressesStore` and no SQLite write is attempted.
+  /// `_AppStartupBootstrap` will migrate pending addresses into SQLite and
+  /// start the workers once the database gate opens.
   Future<Playlist> addAddress({
     required WalletAddress walletAddress,
     String channelId = 'my_collection',
@@ -61,6 +71,20 @@ class AddressService {
         chain: chain,
       );
       _log.info('Adding address: $normalizedAddress on chain $chain');
+
+      if (!SeedDatabaseGate.isCompleted) {
+        // DB not ready yet: persist the address in the pending store so it
+        // survives navigation and is migrated to SQLite after the seed lands.
+        await _pendingAddressesStore.addAddress(normalizedAddress);
+        _log.info(
+          'Database not ready – address queued for post-seed migration: '
+          '$normalizedAddress',
+        );
+        return PlaylistExt.fromWalletAddress(
+          walletAddress,
+          channelId: channelId,
+        );
+      }
 
       final existing = await _getAddressPlaylistByOwner(normalizedAddress);
       if (existing != null) {

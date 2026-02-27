@@ -26,18 +26,6 @@ enum WorkerOpcode {
 
   /// Worker → Scheduler: progress update.
   progressUpdate,
-
-  /// IngestFeedWorker → Scheduler: query needed for bare items.
-  queryNeeded,
-
-  /// ItemEnrichmentQueryWorker → Scheduler: batches ready for distribution.
-  batchesReady,
-
-  /// ItemEnrichmentQueryWorker → Scheduler: no bare items to process.
-  noBareItems,
-
-  /// Scheduler → EnrichItemWorker: enrichment batch assignment.
-  enrichmentNeeded,
 }
 
 /// Base message structure for worker isolate communication.

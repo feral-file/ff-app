@@ -3,7 +3,6 @@
 import 'dart:async';
 
 import 'package:app/app/providers/app_lifecycle_provider.dart';
-import 'package:app/app/providers/background_workers_provider.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -258,9 +257,8 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     }
 
     if (message is ChannelIngestedAck) {
-      // Route through scheduler so enrichment runs in the worker fleet,
-      // not on the main isolate.
-      unawaited(ref.read(workerSchedulerProvider).onFeedIngested());
+      // Feed enrichment workers have been removed; curated feed data is
+      // pre-loaded from the seed database. No further action needed here.
       return;
     }
   }

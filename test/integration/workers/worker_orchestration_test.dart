@@ -2,20 +2,17 @@ import 'dart:io';
 
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/channel.dart';
-import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/wallet_address.dart';
-import 'package:app/infra/api/dp1_feed_api.dart';
-import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
+import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:app/infra/workers/background_worker.dart';
 import 'package:app/infra/workers/worker_scheduler.dart';
 import 'package:app/infra/workers/worker_state_service.dart';
-import 'package:dio/dio.dart';
-import 'package:drift/drift.dart' show Variable;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:drift/drift.dart' show Variable;
 import 'package:logging/logging.dart';
 
 import '../helpers/integration_test_harness.dart';
@@ -48,6 +45,18 @@ class _InMemoryWorkerStateStore implements WorkerStateStore {
   }
 }
 
+WorkerScheduler _makeScheduler({
+  required IntegrationTestContext context,
+  required _InMemoryWorkerStateStore workerStateStore,
+}) {
+  return WorkerScheduler(
+    workerStateService: workerStateStore,
+    databaseService: context.databaseService,
+    indexerEndpoint: AppConfig.indexerApiUrl,
+    indexerApiKey: AppConfig.indexerApiKey,
+  );
+}
+
 void main() {
   group('Worker orchestration lifecycle integration', () {
     late IntegrationTestContext context;
@@ -63,62 +72,39 @@ void main() {
     });
 
     test(
-      'pause/resume/stop updates persisted worker lifecycle state',
+      'startOnForeground / pauseOnBackground / stopAll lifecycle completes',
       () async {
-        final scheduler = WorkerScheduler(
-          databasePathResolver: () async => context.databaseFile.path,
-          workerStateService: workerStateStore,
-          databaseService: context.databaseService,
-          indexerEndpoint: 'http://invalid-for-this-test',
-          indexerApiKey: '',
-          maxEnrichmentWorkers: 1,
+        final scheduler = _makeScheduler(
+          context: context,
+          workerStateStore: workerStateStore,
         );
 
         await scheduler.startOnForeground();
-        await scheduler.onFeedIngested();
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-
+        await Future<void>.delayed(const Duration(milliseconds: 100));
         await scheduler.pauseOnBackground();
-
-        final paused = await workerStateStore.load('ingest_feed_worker');
-        expect(paused, isNotNull);
-        expect(paused!.stateIndex, BackgroundWorkerState.paused.index);
-
         await scheduler.startOnForeground();
-        final resumed = await workerStateStore.load('ingest_feed_worker');
-        expect(resumed, isNotNull);
-        expect(resumed!.stateIndex, BackgroundWorkerState.started.index);
-
         await scheduler.stopAll();
-
-        final stopped = await workerStateStore.load('ingest_feed_worker');
-        expect(stopped, isNotNull);
-        expect(stopped!.stateIndex, BackgroundWorkerState.stopped.index);
-        expect(stopped.checkpoint, isNull);
       },
     );
 
     test(
       'scheduler can fresh-start after stop without stale sqlite lock',
       () async {
-        final scheduler = WorkerScheduler(
-          databasePathResolver: () async => context.databaseFile.path,
-          workerStateService: workerStateStore,
-          databaseService: context.databaseService,
-          indexerEndpoint: 'http://invalid-for-this-test',
-          indexerApiKey: '',
-          maxEnrichmentWorkers: 1,
+        final scheduler = _makeScheduler(
+          context: context,
+          workerStateStore: workerStateStore,
         );
 
         await scheduler.startOnForeground();
-        await scheduler.onFeedIngested();
         await scheduler.stopAll();
 
+        // Trigger a real DB access to open the sqlite file, then verify the
+        // scheduler can start again without hitting a stale WAL/shm lock.
+        await context.databaseService.getAddressPlaylists();
         final sqliteFile = File(context.databaseFile.path);
         expect(sqliteFile.existsSync(), isTrue);
 
         await scheduler.startOnForeground();
-        await scheduler.onFeedIngested();
         await scheduler.stopAll();
       },
     );
@@ -126,13 +112,9 @@ void main() {
     test(
       'forget I exist clears workers, sqlite, and objectbox local data',
       () async {
-        final scheduler = WorkerScheduler(
-          databasePathResolver: () async => context.databaseFile.path,
-          workerStateService: workerStateStore,
-          databaseService: context.databaseService,
-          indexerEndpoint: 'http://invalid-for-this-test',
-          indexerApiKey: '',
-          maxEnrichmentWorkers: 1,
+        final scheduler = _makeScheduler(
+          context: context,
+          workerStateStore: workerStateStore,
         );
 
         final now = DateTime.now().toUtc();
@@ -160,8 +142,7 @@ void main() {
         );
 
         await scheduler.startOnForeground();
-        await scheduler.onFeedIngested();
-        await Future<void>.delayed(const Duration(milliseconds: 300));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
 
         final fakeObjectBoxRows = <String, int>{
           'app_state': 1,
@@ -198,202 +179,11 @@ void main() {
             .getSingle();
         expect(playlistsCount.read<int>('count'), equals(0));
 
-        final stopped = await workerStateStore.load('ingest_feed_worker');
-        expect(stopped, isNotNull);
-        expect(stopped!.stateIndex, BackgroundWorkerState.stopped.index);
-        expect(stopped.checkpoint, isNull);
-
         expect(
           fakeObjectBoxRows.values.every((count) => count == 0),
           isTrue,
         );
       },
-    );
-
-    test(
-      'imports feed + worker enrichment persists full channel dataset in sqlite',
-      () async {
-        const channelUrl =
-            'https://dp1-feed-operator-api-prod.autonomy-system.workers.dev/api/v1/channels/0fdd0465-217c-4734-9bfd-2d807b414482';
-        const publisherId = 1;
-        const publisherName = 'Feral File';
-        const sqliteArtifactPath = '/tmp/ff_app_worker_feed_import.sqlite';
-
-        expect(
-          context.provisionedEnvFile.existsSync(),
-          isTrue,
-          reason: 'Integration flow must run with a provisioned .env file.',
-        );
-        expect(
-          AppConfig.indexerApiUrl,
-          isNotEmpty,
-          reason:
-              'INDEXER_API_URL is required for worker enrichment integration.',
-        );
-
-        final channelUri = Uri.parse(channelUrl);
-        final channelId = channelUri.pathSegments.last;
-        final baseUrl = '${channelUri.scheme}://${channelUri.host}';
-
-        final dio = Dio(
-          BaseOptions(
-            connectTimeout: const Duration(seconds: 30),
-            receiveTimeout: const Duration(minutes: 2),
-            sendTimeout: const Duration(seconds: 30),
-          ),
-        );
-        final dp1Api = Dp1FeedApiImpl(
-          dio: dio,
-          baseUrl: baseUrl,
-          apiKey: AppConfig.dp1FeedApiKey,
-        );
-
-        final channel = await dp1Api.getChannelById(channelId);
-        final playlists = await _fetchAllPlaylistsForChannel(
-          api: dp1Api,
-          channelId: channelId,
-        );
-
-        await context.databaseService.ingestPublisher(
-          id: publisherId,
-          name: publisherName,
-        );
-        await context.databaseService.ingestDP1ChannelWithPlaylistsBare(
-          baseUrl: baseUrl,
-          channel: channel,
-          playlists: playlists,
-          publisherId: publisherId,
-        );
-        await context.databaseService.checkpoint();
-
-        final scheduler = WorkerScheduler(
-          databasePathResolver: () async => context.databaseFile.path,
-          workerStateService: workerStateStore,
-          databaseService: context.databaseService,
-          indexerEndpoint: AppConfig.indexerApiUrl,
-          indexerApiKey: AppConfig.indexerApiKey,
-          maxEnrichmentWorkers: AppConfig.indexerEnrichmentMaxThreads,
-        );
-
-        await scheduler.startOnForeground();
-        await scheduler.onFeedIngested(channelId: channelId);
-
-        await _waitUntil(
-          condition: () => _hasNoMissingThumbnails(
-            context: context,
-            channelId: channelId,
-          ),
-          timeout: const Duration(minutes: 12),
-          interval: const Duration(seconds: 2),
-        );
-
-        await scheduler.stopAll();
-        await context.databaseService.checkpoint();
-
-        final sqliteArtifact = File(sqliteArtifactPath);
-        if (sqliteArtifact.existsSync()) {
-          await sqliteArtifact.delete();
-        }
-        await context.databaseFile.copy(sqliteArtifactPath);
-        expect(sqliteArtifact.existsSync(), isTrue);
-
-        final publisherRow = await context.database
-            .customSelect(
-              '''
-          SELECT pub.title AS publisher_title
-          FROM channels ch
-          JOIN publishers pub ON pub.id = ch.publisher_id
-          WHERE ch.id = ?1
-          ''',
-              variables: <Variable<Object>>[
-                Variable.withString(channelId),
-              ],
-            )
-            .getSingle();
-        expect(
-          publisherRow.read<String>('publisher_title'),
-          equals('Feral File'),
-        );
-
-        final channelCountRow = await context.database
-            .customSelect(
-              '''
-          SELECT COUNT(*) AS count
-          FROM channels
-          WHERE id = ?1
-          ''',
-              variables: <Variable<Object>>[
-                Variable.withString(channelId),
-              ],
-            )
-            .getSingle();
-        expect(channelCountRow.read<int>('count'), equals(1));
-
-        final playlistCountRow = await context.database
-            .customSelect(
-              '''
-          SELECT COUNT(*) AS count
-          FROM playlists
-          WHERE channel_id = ?1
-          ''',
-              variables: <Variable<Object>>[
-                Variable.withString(channelId),
-              ],
-            )
-            .getSingle();
-        expect(playlistCountRow.read<int>('count'), greaterThan(5));
-
-        final itemCountRow = await context.database
-            .customSelect(
-              '''
-          SELECT COUNT(*) AS count
-          FROM items i
-          JOIN playlist_entries pe ON pe.item_id = i.id
-          JOIN playlists p ON p.id = pe.playlist_id
-          WHERE p.channel_id = ?1
-          ''',
-              variables: <Variable<Object>>[
-                Variable.withString(channelId),
-              ],
-            )
-            .getSingle();
-        expect(itemCountRow.read<int>('count'), greaterThan(100));
-
-        final missingThumbnailRow = await context.database
-            .customSelect(
-              '''
-          SELECT COUNT(*) AS count
-          FROM items i
-          JOIN playlist_entries pe ON pe.item_id = i.id
-          JOIN playlists p ON p.id = pe.playlist_id
-          WHERE p.channel_id = ?1
-            AND i.thumbnail_uri IS NULL
-          ''',
-              variables: <Variable<Object>>[
-                Variable.withString(channelId),
-              ],
-            )
-            .getSingle();
-        expect(missingThumbnailRow.read<int>('count'), equals(0));
-
-        final missingProvenanceRow = await context.database
-            .customSelect(
-              '''
-          SELECT COUNT(*) AS count
-          FROM items i
-          JOIN playlist_entries pe ON pe.item_id = i.id
-          JOIN playlists p ON p.id = pe.playlist_id
-          WHERE p.channel_id = ?1
-            AND (i.provenance_json IS NULL OR i.provenance_json = '')
-          ''',
-              variables: <Variable<Object>>[
-                Variable.withString(channelId),
-              ],
-            )
-            .getSingle();
-        expect(missingProvenanceRow.read<int>('count'), equals(0));
-      },
-      timeout: const Timeout(Duration(minutes: 25)),
     );
 
     test(
@@ -457,13 +247,9 @@ void main() {
         }
         await context.databaseService.checkpoint();
 
-        final scheduler = WorkerScheduler(
-          databasePathResolver: () async => context.databaseFile.path,
-          workerStateService: workerStateStore,
-          databaseService: context.databaseService,
-          indexerEndpoint: AppConfig.indexerApiUrl,
-          indexerApiKey: AppConfig.indexerApiKey,
-          maxEnrichmentWorkers: AppConfig.indexerEnrichmentMaxThreads,
+        final scheduler = _makeScheduler(
+          context: context,
+          workerStateStore: workerStateStore,
         );
 
         try {
@@ -525,78 +311,6 @@ void main() {
   });
 }
 
-Future<List<DP1Playlist>> _fetchAllPlaylistsForChannel({
-  required Dp1FeedApiImpl api,
-  required String channelId,
-}) async {
-  final playlists = <DP1Playlist>[];
-  String? cursor;
-  var hasMore = true;
-
-  while (hasMore) {
-    final response = await api.getPlaylists(
-      channelId: channelId,
-      cursor: cursor,
-      limit: 50,
-    );
-    playlists.addAll(response.items);
-    hasMore = response.hasMore;
-    cursor = response.cursor;
-  }
-
-  return playlists;
-}
-
-Future<void> _waitUntil({
-  required Future<bool> Function() condition,
-  required Duration timeout,
-  Duration interval = const Duration(seconds: 1),
-}) async {
-  final deadline = DateTime.now().add(timeout);
-  while (DateTime.now().isBefore(deadline)) {
-    try {
-      if (await condition()) {
-        return;
-      }
-    } catch (error) {
-      if (!_isTransientSqliteLock(error)) {
-        rethrow;
-      }
-    }
-    await Future<void>.delayed(interval);
-  }
-  fail('Timed out waiting for worker integration condition.');
-}
-
-bool _isTransientSqliteLock(Object error) {
-  final message = error.toString().toLowerCase();
-  return message.contains('database is locked') ||
-      message.contains('sqliteexception(5)');
-}
-
-Future<bool> _hasNoMissingThumbnails({
-  required IntegrationTestContext context,
-  required String channelId,
-}) async {
-  final row = await context.database
-      .customSelect(
-        '''
-    SELECT COUNT(*) AS count
-    FROM items i
-    JOIN playlist_entries pe ON pe.item_id = i.id
-    JOIN playlists p ON p.id = pe.playlist_id
-    WHERE p.channel_id = ?1
-      AND i.thumbnail_uri IS NULL
-    ''',
-        variables: <Variable<Object>>[
-          Variable.withString(channelId),
-        ],
-      )
-      .getSingle();
-
-  return row.read<int>('count') == 0;
-}
-
 class _AddressStats {
   _AddressStats({
     required this.playlistCount,
@@ -624,9 +338,7 @@ Future<_AddressStats> _loadAddressStats({
         FROM playlists
         WHERE UPPER(owner_address) = ?1
         ''',
-        variables: <Variable<Object>>[
-          Variable.withString(normalized),
-        ],
+        variables: [Variable.withString(normalized)],
       )
       .getSingle();
   final channelCountRow = await context.database
@@ -637,9 +349,7 @@ Future<_AddressStats> _loadAddressStats({
         JOIN playlists p ON p.channel_id = ch.id
         WHERE UPPER(p.owner_address) = ?1
         ''',
-        variables: <Variable<Object>>[
-          Variable.withString(normalized),
-        ],
+        variables: [Variable.withString(normalized)],
       )
       .getSingle();
   final itemCountRow = await context.database
@@ -651,9 +361,7 @@ Future<_AddressStats> _loadAddressStats({
         JOIN playlists p ON p.id = pe.playlist_id
         WHERE UPPER(p.owner_address) = ?1
         ''',
-        variables: <Variable<Object>>[
-          Variable.withString(normalized),
-        ],
+        variables: [Variable.withString(normalized)],
       )
       .getSingle();
   final missingThumbnailRow = await context.database
@@ -666,9 +374,7 @@ Future<_AddressStats> _loadAddressStats({
         WHERE UPPER(p.owner_address) = ?1
           AND i.thumbnail_uri IS NULL
         ''',
-        variables: <Variable<Object>>[
-          Variable.withString(normalized),
-        ],
+        variables: [Variable.withString(normalized)],
       )
       .getSingle();
 

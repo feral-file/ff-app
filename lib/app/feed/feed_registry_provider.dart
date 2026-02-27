@@ -1,6 +1,4 @@
 import 'package:app/app/feed/feed_manager.dart';
-import 'package:app/app/providers/background_workers_provider.dart';
-import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -123,20 +121,15 @@ class FeedBootstrapResult {
 
 /// Provider for [FeralFileFeedManager].
 ///
-/// Holds the single feed manager instance; all setup/reload/cache APIs
-/// delegate to it. Matches old repo's FeralFileFeedManager singleton.
+/// Holds the single feed manager instance for publisher/channel metadata
+/// setup. Feed-ingestion and cache-reload are disabled; all curated feed data
+/// comes from the seed database downloaded on first install.
 final feedManagerProvider = Provider<FeralFileFeedManager>((ref) {
   return FeralFileFeedManager(
     databaseService: ref.read(databaseServiceProvider),
     appStateService: ref.read(appStateServiceProvider),
     defaultDp1FeedUrl: AppConfig.dp1FeedUrl,
     apiKey: AppConfig.dp1FeedApiKey,
-    onChannelPersistedInDatabase: () async {
-      await ref.read(workerSchedulerProvider).onFeedIngested();
-      await ref
-          .read(tokensSyncCoordinatorProvider.notifier)
-          .notifyChannelIngested();
-    },
   );
 });
 
@@ -161,10 +154,11 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
     );
   }
 
-  /// Setup remote config channels from curated URLs.
+  /// Setup remote config channels: persists publisher metadata from remote
+  /// config into the database so ordering and association stay consistent.
   ///
-  /// Delegates to [FeralFileFeedManager.setupRemoteConfigChannels] (matches
-  /// old repo: parse → group by endpoint → add/update services + custom feeds).
+  /// Feed data itself is served from the seed database; no network fetch is
+  /// performed here.
   Future<void> setupRemoteConfigChannels(
     List<RemoteConfigPublisher> publishers,
   ) async {
@@ -172,27 +166,10 @@ class FeedRegistryNotifier extends AsyncNotifier<FeedRegistryState> {
       0,
       (count, publisher) => count + publisher.channelUrls.length,
     );
-    _log.info('Setting up remote config channels: $channelCount URLs');
+    _log.info('Setting up publisher metadata: $channelCount URLs');
     final manager = ref.read(feedManagerProvider);
     await manager.setupRemoteConfigChannels(publishers);
-    await manager.reloadAllCache();
-    _log.info('Setup complete');
-  }
-
-  /// Reload cache for all feed services.
-  ///
-  /// Delegates to [FeralFileFeedManager.reloadAllCache].
-  Future<void> reloadAllCache({bool force = false}) async {
-    final manager = ref.read(feedManagerProvider);
-    if (manager.feedServices.isEmpty) {
-      _log.warning(
-        'No feed services initialized, call setupRemoteConfigChannels first',
-      );
-      return;
-    }
-    _log.info('Reloading all caches, force=$force');
-    await manager.reloadAllCache(force: force);
-    _log.info('Cache reload complete');
+    _log.info('Publisher metadata setup complete');
   }
 
   /// Reloads state.

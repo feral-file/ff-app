@@ -36,12 +36,10 @@ void main() {
         workerStateServiceProvider.overrideWithValue(stateStore),
         workerSchedulerProvider.overrideWith(
           (ref) => WorkerScheduler(
-            databasePathResolver: () async => '',
             workerStateService: ref.read(workerStateServiceProvider),
             databaseService: ref.read(databaseServiceProvider),
             indexerEndpoint: '',
             indexerApiKey: '',
-            maxEnrichmentWorkers: 1,
           ),
         ),
       ],

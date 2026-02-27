@@ -13,25 +13,26 @@ It defines:
 
 | File | Responsibility |
 | --- | --- |
-| `lib/infra/workers/worker_scheduler.dart` | Global lifecycle orchestration, event handling, routing, fleet coordination |
+| `lib/infra/workers/worker_scheduler.dart` | Global lifecycle orchestration; delegates to IndexAddressWorkersFleet |
 | `lib/infra/workers/background_worker.dart` | Shared worker lifecycle/state/checkpoint contract + isolate lifecycle primitives |
 | `lib/infra/workers/worker_message.dart` | Inter-isolate opcode/message protocol |
 | `lib/infra/workers/worker_state_service.dart` | Persistent worker state/checkpoint storage |
-| `lib/infra/workers/ingest_feed_worker.dart` | Feed-ingested signal intake and query trigger emission |
-| `lib/infra/workers/item_enrichment_query_worker.dart` | Bare-item query and batching workflow |
-| `lib/infra/workers/enrich_item_worker.dart` | Batch metadata enrichment and persistence workflow |
 | `lib/infra/workers/index_address_worker.dart` | Address indexing/polling/token-ingest workflow |
-| `lib/infra/workers/worker_fleet.dart` | Fleet abstractions for index-address and enrich-item workers |
+| `lib/infra/workers/worker_fleet.dart` | Fleet abstraction for IndexAddressWorkersFleet |
 | `lib/infra/workers/worker_database_session.dart` | Utility for lazy worker DB session lifecycle |
+
+**Removed** (feed data now comes from seed database):
+- `ingest_feed_worker.dart` — feed-ingested signal intake and query trigger emission
+- `item_enrichment_query_worker.dart` — bare-item query and batching workflow
+- `enrich_item_worker.dart` — batch metadata enrichment and persistence workflow
 
 ## Core Design
 - Workers are isolate-backed execution units.
-- `WorkerScheduler` is the only coordinator for lifecycle, routing, and
-  cross-worker orchestration.
+- `WorkerScheduler` is the only coordinator for lifecycle and fleet management.
 - Worker interaction is message-based via `WorkerMessage`; workers do not call
   each other directly for business flow.
-- Query/index/enrich workers use scheduler-provided drift connect ports for DB
-  access and must close runtime DB resources on graceful pause/stop.
+- Address workers write to DB via the main-isolate `DatabaseService`; no
+  per-worker Drift isolate is needed.
 
 ## Architecture
 
@@ -41,46 +42,16 @@ It defines:
   - foreground: `startOnForeground()`
   - background: `pauseOnBackground()`
   - shutdown/reset: `stopAll()`
-- Scheduler owns worker message routing and pool distribution.
 
 ### Worker Isolates
 - Workers spawn their own isolate on start.
 - Workers receive opcode messages from scheduler/main isolate.
 - Workers return typed state/progress/work-complete messages.
-- DB reads/writes execute through drift connections; worker isolates must close DB
-  resources before acknowledging pause/stop.
-
-### Shared DB Coordination
-- Scheduler provides a shared `DriftIsolate` connect port to query/index/enrich
-  workers.
-- This serializes DB operations through one drift executor and reduces SQLite
-  lock contention.
 
 ## Worker Workflow Details
 
-### `IngestFeedWorker`
-- Purpose: convert feed-ingested events into enrichment query triggers.
-- Input: feed-ingested signals from scheduler.
-- Internal state: `pendingSignals`.
-- Output: `queryNeeded` once signal queue drains.
-- Must not perform heavy DB/API work.
-
-### `ItemEnrichmentQueryWorker`
-- Purpose: query bare items and build enrichment batches.
-- Input: `queryNeeded` trigger.
-- Internal state: `hasPendingQuery`, `isFinished`, transient in-flight counters.
-- Output: `batchesReady` or `noBareItems`.
-- Owns query pacing and re-query loop coordination signals.
-
-### `EnrichItemWorker`
-- Purpose: execute enrichment batches and persist results.
-- Input: batch assignment (`Map<CID, itemId>`).
-- Internal state: pending assignment queue + in-flight assignment.
-- Output: `workComplete` or `workFailed` with enrichment metrics.
-- Fleeted: multiple instances managed by `EnrichItemWorkersFleet`.
-
 ### `IndexAddressWorker`
-- Purpose: run address indexing workflow and ingest tokens.
+- Purpose: run address indexing workflow and ingest tokens for personal playlists.
 - Input: address assignments.
 - Internal state: pending address queue + in-flight address.
 - Output: `workComplete` or `workFailed`.
@@ -94,16 +65,12 @@ It defines:
 - `pause`
 - `stop`
 - `enqueueWork`
-- `enrichmentNeeded`
 
 ### Worker -> Scheduler/Main
 - `workComplete`
 - `workFailed`
 - `stateChanged`
 - `progressUpdate`
-- `queryNeeded`
-- `batchesReady`
-- `noBareItems`
 
 ### Lifecycle ACK
 For graceful lifecycle transitions, isolates emit:
@@ -114,11 +81,8 @@ after loop/input drain and DB close.
 
 | Workflow | Pause | Stop | Resume | Fresh Start |
 | --- | --- | --- | --- | --- |
-| `IngestFeedWorker` | Save checkpoint to state store, graceful isolate pause, stop isolate input loop | Graceful isolate stop, clear pending/checkpoint, set stopped state | Restore paused checkpoint and continue pending signal drain | Clear persisted status/checkpoint and start clean |
-| `ItemEnrichmentQueryWorker` | Save query checkpoint, clear transient counters, close isolate DB, ack pause | Close isolate DB, clear all flags/checkpoint, set stopped state | Restore paused query flags/checkpoint and continue query cycle | Clear persisted flags/checkpoint and restart from empty state |
-| `EnrichItemWorker` | Save assignment queue/in-flight checkpoint, close isolate DB, ack pause | Close isolate DB, clear queue/checkpoint, set stopped state | Restore queued assignments from checkpoint and continue | Clear persisted queue/checkpoint and restart empty |
 | `IndexAddressWorker` | Save address queue/in-flight checkpoint, stop polling loop, close isolate DB | Stop polling/input, close isolate DB, clear queue/checkpoint, set stopped state | Restore queued addresses and continue indexing | Clear persisted queue/checkpoint and restart empty |
-| `WorkerScheduler` | Pause all started workers; keep checkpoints for resume | Stop all workers, clear checkpoints, shutdown shared drift isolate, reset runtime | Resume paused workers via `resume()` | Reinitialize workers with empty runtime and no stale checkpoint |
+| `WorkerScheduler` | Pause all started workers; keep checkpoints for resume | Stop all workers, clear checkpoints, reset runtime | Resume paused workers via `resume()` | Reinitialize workers with empty runtime and no stale checkpoint |
 
 ### Required Ordering
 - Pause sequence:
@@ -132,19 +96,9 @@ after loop/input drain and DB close.
   3. Reset in-memory work state
   4. Persist stopped state with null checkpoint
 
-## Scheduler Routing Rules
-- `queryNeeded` from `IngestFeedWorker` triggers query workflow.
-- `batchesReady` from query worker is distributed round-robin to enrichment
-  fleet.
-- `workComplete`/`workFailed` from enrich workers decrements query in-flight
-  tracking so re-query continues until drain completes.
-
 ## Stop-State Guardrails
 Workers must reject new incoming business actions while in `stopped` state.
 Examples:
-- `IngestFeedWorker.onFeedIngested()` no-op when stopped.
-- `ItemEnrichmentQueryWorker.onQueryNeeded()` no-op when stopped.
-- `EnrichItemWorker.enqueueAssignment()` no-op when stopped.
 - `IndexAddressWorker.enqueueAddress()` no-op when stopped.
 
 ## Add A New Worker
@@ -152,10 +106,9 @@ Use this checklist when introducing a new worker under `lib/infra/workers`.
 
 ### Naming and File Conventions
 - Class name: `<VerbOrDomain><Noun>Worker` in `PascalCase`.
-- File name: matching `snake_case`, for example
-  `sync_inventory_worker.dart`.
+- File name: matching `snake_case`, for example `sync_inventory_worker.dart`.
 - Worker ID: stable string in scheduler/fleet construction; keep lowercase and
-  scoped where needed (for example `sync_inventory_worker::tenant`).
+  scoped where needed.
 
 ### Required Structure
 - Extend `BackgroundWorker`.
@@ -175,7 +128,6 @@ Use this checklist when introducing a new worker under `lib/infra/workers`.
 ### Scheduler and Routing Integration
 - Instantiate the worker in `WorkerScheduler` (or an appropriate fleet).
 - Wire start/pause/stop transitions.
-- Add message routing rules in `WorkerScheduler.handleWorkerMessage()`.
 - If pooled, add/update a fleet in `worker_fleet.dart`.
 
 ### Persistence and Resume

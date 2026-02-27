@@ -13,8 +13,17 @@ import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
+import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/support_email_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+/// Provider for [PendingAddressesStore].
+///
+/// Stores wallet addresses added before the Drift DB is ready (fresh install
+/// while the seed database is still downloading).
+final pendingAddressesStoreProvider = Provider<PendingAddressesStore>((ref) {
+  return PendingAddressesStore();
+});
 
 /// Provider for the AddressService.
 /// Manages user wallet addresses and address-based playlists.
@@ -23,12 +32,14 @@ final addressServiceProvider = Provider<AddressService>((ref) {
   final indexerSyncService = ref.watch(indexerSyncServiceProvider);
   final domainAddressService = ref.watch(domainAddressServiceProvider);
   final workerScheduler = ref.watch(workerSchedulerProvider);
+  final pendingAddressesStore = ref.watch(pendingAddressesStoreProvider);
 
   return AddressService(
     databaseService: databaseService,
     indexerSyncService: indexerSyncService,
     domainAddressService: domainAddressService,
     workerScheduler: workerScheduler,
+    pendingAddressesStore: pendingAddressesStore,
   );
 });
 
