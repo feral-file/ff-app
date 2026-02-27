@@ -17,7 +17,11 @@ jobs:
   snapshot:
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 24
+        cache: 'npm'
+        cache-dependency-path: subdir/package-lock.json
 
       - name: Verify sqlite3
         run: sqlite3 -version
