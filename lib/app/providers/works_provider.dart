@@ -1,8 +1,11 @@
 import 'dart:async';
 
-import 'package:app/app/providers/channel_preview_provider.dart' show ChannelPreviewNotifier, ChannelPreviewState;
+import 'package:app/app/providers/channel_preview_provider.dart'
+    show ChannelPreviewNotifier, ChannelPreviewState;
+import 'package:app/app/providers/database_error_utils.dart';
 import 'package:app/app/providers/mutations.dart';
-import 'package:app/app/providers/playlist_details_provider.dart' show PlaylistDetailsNotifier;
+import 'package:app/app/providers/playlist_details_provider.dart'
+    show PlaylistDetailsNotifier;
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/dp1/dp1_provenance.dart';
@@ -116,7 +119,7 @@ class WorksNotifier extends Notifier<WorksState> {
   static const Duration _dbChangeDebounce = Duration(seconds: 1);
   static const int _defaultVisibleWindowSize = 24;
 
-  late final Logger _log;
+  final Logger _log = Logger('WorksNotifier');
   StreamSubscription<List<PlaylistItem>>? _watchSub;
   Timer? _refreshDebounceTimer;
   bool _isActive = false;
@@ -126,7 +129,6 @@ class WorksNotifier extends Notifier<WorksState> {
 
   @override
   WorksState build() {
-    _log = Logger('WorksNotifier');
     ref.onDispose(() {
       _log.info('Disposing WorksNotifier, cancelling listeners');
       _stopWatching();
@@ -179,6 +181,11 @@ class WorksNotifier extends Notifier<WorksState> {
 
   void _onWatchError(Object error, StackTrace stack) {
     _log.warning('Database watch error', error, stack);
+    if (!ref.mounted || !isDatabaseUnavailableError(error)) return;
+    state = WorksState.loaded(
+      works: const <PlaylistItem>[],
+      hasMore: false,
+    );
   }
 
   void _stopWatching() {
@@ -239,6 +246,11 @@ class WorksNotifier extends Notifier<WorksState> {
       await _syncHasMore();
     } catch (e, stack) {
       _log.warning('Failed to apply debounced DB changes', e, stack);
+      if (!ref.mounted || !isDatabaseUnavailableError(e)) return;
+      state = WorksState.loaded(
+        works: const <PlaylistItem>[],
+        hasMore: false,
+      );
     } finally {
       _isApplyingDbChanges = false;
     }
@@ -375,6 +387,16 @@ class WorksNotifier extends Notifier<WorksState> {
       );
     } catch (e, stack) {
       if (!ref.mounted) return;
+      if (isDatabaseUnavailableError(e)) {
+        state = state.copyWith(
+          works: const <PlaylistItem>[],
+          hasMore: false,
+          isLoading: false,
+          isLoadingMore: false,
+          clearError: true,
+        );
+        return;
+      }
       if (_isOperationCancelled(e)) {
         _log.info('Works load cancelled');
         state = state.copyWith(
@@ -419,6 +441,15 @@ class WorksNotifier extends Notifier<WorksState> {
       );
     } catch (e, stack) {
       if (!ref.mounted) return;
+      if (isDatabaseUnavailableError(e)) {
+        state = state.copyWith(
+          works: const <PlaylistItem>[],
+          hasMore: false,
+          isLoadingMore: false,
+          clearError: true,
+        );
+        return;
+      }
       if (_isOperationCancelled(e)) {
         _log.info('Load more works cancelled');
         state = state.copyWith(isLoadingMore: false, clearError: true);
@@ -469,12 +500,20 @@ final loadMoreWorksMutationProvider =
     );
 
 /// Provider for playlist items in a specific playlist.
-final FutureProviderFamily<List<PlaylistItem>, String> playlistItemsProvider = FutureProvider.family<List<PlaylistItem>, String>(
-  (ref, playlistId) async {
-    final databaseService = ref.watch(databaseServiceProvider);
-    return databaseService.getPlaylistItems(playlistId);
-  },
-);
+final FutureProviderFamily<List<PlaylistItem>, String> playlistItemsProvider =
+    FutureProvider.family<List<PlaylistItem>, String>(
+      (ref, playlistId) async {
+        final databaseService = ref.watch(databaseServiceProvider);
+        try {
+          return await databaseService.getPlaylistItems(playlistId);
+        } on Object catch (e) {
+          if (isDatabaseUnavailableError(e)) {
+            return const <PlaylistItem>[];
+          }
+          rethrow;
+        }
+      },
+    );
 
 /// Data for the work detail screen: playlist item plus optional indexer token and mime type.
 /// UI is driven by [item]; [mimeType] for back layer preview; [token] for metadata/options.
@@ -577,7 +616,12 @@ class WorkDetailNotifier extends Notifier<AsyncValue<WorkDetailData?>> {
 
 /// Provider for work detail screen. Listens to the database so UI refreshes
 /// when the item changes (e.g. enrichment). Auto-disposes when no longer listened.
-final NotifierProviderFamily<WorkDetailNotifier, AsyncValue<WorkDetailData?>, String> workDetailStateProvider = NotifierProvider.autoDispose
+final NotifierProviderFamily<
+  WorkDetailNotifier,
+  AsyncValue<WorkDetailData?>,
+  String
+>
+workDetailStateProvider = NotifierProvider.autoDispose
     .family<WorkDetailNotifier, AsyncValue<WorkDetailData?>, String>(
       WorkDetailNotifier.new,
     );

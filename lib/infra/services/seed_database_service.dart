@@ -1,0 +1,477 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:app/infra/config/app_config.dart';
+import 'package:crypto/crypto.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+class _SeedDatabaseS3Location {
+  const _SeedDatabaseS3Location({
+    required this.endpointUri,
+    required this.objectUri,
+    required this.region,
+    required this.accessKeyId,
+    required this.secretAccessKey,
+  });
+
+  factory _SeedDatabaseS3Location.fromConfig({
+    required String bucketUrl,
+    required String objectKey,
+    required String region,
+    required String accessKeyId,
+    required String secretAccessKey,
+  }) {
+    final endpointUri = Uri.tryParse(bucketUrl);
+    if (endpointUri == null ||
+        !endpointUri.hasScheme ||
+        endpointUri.host.isEmpty) {
+      throw const FormatException('S3_BUCKET is not a valid URL.');
+    }
+
+    final normalizedObjectKey = objectKey
+        .trim()
+        .replaceFirst(RegExp('^/+'), '');
+    if (normalizedObjectKey.isEmpty) {
+      throw const FormatException(
+        'S3_SEED_DATABASE_OBJECT_KEY is not configured.',
+      );
+    }
+
+    final bucketBaseSegments = endpointUri.pathSegments
+        .where((segment) => segment.isNotEmpty)
+        .toList();
+    if (bucketBaseSegments.isEmpty) {
+      throw const FormatException(
+        'S3_BUCKET must include a bucket name in the path.',
+      );
+    }
+
+    final objectUri = endpointUri.replace(
+      pathSegments: <String>[
+        ...bucketBaseSegments,
+        ...normalizedObjectKey.split('/').where((segment) => segment.isNotEmpty),
+      ],
+    );
+
+    if (accessKeyId.trim().isEmpty) {
+      throw const FormatException('S3_ACCESS_KEY_ID is not configured.');
+    }
+    if (secretAccessKey.trim().isEmpty) {
+      throw const FormatException('S3_SECRET_ACCESS_KEY is not configured.');
+    }
+    final normalizedRegion = region.trim();
+    if (normalizedRegion.isEmpty) {
+      throw const FormatException('S3_REGION is not configured.');
+    }
+
+    return _SeedDatabaseS3Location(
+      endpointUri: endpointUri,
+      objectUri: objectUri,
+      region: normalizedRegion,
+      accessKeyId: accessKeyId.trim(),
+      secretAccessKey: secretAccessKey.trim(),
+    );
+  }
+
+  final Uri endpointUri;
+  final Uri objectUri;
+  final String region;
+  final String accessKeyId;
+  final String secretAccessKey;
+}
+
+/// Service responsible for downloading and placing the seed database.
+///
+/// On first install the local `playlist_cache.sqlite` does not exist.
+/// Calling `downloadAndPlace` fetches the seed from S3-compatible storage
+/// and writes it
+/// to the correct path, so Drift opens it on the next DB operation instead
+/// of creating an empty database.
+///
+/// Call `needsSeedDownload` to determine whether the database file is missing
+/// before showing the download screen.
+class SeedDatabaseService {
+  /// Creates a [SeedDatabaseService] using the provided [Dio] instance.
+  SeedDatabaseService({
+    Dio? dio,
+    DateTime Function()? nowUtc,
+    Future<Directory> Function()? temporaryDirectoryProvider,
+  }) : _dio = dio ?? Dio(),
+       _nowUtc = nowUtc ?? (() => DateTime.now().toUtc()),
+       _temporaryDirectoryProvider =
+           temporaryDirectoryProvider ?? getTemporaryDirectory;
+
+  static final _log = Logger('SeedDatabaseService');
+
+  final Dio _dio;
+  final DateTime Function() _nowUtc;
+  final Future<Directory> Function() _temporaryDirectoryProvider;
+
+  /// The canonical database file name used by AppDatabase.
+  static const _dbFileName = 'playlist_cache.sqlite';
+
+  /// Returns the absolute path where the database should live.
+  Future<String> databasePath() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return p.join(dir.path, _dbFileName);
+  }
+
+  /// Whether the database file is absent and the seed should be downloaded.
+  Future<bool> needsSeedDownload() async {
+    final path = await databasePath();
+    return !File(path).existsSync();
+  }
+
+  /// Returns true when the SQLite seed database file already exists.
+  Future<bool> hasLocalDatabase() async {
+    final path = await databasePath();
+    return File(path).existsSync();
+  }
+
+  /// Best-effort HEAD request for the latest remote seed database ETag.
+  ///
+  /// Returns empty string when ETag is unavailable.
+  Future<String> headRemoteEtag() async {
+    final location = _loadS3Location();
+    final response = await _dio.headUri<dynamic>(
+      location.objectUri,
+      options: Options(
+        headers: _buildSignedHeaders(
+          method: 'HEAD',
+          uri: location.objectUri,
+          accessKeyId: location.accessKeyId,
+          secretAccessKey: location.secretAccessKey,
+          region: location.region,
+          nowUtc: _nowUtc(),
+        ),
+      ),
+    );
+    if (response.statusCode == null ||
+        response.statusCode! < 200 ||
+        response.statusCode! >= 300) {
+      throw SeedDownloadException(
+        'Failed to HEAD seed database object: HTTP ${response.statusCode}',
+      );
+    }
+    return _sanitizeEtag(response.headers.value('etag') ?? '');
+  }
+
+  /// Downloads the seed database artifact and places it at the canonical
+  /// database path.
+  ///
+  /// [onProgress] receives a value in [0.0, 1.0] as bytes arrive.
+  /// Throws on network or IO failure; the caller should handle errors and allow
+  /// the user to retry or skip (the app will start with an empty database).
+  Future<void> downloadAndPlace({
+    void Function(double progress)? onProgress,
+  }) async {
+    final tempPath = await downloadToTemporaryFile(onProgress: onProgress);
+    await replaceDatabaseFromTemporaryFile(tempPath);
+  }
+
+  /// Downloads the remote seed DB to a temporary-file path and returns it.
+  Future<String> downloadToTemporaryFile({
+    void Function(double progress)? onProgress,
+    int? maxBytes,
+  }) async {
+    final location = _loadS3Location();
+    final tempDir = await _temporaryDirectoryProvider();
+    final tempPath = p.join(
+      tempDir.path,
+      'playlist_cache_${DateTime.now().microsecondsSinceEpoch}.sqlite.tmp',
+    );
+
+    _log.info(
+      'Downloading seed database artifact from ${location.objectUri}',
+    );
+
+    try {
+      final headers = _buildSignedHeaders(
+        method: 'GET',
+        uri: location.objectUri,
+        accessKeyId: location.accessKeyId,
+        secretAccessKey: location.secretAccessKey,
+        region: location.region,
+        nowUtc: _nowUtc(),
+      );
+      if (maxBytes != null && maxBytes > 0) {
+        headers[HttpHeaders.rangeHeader] = 'bytes=0-${maxBytes - 1}';
+      }
+
+      await _dio.download(
+        location.objectUri.toString(),
+        tempPath,
+        onReceiveProgress: (received, total) {
+          if (total > 0 && onProgress != null) {
+            onProgress((received / total).clamp(0.0, 1.0));
+          }
+        },
+        options: Options(
+          headers: headers,
+          // 10-minute timeout for a ~300 MB file on slow connections.
+          receiveTimeout: const Duration(minutes: 10),
+          sendTimeout: const Duration(seconds: 30),
+        ),
+      );
+
+      final tempFile = File(tempPath);
+      if (!tempFile.existsSync()) {
+        throw const SeedDownloadException('Downloaded file not found');
+      }
+      return tempPath;
+    } on DioException catch (e, st) {
+      _log.severe('Seed download failed (Dio)', e, st);
+      await _cleanupTemp(tempPath);
+      throw SeedDownloadException('Download failed: ${e.message}', cause: e);
+    } on Object catch (e, st) {
+      _log.severe('Seed download failed', e, st);
+      await _cleanupTemp(tempPath);
+      rethrow;
+    }
+  }
+
+  /// Replaces the live SQLite database file with a downloaded temp seed file.
+  Future<void> replaceDatabaseFromTemporaryFile(String tempPath) async {
+    final dbPath = await databasePath();
+    final tempFile = File(tempPath);
+    if (!tempFile.existsSync()) {
+      throw SeedDownloadException('Temporary seed file not found: $tempPath');
+    }
+    try {
+      final dbFile = File(dbPath);
+      if (dbFile.existsSync()) {
+        await dbFile.delete();
+      }
+      final walFile = File('$dbPath-wal');
+      if (walFile.existsSync()) {
+        await walFile.delete();
+      }
+      final shmFile = File('$dbPath-shm');
+      if (shmFile.existsSync()) {
+        await shmFile.delete();
+      }
+
+      await tempFile.rename(dbPath);
+      _log.info('Seed database placed at $dbPath');
+    } on Object catch (e, st) {
+      _log.severe('Failed to replace seed database file', e, st);
+      await _cleanupTemp(tempPath);
+      rethrow;
+    }
+  }
+
+  /// Deletes the SQLite main database file and sidecar WAL/SHM files.
+  Future<void> deleteDatabaseFiles() async {
+    final dbPath = await databasePath();
+    final paths = <String>[dbPath, '$dbPath-wal', '$dbPath-shm'];
+    for (final path in paths) {
+      final file = File(path);
+      if (file.existsSync()) {
+        await file.delete();
+      }
+    }
+  }
+
+  Future<void> _cleanupTemp(String tempPath) async {
+    final f = File(tempPath);
+    if (f.existsSync()) {
+      try {
+        await f.delete();
+      } on Object catch (_) {}
+    }
+  }
+
+  String _sanitizeEtag(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed.replaceAll('"', '');
+  }
+
+  _SeedDatabaseS3Location _loadS3Location() {
+    return _SeedDatabaseS3Location.fromConfig(
+      bucketUrl: AppConfig.s3BucketUrl,
+      objectKey: AppConfig.s3SeedDatabaseObjectKey,
+      region: AppConfig.s3Region,
+      accessKeyId: AppConfig.s3AccessKeyId,
+      secretAccessKey: AppConfig.s3SecretAccessKey,
+    );
+  }
+
+  /// Parses and resolves the full object URI for S3-compatible seed artifacts.
+  @visibleForTesting
+  static Uri parseObjectUriForTesting({
+    required String bucketUrl,
+    required String objectKey,
+    String region = 'auto',
+    String accessKeyId = 'test-access-key',
+    String secretAccessKey = 'test-secret-key',
+  }) {
+    return _SeedDatabaseS3Location.fromConfig(
+      bucketUrl: bucketUrl,
+      objectKey: objectKey,
+      region: region,
+      accessKeyId: accessKeyId,
+      secretAccessKey: secretAccessKey,
+    ).objectUri;
+  }
+
+  /// Builds AWS SigV4 headers for `HEAD`/`GET` S3-compatible requests.
+  @visibleForTesting
+  static Map<String, String> buildSignedHeadersForTesting({
+    required String method,
+    required Uri uri,
+    required String accessKeyId,
+    required String secretAccessKey,
+    required String region,
+    required DateTime nowUtc,
+  }) {
+    return _buildSignedHeaders(
+      method: method,
+      uri: uri,
+      accessKeyId: accessKeyId,
+      secretAccessKey: secretAccessKey,
+      region: region,
+      nowUtc: nowUtc,
+    );
+  }
+
+  static Map<String, String> _buildSignedHeaders({
+    required String method,
+    required Uri uri,
+    required String accessKeyId,
+    required String secretAccessKey,
+    required String region,
+    required DateTime nowUtc,
+  }) {
+    final amzDate = _formatAmzDate(nowUtc);
+    final shortDate = amzDate.substring(0, 8);
+    const service = 's3';
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const payloadHash = 'UNSIGNED-PAYLOAD';
+
+    final canonicalUri = uri.path.isEmpty ? '/' : uri.path;
+    final canonicalQuery = _canonicalQueryString(uri);
+    final host = _hostHeaderValue(uri);
+    final canonicalHeaders = StringBuffer()
+      ..writeln('host:$host')
+      ..writeln('x-amz-content-sha256:$payloadHash')
+      ..writeln('x-amz-date:$amzDate');
+    const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+
+    final canonicalRequest =
+        '${method.toUpperCase()}\n'
+        '$canonicalUri\n'
+        '$canonicalQuery\n'
+        '$canonicalHeaders\n'
+        '$signedHeaders\n'
+        '$payloadHash';
+
+    final credentialScope = '$shortDate/$region/$service/aws4_request';
+    final canonicalRequestHash = _sha256Hex(canonicalRequest);
+    final stringToSign =
+        '$algorithm\n$amzDate\n$credentialScope\n$canonicalRequestHash';
+    final signingKey = _getSignatureKey(
+      secretAccessKey: secretAccessKey,
+      shortDate: shortDate,
+      region: region,
+      service: service,
+    );
+    final signature = _hmacSha256Hex(signingKey, stringToSign);
+
+    final authorization =
+        '$algorithm Credential=$accessKeyId/$credentialScope, '
+        'SignedHeaders=$signedHeaders, Signature=$signature';
+
+    return <String, String>{
+      HttpHeaders.hostHeader: host,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': payloadHash,
+      HttpHeaders.authorizationHeader: authorization,
+    };
+  }
+
+  static String _formatAmzDate(DateTime utc) {
+    final year = utc.year.toString().padLeft(4, '0');
+    final month = utc.month.toString().padLeft(2, '0');
+    final day = utc.day.toString().padLeft(2, '0');
+    final hour = utc.hour.toString().padLeft(2, '0');
+    final minute = utc.minute.toString().padLeft(2, '0');
+    final second = utc.second.toString().padLeft(2, '0');
+    return '$year$month$day'
+        'T$hour$minute$second'
+        'Z';
+  }
+
+  static List<int> _getSignatureKey({
+    required String secretAccessKey,
+    required String shortDate,
+    required String region,
+    required String service,
+  }) {
+    final kDate = _hmacSha256(utf8.encode('AWS4$secretAccessKey'), shortDate);
+    final kRegion = _hmacSha256(kDate, region);
+    final kService = _hmacSha256(kRegion, service);
+    return _hmacSha256(kService, 'aws4_request');
+  }
+
+  static List<int> _hmacSha256(List<int> key, String data) {
+    return Hmac(sha256, key).convert(utf8.encode(data)).bytes;
+  }
+
+  static String _hmacSha256Hex(List<int> key, String data) {
+    return Hmac(sha256, key).convert(utf8.encode(data)).toString();
+  }
+
+  static String _sha256Hex(String data) {
+    return sha256.convert(utf8.encode(data)).toString();
+  }
+
+  static String _canonicalQueryString(Uri uri) {
+    if (uri.queryParametersAll.isEmpty) return '';
+    final entries = <MapEntry<String, String>>[];
+    for (final entry in uri.queryParametersAll.entries) {
+      final key = Uri.encodeQueryComponent(entry.key);
+      final values = entry.value;
+      if (values.isEmpty) {
+        entries.add(MapEntry(key, ''));
+        continue;
+      }
+      for (final value in values) {
+        entries.add(MapEntry(key, Uri.encodeQueryComponent(value)));
+      }
+    }
+    entries.sort((a, b) {
+      final byKey = a.key.compareTo(b.key);
+      if (byKey != 0) return byKey;
+      return a.value.compareTo(b.value);
+    });
+    return entries.map((entry) => '${entry.key}=${entry.value}').join('&');
+  }
+
+  static String _hostHeaderValue(Uri uri) {
+    if (uri.hasPort &&
+        uri.port != (uri.scheme == 'https' ? 443 : 80)) {
+      return '${uri.host}:${uri.port}';
+    }
+    return uri.host;
+  }
+}
+
+/// Thrown when [SeedDatabaseService.downloadAndPlace] fails.
+class SeedDownloadException implements Exception {
+  /// Creates a [SeedDownloadException].
+  const SeedDownloadException(this.message, {this.cause});
+
+  /// Human-readable description.
+  final String message;
+
+  /// Underlying exception, if any.
+  final Object? cause;
+
+  @override
+  String toString() => 'SeedDownloadException: $message';
+}

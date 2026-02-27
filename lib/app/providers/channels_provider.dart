@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/providers/database_error_utils.dart';
 import 'package:app/app/providers/mutations.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -124,17 +125,17 @@ class ChannelsState {
 /// Notifier for one channel type (curated = dp1, personal = localVirtual).
 /// Aligns with old repo: ChannelsBloc(channelType, total?, pageSize).
 class ChannelsNotifier extends Notifier<ChannelsState> {
-  ChannelsNotifier(this._type);
+  ChannelsNotifier(this._type)
+    : _log = Logger('ChannelsNotifier(${_type.name})');
 
   static const int _pageSize = 10;
 
   final ChannelType _type;
-  late final Logger _log;
+  final Logger _log;
   StreamSubscription<List<Channel>>? _watchSub;
 
   @override
   ChannelsState build() {
-    _log = Logger('ChannelsNotifier(${_type.name})');
     ref.onDispose(() async {
       _log.info('Disposing ChannelsNotifier, cancelling subscription');
       await _watchSub?.cancel();
@@ -163,6 +164,13 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 
   void _onWatchError(Object error, StackTrace stack) {
     _log.warning('Database watch error', error, stack);
+    if (!ref.mounted || !isDatabaseUnavailableError(error)) return;
+    state = ChannelsState.loaded(
+      channels: const <Channel>[],
+      hasMore: false,
+      cursor: null,
+      total: 0,
+    );
   }
 
   void _onChannelsChanged(List<Channel> next) {
@@ -228,6 +236,15 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       }
     } catch (e, stack) {
       if (!ref.mounted) return;
+      if (isDatabaseUnavailableError(e)) {
+        state = ChannelsState.loaded(
+          channels: const <Channel>[],
+          hasMore: false,
+          cursor: null,
+          total: 0,
+        );
+        return;
+      }
       if (_isOperationCancelled(e)) {
         _log.info('Channels load cancelled');
         state = state.copyWith(isLoading: false, clearError: true);
@@ -292,6 +309,16 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       );
     } catch (e, stack) {
       if (!ref.mounted) return;
+      if (isDatabaseUnavailableError(e)) {
+        state = state.copyWith(
+          channels: const <Channel>[],
+          isLoadingMore: false,
+          hasMore: false,
+          clearCursor: true,
+          clearError: true,
+        );
+        return;
+      }
       if (_isOperationCancelled(e)) {
         _log.info('Load more channels cancelled');
         state = state.copyWith(isLoadingMore: false, clearError: true);
@@ -309,7 +336,8 @@ bool _isOperationCancelled(Object error) {
 }
 
 /// Provider for channels state by type (dp1 = curated, localVirtual = personal).
-final NotifierProviderFamily<ChannelsNotifier, ChannelsState, ChannelType> channelsProvider =
+final NotifierProviderFamily<ChannelsNotifier, ChannelsState, ChannelType>
+channelsProvider =
     NotifierProvider.family<ChannelsNotifier, ChannelsState, ChannelType>(
       ChannelsNotifier.new,
     );
@@ -333,10 +361,18 @@ final loadMoreChannelsMutationProvider =
     );
 
 /// Provider for a specific channel by ID.
-final FutureProviderFamily<Channel?, String> channelByIdProvider = FutureProvider.family<Channel?, String>((
-  ref,
-  channelId,
-) async {
-  final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService.getChannelById(channelId);
-});
+final FutureProviderFamily<Channel?, String> channelByIdProvider =
+    FutureProvider.family<Channel?, String>((
+      ref,
+      channelId,
+    ) async {
+      final databaseService = ref.watch(databaseServiceProvider);
+      try {
+        return await databaseService.getChannelById(channelId);
+      } on Object catch (e) {
+        if (isDatabaseUnavailableError(e)) {
+          return null;
+        }
+        rethrow;
+      }
+    });

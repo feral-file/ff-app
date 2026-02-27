@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:app/app/feed/feed_registry_provider.dart';
-import 'package:app/app/providers/background_workers_provider.dart';
+import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/app/providers/seed_database_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -13,7 +15,8 @@ import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:logging/logging.dart';
+
+// ignore_for_file: cascade_invocations // Reason: provider wiring uses concise imperative call order for cleanup flow.
 
 /// Provider for ObjectBox local data cleanup.
 final objectBoxLocalDataCleanerProvider = Provider<ObjectBoxLocalDataCleaner>((
@@ -27,8 +30,6 @@ final objectBoxLocalDataCleanerProvider = Provider<ObjectBoxLocalDataCleaner>((
 final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
   ref,
 ) {
-  final log = Logger('localDataCleanupServiceProvider');
-
   String normalizeAddress(String address) {
     final trimmed = address.trim();
     if (trimmed.startsWith('0x') || trimmed.startsWith('0X')) {
@@ -37,27 +38,51 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     return trimmed;
   }
 
+  Future<void> rebindDatabaseProviders() async {
+    final r = ref;
+    r.invalidate(appDatabaseProvider);
+    r.invalidate(databaseServiceProvider);
+    r.invalidate(feedManagerProvider);
+    r.invalidate(seedDownloadProvider);
+  }
+
+  Future<void> forceReplaceDatabaseFromSeed() async {
+    await ref
+        .read(seedDatabaseSyncServiceProvider)
+        .forceReplace(
+          beforeReplace: () async {
+            await ref.read(databaseServiceProvider).close();
+            await ref.read(seedDatabaseServiceProvider).deleteDatabaseFiles();
+          },
+          afterReplace: rebindDatabaseProviders,
+        );
+  }
+
   return LocalDataCleanupService(
     stopWorkersGracefully: () async {
       await ref.read(feedManagerProvider).pauseAndDrainWork();
       await ref
           .read(tokensSyncCoordinatorProvider.notifier)
           .stopAndDrainForReset();
-      await ref.read(workerSchedulerProvider).stopAll();
       final r = ref;
-      r
-        ..invalidate(workerSchedulerProvider)
-        ..invalidate(indexerTokensWorkerProvider)
-        ..invalidate(tokensSyncCoordinatorProvider);
+      r.invalidate(tokensSyncCoordinatorProvider);
     },
-    checkpointDatabase: () async {
-      await ref.read(databaseServiceProvider).checkpoint();
-    },
-    truncateDatabase: () async {
-      await ref.read(databaseServiceProvider).clearAll();
+    closeAndDeleteDatabase: () async {
+      final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+      await ref.read(databaseServiceProvider).close();
+      await seedDatabaseService.deleteDatabaseFiles();
+
+      // Force all DB-backed dependencies to bind against a new DB instance.
+      final r = ref;
+      r.invalidate(appDatabaseProvider);
+      r.invalidate(databaseServiceProvider);
+      r.invalidate(feedManagerProvider);
     },
     clearObjectBoxData: () async {
       await ref.read(objectBoxLocalDataCleanerProvider).clearAll();
+    },
+    clearPendingAddresses: () async {
+      await ref.read(pendingAddressesStoreProvider).clear();
     },
     clearCachedImages: () async {
       await CachedNetworkImageProvider.defaultCacheManager.emptyCache();
@@ -120,35 +145,21 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       }
 
       final feedManager = ref.read(feedManagerProvider);
-      final workerScheduler = ref.read(workerSchedulerProvider);
       feedManager.resumeWork();
 
-      // Pre-warm IndexerTokensWorker BEFORE spawning IndexAddressWorker
-      // isolates. The thread pool is clear here, so the handshake completes
-      // immediately. If deferred until after onAddressAdded, N address-worker
-      // threads compete with it for OS scheduling, causing the 30s timeout.
       TokensSyncCoordinatorNotifier? coordinator;
       if (normalizedAddresses.isNotEmpty) {
-        log.info('[handshake] pre-warming IndexerTokensWorker');
         coordinator = ref.read(tokensSyncCoordinatorProvider.notifier);
-        // Await the handshake while no other worker isolates are running.
-        await ref.read(indexerTokensWorkerProvider).ready;
-        log.info('[handshake] IndexerTokensWorker ready');
       }
 
-      for (final address in normalizedAddresses) {
-        log.info('[handshake] onAddressAdded: $address');
-        await workerScheduler.onAddressAdded(address);
-        log.info('[handshake] onAddressAdded done: $address');
-      }
-
-      log.info('[handshake] starting reloadAllCache + syncAddresses');
       await Future.wait<void>([
         feedManager.reloadAllCache(force: true),
         if (normalizedAddresses.isNotEmpty)
           coordinator!.syncAddresses(normalizedAddresses),
       ]);
-      log.info('[handshake] Future.wait done');
+    },
+    recreateDatabaseFromSeed: () async {
+      await forceReplaceDatabaseFromSeed();
     },
     pauseFeedWork: () {
       ref.read(feedManagerProvider).pauseWork();
@@ -157,9 +168,8 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       ref.read(tokensSyncCoordinatorProvider.notifier).pausePolling();
     },
     onResetCompleted: () async {
-      final feedManager = ref.read(feedManagerProvider);
-      feedManager.resumeWork();
-      unawaited(feedManager.reloadAllCache(force: true));
+      await forceReplaceDatabaseFromSeed();
+      await ref.read(bootstrapProvider.notifier).bootstrap();
     },
   );
 });

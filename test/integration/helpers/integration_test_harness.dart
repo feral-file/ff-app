@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
+import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:path/path.dart' as p;
@@ -54,6 +55,10 @@ Future<IntegrationTestContext> createIntegrationTestContext() async {
   final provisionedEnvFile = await provisionIntegrationEnvFile();
   final tempDir = await Directory.systemTemp.createTemp('ff_app_sqlite_');
   final databaseFile = File(p.join(tempDir.path, 'ff_app_integration.sqlite'));
+
+  // Integration tests use a fresh DB file (not the seed download path).
+  // Complete the gate so any AddressService calls take the normal SQLite path.
+  SeedDatabaseGate.complete();
 
   final executor = NativeDatabase.createInBackground(databaseFile);
   final database = AppDatabase.forTesting(executor);

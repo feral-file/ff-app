@@ -1,68 +1,67 @@
 import 'package:app/domain/models/models.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
+import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/address_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
-import 'package:app/infra/workers/worker_scheduler.dart';
-import 'package:app/infra/workers/worker_state_service.dart';
+import 'package:app/infra/services/pending_addresses_store.dart';
+import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _InMemoryWorkerStateStore implements WorkerStateStore {
-  final Map<String, WorkerStateSnapshot> _rows =
-      <String, WorkerStateSnapshot>{};
+class _FakePendingAddressesStore extends PendingAddressesStore {
+  final List<String> stored = <String>[];
 
   @override
-  Future<void> clearCheckpoint(String workerId) async {
-    final current = _rows[workerId];
-    if (current == null) {
-      _rows[workerId] = const WorkerStateSnapshot(stateIndex: 0);
-      return;
+  Future<List<String>> getAddresses() async => List.unmodifiable(stored);
+
+  @override
+  Future<void> addAddress(String address) async {
+    if (!stored.any((a) => a.toLowerCase() == address.toLowerCase())) {
+      stored.add(address);
     }
-    _rows[workerId] = WorkerStateSnapshot(stateIndex: current.stateIndex);
   }
 
   @override
-  Future<WorkerStateSnapshot?> load(String workerId) async {
-    return _rows[workerId];
-  }
-
-  @override
-  Future<void> save({
-    required String workerId,
-    required int stateIndex,
-    Map<String, dynamic>? checkpoint,
-  }) async {
-    _rows[workerId] = WorkerStateSnapshot(
-      stateIndex: stateIndex,
-      checkpoint: checkpoint,
-    );
-  }
+  Future<void> clear() async => stored.clear();
 }
 
-class _DelayedWorkerScheduler extends WorkerScheduler {
-  _DelayedWorkerScheduler({
+class _FakeAppStateService implements AppStateService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _DelayedPersonalTokensSyncService extends PersonalTokensSyncService {
+  _DelayedPersonalTokensSyncService({
     required this.delay,
-    required super.databaseService,
-    required super.workerStateService,
   }) : super(
-         databasePathResolver: () async => '',
-         indexerEndpoint: '',
-         indexerApiKey: '',
-         maxEnrichmentWorkers: 1,
+         indexerService: IndexerService(
+           client: IndexerClient(endpoint: 'https://example.invalid'),
+         ),
+         databaseService: DatabaseService(
+           AppDatabase.forTesting(NativeDatabase.memory()),
+         ),
+         appStateService: _FakeAppStateService(),
        );
 
   final Duration delay;
   final List<String> addedAddresses = <String>[];
+  int syncCalls = 0;
 
   @override
-  Future<void> onAddressAdded(String address) async {
+  Future<void> trackAddress(String address) async {
     addedAddresses.add(address);
     await Future<void>.delayed(delay);
+  }
+
+  @override
+  Future<void> syncAddresses({required List<String> addresses}) async {
+    syncCalls += 1;
   }
 }
 
@@ -70,20 +69,21 @@ void main() {
   late AppDatabase database;
   late DatabaseService databaseService;
   late AddressService addressService;
-  late _DelayedWorkerScheduler workerScheduler;
+  late _DelayedPersonalTokensSyncService personalTokensSyncService;
 
   setUpAll(() {
     dotenv.testLoad(fileInput: 'INDEXER_API_URL=https://example.invalid');
   });
 
   setUp(() {
+    // The gate must be open so AddressService uses the normal SQLite path.
+    SeedDatabaseGate.complete();
+
     database = AppDatabase.forTesting(NativeDatabase.memory());
     databaseService = DatabaseService(database);
 
-    workerScheduler = _DelayedWorkerScheduler(
+    personalTokensSyncService = _DelayedPersonalTokensSyncService(
       delay: const Duration(milliseconds: 350),
-      databaseService: databaseService,
-      workerStateService: _InMemoryWorkerStateStore(),
     );
 
     final indexerSyncService = IndexerSyncService(
@@ -100,12 +100,15 @@ void main() {
         resolverUrl: '',
         resolverApiKey: '',
       ),
-      workerScheduler: workerScheduler,
+      personalTokensSyncService: personalTokensSyncService,
+      pendingAddressesStore: _FakePendingAddressesStore(),
     );
   });
 
   tearDown(() async {
     await database.close();
+    // Reset the gate for subsequent test files in the same process.
+    SeedDatabaseGate.resetForTesting();
   });
 
   test(
@@ -133,10 +136,10 @@ void main() {
       expect(playlists, hasLength(1));
       expect(playlists.first.ownerAddress, equals(playlist.ownerAddress));
 
-      await pumpEventQueue();
-      expect(workerScheduler.addedAddresses, hasLength(1));
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      expect(personalTokensSyncService.addedAddresses, hasLength(1));
       expect(
-        workerScheduler.addedAddresses.first,
+        personalTokensSyncService.addedAddresses.first,
         equals('0x99fc8AD516FBCC9bA3123D56e63A35d05AA9EFB8'),
       );
     },
@@ -175,11 +178,33 @@ void main() {
       );
 
       await pumpEventQueue();
-      expect(workerScheduler.addedAddresses, hasLength(1));
+      expect(personalTokensSyncService.addedAddresses, hasLength(1));
       expect(
-        workerScheduler.addedAddresses.first,
+        personalTokensSyncService.addedAddresses.first,
         equals('0x99fc8AD516FBCC9bA3123D56e63A35d05AA9EFB8'),
       );
+    },
+  );
+
+  test(
+    'addAddress with syncNow false waits for objectbox tracking and skips sync',
+    () async {
+      final walletAddress = WalletAddress(
+        address: '0x99fc8AD516FBCC9bA3123D56e63A35d05AA9EFB8',
+        name: 'My Address',
+        createdAt: DateTime.now(),
+      );
+
+      final stopwatch = Stopwatch()..start();
+      await addressService.addAddress(
+        walletAddress: walletAddress,
+        syncNow: false,
+      );
+      stopwatch.stop();
+
+      expect(stopwatch.elapsedMilliseconds, greaterThanOrEqualTo(300));
+      expect(personalTokensSyncService.addedAddresses, hasLength(1));
+      expect(personalTokensSyncService.syncCalls, equals(0));
     },
   );
 }

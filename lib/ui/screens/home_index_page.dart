@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:logging/logging.dart';
 
 // Global keys for each page to preserve state
 final GlobalKey<PlaylistsTabPageState> _playlistsPageKey =
@@ -40,6 +41,7 @@ class HomeIndexPage extends ConsumerStatefulWidget {
 }
 
 class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
+  static final Logger _log = Logger('HomeIndexPage');
   late HomeIndexHeaderTab _selectedTab;
   late ScrollController _scrollController;
 
@@ -242,7 +244,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         },
       ),
       OptionItem(
-        title: 'Clear local data',
+        title: 'Forget I exist',
         icon: const Icon(
           Icons.delete_forever_outlined,
           color: AppColor.white,
@@ -250,7 +252,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         onTap: _clearLocalDataAndRestartOnboarding,
       ),
       OptionItem(
-        title: 'Rebuild metadata',
+        title: 'Clean metadata',
         icon: const Icon(
           Icons.refresh,
           color: AppColor.white,
@@ -334,8 +336,15 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     );
     await WidgetsBinding.instance.endOfFrame;
 
+    Object? cleanupError;
     try {
-      await ref.read(localDataCleanupServiceProvider).clearLocalData();
+      await ref
+          .read(localDataCleanupServiceProvider)
+          .clearLocalData()
+          .timeout(const Duration(seconds: 20));
+    } on Object catch (e, st) {
+      cleanupError = e;
+      _log.severe('Forget I exist cleanup failed', e, st);
     } finally {
       if (mounted && router.canPop()) {
         router.pop();
@@ -344,6 +353,14 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
 
     if (!mounted) {
       return;
+    }
+
+    if (cleanupError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cleanup did not fully complete. Opening onboarding.'),
+        ),
+      );
     }
     context.go(Routes.onboardingIntroducePage);
   }

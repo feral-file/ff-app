@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/providers/database_error_utils.dart';
 import 'package:app/app/providers/mutations.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -126,18 +127,18 @@ class PlaylistsState {
 /// Notifier for one playlist type (curated = dp1, personal = addressBased).
 /// Aligns with old repo: PlaylistsBloc(playlistType, total?, pageSize).
 class PlaylistsNotifier extends Notifier<PlaylistsState> {
-  PlaylistsNotifier(this._type);
+  PlaylistsNotifier(this._type)
+    : _log = Logger('PlaylistsNotifier(${_type.name})');
 
   static const int _pageSize = 10;
   static const Duration _slowQueryThreshold = Duration(seconds: 3);
 
   final PlaylistType _type;
-  late final Logger _log;
+  final Logger _log;
   StreamSubscription<List<Playlist>>? _watchSub;
 
   @override
   PlaylistsState build() {
-    _log = Logger('PlaylistsNotifier(${_type.name})');
     ref.onDispose(() async {
       _log.info('Disposing PlaylistsNotifier, cancelling subscription');
       await _watchSub?.cancel();
@@ -161,6 +162,13 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
 
   void _onWatchError(Object error, StackTrace stack) {
     _log.warning('Database watch error', error, stack);
+    if (!ref.mounted || !isDatabaseUnavailableError(error)) return;
+    state = PlaylistsState.loaded(
+      playlists: const <Playlist>[],
+      hasMore: false,
+      cursor: null,
+      total: 0,
+    );
   }
 
   /// Reacts to DB changes. [next] is the full list (watch has no limit).
@@ -207,6 +215,15 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
       }
     } catch (e, stack) {
       if (!ref.mounted) return;
+      if (isDatabaseUnavailableError(e)) {
+        state = PlaylistsState.loaded(
+          playlists: const <Playlist>[],
+          hasMore: false,
+          cursor: null,
+          total: 0,
+        );
+        return;
+      }
       if (_isOperationCancelled(e)) {
         _log.info('Playlist load cancelled');
         state = state.copyWith(isLoading: false, clearError: true);
@@ -304,7 +321,14 @@ final loadMorePlaylistsMutationProvider =
 final FutureProviderFamily<List<Playlist>, String> playlistsByChannelProvider =
     FutureProvider.family<List<Playlist>, String>((ref, channelId) async {
       final databaseService = ref.watch(databaseServiceProvider);
-      return databaseService.getPlaylistsByChannel(channelId);
+      try {
+        return await databaseService.getPlaylistsByChannel(channelId);
+      } on Object catch (e) {
+        if (isDatabaseUnavailableError(e)) {
+          return const <Playlist>[];
+        }
+        rethrow;
+      }
     });
 
 /// Provider for a specific playlist by ID.
@@ -314,7 +338,14 @@ final FutureProviderFamily<Playlist?, String> playlistByIdProvider =
       playlistId,
     ) async {
       final databaseService = ref.watch(databaseServiceProvider);
-      return databaseService.getPlaylistById(playlistId);
+      try {
+        return await databaseService.getPlaylistById(playlistId);
+      } on Object catch (e) {
+        if (isDatabaseUnavailableError(e)) {
+          return null;
+        }
+        rethrow;
+      }
     });
 
 /// Watch DP-1 channel publisher ids keyed by channel id.

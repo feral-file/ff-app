@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:app/domain/models/playlist.dart';
+import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/database/tables.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/isolate.dart';
@@ -1094,6 +1095,12 @@ NativeDatabase _makeNativeDatabase(File file) {
 
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
+    // Wait for the seed database to be placed before opening the connection.
+    // On a fresh install this suspends until SeedDownloadNotifier completes
+    // (success or failure). On subsequent launches SeedDatabaseGate is
+    // completed immediately in main(), so there is zero delay.
+    await SeedDatabaseGate.future;
+
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'playlist_cache.sqlite'));
     await _resetDatabaseIfSchemaConflicts(file, dbFolder);

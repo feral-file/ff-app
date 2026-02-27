@@ -9,14 +9,14 @@ void main() {
       stopWorkersGracefully: () async {
         events.add('stop-workers');
       },
-      checkpointDatabase: () async {
-        events.add('checkpoint');
-      },
-      truncateDatabase: () async {
-        events.add('truncate-db');
+      closeAndDeleteDatabase: () async {
+        events.add('close-delete-db');
       },
       clearObjectBoxData: () async {
         events.add('clear-objectbox');
+      },
+      clearPendingAddresses: () async {
+        events.add('clear-pending-addresses');
       },
       clearCachedImages: () async {
         events.add('clear-cached-images');
@@ -24,6 +24,9 @@ void main() {
       getPersonalAddresses: () async => const <String>[],
       restorePersonalAddressPlaylists: (_) async {},
       refetchFromBeginning: (_) async {},
+      recreateDatabaseFromSeed: () async {
+        events.add('recreate-db-from-seed');
+      },
       pauseFeedWork: () {
         events.add('pause-feed');
       },
@@ -39,13 +42,11 @@ void main() {
       'pause-feed',
       'pause-token-polling',
       'stop-workers',
-      'checkpoint',
-      'truncate-db',
-      'checkpoint',
+      'close-delete-db',
       'clear-objectbox',
+      'clear-pending-addresses',
       'clear-cached-images',
-      'truncate-db',
-      'checkpoint',
+      'close-delete-db',
     ]);
   });
 
@@ -56,14 +57,14 @@ void main() {
       stopWorkersGracefully: () async {
         events.add('stop-workers');
       },
-      checkpointDatabase: () async {
-        events.add('checkpoint');
-      },
-      truncateDatabase: () async {
-        events.add('truncate-db');
+      closeAndDeleteDatabase: () async {
+        events.add('close-delete-db');
       },
       clearObjectBoxData: () async {
         events.add('clear-objectbox');
+      },
+      clearPendingAddresses: () async {
+        events.add('clear-pending-addresses');
       },
       clearCachedImages: () async {
         events.add('clear-cached-images');
@@ -71,6 +72,9 @@ void main() {
       getPersonalAddresses: () async => const <String>[],
       restorePersonalAddressPlaylists: (_) async {},
       refetchFromBeginning: (_) async {},
+      recreateDatabaseFromSeed: () async {
+        events.add('recreate-db-from-seed');
+      },
       pauseFeedWork: () {
         events.add('pause-feed');
       },
@@ -97,14 +101,14 @@ void main() {
         stopWorkersGracefully: () async {
           events.add('stop-workers');
         },
-        checkpointDatabase: () async {
-          events.add('checkpoint');
-        },
-        truncateDatabase: () async {
-          events.add('truncate-db');
+        closeAndDeleteDatabase: () async {
+          events.add('close-delete-db');
         },
         clearObjectBoxData: () async {
           events.add('clear-objectbox');
+        },
+        clearPendingAddresses: () async {
+          events.add('clear-pending-addresses');
         },
         clearCachedImages: () async {
           events.add('clear-cached-images');
@@ -118,6 +122,9 @@ void main() {
         },
         refetchFromBeginning: (addresses) async {
           events.add('refetch:${addresses.join(",")}');
+        },
+        recreateDatabaseFromSeed: () async {
+          events.add('recreate-db-from-seed');
         },
         pauseFeedWork: () {
           events.add('pause-feed');
@@ -135,11 +142,7 @@ void main() {
         'pause-token-polling',
         'stop-workers',
         'get-addresses',
-        'checkpoint',
-        'truncate-db',
-        'checkpoint',
-        'truncate-db',
-        'checkpoint',
+        'recreate-db-from-seed',
         'restore:0xabc',
         'clear-cached-images',
         'refetch:0xabc',

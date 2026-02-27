@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/addresses_provider.dart';
+import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -8,6 +9,7 @@ import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/domain/utils/ui_helper.dart';
+import 'package:app/ui/screens/add_address_screen.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/onboarding/onboarding_shell.dart';
 import 'package:flutter/cupertino.dart';
@@ -28,7 +30,7 @@ class OnboardingAddAddressPagePayload {
 }
 
 /// Onboarding add address page.
-class OnboardingAddAddressPage extends StatelessWidget {
+class OnboardingAddAddressPage extends ConsumerWidget {
   /// Creates an OnboardingAddAddressPage.
   const OnboardingAddAddressPage({
     required this.payload,
@@ -39,7 +41,7 @@ class OnboardingAddAddressPage extends StatelessWidget {
   final OnboardingAddAddressPagePayload payload;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: PrimitivesTokens.colorsDarkGrey,
       appBar: const SetupAppBar(
@@ -55,8 +57,9 @@ class OnboardingAddAddressPage extends StatelessWidget {
             ),
             SizedBox(height: LayoutConstants.space5),
             Text(
-              'Add your Ethereum and Tezos addresses to pull in the works you '
-              'collect. Use the app as a clear lens on your digital collection, '
+              'Add your Ethereum and Tezos addresses to pull in the works '
+              'you collect. Use the app as a clear lens on your digital '
+              'collection, '
               'even before you connect a device.',
               style: AppTypography.body(context).white,
             ),
@@ -104,7 +107,7 @@ class OnboardingAddAddressPage extends StatelessWidget {
             );
           },
         ),
-        onSecondaryPressed: () async => _onNext(context),
+        onSecondaryPressed: () async => _onNext(context, ref),
         hintText: 'You can always add addresses later.',
       ),
     );
@@ -114,11 +117,18 @@ class OnboardingAddAddressPage extends StatelessWidget {
     unawaited(
       context.push(
         Routes.addAddressPage,
+        extra: const AddAddressScreenPayload(isFromOnboarding: true),
       ),
     );
   }
 
-  Future<void> _onNext(BuildContext context) async {
+  Future<void> _onNext(BuildContext context, WidgetRef ref) async {
+    unawaited(
+      ref
+          .read(tokensSyncCoordinatorProvider.notifier)
+          .syncAllTrackedAddresses(),
+    );
+
     if (payload.deeplink != null && payload.deeplink!.isNotEmpty) {
       // injector<ConfigurationService>().setDoneOnboarding(true);
       await context.push(Routes.handleBluetoothDeviceScanDeeplinkPage);
@@ -139,8 +149,9 @@ class _AddressList extends ConsumerWidget {
     WidgetRef ref,
     WalletAddress walletAddress,
   ) {
-    UIHelper.showDeleteAccountConfirmation(context, walletAddress,
-        (address) async {
+    UIHelper.showDeleteAccountConfirmation(context, walletAddress, (
+      address,
+    ) async {
       final addressService = ref.read(addressServiceProvider);
       await addressService.removeAddress(
         walletAddress: address,
@@ -178,7 +189,7 @@ class _AddressList extends ConsumerWidget {
       loading: () => const Center(
         child: CupertinoActivityIndicator(),
       ),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (error, stackTrace) => const SizedBox.shrink(),
     );
   }
 }

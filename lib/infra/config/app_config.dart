@@ -100,15 +100,34 @@ class AppConfig {
     return url;
   }
 
-  /// Remote config JSON URL, expected to end with `/ff-app.json`.
-  static String get remoteConfigUrl =>
-      dotenv.get('REMOTE_CONFIG_URL', fallback: '');
-
   /// Release notes markdown URL (or docs base URL) used by changelog fetcher.
   static String get releaseNotesMarkdownUrl => dotenv.get(
     'RELEASE_NOTES_MARKDOWN_URL',
     fallback: dotenv.get('PUBDOC_URL', fallback: ''),
   );
+
+  /// S3-compatible access key for seed database artifact requests.
+  static String get s3AccessKeyId =>
+      dotenv.get('S3_ACCESS_KEY_ID', fallback: '');
+
+  /// S3-compatible secret key for seed database artifact requests.
+  static String get s3SecretAccessKey =>
+      dotenv.get('S3_SECRET_ACCESS_KEY', fallback: '');
+
+  /// S3-compatible bucket URL.
+  ///
+  /// Example:
+  /// `https://<account>.r2.cloudflarestorage.com/<bucket-name>`
+  static String get s3BucketUrl => dotenv.get('S3_BUCKET', fallback: '');
+
+  /// Object key of the seed SQLite artifact inside [s3BucketUrl].
+  static String get s3SeedDatabaseObjectKey => dotenv.get(
+    'S3_SEED_DATABASE_OBJECT_KEY',
+    fallback: 'ff_feed_indexer_seed.sqlite',
+  );
+
+  /// Region used for AWS Signature V4 requests against S3-compatible APIs.
+  static String get s3Region => dotenv.get('S3_REGION', fallback: 'auto');
 
   /// Check if configuration is valid (all required keys present).
   static bool get isValid =>
@@ -116,7 +135,6 @@ class AppConfig {
       indexerApiUrl.isNotEmpty &&
       dp1FeedApiKey.isNotEmpty &&
       indexerApiKey.isNotEmpty &&
-      remoteConfigUrl.isNotEmpty &&
       ff1RelayerUrl.isNotEmpty &&
       ff1RelayerApiKey.isNotEmpty;
 
@@ -143,10 +161,6 @@ class AppConfig {
     if (ff1RelayerApiKey.isEmpty) {
       errors.add('FF1_RELAYER_API_KEY (or TV_API_KEY) is missing');
     }
-    if (remoteConfigUrl.isEmpty) {
-      errors.add('REMOTE_CONFIG_URL is missing');
-    }
-
     return errors;
   }
 

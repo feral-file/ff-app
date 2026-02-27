@@ -1,9 +1,7 @@
 import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
-import 'package:app/infra/config/app_state_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -95,23 +93,8 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       await bootstrapService.bootstrap();
       _log.info('My Collection channel created');
 
-      // Step 2: Setup and reload curated channels (matches old repo pattern).
-      // This is intentionally additive to the default DP1_FEED_URL bootstrap.
-      state = state.copyWith(message: 'Syncing curated feeds...');
-      _log.info('Setting up curated channels and feed services...');
-
-      final appState = ref.read(appStateServiceProvider);
-      final feedCacheDuration = ref.read(remoteFeedCacheDurationProvider);
-      final feedLastUpdatedAt = ref.read(remoteFeedLastUpdatedAtProvider);
-      await appState.setCacheDuration(feedCacheDuration);
-      await appState.setLastFeedUpdatedAt(feedLastUpdatedAt);
-
-      final publishers = ref.read(remoteConfigPublishersProvider);
-      await ref
-          .read(feedRegistryProvider.notifier)
-          .setupRemoteConfigChannels(
-            publishers,
-          );
+      // Initialize feed services used by lifecycle/reset flows.
+      await ref.read(feedManagerProvider).init();
 
       // Keep the auto-connect watcher alive to automatically connect to relayer
       // when active FF1 device changes

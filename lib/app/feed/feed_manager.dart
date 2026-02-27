@@ -1,19 +1,15 @@
 import 'dart:async';
 
-import 'package:app/app/feed/feed_reference_models.dart';
 import 'package:app/domain/models/channel.dart';
-import 'package:app/domain/models/dp1/dp1_api_responses.dart';
-import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/pair.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/config/app_state_service.dart';
-import 'package:app/infra/config/remote_app_config.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/base_dp1_feed_service_impl.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:collection/collection.dart';
-import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 import 'package:synchronized/synchronized.dart';
 
 /// Base feed manager: holds feed services and provides cache/reload APIs.
@@ -195,7 +191,7 @@ class FeedManager {
   }
 }
 
-/// Feral File feed manager: remote config channels + custom feed servers.
+/// Feral File feed manager.
 /// Matches old repo's [FeralFileFeedManager].
 /// Same Data/Reference rule as [FeedManager]; uses existing converters.
 class FeralFileFeedManager extends FeedManager {
@@ -203,111 +199,16 @@ class FeralFileFeedManager extends FeedManager {
     required super.databaseService,
     required super.appStateService,
     required this.defaultDp1FeedUrl,
-    required String apiKey,
-    this.onChannelPersistedInDatabase,
-  }) : _apiKey = apiKey;
+  });
 
   @override
   final String defaultDp1FeedUrl;
-
-  final String _apiKey;
-  final Future<void> Function()? onChannelPersistedInDatabase;
-
-  List<RemoteConfigChannel> remoteConfigChannels = [];
 
   Future<void> init() async {
     _setupDefault();
   }
 
   void _setupDefault() {}
-
-  /// Setup remote config channels from curated URLs; then load custom feed servers.
-  /// Matches old repo's setupRemoteConfigChannels step-by-step.
-  Future<void> setupRemoteConfigChannels(
-    List<RemoteConfigPublisher> publishers,
-  ) async {
-    final remoteConfigChannelsParsed = <RemoteConfigChannel>[];
-    for (final publisher in publishers) {
-      for (final url in publisher.channelUrls) {
-        final uri = Uri.parse(url);
-        remoteConfigChannelsParsed.add(
-          RemoteConfigChannel(
-            endpoint: uri.origin,
-            channelId: uri.pathSegments.isNotEmpty
-                ? uri.pathSegments.last
-                : uri.path,
-            publisherId: publisher.id,
-          ),
-        );
-      }
-    }
-    remoteConfigChannels = remoteConfigChannelsParsed;
-
-    final channelsByUrl = <String, List<RemoteConfigChannel>>{};
-    for (final channel in remoteConfigChannelsParsed) {
-      channelsByUrl.putIfAbsent(channel.endpoint, () => []).add(channel);
-    }
-
-    for (final publisher in publishers) {
-      await databaseService.ingestPublisher(
-        id: publisher.id,
-        name: publisher.name,
-      );
-    }
-
-    for (final endpoint in channelsByUrl.keys) {
-      final endpointChannels = channelsByUrl[endpoint]!;
-      final existingService = getFeedServiceByUrl(endpoint);
-      if (existingService != null) {
-        (existingService as FeralFileDP1FeedService).setRemoteConfigChannels(
-          endpointChannels
-              .map(
-                (channel) => RemoteConfigFeedChannel(
-                  channelId: channel.channelId,
-                  publisherId: channel.publisherId,
-                ),
-              )
-              .toList(),
-        );
-        continue;
-      }
-
-      final service = FeralFileDP1FeedService(
-        baseUrl: endpoint,
-        databaseService: databaseService,
-        appStateService: appStateService,
-        apiKey: _apiKey,
-        onChannelIngested: onChannelIngested,
-      );
-      service.setPaused(isPaused);
-      await service.init();
-      service.setRemoteConfigChannels(
-        endpointChannels
-            .map(
-              (channel) => RemoteConfigFeedChannel(
-                channelId: channel.channelId,
-                publisherId: channel.publisherId,
-              ),
-            )
-            .toList(),
-      );
-      addFeedService(service);
-    }
-
-    _log.info(
-      'Finish setup remote config channels: '
-      '${remoteConfigChannels.map((e) => e.channelId).toList()}',
-    );
-  }
-
-  /// Notify scheduler and token coordinator that a channel was persisted.
-  void onChannelIngested() {
-    if (isPaused) return;
-    final callback = onChannelPersistedInDatabase;
-    if (callback != null) {
-      unawaited(callback());
-    }
-  }
 
   /// Matches old repo's getAllCachedChannels.
   Future<List<Channel>> getAllCachedChannels() async {
@@ -335,84 +236,6 @@ class FeralFileFeedManager extends FeedManager {
       allPlaylists.addAll(playlists);
     }
     return allPlaylists;
-  }
-
-  /// Matches old repo's getPlaylistItemsByListOfChannels.
-  Future<DP1PlaylistItemsResponse> getPlaylistItemsByListOfChannels({
-    required List<RemoteConfigChannel> channels,
-    String? cursor,
-    int? limit,
-    bool usingCache = true,
-  }) async {
-    if (channels.isEmpty) {
-      return DP1PlaylistItemsResponse([], false, null);
-    }
-
-    int currentChannelIndex = 0;
-    String? currentChannelCursor = cursor;
-
-    if (cursor != null && cursor.contains(':')) {
-      final parts = cursor.split(':');
-      if (parts.length == 2) {
-        currentChannelIndex = int.tryParse(parts[0]) ?? 0;
-        currentChannelCursor = parts[1].isEmpty ? null : parts[1];
-      }
-    }
-
-    currentChannelIndex = currentChannelIndex.clamp(0, channels.length - 1);
-
-    final allItems = <DP1PlaylistItem>[];
-    var hasMore = false;
-    String? nextCursor;
-
-    for (var i = currentChannelIndex; i < channels.length; i++) {
-      final channel = channels[i];
-      try {
-        final remainingLimit = limit != null ? limit - allItems.length : limit;
-
-        final feedService =
-            getFeedServiceByUrl(channel.endpoint) as FeralFileDP1FeedService;
-
-        final response = await feedService.getPlaylistItemsOfChannel(
-          channelId: channel.channelId,
-          cursor: (i == currentChannelIndex) ? currentChannelCursor : null,
-          limit: remainingLimit,
-          usingCache: usingCache,
-        );
-
-        allItems.addAll(response.items);
-
-        if (limit != null && allItems.length >= limit) {
-          if (response.hasMore) {
-            hasMore = true;
-            nextCursor = '${i}:${response.cursor ?? ''}';
-          } else if (i < channels.length - 1) {
-            hasMore = true;
-            nextCursor = '${i + 1}:';
-          }
-          break;
-        }
-
-        if (response.hasMore) {
-          hasMore = true;
-          nextCursor = '${i}:${response.cursor ?? ''}';
-          break;
-        } else if (i < channels.length - 1) {
-          hasMore = true;
-          nextCursor = '${i + 1}:';
-        }
-      } on Exception catch (e) {
-        _log.info(
-          'Error getting playlist items for channel ${channel.channelId}: $e',
-        );
-        if (i < channels.length - 1) {
-          hasMore = true;
-          nextCursor = '${i + 1}:';
-        }
-      }
-    }
-
-    return DP1PlaylistItemsResponse(allItems, hasMore, nextCursor);
   }
 
   /// Matches old repo's getCachedChannelReferenceByPlaylist.

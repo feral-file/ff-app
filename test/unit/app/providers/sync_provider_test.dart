@@ -1,4 +1,3 @@
-import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/sync_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
@@ -8,7 +7,12 @@ import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'provider_test_helpers.dart';
+// ignore_for_file: cascade_invocations // Reason: test flow favors readable notifier lifecycle steps.
+
+class MockAppStateService implements AppStateService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 void main() {
   test(
@@ -21,9 +25,6 @@ void main() {
         overrides: [
           databaseServiceProvider.overrideWith((ref) => DatabaseService(db)),
           appStateServiceProvider.overrideWithValue(MockAppStateService()),
-          indexerTokensWorkerProvider.overrideWithValue(
-            FakeIndexerTokensWorker(),
-          ),
         ],
       );
       addTearDown(container.dispose);
