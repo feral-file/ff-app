@@ -76,14 +76,17 @@ class _AppStartupBootstrap extends ConsumerStatefulWidget {
       _AppStartupBootstrapState();
 }
 
-class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap> {
+class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
+    with WidgetsBindingObserver {
   bool _started = false;
+  bool _isResumeSeedSyncInProgress = false;
 
   static final _log = Logger('AppStartupBootstrap');
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_started) {
         return;
@@ -92,6 +95,20 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap> {
 
       unawaited(_bootstrapAtAppStart());
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !_started) {
+      return;
+    }
+    unawaited(_syncSeedDatabaseOnResume());
   }
 
   Future<void> _bootstrapAtAppStart() async {
@@ -109,7 +126,31 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap> {
     }
   }
 
+  Future<void> _syncSeedDatabaseOnResume() async {
+    if (_isResumeSeedSyncInProgress) {
+      return;
+    }
+    _isResumeSeedSyncInProgress = true;
+
+    try {
+      final didReplaceSeedDatabase = await _syncSeedDatabaseIfNeeded(
+        showUpdatingToast: false,
+      );
+      if (didReplaceSeedDatabase) {
+        _refreshProvidersAfterSeedDatabaseReplace();
+      }
+    } finally {
+      _isResumeSeedSyncInProgress = false;
+    }
+  }
+
   Future<bool> _syncSeedDatabaseAtStartup() async {
+    return _syncSeedDatabaseIfNeeded(showUpdatingToast: true);
+  }
+
+  Future<bool> _syncSeedDatabaseIfNeeded({
+    required bool showUpdatingToast,
+  }) async {
     var personalAddresses = <String>[];
     var isToastVisible = false;
     final router = widget.router;
@@ -120,7 +161,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap> {
             if (!SeedDatabaseGate.isCompleted) {
               return;
             }
-            if (mounted) {
+            if (showUpdatingToast && mounted) {
               unawaited(
                 router.pushNamed(
                   RouteNames.globalToast,
@@ -144,7 +185,10 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap> {
               await _reconnectAfterSeedDatabaseReplace();
               await _refetchPersonalPlaylists(personalAddresses);
             } finally {
-              if (mounted && isToastVisible && router.canPop()) {
+              if (showUpdatingToast &&
+                  mounted &&
+                  isToastVisible &&
+                  router.canPop()) {
                 router.pop();
                 isToastVisible = false;
               }

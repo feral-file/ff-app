@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
-import 'package:path_provider/path_provider.dart';
 
 /// Central logging fan-out for console, OS logger, and file persistence.
 class AppLogger {
@@ -32,7 +31,13 @@ class AppLogger {
       },
     );
 
-    _logFile = await _createLogFile();
+    try {
+      _logFile = await _createLogFile();
+    } on Object catch (error, stackTrace) {
+      debugPrint('Failed to initialize log file output: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _logFile = null;
+    }
     Logger.root.level = rootLevel;
     _rootSubscription = Logger.root.onRecord.listen(_handleLogRecord);
 
@@ -52,7 +57,7 @@ class AppLogger {
   static File? get currentLogFile => _logFile;
 
   static Future<File> _createLogFile() async {
-    final directory = await getTemporaryDirectory();
+    final directory = Directory.systemTemp;
     return File('${directory.path}/$_logFileName').create(recursive: true);
   }
 
@@ -102,8 +107,14 @@ class AppLogger {
       return;
     }
 
-    await _rotateIfNeeded(targetFile);
-    await targetFile.writeAsString(line, mode: FileMode.append, flush: true);
+    try {
+      await _rotateIfNeeded(targetFile);
+      await targetFile.writeAsString(line, mode: FileMode.append, flush: true);
+    } on Object catch (error, stackTrace) {
+      debugPrint('Failed to persist log line: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _logFile = null;
+    }
   }
 
   static Future<void> _rotateIfNeeded(File file) async {
@@ -119,8 +130,14 @@ class AppLogger {
     final directory = file.parent.path;
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final rotatedPath = '$directory/app_$timestamp.log';
-    await file.rename(rotatedPath);
-    _logFile = await _createLogFile();
+    try {
+      await file.rename(rotatedPath);
+      _logFile = await _createLogFile();
+    } on Object catch (error, stackTrace) {
+      debugPrint('Failed to rotate log file: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _logFile = null;
+    }
   }
 
   static String _redact(String text) {

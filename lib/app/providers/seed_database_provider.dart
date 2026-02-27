@@ -65,13 +65,15 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
 
   /// Syncs seed DB at app start using remote ETag comparison.
   ///
-  /// No-ops if a sync is already in progress or has succeeded.
+  /// No-ops if a sync is already in progress.
+  ///
+  /// This method may be called again after startup (for example, when the app
+  /// resumes from background) to check for a newer remote snapshot.
   Future<bool> syncAtAppStart({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
   }) async {
-    if (state.status == SeedDownloadStatus.syncing ||
-        state.status == SeedDownloadStatus.done) {
+    if (state.status == SeedDownloadStatus.syncing) {
       return false;
     }
 
