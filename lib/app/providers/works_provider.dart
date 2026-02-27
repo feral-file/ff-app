@@ -119,7 +119,7 @@ class WorksNotifier extends Notifier<WorksState> {
   static const Duration _dbChangeDebounce = Duration(seconds: 1);
   static const int _defaultVisibleWindowSize = 24;
 
-  late final Logger _log;
+  final Logger _log = Logger('WorksNotifier');
   StreamSubscription<List<PlaylistItem>>? _watchSub;
   Timer? _refreshDebounceTimer;
   bool _isActive = false;
@@ -129,7 +129,6 @@ class WorksNotifier extends Notifier<WorksState> {
 
   @override
   WorksState build() {
-    _log = Logger('WorksNotifier');
     ref.onDispose(() {
       _log.info('Disposing WorksNotifier, cancelling listeners');
       _stopWatching();

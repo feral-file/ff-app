@@ -7,6 +7,7 @@ class LocalDataCleanupService {
     required Future<void> Function() stopWorkersGracefully,
     required Future<void> Function() closeAndDeleteDatabase,
     required Future<void> Function() clearObjectBoxData,
+    required Future<void> Function() clearPendingAddresses,
     required Future<void> Function() clearCachedImages,
     required Future<List<String>> Function() getPersonalAddresses,
     required Future<void> Function(List<String> addresses)
@@ -22,6 +23,7 @@ class LocalDataCleanupService {
   }) : _stopWorkersGracefully = stopWorkersGracefully,
        _closeAndDeleteDatabase = closeAndDeleteDatabase,
        _clearObjectBoxData = clearObjectBoxData,
+       _clearPendingAddresses = clearPendingAddresses,
        _clearCachedImages = clearCachedImages,
        _getPersonalAddresses = getPersonalAddresses,
        _restorePersonalAddressPlaylists = restorePersonalAddressPlaylists,
@@ -35,6 +37,9 @@ class LocalDataCleanupService {
   final Future<void> Function() _stopWorkersGracefully;
   final Future<void> Function() _closeAndDeleteDatabase;
   final Future<void> Function() _clearObjectBoxData;
+
+  /// Removes addresses queued before DB availability.
+  final Future<void> Function() _clearPendingAddresses;
   final Future<void> Function() _clearCachedImages;
   final Future<List<String>> Function() _getPersonalAddresses;
   final Future<void> Function(List<String> addresses)
@@ -44,7 +49,11 @@ class LocalDataCleanupService {
   final void Function() _pauseFeedWork;
   final void Function() _pauseTokenPolling;
   final Future<void> Function()? _onResetCompleted;
+
+  /// Whether to run a second close/delete pass after a short settle delay.
   final bool enablePostDrainSweep;
+
+  /// Delay before optional post-drain close/delete sweep.
   final Duration postDrainSettleDuration;
   final Logger _log;
 
@@ -64,6 +73,8 @@ class LocalDataCleanupService {
 
     _log.info('clearLocalData: clearObjectBoxData');
     await _clearObjectBoxData();
+    _log.info('clearLocalData: clearPendingAddresses');
+    await _clearPendingAddresses();
     _log.info('clearLocalData: clearCachedImages');
     await _clearCachedImages();
 

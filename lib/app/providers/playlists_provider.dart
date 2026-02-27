@@ -127,18 +127,18 @@ class PlaylistsState {
 /// Notifier for one playlist type (curated = dp1, personal = addressBased).
 /// Aligns with old repo: PlaylistsBloc(playlistType, total?, pageSize).
 class PlaylistsNotifier extends Notifier<PlaylistsState> {
-  PlaylistsNotifier(this._type);
+  PlaylistsNotifier(this._type)
+    : _log = Logger('PlaylistsNotifier(${_type.name})');
 
   static const int _pageSize = 10;
   static const Duration _slowQueryThreshold = Duration(seconds: 3);
 
   final PlaylistType _type;
-  late final Logger _log;
+  final Logger _log;
   StreamSubscription<List<Playlist>>? _watchSub;
 
   @override
   PlaylistsState build() {
-    _log = Logger('PlaylistsNotifier(${_type.name})');
     ref.onDispose(() async {
       _log.info('Disposing PlaylistsNotifier, cancelling subscription');
       await _watchSub?.cancel();

@@ -4,6 +4,7 @@ import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -37,6 +38,26 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     return trimmed;
   }
 
+  Future<void> rebindDatabaseProviders() async {
+    final r = ref;
+    r.invalidate(appDatabaseProvider);
+    r.invalidate(databaseServiceProvider);
+    r.invalidate(feedManagerProvider);
+    r.invalidate(seedDownloadProvider);
+  }
+
+  Future<void> forceReplaceDatabaseFromSeed() async {
+    await ref
+        .read(seedDatabaseSyncServiceProvider)
+        .forceReplace(
+          beforeReplace: () async {
+            await ref.read(databaseServiceProvider).close();
+            await ref.read(seedDatabaseServiceProvider).deleteDatabaseFiles();
+          },
+          afterReplace: rebindDatabaseProviders,
+        );
+  }
+
   return LocalDataCleanupService(
     stopWorkersGracefully: () async {
       await ref.read(feedManagerProvider).pauseAndDrainWork();
@@ -59,6 +80,9 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     },
     clearObjectBoxData: () async {
       await ref.read(objectBoxLocalDataCleanerProvider).clearAll();
+    },
+    clearPendingAddresses: () async {
+      await ref.read(pendingAddressesStoreProvider).clear();
     },
     clearCachedImages: () async {
       await CachedNetworkImageProvider.defaultCacheManager.emptyCache();
@@ -135,19 +159,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       ]);
     },
     recreateDatabaseFromSeed: () async {
-      final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
-
-      await ref.read(databaseServiceProvider).close();
-      await seedDatabaseService.deleteDatabaseFiles();
-      await seedDatabaseService.downloadAndPlace();
-
-      // Recreate DB/service providers so all dependents bind to a fresh
-      // connection backed by the newly-downloaded seed file.
-      final r = ref;
-      r.invalidate(appDatabaseProvider);
-      r.invalidate(databaseServiceProvider);
-      r.invalidate(feedManagerProvider);
-      r.invalidate(seedDownloadProvider);
+      await forceReplaceDatabaseFromSeed();
     },
     pauseFeedWork: () {
       ref.read(feedManagerProvider).pauseWork();
@@ -156,16 +168,8 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       ref.read(tokensSyncCoordinatorProvider.notifier).pausePolling();
     },
     onResetCompleted: () async {
-      final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
-      await seedDatabaseService.downloadAndPlace();
-
-      final r = ref;
-      r.invalidate(appDatabaseProvider);
-      r.invalidate(databaseServiceProvider);
-      r.invalidate(feedManagerProvider);
-      r.invalidate(seedDownloadProvider);
-
-      await r.read(bootstrapProvider.notifier).bootstrap();
+      await forceReplaceDatabaseFromSeed();
+      await ref.read(bootstrapProvider.notifier).bootstrap();
     },
   );
 });

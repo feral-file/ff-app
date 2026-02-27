@@ -125,17 +125,17 @@ class ChannelsState {
 /// Notifier for one channel type (curated = dp1, personal = localVirtual).
 /// Aligns with old repo: ChannelsBloc(channelType, total?, pageSize).
 class ChannelsNotifier extends Notifier<ChannelsState> {
-  ChannelsNotifier(this._type);
+  ChannelsNotifier(this._type)
+    : _log = Logger('ChannelsNotifier(${_type.name})');
 
   static const int _pageSize = 10;
 
   final ChannelType _type;
-  late final Logger _log;
+  final Logger _log;
   StreamSubscription<List<Channel>>? _watchSub;
 
   @override
   ChannelsState build() {
-    _log = Logger('ChannelsNotifier(${_type.name})');
     ref.onDispose(() async {
       _log.info('Disposing ChannelsNotifier, cancelling subscription');
       await _watchSub?.cancel();

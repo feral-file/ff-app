@@ -26,7 +26,7 @@ class SeedDatabaseService {
 
   final Dio _dio;
 
-  /// The canonical database file name used by [AppDatabase].
+  /// The canonical database file name used by AppDatabase.
   static const _dbFileName = 'playlist_cache.sqlite';
 
   /// Returns the absolute path where the database should live.
@@ -41,6 +41,27 @@ class SeedDatabaseService {
     return !File(path).existsSync();
   }
 
+  /// Returns true when the SQLite seed database file already exists.
+  Future<bool> hasLocalDatabase() async {
+    final path = await databasePath();
+    return File(path).existsSync();
+  }
+
+  /// Best-effort HEAD request for the latest remote seed database ETag.
+  ///
+  /// Returns empty string when ETag is unavailable.
+  Future<String> headRemoteEtag() async {
+    final response = await _dio.headUri<dynamic>(Uri.parse(seedDatabaseUrl));
+    if (response.statusCode == null ||
+        response.statusCode! < 200 ||
+        response.statusCode! >= 300) {
+      throw SeedDownloadException(
+        'Failed to HEAD seed database: HTTP ${response.statusCode}',
+      );
+    }
+    return _sanitizeEtag(response.headers.value('etag') ?? '');
+  }
+
   /// Downloads the seed database from [seedDatabaseUrl] and places it at the
   /// canonical database path.
   ///
@@ -50,8 +71,19 @@ class SeedDatabaseService {
   Future<void> downloadAndPlace({
     void Function(double progress)? onProgress,
   }) async {
-    final dbPath = await databasePath();
-    final tempPath = '$dbPath.tmp';
+    final tempPath = await downloadToTemporaryFile(onProgress: onProgress);
+    await replaceDatabaseFromTemporaryFile(tempPath);
+  }
+
+  /// Downloads the remote seed DB to a temporary-file path and returns it.
+  Future<String> downloadToTemporaryFile({
+    void Function(double progress)? onProgress,
+  }) async {
+    final tempDir = await getTemporaryDirectory();
+    final tempPath = p.join(
+      tempDir.path,
+      'playlist_cache_${DateTime.now().microsecondsSinceEpoch}.sqlite.tmp',
+    );
 
     _log.info('Downloading seed database from $seedDatabaseUrl');
 
@@ -75,18 +107,43 @@ class SeedDatabaseService {
       if (!tempFile.existsSync()) {
         throw const SeedDownloadException('Downloaded file not found');
       }
-
-      // Atomic rename: avoids a partially-written file being opened by Drift.
-      await tempFile.rename(dbPath);
-
-      _log.info('Seed database placed at $dbPath');
+      return tempPath;
     } on DioException catch (e, st) {
       _log.severe('Seed download failed (Dio)', e, st);
-      // Clean up incomplete temp file so the next attempt starts fresh.
       await _cleanupTemp(tempPath);
       throw SeedDownloadException('Download failed: ${e.message}', cause: e);
     } on Object catch (e, st) {
       _log.severe('Seed download failed', e, st);
+      await _cleanupTemp(tempPath);
+      rethrow;
+    }
+  }
+
+  /// Replaces the live SQLite database file with a downloaded temp seed file.
+  Future<void> replaceDatabaseFromTemporaryFile(String tempPath) async {
+    final dbPath = await databasePath();
+    final tempFile = File(tempPath);
+    if (!tempFile.existsSync()) {
+      throw SeedDownloadException('Temporary seed file not found: $tempPath');
+    }
+    try {
+      final dbFile = File(dbPath);
+      if (dbFile.existsSync()) {
+        await dbFile.delete();
+      }
+      final walFile = File('$dbPath-wal');
+      if (walFile.existsSync()) {
+        await walFile.delete();
+      }
+      final shmFile = File('$dbPath-shm');
+      if (shmFile.existsSync()) {
+        await shmFile.delete();
+      }
+
+      await tempFile.rename(dbPath);
+      _log.info('Seed database placed at $dbPath');
+    } on Object catch (e, st) {
+      _log.severe('Failed to replace seed database file', e, st);
       await _cleanupTemp(tempPath);
       rethrow;
     }
@@ -111,6 +168,12 @@ class SeedDatabaseService {
         await f.delete();
       } on Object catch (_) {}
     }
+  }
+
+  String _sanitizeEtag(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed.replaceAll('"', '');
   }
 }
 

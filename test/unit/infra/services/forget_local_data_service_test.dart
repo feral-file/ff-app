@@ -15,6 +15,9 @@ void main() {
       clearObjectBoxData: () async {
         events.add('clear-objectbox');
       },
+      clearPendingAddresses: () async {
+        events.add('clear-pending-addresses');
+      },
       clearCachedImages: () async {
         events.add('clear-cached-images');
       },
@@ -41,6 +44,7 @@ void main() {
       'stop-workers',
       'close-delete-db',
       'clear-objectbox',
+      'clear-pending-addresses',
       'clear-cached-images',
       'close-delete-db',
     ]);
@@ -58,6 +62,9 @@ void main() {
       },
       clearObjectBoxData: () async {
         events.add('clear-objectbox');
+      },
+      clearPendingAddresses: () async {
+        events.add('clear-pending-addresses');
       },
       clearCachedImages: () async {
         events.add('clear-cached-images');
@@ -99,6 +106,9 @@ void main() {
         },
         clearObjectBoxData: () async {
           events.add('clear-objectbox');
+        },
+        clearPendingAddresses: () async {
+          events.add('clear-pending-addresses');
         },
         clearCachedImages: () async {
           events.add('clear-cached-images');

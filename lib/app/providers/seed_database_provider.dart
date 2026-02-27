@@ -1,7 +1,11 @@
 import 'dart:async';
 
+import 'package:app/infra/config/seed_database_config_store.dart';
+import 'package:app/infra/database/objectbox_init.dart';
+import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/seed_database_service.dart';
+import 'package:app/infra/services/seed_database_sync_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -12,13 +16,13 @@ enum SeedDownloadStatus {
   /// Download not yet started.
   idle,
 
-  /// Download is in progress.
-  downloading,
+  /// Sync is in progress.
+  syncing,
 
-  /// Download and placement succeeded.
+  /// Sync finished (download may have been skipped when ETag unchanged).
   done,
 
-  /// Download failed; the app will proceed with an empty database.
+  /// Sync failed; app start may continue with existing DB or empty DB.
   error,
 }
 
@@ -50,28 +54,30 @@ class SeedDownloadState {
 
 /// Orchestrates the one-time background seed-database download.
 ///
-/// The notifier is kicked off early at app startup (see `App` widget).
-/// It downloads the seed file in the background without blocking navigation.
-/// Progress is logged at every 10 % increment. On completion (success or
-/// failure) it opens `SeedDatabaseGate` so the Drift database can proceed.
+/// The notifier is kicked off early at app startup (see `App` widget), where
+/// it can perform an ETag-based refresh. On completion (success/failure/skip)
+/// it opens `SeedDatabaseGate` so Drift can proceed.
 class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   @override
   SeedDownloadState build() {
     return const SeedDownloadState(status: SeedDownloadStatus.idle);
   }
 
-  /// Starts the background download.
+  /// Syncs seed DB at app start using remote ETag comparison.
   ///
-  /// No-ops if a download is already in progress or has succeeded.
-  Future<void> startDownload() async {
-    if (state.status == SeedDownloadStatus.downloading ||
+  /// No-ops if a sync is already in progress or has succeeded.
+  Future<bool> syncAtAppStart({
+    required Future<void> Function() beforeReplace,
+    required Future<void> Function() afterReplace,
+  }) async {
+    if (state.status == SeedDownloadStatus.syncing ||
         state.status == SeedDownloadStatus.done) {
-      return;
+      return false;
     }
 
-    state = const SeedDownloadState(status: SeedDownloadStatus.downloading);
+    state = const SeedDownloadState(status: SeedDownloadStatus.syncing);
 
-    final service = ref.read(seedDatabaseServiceProvider);
+    final service = ref.read(seedDatabaseSyncServiceProvider);
 
     // Track progress locally — we log every 10 % but do NOT push intermediate
     // values into Riverpod state. Updating state on every byte chunk floods the
@@ -79,24 +85,27 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     var lastLoggedBucket = -1;
 
     try {
-      await service.downloadAndPlace(
+      final updated = await service.syncIfNeeded(
+        beforeReplace: beforeReplace,
+        afterReplace: afterReplace,
+        failSilently: true,
         onProgress: (progress) {
           final bucket = (progress * 10).floor(); // 0–10
           if (bucket > lastLoggedBucket) {
             lastLoggedBucket = bucket;
             final pct = (progress * 100).round();
-            _log.info('Seed database download: $pct%');
+            _log.info('Seed database sync download: $pct%');
           }
         },
       );
 
-      _log.info('Seed database download complete');
+      _log.info('Seed database sync complete');
       state = const SeedDownloadState(status: SeedDownloadStatus.done);
       SeedDatabaseGate.complete();
+      return updated;
     } on Exception catch (e, st) {
       _log.severe(
-        'Seed database download failed; the app will proceed with an empty '
-        'database. Workers will start once the database is open.',
+        'Seed database sync failed; app continues with existing database.',
         e,
         st,
       );
@@ -106,6 +115,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       );
       // Open the gate even on failure so the Drift DB is not blocked forever.
       SeedDatabaseGate.complete();
+      return false;
     }
   }
 }
@@ -119,4 +129,25 @@ final seedDownloadProvider =
 /// Provider for [SeedDatabaseService].
 final seedDatabaseServiceProvider = Provider<SeedDatabaseService>((ref) {
   return SeedDatabaseService();
+});
+
+/// Provider for ObjectBox-backed seed DB config metadata storage.
+final seedDatabaseConfigStoreProvider = Provider<SeedDatabaseConfigStore>((
+  ref,
+) {
+  final store = getInitializedObjectBoxStore();
+  final box = store.box<RemoteAppConfigEntity>();
+  return SeedDatabaseConfigStore(box);
+});
+
+/// Provider for ETag-based seed DB sync orchestration.
+final seedDatabaseSyncServiceProvider = Provider<SeedDatabaseSyncService>((
+  ref,
+) {
+  final configStore = ref.read(seedDatabaseConfigStoreProvider);
+  return SeedDatabaseSyncService(
+    seedDatabaseService: ref.read(seedDatabaseServiceProvider),
+    loadLocalEtag: configStore.loadSeedEtag,
+    saveLocalEtag: configStore.saveSeedEtag,
+  );
 });
