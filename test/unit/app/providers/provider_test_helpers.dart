@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
-import 'package:app/domain/models/indexer/changes/change.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/config/remote_config_service.dart';
@@ -13,12 +12,8 @@ import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
-import 'package:app/infra/indexer/isolate/indexer_tokens_worker.dart';
-import 'package:app/infra/indexer/isolate/worker_messages.dart';
-import 'package:app/infra/indexer/isolate/worker_tasks.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
-import 'package:app/infra/workers/worker_state_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -206,133 +201,6 @@ class MockAppStateService implements AppStateService {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
-}
-
-class InMemoryWorkerStateStore implements WorkerStateStore {
-  final Map<String, WorkerStateSnapshot> _rows =
-      <String, WorkerStateSnapshot>{};
-
-  @override
-  Future<void> clearCheckpoint(String workerId) async {
-    final current = _rows[workerId];
-    if (current == null) {
-      _rows[workerId] = const WorkerStateSnapshot(stateIndex: 0);
-      return;
-    }
-    _rows[workerId] = WorkerStateSnapshot(stateIndex: current.stateIndex);
-  }
-
-  @override
-  Future<WorkerStateSnapshot?> load(String workerId) async {
-    return _rows[workerId];
-  }
-
-  @override
-  Future<void> save({
-    required String workerId,
-    required int stateIndex,
-    Map<String, dynamic>? checkpoint,
-  }) async {
-    _rows[workerId] = WorkerStateSnapshot(
-      stateIndex: stateIndex,
-      checkpoint: checkpoint,
-    );
-  }
-}
-
-class FakeIndexerTokensWorker extends IndexerTokensWorker {
-  FakeIndexerTokensWorker()
-    : super(endpoint: 'https://example.invalid', apiKey: '');
-
-  final StreamController<TokensWorkerMessage> _controller =
-      StreamController<TokensWorkerMessage>.broadcast();
-  ChangeList? updateTokensDataResponse;
-  List<String>? updateTokensAddressesOverride;
-  Object? updateTokensFailure;
-  bool emitUpdateTokensSuccess = true;
-  List<AssetToken> manualTokenResponse = const <AssetToken>[];
-  Object? manualTokenError;
-  List<int>? lastRequestedTokenIds;
-  List<String>? lastRequestedTokenOwners;
-  List<String>? lastRequestedTokenCids;
-
-  @override
-  Stream<TokensWorkerMessage> get messages => _controller.stream;
-
-  @override
-  Future<void> get ready async {}
-
-  @override
-  Future<void> start() async {}
-
-  @override
-  Future<void> stop() async {
-    await _controller.close();
-  }
-
-  @override
-  void updateTokensInIsolate({
-    required String uuid,
-    required List<AddressAnchor> addressAnchors,
-  }) {
-    final addresses =
-        updateTokensAddressesOverride ??
-        addressAnchors.map((anchor) => anchor.address).toList(growable: false);
-    final changesList = updateTokensDataResponse;
-    if (changesList != null) {
-      _controller.add(UpdateTokensData(uuid, changesList, addresses));
-    }
-
-    final failure = updateTokensFailure;
-    if (failure != null) {
-      _controller.add(UpdateTokensFailure(uuid, addresses, failure));
-      return;
-    }
-
-    if (emitUpdateTokensSuccess) {
-      _controller.add(UpdateTokensSuccess(uuid));
-    }
-  }
-
-  @override
-  void reindexAddressesList({
-    required String uuid,
-    required List<String> addresses,
-  }) {
-    _controller.add(
-      ReindexAddressesListDone(uuid, const <AddressIndexingResult>[]),
-    );
-  }
-
-  @override
-  void notifyChannelIngested({required String uuid}) {
-    _controller.add(ChannelIngestedAck(uuid));
-  }
-
-  @override
-  void getManualTokens({
-    required String uuid,
-    List<int>? tokenIds,
-    List<String>? owners,
-    List<String>? tokenCids,
-  }) {
-    lastRequestedTokenIds = tokenIds == null ? null : List<int>.from(tokenIds);
-    lastRequestedTokenOwners =
-        owners == null ? null : List<String>.from(owners);
-    lastRequestedTokenCids =
-        tokenCids == null ? null : List<String>.from(tokenCids);
-
-    final error = manualTokenError;
-    if (error != null) {
-      _controller.add(FetchManualTokensFailure(uuid, error));
-      return;
-    }
-    _controller.add(FetchManualTokensDone(uuid, manualTokenResponse));
-  }
-
-  void emitMessage(TokensWorkerMessage message) {
-    _controller.add(message);
-  }
 }
 
 class FakeWifiTransport implements FF1WifiTransport {

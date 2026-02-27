@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:app/app/feed/feed_registry_provider.dart';
-import 'package:app/app/providers/background_workers_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/widgets.dart';
@@ -33,20 +32,10 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
     final initialState =
         WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     if (initialState == AppLifecycleState.resumed) {
-      // Sequence: wait for IndexerTokensWorker to complete its isolate
-      // handshake before spawning WorkerScheduler's DriftIsolate. Both
-      // operations call Isolate.spawn() concurrently otherwise, which on
-      // iOS simulator starves the IndexerTokensWorker isolate and triggers
-      // a TimeoutException. We tolerate failure (e.g. slow device) and
-      // start background workers regardless.
-      final tokensWorker = ref.read(indexerTokensWorkerProvider);
       unawaited(
-        tokensWorker.ready
-            .timeout(const Duration(seconds: 30))
-            .whenComplete(
-              () =>
-                  ref.read(workerSchedulerProvider).startOnForeground(),
-            ),
+        ref
+            .read(tokensSyncCoordinatorProvider.notifier)
+            .syncAllTrackedAddresses(),
       );
     }
     return initialState;
@@ -62,20 +51,14 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
-      final scheduler = ref.read(workerSchedulerProvider);
       ref.read(feedManagerProvider).pauseWork();
-      unawaited(scheduler.pauseOnBackground());
       unawaited(_checkpointDatabase());
     } else if (state == AppLifecycleState.resumed) {
-      final scheduler = ref.read(workerSchedulerProvider);
       final feedManager = ref.read(feedManagerProvider)..resumeWork();
-      // On resume the IndexerTokensWorker is already running (handshake
-      // completed at startup), so ready resolves immediately.
-      final tokensWorker = ref.read(indexerTokensWorkerProvider);
       unawaited(
-        tokensWorker.ready
-            .timeout(const Duration(seconds: 30))
-            .whenComplete(scheduler.startOnForeground),
+        ref
+            .read(tokensSyncCoordinatorProvider.notifier)
+            .syncAllTrackedAddresses(),
       );
       unawaited(feedManager.reloadAllCache());
     }

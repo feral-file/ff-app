@@ -1,4 +1,3 @@
-import 'package:app/app/providers/background_workers_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -14,8 +13,11 @@ import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/pending_addresses_store.dart';
+import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+// ignore_for_file: lines_longer_than_80_chars // Reason: provider documentation lines intentionally keep fully-qualified refs.
 
 /// Provider for [PendingAddressesStore].
 ///
@@ -31,14 +33,16 @@ final addressServiceProvider = Provider<AddressService>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
   final indexerSyncService = ref.watch(indexerSyncServiceProvider);
   final domainAddressService = ref.watch(domainAddressServiceProvider);
-  final workerScheduler = ref.watch(workerSchedulerProvider);
+  final personalTokensSyncService = ref.watch(
+    personalTokensSyncServiceProvider,
+  );
   final pendingAddressesStore = ref.watch(pendingAddressesStoreProvider);
 
   return AddressService(
     databaseService: databaseService,
     indexerSyncService: indexerSyncService,
     domainAddressService: domainAddressService,
-    workerScheduler: workerScheduler,
+    personalTokensSyncService: personalTokensSyncService,
     pendingAddressesStore: pendingAddressesStore,
   );
 });
@@ -113,5 +117,16 @@ final indexerSyncServiceProvider = Provider<IndexerSyncService>((ref) {
   return IndexerSyncService(
     indexerService: indexerService,
     databaseService: databaseService,
+  );
+});
+
+/// Provider for simple personal-token sync (no workers/scheduler).
+final personalTokensSyncServiceProvider = Provider<PersonalTokensSyncService>((
+  ref,
+) {
+  return PersonalTokensSyncService(
+    indexerService: ref.watch(indexerServiceProvider),
+    databaseService: ref.watch(databaseServiceProvider),
+    appStateService: ref.watch(appStateServiceProvider),
   );
 });

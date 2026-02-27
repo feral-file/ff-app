@@ -22,8 +22,9 @@ class AddAddressNotifier extends AsyncNotifier<Address?> {
     try {
       // Validate address or domain via DomainAddressService
       final domainAddressService = ref.read(domainAddressServiceProvider);
-      final addressInfo =
-          await domainAddressService.verifyAddressOrDomain(addressOrDomain);
+      final addressInfo = await domainAddressService.verifyAddressOrDomain(
+        addressOrDomain,
+      );
       if (addressInfo == null) {
         throw Exception('Invalid address or domain');
       }
@@ -41,8 +42,8 @@ class AddAddressNotifier extends AsyncNotifier<Address?> {
 /// Provider for adding address
 final AsyncNotifierProvider<AddAddressNotifier, Address?> addAddressProvider =
     AsyncNotifierProvider.autoDispose<AddAddressNotifier, Address?>(
-  AddAddressNotifier.new,
-);
+      AddAddressNotifier.new,
+    );
 
 /// Notifier for adding alias
 class AddAliasNotifier extends AsyncNotifier<void> {
@@ -52,7 +53,11 @@ class AddAliasNotifier extends AsyncNotifier<void> {
   }
 
   /// Add address with alias
-  Future<void> add(String address, String? alias) async {
+  Future<void> add(
+    String address,
+    String? alias, {
+    bool syncNow = true,
+  }) async {
     state = const AsyncValue.loading();
 
     try {
@@ -67,10 +72,14 @@ class AddAliasNotifier extends AsyncNotifier<void> {
       );
 
       final addressService = ref.read(addressServiceProvider);
-      await addressService.addAddress(walletAddress: walletAddress);
+      await addressService.addAddress(
+        walletAddress: walletAddress,
+        syncNow: syncNow,
+      );
 
       _log.info(
-          'Successfully added address: ${walletAddress.address}, name: $name');
+        'Successfully added address: ${walletAddress.address}, name: $name',
+      );
 
       state = const AsyncValue.data(null);
     } on Exception catch (e, stack) {
@@ -83,5 +92,5 @@ class AddAliasNotifier extends AsyncNotifier<void> {
 /// Provider for adding alias
 final AsyncNotifierProvider<AddAliasNotifier, void> addAliasProvider =
     AsyncNotifierProvider.autoDispose<AddAliasNotifier, void>(
-  AddAliasNotifier.new,
-);
+      AddAliasNotifier.new,
+    );

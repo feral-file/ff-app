@@ -1,21 +1,12 @@
-// ignore_for_file: public_member_api_docs, lines_longer_than_80_chars, cascade_invocations, avoid_redundant_argument_values, unawaited_futures // Reason: orchestration glue; keep compact + stable.
+// ignore_for_file: public_member_api_docs // Reason: provider orchestration state.
 
 import 'dart:async';
 
-import 'package:app/app/providers/app_lifecycle_provider.dart';
-import 'package:app/domain/models/indexer/asset_token.dart';
-import 'package:app/infra/config/app_config.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
-import 'package:app/infra/database/database_provider.dart';
-import 'package:app/infra/indexer/isolate/indexer_tokens_worker.dart';
-import 'package:app/infra/indexer/isolate/worker_messages.dart';
-import 'package:app/infra/indexer/isolate/worker_tasks.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
-import 'package:uuid/uuid.dart';
 
-/// State for the tokens sync coordinator.
 class TokensSyncState {
   const TokensSyncState({
     this.syncingAddresses = const <String>{},
@@ -40,381 +31,101 @@ class TokensSyncState {
   }
 }
 
-/// Provider for the isolate-backed indexer tokens worker.
-///
-/// This is kept alive by [tokensSyncCoordinatorProvider] to ensure the isolate
-/// persists across screens.
-final indexerTokensWorkerProvider = Provider<IndexerTokensWorker>((ref) {
-  final log = Logger('indexerTokensWorkerProvider');
-  log.info(
-    '[handshake] provider created — new IndexerTokensWorker instance, '
-    'spawning isolate now',
-  );
-
-  final worker = IndexerTokensWorker(
-    endpoint: AppConfig.indexerApiUrl,
-    apiKey: AppConfig.indexerApiKey,
-    logger: Logger('IndexerTokensWorker'),
-  );
-
-  // Fire-and-forget start; coordinator will await readiness when needed.
-  unawaited(worker.start());
-
-  ref.onDispose(() {
-    log.info('[handshake] provider disposed — stopping worker');
-    unawaited(worker.stop());
-  });
-
-  return worker;
-});
-
-/// Coordinates isolate worker + indexer service + DB + persistence.
-///
-/// Mirrors the old repo semantics:
-/// - Isolate streams change pages for UPDATE_TOKENS_IN_ISOLATE
-/// - Main isolate extracts tokenIds/tokenCids, fetches tokens, ingests, deletes missing
-/// - Anchor persisted per address after each page
 class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
-  // late final is wrong here: Notifier.build() can be called again on
-  // provider invalidation, which would re-assign these and throw
-  // LateInitializationError. Use plain late (mutable) instead.
-  late Logger _log;
-  late IndexerTokensWorker _worker;
-  late AppStateService _appStateService;
-
-  StreamSubscription<TokensWorkerMessage>? _sub;
+  late final Logger _log;
   Timer? _pollTimer;
-
-  // Track per-sync request state so callers can await completion (old repo style).
-  final Map<String, Completer<void>> _syncCompleters = {};
-  final Map<String, List<String>> _syncAddressesByUuid = {};
-  final Map<String, Future<void>> _inFlightByUuid = {};
-  final Map<String, Completer<List<AssetToken>>> _fetchManualTokenCompleters =
-      {};
   bool _isStoppingForReset = false;
 
   @override
   TokensSyncState build() {
     _log = Logger('TokensSyncCoordinator');
-    _worker = ref.read(indexerTokensWorkerProvider);
-    _appStateService = ref.read(appStateServiceProvider);
-
-    _sub = _worker.messages.listen(_handleWorkerMessage);
-
-    // Pause/resume polling when the app goes background/foreground.
-    ref.listen<AppLifecycleState>(appLifecycleProvider, (_, next) {
-      if (next == AppLifecycleState.paused ||
-          next == AppLifecycleState.inactive ||
-          next == AppLifecycleState.detached) {
-        pausePolling();
-      } else if (next == AppLifecycleState.resumed) {
-        resumePolling();
-      }
-    });
-
     ref.onDispose(() {
-      unawaited(_sub?.cancel());
       _pollTimer?.cancel();
     });
-
     return const TokensSyncState();
   }
 
-  /// Start polling all address playlists periodically.
-  ///
-  /// Note: Caller decides the interval; this matches old repo style timers.
   void startPolling({Duration interval = const Duration(minutes: 5)}) {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(interval, (_) {
-      unawaited(pollAllAddressesOnce());
+      unawaited(syncAllTrackedAddresses());
     });
     _log.info('Started polling at interval=$interval');
   }
 
   void pausePolling() {
-    if (_pollTimer == null) return;
     _pollTimer?.cancel();
     _pollTimer = null;
-    _log.info('Paused polling');
   }
 
   void resumePolling() {
     if (_pollTimer != null) return;
     startPolling();
-    _log.info('Resumed polling');
   }
 
-  /// Poll all known addresses once (no timer).
-  Future<void> pollAllAddressesOnce() async {
+  Future<void> pollAllAddressesOnce() => syncAllTrackedAddresses();
+
+  Future<void> syncAllTrackedAddresses() async {
     if (_isStoppingForReset) return;
-    final database = ref.read(databaseServiceProvider);
-    final playlists = await database.getAddressPlaylists();
-    final addresses = playlists
-        .map((p) => p.ownerAddress)
-        .whereType<String>()
-        .toList();
+    final appState = ref.read(appStateServiceProvider);
+    final addresses = await appState.getTrackedPersonalAddresses();
     if (addresses.isEmpty) return;
     await syncAddresses(addresses);
   }
 
-  /// Sync a list of addresses.
   Future<void> syncAddresses(List<String> addresses) async {
-    if (_isStoppingForReset) return;
-    if (addresses.isEmpty) return;
+    if (_isStoppingForReset || addresses.isEmpty) return;
 
-    // Ensure isolate is ready.
-    _log.info('[handshake] syncAddresses: awaiting _worker.ready');
-    await _worker.ready;
-    _log.info('[handshake] syncAddresses: _worker.ready resolved');
-
-    // Resolve persisted anchors (default to 0 if missing).
-    final anchors = <AddressAnchor>[];
+    final byKey = <String, String>{};
     for (final address in addresses) {
-      final anchor = await _appStateService.getAddressAnchor(address) ?? 0;
-      anchors.add(AddressAnchor(address: address, anchor: anchor));
+      final trimmed = address.trim();
+      if (trimmed.isEmpty) continue;
+      byKey.putIfAbsent(trimmed.toUpperCase(), () => trimmed);
     }
+    final normalized = byKey.values.toList(growable: false);
+    if (normalized.isEmpty) return;
 
     state = state.copyWith(
-      syncingAddresses: {...state.syncingAddresses, ...addresses},
-      errorMessage: null,
+      syncingAddresses: {...state.syncingAddresses, ...normalized},
     );
 
-    final uuid = DateTime.now().microsecondsSinceEpoch.toString();
-    _syncAddressesByUuid[uuid] = [...addresses];
-    final completer = Completer<void>();
-    _syncCompleters[uuid] = completer;
-    _worker.updateTokensInIsolate(uuid: uuid, addressAnchors: anchors);
-
-    // Await completion signal from isolate (success/failure).
-    await completer.future;
-  }
-
-  /// Trigger indexing for a list of addresses.
-  Future<void> reindexAddresses(List<String> addresses) async {
-    if (_isStoppingForReset) return;
-    if (addresses.isEmpty) return;
-    await _worker.ready;
-    final uuid = DateTime.now().microsecondsSinceEpoch.toString();
-    _worker.reindexAddressesList(uuid: uuid, addresses: addresses);
-  }
-
-  /// Notify isolate when a new channel was ingested.
-  Future<void> notifyChannelIngested() async {
-    if (_isStoppingForReset) return;
-    await _worker.ready;
-    final uuid = DateTime.now().microsecondsSinceEpoch.toString();
-    _worker.notifyChannelIngested(uuid: uuid);
-  }
-
-  void _handleWorkerMessage(TokensWorkerMessage message) {
-    if (_isStoppingForReset) {
-      return;
-    }
-
-    if (message is UpdateTokensData) {
-      // Serialize per-uuid work so UpdateTokensSuccess can await completion.
-      final prev = _inFlightByUuid[message.uuid] ?? Future<void>.value();
-      _inFlightByUuid[message.uuid] = prev.then(
-        (_) => _handleUpdateTokensData(message),
-      );
-      return;
-    }
-
-    if (message is FetchManualTokensDone) {
-      final completer = _fetchManualTokenCompleters.remove(message.uuid);
-      if (completer != null && !completer.isCompleted) {
-        completer.complete(message.tokens);
-      }
-      return;
-    }
-
-    if (message is FetchManualTokensFailure) {
-      final completer = _fetchManualTokenCompleters.remove(message.uuid);
-      if (completer != null && !completer.isCompleted) {
-        completer.completeError(message.exception);
-      }
-      return;
-    }
-
-    if (message is UpdateTokensSuccess) {
-      unawaited(_handleUpdateTokensSuccess(message));
-      return;
-    }
-
-    if (message is UpdateTokensFailure) {
-      unawaited(_handleUpdateTokensFailure(message));
-      return;
-    }
-
-    if (message is ReindexAddressesListDone) {
-      unawaited(_handleReindexAddressesDone(message));
-      return;
-    }
-
-    if (message is ReindexAddressesFailure) {
-      state = state.copyWith(errorMessage: message.exception.toString());
-      return;
-    }
-
-    if (message is ChannelIngestedAck) {
-      // Feed enrichment workers have been removed; curated feed data is
-      // pre-loaded from the seed database. No further action needed here.
-      return;
-    }
-  }
-
-  Future<void> _handleUpdateTokensSuccess(UpdateTokensSuccess msg) async {
-    // Ensure all pending UpdateTokensData work is finished for this uuid.
-    await (_inFlightByUuid[msg.uuid] ?? Future<void>.value());
-    _inFlightByUuid.remove(msg.uuid);
-
-    // Durability: flush final page writes for this sync run.
     try {
-      await ref.read(databaseServiceProvider).checkpoint();
-    } on Exception catch (e, stack) {
-      _log.warning('Checkpoint failed after token sync success', e, stack);
-    }
-
-    final addresses = _syncAddressesByUuid.remove(msg.uuid) ?? const <String>[];
-    final remaining = {...state.syncingAddresses}..removeAll(addresses);
-    state = state.copyWith(
-      syncingAddresses: remaining,
-      lastSyncCompleted: DateTime.now(),
-    );
-
-    final completer = _syncCompleters.remove(msg.uuid);
-    if (completer != null && !completer.isCompleted) {
-      completer.complete();
-    }
-  }
-
-  Future<void> _handleUpdateTokensFailure(UpdateTokensFailure msg) async {
-    await (_inFlightByUuid[msg.uuid] ?? Future<void>.value());
-    _inFlightByUuid.remove(msg.uuid);
-
-    state = state.copyWith(errorMessage: msg.exception.toString());
-
-    final addresses = _syncAddressesByUuid.remove(msg.uuid) ?? msg.addresses;
-    final remaining = {...state.syncingAddresses}..removeAll(addresses);
-    state = state.copyWith(syncingAddresses: remaining);
-
-    final completer = _syncCompleters.remove(msg.uuid);
-    if (completer != null && !completer.isCompleted) {
-      completer.completeError(msg.exception);
-    }
-  }
-
-  Future<void> _handleReindexAddressesDone(ReindexAddressesListDone msg) async {
-    for (final result in msg.results) {
-      if (result.address.isEmpty) continue;
-      await _appStateService.setAddressIndexingStatus(
-        address: result.address,
-        status: AddressIndexingProcessStatus(
-          state: AddressIndexingProcessState.waitingForIndexStatus,
-          updatedAt: DateTime.now().toUtc(),
-        ),
+      final service = ref.read(personalTokensSyncServiceProvider);
+      await service.syncAddresses(addresses: normalized);
+      final remaining = {...state.syncingAddresses}..removeAll(normalized);
+      state = state.copyWith(
+        syncingAddresses: remaining,
+        lastSyncCompleted: DateTime.now(),
       );
-    }
-  }
-
-  Future<void> _handleUpdateTokensData(UpdateTokensData msg) async {
-    final database = ref.read(databaseServiceProvider);
-
-    // Extract tokenIds/tokenCids from changes.
-    final tokenIds = <int>{};
-    final tokenCids = <String>{};
-    for (final change in msg.changesList.items) {
-      final tokenId = change.tokenId;
-      final tokenCid = change.tokenCid;
-      if (tokenId != null) tokenIds.add(tokenId);
-      if (tokenCid != null && tokenCid.isNotEmpty) tokenCids.add(tokenCid);
-    }
-
-    // Fetch tokens via worker isolate using token IDs + owners.
-    final List<AssetToken> tokens;
-    if (tokenIds.isEmpty) {
-      tokens = const <AssetToken>[];
-    } else {
-      final fetchUuid = const Uuid().v1();
-      final completer = Completer<List<AssetToken>>();
-      _fetchManualTokenCompleters[fetchUuid] = completer;
-      _worker.getManualTokens(
-        uuid: fetchUuid,
-        tokenIds: tokenIds.toList(),
-        owners: msg.addresses,
+    } on Object catch (e) {
+      final remaining = {...state.syncingAddresses}..removeAll(normalized);
+      state = state.copyWith(
+        syncingAddresses: remaining,
+        errorMessage: e.toString(),
       );
-      try {
-        tokens = await completer.future;
-      } on Exception catch (e) {
-        state = state.copyWith(errorMessage: e.toString());
-        return;
-      }
-    }
-
-    final returnedCids = tokens.map((t) => t.cid).toSet();
-    final missingCids = tokenCids
-        .where((cid) => !returnedCids.contains(cid))
-        .toList();
-
-    for (final address in msg.addresses) {
-      if (tokens.isNotEmpty) {
-        await database.ingestTokensForAddress(
-          address: address,
-          tokens: tokens,
-        );
-      }
-
-      if (missingCids.isNotEmpty) {
-        await database.deleteTokensByCids(address: address, cids: missingCids);
-      }
-
-      // Persist anchor after each page (old semantics).
-      final nextAnchor = msg.changesList.nextAnchor;
-      if (nextAnchor != null) {
-        await _appStateService.setAddressAnchor(
-          address: address,
-          anchor: nextAnchor,
-        );
-      }
+      rethrow;
     }
   }
 
-  /// Stops token sync activity and waits for in-flight DB writes to settle.
-  ///
-  /// Used by local-data reset flows to guarantee no pending personal-playlist
-  /// writes race with SQLite truncation.
+  Future<void> reindexAddresses(List<String> addresses) async {
+    if (_isStoppingForReset || addresses.isEmpty) return;
+    final appState = ref.read(appStateServiceProvider);
+    for (final address in addresses) {
+      await appState.trackPersonalAddress(address);
+    }
+    await syncAddresses(addresses);
+  }
+
+  Future<void> notifyChannelIngested() async {
+    return;
+  }
+
   Future<void> stopAndDrainForReset() async {
     _isStoppingForReset = true;
     pausePolling();
-
-    await _worker.stop();
-
-    // Unblock any in-flight UpdateTokensData handlers that are awaiting a token
-    // fetch response. We complete these before awaiting pending DB writes to
-    // avoid deadlocks where stop waits for work that is itself waiting on stop.
-    for (final completer in _fetchManualTokenCompleters.values) {
-      if (!completer.isCompleted) {
-        completer.complete(const <AssetToken>[]);
-      }
-    }
-    _fetchManualTokenCompleters.clear();
-
-    final pendingWrites = _inFlightByUuid.values.toList(growable: false);
-    if (pendingWrites.isNotEmpty) {
-      await Future.wait<void>(pendingWrites);
-    }
-    _inFlightByUuid.clear();
-
     if (ref.mounted) {
-      state = const TokensSyncState(syncingAddresses: <String>{});
+      state = const TokensSyncState();
     }
-    for (final completer in _syncCompleters.values) {
-      if (!completer.isCompleted) {
-        completer.complete();
-      }
-    }
-    _syncCompleters.clear();
-    _syncAddressesByUuid.clear();
   }
 }
 

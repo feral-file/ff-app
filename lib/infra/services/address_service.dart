@@ -7,7 +7,7 @@ import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/pending_addresses_store.dart';
-import 'package:app/infra/workers/worker_scheduler.dart';
+import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:logging/logging.dart';
 
 /// Service for managing user wallet addresses and address-based playlists.
@@ -17,11 +17,11 @@ class AddressService {
     required DatabaseService databaseService,
     required IndexerSyncService indexerSyncService,
     required DomainAddressService domainAddressService,
-    required WorkerScheduler workerScheduler,
+    required PersonalTokensSyncService personalTokensSyncService,
     required PendingAddressesStore pendingAddressesStore,
   }) : _databaseService = databaseService,
        _domainAddressService = domainAddressService,
-       _workerScheduler = workerScheduler,
+       _personalTokensSyncService = personalTokensSyncService,
        _pendingAddressesStore = pendingAddressesStore {
     _indexerSyncService = indexerSyncService;
     _log = Logger('AddressService');
@@ -29,7 +29,7 @@ class AddressService {
 
   final DatabaseService _databaseService;
   final DomainAddressService _domainAddressService;
-  final WorkerScheduler _workerScheduler;
+  final PersonalTokensSyncService _personalTokensSyncService;
   final PendingAddressesStore _pendingAddressesStore;
   late final IndexerSyncService _indexerSyncService;
   late final Logger _log;
@@ -63,6 +63,7 @@ class AddressService {
   Future<Playlist> addAddress({
     required WalletAddress walletAddress,
     String channelId = 'my_collection',
+    bool syncNow = true,
   }) async {
     try {
       final chain = walletAddress.chain;
@@ -76,6 +77,11 @@ class AddressService {
         // DB not ready yet: persist the address in the pending store so it
         // survives navigation and is migrated to SQLite after the seed lands.
         await _pendingAddressesStore.addAddress(normalizedAddress);
+        if (syncNow) {
+          _scheduleAddressIndexing(normalizedAddress);
+        } else {
+          await _personalTokensSyncService.trackAddress(normalizedAddress);
+        }
         _log.info(
           'Database not ready – address queued for post-seed migration: '
           '$normalizedAddress',
@@ -89,7 +95,11 @@ class AddressService {
       final existing = await _getAddressPlaylistByOwner(normalizedAddress);
       if (existing != null) {
         _log.info('Address playlist already exists: ${existing.id}');
-        _scheduleAddressIndexing(normalizedAddress);
+        if (syncNow) {
+          _scheduleAddressIndexing(normalizedAddress);
+        } else {
+          await _personalTokensSyncService.trackAddress(normalizedAddress);
+        }
         return existing;
       }
 
@@ -99,7 +109,11 @@ class AddressService {
       );
 
       await _databaseService.ingestPlaylist(playlist);
-      _scheduleAddressIndexing(normalizedAddress);
+      if (syncNow) {
+        _scheduleAddressIndexing(normalizedAddress);
+      } else {
+        await _personalTokensSyncService.trackAddress(normalizedAddress);
+      }
 
       _log.info('Added address playlist: ${playlist.id}');
       return playlist;
@@ -111,16 +125,23 @@ class AddressService {
 
   void _scheduleAddressIndexing(String normalizedAddress) {
     unawaited(
-      _workerScheduler.onAddressAdded(normalizedAddress).catchError((
-        Object error,
-        StackTrace stack,
-      ) {
-        _log.warning(
-          'Background indexing schedule failed for $normalizedAddress',
-          error,
-          stack,
-        );
-      }),
+      _personalTokensSyncService
+          .trackAddress(normalizedAddress)
+          .then((_) {
+            return _personalTokensSyncService.syncAddresses(
+              addresses: <String>[normalizedAddress],
+            );
+          })
+          .catchError((
+            Object error,
+            StackTrace stack,
+          ) {
+            _log.warning(
+              'Background indexing schedule failed for $normalizedAddress',
+              error,
+              stack,
+            );
+          }),
     );
   }
 
@@ -137,7 +158,7 @@ class AddressService {
       final playlistId = PlaylistExt.addressPlaylistId(normalizedAddress);
 
       _log.info('Removing address: $normalizedAddress');
-      await _workerScheduler.onAddressRemoved(normalizedAddress);
+      await _personalTokensSyncService.untrackAddress(normalizedAddress);
 
       final playlist = await _databaseService.getPlaylistById(playlistId);
       if (playlist == null) {

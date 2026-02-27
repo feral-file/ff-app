@@ -26,6 +26,7 @@ class AddAliasScreenPayload {
   const AddAliasScreenPayload({
     required this.address,
     this.domain,
+    this.syncNow = true,
   });
 
   /// The verified address to add alias for
@@ -33,6 +34,9 @@ class AddAliasScreenPayload {
 
   /// The domain of verified address
   final String? domain;
+
+  /// Whether token fetching starts immediately after adding.
+  final bool syncNow;
 }
 
 /// Screen for adding alias to a verified address.
@@ -74,9 +78,15 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
   }
 
   void _handleAddAddress({required bool skipAlias}) {
-    final alias = skipAlias ? widget.payload.domain : _inputController.text.trim();
+    final alias = skipAlias
+        ? widget.payload.domain
+        : _inputController.text.trim();
     unawaited(
-      ref.read(addAliasProvider.notifier).add(widget.payload.address, alias),
+      ref
+          .read(
+            addAliasProvider.notifier,
+          )
+          .add(widget.payload.address, alias, syncNow: widget.payload.syncNow),
     );
   }
 

@@ -11,7 +11,6 @@ import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/converters.dart';
-import 'package:app/infra/database/database_write_queue.dart';
 import 'package:app/infra/database/token_transformer.dart';
 import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
@@ -37,53 +36,6 @@ class DatabaseService {
   static const int enrichmentStatusEnriched = 1;
   static const int enrichmentStatusFailed = 2;
 
-  // Lazily initialised write queue. Null until the first worker-write call
-  // or until AppDatabase.driftConnectPort becomes available.
-  DatabaseWriteQueue? _writeQueue;
-  bool _writeQueueInitialising = false;
-  final List<Completer<DatabaseWriteQueue>> _writeQueueWaiters = [];
-
-  /// Returns the [DatabaseWriteQueue], creating it on first call.
-  ///
-  /// When [AppDatabase.driftConnectPort] is null (e.g. in-memory test DB),
-  /// returns null and callers fall back to direct writes on the calling
-  /// isolate — same as pre-queue behaviour.
-  Future<DatabaseWriteQueue?> _getOrCreateWriteQueue() async {
-    if (_writeQueue != null) return _writeQueue;
-
-    final connectPort = AppDatabase.driftConnectPort;
-    if (connectPort == null) return null;
-
-    // Guard against concurrent initialisation attempts.
-    if (_writeQueueInitialising) {
-      final completer = Completer<DatabaseWriteQueue>();
-      _writeQueueWaiters.add(completer);
-      return completer.future;
-    }
-
-    _writeQueueInitialising = true;
-    try {
-      _writeQueue = await DatabaseWriteQueue.spawn(
-        driftConnectPort: connectPort,
-      );
-      _log.info('DatabaseWriteQueue started');
-      for (final w in _writeQueueWaiters) {
-        w.complete(_writeQueue);
-      }
-      _writeQueueWaiters.clear();
-      return _writeQueue;
-    } on Object catch (e, st) {
-      _log.warning('Failed to start DatabaseWriteQueue; using fallback', e, st);
-      for (final w in _writeQueueWaiters) {
-        w.completeError(e, st);
-      }
-      _writeQueueWaiters.clear();
-      return null;
-    } finally {
-      _writeQueueInitialising = false;
-    }
-  }
-
   // ── Worker write methods (off-main-isolate path) ──────────────────────────
 
   /// Ingests raw token JSON for [address] via the background write queue.
@@ -95,20 +47,10 @@ class DatabaseService {
     required String address,
     required List<Object?> rawTokensJson,
   }) async {
-    final queue = await _getOrCreateWriteQueue();
-    if (queue != null) {
-      await queue.ingestTokensForAddressFromRaw(
-        address: address,
-        rawTokensJson: rawTokensJson,
-      );
-      return;
-    }
-    // Fallback: deserialise and write on current isolate.
-    final tokens =
-        rawTokensJson
-            .cast<Map<Object?, Object?>>()
-            .map((e) => AssetToken.fromRest(Map<String, dynamic>.from(e)))
-            .toList(growable: false);
+    final tokens = rawTokensJson
+        .cast<Map<Object?, Object?>>()
+        .map((e) => AssetToken.fromRest(Map<String, dynamic>.from(e)))
+        .toList(growable: false);
     await ingestTokensForAddress(address: address, tokens: tokens);
   }
 
@@ -120,30 +62,18 @@ class DatabaseService {
     required List<Object?> rawEnrichments,
     required List<String> failedItemIds,
   }) async {
-    final queue = await _getOrCreateWriteQueue();
-    if (queue != null) {
-      if (rawEnrichments.isNotEmpty) {
-        await queue.enrichBatchFromRaw(rawEnrichments: rawEnrichments);
-      }
-      if (failedItemIds.isNotEmpty) {
-        await queue.markEnrichmentFailed(itemIds: failedItemIds);
-      }
-      return;
-    }
-    // Fallback: deserialise and write on current isolate.
-    final enrichments =
-        rawEnrichments
-            .cast<Map<Object?, Object?>>()
-            .map((e) {
-              final m = Map<String, dynamic>.from(e);
-              return (
-                m['itemId'] as String,
-                AssetToken.fromRest(
-                  Map<String, dynamic>.from(m['tokenJson'] as Map),
-                ),
-              );
-            })
-            .toList(growable: false);
+    final enrichments = rawEnrichments
+        .cast<Map<Object?, Object?>>()
+        .map((e) {
+          final m = Map<String, dynamic>.from(e);
+          return (
+            m['itemId'] as String,
+            AssetToken.fromRest(
+              Map<String, dynamic>.from(m['tokenJson'] as Map),
+            ),
+          );
+        })
+        .toList(growable: false);
     if (enrichments.isNotEmpty) {
       await enrichPlaylistItemsWithTokensBatch(enrichments: enrichments);
     }
@@ -152,10 +82,9 @@ class DatabaseService {
     }
   }
 
-  /// Closes the [DatabaseWriteQueue] if it was started.
+  /// Kept for API compatibility; no background write queue is used.
   Future<void> closeWriteQueue() async {
-    await _writeQueue?.dispose();
-    _writeQueue = null;
+    return;
   }
 
   // ===========================================================================

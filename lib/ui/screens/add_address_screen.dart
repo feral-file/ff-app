@@ -25,16 +25,27 @@ import 'package:logging/logging.dart';
 
 final _log = Logger('AddAddressScreen');
 
+/// Payload for add address screen.
+class AddAddressScreenPayload {
+  /// Constructor
+  const AddAddressScreenPayload({
+    this.isFromOnboarding = false,
+  });
+
+  /// Whether this screen is opened from onboarding.
+  final bool isFromOnboarding;
+}
+
 /// Onboarding page for adding a new view-only address.
 class AddAddressScreen extends ConsumerStatefulWidget {
   /// Constructor
   const AddAddressScreen({
+    required this.payload,
     super.key,
-    this.isFromOnboarding = true,
   });
 
-  /// Whether this page is part of onboarding flow.
-  final bool isFromOnboarding;
+  /// Payload for the screen.
+  final AddAddressScreenPayload payload;
 
   @override
   ConsumerState<AddAddressScreen> createState() =>
@@ -67,8 +78,8 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
   }
 
   /// Handle QR scan
-  void _handleQRScan() async {
-    // TODO: Implement QR scan navigation
+  void _handleQRScan() {
+    // TODO(feral-file): Implement QR scan navigation.
     // For now, this is a placeholder
     _log.info('QR scan not yet implemented');
   }
@@ -81,7 +92,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
     ref.listen<AsyncValue<Address?>>(
       addAddressProvider,
       (previous, next) {
-        // When address is verified (AsyncData with non-null value), navigate to alias screen
+        // When verification succeeds, navigate to the alias screen.
         if (next is AsyncData<Address?> &&
             next.value != null &&
             (previous is! AsyncData<Address?> || previous.value == null)) {
@@ -89,6 +100,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
             final payload = AddAliasScreenPayload(
               address: next.value?.address ?? '',
               domain: next.value?.domain,
+              syncNow: !widget.payload.isFromOnboarding,
             );
             unawaited(context.push(Routes.addAliasPage, extra: payload));
           }
@@ -163,7 +175,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                           onTap: _handleQRScan,
                           child: SvgPicture.asset('assets/images/scan.svg'),
                         ),
-                      ]
+                      ],
                     ],
                   ),
                 ),
@@ -173,7 +185,8 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                   alignment: Alignment.centerLeft,
                   child: addAddressState.hasError
                       ? Text(
-                          "We couldn't validate this address. Check it and try again.",
+                          "We couldn't validate this address. "
+                          'Check it and try again.',
                           style: AppTypography.body(context).red,
                         )
                       : const SizedBox.shrink(),

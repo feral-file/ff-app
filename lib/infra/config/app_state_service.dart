@@ -1,4 +1,3 @@
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/objectbox.g.dart'
@@ -98,6 +97,8 @@ abstract class AppStateServiceBase {
   Future<void> clearAddressState(String address);
   Future<Map<String, AddressIndexingProcessStatus>>
   getAllAddressIndexingStatuses();
+  Future<void> trackPersonalAddress(String address);
+  Future<List<String>> getTrackedPersonalAddresses();
   void debugLogSummary();
 }
 
@@ -116,7 +117,7 @@ class AppStateService extends AppStateServiceBase {
 
   static const _scope = 'app';
   static const _defaultCacheDurationSeconds = 86400;
-  static final _defaultLastFeedUpdatedAt = DateTime(2023).toUtc();
+  static final DateTime _defaultLastFeedUpdatedAt = DateTime(2023).toUtc();
 
   final Box<AppStateEntity> _appStateBox;
   final Box<AppStateAddressEntity> _appStateAddressBox;
@@ -488,6 +489,34 @@ class AppStateService extends AppStateServiceBase {
   }
 
   @override
+  Future<void> trackPersonalAddress(String address) async {
+    await _lock.synchronized(() async {
+      final normalized = _normalizeAddressKey(address);
+      if (normalized.isEmpty || normalized.startsWith('FEED::')) {
+        return;
+      }
+      final row = _getOrCreateAddressState(normalized)
+        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
+      _appStateAddressBox.put(row);
+    });
+  }
+
+  @override
+  Future<List<String>> getTrackedPersonalAddresses() async {
+    return _lock.synchronized(() {
+      final addresses = _appStateAddressBox
+          .getAll()
+          .map((row) => row.normalizedAddress)
+          .where((address) => address.isNotEmpty)
+          .where((address) => !address.startsWith('FEED::'))
+          .toSet()
+          .toList();
+      addresses.sort();
+      return addresses;
+    });
+  }
+
+  @override
   void debugLogSummary() {
     _log.fine(
       'AppState summary: app=${_appStateBox.count()}, address=${_appStateAddressBox.count()}',
@@ -507,12 +536,6 @@ final appStateServiceProvider = Provider<AppStateService>((ref) {
 
 /// Provider that reads added addresses from SQLite source of truth.
 final addedAddressesProvider = FutureProvider<List<String>>((ref) async {
-  final databaseService = ref.watch(databaseServiceProvider);
-  final playlists = await databaseService.getAddressPlaylists();
-  return playlists
-      .map((playlist) => playlist.ownerAddress)
-      .whereType<String>()
-      .map((address) => address.toUpperCase())
-      .toSet()
-      .toList();
+  final appStateService = ref.watch(appStateServiceProvider);
+  return appStateService.getTrackedPersonalAddresses();
 });
