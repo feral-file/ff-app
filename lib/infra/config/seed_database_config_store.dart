@@ -7,7 +7,7 @@ import 'package:objectbox/objectbox.dart';
 /// Reuses [RemoteAppConfigEntity] with a separate scope row to avoid adding a
 /// new ObjectBox entity/schema for one ETag field.
 class SeedDatabaseConfigStore {
-  /// Creates a store bound to the shared remote-config ObjectBox box.
+  /// Creates a store bound to the shared app-config ObjectBox box.
   SeedDatabaseConfigStore(this._box);
 
   /// ObjectBox scope key used for seed DB metadata rows.

@@ -6,7 +6,6 @@ import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
-import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
@@ -101,13 +100,6 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap> {
 
     final bootstrap = ref.read(bootstrapProvider.notifier);
     await bootstrap.bootstrap();
-
-    final changed = await ref
-        .read(remoteAppConfigProvider.notifier)
-        .refreshInBackground();
-    if (changed) {
-      await bootstrap.bootstrap();
-    }
 
     // After the database is open and bootstrap is done, migrate any addresses
     // that were added during onboarding before the seed was downloaded.

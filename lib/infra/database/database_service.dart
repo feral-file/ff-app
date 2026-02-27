@@ -1222,7 +1222,7 @@ class DatabaseService {
 
   /// Ingest one DP1 channel and all its playlists/items in a single transaction.
   ///
-  /// This is optimized for remote-config channel bootstrap where one channel URL
+  /// This is optimized for curated channel bootstrap where one channel URL
   /// should be persisted atomically to reduce lock churn and watcher invalidation.
   Future<void> ingestDP1ChannelWithPlaylistsBare({
     required String baseUrl,

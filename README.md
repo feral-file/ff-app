@@ -114,7 +114,6 @@ Required keys (ask team for dev/staging values):
 - `DP1_FEED_API_KEY`
 - `INDEXER_API_KEY`
 - `FF1_RELAYER_API_KEY` (or `TV_API_KEY`)
-- `REMOTE_CONFIG_URL`
 
 If any required key is missing, the app will show a configuration error screen on launch.
 

@@ -1,6 +1,5 @@
 import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/app/providers/remote_config_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -94,16 +93,8 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       await bootstrapService.bootstrap();
       _log.info('My Collection channel created');
 
-      // Step 2: Persist publisher metadata from remote config so channel
-      // ordering remains consistent. No network feed fetch is performed here;
-      // curated content is served from the seed database.
-      state = state.copyWith(message: 'Setting up publishers...');
-      _log.info('Persisting publisher metadata from remote config...');
-
-      final publishers = ref.read(remoteConfigPublishersProvider);
-      await ref
-          .read(feedRegistryProvider.notifier)
-          .setupRemoteConfigChannels(publishers);
+      // Initialize feed services used by lifecycle/reset flows.
+      await ref.read(feedManagerProvider).init();
 
       // Keep the auto-connect watcher alive to automatically connect to relayer
       // when active FF1 device changes

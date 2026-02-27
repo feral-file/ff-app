@@ -4,7 +4,6 @@ import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/config/app_state_service.dart';
-import 'package:app/infra/config/remote_config_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
@@ -175,14 +174,6 @@ class MockFF1BluetoothDeviceService implements FF1BluetoothDeviceService {
     String deviceId,
     Map<String, dynamic> metadata,
   ) async {}
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
-}
-
-class MockRemoteConfigService implements RemoteConfigService {
-  @override
-  Future<CachedRemoteConfig?> refreshIfChanged() async => null;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();

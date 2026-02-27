@@ -322,7 +322,7 @@ class AppStateService extends AppStateServiceBase {
     });
   }
 
-  /// Global feed last-updated timestamp from remote config.
+  /// Global feed last-updated timestamp.
   @override
   Future<DateTime> getLastFeedUpdatedAt() async {
     return _lock.synchronized(() {
@@ -334,7 +334,7 @@ class AppStateService extends AppStateServiceBase {
     });
   }
 
-  /// Set global feed last-updated timestamp from remote config.
+  /// Set global feed last-updated timestamp.
   @override
   Future<void> setLastFeedUpdatedAt(DateTime time) async {
     await _lock.synchronized(() async {

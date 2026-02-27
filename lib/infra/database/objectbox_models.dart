@@ -105,7 +105,7 @@ class FF1BluetoothDeviceEntity {
   }
 }
 
-/// ObjectBox entity for caching remote app config payload and ETag.
+/// ObjectBox entity for caching app metadata payload and ETag.
 ///
 /// A single row (scope=`app`) is used as the source for local-first startup.
 @Entity()
@@ -118,13 +118,13 @@ class RemoteAppConfigEntity {
   @Unique()
   String scope;
 
-  /// Last known ETag from the remote config endpoint.
+  /// Last known ETag for app metadata.
   String etag;
 
   /// Cached publishers payload serialized as JSON.
   String curatedChannelUrlsJson;
 
-  /// Feed cache duration in seconds from remote config.
+  /// Feed cache duration in seconds.
   int feedCacheDurationSec;
 
   /// Feed content last-updated timestamp (microseconds UTC).
@@ -167,7 +167,7 @@ class AppStateEntity {
   /// Usage: compared against per-feed last refresh timestamps.
   int feedCacheDurationSeconds;
 
-  /// Feed content last-updated timestamp from remote config.
+  /// Feed content last-updated timestamp.
   ///
   /// Usage: if newer than per-feed refresh timestamp, feed should reload.
   int feedLastUpdatedAtUs;
