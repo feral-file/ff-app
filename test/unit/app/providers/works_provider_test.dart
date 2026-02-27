@@ -94,6 +94,28 @@ void main() {
 
       expect(container.read(worksProvider).works.first.title, 'Before');
     });
+
+    test('loads empty when database is unavailable', () async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      final dbService = DatabaseService(db);
+      await db.close();
+
+      final container = ProviderContainer.test(
+        overrides: [
+          databaseServiceProvider.overrideWith((ref) => dbService),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(worksProvider.notifier);
+      notifier.setActive(true);
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+
+      final state = container.read(worksProvider);
+      expect(state.works, isEmpty);
+      expect(state.error, isNull);
+      expect(state.hasMore, isFalse);
+    });
   });
 }
 

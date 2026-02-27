@@ -32,13 +32,13 @@ class TokensSyncState {
 }
 
 class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
-  late final Logger _log;
+  final Logger _log = Logger('TokensSyncCoordinator');
   Timer? _pollTimer;
   bool _isStoppingForReset = false;
 
   @override
   TokensSyncState build() {
-    _log = Logger('TokensSyncCoordinator');
+    _isStoppingForReset = false;
     ref.onDispose(() {
       _pollTimer?.cancel();
     });

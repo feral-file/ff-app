@@ -103,5 +103,27 @@ void main() {
         expect(state.isLoading, isFalse);
       },
     );
+
+    test('loadPlaylists returns empty when database is unavailable', () async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      final dbService = DatabaseService(db);
+      await db.close();
+
+      final container = ProviderContainer.test(
+        overrides: [
+          databaseServiceProvider.overrideWith((ref) => dbService),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(playlistsProvider(PlaylistType.dp1).notifier)
+          .loadPlaylists();
+
+      final state = container.read(playlistsProvider(PlaylistType.dp1));
+      expect(state.playlists, isEmpty);
+      expect(state.error, isNull);
+      expect(state.hasMore, isFalse);
+    });
   });
 }

@@ -92,6 +92,18 @@ class SeedDatabaseService {
     }
   }
 
+  /// Deletes the SQLite main database file and sidecar WAL/SHM files.
+  Future<void> deleteDatabaseFiles() async {
+    final dbPath = await databasePath();
+    final paths = <String>[dbPath, '$dbPath-wal', '$dbPath-shm'];
+    for (final path in paths) {
+      final file = File(path);
+      if (file.existsSync()) {
+        await file.delete();
+      }
+    }
+  }
+
   Future<void> _cleanupTemp(String tempPath) async {
     final f = File(tempPath);
     if (f.existsSync()) {

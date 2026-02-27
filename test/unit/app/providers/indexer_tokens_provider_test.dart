@@ -102,6 +102,45 @@ void main() {
     expect(state.syncingAddresses, isEmpty);
   });
 
+  test('tokens sync coordinator rebuilds safely after invalidation', () {
+    final container = ProviderContainer.test();
+    addTearDown(container.dispose);
+
+    // Build once.
+    expect(
+      () => container.read(tokensSyncCoordinatorProvider.notifier),
+      returnsNormally,
+    );
+
+    // Force rebuild and ensure no LateInitializationError is thrown.
+    container.invalidate(tokensSyncCoordinatorProvider);
+    expect(
+      () => container.read(tokensSyncCoordinatorProvider.notifier),
+      returnsNormally,
+    );
+  });
+
+  test('tokens sync resumes after reset invalidation', () async {
+    final fake = _FakePersonalTokensSyncService();
+
+    final container = ProviderContainer.test(
+      overrides: [
+        appStateServiceProvider.overrideWithValue(_TestAppStateService()),
+        personalTokensSyncServiceProvider.overrideWithValue(fake),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(tokensSyncCoordinatorProvider.notifier);
+    await notifier.stopAndDrainForReset();
+
+    container.invalidate(tokensSyncCoordinatorProvider);
+    final rebuilt = container.read(tokensSyncCoordinatorProvider.notifier);
+
+    await rebuilt.syncAddresses(const <String>['einstein-rosen.eth']);
+    expect(fake.lastSynced, equals(<String>['einstein-rosen.eth']));
+  });
+
   test('syncAddresses delegates to PersonalTokensSyncService', () async {
     final database = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(database.close);

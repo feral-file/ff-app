@@ -93,5 +93,27 @@ void main() {
       expect(state.channels, isEmpty);
       expect(state.isLoading, isFalse);
     });
+
+    test('loadChannels returns empty when database is unavailable', () async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      final dbService = DatabaseService(db);
+      await db.close();
+
+      final container = ProviderContainer.test(
+        overrides: [
+          databaseServiceProvider.overrideWith((ref) => dbService),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(channelsProvider(ChannelType.dp1).notifier)
+          .loadChannels();
+
+      final state = container.read(channelsProvider(ChannelType.dp1));
+      expect(state.channels, isEmpty);
+      expect(state.error, isNull);
+      expect(state.hasMore, isFalse);
+    });
   });
 }
