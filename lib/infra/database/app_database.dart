@@ -898,6 +898,17 @@ class AppDatabase extends _$AppDatabase {
     return query.watch();
   }
 
+  /// Watch a lightweight revision signal for the items table.
+  ///
+  /// Emits the current item count and re-emits whenever rows in [items] change.
+  /// This avoids materializing all rows when callers only need change
+  /// notifications.
+  Stream<int> watchItemsRevisionSignal() {
+    final countExpr = items.id.count();
+    final query = selectOnly(items)..addColumns([countExpr]);
+    return query.watchSingle().map((row) => row.read(countExpr) ?? 0);
+  }
+
   /// Get ordered item IDs with optional [limit] and [offset].
   /// Uses the same ordering as [getItems] so pagination and diff windows align.
   Future<List<String>> getItemIds({int? limit, int? offset}) async {

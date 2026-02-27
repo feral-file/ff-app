@@ -683,6 +683,17 @@ class DatabaseService {
         .debounceTime(watchAllItemsDebounce);
   }
 
+  /// Watch only a lightweight "items changed" signal.
+  ///
+  /// Emits item count values and re-emits when the items table changes.
+  /// Consumers that only need invalidation notifications should prefer this
+  /// over [watchAllItems] to avoid materializing all rows.
+  Stream<int> watchItemsRevisionSignal() {
+    return _db
+        .watchItemsRevisionSignal()
+        .debounceTime(watchAllItemsDebounce);
+  }
+
   /// Delete playlist item by ID.
   Future<void> deletePlaylistItem(String id) async {
     try {

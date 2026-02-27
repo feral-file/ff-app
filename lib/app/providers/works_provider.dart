@@ -120,7 +120,7 @@ class WorksNotifier extends Notifier<WorksState> {
   static const int _defaultVisibleWindowSize = 24;
 
   final Logger _log = Logger('WorksNotifier');
-  StreamSubscription<List<PlaylistItem>>? _watchSub;
+  StreamSubscription<int>? _watchSub;
   Timer? _refreshDebounceTimer;
   bool _isActive = false;
   bool _isApplyingDbChanges = false;
@@ -173,7 +173,7 @@ class WorksNotifier extends Notifier<WorksState> {
     _stopWatching();
 
     final databaseService = ref.read(databaseServiceProvider);
-    _watchSub = databaseService.watchAllItems().listen(
+    _watchSub = databaseService.watchItemsRevisionSignal().listen(
       _onItemsChanged,
       onError: _onWatchError,
     );
@@ -195,7 +195,7 @@ class WorksNotifier extends Notifier<WorksState> {
     _watchSub = null;
   }
 
-  void _onItemsChanged(List<PlaylistItem> next) {
+  void _onItemsChanged(int _) {
     if (!_isActive) return;
     _scheduleDebouncedRefresh();
   }
