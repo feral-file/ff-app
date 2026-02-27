@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -7,7 +8,6 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
-import 'package:app/ui/screens/global_toast_overlay_screen.dart';
 import 'package:app/ui/screens/tabs/channels_tab_page.dart';
 import 'package:app/ui/screens/tabs/playlists_tab_page.dart';
 import 'package:app/ui/screens/tabs/search_tab_page.dart';
@@ -327,13 +327,11 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
   Future<void> _clearLocalDataAndRestartOnboarding() async {
     Navigator.of(context).pop();
 
-    final router = GoRouter.of(context);
-    unawaited(
-      router.pushNamed(
-        RouteNames.globalToast,
-        extra: const GlobalToastPayload(message: 'Cleaning local data...'),
-      ),
-    );
+    final toastOverlayId = ref
+        .read(appOverlayProvider.notifier)
+        .showToast(
+          message: 'Cleaning local data...',
+        );
     await WidgetsBinding.instance.endOfFrame;
 
     Object? cleanupError;
@@ -346,8 +344,8 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
       cleanupError = e;
       _log.severe('Forget I exist cleanup failed', e, st);
     } finally {
-      if (mounted && router.canPop()) {
-        router.pop();
+      if (mounted) {
+        ref.read(appOverlayProvider.notifier).dismissOverlay(toastOverlayId);
       }
     }
 
@@ -375,22 +373,19 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
       router.pop();
     }
 
-    unawaited(
-      router.pushNamed(
-        RouteNames.globalToast,
-        extra: const GlobalToastPayload(
+    final toastOverlayId = ref
+        .read(appOverlayProvider.notifier)
+        .showToast(
           message: 'Cleaning metadata...',
-        ),
-      ),
-    );
+        );
     await WidgetsBinding.instance.endOfFrame;
 
     try {
       await ref.read(localDataCleanupServiceProvider).rebuildMetadata();
     } finally {
       // Dismiss toast immediately after cleaning completes (no wait for refetch).
-      if (mounted && router.canPop()) {
-        router.pop();
+      if (mounted) {
+        ref.read(appOverlayProvider.notifier).dismissOverlay(toastOverlayId);
       }
     }
   }

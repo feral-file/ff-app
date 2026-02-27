@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/now_displaying/now_displaying_app_shell.dart';
+import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
@@ -10,7 +11,6 @@ import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
 import 'package:app/app/routing/router_provider.dart';
-import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -20,10 +20,9 @@ import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/theme/app_theme.dart';
-import 'package:app/ui/screens/global_toast_overlay_screen.dart';
+import 'package:app/widgets/overlays/app_global_overlay_layer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 
 /// Root application widget.
@@ -51,10 +50,14 @@ class App extends ConsumerWidget {
       theme: AppTheme.lightTheme(),
       builder: (context, child) {
         return _AppStartupBootstrap(
-          router: router,
-          child: NowDisplayingAppShell(
-            router: router,
-            child: child ?? const SizedBox.shrink(),
+          child: Stack(
+            children: [
+              NowDisplayingAppShell(
+                router: router,
+                child: child ?? const SizedBox.shrink(),
+              ),
+              const AppGlobalOverlayLayer(),
+            ],
           ),
         );
       },
@@ -64,11 +67,9 @@ class App extends ConsumerWidget {
 
 class _AppStartupBootstrap extends ConsumerStatefulWidget {
   const _AppStartupBootstrap({
-    required this.router,
     required this.child,
   });
 
-  final GoRouter router;
   final Widget child;
 
   @override
@@ -152,8 +153,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     required bool showUpdatingToast,
   }) async {
     var personalAddresses = <String>[];
-    var isToastVisible = false;
-    final router = widget.router;
+    String? toastOverlayId;
     return ref
         .read(seedDownloadProvider.notifier)
         .syncAtAppStart(
@@ -162,16 +162,12 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
               return;
             }
             if (showUpdatingToast && mounted) {
-              unawaited(
-                router.pushNamed(
-                  RouteNames.globalToast,
-                  extra: const GlobalToastPayload(
+              toastOverlayId = ref
+                  .read(appOverlayProvider.notifier)
+                  .showToast(
                     message: 'Updating feed...',
-                  ),
-                ),
-              );
+                  );
               await WidgetsBinding.instance.endOfFrame;
-              isToastVisible = true;
             }
             personalAddresses =
                 await _capturePersonalAddressesBeforeSeedReplace();
@@ -185,12 +181,9 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
               await _reconnectAfterSeedDatabaseReplace();
               await _refetchPersonalPlaylists(personalAddresses);
             } finally {
-              if (showUpdatingToast &&
-                  mounted &&
-                  isToastVisible &&
-                  router.canPop()) {
-                router.pop();
-                isToastVisible = false;
+              final overlayId = toastOverlayId;
+              if (showUpdatingToast && mounted && overlayId != null) {
+                ref.read(appOverlayProvider.notifier).dismissOverlay(overlayId);
               }
             }
           },

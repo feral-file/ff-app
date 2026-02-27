@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:app/app/routing/routes.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
@@ -13,7 +13,6 @@ const _routesThatHideNowDisplayingBar = <String>[
   Routes.onboardingIntroducePage,
   Routes.onboardingAddAddressPage,
   Routes.onboardingSetupFf1Page,
-  Routes.globalToast,
   Routes.ff1DevicePickerPage,
   Routes.handleBluetoothDeviceScanDeeplinkPage,
   Routes.connectFF1Page,
@@ -58,11 +57,9 @@ class _NowDisplayingVisibilitySyncState
 
     final notifier = ref.read(nowDisplayingVisibilityProvider.notifier);
 
-    _keyboardSubscription = _keyboardVisibilityController.onChange.listen((
-      isVisible,
-    ) {
-      notifier.setKeyboardVisibility(isVisible);
-    });
+    _keyboardSubscription = _keyboardVisibilityController.onChange.listen(
+      notifier.setKeyboardVisibility,
+    );
 
     // Sync route/location visibility from go_router.
     widget.router.routeInformationProvider.addListener(_handleRouteChanged);
