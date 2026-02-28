@@ -12,5 +12,6 @@ final feedManagerProvider = Provider<FeralFileFeedManager>((ref) {
     databaseService: ref.read(databaseServiceProvider),
     appStateService: ref.read(appStateServiceProvider),
     defaultDp1FeedUrl: AppConfig.dp1FeedUrl,
+    defaultDp1FeedApiKey: AppConfig.dp1FeedApiKey,
   );
 });

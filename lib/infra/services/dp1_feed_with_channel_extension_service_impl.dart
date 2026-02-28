@@ -72,8 +72,8 @@ class DP1FeedWithChannelExtensionServiceImpl extends BaseDP1FeedServiceImpl {
       return DP1PlaylistResponse(<DP1Playlist>[], false, null);
     }
 
-    int currentChannelIndex = 0;
-    String? currentChannelCursor = cursor;
+    var currentChannelIndex = 0;
+    var currentChannelCursor = cursor;
     if (cursor != null && cursor.contains(':')) {
       final parts = cursor.split(':');
       if (parts.length == 2) {
@@ -245,12 +245,19 @@ class DP1FeedWithChannelExtensionServiceImpl extends BaseDP1FeedServiceImpl {
       _log.info('Reloading cache for FeralFileDP1FeedService: $baseUrl');
       final channels = await getAllChannels();
       final playlists = await getAllPlaylists();
+      _log.info(
+        '[DP1FeedWithChannelExtensionServiceImpl] fetched source data for '
+        '$baseUrl: channels=${channels.length}, playlists=${playlists.length}',
+      );
       await clearCache();
+      var ingestedChannels = 0;
+      var ingestedPlaylists = 0;
 
       await databaseService.ingestDP1ChannelsWire(
         baseUrl: baseUrl,
         channels: channels,
       );
+      ingestedChannels = channels.length;
 
       for (final channel in channels) {
         final playlistsInChannel = playlists
@@ -261,6 +268,7 @@ class DP1FeedWithChannelExtensionServiceImpl extends BaseDP1FeedServiceImpl {
             )
             .toList();
         for (final playlist in playlistsInChannel) {
+          ingestedPlaylists += 1;
           await databaseService.ingestDP1PlaylistWire(
             baseUrl: baseUrl,
             playlist: playlist,
@@ -269,9 +277,17 @@ class DP1FeedWithChannelExtensionServiceImpl extends BaseDP1FeedServiceImpl {
         }
       }
 
-      _log.info('Reloaded cache for FeedService: $baseUrl');
-    } catch (e) {
-      _log.info('Failed to reload cache for FeralFileDP1FeedService: $e');
+      _log.info(
+        '[DP1FeedWithChannelExtensionServiceImpl] Reloaded cache for '
+        '$baseUrl: ingestedChannels=$ingestedChannels, '
+        'ingestedPlaylists=$ingestedPlaylists',
+      );
+    } catch (e, stack) {
+      _log.severe(
+        'Failed to reload cache for FeralFileDP1FeedService: $baseUrl',
+        e,
+        stack,
+      );
       rethrow;
     } finally {
       _isReloadingCache = false;

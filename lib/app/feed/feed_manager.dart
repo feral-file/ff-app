@@ -15,9 +15,9 @@ import 'package:synchronized/synchronized.dart';
 /// Base feed manager: holds feed services and provides cache/reload APIs.
 /// Matches old repo's [FeedManager].
 ///
-/// Uses domain models ([Channel], [Playlist], [PlaylistItem]) from
-/// [DatabaseService] and feed services. [PlaylistReference] / [ChannelReference]
-/// wrap domain models only (no Data or DP1 in UI).
+/// Uses domain models ([Channel], [Playlist]) from
+/// [DatabaseService] and feed services. Domain references wrap models only
+/// (no Data or DP1 in UI).
 class FeedManager {
   FeedManager({
     required DatabaseService databaseService,
@@ -90,7 +90,12 @@ class FeedManager {
       }
 
       final services = feedServices;
-      if (services.isEmpty) return;
+      if (services.isEmpty) {
+        _log.info('[FeedManager] Skip reload: no feed services configured');
+        return;
+      }
+
+      _log.info('[FeedManager] Reloading ${services.length} feed service(s)');
 
       final reloadFutures = services
           .map((feedService) async {
@@ -104,6 +109,11 @@ class FeedManager {
               final stale = await feedService.shouldReloadCache();
               final hasBareIngestCompleted = await _appStateService
                   .hasFeedBareIngestCompleted(feedService.baseUrl);
+
+              _log.info(
+                '[FeedManager] Service ${feedService.baseUrl} stale=$stale '
+                'bareIngestCompleted=$hasBareIngestCompleted force=$force',
+              );
 
               // Startup policy: skip expensive bare ingest when a feed already
               // completed bootstrap and the feed is not stale.
@@ -199,16 +209,38 @@ class FeralFileFeedManager extends FeedManager {
     required super.databaseService,
     required super.appStateService,
     required this.defaultDp1FeedUrl,
+    required this.defaultDp1FeedApiKey,
   });
 
   @override
   final String defaultDp1FeedUrl;
 
+  /// API key used for the default DP1 feed service.
+  final String defaultDp1FeedApiKey;
+
   Future<void> init() async {
     _setupDefault();
   }
 
-  void _setupDefault() {}
+  void _setupDefault() {
+    if (defaultDp1FeedUrl.isEmpty) return;
+
+    if (isFeedServiceExists(defaultDp1FeedUrl)) {
+      _log.info(
+        'Default feed service already configured for $defaultDp1FeedUrl',
+      );
+      return;
+    }
+
+    addFeedService(
+      FeralFileDP1FeedService(
+        baseUrl: defaultDp1FeedUrl,
+        databaseService: databaseService,
+        appStateService: appStateService,
+        apiKey: defaultDp1FeedApiKey,
+      ),
+    );
+  }
 
   /// Matches old repo's getAllCachedChannels.
   Future<List<Channel>> getAllCachedChannels() async {
