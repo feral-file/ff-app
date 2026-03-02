@@ -7,9 +7,11 @@
 /// Messages can be serialized/deserialized and tested independently.
 library;
 
-import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/ff1/art_framing.dart';
+import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
+import 'package:app/domain/models/ff1/device_display_setting.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
+import 'package:app/domain/models/models.dart';
 
 // ============================================================================
 // Message envelope types (top-level message wrapper)
@@ -175,21 +177,22 @@ class FF1RpcMessage extends FF1WifiMessage {
 /// Player status notification payload.
 class FF1PlayerStatus {
   /// Creates a player status.
-  const FF1PlayerStatus({
+  FF1PlayerStatus({
     required this.playlistId,
     this.currentWorkIndex,
-    this.isPaused = false,
-    this.connectedDeviceId,
+    bool? isPaused,
+    this.deviceSettings,
+    this.error,
     this.items,
-  });
+    this.sleepMode,
+  }) : isPaused = isPaused ?? false;
 
   /// Deserialize from JSON.
   factory FF1PlayerStatus.fromJson(Map<String, dynamic> json) {
     return FF1PlayerStatus(
       playlistId: json['playlistId'] as String?,
       currentWorkIndex: json['index'] as int?,
-      isPaused: json['isPaused'] as bool? ?? false,
-      connectedDeviceId: json['connectedDevice']?['device_id'] as String?,
+      isPaused: json['isPaused'] as bool?,
       items: json['items'] != null
           ? (json['items'] as List<dynamic>)
                 .map(
@@ -198,6 +201,15 @@ class FF1PlayerStatus {
                 )
                 .toList()
           : null,
+      deviceSettings: json['deviceSettings'] != null
+          ? DeviceDisplaySetting.fromJson(
+              json['deviceSettings'] as Map<String, dynamic>,
+            )
+          : null,
+      error: json['error'] != null
+          ? ReplyError.fromString(json['error'] as String)
+          : null,
+      sleepMode: json['sleepMode'] as bool?,
     );
   }
 
@@ -210,27 +222,31 @@ class FF1PlayerStatus {
   /// Whether playback is paused.
   final bool isPaused;
 
-  /// Connected device ID.
-  final String? connectedDeviceId;
+  /// Device display settings.
+  DeviceDisplaySetting? deviceSettings;
 
   /// Playlist items.
   final List<DP1PlaylistItem>? items;
+
+  /// Whether device is in sleep mode.
+  final bool? sleepMode;
+
+  /// Error.
+  final ReplyError? error;
 
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
     'playlistId': playlistId,
     'index': currentWorkIndex,
     'isPaused': isPaused,
-    'connectedDevice': connectedDeviceId != null
-        ? {'device_id': connectedDeviceId}
-        : null,
+    'deviceSettings': deviceSettings?.toJson(),
+    'error': error?.jsonString,
+    'sleepMode': sleepMode,
     'items': items?.map((item) => item.toJson()).toList(),
   };
 
-  @override
-  String toString() =>
-      'FF1PlayerStatus(playlist: $playlistId, index: $currentWorkIndex, '
-      'paused: $isPaused)';
+  /// Whether device is in sleep mode or paused.
+  bool get isSleeping => sleepMode ?? isPaused;
 }
 
 /// Device status notification payload.
@@ -370,12 +386,12 @@ class FF1WifiPauseRequest extends FF1WifiCommandRequest {
 }
 
 /// Resume/play command.
-class FF1WifiPlayRequest extends FF1WifiCommandRequest {
-  /// Creates a play/resume request.
-  const FF1WifiPlayRequest();
+class FF1WifiResumeRequest extends FF1WifiCommandRequest {
+  /// Creates a resume request.
+  const FF1WifiResumeRequest();
 
   @override
-  String get command => 'play';
+  String get command => 'resume';
 
   @override
   Map<String, dynamic> get params => {};
@@ -407,8 +423,12 @@ class FF1WifiPreviousArtworkRequest extends FF1WifiCommandRequest {
 
 /// Move to artwork at index (jump to item in playlist).
 class FF1WifiMoveToArtworkRequest extends FF1WifiCommandRequest {
+  /// Creates a move to artwork request.
+  ///
+  /// [index] — zero-based index of the artwork in the playlist
   const FF1WifiMoveToArtworkRequest({required this.index});
 
+  /// Index of the artwork in the playlist.
   final int index;
 
   @override
@@ -435,6 +455,71 @@ class FF1WifiShowPairingQRCodeRequest extends FF1WifiCommandRequest {
   Map<String, dynamic> get params => {'show': show};
 }
 
+/// Shutdown command.
+class FF1WifiShutdownRequest extends FF1WifiCommandRequest {
+  /// Creates a safe shutdown request.
+  const FF1WifiShutdownRequest();
+
+  @override
+  String get command => 'shutdown';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
+/// Reboot command.
+class FF1WifiRebootRequest extends FF1WifiCommandRequest {
+  /// Creates a restart request.
+  const FF1WifiRebootRequest();
+
+  @override
+  String get command => 'reboot';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
+/// Factory reset command.
+class FF1WifiFactoryResetRequest extends FF1WifiCommandRequest {
+  /// Creates a factory reset request.
+  const FF1WifiFactoryResetRequest();
+
+  @override
+  String get command => 'factoryReset';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
+/// Send log command.
+class FF1WifiSendLogRequest extends FF1WifiCommandRequest {
+  /// Creates a send log request.
+  const FF1WifiSendLogRequest({
+    required this.userId,
+    required this.title,
+    required this.apiKey,
+  });
+
+  /// User identifier.
+  final String userId;
+
+  /// Optional log title.
+  final String? title;
+
+  /// Support API key.
+  final String apiKey;
+
+  @override
+  String get command => 'sendLog';
+
+  @override
+  Map<String, dynamic> get params => SendLogRequest(
+    userId: userId,
+    title: title,
+    apiKey: apiKey,
+  ).toJson();
+}
+
 /// Update art framing (fit/fill) command.
 class FF1WifiUpdateArtFramingRequest extends FF1WifiCommandRequest {
   /// Creates an update art framing request.
@@ -452,11 +537,27 @@ class FF1WifiUpdateArtFramingRequest extends FF1WifiCommandRequest {
   Map<String, dynamic> get params => {'frameConfig': framing.value};
 }
 
+/// Realtime metrics command.
+class FF1WifiDeviceMetricsRequest extends FF1WifiCommandRequest {
+  /// Creates a realtime metrics request.
+  const FF1WifiDeviceMetricsRequest();
+
+  @override
+  String get command => 'deviceMetrics';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
 /// Keyboard event command (send key code to device).
 /// Command name must match old repo: sendKeyboardEvent.
 class FF1WifiKeyboardEventRequest extends FF1WifiCommandRequest {
+  /// Creates a keyboard event request.
+  ///
+  /// [code] — key code (e.g. from [String.codeUnitAt])
   const FF1WifiKeyboardEventRequest({required this.code});
 
+  /// Key code.
   final int code;
 
   @override
@@ -468,6 +569,7 @@ class FF1WifiKeyboardEventRequest extends FF1WifiCommandRequest {
 
 /// Tap gesture command. Name must match old repo: tapGesture.
 class FF1WifiTapRequest extends FF1WifiCommandRequest {
+  /// Creates a tap request.
   const FF1WifiTapRequest();
 
   @override
@@ -481,8 +583,12 @@ class FF1WifiTapRequest extends FF1WifiCommandRequest {
 /// Command name must match old repo: dragGesture.
 /// dx/dy rounded to 2 decimals like old CursorOffset.toJson().
 class FF1WifiDragRequest extends FF1WifiCommandRequest {
+  /// Creates a drag request.
+  ///
+  /// [cursorOffsets] — list of cursor offsets
   const FF1WifiDragRequest({required this.cursorOffsets});
 
+  /// Cursor offsets.
   final List<Map<String, double>> cursorOffsets;
 
   @override
@@ -490,13 +596,15 @@ class FF1WifiDragRequest extends FF1WifiCommandRequest {
 
   @override
   Map<String, dynamic> get params => {
-        'cursorOffsets': cursorOffsets
-            .map((o) => {
-                  'dx': _round2(o['dx']!),
-                  'dy': _round2(o['dy']!),
-                })
-            .toList(),
-      };
+    'cursorOffsets': cursorOffsets
+        .map(
+          (o) => {
+            'dx': _round2(o['dx']!),
+            'dy': _round2(o['dy']!),
+          },
+        )
+        .toList(),
+  };
 }
 
 double _round2(double v) => double.parse(v.toStringAsFixed(2));

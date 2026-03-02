@@ -4,13 +4,17 @@ import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/extensions/asset_token_ext.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
-import 'package:app/domain/models/ff1/dp1_intent.dart';
+import 'package:app/domain/models/dp1/dp1_intent.dart';
+import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/converters.dart' show DatabaseConverters;
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/work_detail_back_layer.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
+import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/ff_display_button.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -22,11 +26,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:url_launcher/url_launcher.dart';
-
-import 'package:app/domain/extensions/asset_token_ext.dart';
-import 'package:app/domain/models/indexer/asset_token.dart';
-import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/widgets/bottom_spacing.dart';
 
 /// Work detail screen.
 /// Shows details for a playlist item (work). UI matches old artwork detail page:

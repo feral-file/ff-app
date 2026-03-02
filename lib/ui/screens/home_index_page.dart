@@ -8,6 +8,7 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/screens/device_config_screen.dart';
 import 'package:app/ui/screens/tabs/channels_tab_page.dart';
 import 'package:app/ui/screens/tabs/playlists_tab_page.dart';
 import 'package:app/ui/screens/tabs/search_tab_page.dart';
@@ -196,6 +197,25 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
             Navigator.of(context).pop();
           },
         ),
+      // FF1 Setting
+      OptionItem(
+        title: 'FF1 Art Computer',
+        icon: SvgPicture.asset(
+          'assets/images/portal_setting.svg',
+          width: LayoutConstants.iconSizeMedium,
+          height: LayoutConstants.iconSizeMedium,
+          colorFilter: const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
+        ),
+        onTap: () {
+          Navigator.of(context).pop();
+          unawaited(
+            context.push(
+              Routes.deviceConfiguration,
+              extra: DeviceConfigPayload(isInSetupProcess: false),
+            ),
+          );
+        },
+      ),
       // Personal Preferences & Data, Security Management
       OptionItem(
         title: 'Account',

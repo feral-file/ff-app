@@ -2,12 +2,12 @@
 
 import 'dart:math';
 
+import 'package:app/domain/models/dp1/dp1_intent.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/device_display_setting.dart';
 import 'package:app/domain/models/ff1/device_status.dart';
-import 'package:app/domain/models/ff1/dp1_intent.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:flutter/material.dart';
 

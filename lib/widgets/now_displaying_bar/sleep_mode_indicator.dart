@@ -83,7 +83,7 @@ class _SleepModeIndicatorState extends ConsumerState<SleepModeIndicator>
     try {
       final control = ref.read(ff1WifiControlProvider);
       if (widget.isSleeping) {
-        await control.play(topicId: device.topicId);
+        await control.resume(topicId: device.topicId);
       } else {
         await control.pause(topicId: device.topicId);
       }

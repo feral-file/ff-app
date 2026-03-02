@@ -5,7 +5,7 @@ import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
-import 'package:app/ui/ui_helper.dart';
+import 'package:app/widgets/loading_indicator.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -93,7 +93,8 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
   Future<void> _offerOpenAppSettings() async {
     if (!mounted) return;
 
-    final shouldOpen = await showDialog<bool>(
+    final shouldOpen =
+        await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Bluetooth Permission Required'),
@@ -233,7 +234,8 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
       await control.keepWifi(blDevice: _selectedDevice!);
 
       setState(() {
-        _wifiResult = 'SUCCESS!\n\nTopic ID: $topicId\n\n'
+        _wifiResult =
+            'SUCCESS!\n\nTopic ID: $topicId\n\n'
             'The device is now connected to WiFi and can be controlled '
             'via cloud WebSocket.\n\n'
             'Tap "Test WiFi Connection" to verify connectivity.';
@@ -343,14 +345,13 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
       _log.info('Testing WiFi connection with topicId: $_topicId');
 
       // Rotate 4 times to test the connection
-      for (int i = 1; i <= 4; i++) {
+      for (var i = 1; i <= 4; i++) {
         try {
           _log.info('Rotation $i/4 - Sending rotate command...');
 
           // Send rotate command via WiFi
           final response = await wifiControl.rotate(
             topicId: _topicId!,
-            angle: 90,
           );
 
           _log.info('Rotation $i/4 - Response: ${response.status}');
@@ -425,7 +426,6 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
 
       final response = await wifiControl.rotate(
         topicId: _topicId!,
-        angle: 90,
       );
 
       _log.info('Rotate command successful: ${response.status}');
@@ -494,8 +494,8 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
     }
   }
 
-  /// Send a play command to the device
-  Future<void> _playDevice() async {
+  /// Send a resume command to the device
+  Future<void> _resumeDevice() async {
     if (_topicId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -508,27 +508,27 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
 
     try {
       final wifiControl = ref.read(ff1WifiControlProvider);
-      _log.info('Sending play command...');
+      _log.info('Sending resume command...');
 
-      final response = await wifiControl.play(topicId: _topicId!);
+      final response = await wifiControl.resume(topicId: _topicId!);
 
-      _log.info('Play command successful: ${response.status}');
+      _log.info('Resume command successful: ${response.status}');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Play command sent! Status: ${response.status}'),
+            content: Text('Resume command sent! Status: ${response.status}'),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
-      _log.severe('Play command failed: $e');
+      _log.severe('Resume command failed: $e');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Play failed: $e'),
+            content: Text('Resume failed: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -548,7 +548,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
           if (scanState.isScanning)
             Padding(
               padding: EdgeInsets.all(LayoutConstants.space4),
-              child: loadingIndicator(
+              child: LoadingIndicator(
                 valueColor: AppColor.white,
                 size: LayoutConstants.iconSizeMedium,
               ),
@@ -603,7 +603,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
         );
       },
       loading: () => const SizedBox.shrink(),
-      error: (Object _, StackTrace __) => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 
@@ -643,15 +643,16 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
       itemCount: scanState.devices.length,
       itemBuilder: (context, index) {
         final device = scanState.devices[index];
-        final name =
-            device.advName.isNotEmpty ? device.advName : device.remoteId.str;
+        final name = device.advName.isNotEmpty
+            ? device.advName
+            : device.remoteId.str;
 
         return ListTile(
           leading: const Icon(Icons.devices),
           title: Text(name),
           subtitle: Text(device.remoteId.str),
           trailing: _isConnecting
-              ? loadingIndicator(
+              ? LoadingIndicator(
                   valueColor: AppColor.white,
                   size: LayoutConstants.iconSizeMedium,
                 )
@@ -760,7 +761,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
               onPressed: _isTestingConnection ? null : _testWifiConnection,
               icon: const Icon(Icons.check_circle),
               label: _isTestingConnection
-                  ? loadingIndicator(
+                  ? LoadingIndicator(
                       valueColor: AppColor.white,
                       size: LayoutConstants.iconSizeMedium,
                     )
@@ -788,7 +789,7 @@ class _FF1TestScreenState extends ConsumerState<FF1TestScreen> {
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _topicId != null ? _playDevice : null,
+                    onPressed: _topicId != null ? _resumeDevice : null,
                     icon: const Icon(Icons.play_arrow),
                     label: Text(
                       'Play',

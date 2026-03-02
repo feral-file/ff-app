@@ -15,10 +15,12 @@ import 'dart:async';
 import 'dart:ui' show Offset;
 
 import 'package:app/domain/models/ff1/art_framing.dart';
+import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:logging/logging.dart';
+import 'package:rxdart/rxdart.dart';
 
 // ============================================================================
 // WiFi Control (orchestration)
@@ -50,10 +52,9 @@ class FF1WifiControl {
   final Logger _log;
 
   // Stream controllers for state changes
-  final _playerStatusController = StreamController<FF1PlayerStatus>.broadcast();
-  final _deviceStatusController = StreamController<FF1DeviceStatus>.broadcast();
-  final _connectionStatusController =
-      StreamController<FF1ConnectionStatus>.broadcast();
+  final _playerStatusController = BehaviorSubject<FF1PlayerStatus>();
+  final _deviceStatusController = BehaviorSubject<FF1DeviceStatus>();
+  final _connectionStatusController = BehaviorSubject<FF1ConnectionStatus>();
 
   // Current device state
   FF1PlayerStatus? _currentPlayerStatus;
@@ -300,7 +301,7 @@ class FF1WifiControl {
     try {
       _log.info('Sending pause command to device');
 
-      final request = const FF1WifiPauseRequest();
+      const request = FF1WifiPauseRequest();
       final response =
           await _restClient.sendCommand(
                 topicId: topicId,
@@ -316,18 +317,18 @@ class FF1WifiControl {
     }
   }
 
-  /// Send play/resume command to the device.
+  /// Send resume command to the device.
   ///
   /// [topicId] — device identifier on the relayer
-  Future<FF1CommandResponse> play({required String topicId}) async {
+  Future<FF1CommandResponse> resume({required String topicId}) async {
     if (_restClient == null) {
       throw StateError('REST client not available');
     }
 
     try {
-      _log.info('Sending play command to device');
+      _log.info('Sending resume command to device');
 
-      final request = const FF1WifiPlayRequest();
+      const request = FF1WifiResumeRequest();
       final response =
           await _restClient.sendCommand(
                 topicId: topicId,
@@ -354,7 +355,7 @@ class FF1WifiControl {
     try {
       _log.info('Sending nextArtwork command to device');
 
-      final request = const FF1WifiNextArtworkRequest();
+      const request = FF1WifiNextArtworkRequest();
       final response =
           await _restClient.sendCommand(
                 topicId: topicId,
@@ -381,7 +382,7 @@ class FF1WifiControl {
     try {
       _log.info('Sending previousArtwork command to device');
 
-      final request = const FF1WifiPreviousArtworkRequest();
+      const request = FF1WifiPreviousArtworkRequest();
       final response =
           await _restClient.sendCommand(
                 topicId: topicId,
@@ -569,4 +570,166 @@ class FF1WifiControl {
       rethrow;
     }
   }
+
+  /// Shutdown device.
+  ///
+  /// [topicId] — device topic ID
+  Future<FF1CommandResponse> shutdown({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending shutdown command to device');
+
+      const request = FF1WifiShutdownRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send shutdown command: $e');
+      rethrow;
+    }
+  }
+
+  /// Reboot device.
+  ///
+  /// [topicId] — device topic ID
+  Future<FF1CommandResponse> reboot({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending reboot command to device');
+
+      const request = FF1WifiRebootRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send reboot command: $e');
+      rethrow;
+    }
+  }
+
+  /// Factory reset device.
+  ///
+  /// [topicId] — device topic ID
+  Future<FF1CommandResponse> factoryReset({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending factory reset command to device');
+
+      const request = FF1WifiFactoryResetRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send factory reset command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send device logs to support.
+  ///
+  /// [topicId] — device topic ID
+  /// [userId] — user identifier used by support backend
+  /// [title] — optional log title
+  /// [apiKey] — support API key
+  Future<FF1CommandResponse> sendLog({
+    required String topicId,
+    required String userId,
+    required String? title,
+    required String apiKey,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending sendLog command to device');
+
+      final request = FF1WifiSendLogRequest(
+        userId: userId,
+        title: title,
+        apiKey: apiKey,
+      );
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+                timeout: const Duration(seconds: 30),
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send sendLog command: $e');
+      rethrow;
+    }
+  }
+
+  /// Fetches realtime device metrics via relayer command channel.
+  Future<DeviceRealtimeMetrics> getDeviceRealtimeMetrics({
+    required String topicId,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      const request = FF1WifiDeviceMetricsRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      final payload = _unwrapMetricsPayload(response);
+      return DeviceRealtimeMetrics.fromJson(payload);
+    } catch (e) {
+      _log.severe('Failed to fetch realtime metrics: $e');
+      rethrow;
+    }
+  }
+}
+
+Map<String, dynamic> _unwrapMetricsPayload(Map<String, dynamic> response) {
+  dynamic current = response;
+  while (current is Map<String, dynamic>) {
+    if (current.containsKey('message') && current['message'] is Map) {
+      current = Map<String, dynamic>.from(current['message'] as Map);
+      continue;
+    }
+    if (current.containsKey('data') && current['data'] is Map) {
+      current = Map<String, dynamic>.from(current['data'] as Map);
+      continue;
+    }
+    return current;
+  }
+  throw StateError('Invalid realtime metrics payload type');
 }

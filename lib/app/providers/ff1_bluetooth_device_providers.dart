@@ -5,6 +5,7 @@ import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:logging/logging.dart';
+import 'package:riverpod/src/providers/future_provider.dart';
 
 final _log = Logger('FF1BluetoothDeviceProviders');
 
@@ -45,18 +46,6 @@ final allFF1BluetoothDevicesProvider = FutureProvider<List<FF1Device>>((
   return service.getAllDevices();
 });
 
-/// Get a specific device by ID.
-///
-/// Usage:
-/// ```dart
-/// final device = ref.watch(ff1BluetoothDeviceByIdProvider('device123'));
-/// ```
-final FutureProviderFamily<FF1Device?, String> ff1BluetoothDeviceByIdProvider =
-    FutureProvider.family<FF1Device?, String>((ref, deviceId) async {
-      final service = ref.watch(ff1BluetoothDeviceServiceProvider);
-      return service.getDeviceById(deviceId);
-    });
-
 /// Get the currently active device.
 ///
 /// Usage:
@@ -69,21 +58,6 @@ final activeFF1BluetoothDeviceProvider = FutureProvider<FF1Device?>((
   final service = ref.watch(ff1BluetoothDeviceServiceProvider);
   return service.getActiveDevice();
 });
-
-/// Get a device by its Bluetooth remote ID.
-///
-/// Usage:
-/// ```dart
-/// final device = ref.watch(
-///   ff1BluetoothDeviceByRemoteIdProvider('AA:BB:CC:DD:EE:FF'),
-/// );
-/// ```
-final FutureProviderFamily<FF1Device?, String>
-ff1BluetoothDeviceByRemoteIdProvider =
-    FutureProvider.family<FF1Device?, String>((ref, remoteId) async {
-      final service = ref.watch(ff1BluetoothDeviceServiceProvider);
-      return service.getDeviceByRemoteId(remoteId);
-    });
 
 /// Add a new device to storage and set it as active.
 ///
@@ -122,77 +96,87 @@ final FutureProviderFamily<void, String> removeFF1BluetoothDeviceProvider =
         ..invalidate(activeFF1BluetoothDeviceProvider);
     });
 
-/// Set a device as active.
-final FutureProviderFamily<void, String> setActiveFF1BluetoothDeviceProvider =
-    FutureProvider.family<void, String>((ref, deviceId) async {
-      final service = ref.watch(ff1BluetoothDeviceServiceProvider);
+/// Set a device as active and auto-connect WiFi if available.
+///
+/// After setting the device as active, if it has a topicId (WiFi capability),
+/// this will automatically establish a WiFi connection to enable real-time
+/// status notifications.
+///
+/// Usage:
+/// ```dart
+/// await ref.read(setActiveFF1BluetoothDeviceProvider(deviceId).future);
+/// ```
+final FutureProviderFamily<void, String>
+setActiveFF1BluetoothDeviceProvider = FutureProvider.family<void, String>(
+  (ref, deviceId) async {
+    final service = ref.watch(ff1BluetoothDeviceServiceProvider);
 
-      // Set as active device
-      await service.setActiveDevice(deviceId);
-      _log.info('Device set as active: $deviceId');
+    // Set as active device
+    await service.setActiveDevice(deviceId);
+    _log.info('Device set as active: $deviceId');
 
-      // Invalidate caches
-      ref
-        ..invalidate(allFF1BluetoothDevicesProvider)
-        ..invalidate(activeFF1BluetoothDeviceProvider);
+    // Invalidate caches
+    ref
+      ..invalidate(allFF1BluetoothDevicesProvider)
+      ..invalidate(activeFF1BluetoothDeviceProvider);
 
-      // Get device info for WiFi connection
-      final device = service.getDeviceById(deviceId);
-      if (device == null) {
-        _log.warning('Device not found after setting active: $deviceId');
-        return;
-      }
+    // Get device info for WiFi connection
+    final device = service.getDeviceById(deviceId);
+    if (device == null) {
+      _log.warning('Device not found after setting active: $deviceId');
+      return;
+    }
 
-      // Auto-connect WiFi if device has topicId
-      if (device.topicId.isNotEmpty) {
-        _log.info(
-          'Active device has topicId, auto-connecting WiFi: ${device.deviceId}',
-        );
+    // Auto-connect WiFi if device has topicId
+    if (device.topicId.isNotEmpty) {
+      _log.info(
+        'Active device has topicId, auto-connecting WiFi: ${device.deviceId}',
+      );
 
-        try {
-          // Get credentials
-          // TODO: Replace by actual userId from auth service
-          final userId = 'user-id';
-          final apiKey = AppConfig.ff1RelayerApiKey;
+      try {
+        // Get credentials
+        // TODO: Replace by actual userId from auth service
+        const userId = 'user-id';
+        final apiKey = AppConfig.ff1RelayerApiKey;
 
-          if (apiKey.isEmpty) {
-            _log.warning(
-              'FF1_RELAYER_API_KEY not configured, skipping WiFi connection',
-            );
-            return;
-          }
-
-          // Connect via WiFi (auto-retry enabled)
-          await ref.read(
-            ff1WifiConnectOperationProvider(
-              FF1WifiConnectParams(
-                device: device,
-                userId: userId,
-                apiKey: apiKey,
-              ),
-            ).future,
+        if (apiKey.isEmpty) {
+          _log.warning(
+            'FF1_RELAYER_API_KEY not configured, skipping WiFi connection',
           );
-
-          _log.info('WiFi auto-connected successfully: ${device.deviceId}');
-
-          // Update connection state to connected (1)
-          await service.updateConnectionState(deviceId, 1);
-          _log.info('Connection state updated to connected');
-        } catch (e, stack) {
-          // Don't fail the entire operation if WiFi connection fails
-          // Device is already set as active, WiFi can be retried later
-          _log.warning('WiFi auto-connect failed (non-critical): $e');
-          _log.fine('Stack trace: $stack');
-
-          // Update connection state to disconnected (0)
-          await service.updateConnectionState(deviceId, 0);
+          return;
         }
-      } else {
-        _log.info(
-          'Active device has no topicId, WiFi connection not available',
+
+        // Connect via WiFi (auto-retry enabled)
+        await ref.read(
+          ff1WifiConnectOperationProvider(
+            FF1WifiConnectParams(
+              device: device,
+              userId: userId,
+              apiKey: apiKey,
+            ),
+          ).future,
         );
+
+        _log.info('WiFi auto-connected successfully: ${device.deviceId}');
+
+        // Update connection state to connected (1)
+        await service.updateConnectionState(deviceId, 1);
+        _log.info('Connection state updated to connected');
+      } on Exception catch (e, stack) {
+        // Don't fail the entire operation if WiFi connection fails
+        // Device is already set as active, WiFi can be retried later
+        _log
+          ..warning('WiFi auto-connect failed (non-critical): $e')
+          ..fine('Stack trace: $stack');
+
+        // Update connection state to disconnected (0)
+        await service.updateConnectionState(deviceId, 0);
       }
-    });
+    } else {
+      _log.info('Active device has no topicId, WiFi connection not available');
+    }
+  },
+);
 
 /// Update device connection state.
 final FutureProviderFamily<void, ({String deviceId, int state})>
@@ -221,6 +205,18 @@ updateFF1DeviceTopicIdProvider =
         final service = ref.watch(ff1BluetoothDeviceServiceProvider);
         await service.updateTopicId(params.deviceId, params.topicId);
         ref.invalidate(allFF1BluetoothDevicesProvider);
+
+        // If this is the active device, trigger WiFi connection by refreshing active device
+        final activeDevice = service.getActiveDevice();
+        if (activeDevice?.deviceId == params.deviceId &&
+            params.topicId.isNotEmpty) {
+          _log.info(
+            'TopicId updated for active device, triggering WiFi connect',
+          );
+          await ref.read(
+            setActiveFF1BluetoothDeviceProvider(params.deviceId).future,
+          );
+        }
       },
     );
 

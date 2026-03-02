@@ -11,8 +11,8 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/wifi_point.dart';
-import 'package:app/domain/utils/ui_helper.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
 import 'package:flutter/material.dart';
@@ -214,8 +214,8 @@ class _EnterWiFiPasswordScreenState
           unawaited(
             UIHelper.showInfoDialog(
               context,
-              'Can\'t reach FF1',
-              'FF1 didn\'t respond in time. Make sure FF1 is nearby and try again.',
+              "Can't reach FF1",
+              "FF1 didn't respond in time. Make sure FF1 is nearby and try again.",
             ).then((_) {
               if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) &&
                   context.mounted) {
@@ -228,7 +228,7 @@ class _EnterWiFiPasswordScreenState
             UIHelper.showInfoDialog(
               context,
               'Wi‑Fi setup failed',
-              'FF1 couldn\'t complete Wi‑Fi setup because of an unexpected issue. Contact support for help.',
+              "FF1 couldn't complete Wi‑Fi setup because of an unexpected issue. Contact support for help.",
               closeButton: 'Contact support',
               onClose: () async {
                 unawaited(UIHelper.showCustomerSupport(context));
@@ -304,7 +304,6 @@ class _EnterWiFiPasswordScreenState
                               vertical: LayoutConstants.space3 +
                                   LayoutConstants.space1,
                             ),
-                            enabled: true,
                             onTap: _handleSendCredentials,
                             text: 'Submit',
                           ),

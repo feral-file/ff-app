@@ -3,11 +3,11 @@ import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/ui_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import 'option_item_drawer_item.dart';
 
 /// Quick setting view for the now displaying bar (expanded state).
 ///

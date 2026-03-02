@@ -156,7 +156,6 @@ void main() {
       expect(status.playlistId, 'pl_abc123');
       expect(status.currentWorkIndex, 3);
       expect(status.isPaused, true);
-      expect(status.connectedDeviceId, 'device_xyz');
       expect(status.items, isNotNull);
       expect(status.items!.length, 1);
       expect(status.items![0].id, 'wk_1');
@@ -175,7 +174,6 @@ void main() {
       expect(status.playlistId, isNull);
       expect(status.currentWorkIndex, isNull);
       expect(status.isPaused, false); // defaults to false
-      expect(status.connectedDeviceId, isNull);
       expect(status.items, isNull);
     });
 
@@ -184,7 +182,6 @@ void main() {
         playlistId: 'pl_test',
         currentWorkIndex: 2,
         isPaused: false,
-        connectedDeviceId: 'dev_123',
       );
 
       final json = status.toJson();
@@ -192,7 +189,6 @@ void main() {
       expect(json['playlistId'], 'pl_test');
       expect(json['index'], 2);
       expect(json['isPaused'], false);
-      expect(json['connectedDevice']['device_id'], 'dev_123');
     });
   });
 
@@ -227,7 +223,6 @@ void main() {
         playlistId: 'pl_test',
         currentWorkIndex: 0,
         isPaused: false,
-        connectedDeviceId: 'dev_123',
         items: [
           DP1PlaylistItem(
             id: 'wk_test',

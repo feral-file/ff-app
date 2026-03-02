@@ -45,6 +45,17 @@ extension StringExtension on String {
     }
     return '${substring(0, 6)}...${substring(length - 4, length)}';
   }
+
+  /// Convert the string to title case.
+  String toTitleCase() {
+    return split(' ')
+        .map(
+          (word) => word.isNotEmpty
+              ? word[0].toUpperCase() + word.substring(1).toLowerCase()
+              : '',
+        )
+        .join(' ');
+  }
 }
 
 /// Extension methods for String

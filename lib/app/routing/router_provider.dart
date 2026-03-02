@@ -7,6 +7,7 @@ import 'package:app/ui/screens/add_alias_screen.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
 import 'package:app/ui/screens/all_playlists_screen.dart';
 import 'package:app/ui/screens/channel_detail_screen.dart';
+import 'package:app/ui/screens/device_config_screen.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
 import 'package:app/ui/screens/ff1_setup/ff1_device_picker_page.dart';
 import 'package:app/ui/screens/ff1_setup/ff1_updating_page.dart';
@@ -390,24 +391,21 @@ routerProvider = Provider.family<GoRouter, String>((
         },
       ),
 
-      // // Device configuration route
-      // GoRoute(
-      //   path: Routes.deviceConfiguration,
-      //   name: RouteNames.deviceConfiguration,
-      //   builder: (context, state) {
-      //     final args = state.extra as Map<String, dynamic>?;
-      //     if (args == null) {
-      //       return const Scaffold(
-      //         body: Center(child: Text('Invalid arguments')),
-      //       );
-      //     }
-      //     return DeviceConfigScreen(
-      //       payload: DeviceConfigPayload(
-      //         isFromOnboarding: args['isFromOnboarding'] as bool,
-      //       ),
-      //     );
-      //   },
-      // ),
+      // Device configuration route
+      GoRoute(
+        path: Routes.deviceConfiguration,
+        name: RouteNames.deviceConfiguration,
+        pageBuilder: (context, state) {
+          final payload = state.extra is DeviceConfigPayload
+              ? state.extra! as DeviceConfigPayload
+              : DeviceConfigPayload();
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            DeviceConfigScreen(payload: payload),
+          );
+        },
+      ),
 
       // FF1 updating route
       GoRoute(

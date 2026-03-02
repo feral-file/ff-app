@@ -3,11 +3,20 @@ import 'dart:async';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/domain/models/wallet_address.dart';
+import 'package:app/domain/utils/customer_support_util.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/widgets/buttons/outline_button.dart';
+import 'package:app/widgets/buttons/primary_button.dart';
+import 'package:app/widgets/loading_indicator.dart';
+import 'package:app/widgets/top_right_rectangle_clipper.dart';
 import 'package:app/widgets/work_grid_card.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
+import 'package:go_router/go_router.dart';
 
 /// UI helpers for reusable UI patterns.
 ///
@@ -16,6 +25,9 @@ class UIHelper {
   UIHelper._();
 
   static String currentDialogTitle = '';
+
+  /// Ignore back layer pop up route name
+  static const String ignoreBackLayerPopUpRouteName = 'popUp.ignoreBackLayer';
 
   /// Builds a DP-1 works grid as a sliver (domain [PlaylistItem] only).
   static SliverGrid worksSliverGrid({
@@ -35,49 +47,6 @@ class UIHelper {
         onTap: () => onItemTap(works[index]),
       ),
     );
-  }
-
-  /// Shows a confirmation dialog for destructive actions.
-  static Future<bool> showDeleteConfirmation({
-    required BuildContext context,
-    required String title,
-    required String message,
-    required String confirmText,
-  }) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: AppColor.primaryBlack,
-          title: Text(
-            title,
-            style: AppTypography.h4(context).white,
-          ),
-          content: Text(
-            message,
-            style: AppTypography.body(context).grey,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(
-                'Cancel',
-                style: AppTypography.body(context).grey,
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(
-                confirmText,
-                style: AppTypography.body(context).white,
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    return result ?? false;
   }
 
   /// Shows a center menu (Cupertino style) with options.
@@ -150,6 +119,447 @@ class UIHelper {
       },
     );
   }
+
+  /// Show delete account confirmation
+  static void showDeleteAccountConfirmation(
+    BuildContext context,
+    WalletAddress walletAddress,
+    FutureOr<void> Function(WalletAddress address) onRemove,
+  ) {
+    final theme = Theme.of(context);
+    var accountName = walletAddress.name;
+    if (accountName.isEmpty) {
+      accountName = walletAddress.name.mask(4);
+    }
+
+    final bottomSheetKey = GlobalKey();
+
+    unawaited(
+      showModalBottomSheet(
+        context: context,
+        enableDrag: false,
+        backgroundColor: Colors.transparent,
+        routeSettings: RouteSettings(
+          name: ignoreBackLayerPopUpRouteName,
+          arguments: {
+            'key': bottomSheetKey,
+          },
+        ),
+        barrierColor: Colors.black.withValues(alpha: 0.5),
+        builder: (context) => SafeArea(
+          key: bottomSheetKey,
+          child: ColoredBox(
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.auGreyBackground,
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(20),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Delete Address',
+                    style: AppTypography.h2(context).white,
+                  ),
+                  const SizedBox(height: 40),
+                  RichText(
+                    textScaler: MediaQuery.textScalerOf(context),
+                    text: TextSpan(
+                      style: AppTypography.body(context).white,
+                      children: <TextSpan>[
+                        const TextSpan(
+                          text: 'Are you sure you want to delete the address',
+                        ),
+                        TextSpan(
+                          text: ' "$accountName"',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const TextSpan(
+                          text: '?',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  PrimaryAsyncButton(
+                    text: 'Delete',
+                    onTap: () async {
+                      await onRemove(walletAddress);
+                      if (!context.mounted) {
+                        return;
+                      }
+                      context.pop();
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  OutlineButton(
+                    onTap: () => context.pop(),
+                    text: 'Cancel',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Show info dialog
+  static Future<void> showInfoDialog(
+    BuildContext context,
+    String title,
+    String description, {
+    bool isDismissible = true,
+    int autoDismissAfter = 0,
+    String closeButton = '',
+    VoidCallback? onClose,
+    // FeedbackType? feedback = FeedbackType.selection,
+  }) async {
+    if (autoDismissAfter > 0) {
+      Future.delayed(
+        Duration(seconds: autoDismissAfter),
+        () => hideInfoDialog(context),
+      );
+    }
+
+    await showDialog<void>(
+      context,
+      title,
+      SizedBox(
+        width: double.infinity,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (description.isNotEmpty) ...[
+              Text(
+                description,
+                style: AppTypography.body(context).white,
+              ),
+            ],
+            const SizedBox(height: 40),
+            if (closeButton.isNotEmpty && onClose == null) ...[
+              const SizedBox(height: 16),
+              OutlineButton(
+                onTap: () => Navigator.pop(context),
+                text: closeButton,
+              ),
+              const SizedBox(height: 15),
+            ] else if (closeButton.isNotEmpty && onClose != null) ...[
+              const SizedBox(height: 16),
+              OutlineButton(
+                onTap: onClose,
+                text: closeButton,
+              ),
+              const SizedBox(height: 15),
+            ],
+          ],
+        ),
+      ),
+      isDismissible: isDismissible,
+      // feedback: feedback,
+    );
+  }
+
+  /// Show dialog
+  static Future<T?> showDialog<T>(
+    BuildContext context,
+    String title,
+    Widget content, {
+    bool isDismissible = true,
+    bool isRoundCorner = true,
+    Color? backgroundColor,
+    int autoDismissAfter = 0,
+    // FeedbackType? feedback = FeedbackType.selection,
+    EdgeInsets? padding,
+    EdgeInsets? paddingTitle,
+    bool withCloseIcon = false,
+    double spacing = 40,
+  }) async {
+    currentDialogTitle = title;
+    final theme = Theme.of(context);
+    final bottomSheetKey = GlobalKey();
+
+    if (autoDismissAfter > 0) {
+      Future.delayed(
+        Duration(seconds: autoDismissAfter),
+        () => hideInfoDialog(context),
+      );
+    }
+
+    // if (feedback != null) {
+    //   Vibrate.feedback(feedback);
+    // }
+
+    return showModalBottomSheet<T>(
+      context: context,
+      isDismissible: isDismissible,
+      backgroundColor: Colors.transparent,
+      enableDrag: false,
+      isScrollControlled: true,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      routeSettings: RouteSettings(
+        name: ignoreBackLayerPopUpRouteName,
+        arguments: {
+          'key': bottomSheetKey,
+        },
+      ),
+      sheetAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 150),
+        reverseDuration: Duration(milliseconds: 150),
+        curve: Curves.easeOutQuart,
+        reverseCurve: Curves.easeOutQuart,
+      ),
+      builder: (context) => SafeArea(
+        child: ColoredBox(
+          key: bottomSheetKey,
+          color: Colors.transparent,
+          child: ClipPath(
+            clipper: isRoundCorner ? null : TopRightRectangleClipper(),
+            child: Container(
+              decoration: BoxDecoration(
+                color: backgroundColor ?? theme.auGreyBackground,
+                borderRadius: isRoundCorner
+                    ? const BorderRadius.only(
+                        topRight: Radius.circular(20),
+                      )
+                    : null,
+              ),
+              padding:
+                  padding ??
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 32),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: paddingTitle ?? const EdgeInsets.all(0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: AppTypography.h2(context).white,
+                            ),
+                          ),
+                          if (withCloseIcon)
+                            IconButton(
+                              onPressed: () => hideInfoDialog(context),
+                              icon: SvgPicture.asset(
+                                'assets/images/close.svg',
+                                width: 22,
+                                height: 22,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: spacing),
+                    content,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Hide info dialog
+  static void hideInfoDialog(BuildContext context) {
+    currentDialogTitle = '';
+    try {
+      Navigator.popUntil(
+        context,
+        (route) =>
+            route.settings.name != null &&
+            !route.settings.name!.toLowerCase().contains('popup'),
+      );
+    } on Exception catch (_) {}
+  }
+
+  /// Show customer support
+  static Future<void> showCustomerSupport(BuildContext context) async {
+    /// On confirm attach crash log
+    void onConfirmAttachCrashLog({required bool attachCrashLog}) {
+      UIHelper.hideInfoDialog(context);
+      unawaited(
+        CustomerSupportUtil.sendSupportEmail(
+          attachLogs: attachCrashLog,
+        ),
+      );
+    }
+
+    await UIHelper.showDialog<void>(
+      context,
+      'Attach a debug log?',
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Recommended. It helps us fix issues faster by including technical details like app events, device model, and recent errors. It does not include passwords or private keys. After the email opens, you can also attach screenshots or photos.',
+            style: AppTypography.body(context).white,
+          ),
+          SizedBox(height: LayoutConstants.space6),
+          PrimaryButton(
+            text: 'Attach debug log',
+            onTap: () => onConfirmAttachCrashLog(attachCrashLog: true),
+          ),
+          SizedBox(height: LayoutConstants.space3),
+          OutlineButton(
+            text: 'Send without log',
+            onTap: () => onConfirmAttachCrashLog(attachCrashLog: false),
+          ),
+          SizedBox(height: LayoutConstants.space4),
+        ],
+      ),
+    );
+  }
+
+  /// Show center dialog
+  static Future<dynamic> showCenterDialog(
+    BuildContext context, {
+    required Widget content,
+  }) async {
+    final theme = Theme.of(context);
+    return showCupertinoModalPopup<void>(
+      context: context,
+      builder: (context) => Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: [
+            GestureDetector(
+              child: Container(
+                color: AppColor.primaryBlack.withOpacity(0.5),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+              },
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Center(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: theme.auGreyBackground,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  constraints: const BoxConstraints(
+                    maxHeight: 600,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 20,
+                    horizontal: 15,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        content,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Show drawer action.
+  static Future<void> showDrawerAction(
+    BuildContext context, {
+    required List<OptionItem> options,
+    String? title,
+  }) async {
+    final bottomSheetKey = GlobalKey();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      enableDrag: false,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      isScrollControlled: true,
+      routeSettings: RouteSettings(
+        name: ignoreBackLayerPopUpRouteName,
+        arguments: {
+          'key': bottomSheetKey,
+        },
+      ),
+      sheetAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 150),
+        reverseDuration: Duration(milliseconds: 150),
+        curve: Curves.easeOutQuart,
+        reverseCurve: Curves.easeOutQuart,
+      ),
+      builder: (context) => ColoredBox(
+        key: bottomSheetKey,
+        color: AppColor.auGreyBackground,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 13),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    title ?? '',
+                    style: AppTypography.body(context).bold.white,
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    constraints: const BoxConstraints(
+                      maxWidth: 44,
+                      maxHeight: 44,
+                      minWidth: 44,
+                      minHeight: 44,
+                    ),
+                    icon: const Icon(
+                      Icons.close,
+                      size: 18,
+                      color: AppColor.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemBuilder: (context, index) {
+                final option = options[index];
+                if (option.builder != null) {
+                  return option.builder!.call(context, option);
+                }
+                return DrawerItem(
+                  item: option,
+                  color: AppColor.white,
+                );
+              },
+              itemCount: options.length,
+              separatorBuilder: (context, index) => const Divider(
+                height: 1,
+                thickness: 1,
+                color: AppColor.primaryBlack,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _CenterMenuItem extends StatefulWidget {
@@ -184,7 +594,7 @@ class _CenterMenuItemState extends State<_CenterMenuItem> {
         ? option.iconOnDisable
         : _isProcessing
         ? (option.iconOnProcessing ??
-              loadingIndicator(
+              LoadingIndicator(
                 valueColor: AppColor.disabledColor,
                 size: LayoutConstants.iconSizeSmall,
               ))
@@ -214,6 +624,89 @@ class _CenterMenuItemState extends State<_CenterMenuItem> {
           Text(option.title ?? '', style: textStyle),
         ],
       ),
+    );
+  }
+}
+
+/// Drawer/settings list row
+class DrawerItem extends StatefulWidget {
+  const DrawerItem({
+    required this.item,
+    super.key,
+    this.color,
+    this.padding = const EdgeInsets.symmetric(vertical: 16, horizontal: 13),
+  });
+
+  final OptionItem item;
+  final Color? color;
+  final EdgeInsets padding;
+
+  @override
+  State<DrawerItem> createState() => _DrawerItemState();
+}
+
+class _DrawerItemState extends State<DrawerItem> {
+  bool isProcessing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final color = widget.color;
+    final defaultTextStyle = AppTypography.body(context).black;
+    final customTextStyle = defaultTextStyle.copyWith(color: color);
+    final defaultProcessingTextStyle = defaultTextStyle.copyWith(
+      color: AppColor.disabledColor,
+    );
+    final defaultDisabledTextStyle = defaultTextStyle.copyWith(
+      color: AppColor.disabledColor,
+    );
+    final icon = !item.isEnable
+        ? (item.iconOnDisable ?? item.icon)
+        : isProcessing
+        ? (item.iconOnProcessing ??
+              LoadingIndicator(
+                valueColor: AppColor.disabledColor,
+                size: LayoutConstants.iconSizeSmall,
+              ))
+        : item.icon;
+    final titleStyle = !item.isEnable
+        ? (item.titleStyleOnDisable ?? defaultDisabledTextStyle)
+        : isProcessing
+        ? (item.titleStyleOnPrecessing ?? defaultProcessingTextStyle)
+        : (item.titleStyle ?? customTextStyle);
+
+    final child = Container(
+      color: Colors.transparent,
+      width: MediaQuery.of(context).size.width,
+      child: Padding(
+        padding: widget.padding,
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              SizedBox(
+                width: 30,
+                child: Center(child: icon),
+              ),
+              const SizedBox(width: 34),
+            ],
+            Expanded(
+              child: Text(
+                item.title ?? '',
+                style: titleStyle,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    return GestureDetector(
+      onTap: () async {
+        if (!item.isEnable || isProcessing) return;
+        setState(() => isProcessing = true);
+        await item.onTap?.call();
+        if (mounted) setState(() => isProcessing = false);
+      },
+      child: child,
     );
   }
 }
@@ -248,46 +741,3 @@ class OptionItem {
 
   static OptionItem emptyOptionItem = OptionItem(title: '');
 }
-
-Widget loadingIndicator({
-  double size = 27,
-  Color valueColor = Colors.black,
-  Color backgroundColor = Colors.black54,
-  double strokeWidth = 2.0,
-}) => SizedBox(
-  width: size,
-  height: size,
-  child: CircularProgressIndicator(
-    backgroundColor: backgroundColor,
-    color: valueColor,
-    strokeWidth: strokeWidth,
-  ),
-);
-
-Widget redDotIcon() => dotIcon(color: Colors.red);
-
-Widget dotIcon({required Color color, double size = 10}) => Container(
-  width: size,
-  height: size,
-  decoration: BoxDecoration(
-    color: color,
-    shape: BoxShape.circle,
-  ),
-);
-
-Widget iconWithRedDot({
-  required Widget icon,
-  EdgeInsetsGeometry? padding,
-  bool withReddot = true,
-}) => withReddot
-    ? Stack(
-        alignment: Alignment.topRight,
-        children: [
-          Padding(
-            padding: padding ?? const EdgeInsets.only(right: 5),
-            child: icon,
-          ),
-          redDotIcon(),
-        ],
-      )
-    : icon;

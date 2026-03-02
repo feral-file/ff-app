@@ -95,7 +95,7 @@ class _NowDisplayingVisibilitySyncState
 
   bool _shouldShowForPath(String path) {
     for (final hidden in _routesThatHideNowDisplayingBar) {
-      if (path == hidden || path.startsWith('$hidden/')) {
+      if (path == '/' || path == hidden || path.startsWith('$hidden/')) {
         return false;
       }
     }
