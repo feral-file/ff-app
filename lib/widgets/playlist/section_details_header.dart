@@ -37,34 +37,41 @@ class SectionDetailsHeader extends StatelessWidget {
           horizontal: LayoutConstants.pageHorizontalDefault,
           vertical: LayoutConstants.space4,
         ),
-        child: Row(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: LayoutConstants.iconSizeDefault,
-              height: LayoutConstants.iconSizeDefault,
-              child: icon,
-            ),
-            SizedBox(width: LayoutConstants.space3),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: LayoutConstants.iconSizeDefault,
+                  height: LayoutConstants.iconSizeDefault,
+                  child: icon,
+                ),
+                SizedBox(width: LayoutConstants.space3),
+                Expanded(
+                  child: Text(
                     title,
                     style: AppTypography.h4(context).white,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  SizedBox(height: LayoutConstants.space5),
-                  Text(
+                ),
+              ],
+            ),
+            SizedBox(height: LayoutConstants.space5),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
                     description,
                     maxLines: 4,
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.body(context).grey,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ],
         ),
@@ -72,4 +79,3 @@ class SectionDetailsHeader extends StatelessWidget {
     );
   }
 }
-
