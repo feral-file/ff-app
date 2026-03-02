@@ -8,6 +8,42 @@ import 'package:logging/logging.dart';
 
 final _log = Logger('AddAddressProvider');
 
+/// Error categories for the add-address flow.
+enum AddAddressExceptionType {
+  /// The input is not a valid address and cannot be resolved as a domain.
+  invalidAddressOrDomain,
+
+  /// The resolved address is already added (including pending addresses).
+  alreadyAdded;
+
+  /// A user-facing message suitable for inline UI.
+  String get message {
+    return switch (this) {
+      AddAddressExceptionType.invalidAddressOrDomain =>
+        "We couldn't validate this address. Check it and try again.",
+      AddAddressExceptionType.alreadyAdded =>
+        'This address is already added. Enter a different address.',
+    };
+  }
+}
+
+/// Exception thrown for expected, user-facing add-address validation failures.
+class AddAddressException implements Exception {
+  /// Creates an [AddAddressException] of the given [type].
+  AddAddressException({
+    required this.type,
+  });
+
+  /// Error category for UI messaging and branching.
+  final AddAddressExceptionType type;
+
+  /// A user-facing message suitable for inline UI.
+  String get message => type.message;
+
+  @override
+  String toString() => message;
+}
+
 /// Notifier for adding address
 class AddAddressNotifier extends AsyncNotifier<Address?> {
   @override
@@ -26,14 +62,29 @@ class AddAddressNotifier extends AsyncNotifier<Address?> {
         addressOrDomain,
       );
       if (addressInfo == null) {
-        throw Exception('Invalid address or domain');
+        throw AddAddressException(
+          type: AddAddressExceptionType.invalidAddressOrDomain,
+        );
+      }
+
+      final addressService = ref.read(addressServiceProvider);
+      final alreadyAdded = await addressService.isAddressAlreadyAdded(
+        address: addressInfo.address,
+        chain: addressInfo.type,
+      );
+      if (alreadyAdded) {
+        throw AddAddressException(type: AddAddressExceptionType.alreadyAdded);
       }
 
       _log.info('Address verified: ${addressInfo.address} ');
 
       state = AsyncValue.data(addressInfo);
     } on Exception catch (e, stack) {
-      _log.severe('Failed to verify address: $addressOrDomain', e, stack);
+      if (e is AddAddressException) {
+        _log.info('Add-address blocked: ${e.type.name}');
+      } else {
+        _log.severe('Failed to verify address: $addressOrDomain', e, stack);
+      }
       state = AsyncValue.error(e, stack);
     }
   }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/models.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/domain_address_service.dart';
@@ -121,6 +122,36 @@ class AddressService {
       _log.severe('Failed to add address $walletAddress', e, stack);
       rethrow;
     }
+  }
+
+  /// Returns true when the address has already been added.
+  ///
+  /// This checks both:
+  /// - pending addresses (when the seed DB gate is not open yet)
+  /// - persisted address-based playlists in SQLite (normal runtime)
+  Future<bool> isAddressAlreadyAdded({
+    required String address,
+    required Chain chain,
+  }) async {
+    final normalizedInput = address.normalizeForComparison(chain: chain);
+
+    if (!SeedDatabaseGate.isCompleted) {
+      final pending = await _pendingAddressesStore.getAddresses();
+      return pending.any(
+        (value) =>
+            value.normalizeForComparison(chain: chain) == normalizedInput,
+      );
+    }
+
+    final playlists = await _databaseService.getAddressPlaylists();
+    for (final playlist in playlists) {
+      final owner = playlist.ownerAddress;
+      if (owner == null) continue;
+      if (owner.normalizeForComparison(chain: chain) == normalizedInput) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void _scheduleAddressIndexing(String normalizedAddress) {

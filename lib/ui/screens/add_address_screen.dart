@@ -11,6 +11,7 @@ import 'package:app/app/providers/add_address_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/theme/app_color.dart';
@@ -202,8 +203,11 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                   alignment: Alignment.centerLeft,
                   child: addAddressState.hasError
                       ? Text(
-                          "We couldn't validate this address. "
-                          'Check it and try again.',
+                          switch (addAddressState.error) {
+                            AddAddressException(:final type) => type.message,
+                            _ => "We couldn't validate this address. "
+                                'Check it and try again.',
+                          },
                           style: AppTypography.body(context).red,
                         )
                       : const SizedBox.shrink(),
@@ -216,6 +220,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
               right: 0,
               child: PrimaryButton(
                 text: 'Submit',
+                color: PrimitivesTokens.colorsWhite,
                 onTap: isSubmitEnabled ? _handleVerifyAddress : null,
                 isProcessing: isSubmitting,
                 enabled: isSubmitEnabled,

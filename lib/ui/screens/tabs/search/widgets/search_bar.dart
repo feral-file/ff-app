@@ -83,7 +83,7 @@ class _SearchBarState extends State<SearchBar> {
               onSubmitted: widget.onSubmitted,
             ),
           ),
-          SizedBox(width: LayoutConstants.space5),
+          SizedBox(width: LayoutConstants.space3),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () {

@@ -310,6 +310,7 @@ class _EnterWiFiPasswordScreenState
                               vertical: LayoutConstants.space3 +
                                   LayoutConstants.space1,
                             ),
+                            color: PrimitivesTokens.colorsWhite,
                             onTap: _handleSendCredentials,
                             text: 'Submit',
                           ),

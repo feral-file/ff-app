@@ -184,41 +184,40 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
                         )
                       : const SizedBox.shrink(),
                 ),
-                // Buttons
-                SizedBox(height: LayoutConstants.space3),
-                // Skip button
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlineButton(
-                    text: 'Skip',
-                    textColor: PrimitivesTokens.colorsGrey,
-                    borderColor: PrimitivesTokens.colorsGrey,
-                    rightIcon: SvgPicture.asset(
-                      'assets/images/arrow_right.svg',
-                      colorFilter: const ColorFilter.mode(
-                        PrimitivesTokens.colorsGrey,
-                        BlendMode.srcIn,
-                      ),
-                    ),
-                    onTap: isSubmitting
-                        ? null
-                        : () => _handleAddAddress(skipAlias: true),
-                  ),
-                ),
               ],
             ),
             Positioned(
               bottom: LayoutConstants.space4 + bottomInset,
               left: 0,
               right: 0,
-              child: PrimaryButton(
-                text: 'Submit',
-                onTap: isSubmitEnabled
-                    ? () => _handleAddAddress(skipAlias: false)
-                    : null,
-                isProcessing: isSubmitting,
-                enabled: isSubmitEnabled,
-              ),
+              child: isInputEmpty
+                  ? SizedBox(
+                      width: double.infinity,
+                      child: OutlineButton(
+                        text: 'Skip',
+                        textColor: PrimitivesTokens.colorsWhite,
+                        borderColor: PrimitivesTokens.colorsWhite,
+                        rightIcon: SvgPicture.asset(
+                          'assets/images/arrow_right.svg',
+                          colorFilter: const ColorFilter.mode(
+                            PrimitivesTokens.colorsWhite,
+                            BlendMode.srcIn,
+                          ),
+                        ),
+                        onTap: isSubmitting
+                            ? null
+                            : () => _handleAddAddress(skipAlias: true),
+                      ),
+                    )
+                  : PrimaryButton(
+                      text: 'Submit',
+                      color: PrimitivesTokens.colorsWhite,
+                      onTap: isSubmitEnabled
+                          ? () => _handleAddAddress(skipAlias: false)
+                          : null,
+                      isProcessing: isSubmitting,
+                      enabled: isSubmitEnabled,
+                    ),
             ),
           ],
         ),

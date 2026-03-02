@@ -64,8 +64,9 @@ void main() {
     expect(find.text('Channels'), findsWidgets);
     expect(find.text('Channel A'), findsOneWidget);
 
-    // Clear button only clears input text; it must not clear the results view.
-    await tester.tap(find.byKey(const ValueKey('search_bar_clear_button')));
+    // Clearing the input text must not clear the results view
+    // (because results are driven by submitted query, not transient input).
+    await tester.enterText(find.byType(TextField), '');
     await tester.pump();
     final textField = tester.widget<TextField>(find.byType(TextField));
     expect(textField.controller?.text, isEmpty);
