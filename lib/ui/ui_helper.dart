@@ -99,14 +99,17 @@ class UIHelper {
                     ),
                     if (bottomWidget != null) ...[
                       const SizedBox(height: 10),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(5),
-                          color: PrimitivesTokens.colorsDarkGrey,
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: bottomWidget,
+                      SizedBox(
+                        width: double.infinity,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(5),
+                            color: PrimitivesTokens.colorsDarkGrey,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: bottomWidget,
+                          ),
                         ),
                       ),
                     ],
