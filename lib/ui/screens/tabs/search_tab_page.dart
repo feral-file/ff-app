@@ -4,205 +4,264 @@ import 'package:app/app/providers/search_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/domain/utils/ui_helper.dart' as domain_ui;
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/screens/tabs/search/search_filter_models.dart';
+import 'package:app/ui/screens/tabs/search/search_filtering.dart';
+import 'package:app/ui/screens/tabs/search/widgets/filter_bar.dart';
+import 'package:app/ui/screens/tabs/search/widgets/search_bar.dart'
+    as search_widgets;
+import 'package:app/ui/ui_helper.dart' as ui_helper;
+import 'package:app/widgets/buttons/primary_button.dart';
+import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/loading_view.dart';
+import 'package:app/widgets/playlist/playlist_list_row.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
-/// Search tab page with debounced search functionality.
+/// Search screen matching the old repo `SearchPage` UI.
 class SearchTabPage extends ConsumerStatefulWidget {
-  /// Creates a SearchTabPage.
+  /// Creates a [SearchTabPage].
   const SearchTabPage({super.key});
 
   @override
   ConsumerState<SearchTabPage> createState() => _SearchTabPageState();
 }
 
+
 class _SearchTabPageState extends ConsumerState<SearchTabPage>
     with AutomaticKeepAliveClientMixin {
-  static const Duration _searchThrottleDuration = Duration(milliseconds: 500);
-
   final TextEditingController _searchController = TextEditingController();
-  Timer? _searchThrottleTimer;
-  DateTime? _lastSearchAt;
-  String _pendingQuery = '';
+  final ScrollController _scrollController = ScrollController();
+  ProviderSubscription<AsyncValue<SearchResults>>? _resultsSubscription;
+
+  SearchResults? _lastSuccessfulResults;
+  SearchFilterType _filterType = SearchFilterType.channels;
+  SearchSortOrder _sortOrder = SearchSortOrder.relevance;
 
   @override
   bool get wantKeepAlive => true;
 
   @override
+  void initState() {
+    super.initState();
+    _resultsSubscription = ref.listenManual<AsyncValue<SearchResults>>(
+      searchResultsProvider,
+      (_, next) {
+        next.whenData((data) {
+          if (!mounted) return;
+          setState(() {
+            _lastSuccessfulResults = data;
+            final available = availableTypesFromResults(data);
+            final nextType =
+                selectInitialType(available: available, current: _filterType);
+            if (nextType != null) {
+              _filterType = nextType;
+            }
+          });
+        });
+      },
+    );
+  }
+
+  @override
   void dispose() {
+    _resultsSubscription?.close();
+    _resultsSubscription = null;
     _searchController.dispose();
-    _searchThrottleTimer?.cancel();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _emitSearch(String query) {
-    _lastSearchAt = DateTime.now();
+  void _onSearchSubmitted(String query) {
     ref.read(searchQueryProvider.notifier).setQuery(query);
-  }
-
-  void _onSearchChanged(String query) {
-    _pendingQuery = query;
-    final now = DateTime.now();
-    final lastSearchAt = _lastSearchAt;
-
-    if (lastSearchAt == null ||
-        now.difference(lastSearchAt) >= _searchThrottleDuration) {
-      _searchThrottleTimer?.cancel();
-      _emitSearch(query);
-      return;
-    }
-
-    final remaining = _searchThrottleDuration - now.difference(lastSearchAt);
-    _searchThrottleTimer?.cancel();
-    _searchThrottleTimer = Timer(remaining, () {
-      _emitSearch(_pendingQuery);
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
-    final searchQuery = ref.watch(searchQueryProvider);
-    final searchResultsAsync = ref.watch(searchResultsProvider);
+    final query = ref.watch(searchQueryProvider);
+    final resultsAsync = ref.watch(searchResultsProvider);
+    final unfilteredResults =
+        resultsAsync.asData?.value ??
+        _lastSuccessfulResults ??
+        const SearchResults(channels: [], playlists: [], works: []);
+
+    final availableTypes = availableTypesFromResults(unfilteredResults);
+    final safeFilterType =
+        selectInitialType(available: availableTypes, current: _filterType) ??
+        _filterType;
+
+    final resultsContent = SizedBox.expand(
+      child: Column(
+        children: [
+          FilterBar(
+            selectedFilterType: safeFilterType,
+            onFilterTypeChanged: (type) {
+              setState(() => _filterType = type);
+            },
+            availableTypes: availableTypes,
+            sortOrder: _sortOrder,
+            onSortOrderChanged: (order) {
+              setState(() => _sortOrder = order);
+            },
+          ),
+          Expanded(
+            child: _buildResultsSection(
+              context: context,
+              query: query,
+              resultsAsync: resultsAsync,
+              unfilteredResults: unfilteredResults,
+              filterType: safeFilterType,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final resultsWithOverlay =
+        (query.isNotEmpty && resultsAsync.isLoading)
+            ? Stack(
+                children: [
+                  resultsContent,
+                  Positioned.fill(
+                    child: ColoredBox(
+                      color: AppColor.auGreyBackground.withValues(alpha: 0.6),
+                      child: Center(
+                        child: LoadingWidget(
+                          backgroundColor: AppColor.auGreyBackground.withValues(
+                            alpha: 0.8,
+                          ),
+                          text: 'Searching...',
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : resultsContent;
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
-      appBar: AppBar(
-        backgroundColor: AppColor.auGreyBackground,
-        elevation: 0,
-        leading: IconButton(
-          icon: SvgPicture.asset(
-            'assets/images/icon_back.svg',
-            width: LayoutConstants.iconSizeMedium,
-            height: LayoutConstants.iconSizeMedium,
-            colorFilter: const ColorFilter.mode(
-              AppColor.white,
-              BlendMode.srcIn,
-            ),
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          'Search',
-          style: AppTypography.h4(context).white,
-        ),
-      ),
+      appBar: _buildOldStyleSearchAppBar(context),
       body: Column(
         children: [
-          // Search input
           Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: LayoutConstants.pageHorizontalDefault,
-              vertical: LayoutConstants.space3,
-            ),
-            child: TextField(
-              autofocus: true,
+            padding: EdgeInsets.all(LayoutConstants.pageHorizontalDefault),
+            child: search_widgets.SearchBar(
               controller: _searchController,
-              style: AppTypography.body(context).white,
-              decoration: InputDecoration(
-                hintText: 'Search channels, playlists, works...',
-                hintStyle: AppTypography.body(context).grey,
-                filled: true,
-                fillColor: AppColor.darkGrey,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(LayoutConstants.space2),
-                  borderSide: BorderSide.none,
-                ),
-                prefixIcon: Padding(
-                  padding: EdgeInsets.all(LayoutConstants.space3),
-                  child: SvgPicture.asset(
-                    'assets/images/search.svg',
-                    width: LayoutConstants.iconSizeMedium,
-                    height: LayoutConstants.iconSizeMedium,
-                    colorFilter: const ColorFilter.mode(
-                      AppColor.auQuickSilver,
-                      BlendMode.srcIn,
-                    ),
-                  ),
-                ),
-                suffixIcon: searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: SvgPicture.asset(
-                          'assets/images/close.svg',
-                          width: LayoutConstants.iconSizeMedium,
-                          height: LayoutConstants.iconSizeMedium,
-                          colorFilter: const ColorFilter.mode(
-                            AppColor.auQuickSilver,
-                            BlendMode.srcIn,
-                          ),
-                        ),
-                        onPressed: () {
-                          _searchController.clear();
-                          _lastSearchAt = null;
-                          _pendingQuery = '';
-                          _searchThrottleTimer?.cancel();
-                          ref.read(searchQueryProvider.notifier).clear();
-                        },
-                      )
-                    : null,
-              ),
-              onChanged: _onSearchChanged,
+              onSubmitted: _onSearchSubmitted,
+              autoFocus: true,
             ),
           ),
-
-          // Search results
-          Expanded(
-            child: searchResultsAsync.when(
-              data: (results) {
-                if (searchQuery.isEmpty) {
-                  return _buildEmptyState();
-                }
-
-                if (results.isEmpty) {
-                  return _buildNoResults(searchQuery);
-                }
-
-                // Results available - render sections
-                return _buildResults(results);
-              },
-              loading: () => _buildLoading(),
-              error: (error, stack) => _buildError(error.toString()),
-            ),
-          ),
+          Expanded(child: resultsWithOverlay),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  PreferredSizeWidget _buildOldStyleSearchAppBar(BuildContext context) {
+    return AppBar(
+      systemOverlayStyle: const SystemUiOverlayStyle(
+        statusBarColor: AppColor.auGreyBackground,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+      centerTitle: true,
+      scrolledUnderElevation: 0,
+      toolbarHeight: 54,
+      leadingWidth: 56,
+      leading: IconButton(
+        constraints: const BoxConstraints(
+          maxWidth: 44,
+          maxHeight: 44,
+          minWidth: 44,
+          minHeight: 44,
+        ),
+        onPressed: () => Navigator.pop(context),
+        icon: SvgPicture.asset(
+          'assets/images/icon_back.svg',
+          width: 24,
+          height: 24,
+          colorFilter: const ColorFilter.mode(
+            AppColor.white,
+            BlendMode.srcIn,
+          ),
+        ),
+      ),
+      title: Text(
+        'Search',
+        overflow: TextOverflow.ellipsis,
+        style: AppTypography.body(context).white,
+        textAlign: TextAlign.center,
+      ),
+      actions: const [
+        SizedBox(width: 16),
+      ],
+      backgroundColor: AppColor.auGreyBackground,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: Colors.transparent,
+      elevation: 0,
+      bottom: const PreferredSize(
+        preferredSize: Size.fromHeight(1),
+        child: Divider(
+          height: 1,
+          thickness: 1,
+          color: AppColor.primaryBlack,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultsSection({
+    required BuildContext context,
+    required String query,
+    required AsyncValue<SearchResults> resultsAsync,
+    required SearchResults unfilteredResults,
+    required SearchFilterType filterType,
+  }) {
+    if (resultsAsync.hasError) {
+      return _buildErrorView(context);
+    }
+
+    if (query.isEmpty) {
+      return _buildInitialView(context);
+    }
+
+    if (resultsAsync.isLoading) {
+      // Don't show empty view while loading (overlay handles it).
+      return const SizedBox.shrink();
+    }
+
+    final results = resultsAsync.asData?.value ?? unfilteredResults;
+    if (results.isEmpty) {
+      return _buildEmptyView(context);
+    }
+
+    return _buildResultsView(
+      context: context,
+      results: results,
+      filterType: filterType,
+    );
+  }
+
+  Widget _buildInitialView(BuildContext context) {
     return Center(
       child: Padding(
         padding: EdgeInsets.all(LayoutConstants.space6),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SvgPicture.asset(
-              'assets/images/search.svg',
-              width: LayoutConstants.space16,
-              height: LayoutConstants.space16,
-              colorFilter: const ColorFilter.mode(
-                AppColor.auQuickSilver,
-                BlendMode.srcIn,
-              ),
-            ),
-            SizedBox(height: LayoutConstants.space4),
             Text(
-              'Search for anything',
-              style: AppTypography.h4(context).white,
-            ),
-            SizedBox(height: LayoutConstants.space2),
-            Text(
-              'Find channels, playlists, and works',
-              style: AppTypography.bodySmall(context).grey,
+              'Search for channels, playlists, or works',
+              style: AppTypography.body(context).white,
               textAlign: TextAlign.center,
             ),
           ],
@@ -211,32 +270,41 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
     );
   }
 
-  Widget _buildNoResults(String query) {
-    return Center(
+  Widget _buildEmptyView(BuildContext context) {
+    final textStyle = AppTypography.body(context).white;
+    return SingleChildScrollView(
       child: Padding(
-        padding: EdgeInsets.all(LayoutConstants.space6),
+        padding: EdgeInsets.all(LayoutConstants.pageHorizontalDefault),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SvgPicture.asset(
-              'assets/images/search_bold.svg',
-              width: LayoutConstants.space16,
-              height: LayoutConstants.space16,
-              colorFilter: const ColorFilter.mode(
-                AppColor.auQuickSilver,
-                BlendMode.srcIn,
-              ),
-            ),
-            SizedBox(height: LayoutConstants.space4),
             Text(
               'No results found',
-              style: AppTypography.h4(context).white,
+              style: textStyle.copyWith(fontWeight: FontWeight.w700),
+            ),
+            SizedBox(height: LayoutConstants.space4),
+            Text(
+              'Try exhibitions, playlists, artists, or curators. '
+              'Collection search will return soon.',
+              style: textStyle,
             ),
             SizedBox(height: LayoutConstants.space2),
             Text(
-              'Try different keywords or check spelling',
-              style: AppTypography.bodySmall(context).grey,
-              textAlign: TextAlign.center,
+              'Examples: Dmitri Cherniak artworks, generative art exhibitions, '
+              'Maya Man',
+              style: textStyle,
+            ),
+            SizedBox(height: LayoutConstants.space2),
+            Text(
+              "Didn't find what you wanted? Tap Help to tell us.",
+              style: textStyle,
+            ),
+            SizedBox(height: LayoutConstants.space6),
+            PrimaryButton(
+              onTap: () {
+                unawaited(domain_ui.UIHelper.showCustomerSupport(context));
+              },
+              text: 'Help',
             ),
           ],
         ),
@@ -244,35 +312,22 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
     );
   }
 
-  Widget _buildLoading() {
-    return const LoadingView();
-  }
-
-  Widget _buildError(String error) {
+  Widget _buildErrorView(BuildContext context) {
     return Center(
       child: Padding(
         padding: EdgeInsets.all(LayoutConstants.space6),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SvgPicture.asset(
-              'assets/images/warning.svg',
-              width: LayoutConstants.space12,
-              height: LayoutConstants.space12,
-              colorFilter: const ColorFilter.mode(
-                AppColor.error,
-                BlendMode.srcIn,
-              ),
+            Icon(
+              Icons.error_outline,
+              size: LayoutConstants.space12,
+              color: AppColor.auGrey,
             ),
             SizedBox(height: LayoutConstants.space4),
             Text(
-              'Search error',
-              style: AppTypography.h4(context).white,
-            ),
-            SizedBox(height: LayoutConstants.space2),
-            Text(
-              error,
-              style: AppTypography.bodySmall(context).grey,
+              "We couldn't complete your search",
+              style: AppTypography.body(context).white,
               textAlign: TextAlign.center,
             ),
           ],
@@ -281,179 +336,101 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
     );
   }
 
-  Widget _buildResults(SearchResults results) {
-    return ListView(
-      padding: EdgeInsets.symmetric(
-        horizontal: LayoutConstants.pageHorizontalDefault,
-      ),
-      children: [
-        // Channels section
-        if (results.channels.isNotEmpty) ...[
-          _buildSectionHeader('Channels (${results.channels.length})'),
-          ...results.channels.map((channel) => _buildChannelTile(channel)),
-          SizedBox(height: LayoutConstants.space4),
-        ],
+  Widget _buildResultsView({
+    required BuildContext context,
+    required SearchResults results,
+    required SearchFilterType filterType,
+  }) {
+    final filtered = filterResultsByType(results, filterType);
 
-        // Playlists section
-        if (results.playlists.isNotEmpty) ...[
-          _buildSectionHeader('Playlists (${results.playlists.length})'),
-          ...results.playlists.map((playlist) => _buildPlaylistTile(playlist)),
-          SizedBox(height: LayoutConstants.space4),
-        ],
+    switch (filterType) {
+      case SearchFilterType.channels:
+        return _buildChannelsView(context, filtered.channels);
+      case SearchFilterType.playlists:
+        return _buildPlaylistsView(context, filtered.playlists);
+      case SearchFilterType.works:
+        return _buildWorksView(context, filtered.works);
+    }
+  }
 
-        // Works section
-        if (results.works.isNotEmpty) ...[
-          _buildSectionHeader('Works (${results.works.length})'),
-          ...results.works.map((work) => _buildWorkTile(work)),
-        ],
+  Widget _buildChannelsView(BuildContext context, List<Channel> channels) {
+    if (channels.isEmpty) {
+      return _buildEmptyView(context);
+    }
+
+    return CustomScrollView(
+      controller: _scrollController,
+      slivers: [
+        SliverList.builder(
+          itemCount: channels.length,
+          itemBuilder:
+              (context, index) => ChannelListRow(
+                channelData: ChannelRowData(
+                  channelId: channels[index].id,
+                  channelTitle: channels[index].name,
+                  channelSummary: channels[index].description,
+                  works: const <PlaylistItem>[],
+                ),
+                onItemTap: (item) {
+                  unawaited(context.push('${Routes.works}/${item.id}'));
+                },
+              ),
+        ),
+        SliverToBoxAdapter(
+          child: SizedBox(height: LayoutConstants.space16),
+        ),
       ],
     );
   }
 
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: EdgeInsets.only(
-        top: LayoutConstants.space3,
-        bottom: LayoutConstants.space2,
-      ),
-      child: Text(
-        title,
-        style: AppTypography.h4(context).white,
-      ),
+  Widget _buildPlaylistsView(BuildContext context, List<Playlist> playlists) {
+    if (playlists.isEmpty) {
+      return _buildEmptyView(context);
+    }
+
+    return CustomScrollView(
+      controller: _scrollController,
+      slivers: [
+        SliverList.builder(
+          itemCount: playlists.length,
+          itemBuilder:
+              (context, index) => PlaylistRowItem(
+                playlist: playlists[index],
+                onItemTap: (item) {
+                  unawaited(context.push('${Routes.works}/${item.id}'));
+                },
+              ),
+        ),
+        SliverToBoxAdapter(
+          child: SizedBox(height: LayoutConstants.space16),
+        ),
+      ],
     );
   }
 
-  Widget _buildChannelTile(Channel channel) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: LayoutConstants.space2),
-      child: InkWell(
-        onTap: () {
-          context.push('${Routes.channels}/${channel.id}');
-        },
-        child: Container(
-          padding: EdgeInsets.all(LayoutConstants.space3),
-          decoration: BoxDecoration(
-            color: AppColor.darkGrey,
-            borderRadius: BorderRadius.circular(LayoutConstants.space2),
-          ),
-          child: Row(
-            children: [
-              SvgPicture.asset(
-                channel.isPinned
-                    ? 'assets/images/pinned.svg'
-                    : 'assets/images/icon_series.svg',
-                width: LayoutConstants.iconSizeMedium,
-                height: LayoutConstants.iconSizeMedium,
-                colorFilter: const ColorFilter.mode(
-                  AppColor.feralFileLightBlue,
-                  BlendMode.srcIn,
-                ),
-              ),
-              SizedBox(width: LayoutConstants.space3),
-              Expanded(
-                child: Text(
-                  channel.name,
-                  style: AppTypography.body(context).white,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _buildWorksView(BuildContext context, List<PlaylistItem> works) {
+    if (works.isEmpty) {
+      return _buildEmptyView(context);
+    }
 
-  Widget _buildPlaylistTile(Playlist playlist) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: LayoutConstants.space2),
-      child: InkWell(
-        onTap: () {
-          context.push('${Routes.playlists}/${playlist.id}');
-        },
-        child: Container(
-          padding: EdgeInsets.all(LayoutConstants.space3),
-          decoration: BoxDecoration(
-            color: AppColor.darkGrey,
-            borderRadius: BorderRadius.circular(LayoutConstants.space2),
+    return CustomScrollView(
+      controller: _scrollController,
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.symmetric(
+            horizontal: LayoutConstants.pageHorizontalDefault,
           ),
-          child: Row(
-            children: [
-              SvgPicture.asset(
-                'assets/images/list.svg',
-                width: LayoutConstants.iconSizeMedium,
-                height: LayoutConstants.iconSizeMedium,
-                colorFilter: const ColorFilter.mode(
-                  AppColor.feralFileLightBlue,
-                  BlendMode.srcIn,
-                ),
-              ),
-              SizedBox(width: LayoutConstants.space3),
-              Expanded(
-                child: Text(
-                  playlist.name,
-                  style: AppTypography.body(context).white,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
+          sliver: ui_helper.UIHelper.worksSliverGrid(
+            works: works,
+            onItemTap: (item) {
+              unawaited(context.push('${Routes.works}/${item.id}'));
+            },
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildWorkTile(PlaylistItem work) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: LayoutConstants.space2),
-      child: InkWell(
-        onTap: () {
-          context.push('${Routes.works}/${work.id}');
-        },
-        child: Container(
-          padding: EdgeInsets.all(LayoutConstants.space3),
-          decoration: BoxDecoration(
-            color: AppColor.darkGrey,
-            borderRadius: BorderRadius.circular(LayoutConstants.space2),
-          ),
-          child: Row(
-            children: [
-              SvgPicture.asset(
-                'assets/images/artwork_item.svg',
-                width: LayoutConstants.iconSizeMedium,
-                height: LayoutConstants.iconSizeMedium,
-                colorFilter: const ColorFilter.mode(
-                  AppColor.feralFileLightBlue,
-                  BlendMode.srcIn,
-                ),
-              ),
-              SizedBox(width: LayoutConstants.space3),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      work.title ?? '',
-                      style: AppTypography.body(context).white,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (work.artistName.isNotEmpty)
-                      Text(
-                        work.artistName,
-                        style: AppTypography.bodySmall(context).grey,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+        SliverToBoxAdapter(
+          child: SizedBox(height: LayoutConstants.space16),
         ),
-      ),
+      ],
     );
   }
 }
