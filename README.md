@@ -126,9 +126,23 @@ Typical values (names are illustrative—use your repo’s actual config system)
 - `LOG_LEVEL` — debug/info/warn/error
 
 ### Local dev quickstart
-1) Create `.env` with the required keys above (do not commit).
-2) `flutter pub get`
-3) `flutter run --flavor development`
+ 1) Create `.env` with the required keys above (do not commit).
+ 2) `flutter pub get`
+ 3) `flutter run --flavor development`
+
+#### Seed DB S3 integration tests
+
+The following additional variables are required when running S3-backed seed integration
+tests:
+
+- `S3_BUCKET` (must be a valid URL including a bucket path, e.g. `https://s3.amazonaws.com/<bucket-name>`)
+- `S3_ACCESS_KEY_ID`
+- `S3_SECRET_ACCESS_KEY`
+- `S3_REGION`
+- `S3_SEED_DATABASE_OBJECT_KEY`
+
+If any value is missing or malformed, those tests are skipped at runtime with a
+clear message rather than failing app startup.
 
 ---
 

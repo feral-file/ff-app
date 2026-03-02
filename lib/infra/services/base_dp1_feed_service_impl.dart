@@ -211,6 +211,7 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
         '[BaseDP1FeedServiceImpl] Forced cache reload for baseUrl=$baseUrl',
       );
       await reloadCache();
+      await _recordSuccessfulReload(DateTime.now().toUtc());
       return;
     }
 
@@ -227,6 +228,26 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
       '[BaseDP1FeedServiceImpl] Reloading cache (policy) for baseUrl=$baseUrl',
     );
     await reloadCache();
+    await _recordSuccessfulReload(DateTime.now().toUtc());
+  }
+
+  Future<void> _recordSuccessfulReload(DateTime completedAt) async {
+    try {
+      await appStateService.setLastRefreshTime(baseUrl, completedAt);
+      await appStateService.setFeedBareIngestCompleted(
+        baseUrl: baseUrl,
+        completed: true,
+        completedAt: completedAt,
+      );
+      await appStateService.setLastFeedUpdatedAt(completedAt);
+    } on Exception catch (e, stack) {
+      _log.warning(
+        '[BaseDP1FeedServiceImpl] Failed to persist feed cache state for '
+        'baseUrl=$baseUrl',
+        e,
+        stack,
+      );
+    }
   }
 
   /// Get service name map (url -> name). Default empty.
