@@ -8,6 +8,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/add_address_provider.dart';
+import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
@@ -54,6 +55,7 @@ class AddAddressScreen extends ConsumerStatefulWidget {
 
 class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
   late final TextEditingController _inputController;
+  final _addressFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -61,11 +63,17 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
     _inputController = TextEditingController(
       text: kDebugMode ? '0x99fc8AD516FBCC9bA3123D56e63A35d05AA9EFB8' : '',
     );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _addressFocusNode.requestFocus();
+    });
   }
 
   @override
   void dispose() {
     _inputController.dispose();
+    _addressFocusNode.dispose();
     super.dispose();
   }
 
@@ -87,6 +95,9 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
   @override
   Widget build(BuildContext context) {
     final addAddressState = ref.watch(addAddressProvider);
+    final shouldReserveNowDisplayingBar = ref.watch(
+      nowDisplayingShouldShowProvider,
+    );
 
     // Listen for state changes
     ref.listen<AsyncValue<Address?>>(
@@ -111,6 +122,11 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
     final isSubmitting = addAddressState.isLoading;
     final isInputEmpty = _inputController.text.trim().isEmpty;
     final isSubmitEnabled = !isSubmitting && !isInputEmpty;
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    final reservedBottomBarHeight = shouldReserveNowDisplayingBar
+        ? LayoutConstants.nowDisplayingBarReservedHeight
+        : 0.0;
+    final bottomInset = bottomPadding + reservedBottomBarHeight;
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
@@ -119,7 +135,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
       ),
       body: Padding(
         padding: EdgeInsets.symmetric(
-          horizontal: LayoutConstants.setupPageHorizontal,
+          horizontal: LayoutConstants.pageHorizontalDefault,
         ),
         child: Stack(
           children: [
@@ -143,6 +159,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                     children: [
                       Expanded(
                         child: TextField(
+                          focusNode: _addressFocusNode,
                           controller: _inputController,
                           enabled: !isSubmitting,
                           style: AppTypography.body(context).white,
@@ -194,7 +211,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
               ],
             ),
             Positioned(
-              bottom: LayoutConstants.space4,
+              bottom: LayoutConstants.space4 + bottomInset,
               left: 0,
               right: 0,
               child: PrimaryButton(

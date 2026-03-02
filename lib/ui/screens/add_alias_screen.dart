@@ -8,6 +8,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/add_address_provider.dart';
+import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
@@ -93,6 +94,9 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
   @override
   Widget build(BuildContext context) {
     final addState = ref.watch(addAliasProvider);
+    final shouldReserveNowDisplayingBar = ref.watch(
+      nowDisplayingShouldShowProvider,
+    );
 
     // Listen for success and pop
     ref.listen<AsyncValue<void>>(
@@ -112,6 +116,11 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
     final isSubmitting = addState.isLoading;
     final isInputEmpty = _inputController.text.trim().isEmpty;
     final isSubmitEnabled = !isSubmitting && !isInputEmpty;
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    final reservedBottomBarHeight = shouldReserveNowDisplayingBar
+        ? LayoutConstants.nowDisplayingBarReservedHeight
+        : 0.0;
+    final bottomInset = bottomPadding + reservedBottomBarHeight;
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
@@ -120,7 +129,7 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
       ),
       body: Padding(
         padding: EdgeInsets.symmetric(
-          horizontal: LayoutConstants.setupPageHorizontal,
+          horizontal: LayoutConstants.pageHorizontalDefault,
         ),
         child: Stack(
           children: [
@@ -199,7 +208,7 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
               ],
             ),
             Positioned(
-              bottom: LayoutConstants.space4,
+              bottom: LayoutConstants.space4 + bottomInset,
               left: 0,
               right: 0,
               child: PrimaryButton(

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/providers/connect_wifi_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -138,12 +139,17 @@ class _EnterWiFiPasswordScreenState
   @override
   Widget build(BuildContext context) {
     final connectionState = ref.watch(connectWiFiProvider);
+    final shouldReserveNowDisplayingBar = ref.watch(nowDisplayingShouldShowProvider);
     final isProcessing = _isProcessing ||
         (connectionState.status != WiFiConnectionStatus.selectingNetwork &&
             connectionState.status != WiFiConnectionStatus.idle &&
             connectionState.status != WiFiConnectionStatus.error);
     final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
     final parsedSsid = _parseSSID(widget.payload.wifiAccessPoint.ssid);
+    final reservedBottomBarHeight = shouldReserveNowDisplayingBar
+        ? LayoutConstants.nowDisplayingBarReservedHeight
+        : 0.0;
+    final bottomInset = reservedBottomBarHeight;
 
     // Listen for success and navigate
     ref.listen(connectWiFiProvider, (previous, next) {
@@ -296,7 +302,7 @@ class _EnterWiFiPasswordScreenState
                           ],
                         ),
                         Positioned(
-                          bottom: LayoutConstants.space4,
+                          bottom: LayoutConstants.space4 + bottomInset,
                           left: 0,
                           right: 0,
                           child: PrimaryAsyncButton(

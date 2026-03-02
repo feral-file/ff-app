@@ -7,6 +7,7 @@
 
 import 'dart:async';
 
+import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -96,6 +97,11 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
   @override
   Widget build(BuildContext context) {
     final deviceName = widget.payload.deviceName;
+    final shouldReserveNowDisplayingBar = ref.watch(nowDisplayingShouldShowProvider);
+    final reservedBottomBarHeight = shouldReserveNowDisplayingBar
+        ? LayoutConstants.nowDisplayingBarReservedHeight
+        : 0.0;
+    final bottomInset = reservedBottomBarHeight;
 
     return Scaffold(
       backgroundColor: PrimitivesTokens.colorsDarkGrey,
@@ -122,7 +128,7 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
                 ],
               ),
               Positioned(
-                bottom: LayoutConstants.space4,
+                bottom: LayoutConstants.space4 + bottomInset,
                 left: 0,
                 right: 0,
                 child: _StartButton(

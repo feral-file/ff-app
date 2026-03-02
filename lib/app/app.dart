@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/now_displaying/now_displaying_app_shell.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
+import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
@@ -402,5 +403,9 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   }
 
   @override
-  Widget build(BuildContext context) => widget.child;
+  Widget build(BuildContext context) {
+    // Keep AppLifecycleNotifier alive so it can attach the WidgetsBinding observer.
+    ref.watch(appLifecycleProvider);
+    return widget.child;
+  }
 }
