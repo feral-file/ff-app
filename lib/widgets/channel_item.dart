@@ -1,8 +1,11 @@
 import 'package:app/app/routing/routes.dart';
+import 'package:app/app/utils/html/prepare_truncated_html.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Channel Header - displays channel title and summary
 class ChannelHeader extends StatelessWidget {
@@ -13,6 +16,7 @@ class ChannelHeader extends StatelessWidget {
     this.channelSummary,
     this.clickable = true,
     this.maxLines,
+    this.renderSummaryAsHtml = false,
     super.key,
   });
 
@@ -31,15 +35,21 @@ class ChannelHeader extends StatelessWidget {
   /// Max lines for summary text.
   final int? maxLines;
 
+  /// Whether the summary should be rendered as HTML.
+  ///
+  /// When enabled, [maxLines] is ignored because HTML rendering does not
+  /// reliably support line-based truncation.
+  final bool renderSummaryAsHtml;
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
         if (clickable) {
-          context.push('${Routes.channels}/${channelId}');
+          context.push('${Routes.channels}/$channelId');
         }
       },
-      child: Container(
+      child: ColoredBox(
         color: Colors.transparent,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -60,14 +70,37 @@ class ChannelHeader extends StatelessWidget {
                   ),
                   if (channelSummary != null && channelSummary!.isNotEmpty) ...[
                     SizedBox(height: LayoutConstants.space5),
-                    Text(
-                      channelSummary!,
-                      maxLines: maxLines,
-                      overflow: maxLines != null
-                          ? TextOverflow.ellipsis
-                          : TextOverflow.visible,
-                      style: AppTypography.body(context).grey,
-                    ),
+                    if (renderSummaryAsHtml)
+                      SelectionArea(
+                        child: HtmlWidget(
+                          prepareHtmlForRender(channelSummary!),
+                          textStyle: AppTypography.body(context).grey,
+                          onTapUrl: (url) async {
+                            await launchUrl(
+                              Uri.parse(url),
+                              mode: LaunchMode.externalApplication,
+                            );
+                            return true;
+                          },
+                          customStylesBuilder: (element) {
+                            if (element.localName == 'p') {
+                              return {
+                                'margin': '0 0 12px 0',
+                              }; // paragraph spacing
+                            }
+                            return null;
+                          },
+                        ),
+                      )
+                    else
+                      Text(
+                        channelSummary!,
+                        maxLines: maxLines,
+                        overflow: maxLines != null
+                            ? TextOverflow.ellipsis
+                            : TextOverflow.visible,
+                        style: AppTypography.body(context).grey,
+                      ),
                   ],
                 ],
               ),
