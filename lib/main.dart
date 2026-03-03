@@ -22,7 +22,7 @@ Future<void> main() async {
   // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Configure logging sinks (console, OS logger, and file).
+  // Configure logging sinks (console and file).
   await AppLogger.initialize();
   final logFilePath = AppLogger.currentLogFile?.path;
   if (logFilePath != null) {

@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 
-/// Central logging fan-out for console, OS logger, and file persistence.
+/// Central logging fan-out for console and file persistence.
 class AppLogger {
   AppLogger._();
 
@@ -64,7 +63,6 @@ class AppLogger {
   static void _handleLogRecord(LogRecord record) {
     final line = _formatRecord(record);
     _logToConsole(line);
-    _logToOs(record);
     _writeQueue?.add(line);
   }
 
@@ -88,17 +86,6 @@ class AppLogger {
 
   static void _logToConsole(String message) {
     debugPrint(message.trimRight());
-  }
-
-  static void _logToOs(LogRecord record) {
-    developer.log(
-      _redact(record.message),
-      time: record.time,
-      level: record.level.value,
-      name: record.loggerName,
-      error: record.error,
-      stackTrace: record.stackTrace,
-    );
   }
 
   static Future<void> _writeLogLine(String line) async {
