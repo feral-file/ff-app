@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/widgets.dart';
@@ -51,16 +50,13 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
-      ref.read(feedManagerProvider).pauseWork();
       unawaited(_checkpointDatabase());
     } else if (state == AppLifecycleState.resumed) {
-      final feedManager = ref.read(feedManagerProvider)..resumeWork();
       unawaited(
         ref
             .read(tokensSyncCoordinatorProvider.notifier)
             .syncAllTrackedAddresses(),
       );
-      unawaited(feedManager.reloadAllCache());
     }
   }
 

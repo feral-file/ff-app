@@ -1,4 +1,3 @@
-import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
@@ -78,9 +77,7 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
 
       _log.info('Starting bootstrap');
       _log.info(
-        'Config flags: dp1FeedUrl=${AppConfig.dp1FeedUrl.isNotEmpty}, '
-        'dp1FeedApiKey=${AppConfig.dp1FeedApiKey.isNotEmpty}, '
-        'indexerApiUrl=${AppConfig.indexerApiUrl.isNotEmpty}, '
+        'Config flags: indexerApiUrl=${AppConfig.indexerApiUrl.isNotEmpty}, '
         'indexerApiKey=${AppConfig.indexerApiKey.isNotEmpty}, '
         'ff1RelayerUrl=${AppConfig.ff1RelayerUrl.isNotEmpty}, '
         'ff1RelayerApiKey=${AppConfig.ff1RelayerApiKey.isNotEmpty}',
@@ -100,25 +97,6 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       final bootstrapService = ref.read(bootstrapServiceProvider);
       await bootstrapService.bootstrap();
       _log.info('My Collection channel created');
-
-      // Initialize feed services used by lifecycle/reset flows.
-      final feedManager = ref.read(feedManagerProvider);
-      _log.info('Feed services configured: ${feedManager.feedServices.length}');
-      if (feedManager.feedServices.isEmpty) {
-        _log.warning('No feed services configured on startup');
-      } else {
-        for (final service in feedManager.feedServices) {
-          _log.info(
-            'Startup feed service: ${service.runtimeType} '
-            'url=${service.baseUrl}, ',
-          );
-        }
-      }
-      _log.info('Initializing feed services...');
-      await feedManager.init();
-      _log.info('Reloading feed cache on startup...');
-      await feedManager.reloadAllCache();
-      _log.info('Feed cache reload on startup complete');
 
       // Keep the auto-connect watcher alive to automatically connect to relayer
       // when active FF1 device changes

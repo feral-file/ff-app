@@ -136,10 +136,10 @@ class AppConfig {
   static String get s3Region => dotenv.get('S3_REGION', fallback: 'auto');
 
   /// Check if configuration is valid (all required keys present).
+  ///
+  /// Feed server (DP1_FEED_URL) removed; app uses seed database for DP1 data.
   static bool get isValid =>
-      dp1FeedUrl.isNotEmpty &&
       indexerApiUrl.isNotEmpty &&
-      dp1FeedApiKey.isNotEmpty &&
       indexerApiKey.isNotEmpty &&
       ff1RelayerUrl.isNotEmpty &&
       ff1RelayerApiKey.isNotEmpty;
@@ -149,14 +149,8 @@ class AppConfig {
   static List<String> getValidationErrors() {
     final errors = <String>[];
 
-    if (dp1FeedUrl.isEmpty) {
-      errors.add('DP1_FEED_URL is missing');
-    }
     if (indexerApiUrl.isEmpty) {
       errors.add('INDEXER_API_URL is missing');
-    }
-    if (dp1FeedApiKey.isEmpty) {
-      errors.add('DP1_FEED_API_KEY is missing');
     }
     if (indexerApiKey.isEmpty) {
       errors.add('INDEXER_API_KEY is missing');

@@ -1,5 +1,5 @@
 /// General-purpose pair of two values.
-/// Used for FeedManager storage, canvas notification manager, and similar.
+/// Used for canvas notification manager and similar key-value storage.
 class Pair<T1, T2> {
   Pair(this.first, this.second);
 

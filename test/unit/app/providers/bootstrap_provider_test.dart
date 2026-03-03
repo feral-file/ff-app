@@ -1,10 +1,6 @@
-import 'package:app/app/feed/feed_manager.dart';
-import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
-import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
-import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
@@ -120,37 +116,6 @@ void main() {
       );
     });
 
-    test('bootstrap calls feed cache reload on startup', () async {
-      final db = AppDatabase.forTesting(NativeDatabase.memory());
-      addTearDown(db.close);
-
-      final dbService = DatabaseService(db);
-      final feedManager = _TrackingFeedManager(
-        databaseService: dbService,
-        appStateService: _NoopAppStateService(),
-        defaultDp1FeedUrl: 'https://feeds.feralfile.com',
-        defaultDp1FeedApiKey: 'test-api-key',
-      );
-
-      final container = ProviderContainer.test(
-        overrides: [
-          databaseServiceProvider.overrideWith((ref) => dbService),
-          bootstrapServiceProvider.overrideWith(
-            (ref) => _MockBootstrapService(),
-          ),
-          ff1AutoConnectWatcherProvider.overrideWith((ref) {}),
-          feedManagerProvider.overrideWith((ref) => feedManager),
-        ],
-      );
-      addTearDown(container.dispose);
-
-      await container.read(bootstrapProvider.notifier).bootstrap();
-
-      expect(container.read(bootstrapProvider).state, BootstrapState.success);
-      expect(feedManager.initCallCount, 1);
-      expect(feedManager.reloadCallCount, 1);
-    });
-
     test('demonstrates mocking BootstrapService', () async {
       final db = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(db.close);
@@ -249,33 +214,4 @@ class _MockBootstrapService implements BootstrapService {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-/// Fake AppStateService for manager tests.
-class _NoopAppStateService implements AppStateService {
-  @override
-  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
-}
-
-/// Feed manager used to verify startup bootstrap calls.
-class _TrackingFeedManager extends FeralFileFeedManager {
-  _TrackingFeedManager({
-    required super.databaseService,
-    required super.appStateService,
-    required super.defaultDp1FeedUrl,
-    required super.defaultDp1FeedApiKey,
-  });
-
-  int initCallCount = 0;
-  int reloadCallCount = 0;
-
-  @override
-  Future<void> init() async {
-    initCallCount += 1;
-  }
-
-  @override
-  Future<void> reloadAllCache({bool force = false}) async {
-    reloadCallCount += 1;
-  }
 }

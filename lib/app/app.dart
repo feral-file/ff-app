@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/now_displaying/now_displaying_app_shell.dart';
 import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
@@ -17,7 +16,6 @@ import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/wallet_address.dart';
-import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -158,47 +156,18 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   }
 
   Future<void> _logStartupFeedState() async {
-    final feedManager = ref.read(feedManagerProvider);
-    final databaseService = ref.read(databaseServiceProvider);
-    final appStateService = ref.read(appStateServiceProvider);
-
-    _log.info(
-      'AppConfig.dp1FeedUrlPresent=${AppConfig.dp1FeedUrl.isNotEmpty}, '
-      'AppConfig.dp1FeedApiKeyPresent=${AppConfig.dp1FeedApiKey.isNotEmpty}',
-    );
-
-    final services = feedManager.feedServices;
-    _log.info('Startup feed services available: ${services.length}');
-    for (final service in services) {
-      final stale = await service.shouldReloadCache();
-      final bareIngestCompleted = await appStateService
-          .hasFeedBareIngestCompleted(service.baseUrl);
-      final lastRefresh = await appStateService.getLastRefreshTime(
-        service.baseUrl,
-      );
-      _log.info(
-        'Startup feed policy for ${service.baseUrl}: '
-        'stale=$stale, '
-        'bareIngestCompleted=$bareIngestCompleted, '
-        'lastRefresh=${lastRefresh.toIso8601String()}',
-      );
-    }
-
     try {
-      final channels = await databaseService.getChannelsByType(ChannelType.dp1);
-      final baseUrls = services.map((s) => s.baseUrl).toList(growable: false);
-      final playlistCount = baseUrls.isEmpty
-          ? 0
-          : (await databaseService.getPlaylistRowsByBaseUrls(
-              baseUrls: baseUrls,
-              type: PlaylistType.dp1,
-            )).length;
+      final databaseService = ref.read(databaseServiceProvider);
+      final channels =
+          await databaseService.getChannelsByType(ChannelType.dp1);
+      final playlists =
+          await databaseService.getAllPlaylists(type: PlaylistType.dp1);
       _log.info(
         'Startup cache counts: dp1Channels=${channels.length}, '
-        'dp1Playlists=$playlistCount, baseUrls=${baseUrls.join(',')}',
+        'dp1Playlists=${playlists.length}',
       );
     } on Exception catch (e, stack) {
-      _log.warning('Failed to read startup feed cache counts', e, stack);
+      _log.warning('Failed to read startup cache counts', e, stack);
     }
   }
 
@@ -279,7 +248,6 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   }
 
   Future<void> _disconnectForSeedDatabaseReplace() async {
-    await ref.read(feedManagerProvider).pauseAndDrainWork();
     await ref
         .read(tokensSyncCoordinatorProvider.notifier)
         .stopAndDrainForReset();
@@ -299,8 +267,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     ref
       ..invalidate(tokensSyncCoordinatorProvider)
       ..invalidate(appDatabaseProvider)
-      ..invalidate(databaseServiceProvider)
-      ..invalidate(feedManagerProvider);
+      ..invalidate(databaseServiceProvider);
   }
 
   void _refreshProvidersAfterSeedDatabaseReplace() {

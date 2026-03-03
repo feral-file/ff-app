@@ -9,7 +9,6 @@ import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/canvas_client_service_v2.dart';
 import 'package:app/infra/services/device_info_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
-import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:app/infra/services/force_update_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
@@ -64,20 +63,6 @@ final bootstrapServiceProvider = Provider<BootstrapService>((ref) {
   return BootstrapService(databaseService: databaseService);
 });
 
-/// Provider for the DP1FeedServiceImpl.
-/// Fetches playlists from DP1 feed servers with cache policy support.
-final dp1FeedServiceProvider = Provider<FeralFileDP1FeedService>((ref) {
-  final databaseService = ref.watch(databaseServiceProvider);
-  final appStateService = ref.watch(appStateServiceProvider);
-
-  return FeralFileDP1FeedService(
-    baseUrl: AppConfig.dp1FeedUrl,
-    databaseService: databaseService,
-    appStateService: appStateService,
-    apiKey: AppConfig.dp1FeedApiKey,
-  );
-});
-
 /// Provider for composing support emails from the app.
 final supportEmailServiceProvider = Provider<SupportEmailService>((ref) {
   return SupportEmailService();
@@ -113,11 +98,7 @@ final tvCastApiProvider = Provider<TvCastApi>((ref) {
 final canvasClientServiceV2Provider = Provider<CanvasClientServiceV2>((ref) {
   final deviceInfoService = ref.watch(deviceInfoServiceProvider);
   final tvCastApi = ref.watch(tvCastApiProvider);
-  return CanvasClientServiceV2(
-    deviceInfoService,
-    tvCastApi,
-    dp1FeedBaseUrl: AppConfig.dp1FeedUrl,
-  );
+  return CanvasClientServiceV2(deviceInfoService, tvCastApi);
 });
 
 /// Provider for IndexerService (network-only).
