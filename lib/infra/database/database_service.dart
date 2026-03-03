@@ -17,6 +17,8 @@ import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:wallet/wallet.dart' as wallet;
 
+// ignore_for_file: lines_longer_than_80_chars // Reason: drift query docs and SQL-focused comments can exceed 80 chars.
+
 /// Database service providing high-level operations for data ingestion.
 /// Handles offline-first storage for DP-1 entities and relationships.
 ///
@@ -32,17 +34,19 @@ class DatabaseService {
 
   final AppDatabase _db;
   late final Logger _log;
+
+  /// Enrichment status: metadata not resolved yet.
   static const int enrichmentStatusPending = 0;
+
+  /// Enrichment status: metadata resolved successfully.
   static const int enrichmentStatusEnriched = 1;
+
+  /// Enrichment status: enrichment failed and should be skipped for now.
   static const int enrichmentStatusFailed = 2;
 
-  // ── Worker write methods (off-main-isolate path) ──────────────────────────
+  // ── Raw write payload helpers ──────────────────────────────────────────────
 
-  /// Ingests raw token JSON for [address] via the background write queue.
-  ///
-  /// Deserialization, domain transformation, and SQL writes happen entirely
-  /// in the write-queue isolate. If the write queue is unavailable (e.g.
-  /// in tests), falls back to a direct write on the calling isolate.
+  /// Ingests raw token JSON for [address].
   Future<void> ingestTokensForAddressFromRaw({
     required String address,
     required List<Object?> rawTokensJson,
@@ -54,10 +58,9 @@ class DatabaseService {
     await ingestTokensForAddress(address: address, tokens: tokens);
   }
 
-  /// Writes enrichment results via the background write queue.
+  /// Writes enrichment results from a serialized payload.
   ///
-  /// [rawEnrichments] is the serialised payload from the worker isolate;
-  /// each element is a map with 'itemId' and 'tokenJson' keys.
+  /// Each [rawEnrichments] element is a map with `itemId` and `tokenJson`.
   Future<void> enrichBatchFromRaw({
     required List<Object?> rawEnrichments,
     required List<String> failedItemIds,
@@ -80,11 +83,6 @@ class DatabaseService {
     if (failedItemIds.isNotEmpty) {
       await markPlaylistItemsEnrichmentFailed(failedItemIds);
     }
-  }
-
-  /// Kept for API compatibility; no background write queue is used.
-  Future<void> closeWriteQueue() async {
-    return;
   }
 
   // ===========================================================================
@@ -160,7 +158,7 @@ class DatabaseService {
 
   /// Watch all playlist items batched by playlistId.
   ///
-  /// Emits a map of {playlistId: [items]} whenever any item changes in any
+  /// Emits a map of `{playlistId: items}` whenever any item changes in any
   /// playlist. Prefer [watchPlaylistItems] for a single playlist to avoid
   /// subscribing to every playlist.
   ///
@@ -969,7 +967,7 @@ class DatabaseService {
   /// Ingest DP1 playlist (wire model) into the database.
   ///
   /// Items are the main source of truth. When [tokens] is provided, each item
-  /// is matched by CID and enriched with [thumbnailUrl] and DP1 [artists] from
+  /// is matched by CID and enriched with `thumbnailUrl` and DP1 `artists` from
   /// the token; when token is null for an item, those two fields remain null.
   ///
   /// [channelId] must be set when ingesting in channel context so
@@ -1169,18 +1167,19 @@ class DatabaseService {
   /// Clear all data from the database (for testing/reset).
   ///
   /// Uses a single batch so all deletes run in one transaction and the DB lock
-  /// is held briefly. Using separate [transaction] + multiple [delete].go() can
+  /// is held briefly. Using separate transaction + multiple delete.go() can
   /// trigger "database has been locked" when watch streams (channels/playlists)
   /// try to read during the transaction.
   Future<void> clearAll() async {
     try {
       await _db.batch((batch) {
         // Child tables first (playlist_entries references playlists and items).
-        batch.deleteAll(_db.playlistEntries);
-        batch.deleteAll(_db.items);
-        batch.deleteAll(_db.playlists);
-        batch.deleteAll(_db.channels);
-        batch.deleteAll(_db.publishers);
+        batch
+          ..deleteAll(_db.playlistEntries)
+          ..deleteAll(_db.items)
+          ..deleteAll(_db.playlists)
+          ..deleteAll(_db.channels)
+          ..deleteAll(_db.publishers);
       });
       _log.info('Cleared all database data');
     } catch (e, stack) {
@@ -1189,9 +1188,8 @@ class DatabaseService {
     }
   }
 
-  /// Close the database connection and the background write queue.
+  /// Close the database connection.
   Future<void> close() async {
-    await closeWriteQueue();
     await _db.close();
   }
 

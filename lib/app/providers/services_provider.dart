@@ -1,6 +1,10 @@
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
-import 'package:app/infra/database/database_provider.dart';
+import 'package:app/infra/database/database_provider.dart'
+    hide ff1BluetoothDeviceServiceProvider;
+import 'package:app/infra/database/objectbox_init.dart';
+import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_dio.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
@@ -12,6 +16,7 @@ import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
+import 'package:app/infra/services/legacy_data_migration_service.dart';
 import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
@@ -130,3 +135,15 @@ final personalTokensSyncServiceProvider = Provider<PersonalTokensSyncService>((
     appStateService: ref.watch(appStateServiceProvider),
   );
 });
+
+/// Provider for one-time legacy data migration service.
+final legacyDataMigrationServiceProvider = Provider<LegacyDataMigrationService>(
+  (ref) {
+    final store = getInitializedObjectBoxStore();
+    return LegacyDataMigrationService(
+      localConfigBox: store.box<AppStateEntity>(),
+      addressService: ref.watch(addressServiceProvider),
+      bluetoothDeviceService: ref.watch(ff1BluetoothDeviceServiceProvider),
+    );
+  },
+);

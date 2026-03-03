@@ -133,3 +133,6 @@ old_ff_app
 
 # Database snapshot
 scripts/ff_feed_indexer_seed.sqlite
+
+# Post-implementation checks report
+.post-implementation-checks-report.md
