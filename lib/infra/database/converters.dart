@@ -309,8 +309,8 @@ class DatabaseConverters {
         ? jsonEncode(item.repro!.toJson())
         : null;
 
-    final overrideJson = item.override != null
-        ? jsonEncode(item.override)
+    final overrideJson = item.overrideData != null
+        ? jsonEncode(item.overrideData)
         : null;
 
     final displayJson = item.display != null
