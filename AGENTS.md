@@ -20,7 +20,7 @@ Use these rule files for concrete implementation behavior:
 - `.cursor/rules/20-mobile-vocabulary.mdc`: naming consistency for files/classes/variables/IDs.
 - `.cursor/rules/30-riverpod.md`: Riverpod watch/read/listen and provider design/testing.
 - `.cursor/rules/04-coding-style.mdc`: Flutter style, comments, and Dartdoc comment policy.
-- `.cursor/rules/35-testing-tdd.mdc`: mandatory TDD order and required test execution flow.
+- `.cursor/rules/35-testing-tdd.mdc`: mandatory TDD order, test execution flow, and post-implementation validation (§4).
 - `.cursor/rules/07-no-legacy.mdc`: explicit no-legacy/no-migration-by-default policy.
 
 Avoid duplicating lower-level guidance here; update the rule files above when behavior changes.
@@ -32,15 +32,12 @@ For any feature/refactor touching behavior:
 3. Write integration tests next, with `.env` provisioned, and define expected integration outputs before implementation.
 4. Run tests and ensure they all pass.
 5. Implement/compose app flow that uses the tested functions.
-6. After finishing code updates, run `dart fix --apply` only on files modified by the task (do not run repo-wide fixes) to auto-fix lint/style issues where possible before final validation.
+6. **Run post-implementation checks** — see `.cursor/rules/35-testing-tdd.mdc` §4.
 
 No exception path for skipping the above sequence.
 
 ## 4) Definition of done
 A task is complete only when:
-1. `flutter build` succeeds for Android and iOS targets.
-2. `dart fix --apply` has been executed after the final code update, scoped only to files modified by the task.
-3. `flutter analyze` passes with zero new lint violations (very_good_analysis).
-4. `flutter test` passes.
-5. Architecture/layering and DP-1 terminology constraints remain intact.
-6. Riverpod remains the flow driver; side effects stay out of widgets.
+1. Post-implementation script clean and build succeeds (`.cursor/rules/35-testing-tdd.mdc` §4).
+2. Architecture/layering and DP-1 terminology constraints remain intact.
+3. Riverpod remains the flow driver; side effects stay out of widgets.

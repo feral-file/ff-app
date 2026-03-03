@@ -38,10 +38,12 @@ This repository follows strict TDD for behavior changes. Apply this sequence eve
   - Prefer fake/mock dependency providers and fake/mock notifiers for behavior isolation.
   - Keep auto-dispose providers alive during assertions with `container.listen(...)` when needed.
 
-## 4) Completion gates
-- `flutter analyze` passes.
-- `flutter test` passes.
+## 4) Completion gates & post-implementation validation (canonical)
+- Unit tests and integration tests pass.
 - New behavior has both unit and integration coverage where applicable.
+- **Post-implementation script clean** — Run `scripts/agent-helpers/post-implementation-checks [--dir DIR] [--all] [git-ref]`. Review report (Auto-Fixed, Lint Issues, Test Failures), fix all reported issues, re-run. **Repeat until all sections show "None".** Then verify `flutter build` succeeds.
+
+*This section is the single source of truth for the post-implementation workflow. Other rules reference it.*
 
 ## 5) Coverage reporting and non-regression
 - Generate business-layer unit coverage with:

@@ -111,6 +111,4 @@ testWidgets('widget reacts to provider state', (tester) async {
 ### Definition of done for provider changes
 
 - Add/update unit tests for the notifier/provider behavior.
-- Follow `.cursor/rules/35-testing-tdd.mdc` sequence before shipping provider-backed feature flow.
-- Ensure `flutter test` passes.
-- Ensure `flutter analyze` passes (`very_good_analysis`).
+- Follow `.cursor/rules/35-testing-tdd.mdc` sequence (including §4 post-implementation validation) before shipping.
