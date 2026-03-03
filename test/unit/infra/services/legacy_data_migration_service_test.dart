@@ -26,7 +26,7 @@ void main() {
       final service = LegacyDataMigrationService(
         storageLocator: _FakeLegacyStorageLocator(hasLegacyDb: true),
         isMigratedOverride: () async => true,
-        setMigratedOverride: (_) async {
+        setMigratedOverride: ({required value}) async {
           setMigratedCalled = true;
         },
         loadLegacyAddressesOverride: () async => ['0xabc'],
@@ -64,7 +64,7 @@ void main() {
       final service = LegacyDataMigrationService(
         storageLocator: _FakeLegacyStorageLocator(hasLegacyDb: true),
         isMigratedOverride: () async => false,
-        setMigratedOverride: (value) async {
+        setMigratedOverride: ({required value}) async {
           migratedFlag = value;
         },
         loadLegacyAddressesOverride: () async => ['0xabc', '0xdef'],
