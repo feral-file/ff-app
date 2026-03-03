@@ -4,6 +4,7 @@ import 'package:app/domain/models/version_info.dart';
 import 'package:app/domain/utils/version_utils.dart';
 import 'package:app/infra/services/remote_config_service.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -55,10 +56,23 @@ class ForceUpdateService {
   }
 
   /// Opens the store URL for update.
+  ///
+  /// Requires Android 11+ queries in AndroidManifest for https/market schemes.
+  /// Catches [PlatformException] when no app can handle the URL (e.g. emulator).
   Future<void> openStoreUrl(String link) async {
-    final uri = Uri.tryParse(link);
-    if (uri != null) {
+    final trimmed = link.trim();
+    if (trimmed.isEmpty) return;
+
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || !uri.hasScheme) return;
+
+    try {
+      final canLaunch = await canLaunchUrl(uri);
+      if (!canLaunch) return;
+
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } on PlatformException catch (_) {
+      // No Activity found (e.g. emulator without Play Store) — fail silently
     }
   }
 }
