@@ -6,11 +6,13 @@ import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/infra/config/app_config.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/logging/app_logger.dart';
+import 'package:app/infra/services/legacy_storage_locator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -80,8 +82,10 @@ Future<void> main() async {
                   ),
                   const SizedBox(height: 24),
                   const Text(
-                    'The app cannot start because required environment variables are missing from the .env file. '
-                    'Please ensure the .env file is correctly created with all required configuration values.',
+                    'The app cannot start because required environment '
+                    'variables are missing from the .env file. '
+                    'Please ensure the .env file is correctly created with '
+                    'all required configuration values.',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.black87,
@@ -102,13 +106,26 @@ Future<void> main() async {
   final store = await initializeObjectBox();
   final bluetoothDeviceBox = store.box<FF1BluetoothDeviceEntity>();
   final bluetoothDeviceService = FF1BluetoothDeviceService(bluetoothDeviceBox);
+  final appStateService = AppStateService(
+    appStateBox: store.box<AppStateEntity>(),
+    appStateAddressBox: store.box<AppStateAddressEntity>(),
+  );
+
+  final legacyStorageLocator = LegacyStorageLocator();
+  final hasLegacySqliteDatabase = await legacyStorageLocator
+      .hasLegacySqliteDatabase();
 
   // Read onboarding flag once before starting the app to decide initial route.
   final tempContainer = ProviderContainer();
-  final hasDoneOnboarding = await tempContainer.read(
+  var hasDoneOnboarding = await tempContainer.read(
     hasDoneOnboardingProvider.future,
   );
   tempContainer.dispose();
+
+  if (!hasDoneOnboarding && hasLegacySqliteDatabase) {
+    await appStateService.setHasSeenOnboarding(hasSeen: true);
+    hasDoneOnboarding = true;
+  }
 
   // If the database file already exists (returning user), open the gate
   // immediately so no DB operation is ever delayed. On a fresh install the gate
@@ -121,7 +138,7 @@ Future<void> main() async {
   }
 
   final String initialLocation;
-  if (hasDoneOnboarding) {
+  if (hasDoneOnboarding || hasLegacySqliteDatabase) {
     initialLocation = Routes.home;
   } else {
     initialLocation = Routes.onboardingIntroducePage;

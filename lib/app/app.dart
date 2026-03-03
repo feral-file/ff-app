@@ -119,6 +119,8 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       'Starting app bootstrap: seedGate=${SeedDatabaseGate.isCompleted}',
     );
 
+    unawaited(_migrateLegacyDataInBackground());
+
     final didReplaceSeedDatabase = await _syncSeedDatabaseAtStartup();
     _log.info(
       'Seed database sync at startup replaced file: $didReplaceSeedDatabase',
@@ -135,6 +137,31 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     await _migratePendingAddresses();
     if (didReplaceSeedDatabase) {
       _refreshProvidersAfterSeedDatabaseReplace();
+    }
+  }
+
+  Future<void> _migrateLegacyDataInBackground() async {
+    final migrationService = ref.read(legacyDataMigrationServiceProvider);
+    if (!await migrationService.shouldRunMigration()) {
+      return;
+    }
+
+    String? toastOverlayId;
+    try {
+      if (mounted) {
+        toastOverlayId = ref
+            .read(appOverlayProvider.notifier)
+            .showToast(message: 'Preparing data...');
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      await migrationService.migrateIfNeeded();
+    } on Object catch (e, st) {
+      _log.warning('Background legacy migration failed.', e, st);
+    } finally {
+      final overlayId = toastOverlayId;
+      if (mounted && overlayId != null) {
+        ref.read(appOverlayProvider.notifier).dismissOverlay(overlayId);
+      }
     }
   }
 
@@ -404,7 +431,8 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
   @override
   Widget build(BuildContext context) {
-    // Keep AppLifecycleNotifier alive so it can attach the WidgetsBinding observer.
+    // Keep AppLifecycleNotifier alive so it can attach
+    // the WidgetsBinding observer.
     ref.watch(appLifecycleProvider);
     return widget.child;
   }

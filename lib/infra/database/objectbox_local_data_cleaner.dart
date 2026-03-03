@@ -15,7 +15,6 @@ class ObjectBoxLocalDataCleaner {
       _store.box<RemoteAppConfigEntity>().removeAll();
       _store.box<AppStateEntity>().removeAll();
       _store.box<AppStateAddressEntity>().removeAll();
-      _store.box<WorkerStateEntity>().removeAll();
     });
   }
 }
