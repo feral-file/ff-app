@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:app/app/providers/database_error_utils.dart';
-import 'package:app/app/providers/mutations.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/foundation.dart';
@@ -340,24 +339,6 @@ final NotifierProviderFamily<ChannelsNotifier, ChannelsState, ChannelType>
 channelsProvider =
     NotifierProvider.family<ChannelsNotifier, ChannelsState, ChannelType>(
       ChannelsNotifier.new,
-    );
-
-/// Mutation for loading channels (generic; use with specific type in UI).
-final loadChannelsMutationProvider =
-    NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-      MutationNotifier.new,
-    );
-
-/// Mutation for refreshing channels.
-final refreshChannelsMutationProvider =
-    NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-      MutationNotifier.new,
-    );
-
-/// Mutation for loading more channels.
-final loadMoreChannelsMutationProvider =
-    NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-      MutationNotifier.new,
     );
 
 /// Provider for a specific channel by ID.

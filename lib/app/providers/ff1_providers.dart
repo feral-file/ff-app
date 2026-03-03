@@ -58,12 +58,6 @@ final bluetoothAdapterStateProvider = StreamProvider<BluetoothAdapterState>((
   return transport.adapterStateStream;
 });
 
-/// Check if Bluetooth is supported on this device
-final bluetoothSupportedProvider = FutureProvider<bool>((ref) {
-  final transport = ref.watch(ff1TransportProvider);
-  return transport.isSupported;
-});
-
 // ============================================================================
 // FF1 Control provider (orchestration)
 // ============================================================================

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:app/app/providers/channel_preview_provider.dart'
     show ChannelPreviewNotifier, ChannelPreviewState;
 import 'package:app/app/providers/database_error_utils.dart';
-import 'package:app/app/providers/mutations.dart';
 import 'package:app/app/providers/playlist_details_provider.dart'
     show PlaylistDetailsNotifier;
 import 'package:app/app/providers/services_provider.dart';
@@ -480,24 +479,6 @@ class WorksNotifier extends Notifier<WorksState> {
 final worksProvider = NotifierProvider<WorksNotifier, WorksState>(
   WorksNotifier.new,
 );
-
-/// Mutation for loading works.
-final loadWorksMutationProvider =
-    NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-      MutationNotifier.new,
-    );
-
-/// Mutation for refreshing works.
-final refreshWorksMutationProvider =
-    NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-      MutationNotifier.new,
-    );
-
-/// Mutation for loading more works.
-final loadMoreWorksMutationProvider =
-    NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-      MutationNotifier.new,
-    );
 
 /// Provider for playlist items in a specific playlist.
 final FutureProviderFamily<List<PlaylistItem>, String> playlistItemsProvider =

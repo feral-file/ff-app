@@ -1,4 +1,3 @@
-import 'package:app/app/providers/mutations.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -88,12 +87,3 @@ final searchResultsProvider = FutureProvider<SearchResults>((ref) async {
     rethrow;
   }
 });
-
-/// Mutation for tracking search operations.
-final performSearchMutationProvider =
-    NotifierProvider<
-      MutationNotifier<SearchResults>,
-      MutationState<SearchResults>
-    >(
-      MutationNotifier.new,
-    );
