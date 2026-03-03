@@ -256,7 +256,7 @@ class DatabaseConverters {
           ? ArtworkDisplayLicense.fromString(data.license!)
           : null,
       repro: reproduction,
-      override: override,
+      overrideData: override,
       display: display,
       tokenData: tokenData,
       artists: artists,

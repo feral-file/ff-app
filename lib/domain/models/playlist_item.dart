@@ -25,7 +25,7 @@ class PlaylistItem extends DP1PlaylistItem {
     super.license,
     super.repro,
     super.display,
-    this.override,
+    this.overrideData,
     this.tokenData,
     this.sortKeyUs,
     this.updatedAt,
@@ -88,7 +88,7 @@ class PlaylistItem extends DP1PlaylistItem {
           ? ArtworkDisplayLicense.fromString(json['license'] as String)
           : null,
       repro: repro,
-      override: json['override'] as Map<String, dynamic>?,
+      overrideData: json['override'] as Map<String, dynamic>?,
       display: display,
       tokenData: json['tokenData'] as Map<String, dynamic>?,
       sortKeyUs: json['sortKeyUs'] as int?,
@@ -111,7 +111,7 @@ class PlaylistItem extends DP1PlaylistItem {
   final String? thumbnailUrl;
 
   /// Override configuration (no DP1 type; stored as JSON).
-  final Map<String, dynamic>? override;
+  final Map<String, dynamic>? overrideData;
 
   /// Complete token JSON for reconstruction (indexer tokens).
   final Map<String, dynamic>? tokenData;
@@ -140,7 +140,7 @@ class PlaylistItem extends DP1PlaylistItem {
           subtitle == other.subtitle &&
           listEquals(artists, other.artists) &&
           thumbnailUrl == other.thumbnailUrl &&
-          _mapEquals(override, other.override) &&
+          _mapEquals(overrideData, other.overrideData) &&
           _mapEquals(tokenData, other.tokenData) &&
           sortKeyUs == other.sortKeyUs &&
           updatedAt == other.updatedAt;
@@ -152,7 +152,7 @@ class PlaylistItem extends DP1PlaylistItem {
     subtitle,
     Object.hashAll(artists ?? []),
     thumbnailUrl,
-    override != null ? _deepEquality.hash(override) : null,
+    overrideData != null ? _deepEquality.hash(overrideData) : null,
     tokenData != null ? _deepEquality.hash(tokenData) : null,
     sortKeyUs,
     updatedAt,
@@ -172,7 +172,7 @@ class PlaylistItem extends DP1PlaylistItem {
     String? ref,
     ArtworkDisplayLicense? license,
     ReproBlock? repro,
-    Map<String, dynamic>? override,
+    Map<String, dynamic>? overrideData,
     DP1PlaylistDisplay? display,
     Map<String, dynamic>? tokenData,
     int? sortKeyUs,
@@ -191,7 +191,7 @@ class PlaylistItem extends DP1PlaylistItem {
       ref: ref ?? this.ref,
       license: license ?? this.license,
       repro: repro ?? this.repro,
-      override: override ?? this.override,
+      overrideData: overrideData ?? this.overrideData,
       display: display ?? this.display,
       tokenData: tokenData ?? this.tokenData,
       sortKeyUs: sortKeyUs ?? this.sortKeyUs,
@@ -200,6 +200,7 @@ class PlaylistItem extends DP1PlaylistItem {
   }
 
   /// Convert to JSON.
+  @override
   Map<String, dynamic> toJson() {
     final j = super.toJson();
     j['kind'] = kind.index;
@@ -213,7 +214,7 @@ class PlaylistItem extends DP1PlaylistItem {
     j['ref'] = ref;
     j['license'] = license?.value;
     j['repro'] = repro?.toJson();
-    j['override'] = override;
+    j['override'] = overrideData;
     j['tokenData'] = tokenData;
     j['sortKeyUs'] = sortKeyUs;
     j['updatedAt'] = updatedAt?.toIso8601String();

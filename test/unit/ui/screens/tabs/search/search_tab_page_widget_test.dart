@@ -11,11 +11,11 @@ void main() {
   testWidgets('SearchTabPage matches old SearchPage states and type switch', (
     tester,
   ) async {
-    final fakeResults = SearchResults(
-      channels: const [
+    const fakeResults = SearchResults(
+      channels: [
         Channel(id: 'ch_1', name: 'Channel A', type: ChannelType.dp1),
       ],
-      playlists: const [
+      playlists: [
         Playlist(id: 'pl_1', name: 'Playlist A', type: PlaylistType.dp1),
       ],
       works: [

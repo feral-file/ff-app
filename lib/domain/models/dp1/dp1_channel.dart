@@ -1,6 +1,6 @@
 import 'package:app/domain/models/channel.dart';
 
-// ignore_for_file: public_member_api_docs, always_put_required_named_parameters_first, eol_at_end_of_file // Reason: copied from the legacy mobile app; keep DP-1 channel wire model stable.
+// ignore_for_file: public_member_api_docs, always_put_required_named_parameters_first // Reason: copied from the legacy mobile app; keep DP-1 channel wire model stable.
 
 class DP1Channel {
   DP1Channel({

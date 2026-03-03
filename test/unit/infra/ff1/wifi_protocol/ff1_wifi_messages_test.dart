@@ -224,7 +224,7 @@ void main() {
         currentWorkIndex: 0,
         isPaused: false,
         items: [
-          DP1PlaylistItem(
+          const DP1PlaylistItem(
             id: 'wk_test',
             duration: 0,
             title: 'Test Work',

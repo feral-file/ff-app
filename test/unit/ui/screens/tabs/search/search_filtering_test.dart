@@ -14,12 +14,12 @@ void main() {
     });
 
     test('returns types in old-app order: playlists, channels, works', () {
-      final results = SearchResults(
+      const results = SearchResults(
         playlists: [
-          const Playlist(id: 'pl_1', name: 'P', type: PlaylistType.dp1),
+          Playlist(id: 'pl_1', name: 'P', type: PlaylistType.dp1),
         ],
         channels: [
-          const Channel(id: 'ch_1', name: 'C', type: ChannelType.dp1),
+          Channel(id: 'ch_1', name: 'C', type: ChannelType.dp1),
         ],
         works: [
           PlaylistItem(id: 'wk_1', kind: PlaylistItemKind.dp1Item),
@@ -76,12 +76,12 @@ void main() {
   });
 
   group('filterResultsByType', () {
-    final base = SearchResults(
+    const base = SearchResults(
       playlists: [
-        const Playlist(id: 'pl_1', name: 'P', type: PlaylistType.dp1),
+        Playlist(id: 'pl_1', name: 'P', type: PlaylistType.dp1),
       ],
       channels: [
-        const Channel(id: 'ch_1', name: 'C', type: ChannelType.dp1),
+        Channel(id: 'ch_1', name: 'C', type: ChannelType.dp1),
       ],
       works: [
         PlaylistItem(id: 'wk_1', kind: PlaylistItemKind.dp1Item),

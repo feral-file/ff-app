@@ -624,8 +624,8 @@ void main() {
           created: DateTime.now(),
           signature: '',
           items: [
-            DP1PlaylistItem(id: 'item_1', duration: 0, title: 'Item 1'),
-            DP1PlaylistItem(id: 'item_2', duration: 0, title: 'Item 2'),
+            const DP1PlaylistItem(id: 'item_1', duration: 0, title: 'Item 1'),
+            const DP1PlaylistItem(id: 'item_2', duration: 0, title: 'Item 2'),
           ],
         );
 

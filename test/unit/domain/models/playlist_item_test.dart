@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('PlaylistItem', () {
     test('creates playlist item with required fields', () {
-      final item = PlaylistItem(
+      const item = PlaylistItem(
         id: 'item_123',
         kind: PlaylistItemKind.indexerToken,
         title: 'Test Item',
@@ -21,11 +21,11 @@ void main() {
     });
 
     test('creates playlist item with all fields', () {
-      final item = PlaylistItem(
+      const item = PlaylistItem(
         id: 'item_456',
         kind: PlaylistItemKind.dp1Item,
         title: 'Complete Item',
-        artists: const [DP1Artist(name: 'Test Artist', id: 'artist_123')],
+        artists: [DP1Artist(name: 'Test Artist', id: 'artist_123')],
         thumbnailUrl: 'https://example.com/thumb.jpg',
         source: 'https://example.com/media.mp4',
       );
@@ -39,7 +39,7 @@ void main() {
     });
 
     test('copyWith creates new instance with updated values', () {
-      final original = PlaylistItem(
+      const original = PlaylistItem(
         id: 'item_123',
         kind: PlaylistItemKind.indexerToken,
         title: 'Test Item',
@@ -60,7 +60,7 @@ void main() {
     });
 
     test('toJson serializes correctly', () {
-      final item = PlaylistItem(
+      const item = PlaylistItem(
         id: 'item_test',
         kind: PlaylistItemKind.indexerToken,
         title: 'Test Item',
