@@ -101,8 +101,6 @@ class _FakePackageInfo implements PackageInfo {
   _FakePackageInfo({
     required this.version,
     required this.buildNumber,
-    this.appName = 'app',
-    this.packageName = 'com.feralfile.app',
   });
 
   @override
