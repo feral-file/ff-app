@@ -6,6 +6,7 @@ import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
+import 'package:app/app/providers/force_update_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
@@ -22,6 +23,7 @@ import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/theme/app_theme.dart';
+import 'package:app/ui/widgets/force_update_overlay.dart';
 import 'package:app/widgets/overlays/app_global_overlay_layer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -59,6 +61,7 @@ class App extends ConsumerWidget {
                 child: child ?? const SizedBox.shrink(),
               ),
               const AppGlobalOverlayLayer(),
+              const ForceUpdateOverlay(),
             ],
           ),
         );
@@ -115,6 +118,8 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   }
 
   Future<void> _bootstrapAtAppStart() async {
+    unawaited(_triggerForceUpdateCheck());
+
     _log.info(
       'Starting app bootstrap: seedGate=${SeedDatabaseGate.isCompleted}',
     );
@@ -135,6 +140,20 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     await _migratePendingAddresses();
     if (didReplaceSeedDatabase) {
       _refreshProvidersAfterSeedDatabaseReplace();
+    }
+  }
+
+  Future<void> _triggerForceUpdateCheck() async {
+    try {
+      final rc = ref.read(remoteConfigServiceProvider);
+      await rc.fetchAndPersist();
+      final fu = ref.read(forceUpdateServiceProvider);
+      final versionInfo = await fu.checkForUpdate();
+      if (versionInfo != null && mounted) {
+        ref.read(forceUpdateProvider.notifier).setRequired(versionInfo);
+      }
+    } on Object catch (e, st) {
+      _log.warning('Force update check failed', e, st);
     }
   }
 

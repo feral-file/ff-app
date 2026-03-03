@@ -79,8 +79,10 @@ class AddressService {
         // survives navigation and is migrated to SQLite after the seed lands.
         await _pendingAddressesStore.addAddress(normalizedAddress);
         if (syncNow) {
+          // track address and sync immediately
           _scheduleAddressIndexing(normalizedAddress);
         } else {
+          // track address and sync later
           await _personalTokensSyncService.trackAddress(normalizedAddress);
         }
         _log.info(
