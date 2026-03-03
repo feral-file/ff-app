@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
@@ -12,6 +11,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
+
 part 'app_database.g.dart';
 
 final _log = Logger('AppDatabase');
@@ -20,11 +20,6 @@ final _log = Logger('AppDatabase');
 const _maxLimitForOffset = 0x7FFFFFFF;
 const _schemaVersionV1 = 3;
 const _dbResetReindexMarkerFile = 'db_reset_requires_reindex.flag';
-
-// The DriftIsolate that backs the production AppDatabase instance.
-// Set lazily the first time the LazyDatabase opens (first DB operation).
-// Null for test instances created via AppDatabase.forTesting / fromConnection.
-DriftIsolate? _appDriftIsolate;
 
 /// Main application database using Drift.
 /// Implements offline-first storage for DP-1 entities and relationships.
@@ -43,16 +38,6 @@ class AppDatabase extends _$AppDatabase {
 
   /// Creates an AppDatabase instance with a custom executor (for testing).
   AppDatabase.forTesting(super.e);
-
-  /// The [SendPort] for the background Drift server that backs this database.
-  ///
-  /// Non-null only after the first database operation on a production
-  /// instance (the LazyDatabase defers opening). Returns null for test
-  /// instances created via forTesting or fromConnection. Background write
-  /// workers (e.g. DatabaseWriteQueue) use this port to connect to the
-  /// same Drift server so writes propagate stream-update notifications to
-  /// all subscribers on the main connection.
-  static SendPort? get driftConnectPort => _appDriftIsolate?.connectPort;
 
   @override
   int get schemaVersion => _schemaVersionV1;
@@ -317,7 +302,8 @@ class AppDatabase extends _$AppDatabase {
     return query.watch();
   }
 
-  /// Watch playlists ordered by created time (desc, then id), optionally filtered
+  /// Watch playlists ordered by created time (desc, then id), optionally
+  /// filtered
   /// by playlist [type], [channelId], and limited to [limit] rows.
   ///
   /// - [type] matches the `playlists.type` integer column.
@@ -449,7 +435,8 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Get channels by type with optional pagination.
-  /// Order matches [watchChannels] (sort_order asc, id asc) for consistent paging.
+  /// Order matches [watchChannels] (sort_order asc, id asc) for consistent
+  /// paging.
   Future<List<ChannelData>> getChannelsByType(
     int type, {
     int? limit,
@@ -688,11 +675,13 @@ class AppDatabase extends _$AppDatabase {
     return result.map((row) => row.readTable(items)).toList();
   }
 
-  /// Get playlist items for a channel (join playlists → playlist_entries → items).
+  /// Get playlist items for a channel
+  /// (join playlists → playlist_entries → items).
   /// Ordered by playlist created time, playlist id, then item position.
   /// [limit] null = return all; [offset] null = 0.
   /// Returns empty if playlists have null channel_id; set channelId when
-  /// ingesting DP1 playlists in channel context (e.g. reloadCache with channels).
+  /// ingesting DP1 playlists in channel context
+  /// (e.g. reloadCache with channels).
   Future<List<ItemData>> getPlaylistItemsByChannel(
     String channelId, {
     int? limit,
@@ -729,8 +718,10 @@ class AppDatabase extends _$AppDatabase {
     return result.map((row) => row.readTable(items)).toList();
   }
 
-  /// Watch playlist items for a channel (same join as [getPlaylistItemsByChannel]).
-  /// Emits when playlists, playlist_entries, or items matching the channel change.
+  /// Watch playlist items for a channel
+  /// (same join as [getPlaylistItemsByChannel]).
+  /// Emits when playlists, playlist_entries, or items matching the channel
+  /// change.
   Stream<List<ItemData>> watchPlaylistItemsByChannel(
     String channelId, {
     int? limit,
@@ -893,7 +884,8 @@ class AppDatabase extends _$AppDatabase {
   /// Watch all items; emits when the items table changes.
   Stream<List<ItemData>> watchAllItems() {
     // Works provider only uses this stream as a "data changed" signal.
-    // Keep query lightweight to avoid expensive per-row ranking on every change.
+    // Keep query lightweight to avoid expensive per-row ranking
+    // on every change.
     final query = select(items)..orderBy([(t) => OrderingTerm.asc(t.id)]);
     return query.watch();
   }
@@ -1002,7 +994,7 @@ class AppDatabase extends _$AppDatabase {
     try {
       await customStatement('PRAGMA wal_checkpoint(PASSIVE)');
       _log.info('WAL checkpoint completed');
-    } catch (e) {
+    } on Object catch (e) {
       _log.warning('WAL checkpoint failed: $e');
     }
   }
@@ -1096,9 +1088,10 @@ NativeDatabase _makeNativeDatabase(File file) {
   return NativeDatabase(
     file,
     setup: (db) {
-      db.execute('PRAGMA busy_timeout = 5000');
-      db.execute('PRAGMA journal_mode = WAL');
-      db.execute('PRAGMA wal_autocheckpoint = 1000');
+      db
+        ..execute('PRAGMA busy_timeout = 5000')
+        ..execute('PRAGMA journal_mode = WAL')
+        ..execute('PRAGMA wal_autocheckpoint = 1000');
       _log.info('Database opened with WAL mode enabled');
     },
   );
@@ -1118,16 +1111,11 @@ LazyDatabase _openConnection() {
 
     _log.info('Opening database at: ${file.path}');
 
-    // Use DriftIsolate.spawn so the connect port is accessible for the
-    // DatabaseWriteQueue. The write queue connects to the same server so its
-    // writes trigger stream-update notifications on the main connection.
-    // singleClientMode: false allows additional clients (write queue) to
-    // connect without closing the server when they disconnect.
+    // Run SQLite work on a background Drift isolate.
     try {
       final driftIsolate = await DriftIsolate.spawn(
         () => _makeNativeDatabase(file),
       );
-      _appDriftIsolate = driftIsolate;
       return driftIsolate.connect();
     } on Object catch (e, st) {
       _log.warning(
@@ -1140,7 +1128,6 @@ LazyDatabase _openConnection() {
       final driftIsolate = await DriftIsolate.spawn(
         () => _makeNativeDatabase(file),
       );
-      _appDriftIsolate = driftIsolate;
       return driftIsolate.connect();
     }
   });
