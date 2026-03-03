@@ -100,6 +100,12 @@ class AppConfig {
     return url;
   }
 
+  /// Remote config URL for app update (app_update section).
+  static String get remoteConfigUrl => dotenv.get(
+    'REMOTE_CONFIG_URL',
+    fallback: 'https://feralfile-remote-configs.pages.dev/ff-app.json',
+  );
+
   /// Release notes markdown URL (or docs base URL) used by changelog fetcher.
   static String get releaseNotesMarkdownUrl => dotenv.get(
     'RELEASE_NOTES_MARKDOWN_URL',

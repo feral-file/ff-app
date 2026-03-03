@@ -14,11 +14,13 @@ import 'package:app/infra/services/canvas_client_service_v2.dart';
 import 'package:app/infra/services/device_info_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/feral_file_dp1_feed_service.dart';
+import 'package:app/infra/services/force_update_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/legacy_data_migration_service.dart';
 import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/personal_tokens_sync_service.dart';
+import 'package:app/infra/services/remote_config_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -84,6 +86,20 @@ final dp1FeedServiceProvider = Provider<FeralFileDP1FeedService>((ref) {
 /// Provider for composing support emails from the app.
 final supportEmailServiceProvider = Provider<SupportEmailService>((ref) {
   return SupportEmailService();
+});
+
+/// Provider for [RemoteConfigService].
+/// Fetches and caches app_update config from remote URL.
+final remoteConfigServiceProvider = Provider<RemoteConfigService>((ref) {
+  return RemoteConfigService();
+});
+
+/// Provider for [ForceUpdateService].
+/// Checks app version against remote config and opens store for update.
+final forceUpdateServiceProvider = Provider<ForceUpdateService>((ref) {
+  return ForceUpdateService(
+    remoteConfigService: ref.watch(remoteConfigServiceProvider),
+  );
 });
 
 /// Provider for device identity (used by FF1 connect request).

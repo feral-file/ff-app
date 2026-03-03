@@ -1,5 +1,5 @@
-import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/dp1/dp1_manifest.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';

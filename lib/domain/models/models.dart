@@ -14,4 +14,5 @@ export 'indexer/changes/change_meta.dart';
 export 'indexer/workflow.dart';
 export 'playlist.dart';
 export 'playlist_item.dart';
+export 'version_info.dart';
 export 'wallet_address.dart';
