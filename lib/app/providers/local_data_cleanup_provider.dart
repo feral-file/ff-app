@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:app/app/feed/feed_registry_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
@@ -42,7 +41,6 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     final r = ref;
     r.invalidate(appDatabaseProvider);
     r.invalidate(databaseServiceProvider);
-    r.invalidate(feedManagerProvider);
     r.invalidate(seedDownloadProvider);
   }
 
@@ -60,7 +58,6 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
 
   return LocalDataCleanupService(
     stopWorkersGracefully: () async {
-      await ref.read(feedManagerProvider).pauseAndDrainWork();
       await ref
           .read(tokensSyncCoordinatorProvider.notifier)
           .stopAndDrainForReset();
@@ -76,7 +73,6 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       final r = ref;
       r.invalidate(appDatabaseProvider);
       r.invalidate(databaseServiceProvider);
-      r.invalidate(feedManagerProvider);
     },
     clearObjectBoxData: () async {
       await ref.read(objectBoxLocalDataCleanerProvider).clearAll();
@@ -144,25 +140,16 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
         await appState.clearAddressAnchor(address);
       }
 
-      final feedManager = ref.read(feedManagerProvider);
-      feedManager.resumeWork();
-
-      TokensSyncCoordinatorNotifier? coordinator;
       if (normalizedAddresses.isNotEmpty) {
-        coordinator = ref.read(tokensSyncCoordinatorProvider.notifier);
+        final coordinator = ref.read(tokensSyncCoordinatorProvider.notifier);
+        await coordinator.syncAddresses(normalizedAddresses);
       }
-
-      await Future.wait<void>([
-        feedManager.reloadAllCache(force: true),
-        if (normalizedAddresses.isNotEmpty)
-          coordinator!.syncAddresses(normalizedAddresses),
-      ]);
     },
     recreateDatabaseFromSeed: () async {
       await forceReplaceDatabaseFromSeed();
     },
     pauseFeedWork: () {
-      ref.read(feedManagerProvider).pauseWork();
+      // No-op: feed manager removed; seed database is the source of DP1 data.
     },
     pauseTokenPolling: () {
       ref.read(tokensSyncCoordinatorProvider.notifier).pausePolling();

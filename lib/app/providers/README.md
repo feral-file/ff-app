@@ -29,15 +29,12 @@ Defines retry strategies for API operations:
 Provider wrappers for API operations with automatic retry:
 
 ```dart
-// Fetch channel with automatic retry
-final channel = await ref.watch(
-  fetchChannelProvider(channelId).future,
+// Fetch data with automatic retry
+final data = await ref.watch(
+  fetchDataProvider.future,
 );
 
-// Fetch playlists with automatic retry
-final count = await ref.watch(fetchPlaylistsProvider.future);
-
-// Fetch tokens with automatic retry
+// Fetch tokens (via indexer) with automatic retry
 final tokens = await ref.watch(
   fetchTokensByCIDsProvider(cids).future,
 );
@@ -46,7 +43,6 @@ final tokens = await ref.watch(
 ### `services_provider.dart` - Service Instances
 
 Base service providers (no retry at this level):
-- `dp1FeedServiceProvider` - Feed server API service
 - `indexerServiceProvider` - Indexer API service
 - `addressServiceProvider` - Address management
 - `bootstrapServiceProvider` - App initialization
@@ -92,13 +88,10 @@ Duration? apiRetryStrategy(int retryCount, Object error) {
 ### In Providers
 
 ```dart
-final fetchPlaylistsProvider = FutureProvider.autoDispose<int>(
+final fetchDataProvider = FutureProvider.autoDispose<Data>(
   (ref) async {
-    final service = ref.watch(dp1FeedServiceProvider);
-    return await service.fetchPlaylists(
-      baseUrl: AppConfig.dp1FeedUrl,
-      limit: 10,
-    );
+    final indexerService = ref.watch(indexerServiceProvider);
+    return await indexerService.getChanges(request);
   },
   // Apply retry strategy
   retry: apiRetryStrategy,
@@ -112,10 +105,10 @@ class MyWidget extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Automatically retries on network errors
-    final playlistsAsync = ref.watch(fetchPlaylistsProvider);
+    final dataAsync = ref.watch(fetchDataProvider);
 
-    return playlistsAsync.when(
-      data: (count) => Text('Loaded $count playlists'),
+    return dataAsync.when(
+      data: (data) => Text('Loaded data'),
       loading: () => CircularProgressIndicator(),
       error: (error, stack) => Text('Failed after retries: $error'),
     );
@@ -127,7 +120,7 @@ class MyWidget extends ConsumerWidget {
 
 ```dart
 // In async function
-final count = await ref.read(fetchPlaylistsProvider.future);
+final data = await ref.read(fetchDataProvider.future);
 
 // The future waits through all retry attempts
 // Only completes when either:
@@ -177,18 +170,9 @@ test('retries network timeout errors', () {
 
 ## Integration with Bootstrap
 
-The bootstrap process uses retryable providers:
-
-```dart
-// In bootstrap_provider.dart
-Future<void> bootstrap() async {
-  // Uses fetchPlaylistsProvider with automatic retry
-  final playlistCount = await ref.read(fetchPlaylistsProvider.future);
-  
-  // Network errors are automatically retried
-  // Only fails if all retries exhausted
-}
-```
+The bootstrap process uses retryable providers and local seed database.
+DP1 data is loaded from the seed database; indexer sync handles address-based
+playlists and works.
 
 ## Benefits
 
