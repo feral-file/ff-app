@@ -18,8 +18,8 @@ class RemoteConfigService {
   RemoteConfigService({
     http.Client? httpClient,
     String? configUrl,
-  })  : _httpClient = httpClient ?? http.Client(),
-        _configUrl = configUrl ?? AppConfig.remoteConfigUrl;
+  }) : _httpClient = httpClient ?? http.Client(),
+       _configUrl = configUrl ?? AppConfig.remoteConfigUrl;
 
   final http.Client _httpClient;
   final String _configUrl;
@@ -88,7 +88,8 @@ class RemoteConfigService {
   /// On fetch/parse error: returns cached config from file (fail-open).
   Future<Map<String, dynamic>> fetchAndPersist() async {
     try {
-      final response = await _httpClient.get(Uri.parse(_configUrl));
+      final url = '$_configUrl/ff-app.json';
+      final response = await _httpClient.get(Uri.parse(url));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final cached = await getCachedConfig();
         _cachedConfig = cached;
