@@ -9,7 +9,8 @@
 
 enum Blockchain {
   ETHEREUM('eip155:1'),
-  TEZOS('tezos:mainnet');
+  TEZOS('tezos:mainnet')
+  ;
 
   const Blockchain(this.chain);
 
@@ -48,5 +49,3 @@ enum Blockchain {
     }
   }
 }
-
-

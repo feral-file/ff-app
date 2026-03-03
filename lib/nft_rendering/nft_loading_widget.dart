@@ -5,12 +5,6 @@ import 'package:gif_view/gif_view.dart';
 
 /// Default of loading state widget
 class LoadingWidget extends StatelessWidget {
-  final bool invertColors;
-  final Color? backgroundColor;
-  final Alignment alignment;
-  final EdgeInsets padding;
-  final bool isInfinitySize;
-
   const LoadingWidget({
     super.key,
     this.invertColors = false,
@@ -19,6 +13,11 @@ class LoadingWidget extends StatelessWidget {
     this.padding = EdgeInsets.zero,
     this.isInfinitySize = true,
   });
+  final bool invertColors;
+  final Color? backgroundColor;
+  final Alignment alignment;
+  final EdgeInsets padding;
+  final bool isInfinitySize;
 
   @override
   Widget build(BuildContext context) {

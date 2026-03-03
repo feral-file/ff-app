@@ -220,8 +220,9 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       return;
     }
 
-    final topicIdFromKeepWifi =
-        await ref.read(ff1ControlProvider).keepWifi(blDevice: blDevice);
+    final topicIdFromKeepWifi = await ref
+        .read(ff1ControlProvider)
+        .keepWifi(blDevice: blDevice);
     if (topicIdFromKeepWifi.isEmpty) {
       throw Exception('Failed to get topicId from keepWifi');
     }

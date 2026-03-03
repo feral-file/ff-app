@@ -22,8 +22,8 @@ class FF1BleTransport {
   FF1BleTransport({
     FF1BleProtocol? protocol,
     Logger? logger,
-  })  : _protocol = protocol ?? const FF1BleProtocol(),
-        _log = logger ?? Logger('FF1BleTransport') {
+  }) : _protocol = protocol ?? const FF1BleProtocol(),
+       _log = logger ?? Logger('FF1BleTransport') {
     _startListening();
   }
 
@@ -120,7 +120,6 @@ class FF1BleTransport {
     int maxRetries = 0,
     bool Function()? shouldContinue,
   }) async {
-
     // Check if operation should continue (for cancellation)
     if (shouldContinue != null && !shouldContinue()) {
       _log.info('Connection cancelled by caller');
@@ -171,7 +170,7 @@ class FF1BleTransport {
             rethrow;
           }
 
-          _log.info('Retry ${attempt + 1}/${maxRetries} after 2s...');
+          _log.info('Retry ${attempt + 1}/$maxRetries after 2s...');
           await Future<void>.delayed(const Duration(seconds: 2));
         }
       }
@@ -198,7 +197,6 @@ class FF1BleTransport {
       await device.connect(
         timeout: timeout,
         mtu: null,
-        autoConnect: false,
         // Using free license (for individuals, nonprofits, educational, small orgs <50 employees)
         license: License.free,
       );
@@ -279,7 +277,9 @@ class FF1BleTransport {
 
         // Enable notifications
         if (!commandChar.properties.notify) {
-          throw Exception('Command characteristic does not support notifications');
+          throw Exception(
+            'Command characteristic does not support notifications',
+          );
         }
 
         await commandChar.setNotifyValue(true);
@@ -316,8 +316,8 @@ class FF1BleTransport {
   /// [timeout] - scan duration
   /// [onDevice] - callback for each discovered device (return true to stop scan)
   Future<void> scan({
-    Duration timeout = const Duration(seconds: 30),
     required FutureOr<bool> Function(List<BluetoothDevice>) onDevice,
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     _log.info('Starting scan (timeout: ${timeout.inSeconds}s)');
 
@@ -478,7 +478,9 @@ class FF1BleTransport {
   }
 
   bool _canIgnoreError(FlutterBluePlusException e) {
-    return e.code == 14 || e.code == 133 || (e.description?.contains('GATT') ?? false);
+    return e.code == 14 ||
+        e.code == 133 ||
+        (e.description?.contains('GATT') ?? false);
   }
 
   /// Handle incoming response notification

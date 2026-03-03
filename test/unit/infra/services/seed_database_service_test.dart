@@ -5,7 +5,8 @@ void main() {
   group('SeedDatabaseService object URI parsing', () {
     test('builds object URI from bucket URL and object key', () {
       final objectUri = SeedDatabaseService.parseObjectUriForTesting(
-        bucketUrl: 'https://example.r2.cloudflarestorage.com/ff-app-db-snapshot',
+        bucketUrl:
+            'https://example.r2.cloudflarestorage.com/ff-app-db-snapshot',
         objectKey: 'nested/ff_feed_indexer_seed.sqlite',
       );
 

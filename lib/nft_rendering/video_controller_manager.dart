@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:sentry/sentry.dart';
 import 'package:video_player/video_player.dart';
@@ -10,6 +9,8 @@ final _log = Logger('VideoControllerManager');
 final videoControllerManager = VideoControllerManager(maxVideoControllers: 1);
 
 class VideoControllerManager {
+  // Constructor to set the maximum number of controllers
+  VideoControllerManager({this.maxVideoControllers = 2});
   // Map to store video positions when users switch between videos
   final Map<String, Duration> _videoSeekPositionMap = {};
 
@@ -24,30 +25,32 @@ class VideoControllerManager {
 
   // Function to call before a controller is disposed
   final Map<String, Function(VideoPlayerController)>
-      _beforeVideoControllerDisposedHandlers = {};
+  _beforeVideoControllerDisposedHandlers = {};
 
   final Map<String, Completer<VideoPlayerController>>
-      _requestVideoControllerCompleters = {};
-
-  // Constructor to set the maximum number of controllers
-  VideoControllerManager({this.maxVideoControllers = 2});
+  _requestVideoControllerCompleters = {};
 
   final Map<String, bool> _cyclingUriMap = {};
 
   final Map<String, int> _controllerRefCount =
       {}; // Track references per controller
 
-  Future<void> _recycleUri(Uri videoUri,
-      {bool resetSeekPosition = false}) async {
+  Future<void> _recycleUri(
+    Uri videoUri, {
+    bool resetSeekPosition = false,
+  }) async {
     final videoPath = videoUri.toString();
-    if (_cyclingUriMap[videoPath] == true) {
-      _log.info('[VideoControllerManager] Recycling video controller '
-          'for $videoUri is already in progress');
+    if (_cyclingUriMap[videoPath] ?? false) {
+      _log.info(
+        '[VideoControllerManager] Recycling video controller '
+        'for $videoUri is already in progress',
+      );
       return;
     }
     _cyclingUriMap[videoPath] = true;
     _log.info(
-        '[VideoControllerManager] Recycling video controller for $videoUri');
+      '[VideoControllerManager] Recycling video controller for $videoUri',
+    );
     // Dispose the controller associated with the videoUri
     try {
       final controller = _videoControllers[videoPath];
@@ -64,9 +67,11 @@ class VideoControllerManager {
           try {
             _beforeVideoControllerDisposedHandlers[videoPath]?.call(controller);
           } catch (error) {
-            _log.info('[VideoControllerManager] Error calling '
-                'beforeVideoControllerDisposed handler '
-                'for $videoUri: $error');
+            _log.info(
+              '[VideoControllerManager] Error calling '
+              'beforeVideoControllerDisposed handler '
+              'for $videoUri: $error',
+            );
           }
           await controller.dispose();
           _videoControllers.remove(videoPath);
@@ -78,11 +83,16 @@ class VideoControllerManager {
       }
       _cyclingUriMap.remove(videoPath);
     } catch (error, s) {
-      _log.info('[VideoControllerManager] Error recycling video '
-          'controller for $videoUri: $error');
-      unawaited(Sentry.captureException(
+      _log.info(
+        '[VideoControllerManager] Error recycling video '
+        'controller for $videoUri: $error',
+      );
+      unawaited(
+        Sentry.captureException(
           'Error recycling video controller for $videoUri, error: $error',
-          stackTrace: s));
+          stackTrace: s,
+        ),
+      );
       _cyclingUriMap.remove(videoPath);
     }
   }
@@ -94,19 +104,22 @@ class VideoControllerManager {
       await _recycleUri(videoUri, resetSeekPosition: resetSeekPosition);
     } else {
       // Dispose all controllers
-      for (var controller in _videoControllers.values) {
+      for (final controller in _videoControllers.values) {
         final videoPath = _controllerPool.firstWhere(
           (path) => _videoControllers[path] == controller,
           orElse: () => '',
         );
-        await _recycleUri(Uri.parse(videoPath),
-            resetSeekPosition: resetSeekPosition);
+        await _recycleUri(
+          Uri.parse(videoPath),
+          resetSeekPosition: resetSeekPosition,
+        );
       }
       _videoControllers.clear();
       _controllerPool.clear();
     }
     _log.info(
-        '[VideoControllerManager] Recycled video controller for $videoUri');
+      '[VideoControllerManager] Recycled video controller for $videoUri',
+    );
   }
 
   /// Requests a video controller for the given [videoUri]
@@ -117,10 +130,10 @@ class VideoControllerManager {
     bool shouldIncrementRefCountIfAlreadyExists = true,
   }) async {
     _log.info(
-        '[VideoControllerManager] Requesting video controller for $videoUri');
+      '[VideoControllerManager] Requesting video controller for $videoUri',
+    );
     final videoPath = videoUri.toString();
-    Completer<VideoPlayerController>? completer =
-        _requestVideoControllerCompleters[videoPath];
+    var completer = _requestVideoControllerCompleters[videoPath];
     if (completer != null) {
       return completer.future;
     }
@@ -130,8 +143,10 @@ class VideoControllerManager {
     try {
       // Check if the controller for this videoUri is already in the pool
       if (_videoControllers.containsKey(videoPath)) {
-        _log.info('[VideoControllerManager] Video controller '
-            'for $videoUri already exists');
+        _log.info(
+          '[VideoControllerManager] Video controller '
+          'for $videoUri already exists',
+        );
         // Bring the videoUri to the end of the pool (most recently used)
         _controllerPool
           ..remove(videoPath)
@@ -152,14 +167,18 @@ class VideoControllerManager {
         VideoPlayerController controller;
 
         if (_controllerPool.length < maxVideoControllers) {
-          _log.info('[VideoControllerManager] Creating new '
-              'video controller for $videoUri');
+          _log.info(
+            '[VideoControllerManager] Creating new '
+            'video controller for $videoUri',
+          );
           // Create a new controller
           controller = VideoPlayerController.networkUrl(videoUri);
           await controller.initialize();
         } else {
-          _log.info('[VideoControllerManager] Replacing video '
-              'controller for $videoUri');
+          _log.info(
+            '[VideoControllerManager] Replacing video '
+            'controller for $videoUri',
+          );
           // Replace the first (oldest) controller in the pool
           final oldestVideoPath = _controllerPool[0];
 
@@ -183,8 +202,10 @@ class VideoControllerManager {
         }
 
         onVideoControllerCreated?.call(controller);
-        _log.info('[VideoControllerManager] '
-            'Requested video controller for $videoUri');
+        _log.info(
+          '[VideoControllerManager] '
+          'Requested video controller for $videoUri',
+        );
         completer.complete(controller);
         _requestVideoControllerCompleters.remove(videoPath);
         _controllerRefCount[videoPath] =
@@ -192,8 +213,10 @@ class VideoControllerManager {
         return controller;
       }
     } catch (error, s) {
-      _log.info('[VideoControllerManager] '
-          'Error requesting video controller for $videoUri: $error');
+      _log.info(
+        '[VideoControllerManager] '
+        'Error requesting video controller for $videoUri: $error',
+      );
       unawaited(
         Sentry.captureException(
           'Error requesting video controller for $videoUri, error: $error',

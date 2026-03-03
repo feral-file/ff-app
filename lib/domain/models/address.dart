@@ -16,8 +16,8 @@ class Address {
 
   /// Copy with
   Address copyWith({String? address, Chain? type, String? domain}) => Address(
-        address: address ?? this.address,
-        type: type ?? this.type,
-        domain: domain ?? this.domain,
-      );
+    address: address ?? this.address,
+    type: type ?? this.type,
+    domain: domain ?? this.domain,
+  );
 }

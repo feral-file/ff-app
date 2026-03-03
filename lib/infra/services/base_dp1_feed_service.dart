@@ -1,7 +1,11 @@
+import 'package:app/domain/models/channel.dart' show Channel;
 import 'package:app/domain/models/dp1/dp1_api_responses.dart';
+import 'package:app/domain/models/dp1/dp1_channel.dart' show DP1Channel;
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
+import 'package:app/domain/models/models.dart' show Channel, DP1Channel;
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:image/image.dart' show Channel;
 
 /// Abstract base for DP1 feed services.
 ///

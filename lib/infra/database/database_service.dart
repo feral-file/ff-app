@@ -689,9 +689,7 @@ class DatabaseService {
   /// Consumers that only need invalidation notifications should prefer this
   /// over [watchAllItems] to avoid materializing all rows.
   Stream<int> watchItemsRevisionSignal() {
-    return _db
-        .watchItemsRevisionSignal()
-        .debounceTime(watchAllItemsDebounce);
+    return _db.watchItemsRevisionSignal().debounceTime(watchAllItemsDebounce);
   }
 
   /// Delete playlist item by ID.

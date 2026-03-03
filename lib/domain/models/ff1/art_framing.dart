@@ -1,7 +1,8 @@
 /// Art framing mode for FF1 display.
 enum ArtFraming {
   fitToScreen,
-  cropToFill;
+  cropToFill
+  ;
 
   int get value {
     switch (this) {

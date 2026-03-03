@@ -1,7 +1,8 @@
 /// DP1 cast intent (e.g. now_display, schedule_play).
 enum DP1Action {
   now,
-  schedulePlay;
+  schedulePlay
+  ;
 
   String get value {
     switch (this) {
@@ -39,6 +40,6 @@ class DP1Intent {
   DP1Action action;
 
   Map<String, dynamic> toJson() => {
-        'action': action.value,
-      };
+    'action': action.value,
+  };
 }

@@ -13,7 +13,8 @@ class ChannelRowData {
   const ChannelRowData({
     required this.channelId,
     required this.channelTitle,
-    required this.works, this.channelSummary,
+    required this.works,
+    this.channelSummary,
   });
 
   /// Channel ID.
@@ -104,13 +105,15 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
     // initial() — isLoading: false, works: [] — before the DB watch delivers
     // data. Keep showing cached works during that gap to avoid a height
     // collapse that makes the list jumpy.
-    final shouldKeepCached = widget.isActive &&
+    final shouldKeepCached =
+        widget.isActive &&
         _cachedPreviewState.works.isNotEmpty &&
         nextPreviewState.works.isEmpty &&
         nextPreviewState.error == null;
 
-    final previewState =
-        shouldKeepCached ? _cachedPreviewState : nextPreviewState;
+    final previewState = shouldKeepCached
+        ? _cachedPreviewState
+        : nextPreviewState;
     if (widget.isActive && !shouldKeepCached) {
       _cachedPreviewState = nextPreviewState;
     }
@@ -118,8 +121,7 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
     final works = widget.channelData.works.isNotEmpty
         ? widget.channelData.works
         : previewState.works;
-    final hasMore =
-        widget.channelData.works.isEmpty && previewState.hasMore;
+    final hasMore = widget.channelData.works.isEmpty && previewState.hasMore;
     final isLoadingMore =
         widget.channelData.works.isEmpty && previewState.isLoadingMore;
     final isLoading =
@@ -129,9 +131,7 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
     return Container(
       decoration: const BoxDecoration(
         border: Border(
-          bottom: BorderSide(
-            
-          ),
+          bottom: BorderSide(),
         ),
       ),
       padding: EdgeInsets.only(bottom: LayoutConstants.space3),

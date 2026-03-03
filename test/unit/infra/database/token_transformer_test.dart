@@ -1,7 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
-import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/token_transformer.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('TokenTransformer', () {

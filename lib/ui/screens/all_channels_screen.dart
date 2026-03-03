@@ -105,11 +105,11 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     // Descriptions from Feral File app (old repo) for consistency.
     final description = widget.filter == AllChannelsFilter.curated
         ? 'A small set of Channels selected by Feral File and invited '
-            'collaborators. These are early recommendations designed to give '
-            'you strong entry points into digital art.'
+              'collaborators. These are early recommendations designed to give '
+              'you strong entry points into digital art.'
         : 'Public Channels gathered from across the ecosystem. '
-            'They\'re not ranked or popularity-based—they simply give you a '
-            'wide view of what\'s out there, organized by source.';
+              "They're not ranked or popularity-based—they simply give you a "
+              "wide view of what's out there, organized by source.";
     final iconAsset = widget.filter == AllChannelsFilter.curated
         ? 'assets/images/D.svg'
         : 'assets/images/icon_account.svg';
@@ -190,7 +190,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
                           '${Routes.channels}/${item.id}',
                         );
                       },
-                      isActive: true,
                     ),
                   ),
                   if (hasMore || isLoadingMore)

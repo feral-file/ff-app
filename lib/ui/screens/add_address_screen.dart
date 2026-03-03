@@ -205,8 +205,9 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                       ? Text(
                           switch (addAddressState.error) {
                             AddAddressException(:final type) => type.message,
-                            _ => "We couldn't validate this address. "
-                                'Check it and try again.',
+                            _ =>
+                              "We couldn't validate this address. "
+                                  'Check it and try again.',
                           },
                           style: AppTypography.body(context).red,
                         )

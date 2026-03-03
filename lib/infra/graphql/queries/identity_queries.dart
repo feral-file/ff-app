@@ -12,4 +12,3 @@ const String identity = r'''
   }
 }
 ''';
-

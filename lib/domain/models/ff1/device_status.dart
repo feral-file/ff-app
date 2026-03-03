@@ -12,8 +12,9 @@ class DeviceStatus {
   factory DeviceStatus.fromJson(Map<String, dynamic> json) {
     return DeviceStatus(
       connectedWifi: json['connectedWifi'] as String?,
-      screenRotation:
-          ScreenOrientation.fromString(json['screenRotation'] as String),
+      screenRotation: ScreenOrientation.fromString(
+        json['screenRotation'] as String,
+      ),
       installedVersion: json['installedVersion'] as String?,
       latestVersion: json['latestVersion'] as String?,
     );

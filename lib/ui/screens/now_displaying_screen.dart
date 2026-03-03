@@ -3,8 +3,8 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/now_displaying_bar/now_displaying_quick_setting_view.dart';
@@ -233,16 +233,15 @@ class _TokenPreview extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            child: item.thumbnailUrl != null &&
-                    item.thumbnailUrl!.isNotEmpty
+            child: item.thumbnailUrl != null && item.thumbnailUrl!.isNotEmpty
                 ? AspectRatio(
                     aspectRatio: 4 / 5,
                     child: CachedNetworkImage(
                       imageUrl: item.thumbnailUrl!,
                       fit: BoxFit.contain,
-                      placeholder: (_, __) =>
+                      placeholder: (_, _) =>
                           const _GalleryNoThumbnailPlaceholder(),
-                      errorWidget: (_, __, ___) =>
+                      errorWidget: (_, _, _) =>
                           const _GalleryNoThumbnailPlaceholder(),
                     ),
                   )
@@ -295,7 +294,8 @@ class _InfoHeader extends StatelessWidget {
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                   ),
-                if (subTitle.isNotEmpty) SizedBox(height: LayoutConstants.space1),
+                if (subTitle.isNotEmpty)
+                  SizedBox(height: LayoutConstants.space1),
                 Text(
                   title,
                   style: AppTypography.body(context).white.bold,

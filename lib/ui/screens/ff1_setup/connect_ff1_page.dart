@@ -97,9 +97,10 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     return switch (state) {
       ConnectFF1Connecting() => _ConnectFF1Status.connecting,
       ConnectFF1StillConnecting() => _ConnectFF1Status.stillConnecting,
-      ConnectFF1Connected() => state.portalIsSet
-          ? _ConnectFF1Status.portalIsSet
-          : _ConnectFF1Status.success,
+      ConnectFF1Connected() =>
+        state.portalIsSet
+            ? _ConnectFF1Status.portalIsSet
+            : _ConnectFF1Status.success,
       ConnectFF1Error() => _ConnectFF1Status.error,
       _ => _ConnectFF1Status.connecting,
     };
@@ -156,14 +157,17 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     );
 
     // Listen for state changes to handle callbacks
-    ref.listen<AsyncValue<ConnectFF1State>>(connectFF1Provider,
-        (previous, next) {
+    ref.listen<AsyncValue<ConnectFF1State>>(connectFF1Provider, (
+      previous,
+      next,
+    ) {
       next.whenData((state) async {
         if (state is ConnectFF1Connected) {
           _recordDuration(success: true);
           if (state.isConnectedToInternet) {
-            await ref
-                .read(addFF1BluetoothDeviceProvider(state.ff1device).future);
+            await ref.read(
+              addFF1BluetoothDeviceProvider(state.ff1device).future,
+            );
 
             if (state.portalIsSet) {
               // Portal is set, show portal is set view

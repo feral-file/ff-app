@@ -24,7 +24,9 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
   Future<String> headRemoteEtag() async {
     if (throwOnHead) {
       throw DioException(
-        requestOptions: RequestOptions(path: 'https://example.invalid/seed.sqlite'),
+        requestOptions: RequestOptions(
+          path: 'https://example.invalid/seed.sqlite',
+        ),
         message: 'offline',
       );
     }

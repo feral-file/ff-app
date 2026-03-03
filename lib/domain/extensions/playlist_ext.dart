@@ -14,7 +14,7 @@ extension PlaylistExt on Playlist {
     String? name,
     String? description,
   }) {
-    final id = Uuid().v4();
+    final id = const Uuid().v4();
     return Playlist(
       id: id,
       name: name ?? 'Works',
@@ -66,14 +66,12 @@ extension PlaylistExt on Playlist {
       name: name ?? walletAddress.name,
       type: PlaylistType.addressBased,
       channelId: channelId,
-      playlistSource: PlaylistSource.personal,
       ownerAddress: normalizedAddress,
       ownerChain: chain,
       ownerName: walletAddress.name,
       sortMode: PlaylistSortMode.provenance,
       createdAt: now,
       updatedAt: now,
-      itemCount: 0,
       dynamicQueries: dynamicQueries,
     );
   }

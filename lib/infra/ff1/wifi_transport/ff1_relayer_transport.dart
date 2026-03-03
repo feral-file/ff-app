@@ -40,8 +40,8 @@ class FF1RelayerTransport implements FF1WifiTransport {
   FF1RelayerTransport({
     required String relayerUrl,
     Logger? logger,
-  })  : _relayerUrl = relayerUrl,
-        _log = logger ?? Logger('FF1RelayerTransport');
+  }) : _relayerUrl = relayerUrl,
+       _log = logger ?? Logger('FF1RelayerTransport');
 
   final String _relayerUrl;
   final Logger _log;
@@ -146,7 +146,8 @@ class FF1RelayerTransport implements FF1WifiTransport {
 
   Future<void> _connectInternal() async {
     // Build WebSocket URL
-    final wsUrl = '$_relayerUrl/api/notification?'
+    final wsUrl =
+        '$_relayerUrl/api/notification?'
         'apiKey=$_apiKey&topicID=${_device!.topicId}&clientId=$_userId';
 
     _log.fine('WebSocket URL: ${wsUrl.replaceAll(_apiKey!, '***')}');
@@ -312,8 +313,10 @@ class FF1RelayerTransport implements FF1WifiTransport {
     final delay = _baseReconnectDelay * (1 << _reconnectAttempts);
     _reconnectAttempts++;
 
-    _log.info('Scheduling reconnect in ${delay.inSeconds}s '
-        '(attempt $_reconnectAttempts/$_maxReconnectAttempts)');
+    _log.info(
+      'Scheduling reconnect in ${delay.inSeconds}s '
+      '(attempt $_reconnectAttempts/$_maxReconnectAttempts)',
+    );
 
     _reconnectTimer = Timer(delay, () async {
       if (_isConnected || _isConnecting) {
@@ -459,7 +462,6 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
   });
 }
 
-
 // ============================================================================
 // Isolate communication messages (main ↔ isolate)
 // ============================================================================
@@ -485,9 +487,9 @@ class _RelayerControlMessage {
   final Map<String, dynamic>? data;
 
   Map<String, dynamic> toJson() => {
-        'type': type.name,
-        if (data != null) 'data': data,
-      };
+    'type': type.name,
+    if (data != null) 'data': data,
+  };
 }
 
 /// Event message types (isolate → main)
@@ -517,7 +519,7 @@ class _RelayerEventMessage {
   final Map<String, dynamic>? data;
 
   Map<String, dynamic> toJson() => {
-        'type': type.name,
-        if (data != null) 'data': data,
-      };
+    'type': type.name,
+    if (data != null) 'data': data,
+  };
 }

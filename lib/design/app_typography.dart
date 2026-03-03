@@ -19,19 +19,19 @@ class AppTypography {
   }
 
   // Base sizes from tokens (convert to double for TextStyle)
-  static final double _displaySize =
-      TypographyTokens.displayFontSize.toDouble();
+  static final double _displaySize = TypographyTokens.displayFontSize
+      .toDouble();
   static final double _h1Size = TypographyTokens.h1FontSize.toDouble();
   static final double _h2Size = TypographyTokens.h2FontSize.toDouble();
   static final double _h3Size = TypographyTokens.h3FontSize.toDouble();
   static final double _h4Size = TypographyTokens.h4FontSize.toDouble();
   static final double _bodySize = TypographyTokens.bodyFontSize.toDouble();
-  static final double _bodySmallSize =
-      TypographyTokens.bodySmallFontSize.toDouble();
-  static final double _captionSize =
-      TypographyTokens.captionFontSize.toDouble();
-  static final double _verySmallSize =
-      TypographyTokens.verySmallFontSize.toDouble();
+  static final double _bodySmallSize = TypographyTokens.bodySmallFontSize
+      .toDouble();
+  static final double _captionSize = TypographyTokens.captionFontSize
+      .toDouble();
+  static final double _verySmallSize = TypographyTokens.verySmallFontSize
+      .toDouble();
 
   /// Display (40px) - Hero text, empty states, key marketing moments
   static TextStyle display(BuildContext context) {
@@ -209,7 +209,7 @@ class AppTypography {
   static TextStyle displayItemDeviceName(BuildContext context) {
     const fontSize = 6.0;
     const lineHeight = 8.4;
-    return TextStyle(
+    return const TextStyle(
       fontFamily: ppMori,
       fontSize: fontSize,
       fontWeight: FontWeight.w700,
@@ -262,7 +262,7 @@ extension TypographyFontWeight on TextStyle {
 extension TypographyDecorations on TextStyle {
   /// Apply underline decoration
   TextStyle get underline => copyWith(
-        decoration: TextDecoration.underline,
-        decorationColor: color,
-      );
+    decoration: TextDecoration.underline,
+    decorationColor: color,
+  );
 }

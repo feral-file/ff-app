@@ -12,7 +12,8 @@ enum SubjectType {
   balance,
   metadata,
   enrichmentSource,
-  tokenViewability;
+  tokenViewability
+  ;
 
   /// Serialize to the indexer API string.
   String toJson() {
@@ -155,29 +156,33 @@ class Change {
 
   /// Create from JSON returned by the indexer.
   factory Change.fromJson(Map<String, dynamic> json) => Change(
-        id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
-        subjectType: SubjectType.fromJson(json['subject_type'] as String?) ??
-            SubjectType.token,
-        subjectId: json['subject_id'] as String? ?? '',
-        changedAt: DateTime.tryParse(json['changed_at'] as String? ?? '') ??
-            DateTime.fromMillisecondsSinceEpoch(0),
-        meta: (json['meta'] as Map?)?.cast<String, dynamic>(),
-        createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ??
-            DateTime.fromMillisecondsSinceEpoch(0),
-        updatedAt: DateTime.tryParse(json['updated_at'] as String? ?? '') ??
-            DateTime.fromMillisecondsSinceEpoch(0),
-      );
+    id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
+    subjectType:
+        SubjectType.fromJson(json['subject_type'] as String?) ??
+        SubjectType.token,
+    subjectId: json['subject_id'] as String? ?? '',
+    changedAt:
+        DateTime.tryParse(json['changed_at'] as String? ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0),
+    meta: (json['meta'] as Map?)?.cast<String, dynamic>(),
+    createdAt:
+        DateTime.tryParse(json['created_at'] as String? ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0),
+    updatedAt:
+        DateTime.tryParse(json['updated_at'] as String? ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0),
+  );
 
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'subject_type': subjectType.toJson(),
-        'subject_id': subjectId,
-        'changed_at': changedAt.toIso8601String(),
-        'meta': _metaRaw,
-        'created_at': createdAt.toIso8601String(),
-        'updated_at': updatedAt.toIso8601String(),
-      };
+    'id': id,
+    'subject_type': subjectType.toJson(),
+    'subject_id': subjectId,
+    'changed_at': changedAt.toIso8601String(),
+    'meta': _metaRaw,
+    'created_at': createdAt.toIso8601String(),
+    'updated_at': updatedAt.toIso8601String(),
+  };
 }
 
 /// A paginated list of changes.
@@ -204,23 +209,24 @@ class ChangeList {
 
   /// Create from JSON returned by the indexer.
   factory ChangeList.fromJson(Map<String, dynamic> json) => ChangeList(
-        items: (json['items'] as List?)
-                ?.whereType<Map<Object?, Object?>>()
-                .map((e) => Change.fromJson(Map<String, dynamic>.from(e)))
-                .toList() ??
-            const <Change>[],
-        total: int.tryParse(json['total']?.toString() ?? '') ?? 0,
-        offset: int.tryParse(json['offset']?.toString() ?? ''),
-        nextAnchor: int.tryParse(json['next_anchor']?.toString() ?? ''),
-      );
+    items:
+        (json['items'] as List?)
+            ?.whereType<Map<Object?, Object?>>()
+            .map((e) => Change.fromJson(Map<String, dynamic>.from(e)))
+            .toList() ??
+        const <Change>[],
+    total: int.tryParse(json['total']?.toString() ?? '') ?? 0,
+    offset: int.tryParse(json['offset']?.toString() ?? ''),
+    nextAnchor: int.tryParse(json['next_anchor']?.toString() ?? ''),
+  );
 
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
-        'items': items.map((c) => c.toJson()).toList(),
-        'offset': offset,
-        'total': total,
-        if (nextAnchor != null) 'next_anchor': nextAnchor,
-      };
+    'items': items.map((c) => c.toJson()).toList(),
+    'offset': offset,
+    'total': total,
+    if (nextAnchor != null) 'next_anchor': nextAnchor,
+  };
 }
 
 /// Request model for querying changes.

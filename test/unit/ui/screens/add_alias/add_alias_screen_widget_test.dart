@@ -18,7 +18,9 @@ void main() {
         ProviderScope(
           overrides: [
             nowDisplayingShouldShowProvider.overrideWithValue(false),
-            addAliasProvider.overrideWith(() => _RecordingAddAliasNotifier(calls)),
+            addAliasProvider.overrideWith(
+              () => _RecordingAddAliasNotifier(calls),
+            ),
           ],
           child: const MaterialApp(
             home: AddAliasScreen(
@@ -34,7 +36,9 @@ void main() {
       expect(find.text('Skip'), findsOneWidget);
       expect(find.text('Submit'), findsNothing);
 
-      final skipButton = tester.widget<OutlineButton>(find.byType(OutlineButton));
+      final skipButton = tester.widget<OutlineButton>(
+        find.byType(OutlineButton),
+      );
       expect(skipButton.textColor, PrimitivesTokens.colorsWhite);
       expect(skipButton.borderColor, PrimitivesTokens.colorsWhite);
 
@@ -44,7 +48,9 @@ void main() {
       expect(find.text('Skip'), findsNothing);
       expect(find.text('Submit'), findsOneWidget);
 
-      final submitButton = tester.widget<PrimaryButton>(find.byType(PrimaryButton));
+      final submitButton = tester.widget<PrimaryButton>(
+        find.byType(PrimaryButton),
+      );
       expect(submitButton.color, PrimitivesTokens.colorsWhite);
 
       await tester.enterText(find.byType(TextField), '');
@@ -64,7 +70,9 @@ void main() {
       ProviderScope(
         overrides: [
           nowDisplayingShouldShowProvider.overrideWithValue(false),
-          addAliasProvider.overrideWith(() => _RecordingAddAliasNotifier(calls)),
+          addAliasProvider.overrideWith(
+            () => _RecordingAddAliasNotifier(calls),
+          ),
         ],
         child: const MaterialApp(
           home: AddAliasScreen(
@@ -96,7 +104,9 @@ void main() {
       ProviderScope(
         overrides: [
           nowDisplayingShouldShowProvider.overrideWithValue(false),
-          addAliasProvider.overrideWith(() => _RecordingAddAliasNotifier(calls)),
+          addAliasProvider.overrideWith(
+            () => _RecordingAddAliasNotifier(calls),
+          ),
         ],
         child: const MaterialApp(
           home: AddAliasScreen(
@@ -149,4 +159,3 @@ class _RecordingAddAliasNotifier extends AddAliasNotifier {
     state = const AsyncValue.loading();
   }
 }
-

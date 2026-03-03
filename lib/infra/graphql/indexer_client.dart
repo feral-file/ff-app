@@ -17,7 +17,7 @@ class IndexerClient {
     this.maxRequestsPerSecond = 10,
   }) : _client = GraphQLClient(
          link: HttpLink(
-           '${endpoint}/graphql',
+           '$endpoint/graphql',
            defaultHeaders: defaultHeaders,
          ),
          cache: GraphQLCache(),

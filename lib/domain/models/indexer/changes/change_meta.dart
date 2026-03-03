@@ -1,4 +1,4 @@
-// ignore_for_file: public_member_api_docs, sort_constructors_first, lines_longer_than_80_chars, one_member_abstracts // Reason: protocol-shaped indexer models; keep stable + auditable.
+// ignore_for_file: public_member_api_docs, sort_constructors_first, one_member_abstracts // Reason: protocol-shaped indexer models; keep stable + auditable.
 
 /// Base type for parsed change metadata.
 ///
@@ -25,15 +25,15 @@ class ChangeArtist {
 
   /// Creates from JSON.
   factory ChangeArtist.fromJson(Map<String, dynamic> json) => ChangeArtist(
-        did: json['did'] as String? ?? '',
-        name: json['name'] as String? ?? '',
-      );
+    did: json['did'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+  );
 
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
-        'did': did,
-        'name': name,
-      };
+    'did': did,
+    'name': name,
+  };
 }
 
 /// Publisher represents the publisher referenced in token metadata changes.
@@ -61,9 +61,9 @@ class ChangePublisher {
 
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
-        if (name != null) 'name': name,
-        if (url != null) 'url': url,
-      };
+    if (name != null) 'name': name,
+    if (url != null) 'url': url,
+  };
 }
 
 /// Normalized metadata fields we track for change diffs.
@@ -102,13 +102,12 @@ class MetadataFields {
 
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
-        if (animationUrl != null) 'animation_url': animationUrl,
-        if (imageUrl != null) 'image_url': imageUrl,
-        if (artists != null)
-          'artists': artists!.map((a) => a.toJson()).toList(),
-        if (publisher != null) 'publisher': publisher!.toJson(),
-        if (mimeType != null) 'mime_type': mimeType,
-      };
+    if (animationUrl != null) 'animation_url': animationUrl,
+    if (imageUrl != null) 'image_url': imageUrl,
+    if (artists != null) 'artists': artists!.map((a) => a.toJson()).toList(),
+    if (publisher != null) 'publisher': publisher!.toJson(),
+    if (mimeType != null) 'mime_type': mimeType,
+  };
 }
 
 /// Metadata for token/owner/balance changes (provenance-like).
@@ -169,16 +168,16 @@ class ProvenanceChangeMeta implements ChangeMeta {
 
   @override
   Map<String, dynamic> toJson() => {
-        'chain': chain,
-        'standard': standard,
-        'contract': contract,
-        'token_number': tokenNumber,
-        'token_id': tokenId,
-        if (from != null) 'from': from,
-        if (to != null) 'to': to,
-        if (quantity != null) 'quantity': quantity,
-        if (txHash != null) 'tx_hash': txHash,
-      };
+    'chain': chain,
+    'standard': standard,
+    'contract': contract,
+    'token_number': tokenNumber,
+    'token_id': tokenId,
+    if (from != null) 'from': from,
+    if (to != null) 'to': to,
+    if (quantity != null) 'quantity': quantity,
+    if (txHash != null) 'tx_hash': txHash,
+  };
 
   /// A stable token CID string (DP-1-ish) derived from change metadata.
   ///
@@ -230,10 +229,10 @@ class MetadataChangeMeta implements ChangeMeta {
 
   @override
   Map<String, dynamic> toJson() => {
-        'old': old.toJson(),
-        'new': new_.toJson(),
-        'token_id': tokenId,
-      };
+    'old': old.toJson(),
+    'new': new_.toJson(),
+    'token_id': tokenId,
+  };
 }
 
 /// Normalized enrichment source fields we track for diffs.
@@ -279,16 +278,15 @@ class EnrichmentSourceFields {
 
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
-        if (vendor != null) 'vendor': vendor,
-        if (vendorHash != null) 'vendor_hash': vendorHash,
-        if (name != null) 'name': name,
-        if (description != null) 'description': description,
-        if (animationUrl != null) 'animation_url': animationUrl,
-        if (imageUrl != null) 'image_url': imageUrl,
-        if (artists != null)
-          'artists': artists!.map((a) => a.toJson()).toList(),
-        if (mimeType != null) 'mime_type': mimeType,
-      };
+    if (vendor != null) 'vendor': vendor,
+    if (vendorHash != null) 'vendor_hash': vendorHash,
+    if (name != null) 'name': name,
+    if (description != null) 'description': description,
+    if (animationUrl != null) 'animation_url': animationUrl,
+    if (imageUrl != null) 'image_url': imageUrl,
+    if (artists != null) 'artists': artists!.map((a) => a.toJson()).toList(),
+    if (mimeType != null) 'mime_type': mimeType,
+  };
 }
 
 /// Metadata for enrichment source changes.
@@ -318,10 +316,10 @@ class EnrichmentSourceChangeMeta implements ChangeMeta {
 
   @override
   Map<String, dynamic> toJson() => {
-        'old': old.toJson(),
-        'new': new_.toJson(),
-        'token_id': tokenId,
-      };
+    'old': old.toJson(),
+    'new': new_.toJson(),
+    'token_id': tokenId,
+  };
 }
 
 /// Metadata for token viewability changes.
@@ -347,10 +345,10 @@ class TokenViewabilityChangeMeta implements ChangeMeta {
 
   @override
   Map<String, dynamic> toJson() => {
-        'token_id': tokenId,
-        'token_cid': tokenCid,
-        'is_viewable': isViewable,
-      };
+    'token_id': tokenId,
+    'token_cid': tokenCid,
+    'is_viewable': isViewable,
+  };
 }
 
 // End of file.

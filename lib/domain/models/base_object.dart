@@ -8,7 +8,7 @@ abstract class BaseObject {
 
   /// Convert the object to a key-value pair
   Map<String, String> get toKeyValue => {
-        'key': key,
-        'value': value,
-      };
+    'key': key,
+    'value': value,
+  };
 }

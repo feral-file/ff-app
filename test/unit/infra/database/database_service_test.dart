@@ -243,34 +243,34 @@ void main() {
       test(
         'watchItemsRevisionSignal emits count updates on item changes',
         () async {
-        final firstUpdate = service.watchItemsRevisionSignal().firstWhere(
-          (count) => count == 1,
-        );
+          final firstUpdate = service.watchItemsRevisionSignal().firstWhere(
+            (count) => count == 1,
+          );
 
-        await service.ingestPlaylistItem(
-          PlaylistItem(
-            id: 'item_a',
-            kind: PlaylistItemKind.indexerToken,
-            title: 'Item A',
-            updatedAt: DateTime.now(),
-          ),
-        );
+          await service.ingestPlaylistItem(
+            PlaylistItem(
+              id: 'item_a',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'Item A',
+              updatedAt: DateTime.now(),
+            ),
+          );
 
-        expect(await firstUpdate, 1);
+          expect(await firstUpdate, 1);
 
-        final secondUpdate = service.watchItemsRevisionSignal().firstWhere(
-          (count) => count == 2,
-        );
-        await service.ingestPlaylistItem(
-          PlaylistItem(
-            id: 'item_b',
-            kind: PlaylistItemKind.indexerToken,
-            title: 'Item B',
-            updatedAt: DateTime.now(),
-          ),
-        );
+          final secondUpdate = service.watchItemsRevisionSignal().firstWhere(
+            (count) => count == 2,
+          );
+          await service.ingestPlaylistItem(
+            PlaylistItem(
+              id: 'item_b',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'Item B',
+              updatedAt: DateTime.now(),
+            ),
+          );
 
-        expect(await secondUpdate, 2);
+          expect(await secondUpdate, 2);
         },
       );
 

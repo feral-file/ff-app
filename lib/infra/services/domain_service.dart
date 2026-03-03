@@ -41,15 +41,18 @@ class DomainServiceImpl implements DomainService {
     try {
       log.info('Getting address for $domain');
       final startTime = DateTime.now();
-      final result = await _ensClient.query(
-        doc: _addressQuery
-            .replaceFirst('<var>', domain)
-            .replaceFirst('<chain>', chain),
-        subKey: _subKey,
-      ) as List?;
+      final result =
+          await _ensClient.query(
+                doc: _addressQuery
+                    .replaceFirst('<var>', domain)
+                    .replaceFirst('<chain>', chain),
+                subKey: _subKey,
+              )
+              as List?;
       final endTime = DateTime.now();
       log.info(
-          '[Getting address for $domain] Result: $result in ${endTime.difference(startTime).inMilliseconds}ms');
+        '[Getting address for $domain] Result: $result in ${endTime.difference(startTime).inMilliseconds}ms',
+      );
       if (result == null || result.isEmpty) {
         return null;
       }
@@ -150,7 +153,8 @@ class GraphClient {
       final result = await client.query(options);
       final endTime = DateTime.now();
       log.info(
-          '[Querying: $doc] Result: $result in ${endTime.difference(startTime).inMilliseconds}ms');
+        '[Querying: $doc] Result: $result in ${endTime.difference(startTime).inMilliseconds}ms',
+      );
       if (subKey != null) {
         return result.data?[subKey];
       }

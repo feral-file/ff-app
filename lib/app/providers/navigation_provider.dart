@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// All navigation state flows through Riverpod.
 final navigationStateProvider =
     NotifierProvider<NavigationNotifier, NavigationState>(
-  NavigationNotifier.new,
-);
+      NavigationNotifier.new,
+    );
 
 /// Navigation state notifier.
 class NavigationNotifier extends Notifier<NavigationState> {

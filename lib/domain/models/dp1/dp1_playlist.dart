@@ -36,9 +36,12 @@ class DP1Playlist {
       dynamicQueries: (json['dynamicQueries'] == null)
           ? []
           : (List<dynamic>.from(json['dynamicQueries'] as List))
-              .map((e) =>
-                  DynamicQuery.fromJson(Map<String, dynamic>.from(e as Map)))
-              .toList(),
+                .map(
+                  (e) => DynamicQuery.fromJson(
+                    Map<String, dynamic>.from(e as Map),
+                  ),
+                )
+                .toList(),
     );
   }
 
@@ -98,7 +101,9 @@ class DP1Playlist {
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is DP1Playlist && other.dpVersion == dpVersion && other.id == id;
+    return other is DP1Playlist &&
+        other.dpVersion == dpVersion &&
+        other.id == id;
   }
 
   bool isItemsEqual(Object other) {
@@ -147,8 +152,9 @@ class DynamicQuery {
   factory DynamicQuery.fromJson(Map<String, dynamic> json) {
     return DynamicQuery(
       endpoint: json['endpoint'] as String,
-      params:
-          DynamicQueryParams.fromJson(json['params'] as Map<String, dynamic>),
+      params: DynamicQueryParams.fromJson(
+        json['params'] as Map<String, dynamic>,
+      ),
     );
   }
 
@@ -158,7 +164,9 @@ class DynamicQuery {
     DynamicQueryParams? params,
   }) {
     return DynamicQuery(
-        endpoint: endpoint ?? this.endpoint, params: params ?? this.params);
+      endpoint: endpoint ?? this.endpoint,
+      params: params ?? this.params,
+    );
   }
 
   DynamicQuery insertAddresses(List<String> addresses) {
@@ -221,7 +229,8 @@ class DynamicQueryParams {
 
   DynamicQueryParams removeAddresses(List<String> addresses) {
     return copyWith(
-        owners: owners.where((e) => !addresses.contains(e)).toList());
+      owners: owners.where((e) => !addresses.contains(e)).toList(),
+    );
   }
 
   @override
@@ -244,5 +253,3 @@ class DynamicQueryParams {
     return Object.hashAll(sorted);
   }
 }
-
-

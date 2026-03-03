@@ -108,8 +108,9 @@ class OnboardingShell extends StatelessWidget {
         Expanded(
           child: (secondaryButton != null && onSecondaryPressed != null)
               ? CustomPrimaryButton(
-                  padding:
-                      EdgeInsets.symmetric(vertical: LayoutConstants.space3),
+                  padding: EdgeInsets.symmetric(
+                    vertical: LayoutConstants.space3,
+                  ),
                   onTap: onSecondaryPressed,
                   borderColor: AppColor.feralFileLightBlue,
                   color: Colors.transparent,

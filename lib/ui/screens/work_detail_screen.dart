@@ -146,7 +146,6 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
           backgroundColor: AppColor.auGreyBackground,
           body: BackdropScaffold(
             backgroundColor: AppColor.auGreyBackground,
-            frontLayerElevation: 1,
             appBar: MainAppBar(
               backTitle: widget.backTitle ?? 'Work',
               backgroundColor: AppColor.auGreyBackground,
@@ -400,7 +399,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                         token: token,
                       ),
                       loading: () => const SizedBox.shrink(),
-                      error: (_, __) => const SizedBox.shrink(),
+                      error: (_, _) => const SizedBox.shrink(),
                     ),
                   if (token != null)
                     ownerAddressesAsync.when(
@@ -410,7 +409,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                         token: token,
                       ),
                       loading: () => const SizedBox.shrink(),
-                      error: (_, __) => const SizedBox.shrink(),
+                      error: (_, _) => const SizedBox.shrink(),
                     ),
                   buildWorkDetailRightSection(context, item, token),
                   SizedBox(height: LayoutConstants.space20),

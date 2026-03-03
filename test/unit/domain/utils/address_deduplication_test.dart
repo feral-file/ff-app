@@ -13,8 +13,7 @@ void main() {
 
     test('normalizes Ethereum 0X prefix and lowercases', () {
       expect(
-        '  0X99fc8AD516FBCC9bA3123D56e63A35d05AA9EFB8  '
-            .normalizeForComparison(
+        '  0X99fc8AD516FBCC9bA3123D56e63A35d05AA9EFB8  '.normalizeForComparison(
           chain: Chain.ethereum,
         ),
         '0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8',

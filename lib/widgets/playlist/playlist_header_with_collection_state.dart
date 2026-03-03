@@ -47,4 +47,3 @@ class PlaylistHeaderWithCollectionState extends StatelessWidget {
     );
   }
 }
-

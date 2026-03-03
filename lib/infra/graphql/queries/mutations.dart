@@ -3,6 +3,7 @@
 /// Keep these strings stable and auditable (OSS-first posture).
 ///
 /// Source of truth: legacy Feral File app repo (`lib/nft_collection/graphql/queries/*`).
+library;
 
 /// Triggers address indexing and returns per-address workflow IDs.
 ///

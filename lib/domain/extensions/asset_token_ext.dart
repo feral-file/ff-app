@@ -100,18 +100,23 @@ extension AssetTokenExtension on AssetToken {
     if (size != null) {
       final metadataVariantUrls = metadataMediaAssets
           ?.firstWhereOrNull(
-              (mediaAsset) => mediaAsset.sourceUrl == thumbnailUrl)
+            (mediaAsset) => mediaAsset.sourceUrl == thumbnailUrl,
+          )
           ?.variantUrls;
 
       final enrichmentSourceVariantUrls = enrichmentSourceMediaAssets
           ?.firstWhereOrNull(
-              (mediaAsset) => mediaAsset.sourceUrl == thumbnailUrl)
+            (mediaAsset) => mediaAsset.sourceUrl == thumbnailUrl,
+          )
           ?.variantUrls;
 
-      final mediaThumbnailUrl = (enrichmentSourceVariantUrls?[size] ??
-              enrichmentSourceVariantUrls?.values.firstOrNull) as String? ??
+      final mediaThumbnailUrl =
+          (enrichmentSourceVariantUrls?[size] ??
+                  enrichmentSourceVariantUrls?.values.firstOrNull)
+              as String? ??
           (metadataVariantUrls?[size] ??
-              metadataVariantUrls?.values.firstOrNull) as String?;
+                  metadataVariantUrls?.values.firstOrNull)
+              as String?;
 
       if (mediaThumbnailUrl != null && mediaThumbnailUrl.isNotEmpty) {
         thumbnailUrl = mediaThumbnailUrl;
@@ -122,7 +127,8 @@ extension AssetTokenExtension on AssetToken {
       if (size != null) {
         // if url in format https://imagedelivery.net/5BJzhBHeVhlhbn58hvcXAQ/../xl, then replace the /xl with size
         if (thumbnailUrl?.startsWith(
-                'https://imagedelivery.net/5BJzhBHeVhlhbn58hvcXAQ/') ??
+              'https://imagedelivery.net/5BJzhBHeVhlhbn58hvcXAQ/',
+            ) ??
             false) {
           final urlParts = thumbnailUrl?.split('/');
           if (urlParts != null && urlParts.length > 2) {
@@ -195,5 +201,3 @@ extension AssetTokenExtension on AssetToken {
     }
   }
 }
-
-

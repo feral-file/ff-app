@@ -10,13 +10,6 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 class WebviewNFTRenderingWidget extends NFTRenderingWidget {
-  final Uri previewUri;
-  final String? overriddenHtml;
-  final bool isMute;
-  final Widget loadingWidget;
-  final FocusNode? focusNode;
-  final void Function(WebViewController)? onLoaded;
-
   const WebviewNFTRenderingWidget({
     required this.previewUri,
     this.loadingWidget = const LoadingWidget(),
@@ -26,6 +19,12 @@ class WebviewNFTRenderingWidget extends NFTRenderingWidget {
     this.focusNode,
     this.onLoaded,
   });
+  final Uri previewUri;
+  final String? overriddenHtml;
+  final bool isMute;
+  final Widget loadingWidget;
+  final FocusNode? focusNode;
+  final void Function(WebViewController)? onLoaded;
 
   @override
   State<WebviewNFTRenderingWidget> createState() =>
@@ -67,18 +66,22 @@ class _WebviewNFTRenderingWidgetState
 
   Future<void> onPause() async {
     await _webViewController?.evaluateJavascript(
-        source: "var video = document.getElementsByTagName('video')[0]; "
-            'if(video != undefined) { video.pause(); } '
-            "var audio = document.getElementsByTagName('audio')[0]; "
-            'if(audio != undefined) { audio.pause(); }');
+      source:
+          "var video = document.getElementsByTagName('video')[0]; "
+          'if(video != undefined) { video.pause(); } '
+          "var audio = document.getElementsByTagName('audio')[0]; "
+          'if(audio != undefined) { audio.pause(); }',
+    );
   }
 
   Future<void> onResume() async {
     await _webViewController?.evaluateJavascript(
-        source: "var video = document.getElementsByTagName('video')[0]; "
-            'if(video != undefined) { video.play(); } '
-            "var audio = document.getElementsByTagName('audio')[0]; "
-            'if(audio != undefined) { audio.play(); }');
+      source:
+          "var video = document.getElementsByTagName('video')[0]; "
+          'if(video != undefined) { video.play(); } '
+          "var audio = document.getElementsByTagName('audio')[0]; "
+          'if(audio != undefined) { audio.play(); }',
+    );
   }
 
   Future<void> pauseOrResume() async {
@@ -93,19 +96,23 @@ class _WebviewNFTRenderingWidgetState
   @override
   Future<void> mute() async {
     await _webViewController?.evaluateJavascript(
-        source: "var video = document.getElementsByTagName('video')[0]; "
-            'if(video != undefined) { video.muted = true; } '
-            "var audio = document.getElementsByTagName('audio')[0]; "
-            'if(audio != undefined) { audio.muted = true; }');
+      source:
+          "var video = document.getElementsByTagName('video')[0]; "
+          'if(video != undefined) { video.muted = true; } '
+          "var audio = document.getElementsByTagName('audio')[0]; "
+          'if(audio != undefined) { audio.muted = true; }',
+    );
   }
 
   @override
   Future<void> unmute() async {
     await _webViewController?.evaluateJavascript(
-        source: "var video = document.getElementsByTagName('video')[0]; "
-            'if(video != undefined) { video.muted = false; } '
-            "var audio = document.getElementsByTagName('audio')[0]; "
-            'if(audio != undefined) { audio.muted = false; }');
+      source:
+          "var video = document.getElementsByTagName('video')[0]; "
+          'if(video != undefined) { video.muted = false; } '
+          "var audio = document.getElementsByTagName('audio')[0]; "
+          'if(audio != undefined) { audio.muted = false; }',
+    );
   }
 
   @override
@@ -120,33 +127,35 @@ class _WebviewNFTRenderingWidgetState
 
   @override
   Widget build(BuildContext context) => Stack(
-        children: [
-          _buildWebView(),
-          if (!isPreviewLoaded) widget.loadingWidget,
-          if (widget.focusNode != null) _buildTextField(),
-        ],
-      );
+    children: [
+      _buildWebView(),
+      if (!isPreviewLoaded) widget.loadingWidget,
+      if (widget.focusNode != null) _buildTextField(),
+    ],
+  );
 
   Widget _buildWebView() => FeralFileWebview(
-        key: Key('FeralFileWebview_${widget.previewUri.toString()}'),
-        uri: widget.overriddenHtml != null
-            ? Uri.parse('about:blank')
-            : widget.previewUri,
-        overriddenHtml: widget.overriddenHtml,
-        backgroundColor: backgroundColor,
-        onStarted: (WebViewController controller) {
-          _webViewController = controller;
-        },
-        onLoaded: (controller) async {
-          setState(() {
-            isPreviewLoaded = true;
-          });
+    key: Key('FeralFileWebview_${widget.previewUri}'),
+    uri: widget.overriddenHtml != null
+        ? Uri.parse('about:blank')
+        : widget.previewUri,
+    overriddenHtml: widget.overriddenHtml,
+    backgroundColor: backgroundColor,
+    onStarted: (WebViewController controller) {
+      _webViewController = controller;
+    },
+    onLoaded: (controller) async {
+      setState(() {
+        isPreviewLoaded = true;
+      });
 
-          widget.onLoaded?.call(controller);
+      widget.onLoaded?.call(controller);
 
-          String viewportContent =
-              Platform.isIOS ? 'width=device-width, initial-scale=1.0' : '';
-          String javascriptString = '''
+      final viewportContent = Platform.isIOS
+          ? 'width=device-width, initial-scale=1.0'
+          : '';
+      final javascriptString =
+          '''
           var viewportmeta = document.querySelector('meta[name="viewport"]');
           if (!viewportmeta) {
             var head = document.getElementsByTagName('head')[0];
@@ -156,12 +165,12 @@ class _WebviewNFTRenderingWidgetState
             head.appendChild(viewport);
           }
         ''';
-          await _webViewController?.evaluateJavascript(
-              source: javascriptString);
+      await _webViewController?.evaluateJavascript(source: javascriptString);
 
-          // Check if background color is set
-          await _webViewController?.evaluateJavascript(
-            source: '''
+      // Check if background color is set
+      await _webViewController?.evaluateJavascript(
+        source:
+            '''
             if (window.getComputedStyle(document.body).backgroundColor == 'rgba(0, 0, 0, 0)') {
               document.body.style.backgroundColor = 
               'rgba(
@@ -172,23 +181,24 @@ class _WebviewNFTRenderingWidgetState
               )';
             }
           ''',
-          );
-
-          if (widget.isMute) {
-            await mute();
-          }
-        },
       );
 
+      if (widget.isMute) {
+        await mute();
+      }
+    },
+  );
+
   Widget _buildTextField() => Visibility(
-        visible: widget.focusNode != null,
-        child: TextFormField(
-          controller: _textController,
-          focusNode: widget.focusNode,
-          onChanged: (value) async {
-            if (value.isNotEmpty) {
-              await _webViewController?.evaluateJavascript(
-                source: '''
+    visible: widget.focusNode != null,
+    child: TextFormField(
+      controller: _textController,
+      focusNode: widget.focusNode,
+      onChanged: (value) async {
+        if (value.isNotEmpty) {
+          await _webViewController?.evaluateJavascript(
+            source:
+                '''
                 window.dispatchEvent(new KeyboardEvent('keydown', 
                     {'key': '${value.characters.last}',
                     'keyCode': ${keysCode[value.characters.last]},
@@ -202,12 +212,12 @@ class _WebviewNFTRenderingWidgetState
                     'keyCode': ${keysCode[value.characters.last]},
                     'which': ${keysCode[value.characters.last]}}));
               ''',
-              );
-              _textController.clear(); // Clear the text field after dispatching
-            }
-          },
-        ),
-      );
+          );
+          _textController.clear(); // Clear the text field after dispatching
+        }
+      },
+    ),
+  );
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -234,7 +244,8 @@ class _WebviewNFTRenderingWidgetState
         const Duration(milliseconds: 100), // The debounce duration
         () => unawaited(
           _webViewController?.evaluateJavascript(
-              source: "window.dispatchEvent(new Event('resize'));"),
+            source: "window.dispatchEvent(new Event('resize'));",
+          ),
         ),
       );
     }

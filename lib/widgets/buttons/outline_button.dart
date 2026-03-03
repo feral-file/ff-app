@@ -89,9 +89,9 @@ class OutlineButton extends StatelessWidget {
                 Text(
                   text ?? '',
                   style: AppTypography.body(context).white.copyWith(
-                        color: textColor ??
-                            (!enabled ? AppColor.disabledColor : null),
-                      ),
+                    color:
+                        textColor ?? (!enabled ? AppColor.disabledColor : null),
+                  ),
                 ),
                 if (rightIcon != null) ...[
                   SizedBox(width: LayoutConstants.space2),

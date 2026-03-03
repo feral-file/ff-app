@@ -1,13 +1,12 @@
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
+import 'package:app/widgets/now_displaying_bar/display_item.dart';
+import 'package:app/widgets/now_displaying_bar/header_with_animated_below.dart';
+import 'package:app/widgets/now_displaying_bar/now_displaying_quick_setting_view.dart';
+import 'package:app/widgets/now_displaying_bar/sleep_mode_indicator.dart';
+import 'package:app/widgets/now_displaying_bar/top_line.dart';
 import 'package:flutter/material.dart';
-
-import 'display_item.dart';
-import 'header_with_animated_below.dart';
-import 'now_displaying_quick_setting_view.dart';
-import 'sleep_mode_indicator.dart';
-import 'top_line.dart';
 
 /// Collapsed now playing bar matching old repo structure.
 ///
@@ -41,11 +40,6 @@ class _CollapsedNowPlayingBarState extends State<CollapsedNowPlayingBar>
     super.didUpdateWidget(oldWidget);
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
   DP1NowDisplayingObject get playingObject => widget.playingObject;
 
   @override
@@ -70,15 +64,12 @@ class _CollapsedNowPlayingBarState extends State<CollapsedNowPlayingBar>
           children: [
             const TopLine(),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: NowDisplayingDisplayItem(
                     item: playingObject.currentItem,
                     deviceName: playingObject.connectedDevice.name,
                     isPlaying: true,
-                    isInExpandedView: false,
-                    onTap: null,
                   ),
                 ),
                 SizedBox(width: LayoutConstants.space4),

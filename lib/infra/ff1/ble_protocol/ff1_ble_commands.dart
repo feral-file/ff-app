@@ -5,6 +5,7 @@
 /// - A wire name (what gets sent over BLE)
 /// - A request type (parameters to send)
 /// - A response type (parsed result)
+library;
 
 /// Available FF1 BLE commands
 enum FF1BleCommand {
@@ -14,7 +15,8 @@ enum FF1BleCommand {
   getInfo('get_info'),
   factoryReset('factory_reset'),
   sendLog('send_log'),
-  setTimezone('set_time');
+  setTimezone('set_time')
+  ;
 
   const FF1BleCommand(this.wireName);
 
@@ -108,9 +110,9 @@ class SetTimezoneRequest extends FF1BleRequest {
 
   @override
   List<String> toParams() => [
-        timezone,
-        _formatDateTime(time),
-      ];
+    timezone,
+    _formatDateTime(time),
+  ];
 
   static String _formatDateTime(DateTime dt) {
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-'

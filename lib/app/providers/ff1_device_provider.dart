@@ -46,30 +46,31 @@ final Provider<FF1DeviceData> ff1DeviceDataProvider = Provider<FF1DeviceData>(
 );
 
 /// Polls realtime metrics for an active topic while connected and awake.
-final StreamProviderFamily<DeviceRealtimeMetrics, String> ff1DeviceRealtimeMetricsStreamProvider =
-    StreamProvider.autoDispose.family<DeviceRealtimeMetrics, String>((
-  ref,
-  topicId,
-) {
-  if (topicId.isEmpty) {
-    return const Stream<DeviceRealtimeMetrics>.empty();
-  }
+final StreamProviderFamily<DeviceRealtimeMetrics, String>
+ff1DeviceRealtimeMetricsStreamProvider = StreamProvider.autoDispose
+    .family<DeviceRealtimeMetrics, String>((
+      ref,
+      topicId,
+    ) {
+      if (topicId.isEmpty) {
+        return const Stream<DeviceRealtimeMetrics>.empty();
+      }
 
-  final deviceData = ref.watch(ff1DeviceDataProvider);
-  final isSleeping = deviceData.playerStatus?.isSleeping ?? false;
-  if (!deviceData.isConnected || isSleeping) {
-    return const Stream<DeviceRealtimeMetrics>.empty();
-  }
+      final deviceData = ref.watch(ff1DeviceDataProvider);
+      final isSleeping = deviceData.playerStatus?.isSleeping ?? false;
+      if (!deviceData.isConnected || isSleeping) {
+        return const Stream<DeviceRealtimeMetrics>.empty();
+      }
 
-  final control = ref.watch(ff1WifiControlProvider);
-  return () async* {
-    yield await control.getDeviceRealtimeMetrics(topicId: topicId);
-    while (true) {
-      await Future<void>.delayed(const Duration(seconds: 5));
-      yield await control.getDeviceRealtimeMetrics(topicId: topicId);
-    }
-  }();
-});
+      final control = ref.watch(ff1WifiControlProvider);
+      return () async* {
+        yield await control.getDeviceRealtimeMetrics(topicId: topicId);
+        while (true) {
+          await Future<void>.delayed(const Duration(seconds: 5));
+          yield await control.getDeviceRealtimeMetrics(topicId: topicId);
+        }
+      }();
+    });
 
 /// Latest realtime metrics for the current active device.
 final ff1LatestDeviceRealtimeMetricsProvider = Provider<DeviceRealtimeMetrics?>(
@@ -83,11 +84,13 @@ final ff1LatestDeviceRealtimeMetricsProvider = Provider<DeviceRealtimeMetrics?>(
       return null;
     }
 
-    final metricsAsync = ref.watch(ff1DeviceRealtimeMetricsStreamProvider(topicId));
+    final metricsAsync = ref.watch(
+      ff1DeviceRealtimeMetricsStreamProvider(topicId),
+    );
     return metricsAsync.when(
       data: (metrics) => metrics,
       loading: () => null,
-      error: (_, __) => null,
+      error: (_, _) => null,
     );
   },
 );

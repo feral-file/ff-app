@@ -1,10 +1,10 @@
 import 'package:dio/dio.dart';
 
 /// Custom retry strategy for API providers.
-/// 
+///
 /// Following Riverpod automatic retry guide:
 /// https://riverpod.dev/docs/concepts2/retry
-/// 
+///
 /// This strategy:
 /// - Retries network errors (DioException with connection issues)
 /// - Does NOT retry client errors (4xx status codes)
@@ -30,11 +30,12 @@ Duration? apiRetryStrategy(int retryCount, Object error) {
     }
 
     // Retry these connection issues with exponential backoff
-    final shouldRetry = error.type == DioExceptionType.connectionTimeout ||
+    final shouldRetry =
+        error.type == DioExceptionType.connectionTimeout ||
         error.type == DioExceptionType.sendTimeout ||
         error.type == DioExceptionType.receiveTimeout ||
         error.type == DioExceptionType.connectionError ||
-        error.type == DioExceptionType.badResponse && 
+        error.type == DioExceptionType.badResponse &&
             (error.response?.statusCode ?? 0) >= 500;
 
     if (shouldRetry) {
@@ -67,11 +68,12 @@ Duration? aggressiveApiRetry(int retryCount, Object error) {
     }
 
     // Retry connection issues
-    final shouldRetry = error.type == DioExceptionType.connectionTimeout ||
+    final shouldRetry =
+        error.type == DioExceptionType.connectionTimeout ||
         error.type == DioExceptionType.sendTimeout ||
         error.type == DioExceptionType.receiveTimeout ||
         error.type == DioExceptionType.connectionError ||
-        error.type == DioExceptionType.badResponse && 
+        error.type == DioExceptionType.badResponse &&
             (error.response?.statusCode ?? 0) >= 500;
 
     if (shouldRetry) {

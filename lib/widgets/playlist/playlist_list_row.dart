@@ -99,12 +99,14 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
     // in AsyncLoading. If we already have data in cache, keep showing it until
     // the new provider delivers fresh data — prevents a skeleton flash on every
     // tab switch.
-    final shouldKeepCached = widget.isActive &&
+    final shouldKeepCached =
+        widget.isActive &&
         _cachedDetailsAsync is AsyncData<PlaylistDetailsState> &&
         nextDetailsAsync.isLoading;
 
-    final detailsAsync =
-        shouldKeepCached ? _cachedDetailsAsync : nextDetailsAsync;
+    final detailsAsync = shouldKeepCached
+        ? _cachedDetailsAsync
+        : nextDetailsAsync;
     if (widget.isActive && !shouldKeepCached) {
       _cachedDetailsAsync = nextDetailsAsync;
     }
@@ -119,9 +121,7 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
       child: Container(
         decoration: const BoxDecoration(
           border: Border(
-            bottom: BorderSide(
-              
-            ),
+            bottom: BorderSide(),
           ),
         ),
         padding: EdgeInsets.only(bottom: LayoutConstants.space3),
@@ -144,7 +144,7 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
                 primaryText: playlistTitle,
                 secondaryText: creator,
               ),
-              error: (_, __) => PlaylistTitle(
+              error: (_, _) => PlaylistTitle(
                 primaryText: playlistTitle,
                 secondaryText: creator,
               ),
@@ -162,7 +162,7 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
                 );
               },
               loading: _buildLoadingCarousel,
-              error: (_, __) => SizedBox(
+              error: (_, _) => SizedBox(
                 height: LayoutConstants.dp1CarouselHeight,
                 child: ErrorView(
                   error: 'We couldn’t load works in this playlist.',

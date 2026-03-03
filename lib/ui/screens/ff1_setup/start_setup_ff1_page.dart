@@ -44,7 +44,8 @@ class StartSetupFf1PagePayload {
 
   /// Get data from a device connect deeplink
   List<String> getDataFromLink(String link) {
-    final prefix = deviceConnectDeepLinks.firstWhereOrNull(
+    final prefix =
+        deviceConnectDeepLinks.firstWhereOrNull(
           (prefix) => link.startsWith(prefix),
         ) ??
         '';
@@ -97,7 +98,9 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
   @override
   Widget build(BuildContext context) {
     final deviceName = widget.payload.deviceName;
-    final shouldReserveNowDisplayingBar = ref.watch(nowDisplayingShouldShowProvider);
+    final shouldReserveNowDisplayingBar = ref.watch(
+      nowDisplayingShouldShowProvider,
+    );
     final reservedBottomBarHeight = shouldReserveNowDisplayingBar
         ? LayoutConstants.nowDisplayingBarReservedHeight
         : 0.0;
@@ -138,7 +141,6 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
                     if (widget.payload.deeplink != null) {
                       await _handleQRBasedSetup(widget.payload.deeplink!);
                     }
-
                     // If device is already selected (from BLE picker), start setup
                     else if (widget.payload.selectedDevice != null) {
                       await _handleSelectedDeviceSetup();

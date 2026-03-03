@@ -34,7 +34,8 @@ enum CastCommand {
   reboot,
   factoryReset,
   uploadLogs,
-  deviceMetrics;
+  deviceMetrics
+  ;
 
   static CastCommand fromString(String command) {
     switch (command) {
@@ -151,9 +152,9 @@ class RequestBody {
   final FF1Request request;
 
   Map<String, dynamic> toJson() => {
-        'command': command.toString().split('.').last,
-        'request': request.toJson(),
-      };
+    'command': command.toString().split('.').last,
+    'request': request.toJson(),
+  };
 }
 
 enum ReplyError {
@@ -171,14 +172,15 @@ enum ReplyError {
   }
 
   String get jsonString => switch (this) {
-        ReplyError.overheating => 'overheating',
-        ReplyError.unknown => 'unknown',
-      };
+    ReplyError.overheating => 'overheating',
+    ReplyError.unknown => 'unknown',
+  };
 
   String getMessage({String? deviceName}) {
     final name = deviceName ?? 'FF1';
     return switch (this) {
-      ReplyError.overheating => '''
+      ReplyError.overheating =>
+        '''
 $name temperature is too high. Playback paused to prevent damage.''',
       ReplyError.unknown => '$name is connected but cannot get now playing',
     };
@@ -197,19 +199,19 @@ class ReplyWithOK extends Reply {
   ReplyWithOK({required this.ok, this.error});
 
   factory ReplyWithOK.fromJson(Map<String, dynamic> json) => ReplyWithOK(
-        ok: json['ok'] as bool,
-        error: json['error'] != null
-            ? ReplyError.fromString(json['error'] as String)
-            : null,
-      );
+    ok: json['ok'] as bool,
+    error: json['error'] != null
+        ? ReplyError.fromString(json['error'] as String)
+        : null,
+  );
   final bool ok;
   final ReplyError? error;
 
   @override
   Map<String, dynamic> toJson() => {
-        'ok': ok,
-        'error': error?.jsonString,
-      };
+    'ok': ok,
+    'error': error?.jsonString,
+  };
 }
 
 abstract class FF1Request {
@@ -236,19 +238,19 @@ class DeviceInfoV2 {
   });
 
   factory DeviceInfoV2.fromJson(Map<String, dynamic> json) => DeviceInfoV2(
-        deviceId: json['device_id'] as String,
-        deviceName: json['device_name'] as String,
-        platform: DevicePlatform.values[json['platform'] as int? ?? 0],
-      );
+    deviceId: json['device_id'] as String,
+    deviceName: json['device_name'] as String,
+    platform: DevicePlatform.values[json['platform'] as int? ?? 0],
+  );
   String deviceId;
   String deviceName;
   DevicePlatform? platform;
 
   Map<String, dynamic> toJson() => {
-        'device_id': deviceId,
-        'device_name': deviceName,
-        'platform': platform?.index,
-      };
+    'device_id': deviceId,
+    'device_name': deviceName,
+    'platform': platform?.index,
+  };
 }
 
 // Class representing ConnectRequestV2 message
@@ -257,8 +259,9 @@ class ConnectRequestV2 implements FF1Request {
 
   factory ConnectRequestV2.fromJson(Map<String, dynamic> json) =>
       ConnectRequestV2(
-        clientDevice:
-            DeviceInfoV2.fromJson(json['clientDevice'] as Map<String, dynamic>),
+        clientDevice: DeviceInfoV2.fromJson(
+          json['clientDevice'] as Map<String, dynamic>,
+        ),
         primaryAddress: json['primaryAddress'] as String?,
       );
   DeviceInfoV2 clientDevice;
@@ -268,9 +271,9 @@ class ConnectRequestV2 implements FF1Request {
 
   @override
   Map<String, dynamic> toJson() => {
-        'clientDevice': clientDevice.toJson(),
-        'primaryAddress': primaryAddress,
-      };
+    'clientDevice': clientDevice.toJson(),
+    'primaryAddress': primaryAddress,
+  };
 }
 
 // Class representing ConnectReplyV2 message
@@ -278,20 +281,20 @@ class ConnectReplyV2 extends ReplyWithOK {
   ConnectReplyV2({required super.ok, this.canvasDevice});
 
   factory ConnectReplyV2.fromJson(Map<String, dynamic> json) => ConnectReplyV2(
-        ok: json['ok'] as bool,
-        canvasDevice: json['canvasDevice'] != null
-            ? DeviceInfoV2.fromJson(
-                json['canvasDevice'] as Map<String, dynamic>,
-              )
-            : null,
-      );
+    ok: json['ok'] as bool,
+    canvasDevice: json['canvasDevice'] != null
+        ? DeviceInfoV2.fromJson(
+            json['canvasDevice'] as Map<String, dynamic>,
+          )
+        : null,
+  );
   DeviceInfoV2? canvasDevice;
 
   @override
   Map<String, dynamic> toJson() => {
-        'ok': ok,
-        'canvasDevice': canvasDevice?.toJson(),
-      };
+    'ok': ok,
+    'canvasDevice': canvasDevice?.toJson(),
+  };
 }
 
 // Class representing DisconnectRequestV2 message
@@ -318,14 +321,14 @@ class CastAssetToken implements FF1Request {
   CastAssetToken({required this.id});
 
   factory CastAssetToken.fromJson(Map<String, dynamic> json) => CastAssetToken(
-        id: json['id'] as String,
-      );
+    id: json['id'] as String,
+  );
   String id;
 
   @override
   Map<String, dynamic> toJson() => {
-        'id': id,
-      };
+    'id': id,
+  };
 }
 
 // Class representing CastArtwork message
@@ -333,17 +336,17 @@ class CastArtwork implements FF1Request {
   CastArtwork({required this.url, required this.mimetype});
 
   factory CastArtwork.fromJson(Map<String, dynamic> json) => CastArtwork(
-        url: json['url'] as String,
-        mimetype: json['mimetype'] as String,
-      );
+    url: json['url'] as String,
+    mimetype: json['mimetype'] as String,
+  );
   String url;
   String mimetype;
 
   @override
   Map<String, dynamic> toJson() => {
-        'url': url,
-        'mimetype': mimetype,
-      };
+    'url': url,
+    'mimetype': mimetype,
+  };
 }
 
 // Class representing PlayArtworkV2 message
@@ -355,23 +358,23 @@ class PlayArtworkV2 {
   });
 
   factory PlayArtworkV2.fromJson(Map<String, dynamic> json) => PlayArtworkV2(
-        token: json['token'] != null
-            ? CastAssetToken.fromJson(json['token'] as Map<String, dynamic>)
-            : null,
-        artwork: json['artwork'] != null
-            ? CastArtwork.fromJson(json['artwork'] as Map<String, dynamic>)
-            : null,
-        duration: Duration(milliseconds: json['duration'] as int),
-      );
+    token: json['token'] != null
+        ? CastAssetToken.fromJson(json['token'] as Map<String, dynamic>)
+        : null,
+    artwork: json['artwork'] != null
+        ? CastArtwork.fromJson(json['artwork'] as Map<String, dynamic>)
+        : null,
+    duration: Duration(milliseconds: json['duration'] as int),
+  );
   CastAssetToken? token;
   CastArtwork? artwork;
   Duration duration;
 
   Map<String, dynamic> toJson() => {
-        if (token != null) 'token': token?.toJson(),
-        if (artwork != null) 'artwork': artwork!.toJson(),
-        'duration': duration.inMilliseconds,
-      };
+    if (token != null) 'token': token?.toJson(),
+    if (artwork != null) 'artwork': artwork!.toJson(),
+    'duration': duration.inMilliseconds,
+  };
 }
 
 // Class representing CheckDeviceStatusRequest message
@@ -446,15 +449,15 @@ class CheckCastingStatusReply extends ReplyWithOK {
 
   @override
   Map<String, dynamic> toJson() => {
-        'ok': super.ok,
-        'index': index,
-        'isPaused': isPaused,
-        'connectedDevice': connectedDevice?.toJson(),
-        'deviceSettings': deviceSettings?.toJson(),
-        'castCommand': castCommand?.toString(),
-        'error': super.error?.jsonString,
-        'sleepMode': sleepMode,
-      };
+    'ok': super.ok,
+    'index': index,
+    'isPaused': isPaused,
+    'connectedDevice': connectedDevice?.toJson(),
+    'deviceSettings': deviceSettings?.toJson(),
+    'castCommand': castCommand?.toString(),
+    'error': super.error?.jsonString,
+    'sleepMode': sleepMode,
+  };
 
   // copyWith method
   CheckCastingStatusReply copyWith({
@@ -537,9 +540,9 @@ class CastDP1UrlPlaylistRequest implements CastDP1PlaylistRequestAbstract {
 
   @override
   Map<String, dynamic> toJson() => {
-        'playlistUrl': playlistUrl,
-        'intent': intent.toJson(),
-      };
+    'playlistUrl': playlistUrl,
+    'intent': intent.toJson(),
+  };
 }
 
 // Class representing CastDP1PlaylistReply message
@@ -551,8 +554,8 @@ class CastDP1PlaylistReply extends ReplyWithOK {
 
   @override
   Map<String, dynamic> toJson() => {
-        'ok': ok,
-      };
+    'ok': ok,
+  };
 }
 
 // Class representing PauseCastingRequest message
@@ -586,8 +589,8 @@ class ResumeCastingRequest implements FF1Request {
 
   @override
   Map<String, dynamic> toJson() => {
-        'startTime': startTime,
-      };
+    'startTime': startTime,
+  };
 }
 
 // Class representing ResumeCastingReply message
@@ -610,8 +613,8 @@ class NextArtworkRequest implements FF1Request {
 
   @override
   Map<String, dynamic> toJson() => {
-        'startTime': startTime,
-      };
+    'startTime': startTime,
+  };
 }
 
 // Class representing NextArtworkReply message
@@ -634,8 +637,8 @@ class PreviousArtworkRequest implements FF1Request {
 
   @override
   Map<String, dynamic> toJson() => {
-        'startTime': startTime,
-      };
+    'startTime': startTime,
+  };
 }
 
 // Class representing PreviousArtworkReply message
@@ -678,8 +681,8 @@ class UpdateDurationRequest implements FF1Request {
 
   @override
   Map<String, dynamic> toJson() => {
-        'artworks': artworks.map((artwork) => artwork.toJson()).toList(),
-      };
+    'artworks': artworks.map((artwork) => artwork.toJson()).toList(),
+  };
 }
 
 // Class representing UpdateDurationReply message
@@ -702,8 +705,8 @@ class UpdateDurationReply extends Reply {
 
   @override
   Map<String, dynamic> toJson() => {
-        'artworks': artworks.map((artwork) => artwork.toJson()).toList(),
-      };
+    'artworks': artworks.map((artwork) => artwork.toJson()).toList(),
+  };
 }
 
 class KeyboardEventRequest implements FF1Request {
@@ -740,10 +743,10 @@ class RotateReply extends Reply {
   RotateReply({required this.orientation});
 
   factory RotateReply.fromJson(Map<String, dynamic> json) => RotateReply(
-        orientation: json['orientation'] != null
-            ? ScreenOrientation.fromString(json['orientation'] as String)
-            : null,
-      );
+    orientation: json['orientation'] != null
+        ? ScreenOrientation.fromString(json['orientation'] as String)
+        : null,
+  );
   final ScreenOrientation? orientation;
 
   @override
@@ -839,8 +842,8 @@ class UpdateArtFramingRequest implements FF1Request {
 
   @override
   Map<String, dynamic> toJson() => {
-        'frameConfig': artFraming.value,
-      };
+    'frameConfig': artFraming.value,
+  };
 }
 
 class UpdateArtFramingReply extends ReplyWithOK {
@@ -875,17 +878,19 @@ class DragGestureRequest implements FF1Request {
   factory DragGestureRequest.fromJson(Map<String, dynamic> json) =>
       DragGestureRequest(
         cursorOffsets: List<CursorOffset>.from(
-          (json['cursorOffsets'] as List)
-              .map((x) => CursorOffset.fromJson(x as Map<String, dynamic>)),
+          (json['cursorOffsets'] as List).map(
+            (x) => CursorOffset.fromJson(x as Map<String, dynamic>),
+          ),
         ),
       );
   List<CursorOffset> cursorOffsets;
 
   @override
   Map<String, dynamic> toJson() => {
-        'cursorOffsets':
-            cursorOffsets.map((cursorOffset) => cursorOffset.toJson()).toList(),
-      };
+    'cursorOffsets': cursorOffsets
+        .map((cursorOffset) => cursorOffset.toJson())
+        .toList(),
+  };
 }
 
 class CursorOffset {
@@ -895,18 +900,22 @@ class CursorOffset {
   });
 
   factory CursorOffset.fromJson(Map<String, dynamic> json) => CursorOffset(
-        dx: json['dx'] as double,
-        dy: json['dy'] as double,
-      );
+    dx: json['dx'] as double,
+    dy: json['dy'] as double,
+  );
   final double dx;
   final double dy;
 
   Map<String, dynamic> toJson() => {
-        'dx': // round to 2 decimal places
-            double.parse(dx.toStringAsFixed(2)),
-        'dy': // round to 2 decimal places
-            double.parse(dy.toStringAsFixed(2)),
-      };
+    'dx': // round to 2 decimal places
+    double.parse(
+      dx.toStringAsFixed(2),
+    ),
+    'dy': // round to 2 decimal places
+    double.parse(
+      dy.toStringAsFixed(2),
+    ),
+  };
 }
 
 class EmptyRequest implements FF1Request {
@@ -977,8 +986,8 @@ class ShowPairingQRCodeRequest implements FF1Request {
 
   @override
   Map<String, dynamic> toJson() => {
-        'show': show,
-      };
+    'show': show,
+  };
 }
 
 // Class representing ShowPairingQRCodeReply message
@@ -995,9 +1004,9 @@ class ShowPairingQRCodeReply extends Reply {
 
   @override
   Map<String, dynamic> toJson() => {
-        'success': success,
-        'error': error,
-      };
+    'success': success,
+    'error': error,
+  };
 }
 
 class SafeShutdownRequest implements FF1Request {
@@ -1038,8 +1047,8 @@ class SafeFactoryResetReply extends ReplyWithOK {
 
   @override
   Map<String, dynamic> toJson() => {
-        'ok': ok,
-      };
+    'ok': ok,
+  };
 }
 
 class SendLogRequest implements FF1Request {
@@ -1050,10 +1059,10 @@ class SendLogRequest implements FF1Request {
   });
 
   factory SendLogRequest.fromJson(Map<String, dynamic> json) => SendLogRequest(
-        userId: json['userId'] as String,
-        apiKey: json['apiKey'] as String,
-        title: json['title'] as String?,
-      );
+    userId: json['userId'] as String,
+    apiKey: json['apiKey'] as String,
+    title: json['title'] as String?,
+  );
 
   final String userId;
   final String? title;
@@ -1061,10 +1070,10 @@ class SendLogRequest implements FF1Request {
 
   @override
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'apiKey': apiKey,
-        'title': title,
-      };
+    'userId': userId,
+    'apiKey': apiKey,
+    'title': title,
+  };
 }
 
 class SendLogReply extends ReplyWithOK {
@@ -1075,8 +1084,8 @@ class SendLogReply extends ReplyWithOK {
 
   @override
   Map<String, dynamic> toJson() => {
-        'ok': ok,
-      };
+    'ok': ok,
+  };
 }
 
 class DeviceRealtimeMetrics {
@@ -1109,12 +1118,12 @@ class DeviceRealtimeMetrics {
       );
 
   Map<String, dynamic> toJson() => {
-        'cpu': cpu?.toJson(),
-        'gpu': gpu?.toJson(),
-        'memory': memory?.toJson(),
-        'screen': screen?.toJson(),
-        'uptime': uptime,
-      };
+    'cpu': cpu?.toJson(),
+    'gpu': gpu?.toJson(),
+    'memory': memory?.toJson(),
+    'screen': screen?.toJson(),
+    'uptime': uptime,
+  };
 
   final DeviceCpu? cpu;
   final DeviceGpu? gpu;
@@ -1133,30 +1142,30 @@ class DeviceCpu {
   });
 
   factory DeviceCpu.fromJson(Map<String, dynamic> json) => DeviceCpu(
-        maxFrequency: json['max_frequency'] == null
-            ? null
-            : double.parse(json['max_frequency'].toString()),
-        currentFrequency: json['current_frequency'] == null
-            ? null
-            : double.parse(json['current_frequency'].toString()),
-        maxTemperature: json['max_temperature'] == null
-            ? null
-            : double.parse(json['max_temperature'].toString()),
-        currentTemperature: json['current_temperature'] == null
-            ? null
-            : double.parse(json['current_temperature'].toString()),
-      );
+    maxFrequency: json['max_frequency'] == null
+        ? null
+        : double.parse(json['max_frequency'].toString()),
+    currentFrequency: json['current_frequency'] == null
+        ? null
+        : double.parse(json['current_frequency'].toString()),
+    maxTemperature: json['max_temperature'] == null
+        ? null
+        : double.parse(json['max_temperature'].toString()),
+    currentTemperature: json['current_temperature'] == null
+        ? null
+        : double.parse(json['current_temperature'].toString()),
+  );
   final double? maxFrequency;
   final double? currentFrequency;
   final double? maxTemperature;
   final double? currentTemperature;
 
   Map<String, dynamic> toJson() => {
-        'max_frequency': maxFrequency,
-        'current_frequency': currentFrequency,
-        'max_temperature': maxTemperature,
-        'current_temperature': currentTemperature,
-      };
+    'max_frequency': maxFrequency,
+    'current_frequency': currentFrequency,
+    'max_temperature': maxTemperature,
+    'current_temperature': currentTemperature,
+  };
 
   double? get cpuUsage {
     if (currentFrequency != null && maxFrequency != null) {
@@ -1175,30 +1184,30 @@ class DeviceGpu {
   });
 
   factory DeviceGpu.fromJson(Map<String, dynamic> json) => DeviceGpu(
-        maxFrequency: json['max_frequency'] == null
-            ? null
-            : double.parse(json['max_frequency'].toString()),
-        currentFrequency: json['current_frequency'] == null
-            ? null
-            : double.parse(json['current_frequency'].toString()),
-        maxTemperature: json['max_temperature'] == null
-            ? null
-            : double.parse(json['max_temperature'].toString()),
-        currentTemperature: json['current_temperature'] == null
-            ? null
-            : double.parse(json['current_temperature'].toString()),
-      );
+    maxFrequency: json['max_frequency'] == null
+        ? null
+        : double.parse(json['max_frequency'].toString()),
+    currentFrequency: json['current_frequency'] == null
+        ? null
+        : double.parse(json['current_frequency'].toString()),
+    maxTemperature: json['max_temperature'] == null
+        ? null
+        : double.parse(json['max_temperature'].toString()),
+    currentTemperature: json['current_temperature'] == null
+        ? null
+        : double.parse(json['current_temperature'].toString()),
+  );
   final double? maxFrequency;
   final double? currentFrequency;
   final double? maxTemperature;
   final double? currentTemperature;
 
   Map<String, dynamic> toJson() => {
-        'max_frequency': maxFrequency,
-        'current_frequency': currentFrequency,
-        'max_temperature': maxTemperature,
-        'current_temperature': currentTemperature,
-      };
+    'max_frequency': maxFrequency,
+    'current_frequency': currentFrequency,
+    'max_temperature': maxTemperature,
+    'current_temperature': currentTemperature,
+  };
 
   double? get gpuUsage {
     if (currentFrequency != null && maxFrequency != null) {
@@ -1215,20 +1224,20 @@ class DeviceMemory {
   });
 
   factory DeviceMemory.fromJson(Map<String, dynamic> json) => DeviceMemory(
-        maxCapacity: json['max_capacity'] == null
-            ? null
-            : double.parse(json['max_capacity'].toString()),
-        usedCapacity: json['used_capacity'] == null
-            ? null
-            : double.parse(json['used_capacity'].toString()),
-      );
+    maxCapacity: json['max_capacity'] == null
+        ? null
+        : double.parse(json['max_capacity'].toString()),
+    usedCapacity: json['used_capacity'] == null
+        ? null
+        : double.parse(json['used_capacity'].toString()),
+  );
   final double? maxCapacity;
   final double? usedCapacity;
 
   Map<String, dynamic> toJson() => {
-        'max_capacity': maxCapacity,
-        'used_capacity': usedCapacity,
-      };
+    'max_capacity': maxCapacity,
+    'used_capacity': usedCapacity,
+  };
 
   double? get memoryUsage {
     if (maxCapacity != null && usedCapacity != null) {
@@ -1247,24 +1256,24 @@ class DeviceScreen {
   });
 
   factory DeviceScreen.fromJson(Map<String, dynamic> json) => DeviceScreen(
-        width: json['width'] as int?,
-        height: json['height'] as int?,
-        refreshRate: json['refresh_rate'] == null
-            ? null
-            : double.parse(json['refresh_rate'].toString()),
-        fps: json['fps'] == null ? null : double.parse(json['fps'].toString()),
-      );
+    width: json['width'] as int?,
+    height: json['height'] as int?,
+    refreshRate: json['refresh_rate'] == null
+        ? null
+        : double.parse(json['refresh_rate'].toString()),
+    fps: json['fps'] == null ? null : double.parse(json['fps'].toString()),
+  );
   final int? width;
   final int? height;
   final double? refreshRate;
   final double? fps;
 
   Map<String, dynamic> toJson() => {
-        'width': width,
-        'height': height,
-        'refresh_rate': refreshRate,
-        'fps': fps,
-      };
+    'width': width,
+    'height': height,
+    'refresh_rate': refreshRate,
+    'fps': fps,
+  };
 }
 
 // extension for DeviceScreen

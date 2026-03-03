@@ -52,7 +52,8 @@ class _TouchPadState extends ConsumerState<TouchPad> {
               _lastPosition = panDetails.localPosition;
             },
             onPanUpdate: (panDetails) {
-              final delta = panDetails.localPosition -
+              final delta =
+                  panDetails.localPosition -
                   (_lastPosition ?? panDetails.localPosition);
               _lastPosition = panDetails.localPosition;
               _dragOffsets.add(delta);
@@ -79,8 +80,8 @@ class _TouchPadState extends ConsumerState<TouchPad> {
               child: Text(
                 'Touchpad',
                 style: AppTypography.body(context).white.copyWith(
-                      color: AppColor.auGrey,
-                    ),
+                  color: AppColor.auGrey,
+                ),
               ),
             ),
           ),

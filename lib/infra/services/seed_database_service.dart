@@ -32,9 +32,10 @@ class _SeedDatabaseS3Location {
       throw const FormatException('S3_BUCKET is not a valid URL.');
     }
 
-    final normalizedObjectKey = objectKey
-        .trim()
-        .replaceFirst(RegExp('^/+'), '');
+    final normalizedObjectKey = objectKey.trim().replaceFirst(
+      RegExp('^/+'),
+      '',
+    );
     if (normalizedObjectKey.isEmpty) {
       throw const FormatException(
         'S3_SEED_DATABASE_OBJECT_KEY is not configured.',
@@ -53,7 +54,9 @@ class _SeedDatabaseS3Location {
     final objectUri = endpointUri.replace(
       pathSegments: <String>[
         ...bucketBaseSegments,
-        ...normalizedObjectKey.split('/').where((segment) => segment.isNotEmpty),
+        ...normalizedObjectKey
+            .split('/')
+            .where((segment) => segment.isNotEmpty),
       ],
     );
 
@@ -453,8 +456,7 @@ class SeedDatabaseService {
   }
 
   static String _hostHeaderValue(Uri uri) {
-    if (uri.hasPort &&
-        uri.port != (uri.scheme == 'https' ? 443 : 80)) {
+    if (uri.hasPort && uri.port != (uri.scheme == 'https' ? 443 : 80)) {
       return '${uri.host}:${uri.port}';
     }
     return uri.host;

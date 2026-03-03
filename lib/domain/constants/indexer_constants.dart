@@ -11,7 +11,8 @@ const indexerTokensPageSize = 50;
 
 enum IndexerAssetTokenSortBy {
   lastActivityTime,
-  createdTime;
+  createdTime
+  ;
 
   String toJson() {
     switch (this) {

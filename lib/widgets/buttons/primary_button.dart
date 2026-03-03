@@ -80,8 +80,9 @@ class PrimaryButton extends StatelessWidget {
       width: width,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor:
-              enabled ? color ?? AppColor.feralFileLightBlue : disabledColor,
+          backgroundColor: enabled
+              ? color ?? AppColor.feralFileLightBlue
+              : disabledColor,
           padding: elevatedPadding,
           shadowColor: Colors.transparent,
           disabledForegroundColor: disabledColor,
@@ -115,10 +116,11 @@ class PrimaryButton extends StatelessWidget {
                   const SizedBox(),
                 Text(
                   text ?? '',
-                  style: textStyle ??
-                      AppTypography.body(context)
-                          .black
-                          .copyWith(color: textColor),
+                  style:
+                      textStyle ??
+                      AppTypography.body(
+                        context,
+                      ).black.copyWith(color: textColor),
                 ),
                 if (rightIcon != null) ...[
                   const SizedBox(width: 7),
@@ -197,32 +199,32 @@ class _PrimaryAsyncButtonState extends State<PrimaryAsyncButton> {
 
   @override
   Widget build(BuildContext context) => PrimaryButton(
-        padding: widget.padding,
-        onTap: () async {
-          withDebounce(
-            key: randomKey,
-            () async {
-              setState(() {
-                _isProcessing = true;
-              });
-              await widget.onTap?.call();
-              if (!mounted) {
-                return;
-              }
-              setState(() {
-                _isProcessing = false;
-              });
-            },
-          );
+    padding: widget.padding,
+    onTap: () async {
+      withDebounce(
+        key: randomKey,
+        () async {
+          setState(() {
+            _isProcessing = true;
+          });
+          await widget.onTap?.call();
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _isProcessing = false;
+          });
         },
-        color: widget.color,
-        text: _isProcessing && widget.processingText != null
-            ? widget.processingText
-            : widget.text,
-        textColor: widget.textColor,
-        borderColor: widget.borderColor,
-        width: widget.width,
-        enabled: widget.enabled && !_isProcessing,
-        isProcessing: _isProcessing,
       );
+    },
+    color: widget.color,
+    text: _isProcessing && widget.processingText != null
+        ? widget.processingText
+        : widget.text,
+    textColor: widget.textColor,
+    borderColor: widget.borderColor,
+    width: widget.width,
+    enabled: widget.enabled && !_isProcessing,
+    isProcessing: _isProcessing,
+  );
 }

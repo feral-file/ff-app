@@ -118,7 +118,8 @@ extension MutationStateExtension<T> on MutationState<T> {
 
   /// Execute callbacks based on the state, with optional cases.
   R maybeWhen<R>({
-    required R Function() orElse, R Function()? idle,
+    required R Function() orElse,
+    R Function()? idle,
     R Function()? pending,
     R Function(T value)? success,
     R Function(Object error, StackTrace? stackTrace)? error,

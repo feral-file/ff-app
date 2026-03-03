@@ -39,7 +39,8 @@ class PlaylistTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectivePadding = padding ??
+    final effectivePadding =
+        padding ??
         EdgeInsets.symmetric(
           horizontal: LayoutConstants.pageHorizontalDefault,
           vertical: LayoutConstants.space4,
@@ -109,10 +110,9 @@ class PlaylistTitle extends StatelessWidget {
                             behavior: HitTestBehavior.opaque,
                             child: Text(
                               'Tap to retry',
-                              style: AppTypography.bodySmall(context)
-                                  .grey
-                                  .italic
-                                  .underline,
+                              style: AppTypography.bodySmall(
+                                context,
+                              ).grey.italic.underline,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),

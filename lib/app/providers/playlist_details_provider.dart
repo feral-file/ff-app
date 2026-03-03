@@ -215,7 +215,12 @@ class PlaylistDetailsNotifier
 }
 
 /// Provider for playlist details state (single source; includes items, total, pagination).
-final NotifierProviderFamily<PlaylistDetailsNotifier, AsyncValue<PlaylistDetailsState>, String> playlistDetailsProvider = NotifierProvider.autoDispose
+final NotifierProviderFamily<
+  PlaylistDetailsNotifier,
+  AsyncValue<PlaylistDetailsState>,
+  String
+>
+playlistDetailsProvider = NotifierProvider.autoDispose
     .family<PlaylistDetailsNotifier, AsyncValue<PlaylistDetailsState>, String>(
       PlaylistDetailsNotifier.new,
     );

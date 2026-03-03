@@ -61,38 +61,38 @@ class SetupAppBar extends StatelessWidget implements PreferredSizeWidget {
     BuildContext context, {
     required VoidCallback onBack,
     Color? color,
-  }) =>
-      Semantics(
-        label: 'Back Button',
-        child: IconButton(
-          constraints: const BoxConstraints(
-            maxWidth: 44,
-            maxHeight: 44,
-            minWidth: 44,
-            minHeight: 44,
-          ),
-          onPressed: onBack,
-          icon: Padding(
-            padding: const EdgeInsets.all(10),
-            child: SvgPicture.asset(
-              'assets/images/icon_back.svg',
-              width: 24,
-              height: 24,
-              colorFilter: color != null
-                  ? ColorFilter.mode(color, BlendMode.srcIn)
-                  : null,
-            ),
-          ),
+  }) => Semantics(
+    label: 'Back Button',
+    child: IconButton(
+      constraints: const BoxConstraints(
+        maxWidth: 44,
+        maxHeight: 44,
+        minWidth: 44,
+        minHeight: 44,
+      ),
+      onPressed: onBack,
+      icon: Padding(
+        padding: const EdgeInsets.all(10),
+        child: SvgPicture.asset(
+          'assets/images/icon_back.svg',
+          width: 24,
+          height: 24,
+          colorFilter: color != null
+              ? ColorFilter.mode(color, BlendMode.srcIn)
+              : null,
         ),
-      );
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     return AppBar(
       systemOverlayStyle: SystemUiOverlayStyle(
         statusBarColor: statusBarColor ?? backgroundColor,
-        statusBarIconBrightness:
-            isDarkMode ? Brightness.light : Brightness.dark,
+        statusBarIconBrightness: isDarkMode
+            ? Brightness.light
+            : Brightness.dark,
         statusBarBrightness: isDarkMode ? Brightness.light : Brightness.dark,
       ),
       centerTitle: true,
@@ -105,7 +105,7 @@ class SetupAppBar extends StatelessWidget implements PreferredSizeWidget {
                 if (onBack != null) {
                   onBack!();
                 } else {
-                    context.pop();
+                  context.pop();
                   // If can't pop, do nothing (e.g., we're at the first screen)
                 }
               },

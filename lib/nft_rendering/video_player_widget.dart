@@ -14,17 +14,6 @@ import 'package:video_player/video_player.dart';
 final _log = Logger('VideoNFTRenderingWidget');
 
 class VideoNFTRenderingWidget extends NFTRenderingWidget {
-  final String previewURL; // The URL of the video to play
-  final String? thumbnailURL; // The URL of the thumbnail to display
-  final bool isMute; // Mute state of the video
-  final Widget loadingWidget; // Custom loading widget
-  final Widget errorWidget; // Custom error widget
-  final Widget
-      noPreviewUrlWidget; // Widget to show when no preview URL is provided
-  final Function? onLoaded; // Callback for when the video is loaded
-  final Function? onDispose; // Callback for when the widget is disposed
-  final bool resumeWhenPopNext;
-
   const VideoNFTRenderingWidget({
     required this.previewURL,
     this.loadingWidget = const LoadingWidget(),
@@ -37,6 +26,16 @@ class VideoNFTRenderingWidget extends NFTRenderingWidget {
     this.onDispose,
     this.resumeWhenPopNext = true,
   });
+  final String previewURL; // The URL of the video to play
+  final String? thumbnailURL; // The URL of the thumbnail to display
+  final bool isMute; // Mute state of the video
+  final Widget loadingWidget; // Custom loading widget
+  final Widget errorWidget; // Custom error widget
+  final Widget
+  noPreviewUrlWidget; // Widget to show when no preview URL is provided
+  final Function? onLoaded; // Callback for when the video is loaded
+  final Function? onDispose; // Callback for when the widget is disposed
+  final bool resumeWhenPopNext;
 
   @override
   State<VideoNFTRenderingWidget> createState() =>
@@ -130,8 +129,9 @@ class _VideoNFTRenderingWidgetState
       });
     } catch (error) {
       _log.info('Error initializing video controller: $error');
-      unawaited(Sentry.captureException(
-          'Error initializing video controller: $error'));
+      unawaited(
+        Sentry.captureException('Error initializing video controller: $error'),
+      );
       if (error is! FlutterError) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -238,18 +238,18 @@ class _VideoNFTRenderingWidgetState
   }
 
   Widget _videoThumbnail(String thumbnailURL) => Image.network(
-        thumbnailURL,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) {
-            return child;
-          }
-          return widget.loadingWidget;
-        },
-        errorBuilder: (context, url, error) => Center(
-          child: widget.errorWidget,
-        ),
-        fit: BoxFit.cover,
-      );
+    thumbnailURL,
+    loadingBuilder: (context, child, loadingProgress) {
+      if (loadingProgress == null) {
+        return child;
+      }
+      return widget.loadingWidget;
+    },
+    errorBuilder: (context, url, error) => Center(
+      child: widget.errorWidget,
+    ),
+    fit: BoxFit.cover,
+  );
 
   @override
   Future<void> pause() async {

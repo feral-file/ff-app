@@ -63,7 +63,7 @@ class NowDisplayingDisplayItem extends StatelessWidget {
                         style: AppTypography.bodySmall(context).white,
                       ),
                       Transform.translate(
-                        offset: Offset(
+                        offset: const Offset(
                           0,
                           LayoutConstants
                               .nowDisplayingDisplayItemTextArtworkGap,
@@ -108,8 +108,8 @@ class _Thumbnail extends StatelessWidget {
             : CachedNetworkImage(
                 imageUrl: url!,
                 fit: BoxFit.cover,
-                placeholder: (_, __) => const _ThumbnailPlaceholder(),
-                errorWidget: (_, __, ___) => const _ThumbnailPlaceholder(),
+                placeholder: (_, _) => const _ThumbnailPlaceholder(),
+                errorWidget: (_, _, _) => const _ThumbnailPlaceholder(),
               ),
       ),
     );

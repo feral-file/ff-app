@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-
 /// Quick setting view for the now displaying bar (expanded state).
 ///
 /// UI copied from old Feral File app (view/now_displaying/now_display_setting.dart).
@@ -56,7 +55,7 @@ class _NowDisplayingQuickSettingViewState
         icon: SvgPicture.asset('assets/images/icon_rotate_white.svg'),
         onTap: () async {
           try {
-            await control.rotate(topicId: topicId, angle: 90);
+            await control.rotate(topicId: topicId);
           } catch (_) {}
         },
       ),
@@ -69,7 +68,9 @@ class _NowDisplayingQuickSettingViewState
     if (fitment == selectedFitment) return;
     final status = ref.read(nowDisplayingProvider);
     if (status is! NowDisplayingSuccess ||
-        status.object is! DP1NowDisplayingObject) return;
+        status.object is! DP1NowDisplayingObject) {
+      return;
+    }
     final object = status.object as DP1NowDisplayingObject;
     final topicId = object.connectedDevice.topicId;
     final control = ref.read(ff1WifiControlProvider);

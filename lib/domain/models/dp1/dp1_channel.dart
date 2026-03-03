@@ -21,8 +21,9 @@ class DP1Channel {
       title: json['title'] as String,
       curator: json['curator'] as String?,
       summary: json['summary'] as String?,
-      playlists:
-          (json['playlists'] as List<dynamic>).map((e) => e as String).toList(),
+      playlists: (json['playlists'] as List<dynamic>)
+          .map((e) => e as String)
+          .toList(),
       created: DateTime.parse(json['created'] as String),
       coverImage: json['coverImage'] as String?,
     );
@@ -87,5 +88,3 @@ extension DP1ChannelExt on DP1Channel {
     );
   }
 }
-
-

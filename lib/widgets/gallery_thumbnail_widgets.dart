@@ -105,10 +105,14 @@ class GalleryNoThumbnailWidget extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final side = constraints.biggest.shortestSide;
-        final double dynamicPadding =
-            math.min(LayoutConstants.space3, side * 0.03);
-        final double iconSize =
-            math.min(LayoutConstants.iconSizeLarge, side * 0.3);
+        final double dynamicPadding = math.min(
+          LayoutConstants.space3,
+          side * 0.03,
+        );
+        final double iconSize = math.min(
+          LayoutConstants.iconSizeLarge,
+          side * 0.3,
+        );
 
         return AspectRatio(
           aspectRatio: 1,

@@ -212,12 +212,14 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
       // Step 5: Send WiFi credentials (connect_wifi command) with automatic retry
       // Device will attempt to connect to WiFi and respond with topicId
       final response = await ref.read(
-        ff1BleSendCommandProvider(FF1BleCommandParams(
-          blDevice: blDevice,
-          command: FF1BleCommand.sendWifiCredentials,
-          request: SendWifiCredentialsRequest(ssid: ssid, password: password),
-          timeout: const Duration(seconds: 60),
-        )).future,
+        ff1BleSendCommandProvider(
+          FF1BleCommandParams(
+            blDevice: blDevice,
+            command: FF1BleCommand.sendWifiCredentials,
+            request: SendWifiCredentialsRequest(ssid: ssid, password: password),
+            timeout: const Duration(seconds: 60),
+          ),
+        ).future,
       );
 
       if (response.isError) {
@@ -281,5 +283,5 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
 /// Provider for WiFi connection management
 final connectWiFiProvider =
     NotifierProvider<WiFiConnectionNotifier, WiFiConnectionState>(
-  WiFiConnectionNotifier.new,
-);
+      WiFiConnectionNotifier.new,
+    );

@@ -12,7 +12,8 @@ enum Chain {
   tezos,
 
   /// Unknown
-  unknown;
+  unknown
+  ;
 
   /// Create a Chain from a source
   static Chain fromSource(String source) {
@@ -59,11 +60,11 @@ class WalletAddress implements BaseObject {
 
   /// From JSON
   factory WalletAddress.fromJson(Map<String, dynamic> json) => WalletAddress(
-        address: json['address'] as String,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-        isHidden: json['isHidden'] as bool,
-        name: json['name'] as String?,
-      );
+    address: json['address'] as String,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    isHidden: json['isHidden'] as bool,
+    name: json['name'] as String?,
+  );
 
   /// Address
   final String address;
@@ -84,21 +85,20 @@ class WalletAddress implements BaseObject {
     DateTime? createdAt,
     bool? isHidden,
     String? name,
-  }) =>
-      WalletAddress(
-        address: address ?? this.address,
-        createdAt: createdAt ?? this.createdAt,
-        isHidden: isHidden ?? this.isHidden,
-        name: name ?? this.name,
-      );
+  }) => WalletAddress(
+    address: address ?? this.address,
+    createdAt: createdAt ?? this.createdAt,
+    isHidden: isHidden ?? this.isHidden,
+    name: name ?? this.name,
+  );
 
   /// To JSON
   Map<String, dynamic> toJson() => {
-        'address': address,
-        'createdAt': createdAt.toIso8601String(),
-        'isHidden': isHidden,
-        'name': name,
-      };
+    'address': address,
+    'createdAt': createdAt.toIso8601String(),
+    'isHidden': isHidden,
+    'name': name,
+  };
 
   /// Crypto type
   String get chain => Chain.fromAddress(address).toString();
@@ -111,7 +111,7 @@ class WalletAddress implements BaseObject {
 
   @override
   Map<String, String> get toKeyValue => {
-        'key': key,
-        'value': value,
-      };
+    'key': key,
+    'value': value,
+  };
 }

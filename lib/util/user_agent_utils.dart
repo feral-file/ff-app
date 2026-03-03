@@ -84,7 +84,8 @@ class _MobileInfo extends IDeviceInfo {
     }
     if (isAndroid) {
       final data = MediaQueryData.fromView(
-          WidgetsBinding.instance.platformDispatcher.views.single);
+        WidgetsBinding.instance.platformDispatcher.views.single,
+      );
       return data.size.shortestSide > 600;
     }
     return false;

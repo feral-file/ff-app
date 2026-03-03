@@ -122,9 +122,9 @@ class FF1Device implements BaseObject {
 
   @override
   Map<String, String> get toKeyValue => {
-        'key': key,
-        'value': value,
-      };
+    'key': key,
+    'value': value,
+  };
 }
 
 /// Extension methods for FF1Device

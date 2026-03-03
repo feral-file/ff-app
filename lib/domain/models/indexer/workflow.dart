@@ -6,7 +6,8 @@ enum IndexingJobStatus {
   paused,
   failed,
   completed,
-  canceled;
+  canceled
+  ;
 
   String toJson() {
     switch (this) {
@@ -69,9 +70,9 @@ class AddressIndexingResult {
       );
 
   Map<String, dynamic> toJson() => {
-        'address': address,
-        'workflow_id': workflowId,
-      };
+    'address': address,
+    'workflow_id': workflowId,
+  };
 }
 
 /// Address indexing job status response.
@@ -101,12 +102,12 @@ class AddressIndexingJobResponse {
       );
 
   Map<String, dynamic> toJson() => {
-        'workflow_id': workflowId,
-        'address': address,
-        'status': status.toJson(),
-        'total_tokens_indexed': totalTokensIndexed,
-        'total_tokens_viewable': totalTokensViewable,
-      };
+    'workflow_id': workflowId,
+    'address': address,
+    'status': status.toJson(),
+    'total_tokens_indexed': totalTokensIndexed,
+    'total_tokens_viewable': totalTokensViewable,
+  };
 }
 
 // End of file.

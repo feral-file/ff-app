@@ -20,7 +20,7 @@ class CanvasClientServiceV2 {
     this._tvCastApi, {
     Future<String> Function()? getDeviceId,
     String? dp1FeedBaseUrl,
-  })  : _dp1FeedBaseUrl = dp1FeedBaseUrl ?? '' {
+  }) : _dp1FeedBaseUrl = dp1FeedBaseUrl ?? '' {
     _getDeviceId =
         getDeviceId ?? () => Future<String>.value(_deviceInfoService.deviceId);
   }
@@ -33,10 +33,10 @@ class CanvasClientServiceV2 {
   final List<CursorOffset> dragOffsets = <CursorOffset>[];
 
   DeviceInfoV2 get clientDeviceInfo => DeviceInfoV2(
-        deviceId: _deviceInfoService.deviceId,
-        deviceName: _deviceInfoService.deviceName,
-        platform: _platform,
-      );
+    deviceId: _deviceInfoService.deviceId,
+    deviceName: _deviceInfoService.deviceName,
+    platform: _platform,
+  );
 
   TvCastService _getStub(FF1Device device) =>
       TvCastServiceImpl(_tvCastApi, device);
@@ -158,8 +158,9 @@ class CanvasClientServiceV2 {
   Future<void> sendKeyBoard(List<FF1Device> devices, int code) async {
     for (final device in devices) {
       final stub = _getStub(device);
-      final response =
-          await stub.keyboardEvent(KeyboardEventRequest(code: code));
+      final response = await stub.keyboardEvent(
+        KeyboardEventRequest(code: code),
+      );
       if (response.ok) {
         _log.info('CanvasClientService: Keyboard Event Success $code');
       } else {
@@ -236,7 +237,9 @@ class CanvasClientServiceV2 {
         final stub = _getStub(device);
         await stub.drag(DragGestureRequest(cursorOffsets: offsets));
       } catch (e) {
-        _log.info('CanvasClientService: Drag Failed to device: ${device.deviceId}');
+        _log.info(
+          'CanvasClientService: Drag Failed to device: ${device.deviceId}',
+        );
       }
     });
   }
@@ -253,9 +256,12 @@ class CanvasClientServiceV2 {
   Future<bool> showPairingQRCode(FF1Device device, bool show) async {
     try {
       final stub = _getStub(device);
-      final response =
-          await stub.showPairingQRCode(ShowPairingQRCodeRequest(show: show));
-      _log.info('CanvasClientService: Show Pairing QR Code ${response.success}');
+      final response = await stub.showPairingQRCode(
+        ShowPairingQRCodeRequest(show: show),
+      );
+      _log.info(
+        'CanvasClientService: Show Pairing QR Code ${response.success}',
+      );
       return response.success;
     } catch (e) {
       _log.info('CanvasClientService: showPairingQRCode error: $e');

@@ -1,4 +1,3 @@
-import 'package:app/domain/models/address.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/services/domain_address_service.dart';

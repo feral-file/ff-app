@@ -113,7 +113,7 @@ class IncrementalSyncNotifier extends Notifier<IncrementalSyncState> {
 /// Provider for incremental sync.
 final incrementalSyncProvider =
     NotifierProvider<IncrementalSyncNotifier, IncrementalSyncState>(
-  IncrementalSyncNotifier.new,
-);
+      IncrementalSyncNotifier.new,
+    );
 
 // End of file.

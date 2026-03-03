@@ -129,7 +129,9 @@ class _EnterWiFiPasswordScreenState
     });
 
     // Step 5 & 6: Send credentials and wait for device connection
-    await ref.read(connectWiFiProvider.notifier).sendCredentialsAndConnect(
+    await ref
+        .read(connectWiFiProvider.notifier)
+        .sendCredentialsAndConnect(
           device: widget.payload.device,
           ssid: _parseSSID(widget.payload.wifiAccessPoint.ssid),
           password: password,
@@ -139,8 +141,11 @@ class _EnterWiFiPasswordScreenState
   @override
   Widget build(BuildContext context) {
     final connectionState = ref.watch(connectWiFiProvider);
-    final shouldReserveNowDisplayingBar = ref.watch(nowDisplayingShouldShowProvider);
-    final isProcessing = _isProcessing ||
+    final shouldReserveNowDisplayingBar = ref.watch(
+      nowDisplayingShouldShowProvider,
+    );
+    final isProcessing =
+        _isProcessing ||
         (connectionState.status != WiFiConnectionStatus.selectingNetwork &&
             connectionState.status != WiFiConnectionStatus.idle &&
             connectionState.status != WiFiConnectionStatus.error);
@@ -157,14 +162,17 @@ class _EnterWiFiPasswordScreenState
         if (connectionState.topicId != null) {
           // hide qr code on device
           unawaited(
-            ref.read(ff1WifiControlProvider).showPairingQRCode(
+            ref
+                .read(ff1WifiControlProvider)
+                .showPairingQRCode(
                   topicId: connectionState.topicId!,
                   show: false,
                 ),
           );
 
-          final ffDevice =
-              widget.payload.device.copyWith(topicId: connectionState.topicId);
+          final ffDevice = widget.payload.device.copyWith(
+            topicId: connectionState.topicId,
+          );
 
           unawaited(
             ref.read(addFF1BluetoothDeviceProvider(ffDevice).future),
@@ -267,56 +275,56 @@ class _EnterWiFiPasswordScreenState
           child: isProcessing
               ? _buildProcessingView(parsedSsid)
               : isOpen
-                  ? const SizedBox()
-                  : Stack(
-                      children: [
-                        CustomScrollView(
-                          slivers: [
-                            SliverToBoxAdapter(
-                              child: SizedBox(
-                                height: LayoutConstants.space6 +
-                                    LayoutConstants.space2,
-                              ),
-                            ),
-                            SliverToBoxAdapter(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    parsedSsid,
-                                    style: AppTypography.body(context).white,
-                                  ),
-                                  SizedBox(height: LayoutConstants.space4),
-                                  PasswordTextField(
-                                    controller: _passwordController,
-                                    focusNode: _passwordFocusNode,
-                                    style: AppTypography.body(context).white,
-                                    hintText: 'Password',
-                                    defaultObscure: false,
-                                    isEnabled: !isProcessing,
-                                    onChanged: (_) {},
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+              ? const SizedBox()
+              : Stack(
+                  children: [
+                    CustomScrollView(
+                      slivers: [
+                        SliverToBoxAdapter(
+                          child: SizedBox(
+                            height:
+                                LayoutConstants.space6 + LayoutConstants.space2,
+                          ),
                         ),
-                        Positioned(
-                          bottom: LayoutConstants.space4 + bottomInset,
-                          left: 0,
-                          right: 0,
-                          child: PrimaryAsyncButton(
-                            padding: EdgeInsets.symmetric(
-                              vertical: LayoutConstants.space3 +
-                                  LayoutConstants.space1,
-                            ),
-                            color: PrimitivesTokens.colorsWhite,
-                            onTap: _handleSendCredentials,
-                            text: 'Submit',
+                        SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                parsedSsid,
+                                style: AppTypography.body(context).white,
+                              ),
+                              SizedBox(height: LayoutConstants.space4),
+                              PasswordTextField(
+                                controller: _passwordController,
+                                focusNode: _passwordFocusNode,
+                                style: AppTypography.body(context).white,
+                                hintText: 'Password',
+                                defaultObscure: false,
+                                isEnabled: !isProcessing,
+                                onChanged: (_) {},
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
+                    Positioned(
+                      bottom: LayoutConstants.space4 + bottomInset,
+                      left: 0,
+                      right: 0,
+                      child: PrimaryAsyncButton(
+                        padding: EdgeInsets.symmetric(
+                          vertical:
+                              LayoutConstants.space3 + LayoutConstants.space1,
+                        ),
+                        color: PrimitivesTokens.colorsWhite,
+                        onTap: _handleSendCredentials,
+                        text: 'Submit',
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );
@@ -424,7 +432,8 @@ class _PasswordTextFieldState extends State<PasswordTextField> {
         focusColor: AppColor.primaryBlack,
         filled: true,
         constraints: BoxConstraints(
-          minHeight: LayoutConstants.minTouchTarget +
+          minHeight:
+              LayoutConstants.minTouchTarget +
               LayoutConstants.space4 +
               LayoutConstants.space4,
         ),

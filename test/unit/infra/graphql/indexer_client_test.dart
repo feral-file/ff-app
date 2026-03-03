@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('IndexerClient transformation logic', () {
-
     group('thumbnail extraction from media assets', () {
       test('extracts thumbnail from enrichment source variant URLs', () {
         // Simulate token data from GraphQL response
@@ -28,8 +27,8 @@ void main() {
                 'xs': 'https://example.com/enriched_xs.jpg',
                 's': 'https://example.com/enriched_s.jpg',
                 'm': 'https://example.com/enriched_m.jpg',
-              }
-            }
+              },
+            },
           ],
         };
 
@@ -43,7 +42,9 @@ void main() {
 
         // Extract variant URL
         if (thumbnailUrl != null && enrichmentAssets != null) {
-          final asset = enrichmentAssets.cast<Map<String, dynamic>>().firstWhere(
+          final asset = enrichmentAssets
+              .cast<Map<String, dynamic>>()
+              .firstWhere(
                 (a) => a['source_url'] == thumbnailUrl,
                 orElse: () => <String, dynamic>{},
               );
@@ -70,8 +71,8 @@ void main() {
               'mime_type': 'image/jpeg',
               'variant_urls': {
                 'xs': 'https://example.com/metadata_xs.jpg',
-              }
-            }
+              },
+            },
           ],
           // No enrichment_source
         };
@@ -83,9 +84,9 @@ void main() {
 
         if (thumbnailUrl != null && metadataAssets != null) {
           final asset = metadataAssets.cast<Map<String, dynamic>>().firstWhere(
-                (a) => a['source_url'] == thumbnailUrl,
-                orElse: () => <String, dynamic>{},
-              );
+            (a) => a['source_url'] == thumbnailUrl,
+            orElse: () => <String, dynamic>{},
+          );
           if (asset.isNotEmpty) {
             final variantUrls = asset['variant_urls'] as Map?;
             thumbnailUrl = variantUrls?['xs'] as String?;

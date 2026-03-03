@@ -8,7 +8,7 @@ extension ColorExtension on ThemeData {
   Color get auGreyBackground {
     final isLightMode =
         SchedulerBinding.instance.platformDispatcher.platformBrightness ==
-            Brightness.light;
+        Brightness.light;
     return isLightMode ? AppColor.auGreyBackground : AppColor.auGreyBackground;
   }
 }

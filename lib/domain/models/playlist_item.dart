@@ -9,10 +9,9 @@ import 'package:flutter/foundation.dart';
 /// Represents an item in a playlist (not "Work" or "Item" - use correct terminology).
 /// This corresponds to "Items" in the database schema.
 /// UI layer can refer to this as "work" when displaying to users.
-@immutable
 class PlaylistItem extends DP1PlaylistItem {
   /// Creates a PlaylistItem.
-  PlaylistItem({
+  const PlaylistItem({
     required super.id,
     required this.kind,
     super.title,
@@ -148,16 +147,16 @@ class PlaylistItem extends DP1PlaylistItem {
 
   // ignore: annotate_overrides - hashCode override
   int get hashCode => Object.hash(
-        super.hashCode,
-        kind,
-        subtitle,
-        Object.hashAll(artists ?? []),
-        thumbnailUrl,
-        override != null ? _deepEquality.hash(override) : null,
-        tokenData != null ? _deepEquality.hash(tokenData) : null,
-        sortKeyUs,
-        updatedAt,
-      );
+    super.hashCode,
+    kind,
+    subtitle,
+    Object.hashAll(artists ?? []),
+    thumbnailUrl,
+    override != null ? _deepEquality.hash(override) : null,
+    tokenData != null ? _deepEquality.hash(tokenData) : null,
+    sortKeyUs,
+    updatedAt,
+  );
 
   /// Creates a copy with updated values.
   PlaylistItem copyWith({

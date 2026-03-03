@@ -2,7 +2,7 @@ import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 
-// ignore_for_file: public_member_api_docs, always_put_required_named_parameters_first, unnecessary_parenthesis, sort_constructors_first, avoid_equals_and_hash_code_on_mutable_classes, hash_and_equals, lines_longer_than_80_chars, prefer_collection_literals, eol_at_end_of_file
+// ignore_for_file: public_member_api_docs, unnecessary_parenthesis, lines_longer_than_80_chars
 //
 // Reason: copied from the legacy mobile app response shapes; keep DP-1 wire
 // response models stable and portable.
@@ -35,10 +35,10 @@ class DP1PlaylistResponse {
   final String? cursor;
 
   Map<String, dynamic> toJson() => {
-        'items': items.map((e) => e.toJson()).toList(),
-        'hasMore': hasMore,
-        'cursor': cursor,
-      };
+    'items': items.map((e) => e.toJson()).toList(),
+    'hasMore': hasMore,
+    'cursor': cursor,
+  };
 
   /// Best-effort parser to keep compatibility with DP1 servers that differ
   /// slightly from the legacy JSON shape.
@@ -94,9 +94,12 @@ class DP1PlaylistResponse {
         dynamicQueries: (json['dynamicQueries'] == null)
             ? []
             : (List<dynamic>.from(json['dynamicQueries'] as List))
-                .map((e) =>
-                    DynamicQuery.fromJson(Map<String, dynamic>.from(e as Map)))
-                .toList(),
+                  .map(
+                    (e) => DynamicQuery.fromJson(
+                      Map<String, dynamic>.from(e as Map),
+                    ),
+                  )
+                  .toList(),
       );
     }
   }
@@ -130,10 +133,10 @@ class DP1ChannelsResponse {
   final String? cursor;
 
   Map<String, dynamic> toJson() => {
-        'items': items.map((e) => e.toJson()).toList(),
-        'hasMore': hasMore,
-        'cursor': cursor,
-      };
+    'items': items.map((e) => e.toJson()).toList(),
+    'hasMore': hasMore,
+    'cursor': cursor,
+  };
 
   static DP1Channel _channelFromJsonCompat(Map<String, dynamic> json) {
     try {
@@ -158,7 +161,8 @@ class DP1ChannelsResponse {
             .map((e) => e.toString())
             .toList(),
         created: created,
-        coverImage: (json['coverImage'] as String?) ??
+        coverImage:
+            (json['coverImage'] as String?) ??
             (json['coverImageUri'] as String?),
       );
     }
@@ -188,8 +192,8 @@ class DP1PlaylistItemsResponse {
   final String? cursor;
 
   Map<String, dynamic> toJson() => {
-        'items': items.map((e) => e.toJson()).toList(),
-        'hasMore': hasMore,
-        'cursor': cursor,
-      };
+    'items': items.map((e) => e.toJson()).toList(),
+    'hasMore': hasMore,
+    'cursor': cursor,
+  };
 }

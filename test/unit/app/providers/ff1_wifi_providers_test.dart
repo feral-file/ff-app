@@ -9,8 +9,8 @@ import 'provider_test_helpers.dart';
 void main() {
   test('ff1 wifi params equality and default notifier state', () {
     // Unit test: verifies FF1 WiFi connect params equality and initial connection state.
-    final p1 = FF1WifiConnectParams(
-      device: const FF1Device(
+    const p1 = FF1WifiConnectParams(
+      device: FF1Device(
         name: 'D',
         remoteId: 'r',
         deviceId: 'id',
@@ -19,8 +19,8 @@ void main() {
       userId: 'u1',
       apiKey: 'k1',
     );
-    final p2 = FF1WifiConnectParams(
-      device: const FF1Device(
+    const p2 = FF1WifiConnectParams(
+      device: FF1Device(
         name: 'D',
         remoteId: 'r',
         deviceId: 'id',
@@ -49,7 +49,7 @@ void main() {
 
       final deviceService = MockFF1BluetoothDeviceService();
       final wifiControl = FakeWifiControl();
-      final device = const FF1Device(
+      const device = FF1Device(
         name: 'FF1',
         remoteId: 'remote-1',
         deviceId: 'device-1',
@@ -61,7 +61,7 @@ void main() {
           ff1BluetoothDeviceServiceProvider.overrideWithValue(deviceService),
           ff1WifiControlProvider.overrideWithValue(wifiControl),
           ff1WifiConnectionProvider.overrideWith(
-            () => FF1WifiConnectionNotifier(),
+            FF1WifiConnectionNotifier.new,
           ),
         ],
       );
@@ -109,7 +109,7 @@ void main() {
 
       final deviceService = MockFF1BluetoothDeviceService();
       final wifiControl = FakeWifiControl();
-      final device = const FF1Device(
+      const device = FF1Device(
         name: 'FF1',
         remoteId: 'remote-1',
         deviceId: 'device-1',
@@ -121,7 +121,7 @@ void main() {
           ff1BluetoothDeviceServiceProvider.overrideWithValue(deviceService),
           ff1WifiControlProvider.overrideWithValue(wifiControl),
           ff1WifiConnectionProvider.overrideWith(
-            () => FF1WifiConnectionNotifier(),
+            FF1WifiConnectionNotifier.new,
           ),
         ],
       );

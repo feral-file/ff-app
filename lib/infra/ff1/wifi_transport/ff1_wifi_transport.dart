@@ -88,7 +88,8 @@ abstract class FF1WifiTransportError implements Exception {
   final Object? originalError;
 
   @override
-  String toString() => 'FF1WifiTransportError: $message'
+  String toString() =>
+      'FF1WifiTransportError: $message'
       '${originalError != null ? ' ($originalError)' : ''}';
 }
 

@@ -6,7 +6,8 @@ import 'package:flutter/material.dart';
 enum HomeIndexHeaderTab {
   playlists('Playlists'),
   channels('Channels'),
-  works('Works');
+  works('Works')
+  ;
 
   const HomeIndexHeaderTab(this.label);
   final String label;
@@ -48,4 +49,3 @@ class HomeIndexHeader extends StatelessWidget {
     );
   }
 }
-

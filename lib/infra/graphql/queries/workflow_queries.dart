@@ -1,6 +1,7 @@
 /// GraphQL queries for Temporal workflow status and address indexing jobs.
 ///
 /// These map to the indexer API schema.
+library;
 
 /// Fetch address indexing job status by workflow_id.
 const String addressIndexingJobStatusQuery = r'''

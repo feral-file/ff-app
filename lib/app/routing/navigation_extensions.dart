@@ -29,7 +29,8 @@ extension NavigationExtensions on BuildContext {
     // Try to pop routes until we reach the target
     // We'll pop while we can and check if we've reached the target
     while (router.canPop()) {
-      final locationBeforePop = router.routerDelegate.currentConfiguration.uri.path;
+      final locationBeforePop =
+          router.routerDelegate.currentConfiguration.uri.path;
 
       // If we're at the target, stop
       if (locationBeforePop == targetRoute) {
@@ -40,7 +41,8 @@ extension NavigationExtensions on BuildContext {
       router.pop();
 
       // Check if we're now at the target after popping
-      final locationAfterPop = router.routerDelegate.currentConfiguration.uri.path;
+      final locationAfterPop =
+          router.routerDelegate.currentConfiguration.uri.path;
       if (locationAfterPop == targetRoute) {
         return;
       }

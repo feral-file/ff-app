@@ -53,7 +53,8 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
         bluetoothAdapterStateProvider,
         (previous, next) {
           // Only trigger when Bluetooth transitions from off/unknown to on
-          final wasEnabled = previous?.maybeWhen(
+          final wasEnabled =
+              previous?.maybeWhen(
                 data: (state) => state == BluetoothAdapterState.on,
                 orElse: () => false,
               ) ??
@@ -145,7 +146,8 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
 
     if (!isBluetoothEnabled) {
       _log.warning(
-          '[FF1DevicePickerPage] Bluetooth is not enabled (state: $bluetoothState), cannot scan');
+        '[FF1DevicePickerPage] Bluetooth is not enabled (state: $bluetoothState), cannot scan',
+      );
       return;
     }
 

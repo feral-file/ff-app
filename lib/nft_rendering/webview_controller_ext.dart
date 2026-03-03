@@ -17,10 +17,12 @@ extension WebViewControllerExtension on WebViewController {
 
   Future<void> mute() async {
     await evaluateJavascript(
-        source: "var video = document.getElementsByTagName('video')[0]; "
-            'if(video != undefined) { video.muted = true; } '
-            "var audio = document.getElementsByTagName('audio')[0]; "
-            'if(audio != undefined) { audio.muted = true; }');
+      source:
+          "var video = document.getElementsByTagName('video')[0]; "
+          'if(video != undefined) { video.muted = true; } '
+          "var audio = document.getElementsByTagName('audio')[0]; "
+          'if(audio != undefined) { audio.muted = true; }',
+    );
   }
 
   Future<void> skipPrint() async {

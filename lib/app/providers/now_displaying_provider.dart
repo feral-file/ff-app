@@ -127,23 +127,23 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     // ff1DeviceConnectedProvider) are rebuilt before we read them.
     ref.listen<AsyncValue<FF1Device?>>(
       activeFF1BluetoothDeviceProvider,
-      (_, __) => unawaited(Future.microtask(_recompute)),
+      (_, _) => unawaited(Future.microtask(_recompute)),
     );
     ref.listen<AsyncValue<FF1PlayerStatus>>(
       ff1PlayerStatusStreamProvider,
-      (_, __) => unawaited(Future.microtask(_recompute)),
+      (_, _) => unawaited(Future.microtask(_recompute)),
     );
     ref.listen<AsyncValue<FF1ConnectionStatus>>(
       ff1ConnectionStatusStreamProvider,
-      (_, __) => unawaited(Future.microtask(_recompute)),
+      (_, _) => unawaited(Future.microtask(_recompute)),
     );
     ref.listen<AsyncValue<List<PlaylistItem>>>(
       nowDisplayingCachedPlaylistItemsProvider,
-      (_, __) => unawaited(Future.microtask(_recompute)),
+      (_, _) => unawaited(Future.microtask(_recompute)),
     );
     ref.listen<({int start, int end})?>(
       nowDisplayingRequestedRangeProvider,
-      (_, __) => unawaited(Future.microtask(_recompute)),
+      (_, _) => unawaited(Future.microtask(_recompute)),
     );
 
     // Match the previous manager contract: start at an explicit initial state,

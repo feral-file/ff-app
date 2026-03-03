@@ -19,8 +19,7 @@ class SleepModeIndicator extends ConsumerStatefulWidget {
   final bool isSleeping;
 
   @override
-  ConsumerState<SleepModeIndicator> createState() =>
-      _SleepModeIndicatorState();
+  ConsumerState<SleepModeIndicator> createState() => _SleepModeIndicatorState();
 }
 
 class _SleepModeIndicatorState extends ConsumerState<SleepModeIndicator>
@@ -39,15 +38,16 @@ class _SleepModeIndicatorState extends ConsumerState<SleepModeIndicator>
       duration: _processingAnimationDuration,
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(
-      begin: 1.2,
-      end: _pressedScale,
-    ).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeInOut,
-      ),
-    );
+    _scaleAnimation =
+        Tween<double>(
+          begin: 1.2,
+          end: _pressedScale,
+        ).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: Curves.easeInOut,
+          ),
+        );
   }
 
   @override

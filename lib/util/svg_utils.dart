@@ -39,7 +39,7 @@ class SvgUtils {
   /// Removes <style> tag and applies styles directly to elements
   static String convertCssClassesToInlineStyles(String svgString) {
     // Extract style definitions from <style> tag
-    final stylePattern = RegExp(r'<style>(.*?)</style>', dotAll: true);
+    final stylePattern = RegExp('<style>(.*?)</style>', dotAll: true);
     final styleMatch = stylePattern.firstMatch(svgString);
 
     if (styleMatch == null) {
@@ -47,7 +47,7 @@ class SvgUtils {
     }
 
     final styleContent = styleMatch.group(1)!;
-    final Map<String, String> classStyles = {};
+    final classStyles = <String, String>{};
 
     // Parse CSS class definitions: .c0{fill:rgb(255, 255, 153)}
     final classPattern = RegExp(r'\.(\w+)\{([^}]+)\}');
@@ -75,11 +75,13 @@ class SvgUtils {
       // Match: class="c0" or class='c0' (with optional spaces around =)
       // Allow class to be first attribute or after space
       final classPatternDouble = RegExp(
-          '(\\s+|>)class\\s*=\\s*"$escapedClassName"',
-          caseSensitive: false);
+        '(\\s+|>)class\\s*=\\s*"$escapedClassName"',
+        caseSensitive: false,
+      );
       final classPatternSingle = RegExp(
-          "(\\s+|>)class\\s*=\\s*'$escapedClassName'",
-          caseSensitive: false);
+        "(\\s+|>)class\\s*=\\s*'$escapedClassName'",
+        caseSensitive: false,
+      );
 
       // Replace class="className" with style="..."
       // Keep the space or > from the match

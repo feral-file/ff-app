@@ -88,7 +88,6 @@ void main() {
             name: 'Test Playlist',
             type: PlaylistType.dp1,
             channelId: 'ch_1',
-            sortMode: PlaylistSortMode.position,
             createdAt: DateTime.now(),
             updatedAt: DateTime.now(),
           ),
@@ -169,13 +168,12 @@ void main() {
           name: 'Test Playlist',
           type: PlaylistType.dp1,
           channelId: 'ch_1',
-          sortMode: PlaylistSortMode.position,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         ),
       );
 
-      final itemCount = 15;
+      const itemCount = 15;
       final items = List.generate(
         itemCount,
         (i) => PlaylistItem(

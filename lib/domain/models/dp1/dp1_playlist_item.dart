@@ -1,10 +1,10 @@
 import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:collection/collection.dart';
 
-// ignore_for_file: public_member_api_docs, sort_constructors_first, lines_longer_than_80_chars, eol_at_end_of_file, avoid_equals_and_hash_code_on_mutable_classes // Reason: copied from the legacy mobile app; keep DP-1 playlist-item wire model stable.
+// ignore_for_file: public_member_api_docs, sort_constructors_first, lines_longer_than_80_chars, avoid_equals_and_hash_code_on_mutable_classes // Reason: copied from the legacy mobile app; keep DP-1 playlist-item wire model stable.
 
 class DP1PlaylistItem {
-  DP1PlaylistItem({
+  const DP1PlaylistItem({
     required this.id,
     required this.duration,
     this.ref,

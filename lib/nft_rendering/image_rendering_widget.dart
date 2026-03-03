@@ -6,12 +6,6 @@ import 'package:app/util/svg_utils.dart';
 import 'package:flutter/material.dart';
 
 class ImageNFTRenderingWidget extends NFTRenderingWidget {
-  final String previewURL;
-  final VoidCallback? onLoaded;
-  final Widget? noPreviewUrlWidget;
-  final Widget? errorWidget;
-  final ImageLoadingBuilder? loadingBuilder;
-
   const ImageNFTRenderingWidget({
     required this.previewURL,
     super.key,
@@ -20,6 +14,11 @@ class ImageNFTRenderingWidget extends NFTRenderingWidget {
     this.errorWidget,
     this.loadingBuilder,
   });
+  final String previewURL;
+  final VoidCallback? onLoaded;
+  final Widget? noPreviewUrlWidget;
+  final Widget? errorWidget;
+  final ImageLoadingBuilder? loadingBuilder;
 
   @override
   State<ImageNFTRenderingWidget> createState() =>
@@ -79,8 +78,9 @@ class _ImageNFTRenderingWidgetState extends State<ImageNFTRenderingWidget> {
     if (_isDataUri(widget.previewURL)) {
       // Handle SVG data URI - convert and re-encode
       if (_isSvgDataUri(widget.previewURL)) {
-        final svgString =
-            SvgUtils.decodeAndConvertSvgDataUri(widget.previewURL);
+        final svgString = SvgUtils.decodeAndConvertSvgDataUri(
+          widget.previewURL,
+        );
         if (svgString != null) {
           // Re-encode the converted SVG string to bytes
           final convertedBytes = utf8.encode(svgString);

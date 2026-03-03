@@ -1,5 +1,5 @@
-import 'package:app/theme/app_color.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:flutter/material.dart';
 
@@ -19,22 +19,22 @@ class LoadMoreIndicator extends StatelessWidget {
 
   /// Whether currently loading more items.
   final bool isLoadingMore;
-  
+
   /// Optional padding.
   final EdgeInsets? padding;
-  
+
   /// Optional width.
   final int? width;
-  
+
   /// Optional height.
   final int? height;
-  
+
   /// Optional frame rate.
   final int? frameRate;
-  
+
   /// Whether to show loading text.
   final bool? showText;
-  
+
   /// Optional custom loading text.
   final String? text;
 

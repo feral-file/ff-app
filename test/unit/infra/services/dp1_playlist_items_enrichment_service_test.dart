@@ -13,7 +13,7 @@ class _FakeIndexerClient extends IndexerClient {
 
 class _FakeIndexerService extends IndexerService {
   _FakeIndexerService({required this.tokensByCid})
-      : super(client: _FakeIndexerClient());
+    : super(client: _FakeIndexerClient());
 
   final Map<String, AssetToken> tokensByCid;
   final List<List<String>> requestedCidBatches = <List<String>>[];
@@ -37,7 +37,7 @@ class _FakeIndexerService extends IndexerService {
 
 class _MockDatabaseService extends DatabaseService {
   _MockDatabaseService()
-      : this._(AppDatabase.forTesting(NativeDatabase.memory()));
+    : this._(AppDatabase.forTesting(NativeDatabase.memory()));
 
   _MockDatabaseService._(this._ownedDb) : super(_ownedDb);
 
@@ -71,8 +71,7 @@ class _MockDatabaseService extends DatabaseService {
     required List<(String, AssetToken)> enrichments,
   }) async {
     batchWriteCalls.add(List<(String, AssetToken)>.from(enrichments));
-    final enrichedIds =
-        enrichments.map((enrichment) => enrichment.$1).toSet();
+    final enrichedIds = enrichments.map((enrichment) => enrichment.$1).toSet();
     highRows = highRows
         .where((row) => !enrichedIds.contains(row.$1))
         .toList(growable: false);
@@ -147,9 +146,11 @@ void main() {
       );
 
       // Second batch should take from high (0 remaining) + low (50)
-      final remainingHigh = highQueueSize - firstBatchSize;
-      final secondBatchSize = (remainingHigh + batchSize)
-          .clamp(0, remainingHigh + lowQueueSize);
+      const remainingHigh = highQueueSize - firstBatchSize;
+      final secondBatchSize = (remainingHigh + batchSize).clamp(
+        0,
+        remainingHigh + lowQueueSize,
+      );
       expect(
         secondBatchSize,
         equals(50),

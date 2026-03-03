@@ -3,7 +3,8 @@ enum ScreenOrientation {
   landscape,
   landscapeReverse,
   portrait,
-  portraitReverse;
+  portraitReverse
+  ;
 
   String get name {
     switch (this) {

@@ -37,7 +37,8 @@ enum FF1ResponseErrorCode {
   wifiRequired(4, 'Wi-Fi required'),
   deviceUpdating(5, 'Device is updating'),
   versionCheckFailed(6, 'Version check failed'),
-  unknown(255, 'Unknown error');
+  unknown(255, 'Unknown error')
+  ;
 
   const FF1ResponseErrorCode(this.code, this.description);
 
@@ -63,10 +64,6 @@ abstract class FF1ResponseError extends FF1Error {
     this.shouldShowSupport = false,
   }) : super(message);
 
-  final String title;
-  final bool shouldGoBack;
-  final bool shouldShowSupport;
-
   factory FF1ResponseError.fromCode(int errorCode) {
     final code = FF1ResponseErrorCode.fromCode(errorCode);
     switch (code) {
@@ -86,84 +83,89 @@ abstract class FF1ResponseError extends FF1Error {
         return UnknownWifiError(errorCode);
     }
   }
+
+  final String title;
+  final bool shouldGoBack;
+  final bool shouldShowSupport;
 }
 
 /// Wrong WiFi password
 class WrongWifiPasswordError extends FF1ResponseError {
   const WrongWifiPasswordError()
-      : super(
-          title: 'Incorrect Wi-Fi password',
-          message:
-              "FF1 couldn't connect to Wi-Fi. The password may be incorrect. "
-              'Check it and try again.',
-        );
+    : super(
+        title: 'Incorrect Wi-Fi password',
+        message:
+            "FF1 couldn't connect to Wi-Fi. The password may be incorrect. "
+            'Check it and try again.',
+      );
 }
 
 /// WiFi connected but no internet
 class WifiNoInternetError extends FF1ResponseError {
   const WifiNoInternetError()
-      : super(
-          title: 'No internet access',
-          message:
-              "FF1 is connected to Wi-Fi but can't reach the internet. "
-              'Check the router connection, then try again.',
-        );
+    : super(
+        title: 'No internet access',
+        message:
+            "FF1 is connected to Wi-Fi but can't reach the internet. "
+            'Check the router connection, then try again.',
+      );
 }
 
 /// WiFi connected, internet OK, but cannot reach Feral File server
 class WifiServerUnreachableError extends FF1ResponseError {
   const WifiServerUnreachableError()
-      : super(
-          title: "Can't reach server",
-          message:
-              "FF1 is online but can't reach the server. Network settings may "
-              'be blocking access. Check firewall settings or try a different network.',
-        );
+    : super(
+        title: "Can't reach server",
+        message:
+            "FF1 is online but can't reach the server. Network settings may "
+            'be blocking access. Check firewall settings or try a different network.',
+      );
 }
 
 /// Device requires WiFi connection
 class WifiRequiredError extends FF1ResponseError {
   const WifiRequiredError()
-      : super(
-          title: 'Wi-Fi required',
-          message: 'FF1 needs a Wi-Fi connection. Connect to a network to continue.',
-        );
+    : super(
+        title: 'Wi-Fi required',
+        message:
+            'FF1 needs a Wi-Fi connection. Connect to a network to continue.',
+      );
 }
 
 /// Device is currently updating firmware
 class DeviceUpdatingError extends FF1ResponseError {
   const DeviceUpdatingError()
-      : super(
-          title: 'FF1 is updating',
-          message:
-              'FF1 is installing an update. Wait for the update to finish, '
-              'then try again.',
-          shouldGoBack: true,
-        );
+    : super(
+        title: 'FF1 is updating',
+        message:
+            'FF1 is installing an update. Wait for the update to finish, '
+            'then try again.',
+        shouldGoBack: true,
+      );
 }
 
 /// Version check failed (may need support)
 class VersionCheckFailedError extends FF1ResponseError {
   const VersionCheckFailedError()
-      : super(
-          title: 'Setup failed',
-          message:
-              "FF1 couldn't complete setup. This may be related to a connection issue. "
-              'Contact support for help.',
-          shouldGoBack: true,
-          shouldShowSupport: true,
-        );
+    : super(
+        title: 'Setup failed',
+        message:
+            "FF1 couldn't complete setup. This may be related to a connection issue. "
+            'Contact support for help.',
+        shouldGoBack: true,
+        shouldShowSupport: true,
+      );
 }
 
 /// Unknown WiFi connection error
 class UnknownWifiError extends FF1ResponseError {
   UnknownWifiError(this.errorCode)
-      : super(
-          title: 'Wi-Fi connection failed',
-          message:
-              "FF1 couldn't connect to Wi-Fi. The network conditions may be unstable. "
-              'Move FF1 closer to the router and try again.',
-        );
+    : super(
+        title: 'Wi-Fi connection failed',
+        message:
+            "FF1 couldn't connect to Wi-Fi. The network conditions may be unstable. "
+            'Move FF1 closer to the router and try again.',
+      );
 
   final int errorCode;
 }

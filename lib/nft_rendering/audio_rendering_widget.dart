@@ -9,13 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
 class AudioNFTRenderingWidget extends NFTRenderingWidget {
-  final String? previewURL;
-  final String? thumbnailURL;
-  final bool isMute;
-  final void Function({int? time})? onLoaded;
-  final Widget loadingWidget;
-  final Widget errorWidget;
-
   const AudioNFTRenderingWidget({
     this.loadingWidget = const LoadingWidget(),
     this.errorWidget = const NFTErrorWidget(),
@@ -25,6 +18,12 @@ class AudioNFTRenderingWidget extends NFTRenderingWidget {
     this.isMute = false,
     this.onLoaded,
   });
+  final String? previewURL;
+  final String? thumbnailURL;
+  final bool isMute;
+  final void Function({int? time})? onLoaded;
+  final Widget loadingWidget;
+  final Widget errorWidget;
 
   @override
   State<AudioNFTRenderingWidget> createState() =>
@@ -98,7 +97,7 @@ class _AudioNFTRenderingWidgetState
   }
 
   Future<void> pauseOrResume() async {
-    if (_player?.playing == true) {
+    if (_player?.playing ?? false) {
       await _pauseAudio();
     } else {
       await _resumeAudio();
@@ -127,31 +126,31 @@ class _AudioNFTRenderingWidgetState
 
   @override
   Widget build(BuildContext context) => Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Flexible(
-            child: _thumbnailURL != null
-                ? Image.network(
-                    _thumbnailURL!,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) {
-                        return child;
-                      }
-                      return widget.loadingWidget;
-                    },
-                    errorBuilder: (context, url, error) => widget.errorWidget,
-                    fit: BoxFit.contain,
-                  )
-                : widget.errorWidget,
-          ),
-          StreamBuilder<double>(
-            stream: _progressStreamController.stream,
-            builder: (context, snapshot) => LinearProgressIndicator(
-              value: snapshot.data ?? 0,
-              color: const Color.fromRGBO(0, 255, 163, 1),
-              backgroundColor: Colors.transparent,
-            ),
-          ),
-        ],
-      );
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Flexible(
+        child: _thumbnailURL != null
+            ? Image.network(
+                _thumbnailURL!,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) {
+                    return child;
+                  }
+                  return widget.loadingWidget;
+                },
+                errorBuilder: (context, url, error) => widget.errorWidget,
+                fit: BoxFit.contain,
+              )
+            : widget.errorWidget,
+      ),
+      StreamBuilder<double>(
+        stream: _progressStreamController.stream,
+        builder: (context, snapshot) => LinearProgressIndicator(
+          value: snapshot.data ?? 0,
+          color: const Color.fromRGBO(0, 255, 163, 1),
+          backgroundColor: Colors.transparent,
+        ),
+      ),
+    ],
+  );
 }

@@ -251,7 +251,7 @@ final ff1CurrentPlayerStatusProvider = Provider<FF1PlayerStatus?>((ref) {
   return controlAsync.when(
     data: (status) => status,
     loading: () => null,
-    error: (_, __) => null,
+    error: (_, _) => null,
   );
 });
 
@@ -263,7 +263,7 @@ final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
   return controlAsync.when(
     data: (status) => status,
     loading: () => null,
-    error: (_, __) => null,
+    error: (_, _) => null,
   );
 });
 
@@ -278,7 +278,7 @@ final ff1DeviceConnectedProvider = Provider<bool>((ref) {
   return connectionStatusAsync.when(
     data: (status) => status.isConnected,
     loading: () => false,
-    error: (_, __) => false,
+    error: (_, _) => false,
   );
 });
 
@@ -375,7 +375,8 @@ class FF1WifiConnectParams {
 ///   )).future,
 /// );
 /// ```
-final FutureProviderFamily<void, FF1WifiConnectParams> ff1WifiConnectOperationProvider = FutureProvider.autoDispose
+final FutureProviderFamily<void, FF1WifiConnectParams>
+ff1WifiConnectOperationProvider = FutureProvider.autoDispose
     .family<void, FF1WifiConnectParams>(
       retry: _wifiRetry,
       (ref, params) async {
@@ -424,7 +425,8 @@ class FF1WifiCommandParams<T> {
 ///   )).future,
 /// );
 /// ```
-final FutureProviderFamily<dynamic, FF1WifiCommandParams<dynamic>> ff1WifiSendCommandProvider = FutureProvider.autoDispose
+final FutureProviderFamily<dynamic, FF1WifiCommandParams<dynamic>>
+ff1WifiSendCommandProvider = FutureProvider.autoDispose
     .family<dynamic, FF1WifiCommandParams<dynamic>>(
       retry: _wifiRetry,
       (ref, params) async {

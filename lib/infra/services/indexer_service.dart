@@ -210,7 +210,6 @@ class IndexerService {
       try {
         final tokens = await _fetchTokens(
           tokenCids: batch,
-          chains: null,
           limit: batch.length.clamp(1, _maxUint8Limit),
           offset: 0,
         );

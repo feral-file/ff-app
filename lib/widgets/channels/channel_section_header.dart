@@ -17,13 +17,13 @@ class ChannelSectionHeader extends StatelessWidget {
 
   /// Section name to display.
   final String sectionName;
-  
+
   /// Optional icon widget for the section.
   final Widget? sectionIcon;
-  
+
   /// Callback when "View All" is tapped.
   final VoidCallback? onViewAllTap;
-  
+
   /// Whether there are more items to view.
   final bool hasMore;
 
@@ -88,8 +88,8 @@ class ChannelSectionHeader extends StatelessWidget {
                     ),
                     SizedBox(width: LayoutConstants.space2),
                     Text(
-                        'All',
-                        style: AppTypography.body(context).grey,
+                      'All',
+                      style: AppTypography.body(context).grey,
                     ),
                   ],
                 ),

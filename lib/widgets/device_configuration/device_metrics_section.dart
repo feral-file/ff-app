@@ -88,7 +88,10 @@ class _DeviceMetricsSectionState extends ConsumerState<DeviceMetricsSection> {
 
       final cpuUsage = metrics.cpu?.cpuUsage;
       if (cpuUsage != null) {
-        _appendAndTrim(_cpuPoints, FlSpot(timestamp, cpuUsage.clamp(0.0, 100.0)));
+        _appendAndTrim(
+          _cpuPoints,
+          FlSpot(timestamp, cpuUsage.clamp(0.0, 100.0)),
+        );
       }
 
       final memoryUsage = metrics.memory?.memoryUsage;
@@ -101,7 +104,10 @@ class _DeviceMetricsSectionState extends ConsumerState<DeviceMetricsSection> {
 
       final gpuUsage = metrics.gpu?.gpuUsage;
       if (gpuUsage != null) {
-        _appendAndTrim(_gpuPoints, FlSpot(timestamp, gpuUsage.clamp(0.0, 100.0)));
+        _appendAndTrim(
+          _gpuPoints,
+          FlSpot(timestamp, gpuUsage.clamp(0.0, 100.0)),
+        );
       }
 
       final cpuTemp = metrics.cpu?.currentTemperature;
@@ -315,8 +321,12 @@ class _DeviceMetricsSectionState extends ConsumerState<DeviceMetricsSection> {
     const cpuTempColor = Colors.blue;
     const gpuTempColor = Colors.red;
 
-    final cpuTempValue = _cpuTempPoints.isNotEmpty ? _cpuTempPoints.last.y : null;
-    final gpuTempValue = _gpuTempPoints.isNotEmpty ? _gpuTempPoints.last.y : null;
+    final cpuTempValue = _cpuTempPoints.isNotEmpty
+        ? _cpuTempPoints.last.y
+        : null;
+    final gpuTempValue = _gpuTempPoints.isNotEmpty
+        ? _gpuTempPoints.last.y
+        : null;
     const tempUnit = '°C';
 
     return Column(
@@ -365,8 +375,11 @@ class _DeviceMetricsSectionState extends ConsumerState<DeviceMetricsSection> {
             LineChartData(
               minY: -20,
               maxY: 120,
-              minX: (_cpuTempPoints.isEmpty ? 0.0 : _cpuTempPoints.first.x) - 20.0,
-              maxX: (_cpuTempPoints.isEmpty ? 0.0 : _cpuTempPoints.last.x) + 20.0,
+              minX:
+                  (_cpuTempPoints.isEmpty ? 0.0 : _cpuTempPoints.first.x) -
+                  20.0,
+              maxX:
+                  (_cpuTempPoints.isEmpty ? 0.0 : _cpuTempPoints.last.x) + 20.0,
               clipData: const FlClipData.all(),
               gridData: FlGridData(
                 drawVerticalLine: false,
@@ -429,10 +442,12 @@ class _DeviceMetricsSectionState extends ConsumerState<DeviceMetricsSection> {
                       final index = entry.key;
                       final barSpot = entry.value;
 
-                      final metric =
-                          barSpot.barIndex == 0 ? 'CPU Temp' : 'GPU Temp';
-                      final color =
-                          barSpot.barIndex == 0 ? cpuTempColor : gpuTempColor;
+                      final metric = barSpot.barIndex == 0
+                          ? 'CPU Temp'
+                          : 'GPU Temp';
+                      final color = barSpot.barIndex == 0
+                          ? cpuTempColor
+                          : gpuTempColor;
                       final value = barSpot.y;
 
                       return LineTooltipItem(

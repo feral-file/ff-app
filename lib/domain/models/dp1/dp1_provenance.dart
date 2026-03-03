@@ -54,9 +54,9 @@ class DP1Contract {
     this.uri,
     this.metaHash,
   }) : assert(
-          (address != null && tokenId != null) || (seriesId != null),
-          'DP1Contract requires either (address + tokenId) or seriesId.',
-        );
+         (address != null && tokenId != null) || (seriesId != null),
+         'DP1Contract requires either (address + tokenId) or seriesId.',
+       );
 
   //from json method
   factory DP1Contract.fromJson(Map<String, dynamic> json) {
@@ -113,7 +113,8 @@ class DP1Contract {
 enum DP1ProvenanceType {
   onChain,
   seriesRegistry,
-  offChainURI;
+  offChainURI
+  ;
 
   // from String
   static DP1ProvenanceType fromString(String value) {
@@ -146,7 +147,8 @@ enum DP1ProvenanceChain {
   evm,
   tezos,
   bitmark,
-  other;
+  other
+  ;
 
   // from string and to string
   static DP1ProvenanceChain fromString(String value) {
@@ -208,7 +210,8 @@ enum DP1ProvenanceStandard {
   erc721,
   erc1155,
   fa2,
-  other;
+  other
+  ;
 
   // from String
   static DP1ProvenanceStandard fromString(String value) {

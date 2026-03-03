@@ -33,7 +33,6 @@ class SearchTabPage extends ConsumerStatefulWidget {
   ConsumerState<SearchTabPage> createState() => _SearchTabPageState();
 }
 
-
 class _SearchTabPageState extends ConsumerState<SearchTabPage>
     with AutomaticKeepAliveClientMixin {
   final TextEditingController _searchController = TextEditingController();
@@ -58,8 +57,10 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
           setState(() {
             _lastSuccessfulResults = data;
             final available = availableTypesFromResults(data);
-            final nextType =
-                selectInitialType(available: available, current: _filterType);
+            final nextType = selectInitialType(
+              available: available,
+              current: _filterType,
+            );
             if (nextType != null) {
               _filterType = nextType;
             }
@@ -125,27 +126,26 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
       ),
     );
 
-    final resultsWithOverlay =
-        (query.isNotEmpty && resultsAsync.isLoading)
-            ? Stack(
-                children: [
-                  resultsContent,
-                  Positioned.fill(
-                    child: ColoredBox(
-                      color: AppColor.auGreyBackground.withValues(alpha: 0.6),
-                      child: Center(
-                        child: LoadingWidget(
-                          backgroundColor: AppColor.auGreyBackground.withValues(
-                            alpha: 0.8,
-                          ),
-                          text: 'Searching...',
-                        ),
+    final resultsWithOverlay = (query.isNotEmpty && resultsAsync.isLoading)
+        ? Stack(
+            children: [
+              resultsContent,
+              Positioned.fill(
+                child: ColoredBox(
+                  color: AppColor.auGreyBackground.withValues(alpha: 0.6),
+                  child: Center(
+                    child: LoadingWidget(
+                      backgroundColor: AppColor.auGreyBackground.withValues(
+                        alpha: 0.8,
                       ),
+                      text: 'Searching...',
                     ),
                   ),
-                ],
-              )
-            : resultsContent;
+                ),
+              ),
+            ],
+          )
+        : resultsContent;
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
@@ -362,18 +362,17 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
       slivers: [
         SliverList.builder(
           itemCount: channels.length,
-          itemBuilder:
-              (context, index) => ChannelListRow(
-                channelData: ChannelRowData(
-                  channelId: channels[index].id,
-                  channelTitle: channels[index].name,
-                  channelSummary: channels[index].description,
-                  works: const <PlaylistItem>[],
-                ),
-                onItemTap: (item) {
-                  unawaited(context.push('${Routes.works}/${item.id}'));
-                },
-              ),
+          itemBuilder: (context, index) => ChannelListRow(
+            channelData: ChannelRowData(
+              channelId: channels[index].id,
+              channelTitle: channels[index].name,
+              channelSummary: channels[index].description,
+              works: const <PlaylistItem>[],
+            ),
+            onItemTap: (item) {
+              unawaited(context.push('${Routes.works}/${item.id}'));
+            },
+          ),
         ),
         SliverToBoxAdapter(
           child: SizedBox(height: LayoutConstants.space16),
@@ -392,13 +391,12 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
       slivers: [
         SliverList.builder(
           itemCount: playlists.length,
-          itemBuilder:
-              (context, index) => PlaylistRowItem(
-                playlist: playlists[index],
-                onItemTap: (item) {
-                  unawaited(context.push('${Routes.works}/${item.id}'));
-                },
-              ),
+          itemBuilder: (context, index) => PlaylistRowItem(
+            playlist: playlists[index],
+            onItemTap: (item) {
+              unawaited(context.push('${Routes.works}/${item.id}'));
+            },
+          ),
         ),
         SliverToBoxAdapter(
           child: SizedBox(height: LayoutConstants.space16),

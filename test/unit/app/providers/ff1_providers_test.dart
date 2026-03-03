@@ -265,7 +265,7 @@ void main() {
         );
 
         // Keep provider alive during test to prevent auto-dispose during retry
-        final sub = container.listen(provider, (_, __) {});
+        final sub = container.listen(provider, (_, _) {});
         addTearDown(sub.close);
 
         // Use provider with automatic retry

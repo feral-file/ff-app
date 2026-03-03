@@ -352,7 +352,8 @@ class DatabaseConverters {
   static PlaylistEntriesCompanion createPlaylistEntry({
     required String playlistId,
     required String itemId,
-    required int sortKeyUs, int? position,
+    required int sortKeyUs,
+    int? position,
   }) {
     return PlaylistEntriesCompanion.insert(
       playlistId: playlistId,

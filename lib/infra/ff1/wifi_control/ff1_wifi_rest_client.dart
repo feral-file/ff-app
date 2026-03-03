@@ -47,7 +47,7 @@ class FF1WifiRestClient {
     try {
       // Validate configuration
       if (_castApiUrl.isEmpty) {
-        final msg =
+        const msg =
             'FF1_RELAYER_URL not configured. Please set FF1_RELAYER_URL '
             'in .env file. Example: '
             'FF1_RELAYER_URL=https://tv-cast-coordination.autonomy-system.workers.dev';

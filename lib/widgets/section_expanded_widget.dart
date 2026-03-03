@@ -86,16 +86,18 @@ class _SectionExpandedWidgetState extends State<SectionExpandedWidget> {
                     _isExpanded = !_isExpanded;
                   });
                 },
-                child: Container(
+                child: ColoredBox(
                   color: Colors.transparent,
                   child: Padding(
-                    padding: widget.headerPadding ??
+                    padding:
+                        widget.headerPadding ??
                         EdgeInsets.only(top: LayoutConstants.space4),
                     child: Row(
                       children: [
                         Text(
                           widget.header ?? '',
-                          style: widget.headerStyle ??
+                          style:
+                              widget.headerStyle ??
                               AppTypography.body(context).white,
                         ),
                         const Spacer(),

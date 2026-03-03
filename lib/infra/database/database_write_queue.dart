@@ -119,8 +119,9 @@ class DatabaseWriteQueue {
 
     late AppDatabase db;
     try {
-      final connection =
-          await DriftIsolate.fromConnectPort(driftConnectPort).connect();
+      final connection = await DriftIsolate.fromConnectPort(
+        driftConnectPort,
+      ).connect();
       db = AppDatabase.fromConnection(connection);
     } on Object catch (e, st) {
       _log.severe('Failed to connect to Drift server', e, st);
@@ -183,11 +184,10 @@ class DatabaseWriteQueue {
     final rawTokens = cmd['tokens'] as List? ?? const [];
     final normalizedAddress = address.toUpperCase();
 
-    final tokens =
-        rawTokens
-            .cast<Map<Object?, Object?>>()
-            .map((e) => AssetToken.fromRest(Map<String, dynamic>.from(e)))
-            .toList(growable: false);
+    final tokens = rawTokens
+        .cast<Map<Object?, Object?>>()
+        .map((e) => AssetToken.fromRest(Map<String, dynamic>.from(e)))
+        .toList(growable: false);
 
     // Find the address-based playlist.
     final playlists = await db.getAddressPlaylists();
@@ -211,31 +211,28 @@ class DatabaseWriteQueue {
     );
     if (ownedTokens.isEmpty) return;
 
-    final items =
-        ownedTokens
-            .map(
-              (t) => TokenTransformer.assetTokenToPlaylistItem(
-                token: t,
-                ownerAddress: normalizedAddress,
-              ),
-            )
-            .toList(growable: false);
+    final items = ownedTokens
+        .map(
+          (t) => TokenTransformer.assetTokenToPlaylistItem(
+            token: t,
+            ownerAddress: normalizedAddress,
+          ),
+        )
+        .toList(growable: false);
 
-    final entries =
-        items
-            .map(
-              (item) => DatabaseConverters.createPlaylistEntry(
-                playlistId: addressPlaylistId!,
-                itemId: item.id,
-                sortKeyUs: item.sortKeyUs ?? 0,
-              ),
-            )
-            .toList(growable: false);
+    final entries = items
+        .map(
+          (item) => DatabaseConverters.createPlaylistEntry(
+            playlistId: addressPlaylistId!,
+            itemId: item.id,
+            sortKeyUs: item.sortKeyUs ?? 0,
+          ),
+        )
+        .toList(growable: false);
 
-    final itemCompanions =
-        items
-            .map(DatabaseConverters.playlistItemToCompanion)
-            .toList(growable: false);
+    final itemCompanions = items
+        .map(DatabaseConverters.playlistItemToCompanion)
+        .toList(growable: false);
 
     await db.transaction(() async {
       await db.upsertItems(itemCompanions);
@@ -255,38 +252,37 @@ class DatabaseWriteQueue {
     if (rawEnrichments.isEmpty) return;
 
     final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
-    final companions =
-        rawEnrichments
-            .cast<Map<Object?, Object?>>()
-            .map((raw) {
-              final e = Map<String, dynamic>.from(raw);
-              final itemId = e['itemId'] as String;
-              final tokenJson =
-                  Map<String, dynamic>.from(e['tokenJson'] as Map);
-              final token = AssetToken.fromRest(tokenJson);
-              final enriched =
-                  TokenTransformer.assetTokenToPlaylistItem(token: token);
+    final companions = rawEnrichments
+        .cast<Map<Object?, Object?>>()
+        .map((raw) {
+          final e = Map<String, dynamic>.from(raw);
+          final itemId = e['itemId'] as String;
+          final tokenJson = Map<String, dynamic>.from(e['tokenJson'] as Map);
+          final token = AssetToken.fromRest(tokenJson);
+          final enriched = TokenTransformer.assetTokenToPlaylistItem(
+            token: token,
+          );
 
-              return ItemsCompanion(
-                id: Value(itemId),
-                kind: const Value(1), // indexer token
-                title: Value(enriched.title),
-                subtitle: Value(enriched.subtitle),
-                thumbnailUri: Value(enriched.thumbnailUrl),
-                listArtistJson:
-                    enriched.artists != null && enriched.artists!.isNotEmpty
-                        ? Value(
-                            jsonEncode(
-                              enriched.artists!.map((a) => a.toJson()).toList(),
-                            ),
-                          )
-                        : const Value(null),
-                tokenDataJson: Value(jsonEncode(token.toRestJson())),
-                enrichmentStatus: const Value(_enrichedStatus),
-                updatedAtUs: Value(nowUs),
-              );
-            })
-            .toList(growable: false);
+          return ItemsCompanion(
+            id: Value(itemId),
+            kind: const Value(1), // indexer token
+            title: Value(enriched.title),
+            subtitle: Value(enriched.subtitle),
+            thumbnailUri: Value(enriched.thumbnailUrl),
+            listArtistJson:
+                enriched.artists != null && enriched.artists!.isNotEmpty
+                ? Value(
+                    jsonEncode(
+                      enriched.artists!.map((a) => a.toJson()).toList(),
+                    ),
+                  )
+                : const Value(null),
+            tokenDataJson: Value(jsonEncode(token.toRestJson())),
+            enrichmentStatus: const Value(_enrichedStatus),
+            updatedAtUs: Value(nowUs),
+          );
+        })
+        .toList(growable: false);
 
     await db.batch((batch) {
       batch.insertAllOnConflictUpdate(db.items, companions);
@@ -299,10 +295,9 @@ class DatabaseWriteQueue {
     Map<String, Object?> cmd,
     AppDatabase db,
   ) async {
-    final itemIds =
-        (cmd['itemIds'] as List? ?? const [])
-            .map((e) => e.toString())
-            .toList(growable: false);
+    final itemIds = (cmd['itemIds'] as List? ?? const [])
+        .map((e) => e.toString())
+        .toList(growable: false);
     if (itemIds.isEmpty) return;
 
     final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);

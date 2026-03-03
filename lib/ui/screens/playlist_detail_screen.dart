@@ -65,9 +65,7 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
   Widget build(BuildContext context) {
     final detailsAsync = ref.watch(playlistDetailsProvider(widget.playlistId));
 
-    final PlaylistDetailsState? state = detailsAsync.hasValue
-        ? detailsAsync.value
-        : null;
+    final state = detailsAsync.hasValue ? detailsAsync.value : null;
     final hasPlaylist = state?.playlist != null && state?.items != null;
 
     return Scaffold(
@@ -129,7 +127,7 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
 
             // Playlist (domain) uses name; channel for subtitle
             final channelId = playlist.channelId;
-            final AsyncValue<Channel?> channelAsync = channelId == null
+            final channelAsync = channelId == null
                 ? const AsyncValue<Channel?>.data(null)
                 : ref.watch(channelByIdProvider(channelId));
 
@@ -142,7 +140,7 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
                       title: playlist.name,
                       total: state.total,
                     ),
-                    error: (_, __) => PlaylistDetailsHeader(
+                    error: (_, _) => PlaylistDetailsHeader(
                       title: playlist.name,
                       total: state.total,
                     ),

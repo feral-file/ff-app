@@ -7,10 +7,10 @@ class NFTErrorWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: SvgPicture.asset(
-          'assets/images/image_error.svg',
-          width: 148,
-          height: 158,
-        ),
-      );
+    child: SvgPicture.asset(
+      'assets/images/image_error.svg',
+      width: 148,
+      height: 158,
+    ),
+  );
 }

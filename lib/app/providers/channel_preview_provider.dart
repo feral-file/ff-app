@@ -245,7 +245,12 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
 
 /// Provider for channel preview state (family by channelId).
 /// Auto-dispose when no longer watched.
-final NotifierProviderFamily<ChannelPreviewNotifier, ChannelPreviewState, String> channelPreviewProvider = NotifierProvider.autoDispose
+final NotifierProviderFamily<
+  ChannelPreviewNotifier,
+  ChannelPreviewState,
+  String
+>
+channelPreviewProvider = NotifierProvider.autoDispose
     .family<ChannelPreviewNotifier, ChannelPreviewState, String>(
       ChannelPreviewNotifier.new,
     );

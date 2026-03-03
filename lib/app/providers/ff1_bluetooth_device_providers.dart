@@ -3,7 +3,6 @@ import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/misc.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod/src/providers/future_provider.dart';
 

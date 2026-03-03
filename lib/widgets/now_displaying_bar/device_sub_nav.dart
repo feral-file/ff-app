@@ -38,11 +38,13 @@ class DeviceSubNav extends ConsumerWidget {
                       children: [
                         if (index > 0)
                           SizedBox(
-                            width: LayoutConstants.nowPlayingBarBottomDeviceNavGap,
+                            width:
+                                LayoutConstants.nowPlayingBarBottomDeviceNavGap,
                           ),
                         _DeviceNavItem(
                           device: device,
-                          isSelected: selectedDevice?.deviceId == device.deviceId,
+                          isSelected:
+                              selectedDevice?.deviceId == device.deviceId,
                           onTap: () async {
                             if (selectedDevice?.deviceId == device.deviceId) {
                               return;
@@ -62,11 +64,11 @@ class DeviceSubNav extends ConsumerWidget {
             );
           },
           loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
         );
       },
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
     );
   }
 }
@@ -88,12 +90,13 @@ class _DeviceNavItem extends StatelessWidget {
       onTap: onTap,
       child: Text(
         device.name,
-        style: (isSelected
-                ? AppTypography.body(context).white
-                : AppTypography.body(context).grey)
-            .copyWith(
-          fontWeight: FontWeight.w700,
-        ),
+        style:
+            (isSelected
+                    ? AppTypography.body(context).white
+                    : AppTypography.body(context).grey)
+                .copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
       ),
     );
   }

@@ -7,9 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Watches address-based playlists and converts them to [WalletAddress] for UI.
 final addressesProvider = StreamProvider<List<WalletAddress>>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService
-      .watchPlaylists(type: PlaylistType.addressBased)
-      .map((playlists) {
+  return databaseService.watchPlaylists(type: PlaylistType.addressBased).map((
+    playlists,
+  ) {
     return playlists
         .where(
           (playlist) =>

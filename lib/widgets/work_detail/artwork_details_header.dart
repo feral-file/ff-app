@@ -32,9 +32,9 @@ class ArtworkDetailsHeader extends StatelessWidget {
             child: Text(
               subTitle,
               style: AppTypography.body(context).white.copyWith(
-                    fontStyle: FontStyle.italic,
-                    color: color,
-                  ),
+                fontStyle: FontStyle.italic,
+                color: color,
+              ),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
@@ -44,9 +44,9 @@ class ArtworkDetailsHeader extends StatelessWidget {
           child: Text(
             title,
             style: AppTypography.body(context).white.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),

@@ -42,8 +42,7 @@ class ReleaseNotesService {
 
   /// Loads and parses release notes list from pubdoc.
   Future<List<ReleaseNoteEntry>> getReleaseNotes() async {
-    final baseUri = _baseUri ??
-        Uri.tryParse(AppConfig.releaseNotesMarkdownUrl);
+    final baseUri = _baseUri ?? Uri.tryParse(AppConfig.releaseNotesMarkdownUrl);
     if (baseUri == null) {
       _log.warning(
         'Release notes unavailable: '

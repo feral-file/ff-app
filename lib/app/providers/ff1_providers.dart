@@ -51,8 +51,9 @@ final ff1TransportProvider = Provider<FF1BleTransport>((ref) {
 // ============================================================================
 
 /// Current Bluetooth adapter state (on, off, unavailable, etc.)
-final bluetoothAdapterStateProvider =
-    StreamProvider<BluetoothAdapterState>((ref) {
+final bluetoothAdapterStateProvider = StreamProvider<BluetoothAdapterState>((
+  ref,
+) {
   final transport = ref.watch(ff1TransportProvider);
   return transport.adapterStateStream;
 });
@@ -147,8 +148,9 @@ class FF1BleControl {
       blDevice: blDevice,
       command: FF1BleCommand.sendWifiCredentials,
       request: SendWifiCredentialsRequest(ssid: ssid, password: password),
-      timeout:
-          const Duration(seconds: 60), // Increased timeout for WiFi connection
+      timeout: const Duration(
+        seconds: 60,
+      ), // Increased timeout for WiFi connection
     );
 
     if (response.isError) {
@@ -354,8 +356,8 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
 /// FF1 scan state provider
 final NotifierProvider<FF1ScanNotifier, FF1ScanState> ff1ScanProvider =
     NotifierProvider.autoDispose<FF1ScanNotifier, FF1ScanState>(
-  FF1ScanNotifier.new,
-);
+      FF1ScanNotifier.new,
+    );
 
 /// Parameters for BLE connection
 class FF1BleConnectParams {
@@ -392,18 +394,18 @@ class FF1BleConnectParams {
 /// ```
 final FutureProviderFamily<void, FF1BleConnectParams> ff1BleConnectProvider =
     FutureProvider.autoDispose.family<void, FF1BleConnectParams>(
-  retry: _bleRetry,
-  (ref, params) async {
-    final control = ref.watch(ff1ControlProvider);
+      retry: _bleRetry,
+      (ref, params) async {
+        final control = ref.watch(ff1ControlProvider);
 
-    // Riverpod handles retry, so we set maxRetries to 0 in transport
-    await control.connect(
-      blDevice: params.blDevice,
-      timeout: params.timeout,
-      maxRetries: 0, // Riverpod handles retry
+        // Riverpod handles retry, so we set maxRetries to 0 in transport
+        await control.connect(
+          blDevice: params.blDevice,
+          timeout: params.timeout,
+          maxRetries: 0, // Riverpod handles retry
+        );
+      },
     );
-  },
-);
 
 /// Parameters for BLE command execution
 class FF1BleCommandParams<T extends FF1BleRequest> {
@@ -448,17 +450,18 @@ class FF1BleCommandParams<T extends FF1BleRequest> {
 ///   )).future,
 /// );
 /// ```
-final FutureProviderFamily<FF1BleResponse, FF1BleCommandParams<FF1BleRequest>> ff1BleSendCommandProvider =
-    FutureProvider.autoDispose.family<FF1BleResponse, FF1BleCommandParams>(
-  retry: _bleRetry,
-  (ref, params) async {
-    final transport = ref.watch(ff1TransportProvider);
+final FutureProviderFamily<FF1BleResponse, FF1BleCommandParams<FF1BleRequest>>
+ff1BleSendCommandProvider = FutureProvider.autoDispose
+    .family<FF1BleResponse, FF1BleCommandParams>(
+      retry: _bleRetry,
+      (ref, params) async {
+        final transport = ref.watch(ff1TransportProvider);
 
-    return transport.sendCommand(
-      blDevice: params.blDevice,
-      command: params.command,
-      request: params.request,
-      timeout: params.timeout,
+        return transport.sendCommand(
+          blDevice: params.blDevice,
+          command: params.command,
+          request: params.request,
+          timeout: params.timeout,
+        );
+      },
     );
-  },
-);

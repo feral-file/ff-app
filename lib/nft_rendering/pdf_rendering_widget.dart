@@ -12,10 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 class PDFNFTRenderingWidget extends NFTRenderingWidget {
-  final String previewURL;
-  final Widget errorWidget;
-  final Widget loadingWidget;
-  final Widget noPreviewUrlWidget; // Added parameter for noPreviewUrlWidget
+  // Added parameter for noPreviewUrlWidget
 
   const PDFNFTRenderingWidget({
     required this.previewURL,
@@ -24,6 +21,10 @@ class PDFNFTRenderingWidget extends NFTRenderingWidget {
     this.noPreviewUrlWidget = const NoPreviewUrlWidget(),
     super.key,
   });
+  final String previewURL;
+  final Widget errorWidget;
+  final Widget loadingWidget;
+  final Widget noPreviewUrlWidget;
 
   @override
   State<PDFNFTRenderingWidget> createState() => _PDFNFTRenderingWidgetState();
@@ -39,81 +40,79 @@ class _PDFNFTRenderingWidgetState extends State<PDFNFTRenderingWidget> {
   @override
   void initState() {
     super.initState();
-    // ignore: discarded_futures
     _pdfFileFuture = _createFileOfPdfUrl();
   }
 
   @override
   Widget build(BuildContext context) => widget.previewURL.isEmpty
-      ? widget.noPreviewUrlWidget // Show error widget if URL is empty
+      ? widget
+            .noPreviewUrlWidget // Show error widget if URL is empty
       : _widgetBuilder();
 
   Widget _widgetBuilder() => Stack(
-        children: [
-          FutureBuilder<File>(
-            future: _pdfFileFuture,
-            builder: (context, snapshot) {
-              if (snapshot.hasData) {
-                return _buildPDFView(snapshot.data!);
-              } else {
-                return const SizedBox();
-              }
-            },
-          ),
-          _buildErrorWidget(),
-          _buildReadyWidget(),
-        ],
-      );
+    children: [
+      FutureBuilder<File>(
+        future: _pdfFileFuture,
+        builder: (context, snapshot) {
+          if (snapshot.hasData) {
+            return _buildPDFView(snapshot.data!);
+          } else {
+            return const SizedBox();
+          }
+        },
+      ),
+      _buildErrorWidget(),
+      _buildReadyWidget(),
+    ],
+  );
 
   Widget _buildPDFView(File file) => PDFView(
-        key: Key(widget.previewURL),
-        filePath: file.path,
-        gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
-          Factory<VerticalDragGestureRecognizer>(
-            () => VerticalDragGestureRecognizer(),
-          ),
-        },
-        pageFling: false,
-        onRender: (_) {
-          _isReady.value = true;
-        },
-        onError: (error) {
-          _error.value = error;
-        },
-        onPageError: (page, error) {
-          _error.value = error;
-        },
-        onViewCreated: (PDFViewController pdfViewController) {
-          _controller.complete(pdfViewController);
-        },
-        onLinkHandler: (String? uri) {},
-        onPageChanged: (int? page, int? total) {},
-      );
+    key: Key(widget.previewURL),
+    filePath: file.path,
+    gestureRecognizers: const <Factory<OneSequenceGestureRecognizer>>{
+      Factory<VerticalDragGestureRecognizer>(
+        VerticalDragGestureRecognizer.new,
+      ),
+    },
+    pageFling: false,
+    onRender: (_) {
+      _isReady.value = true;
+    },
+    onError: (error) {
+      _error.value = error;
+    },
+    onPageError: (page, error) {
+      _error.value = error;
+    },
+    onViewCreated: _controller.complete,
+    onLinkHandler: (String? uri) {},
+    onPageChanged: (int? page, int? total) {},
+  );
 
   Widget _buildErrorWidget() => ValueListenableBuilder<dynamic>(
-        valueListenable: _error,
-        builder: (context, error, child) => Visibility(
-          visible: error != null,
-          child: Container(
-            color: Colors.black,
-            child: widget.errorWidget,
-          ),
-        ),
-      );
+    valueListenable: _error,
+    builder: (context, error, child) => Visibility(
+      visible: error != null,
+      child: ColoredBox(
+        color: Colors.black,
+        child: widget.errorWidget,
+      ),
+    ),
+  );
 
   Widget _buildReadyWidget() => ValueListenableBuilder<bool>(
-        valueListenable: _isReady,
-        builder: (context, isReady, child) => Visibility(
-          visible: !isReady,
-          child: Container(
-            color: Colors.black,
-            child: widget.loadingWidget,
-          ),
-        ),
-      );
+    valueListenable: _isReady,
+    builder: (context, isReady, child) => Visibility(
+      visible: !isReady,
+      child: ColoredBox(
+        color: Colors.black,
+        child: widget.loadingWidget,
+      ),
+    ),
+  );
 
   Future<File> _createFileOfPdfUrl() async {
-    final Completer<File> completer = Completer<File>();
+    final completer = Completer<File>();
     try {
       final url = widget.previewURL;
       final filename = url.substring(url.lastIndexOf('/') + 1);

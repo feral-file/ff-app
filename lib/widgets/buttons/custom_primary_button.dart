@@ -62,8 +62,9 @@ class CustomPrimaryButton extends StatelessWidget {
     return SizedBox(
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor:
-              enabled ? color ?? AppColor.feralFileLightBlue : disabledColor,
+          backgroundColor: enabled
+              ? color ?? AppColor.feralFileLightBlue
+              : disabledColor,
           shadowColor: Colors.transparent,
           padding: padding,
           disabledForegroundColor: disabledColor,

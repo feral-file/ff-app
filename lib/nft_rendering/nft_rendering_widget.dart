@@ -1,5 +1,3 @@
-// ignore_for_file: discarded_futures
-
 import 'package:flutter/material.dart';
 
 /// Get nft rendering widget by type
@@ -105,7 +103,7 @@ const keysCode = {
   'openbracket': 219,
   'backslash': 220,
   'closebracket': 221,
-  'singlequote': 222
+  'singlequote': 222,
 };
 
 class RenderingType {
@@ -172,9 +170,9 @@ class NoPreviewUrlWidget extends StatelessWidget {
 class RectangleClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
-    double radius = 14;
+    const double radius = 14;
 
-    Path path = Path()
+    final path = Path()
       ..lineTo(0, 0)
       ..lineTo(size.width - radius, 0)
       ..lineTo(size.width, radius)

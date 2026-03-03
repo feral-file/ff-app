@@ -54,7 +54,9 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
     // Start scanning for networks
     Future.microtask(() {
       unawaited(
-        ref.read(connectWiFiProvider.notifier).connectAndScanNetworks(
+        ref
+            .read(connectWiFiProvider.notifier)
+            .connectAndScanNetworks(
               device: widget.payload.device,
             ),
       );
@@ -94,7 +96,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
     final connectionState = ref.watch(connectWiFiProvider);
     final isScanning =
         connectionState.status == WiFiConnectionStatus.connecting ||
-            connectionState.status == WiFiConnectionStatus.scanningNetworks;
+        connectionState.status == WiFiConnectionStatus.scanningNetworks;
     final hasError = connectionState.status == WiFiConnectionStatus.error;
     final networks = connectionState.scannedNetworks ?? [];
 
@@ -144,7 +146,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                             Text(
                               hasError
                                   ? connectionState.message ??
-                                      'There might be an issue with the WiFi module on your FF1. Please try restarting your FF1 and scan again.'
+                                        'There might be an issue with the WiFi module on your FF1. Please try restarting your FF1 and scan again.'
                                   : 'Make sure WiFi networks are available nearby, then try again.',
                               style: AppTypography.body(context).white,
                             ),

@@ -32,33 +32,34 @@ Page<void> buildCupertinoTransitionPage(
     child: child,
     transitionDuration: _kCupertinoTransitionDuration,
     reverseTransitionDuration: _kCupertinoTransitionDuration,
-    transitionsBuilder: (
-      BuildContext context,
-      Animation<double> animation,
-      Animation<double> secondaryAnimation,
-      Widget child,
-    ) {
-      final TextDirection textDirection = Directionality.of(context);
-      final Animation<Offset> primaryPosition = CurvedAnimation(
-        parent: animation,
-        curve: Curves.fastEaseInToSlowEaseOut,
-        reverseCurve: Curves.fastEaseInToSlowEaseOut.flipped,
-      ).drive(_kRightMiddleTween);
-      final Animation<Offset> secondaryPosition = CurvedAnimation(
-        parent: secondaryAnimation,
-        curve: Curves.linearToEaseOut,
-        reverseCurve: Curves.easeInToLinear,
-      ).drive(_kMiddleLeftTween);
-      return SlideTransition(
-        position: secondaryPosition,
-        textDirection: textDirection,
-        transformHitTests: false,
-        child: SlideTransition(
-          position: primaryPosition,
-          textDirection: textDirection,
-          child: child,
-        ),
-      );
-    },
+    transitionsBuilder:
+        (
+          BuildContext context,
+          Animation<double> animation,
+          Animation<double> secondaryAnimation,
+          Widget child,
+        ) {
+          final textDirection = Directionality.of(context);
+          final primaryPosition = CurvedAnimation(
+            parent: animation,
+            curve: Curves.fastEaseInToSlowEaseOut,
+            reverseCurve: Curves.fastEaseInToSlowEaseOut.flipped,
+          ).drive(_kRightMiddleTween);
+          final secondaryPosition = CurvedAnimation(
+            parent: secondaryAnimation,
+            curve: Curves.linearToEaseOut,
+            reverseCurve: Curves.easeInToLinear,
+          ).drive(_kMiddleLeftTween);
+          return SlideTransition(
+            position: secondaryPosition,
+            textDirection: textDirection,
+            transformHitTests: false,
+            child: SlideTransition(
+              position: primaryPosition,
+              textDirection: textDirection,
+              child: child,
+            ),
+          );
+        },
   );
 }

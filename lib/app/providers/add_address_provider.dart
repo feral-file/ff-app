@@ -14,7 +14,8 @@ enum AddAddressExceptionType {
   invalidAddressOrDomain,
 
   /// The resolved address is already added (including pending addresses).
-  alreadyAdded;
+  alreadyAdded
+  ;
 
   /// A user-facing message suitable for inline UI.
   String get message {

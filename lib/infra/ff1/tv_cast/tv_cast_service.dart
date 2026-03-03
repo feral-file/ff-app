@@ -1,10 +1,9 @@
 import 'dart:async';
 
-import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
+import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
 import 'package:logging/logging.dart';
-import 'package:dio/dio.dart';
 
 abstract class TvCastService {
   Future<CheckCastingStatusReply> status(
@@ -297,17 +296,19 @@ class TvCastServiceImpl extends BaseTvCastService {
         topicId: _device.topicId ?? '',
         body: body,
       );
-      final result = await resultFuture.timeout(
-        timeout ?? const Duration(seconds: 10),
-        onTimeout: () {
-          throw TimeoutException('Request timed out');
-        },
-      ).catchError((Object error) {
-        if (error is TimeoutException) {
-          throw TimeoutException('Request timed out');
-        }
-        throw error;
-      });
+      final result = await resultFuture
+          .timeout(
+            timeout ?? const Duration(seconds: 10),
+            onTimeout: () {
+              throw TimeoutException('Request timed out');
+            },
+          )
+          .catchError((Object error) {
+            if (error is TimeoutException) {
+              throw TimeoutException('Request timed out');
+            }
+            throw error;
+          });
 
       final resultMap = result is Map<String, dynamic>
           ? result
@@ -318,8 +319,8 @@ class TvCastServiceImpl extends BaseTvCastService {
       }
 
       var message = resultMap['message'];
-      while (
-          message is Map<String, dynamic> && message.containsKey('message')) {
+      while (message is Map<String, dynamic> &&
+          message.containsKey('message')) {
         message = message['message'];
       }
 

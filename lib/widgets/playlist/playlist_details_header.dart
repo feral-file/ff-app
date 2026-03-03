@@ -119,4 +119,3 @@ class PlaylistDetailsHeader extends StatelessWidget {
     );
   }
 }
-

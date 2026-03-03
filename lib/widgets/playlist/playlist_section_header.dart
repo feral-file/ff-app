@@ -17,13 +17,13 @@ class PlaylistSectionHeader extends StatelessWidget {
 
   /// Section name to display.
   final String sectionName;
-  
+
   /// Optional icon widget to show before section name.
   final Widget? sectionIcon;
-  
+
   /// Callback when "View All" is tapped.
   final VoidCallback? onViewAllTap;
-  
+
   /// Whether to show the "View All" button.
   final bool hasMore;
 
@@ -49,7 +49,7 @@ class PlaylistSectionHeader extends StatelessWidget {
                       AppColor.white,
                       BlendMode.srcIn,
                     ),
-                ),
+                  ),
               SizedBox(
                 width: LayoutConstants.space4,
               ),

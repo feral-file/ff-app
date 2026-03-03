@@ -22,12 +22,12 @@ class ChannelDetails {
 /// Watches the database so the UI updates when channel or playlists change.
 final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
     StreamProvider.family<ChannelDetails, String>((ref, channelId) {
-  final databaseService = ref.read(databaseServiceProvider);
+      final databaseService = ref.read(databaseServiceProvider);
 
-  return Rx.combineLatest2<Channel?, List<Playlist>, ChannelDetails>(
-    databaseService.watchChannelById(channelId),
-    databaseService.watchPlaylists(channelId: channelId),
-    (channel, playlists) =>
-        ChannelDetails(channel: channel, playlists: playlists),
-  );
-});
+      return Rx.combineLatest2<Channel?, List<Playlist>, ChannelDetails>(
+        databaseService.watchChannelById(channelId),
+        databaseService.watchPlaylists(channelId: channelId),
+        (channel, playlists) =>
+            ChannelDetails(channel: channel, playlists: playlists),
+      );
+    });

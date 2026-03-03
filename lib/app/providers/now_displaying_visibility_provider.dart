@@ -26,6 +26,7 @@ class NowDisplayingVisibilityState {
   final bool nowDisplayingVisibility;
   final bool bottomSheetVisibility;
   final bool keyboardVisibility;
+
   /// Whether there is at least one paired FF1 device (active or not)
   final bool hasFF1;
 

@@ -91,9 +91,8 @@ class _DP1CarouselState extends State<DP1Carousel> {
         shrinkWrap: true,
         slivers: [
           SliverPadding(
-            padding: EdgeInsets.symmetric(
+            padding: const EdgeInsets.symmetric(
               horizontal: LayoutConstants.dp1CarouselContentPaddingHorizontal,
-              vertical: LayoutConstants.dp1CarouselContentPaddingVertical,
             ),
             sliver: SliverList.builder(
               itemCount: widget.items.length,
