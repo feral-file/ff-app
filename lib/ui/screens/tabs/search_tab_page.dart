@@ -13,7 +13,7 @@ import 'package:app/ui/screens/tabs/search/search_filtering.dart';
 import 'package:app/ui/screens/tabs/search/widgets/filter_bar.dart';
 import 'package:app/ui/screens/tabs/search/widgets/search_bar.dart'
     as search_widgets;
-import 'package:app/ui/ui_helper.dart' as ui_helper;
+import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -301,7 +301,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
             SizedBox(height: LayoutConstants.space6),
             PrimaryButton(
               onTap: () {
-                unawaited(ui_helper.UIHelper.showCustomerSupport(context));
+                unawaited(UIHelper.showCustomerSupport(context));
               },
               text: 'Help',
             ),
@@ -417,7 +417,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
           padding: EdgeInsets.symmetric(
             horizontal: LayoutConstants.pageHorizontalDefault,
           ),
-          sliver: ui_helper.UIHelper.worksSliverGrid(
+          sliver: UIHelper.worksSliverGrid(
             works: works,
             onItemTap: (item) {
               unawaited(context.push('${Routes.works}/${item.id}'));

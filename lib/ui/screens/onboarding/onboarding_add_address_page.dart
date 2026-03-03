@@ -9,6 +9,7 @@ import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/ui/screens/add_address_screen.dart';
+import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/onboarding/onboarding_shell.dart';
@@ -130,11 +131,12 @@ class OnboardingAddAddressPage extends ConsumerWidget {
     );
 
     if (payload.deeplink != null && payload.deeplink!.isNotEmpty) {
-      // injector<ConfigurationService>().setDoneOnboarding(true);
-      await context.push(Routes.handleBluetoothDeviceScanDeeplinkPage);
-      if (context.mounted) {
-        await context.push(Routes.scanWifiNetworks);
-      }
+      await context.push(
+        Routes.connectFF1Page,
+        extra: ConnectFF1PagePayload(
+          deeplink: payload.deeplink,
+        ),
+      );
     } else {
       unawaited(context.push(Routes.onboardingSetupFf1Page));
     }

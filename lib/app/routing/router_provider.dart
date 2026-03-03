@@ -22,6 +22,7 @@ import 'package:app/ui/screens/onboarding/setup_ff1_page.dart';
 import 'package:app/ui/screens/playlist_detail_screen.dart';
 import 'package:app/ui/screens/release_note_detail_screen.dart';
 import 'package:app/ui/screens/release_notes_screen.dart';
+import 'package:app/ui/screens/scan_qr_page.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
 import 'package:app/ui/screens/send_wifi_credentials_screen.dart';
 import 'package:app/ui/screens/settings/document_viewer_page.dart';
@@ -110,6 +111,22 @@ routerProvider = Provider.family<GoRouter, String>((
           state,
           const FF1DevicePickerPage(),
         ),
+      ),
+
+      // Global QR scan route.
+      GoRoute(
+        path: Routes.scanQrPage,
+        name: RouteNames.scanQrPage,
+        pageBuilder: (context, state) {
+          final payload = state.extra is ScanQrPagePayload
+              ? state.extra! as ScanQrPagePayload
+              : const ScanQrPagePayload();
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            ScanQrPage(payload: payload),
+          );
+        },
       ),
 
       // Add address input page

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/domain/extensions/extensions.dart';
+import 'package:app/domain/extensions/string_ext.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -113,19 +113,18 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         }
 
         _log.info(
-          '[ConnectFF1Notifier] Device ${ff1DeviceInfo.name} has empty remoteID, scan and connect',
+          '[ConnectFF1Notifier] Device ${ff1DeviceInfo.name} has empty '
+          'remoteID, scan and connect',
         );
-        final foundDevice = await control.scanForName(name: ff1DeviceInfo.name);
+        final foundDevice = await control.scanForName(
+          name: ff1DeviceInfo.name,
+        );
         if (foundDevice != null) {
-          await control.connect(
-            blDevice: foundDevice,
-          );
           blDevice = foundDevice;
         }
-      } else {
-        await control.connect(blDevice: blDevice);
       }
 
+      await control.connect(blDevice: blDevice);
       await _handlePostConnect(ff1DeviceInfo, blDevice);
     } on FF1ConnectionCancelledError catch (_) {
       _log.info('[ConnectFF1Notifier] Connection cancelled by user');

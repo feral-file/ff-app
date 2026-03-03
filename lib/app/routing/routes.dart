@@ -19,9 +19,8 @@ abstract class Routes {
   /// FF1 device picker page route path.
   static const ff1DevicePickerPage = '/ff1-device-picker';
 
-  /// Handle Bluetooth device scan deeplink screen route path.
-  static const handleBluetoothDeviceScanDeeplinkPage =
-      '/handle-bluetooth-device-scan-deeplink';
+  /// Global QR scan page route path.
+  static const scanQrPage = '/scan-qr';
 
   /// Connect FF1 page route path.
   static const connectFF1Page = '/connect-ff1';
@@ -107,9 +106,8 @@ abstract class RouteNames {
   /// FF1 device picker page route name.
   static const ff1DevicePicker = 'ff1-device-picker';
 
-  /// Handle Bluetooth device scan deeplink screen route name.
-  static const handleBluetoothDeviceScanDeeplink =
-      'handle-bluetooth-device-scan-deeplink';
+  /// Global QR scan page route name.
+  static const scanQrPage = 'scan-qr';
 
   /// Connect FF1 page route name.
   static const connectFF1 = 'connect-ff1';

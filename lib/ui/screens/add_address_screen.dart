@@ -9,6 +9,7 @@ import 'dart:async';
 
 import 'package:app/app/providers/add_address_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
+import 'package:app/app/providers/scan_qr_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -16,6 +17,7 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/add_alias_screen.dart';
+import 'package:app/ui/screens/scan_qr_page.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
 import 'package:flutter/foundation.dart';
@@ -87,10 +89,20 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
   }
 
   /// Handle QR scan
-  void _handleQRScan() {
-    // TODO(feral-file): Implement QR scan navigation.
-    // For now, this is a placeholder
-    _log.info('QR scan not yet implemented');
+  Future<void> _handleQRScan() async {
+    final result = await context.push<String>(
+      Routes.scanQrPage,
+      extra: const ScanQrPagePayload(
+        mode: ScanQrMode.address,
+      ),
+    );
+    if (!mounted || result == null || result.isEmpty) {
+      return;
+    }
+
+    _inputController.text = result;
+    _handleVerifyAddress();
+    _log.info('Address scanned and submitted');
   }
 
   @override

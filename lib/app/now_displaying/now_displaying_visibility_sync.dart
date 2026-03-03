@@ -14,7 +14,6 @@ const _routesThatHideNowDisplayingBar = <String>[
   Routes.onboardingAddAddressPage,
   Routes.onboardingSetupFf1Page,
   Routes.ff1DevicePickerPage,
-  Routes.handleBluetoothDeviceScanDeeplinkPage,
   Routes.connectFF1Page,
   Routes.addAddressPage,
   Routes.addAliasPage,
@@ -27,6 +26,7 @@ const _routesThatHideNowDisplayingBar = <String>[
   Routes.settings,
   Routes.settingsEula,
   Routes.settingsPrivacy,
+  Routes.scanQrPage,
 ];
 
 /// Syncs scroll + keyboard visibility into [nowDisplayingVisibilityProvider].

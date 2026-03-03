@@ -157,15 +157,18 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
 
   Future<void> _handleQRBasedSetup(String deeplink) async {
     final hasDoneOnboarding = await ref.read(hasDoneOnboardingProvider.future);
+    if (!mounted) {
+      return;
+    }
+
     if (hasDoneOnboarding) {
-      // unawaited(context.push(
-      //     Routes.handleBluetoothDeviceScanDeeplink,
-      //     extra: HandleBluetoothDeviceScanDeeplinkScreenPayload(
-      //         deeplink: deeplink)));
+      await context.push(
+        Routes.connectFF1Page,
+        extra: ConnectFF1PagePayload(
+          deeplink: deeplink,
+        ),
+      );
     } else {
-      if (!mounted) {
-        return;
-      }
       await context.push(
         Routes.onboardingIntroducePage,
         extra: IntroducePagePayload(
@@ -173,6 +176,7 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
         ),
       );
     }
+
   }
 
   Future<void> _handleSelectedDeviceSetup() async {

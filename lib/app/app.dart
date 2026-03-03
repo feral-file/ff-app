@@ -11,7 +11,9 @@ import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
+import 'package:app/app/routing/deeplink_handler.dart';
 import 'package:app/app/routing/router_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -22,10 +24,13 @@ import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/theme/app_theme.dart';
+import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
+import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/ui/widgets/force_update_overlay.dart';
 import 'package:app/widgets/overlays/app_global_overlay_layer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 
 /// Root application widget.
@@ -53,6 +58,7 @@ class App extends ConsumerWidget {
       theme: AppTheme.lightTheme(),
       builder: (context, child) {
         return _AppStartupBootstrap(
+          router: router,
           child: Stack(
             children: [
               NowDisplayingAppShell(
@@ -71,9 +77,11 @@ class App extends ConsumerWidget {
 
 class _AppStartupBootstrap extends ConsumerStatefulWidget {
   const _AppStartupBootstrap({
+    required this.router,
     required this.child,
   });
 
+  final GoRouter router;
   final Widget child;
 
   @override
@@ -85,6 +93,8 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     with WidgetsBindingObserver {
   bool _started = false;
   bool _isResumeSeedSyncInProgress = false;
+  ProviderSubscription<AsyncValue<DeeplinkNavigationAction>>?
+  _deeplinkActionsSubscription;
 
   static final _log = Logger('AppStartupBootstrap');
 
@@ -97,23 +107,44 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
         return;
       }
       _started = true;
-
+      _startDeeplinkHandling();
       unawaited(_bootstrapAtAppStart());
     });
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
+  void _startDeeplinkHandling() {
+    _deeplinkActionsSubscription ??= ref
+        .listenManual<AsyncValue<DeeplinkNavigationAction>>(
+          deeplinkActionsProvider,
+          (previous, next) {
+            next.whenData(_handleDeeplinkNavigation);
+          },
+        );
+    unawaited(
+      ref.read(deeplinkHandlerProvider).start(),
+    );
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed || !_started) {
-      return;
+  void _handleDeeplinkNavigation(DeeplinkNavigationAction action) {
+    if (action.type == DeeplinkType.deviceConnect) {
+      if (action.source == DeeplinkSource.scan) {
+        unawaited(
+          widget.router.push(
+            Routes.connectFF1Page,
+            extra: ConnectFF1PagePayload(
+              deeplink: action.link,
+            ),
+          ),
+        );
+      } else {
+        unawaited(
+          widget.router.push(
+            Routes.startSetupFf1,
+            extra: StartSetupFf1PagePayload(deeplink: action.link),
+          ),
+        );
+      }
     }
-    unawaited(_syncSeedDatabaseOnResume());
   }
 
   Future<void> _bootstrapAtAppStart() async {
@@ -411,6 +442,12 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     }
     return '${address.substring(0, 6)}...'
         '${address.substring(address.length - 4)}';
+  }
+
+  @override
+  void dispose() {
+    _deeplinkActionsSubscription?.close();
+    super.dispose();
   }
 
   @override
