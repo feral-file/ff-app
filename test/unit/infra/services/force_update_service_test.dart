@@ -101,6 +101,8 @@ class _FakePackageInfo implements PackageInfo {
   _FakePackageInfo({
     required this.version,
     required this.buildNumber,
+    this.appName = 'app',
+    this.packageName = 'com.feralfile.app',
   });
 
   @override
@@ -129,9 +131,9 @@ class _FakePackageInfo implements PackageInfo {
 
   @override
   Map<String, dynamic> get data => {
-        'appName': appName,
-        'packageName': packageName,
-        'version': version,
-        'buildNumber': buildNumber,
-      };
+    'appName': appName,
+    'packageName': packageName,
+    'version': version,
+    'buildNumber': buildNumber,
+  };
 }
