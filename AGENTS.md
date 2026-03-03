@@ -32,12 +32,12 @@ For any feature/refactor touching behavior:
 3. Write integration tests next, with `.env` provisioned, and define expected integration outputs before implementation.
 4. Run tests and ensure they all pass.
 5. Implement/compose app flow that uses the tested functions.
-6. **Run post-implementation checks** — see `.cursor/rules/35-testing-tdd.mdc` §4.
+6. **Run post-implementation checks**: `scripts/agent-helpers/post-implementation-checks [--dir DIR] [--all] [git-ref]`. Review the report (Auto-Fixed, Lint Issues, Test Failures), fix every reported issue, re-run the script. Repeat until all sections show "None". Then run `flutter build` to verify.
 
 No exception path for skipping the above sequence.
 
 ## 4) Definition of done
 A task is complete only when:
-1. Post-implementation script clean and build succeeds (`.cursor/rules/35-testing-tdd.mdc` §4).
+1. Post-implementation checks: run the script, fix all lint issues and test failures, re-run until clean; then `flutter build` succeeds.
 2. Architecture/layering and DP-1 terminology constraints remain intact.
 3. Riverpod remains the flow driver; side effects stay out of widgets.
