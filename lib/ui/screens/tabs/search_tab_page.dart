@@ -7,7 +7,6 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/domain/utils/ui_helper.dart' as domain_ui;
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/tabs/search/search_filter_models.dart';
 import 'package:app/ui/screens/tabs/search/search_filtering.dart';
@@ -302,7 +301,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
             SizedBox(height: LayoutConstants.space6),
             PrimaryButton(
               onTap: () {
-                unawaited(domain_ui.UIHelper.showCustomerSupport(context));
+                unawaited(ui_helper.UIHelper.showCustomerSupport(context));
               },
               text: 'Help',
             ),

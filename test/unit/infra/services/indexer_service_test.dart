@@ -82,7 +82,8 @@ void main() {
   });
 
   test(
-    'IndexerService.fetchTokensByAddresses uses legacy getTokens vars mapping',
+    'IndexerService.fetchTokensByAddresses uses getTokens vars '
+    'mapping contract',
     () async {
       final client = FakeIndexerClient()
         ..tokensPayload = <String, dynamic>{
@@ -152,7 +153,8 @@ void main() {
   );
 
   test(
-    'IndexerService.getManualTokens(tokenCids) maps token_cids + limit + offset',
+    'IndexerService.getManualTokens(tokenCids) maps token_cids + '
+    'limit + offset',
     () async {
       final client = FakeIndexerClient()
         ..tokensPayload = <String, dynamic>{
@@ -317,20 +319,24 @@ void main() {
   );
 
   test(
-    'IndexerService.getManualTokens(tokenCids) returns empty on GraphQL failure',
+    'IndexerService.getManualTokens(tokenCids) returns empty on '
+    'GraphQL failure',
     () async {
       final client = FakeIndexerClient()
         ..tokensPayloadBuilder = (_) => throw Exception('GraphQL 500');
 
       final service = IndexerService(client: client);
-      final tokens = await service.getManualTokens(tokenCids: const ['cid1', 'cid2']);
+      final tokens = await service.getManualTokens(
+        tokenCids: const ['cid1', 'cid2'],
+      );
 
       expect(tokens, isEmpty);
     },
   );
 
   test(
-    'IndexerService.getManualTokens(tokenCids) skips failed CID batch and continues',
+    'IndexerService.getManualTokens(tokenCids) skips failed CID batch '
+    'and continues',
     () async {
       final client = FakeIndexerClient()
         ..tokensPayloadBuilder = (vars) {
@@ -369,7 +375,8 @@ void main() {
   );
 
   test(
-    'IndexerService.getManualTokens concatenates ids then cids and dedupes by cid',
+    'IndexerService.getManualTokens concatenates ids then cids and '
+    'dedupes by cid',
     () async {
       final client = FakeIndexerClient()
         ..tokensPayloadBuilder = (vars) {

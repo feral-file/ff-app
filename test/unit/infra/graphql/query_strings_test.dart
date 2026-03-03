@@ -7,7 +7,7 @@ import 'package:app/infra/graphql/queries/workflow_queries.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('GraphQL query strings match the legacy repo (auditable contract)', () {
+  test('GraphQL query strings match the current auditable contract', () {
     const expectedGetTokens = r'''
   query getTokens(
     $owners: [String!]
