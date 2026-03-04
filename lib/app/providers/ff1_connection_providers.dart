@@ -32,28 +32,3 @@ final disconnectedFF1DevicesProvider = Provider<AsyncValue<List<FF1Device>>>(
     );
   },
 );
-
-// ============================================================================
-// Device Management Operations
-// ============================================================================
-
-/// Forget (remove) a connected device
-final FutureProviderFamily<void, String> forgetFF1DeviceProvider =
-    FutureProvider.family<void, String>((
-      ref,
-      deviceId,
-    ) async {
-      final deviceService = ref.read(ff1BluetoothDeviceServiceProvider);
-      await deviceService.removeDevice(deviceId);
-    });
-
-/// Disconnect device (remove topicId but keep device in storage)
-final FutureProviderFamily<void, String> disconnectFF1DeviceProvider =
-    FutureProvider.family<void, String>((
-      ref,
-      deviceId,
-    ) async {
-      final deviceService = ref.read(ff1BluetoothDeviceServiceProvider);
-      await deviceService.updateTopicId(deviceId, '');
-      await deviceService.updateConnectionState(deviceId, 0);
-    });

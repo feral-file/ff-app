@@ -40,7 +40,7 @@ void main() {
         },
       ];
 
-      // Extract CIDs the CORRECT way (as fixed in dp1_feed_service.dart)
+      // Extract CIDs the correct way from DP1 items.
       final correctCids = dp1Items
           .map((item) => item['cid'])
           .whereType<String>()

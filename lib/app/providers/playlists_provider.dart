@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:app/app/providers/database_error_utils.dart';
-import 'package:app/app/providers/mutations.dart';
-import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/foundation.dart';
@@ -294,28 +292,10 @@ playlistsProvider =
       PlaylistsNotifier.new,
     );
 
-/// Mutation for loading playlists (generic; use with specific type in UI).
-final loadPlaylistsMutationProvider =
-    NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-      MutationNotifier.new,
-    );
-
-/// Mutation for refreshing playlists.
-final refreshPlaylistsMutationProvider =
-    NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-      MutationNotifier.new,
-    );
-
 bool _isOperationCancelled(Object error) {
   return error.runtimeType.toString() == 'CancellationException' ||
       error.toString().contains('Operation was cancelled');
 }
-
-/// Mutation for loading more playlists.
-final loadMorePlaylistsMutationProvider =
-    NotifierProvider<MutationNotifier<void>, MutationState<void>>(
-      MutationNotifier.new,
-    );
 
 /// Provider for playlists in a specific channel.
 final FutureProviderFamily<List<Playlist>, String> playlistsByChannelProvider =
@@ -347,20 +327,3 @@ final FutureProviderFamily<Playlist?, String> playlistByIdProvider =
         rethrow;
       }
     });
-
-/// Watch DP-1 channel publisher ids keyed by channel id.
-final dp1ChannelPublisherByIdProvider = StreamProvider<Map<String, int>>((
-  ref,
-) {
-  final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService.watchChannels(type: ChannelType.dp1).map((channels) {
-    final map = <String, int>{};
-    for (final channel in channels) {
-      final publisherId = channel.publisherId;
-      if (publisherId != null) {
-        map[channel.id] = publisherId;
-      }
-    }
-    return map;
-  });
-});
