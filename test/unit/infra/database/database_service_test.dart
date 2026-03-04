@@ -155,6 +155,64 @@ void main() {
         },
       );
 
+      test('deleteItemsOfAddresses removes entries and items for address', () async {
+        const address = '0xabc123';
+        final playlist = Playlist(
+          id: 'pl_addr',
+          name: 'Address Playlist',
+          type: PlaylistType.addressBased,
+          ownerAddress: address,
+          sortMode: PlaylistSortMode.provenance,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        await service.ingestPlaylists([playlist]);
+
+        final items = [
+          PlaylistItem(
+            id: 'item_1',
+            kind: PlaylistItemKind.indexerToken,
+            title: 'Item 1',
+            updatedAt: DateTime.now(),
+          ),
+          PlaylistItem(
+            id: 'item_2',
+            kind: PlaylistItemKind.indexerToken,
+            title: 'Item 2',
+            updatedAt: DateTime.now(),
+          ),
+        ];
+        await service.ingestPlaylistItems(items);
+
+        final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+        await db.upsertPlaylistEntries([
+          PlaylistEntriesCompanion.insert(
+            playlistId: 'pl_addr',
+            itemId: 'item_1',
+            position: const Value(0),
+            sortKeyUs: BigInt.zero,
+            updatedAtUs: nowUs,
+          ),
+          PlaylistEntriesCompanion.insert(
+            playlistId: 'pl_addr',
+            itemId: 'item_2',
+            position: const Value(1),
+            sortKeyUs: BigInt.zero,
+            updatedAtUs: nowUs,
+          ),
+        ]);
+        await db.updatePlaylistItemCount('pl_addr');
+
+        expect(await service.getPlaylistItems('pl_addr'), hasLength(2));
+
+        await service.deleteItemsOfAddresses([address]);
+
+        expect(await service.getPlaylistItems('pl_addr'), isEmpty);
+        expect(await service.getPlaylistItemById('item_1'), isNull);
+        expect(await service.getPlaylistItemById('item_2'), isNull);
+        expect(await service.getPlaylistById('pl_addr'), isNotNull);
+      });
+
       test('getAllPlaylists returns all playlists when type is null', () async {
         final playlists = [
           Playlist(

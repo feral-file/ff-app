@@ -1,3 +1,4 @@
+import 'package:app/app/providers/address_indexing_job_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -15,6 +16,7 @@ import 'package:app/infra/services/device_info_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/force_update_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
+import 'package:app/infra/services/indexer_service_isolate.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/legacy_data_migration_service.dart';
 import 'package:app/infra/services/pending_addresses_store.dart';
@@ -43,14 +45,23 @@ final addressServiceProvider = Provider<AddressService>((ref) {
     personalTokensSyncServiceProvider,
   );
   final pendingAddressesStore = ref.watch(pendingAddressesStoreProvider);
+  final indexerServiceIsolate = ref.watch(indexerServiceIsolateProvider);
 
-  return AddressService(
+  final service = AddressService(
     databaseService: databaseService,
     indexerSyncService: indexerSyncService,
     domainAddressService: domainAddressService,
     personalTokensSyncService: personalTokensSyncService,
     pendingAddressesStore: pendingAddressesStore,
+    indexerServiceIsolate: indexerServiceIsolate,
+    appStateService: ref.watch(appStateServiceProvider),
   );
+
+  service.setIndexingJobStatusCallback((response) {
+    ref.read(addressIndexingJobProvider.notifier).updateJob(response);
+  });
+
+  return service;
 });
 
 /// Provider for ENS/TNS address resolution and address/domain validation.
@@ -110,6 +121,17 @@ final canvasClientServiceV2Provider = Provider<CanvasClientServiceV2>((ref) {
 final indexerServiceProvider = Provider<IndexerService>((ref) {
   final client = ref.watch(indexerClientProvider);
   return IndexerService(client: client);
+});
+
+/// Provider for IndexerServiceIsolate (runs indexer API in dedicated isolate).
+final indexerServiceIsolateProvider =
+    Provider<IndexerServiceIsolateOperations>((ref) {
+  final isolate = IndexerServiceIsolate(
+    endpoint: AppConfig.indexerApiUrl,
+    apiKey: AppConfig.indexerApiKey,
+  );
+  ref.onDispose(isolate.stop);
+  return isolate;
 });
 
 /// Provider for IndexerSyncService (fetch + local ingestion).

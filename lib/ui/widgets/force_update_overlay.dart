@@ -113,7 +113,7 @@ class _ForceUpdateDialogContent extends StatelessWidget {
             SizedBox(height: LayoutConstants.space4),
             OutlineButton(
               text: 'Contact Support',
-              onTap: () => onSupport(),
+              onTap: onSupport,
               textColor: AppColor.white,
               borderColor: AppColor.white,
             ),

@@ -1,8 +1,8 @@
 import 'package:app/design/app_typography.dart';
-import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/widgets/gallery_thumbnail_widgets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -104,31 +104,14 @@ class _Thumbnail extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(LayoutConstants.space1),
         child: url == null || url!.isEmpty
-            ? const _ThumbnailPlaceholder()
+            ? const GalleryNoThumbnailWidget()
             : CachedNetworkImage(
                 imageUrl: url!,
                 fit: BoxFit.cover,
-                placeholder: (_, _) => const _ThumbnailPlaceholder(),
-                errorWidget: (_, _, _) => const _ThumbnailPlaceholder(),
+                placeholder: (_, _) => const GalleryThumbnailPlaceholder(),
+                errorWidget: (_, _, _) =>
+                    const GalleryThumbnailErrorWidget(),
               ),
-      ),
-    );
-  }
-}
-
-class _ThumbnailPlaceholder extends StatelessWidget {
-  const _ThumbnailPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: PrimitivesTokens.colorsDarkGrey,
-      child: Center(
-        child: Icon(
-          Icons.image_not_supported_outlined,
-          size: LayoutConstants.iconSizeMedium,
-          color: PrimitivesTokens.colorsLightGrey,
-        ),
       ),
     );
   }

@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/domain_address_service.dart';
+import 'package:app/infra/services/indexer_service_isolate.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/personal_tokens_sync_service.dart';
@@ -20,10 +22,14 @@ class AddressService {
     required DomainAddressService domainAddressService,
     required PersonalTokensSyncService personalTokensSyncService,
     required PendingAddressesStore pendingAddressesStore,
+    required IndexerServiceIsolateOperations indexerServiceIsolate,
+    required AppStateServiceBase appStateService,
   }) : _databaseService = databaseService,
        _domainAddressService = domainAddressService,
        _personalTokensSyncService = personalTokensSyncService,
-       _pendingAddressesStore = pendingAddressesStore {
+       _pendingAddressesStore = pendingAddressesStore,
+       _indexerServiceIsolate = indexerServiceIsolate,
+       _appStateService = appStateService {
     _indexerSyncService = indexerSyncService;
     _log = Logger('AddressService');
   }
@@ -32,8 +38,187 @@ class AddressService {
   final DomainAddressService _domainAddressService;
   final PersonalTokensSyncService _personalTokensSyncService;
   final PendingAddressesStore _pendingAddressesStore;
+  final IndexerServiceIsolateOperations _indexerServiceIsolate;
+  final AppStateServiceBase _appStateService;
   late final IndexerSyncService _indexerSyncService;
   late final Logger _log;
+
+  void Function(AddressIndexingJobResponse)? _onIndexingJobStatusCallback;
+
+  /// Sets a callback that receives real-time indexer job status updates.
+  ///
+  /// The callback is invoked when [pullStatus] returns during [indexAndSyncAddress].
+  void setIndexingJobStatusCallback(
+    void Function(AddressIndexingJobResponse) callback,
+  ) {
+    _onIndexingJobStatusCallback = callback;
+  }
+
+  /// Triggers indexing for an address. Returns workflowId or null.
+  Future<String?> index(String address) async {
+    final results = await _indexerServiceIsolate.indexAddressesList([address]);
+    for (final r in results) {
+      if (_addressesEqual(r.address, address)) return r.workflowId;
+    }
+    return null;
+  }
+
+  /// Polls job status by workflowId.
+  Future<AddressIndexingJobResponse> pullStatus(String workflowId) async {
+    return _indexerServiceIsolate.getAddressIndexingJobStatus(workflowId);
+  }
+
+  /// Fetches tokens page for address and ingests into DB. Returns count ingested.
+  Future<int> syncTokens(String address, {int offset = 0}) async {
+    const pageSize = 50;
+    final page = await _indexerServiceIsolate.fetchTokensPageByAddresses(
+      addresses: [address],
+      limit: pageSize,
+      offset: offset,
+    );
+    if (page.tokens.isEmpty) return 0;
+    await _databaseService.ingestTokensForAddress(
+      address: address,
+      tokens: page.tokens,
+    );
+    return page.tokens.length;
+  }
+
+  /// Runs full indexing flow: index → poll → fetch+ingest each poll until done.
+  ///
+  /// Fast-path: if tokens exist at offset 0, paginate and ingest.
+  /// Slow-path: trigger index, poll status, fetch+ingest on each poll (incremental UX).
+  Future<void> indexAndSyncAddress(String address) async {
+    final queryAddress = _addressForIndexer(address);
+
+    // Fast-path: try fetch first
+    var offset = 0;
+    var totalIngested = 0;
+    while (true) {
+      final count = await syncTokens(queryAddress, offset: offset);
+      if (count == 0) break;
+      totalIngested += count;
+      offset += count;
+      if (count < 50) break;
+    }
+    if (totalIngested > 0) {
+      _log.info('IndexAndSync fast-path completed for $queryAddress');
+      await _appStateService.setAddressIndexingStatus(
+        address: queryAddress,
+        status: AddressIndexingProcessStatus.completed(),
+      );
+      return;
+    }
+
+    // Slow-path: trigger indexing
+    String workflowId;
+    try {
+      final id = await index(queryAddress);
+      if (id == null || id.isEmpty) {
+        await _appStateService.setAddressIndexingStatus(
+          address: queryAddress,
+          status: AddressIndexingProcessStatus.failed(),
+        );
+        throw Exception('Failed to trigger indexing');
+      }
+      workflowId = id;
+    } catch (e, stack) {
+      await _appStateService.setAddressIndexingStatus(
+        address: queryAddress,
+        status: AddressIndexingProcessStatus.failed(),
+      );
+      Error.throwWithStackTrace(e, stack);
+    }
+
+    await _appStateService.setAddressIndexingStatus(
+      address: queryAddress,
+      status: AddressIndexingProcessStatus.indexingTriggered(
+        workflowId: workflowId,
+      ),
+    );
+
+    const pollInterval = Duration(seconds: 15);
+    const maxAttempts = 60;
+
+    await _appStateService.setAddressIndexingStatus(
+      address: queryAddress,
+      status: AddressIndexingProcessStatus.waitingForIndexStatus(),
+    );
+
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      AddressIndexingJobResponse status;
+      try {
+        status = await pullStatus(workflowId);
+      } catch (e, stack) {
+        await _appStateService.setAddressIndexingStatus(
+          address: queryAddress,
+          status: AddressIndexingProcessStatus.failed(),
+        );
+        Error.throwWithStackTrace(e, stack);
+      }
+
+      _onIndexingJobStatusCallback?.call(status);
+
+      if (status.status.isDone) {
+        if (status.status.isFailed) {
+          await _appStateService.setAddressIndexingStatus(
+            address: queryAddress,
+            status: AddressIndexingProcessStatus.failed(),
+          );
+          throw Exception(
+            'Indexing failed with status: ${status.status.name}',
+          );
+        }
+        break;
+      }
+
+      // Incremental UX: fetch and ingest on each poll (don't change status on failure)
+      offset = 0;
+      while (true) {
+        try {
+          final count = await syncTokens(queryAddress, offset: offset);
+          if (count == 0) break;
+          offset += count;
+          if (count < 50) break;
+        } catch (_) {
+          break;
+        }
+      }
+
+      await Future<void>.delayed(pollInterval);
+    }
+
+    // Final fetch after completion: set syncingTokens, then completed
+    await _appStateService.setAddressIndexingStatus(
+      address: queryAddress,
+      status: AddressIndexingProcessStatus.syncingTokens(),
+    );
+
+    offset = 0;
+    while (true) {
+      final count = await syncTokens(queryAddress, offset: offset);
+      if (count == 0) break;
+      offset += count;
+      if (count < 50) break;
+    }
+
+    await _appStateService.setAddressIndexingStatus(
+      address: queryAddress,
+      status: AddressIndexingProcessStatus.completed(),
+    );
+
+    _log.info('IndexAndSync completed for $queryAddress');
+  }
+
+  String _addressForIndexer(String address) {
+    final trimmed = address.trim();
+    if (trimmed.startsWith('0x') || trimmed.startsWith('0X')) {
+      return trimmed.startsWith('0X')
+          ? '0x${trimmed.substring(2).toLowerCase()}'
+          : trimmed.toLowerCase();
+    }
+    return trimmed;
+  }
 
   /// Add an address from either a raw address or ENS/TNS domain.
   Future<Playlist> addAddressOrDomain({
@@ -78,6 +263,10 @@ class AddressService {
         // DB not ready yet: persist the address in the pending store so it
         // survives navigation and is migrated to SQLite after the seed lands.
         await _pendingAddressesStore.addAddress(normalizedAddress);
+        await _appStateService.setAddressIndexingStatus(
+          address: normalizedAddress,
+          status: AddressIndexingProcessStatus.idle(),
+        );
         if (syncNow) {
           // track address and sync immediately
           _scheduleAddressIndexing(normalizedAddress);
@@ -112,6 +301,10 @@ class AddressService {
       );
 
       await _databaseService.ingestPlaylist(playlist);
+      await _appStateService.setAddressIndexingStatus(
+        address: normalizedAddress,
+        status: AddressIndexingProcessStatus.idle(),
+      );
       if (syncNow) {
         _scheduleAddressIndexing(normalizedAddress);
       } else {
@@ -160,11 +353,7 @@ class AddressService {
     unawaited(
       _personalTokensSyncService
           .trackAddress(normalizedAddress)
-          .then((_) {
-            return _personalTokensSyncService.syncAddresses(
-              addresses: <String>[normalizedAddress],
-            );
-          })
+          .then((_) => indexAndSyncAddress(normalizedAddress))
           .catchError((
             Object error,
             StackTrace stack,
@@ -199,12 +388,8 @@ class AddressService {
         return;
       }
 
-      final items = await _databaseService.getPlaylistItems(playlistId);
-      for (final item in items) {
-        await _databaseService.deletePlaylistItem(item.id);
-      }
-
-      await _databaseService.deletePlaylist(playlistId);
+      await _databaseService.deleteItemsOfAddresses([normalizedAddress]);
+      await _databaseService.deletePlaylist(playlistId, skipEntries: true);
 
       _log.info('Removed address playlist: $playlistId');
     } catch (e, stack) {

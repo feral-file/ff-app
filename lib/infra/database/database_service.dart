@@ -706,15 +706,40 @@ class DatabaseService {
   ///
   /// This deletes the playlist record and all its entries.
   /// Items are not deleted (they may be referenced by other playlists).
-  Future<void> deletePlaylist(String playlistId) async {
+  /// Set [skipEntries] to true when entries were already deleted (e.g. by
+  /// [deleteItemsOfAddresses]).
+  Future<void> deletePlaylist(String playlistId, {bool skipEntries = false}) async {
     try {
-      // Delete all playlist entries first
-      await _db.deletePlaylistEntries(playlistId);
-      // Then delete the playlist record
+      if (!skipEntries) {
+        await _db.deletePlaylistEntries(playlistId);
+      }
       await _db.deletePlaylist(playlistId);
       _log.info('Deleted playlist: $playlistId');
     } catch (e, stack) {
       _log.severe('Failed to delete playlist $playlistId', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Delete playlist entries and items for address-based playlists.
+  ///
+  /// Matches playlists by [addresses] (case-insensitive) and removes all
+  /// playlist entries and items belonging to those playlists in one SQL batch.
+  Future<void> deleteItemsOfAddresses(List<String> addresses) async {
+    if (addresses.isEmpty) return;
+
+    final normalized = addresses
+        .map((a) => a.trim().toLowerCase())
+        .where((a) => a.isNotEmpty)
+        .toSet()
+        .toList();
+    if (normalized.isEmpty) return;
+
+    try {
+      await _db.deleteItemsAndEntriesOfAddresses(normalized);
+      _log.info('Deleted items and entries for address(es)');
+    } catch (e, stack) {
+      _log.severe('Failed to delete items of addresses', e, stack);
       rethrow;
     }
   }
@@ -1129,15 +1154,6 @@ class DatabaseService {
       result.add((playlist, items));
     }
     return result;
-  }
-
-  /// Delete a single playlist by ID and its entries.
-  /// Matches old repo's deletePlaylistById / delete playlist from Drift.
-  Future<void> deletePlaylistById(String playlistId) async {
-    await _db.deletePlaylistEntries(playlistId);
-    await (_db.delete(
-      _db.playlists,
-    )..where((p) => p.id.equals(playlistId))).go();
   }
 
   /// Delete all playlists of given kind and baseUrl.

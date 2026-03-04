@@ -36,28 +36,75 @@ enum AddressIndexingProcessState {
 
 /// Persistable status for per-address indexing process.
 class AddressIndexingProcessStatus {
-  const AddressIndexingProcessStatus({
+  const AddressIndexingProcessStatus._({
     required this.state,
     required this.updatedAt,
+    this.workflowId,
     this.errorMessage,
   });
 
   final AddressIndexingProcessState state;
   final DateTime updatedAt;
+  final String? workflowId;
   final String? errorMessage;
 
-  AddressIndexingProcessStatus copyWith({
-    AddressIndexingProcessState? state,
-    DateTime? updatedAt,
-    String? errorMessage,
-    bool clearError = false,
-  }) {
-    return AddressIndexingProcessStatus(
-      state: state ?? this.state,
-      updatedAt: updatedAt ?? this.updatedAt,
-      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
-    );
-  }
+  factory AddressIndexingProcessStatus.idle() => AddressIndexingProcessStatus._(
+    state: AddressIndexingProcessState.idle,
+    updatedAt: DateTime.now().toUtc(),
+  );
+
+  factory AddressIndexingProcessStatus.indexingTriggered({
+    required String workflowId,
+  }) => AddressIndexingProcessStatus._(
+    state: AddressIndexingProcessState.indexingTriggered,
+    updatedAt: DateTime.now().toUtc(),
+    workflowId: workflowId,
+  );
+
+  /// For recovery flows where workflowId is not yet known.
+  factory AddressIndexingProcessStatus.indexingTriggeredPending() =>
+      AddressIndexingProcessStatus._(
+        state: AddressIndexingProcessState.indexingTriggered,
+        updatedAt: DateTime.now().toUtc(),
+        workflowId: null,
+      );
+
+  factory AddressIndexingProcessStatus.waitingForIndexStatus() =>
+      AddressIndexingProcessStatus._(
+        state: AddressIndexingProcessState.waitingForIndexStatus,
+        updatedAt: DateTime.now().toUtc(),
+      );
+
+  factory AddressIndexingProcessStatus.syncingTokens() =>
+      AddressIndexingProcessStatus._(
+        state: AddressIndexingProcessState.syncingTokens,
+        updatedAt: DateTime.now().toUtc(),
+      );
+
+  factory AddressIndexingProcessStatus.paused() =>
+      AddressIndexingProcessStatus._(
+        state: AddressIndexingProcessState.paused,
+        updatedAt: DateTime.now().toUtc(),
+      );
+
+  factory AddressIndexingProcessStatus.stopped() =>
+      AddressIndexingProcessStatus._(
+        state: AddressIndexingProcessState.stopped,
+        updatedAt: DateTime.now().toUtc(),
+      );
+
+  factory AddressIndexingProcessStatus.completed() =>
+      AddressIndexingProcessStatus._(
+        state: AddressIndexingProcessState.completed,
+        updatedAt: DateTime.now().toUtc(),
+      );
+
+  factory AddressIndexingProcessStatus.failed({String? errorMessage}) =>
+      AddressIndexingProcessStatus._(
+        state: AddressIndexingProcessState.failed,
+        updatedAt: DateTime.now().toUtc(),
+        errorMessage: errorMessage,
+      );
 }
 
 /// Abstract contract for app-level and per-address state services.
@@ -180,15 +227,18 @@ class AppStateService extends AppStateServiceBase {
                 AddressIndexingProcessState.values.length
         ? AddressIndexingProcessState.values[entity.indexingProcessStateIndex]
         : AddressIndexingProcessState.idle;
-    return AddressIndexingProcessStatus(
+    final updatedAt = _fromUs(
+      entity.indexingProcessUpdatedAtUs,
+      fallback: DateTime.now().toUtc(),
+    );
+    final errorMessage = entity.indexingProcessErrorMessage.trim().isEmpty
+        ? null
+        : entity.indexingProcessErrorMessage;
+    return AddressIndexingProcessStatus._(
       state: state,
-      updatedAt: _fromUs(
-        entity.indexingProcessUpdatedAtUs,
-        fallback: DateTime.now().toUtc(),
-      ),
-      errorMessage: entity.indexingProcessErrorMessage.trim().isEmpty
-          ? null
-          : entity.indexingProcessErrorMessage,
+      updatedAt: updatedAt,
+      workflowId: null,
+      errorMessage: errorMessage,
     );
   }
 

@@ -10,10 +10,12 @@ import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../infra/services/fake_indexer_service_isolate.dart';
 import 'provider_test_helpers.dart';
 
 void main() {
-  test('services providers assemble from dependency overrides', () {
+  test('services providers assemble from dependency overrides', () async {
+    await ensureDotEnvLoaded();
     // Verifies service-composition providers resolve with test doubles.
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(db.close);
@@ -28,6 +30,9 @@ void main() {
             resolverUrl: '',
             resolverApiKey: '',
           ),
+        ),
+        indexerServiceIsolateProvider.overrideWithValue(
+          FakeIndexerServiceIsolate(),
         ),
       ],
     );
