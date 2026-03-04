@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
-import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/providers/version_provider.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
@@ -326,7 +326,6 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
               versionService.checkDeviceVersionCompatibility(
                 branchName: device.branchName,
                 deviceVersion: deviceStatus?.latestVersion ?? '',
-                deviceName: device.deviceId,
                 requiredDeviceUpdate: true,
               ),
             );
