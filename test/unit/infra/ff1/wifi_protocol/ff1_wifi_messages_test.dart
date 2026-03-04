@@ -107,10 +107,11 @@ void main() {
       );
 
       final json = message.toJson();
+      final payload = json['message'] as Map<String, dynamic>;
 
       expect(json['type'], 'notification');
       expect(json['notification_type'], 'player_status');
-      expect(json['message']['playlistId'], 'pl_123');
+      expect(payload['playlistId'], 'pl_123');
       expect(json['timestamp'], 1704067200000);
     });
 
@@ -233,11 +234,13 @@ void main() {
       );
 
       final json = status.toJson();
+      final items = json['items'] as List<dynamic>;
+      final firstItem = items.first as Map<String, dynamic>;
 
       expect(json['items'], isNotNull);
-      expect((json['items'] as List).length, 1);
-      expect((json['items'] as List)[0]['id'], 'wk_test');
-      expect((json['items'] as List)[0]['title'], 'Test Work');
+      expect(items.length, 1);
+      expect(firstItem['id'], 'wk_test');
+      expect(firstItem['title'], 'Test Work');
     });
   });
 
@@ -294,6 +297,37 @@ void main() {
       final json = status.toJson();
 
       expect(json['isConnected'], false);
+    });
+  });
+
+  group('FF1CommandResponse', () {
+    test('fromJson parses message.ok payload as status ok', () {
+      final response = FF1CommandResponse.fromJson({
+        'message': {'ok': true},
+      });
+
+      expect(response.status, 'ok');
+      expect(response.data?['message'], isNotNull);
+    });
+
+    test('fromJson parses error payload as status error', () {
+      final response = FF1CommandResponse.fromJson({
+        'error': {'id': 1003, 'message': 'not found'},
+      });
+
+      expect(response.status, 'error');
+      expect(response.data?['id'], 1003);
+    });
+
+    test('fromJson parses nested message.message.ok payload', () {
+      final response = FF1CommandResponse.fromJson({
+        'message': {
+          'message': {'ok': true},
+        },
+      });
+
+      expect(response.status, 'ok');
+      expect(response.data?['message'], isNotNull);
     });
   });
 }

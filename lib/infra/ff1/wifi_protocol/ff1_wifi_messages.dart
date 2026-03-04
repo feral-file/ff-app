@@ -265,11 +265,7 @@ class FF1DeviceStatus {
     final rawRotation = json['screenRotation'] as String?;
     ScreenOrientation? rotation;
     if (rawRotation != null && rawRotation.isNotEmpty) {
-      try {
-        rotation = ScreenOrientation.fromString(rawRotation);
-      } on ArgumentError {
-        rotation = null;
-      }
+      rotation = _parseScreenOrientation(rawRotation);
     }
 
     return FF1DeviceStatus(
@@ -308,6 +304,25 @@ class FF1DeviceStatus {
   @override
   String toString() =>
       'FF1DeviceStatus(wifi: $connectedWifi, internet: $internetConnected)';
+}
+
+ScreenOrientation? _parseScreenOrientation(String value) {
+  switch (value) {
+    case 'landscape':
+    case 'normal':
+      return ScreenOrientation.landscape;
+    case 'landscapeReverse':
+    case 'inverted':
+      return ScreenOrientation.landscapeReverse;
+    case 'portrait':
+    case 'left':
+      return ScreenOrientation.portrait;
+    case 'portraitReverse':
+    case 'right':
+      return ScreenOrientation.portraitReverse;
+    default:
+      return null;
+  }
 }
 
 /// Connection status notification payload.
@@ -619,10 +634,45 @@ class FF1CommandResponse {
 
   /// Deserialize from JSON response.
   factory FF1CommandResponse.fromJson(Map<String, dynamic> json) {
-    return FF1CommandResponse(
-      status: json['status'] as String?,
-      data: json['data'] as Map<String, dynamic>?,
-    );
+    final statusFromTopLevel = json['status'] as String?;
+    final dataFromTopLevel = json['data'] as Map<String, dynamic>?;
+
+    if (statusFromTopLevel != null || dataFromTopLevel != null) {
+      return FF1CommandResponse(
+        status: statusFromTopLevel,
+        data: dataFromTopLevel,
+      );
+    }
+
+    final nestedOk = _extractNestedOkValue(json);
+    if (nestedOk != null) {
+      return FF1CommandResponse(
+        status: nestedOk ? 'ok' : 'error',
+        data: json,
+      );
+    }
+
+    final message = json['message'];
+    if (message is Map) {
+      final payload = Map<String, dynamic>.from(message);
+      final ok = payload['ok'];
+      if (ok is bool) {
+        return FF1CommandResponse(
+          status: ok ? 'ok' : 'error',
+          data: payload,
+        );
+      }
+      return FF1CommandResponse(data: payload);
+    }
+
+    if (json['error'] is Map) {
+      return FF1CommandResponse(
+        status: 'error',
+        data: Map<String, dynamic>.from(json['error'] as Map),
+      );
+    }
+
+    return FF1CommandResponse();
   }
 
   /// Response status (e.g., 'ok', 'error').
@@ -639,4 +689,18 @@ class FF1CommandResponse {
 
   @override
   String toString() => 'FF1CommandResponse(status: $status, data: $data)';
+}
+
+bool? _extractNestedOkValue(Map<String, dynamic> payload) {
+  final directOk = payload['ok'];
+  if (directOk is bool) {
+    return directOk;
+  }
+
+  final nestedMessage = payload['message'];
+  if (nestedMessage is Map) {
+    return _extractNestedOkValue(Map<String, dynamic>.from(nestedMessage));
+  }
+
+  return null;
 }
