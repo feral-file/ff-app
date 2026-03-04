@@ -9,6 +9,7 @@ import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/token_transformer.dart';
@@ -729,7 +730,7 @@ class DatabaseService {
     if (addresses.isEmpty) return;
 
     final normalized = addresses
-        .map((a) => a.trim().toLowerCase())
+        .map((a) => a.toNormalizedAddress())
         .where((a) => a.isNotEmpty)
         .toSet()
         .toList();
@@ -756,12 +757,12 @@ class DatabaseService {
     if (cids.isEmpty) return;
 
     try {
-      final normalizedAddress = address.toUpperCase();
+      final normalizedAddress = address.toNormalizedAddress();
 
       final playlists = await getAddressPlaylists();
       Playlist? addressPlaylist;
       for (final playlist in playlists) {
-        if (playlist.ownerAddress?.toUpperCase() == normalizedAddress) {
+        if (playlist.ownerAddress?.toNormalizedAddress() == normalizedAddress) {
           addressPlaylist = playlist;
           break;
         }
@@ -829,13 +830,13 @@ class DatabaseService {
     required List<AssetToken> tokens,
   }) async {
     try {
-      final normalizedAddress = address.toUpperCase();
+      final normalizedAddress = address.toNormalizedAddress();
 
       // Find the address playlist
       final playlists = await getAddressPlaylists();
       Playlist? addressPlaylist;
       for (final playlist in playlists) {
-        if (playlist.ownerAddress?.toUpperCase() == normalizedAddress) {
+        if (playlist.ownerAddress?.toNormalizedAddress() == normalizedAddress) {
           addressPlaylist = playlist;
           break;
         }

@@ -1,3 +1,4 @@
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/objectbox.g.dart'
@@ -36,17 +37,6 @@ enum AddressIndexingProcessState {
 
 /// Persistable status for per-address indexing process.
 class AddressIndexingProcessStatus {
-  const AddressIndexingProcessStatus._({
-    required this.state,
-    required this.updatedAt,
-    this.workflowId,
-    this.errorMessage,
-  });
-
-  final AddressIndexingProcessState state;
-  final DateTime updatedAt;
-  final String? workflowId;
-  final String? errorMessage;
 
   factory AddressIndexingProcessStatus.idle() => AddressIndexingProcessStatus._(
     state: AddressIndexingProcessState.idle,
@@ -66,7 +56,6 @@ class AddressIndexingProcessStatus {
       AddressIndexingProcessStatus._(
         state: AddressIndexingProcessState.indexingTriggered,
         updatedAt: DateTime.now().toUtc(),
-        workflowId: null,
       );
 
   factory AddressIndexingProcessStatus.waitingForIndexStatus() =>
@@ -105,6 +94,17 @@ class AddressIndexingProcessStatus {
         updatedAt: DateTime.now().toUtc(),
         errorMessage: errorMessage,
       );
+  const AddressIndexingProcessStatus._({
+    required this.state,
+    required this.updatedAt,
+    this.workflowId,
+    this.errorMessage,
+  });
+
+  final AddressIndexingProcessState state;
+  final DateTime updatedAt;
+  final String? workflowId;
+  final String? errorMessage;
 }
 
 /// Abstract contract for app-level and per-address state services.
@@ -137,6 +137,9 @@ abstract class AppStateServiceBase {
   Future<AddressIndexingProcessStatus?> getAddressIndexingStatus(
     String address,
   );
+  Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
+    String address,
+  );
   Future<void> setAddressIndexingStatus({
     required String address,
     required AddressIndexingProcessStatus status,
@@ -155,10 +158,12 @@ abstract class AppStateServiceBase {
 /// and token/playlist content remain source-of-truth in SQLite.
 class AppStateService extends AppStateServiceBase {
   AppStateService({
+    required Store store,
     required Box<AppStateEntity> appStateBox,
     required Box<AppStateAddressEntity> appStateAddressBox,
     Logger? logger,
-  }) : _appStateBox = appStateBox,
+  }) : _store = store,
+       _appStateBox = appStateBox,
        _appStateAddressBox = appStateAddressBox,
        _log = logger ?? Logger('AppStateService');
 
@@ -166,6 +171,7 @@ class AppStateService extends AppStateServiceBase {
   static const _defaultCacheDurationSeconds = 86400;
   static final DateTime _defaultLastFeedUpdatedAt = DateTime(2023).toUtc();
 
+  final Store _store;
   final Box<AppStateEntity> _appStateBox;
   final Box<AppStateAddressEntity> _appStateAddressBox;
   final Logger _log;
@@ -211,7 +217,7 @@ class AppStateService extends AppStateServiceBase {
     return created;
   }
 
-  String _normalizeAddressKey(String address) => address.trim().toUpperCase();
+  String _normalizeAddressKey(String address) => address.toNormalizedAddress();
 
   DateTime _fromUs(int us, {required DateTime fallback}) {
     if (us <= 0) {
@@ -237,7 +243,6 @@ class AppStateService extends AppStateServiceBase {
     return AddressIndexingProcessStatus._(
       state: state,
       updatedAt: updatedAt,
-      workflowId: null,
       errorMessage: errorMessage,
     );
   }
@@ -490,12 +495,27 @@ class AppStateService extends AppStateServiceBase {
     });
   }
 
+  /// Stream of per-address indexing process status; emits when ObjectBox changes.
+  ///
+  /// Use instead of [getAddressIndexingStatus] when you need reactive updates
+  /// without manual invalidation. Any [setAddressIndexingStatus] triggers emit.
+  @override
+  Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
+    String address,
+  ) async* {
+    yield await getAddressIndexingStatus(address);
+    await for (final _ in _store.watch<AppStateAddressEntity>()) {
+      yield await getAddressIndexingStatus(address);
+    }
+  }
+
   /// Persist per-address indexing process status.
   @override
   Future<void> setAddressIndexingStatus({
     required String address,
     required AddressIndexingProcessStatus status,
   }) async {
+    final normalizedAddress = _normalizeAddressKey(address);
     await _lock.synchronized(() async {
       final row = _getOrCreateAddressState(_normalizeAddressKey(address))
         ..indexingProcessStateIndex = status.state.index
@@ -506,6 +526,7 @@ class AppStateService extends AppStateServiceBase {
         ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
       _appStateAddressBox.put(row);
     });
+    _log.info('Set address indexing status for $address: ${status.state}');
   }
 
   /// Remove all app-state row data for a specific address key.
@@ -578,6 +599,7 @@ class AppStateService extends AppStateServiceBase {
 final appStateServiceProvider = Provider<AppStateService>((ref) {
   final store = getInitializedObjectBoxStore();
   return AppStateService(
+    store: store,
     appStateBox: store.box<AppStateEntity>(),
     appStateAddressBox: store.box<AppStateAddressEntity>(),
     logger: Logger('AppStateService'),

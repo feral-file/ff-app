@@ -161,11 +161,11 @@ class AddressService {
 
       if (status.status.isDone) {
         if (status.status.isFailed) {
-          await _appStateService.setAddressIndexingStatus(
-            address: queryAddress,
-            status: AddressIndexingProcessStatus.failed(),
-          );
-          throw Exception(
+        await _appStateService.setAddressIndexingStatus(
+          address: queryAddress,
+          status: AddressIndexingProcessStatus.failed(),
+        );
+        throw Exception(
             'Indexing failed with status: ${status.status.name}',
           );
         }
@@ -210,15 +210,7 @@ class AddressService {
     _log.info('IndexAndSync completed for $queryAddress');
   }
 
-  String _addressForIndexer(String address) {
-    final trimmed = address.trim();
-    if (trimmed.startsWith('0x') || trimmed.startsWith('0X')) {
-      return trimmed.startsWith('0X')
-          ? '0x${trimmed.substring(2).toLowerCase()}'
-          : trimmed.toLowerCase();
-    }
-    return trimmed;
-  }
+  String _addressForIndexer(String address) => address.toNormalizedAddress();
 
   /// Add an address from either a raw address or ENS/TNS domain.
   Future<Playlist> addAddressOrDomain({
@@ -253,10 +245,7 @@ class AddressService {
   }) async {
     try {
       final chain = walletAddress.chain;
-      final normalizedAddress = _normalizeAddressForChain(
-        walletAddress.address,
-        chain: chain,
-      );
+      final normalizedAddress = walletAddress.address.toNormalizedAddress();
       _log.info('Adding address: $normalizedAddress on chain $chain');
 
       if (!SeedDatabaseGate.isCompleted) {
@@ -372,11 +361,8 @@ class AddressService {
     required WalletAddress walletAddress,
   }) async {
     try {
-      final chain = walletAddress.chain;
-      final normalizedAddress = _normalizeAddressForChain(
-        walletAddress.address,
-        chain: chain,
-      );
+      final normalizedAddress =
+          walletAddress.address.toNormalizedAddress();
       final playlistId = PlaylistExt.addressPlaylistId(normalizedAddress);
 
       _log.info('Removing address: $normalizedAddress');
@@ -404,7 +390,7 @@ class AddressService {
     required String address,
   }) async {
     try {
-      final normalizedAddress = _normalizeAddressForChain(address);
+      final normalizedAddress = address.toNormalizedAddress();
       _log.info('Refreshing tokens for address: $normalizedAddress');
 
       final count = await _indexerSyncService.syncTokensForAddresses(
@@ -476,37 +462,8 @@ class AddressService {
     return null;
   }
 
-  String _normalizeAddressForChain(
-    String address, {
-    String? chain,
-  }) {
-    final trimmed = address.trim();
-    final chainName = chain?.toLowerCase();
-    if (chainName == 'ethereum' ||
-        chainName == 'eth' ||
-        _isEthereumAddress(trimmed)) {
-      return _normalizeEthereumAddress(trimmed);
-    }
-    return trimmed;
-  }
-
-  bool _isEthereumAddress(String address) {
-    return address.startsWith('0x') || address.startsWith('0X');
-  }
-
-  String _normalizeEthereumAddress(String address) {
-    if (address.startsWith('0X')) {
-      return '0x${address.substring(2)}';
-    }
-    return address;
-  }
-
-  bool _addressesEqual(String left, String right) {
-    if (_isEthereumAddress(left) || _isEthereumAddress(right)) {
-      return left.toLowerCase() == right.toLowerCase();
-    }
-    return left == right;
-  }
+  bool _addressesEqual(String left, String right) =>
+      left.toNormalizedAddress() == right.toNormalizedAddress();
 
   /// Shorten address for display (0x1234...5678).
   String _shortenAddress(String address) {

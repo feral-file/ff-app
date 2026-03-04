@@ -33,7 +33,13 @@ IndexingStatusText deriveIndexingStatusText({
 
   switch (state) {
     case AddressIndexingProcessState.idle:
-      return const IndexingStatusText(text: null, showRetry: false);
+      return IndexingStatusText(
+        text: _joinParts(<String>[
+          'Syncing',
+          if (readyCount != null) '$readyCount ready',
+        ]),
+        showRetry: false,
+      );
 
     case AddressIndexingProcessState.completed:
       final worksCount = readyCount ?? job?.totalTokensViewable;

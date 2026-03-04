@@ -158,6 +158,12 @@ class _SpyAppStateService implements AppStateService {
   ) async => null;
 
   @override
+  Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
+    String address,
+  ) =>
+      Stream.value(null);
+
+  @override
   Future<void> setAddressIndexingStatus({
     required String address,
     required AddressIndexingProcessStatus status,

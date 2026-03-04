@@ -2,6 +2,7 @@ import 'package:app/domain/extensions/asset_token_ext.dart';
 import 'package:app/domain/models/dp1/dp1_manifest.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 
 /// Transforms indexer tokens to PlaylistItem domain models.
 class TokenTransformer {
@@ -22,7 +23,7 @@ class TokenTransformer {
         ?.map((a) => DP1Artist(name: a.name, id: a.did))
         .toList();
 
-    final normalizedOwner = ownerAddress?.toUpperCase();
+    final normalizedOwner = ownerAddress?.toNormalizedAddress();
     final sortKeyUs = computeSortKeyUsForToken(
       token: token,
       ownerAddress: normalizedOwner,
@@ -66,7 +67,7 @@ class TokenTransformer {
     for (final event in events) {
       final toAddress = event.toAddress;
       if (toAddress == null) continue;
-      if (toAddress.toUpperCase() != ownerAddress) continue;
+      if (toAddress.toNormalizedAddress() != ownerAddress) continue;
 
       final tsUs = event.timestamp.microsecondsSinceEpoch;
       if (tsUs > latestUs) {
@@ -86,7 +87,7 @@ class TokenTransformer {
 
     var latestUs = 0;
     for (final p in provenances) {
-      if (p.ownerAddress.toUpperCase() != ownerAddress) continue;
+      if (p.ownerAddress.toNormalizedAddress() != ownerAddress) continue;
       final tsUs = p.lastTimestamp.microsecondsSinceEpoch;
       if (tsUs > latestUs) {
         latestUs = tsUs;
@@ -101,24 +102,24 @@ class TokenTransformer {
     required List<AssetToken> tokens,
     required String ownerAddress,
   }) {
-    final normalizedOwner = ownerAddress.toUpperCase();
+    final normalizedOwner = ownerAddress.toNormalizedAddress();
 
     return tokens.where((token) {
       final owners = token.owners?.items ?? const <Owner>[];
       if (owners.isNotEmpty) {
         return owners.any(
-          (o) => o.ownerAddress.toUpperCase() == normalizedOwner,
+          (o) => o.ownerAddress.toNormalizedAddress() == normalizedOwner,
         );
       }
 
       final ownerProvenances = token.ownerProvenances?.items ?? const [];
       if (ownerProvenances.isNotEmpty) {
         return ownerProvenances.any(
-          (p) => p.ownerAddress.toUpperCase() == normalizedOwner,
+          (p) => p.ownerAddress.toNormalizedAddress() == normalizedOwner,
         );
       }
 
-      return token.currentOwner?.toUpperCase() == normalizedOwner;
+      return token.currentOwner?.toNormalizedAddress() == normalizedOwner;
     }).toList();
   }
 
@@ -135,7 +136,7 @@ class TokenTransformer {
     // Create a unique ID combining token ID and owner
     // This allows the same token to exist multiple times
     // in different contexts
-    return '${tokenId}_${ownerAddress.toUpperCase()}';
+    return '${tokenId}_${ownerAddress.toNormalizedAddress()}';
   }
 
   /// Reconstruct PlaylistItem from token data JSON.

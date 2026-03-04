@@ -201,6 +201,12 @@ class MockAppStateService implements AppStateService {
   }
 
   @override
+  Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
+    String address,
+  ) =>
+      Stream.value(null);
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 

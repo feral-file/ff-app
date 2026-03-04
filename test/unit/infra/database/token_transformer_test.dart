@@ -219,7 +219,7 @@ void main() {
           ownerAddress: '0xABCD',
         );
 
-        expect(id, 'cid_test_0XABCD');
+        expect(id, 'cid_test_0xabcd');
       });
 
       test('returns token ID when no owner', () {

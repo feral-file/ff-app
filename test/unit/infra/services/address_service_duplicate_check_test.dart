@@ -34,6 +34,12 @@ class _FakePersonalTokensSyncService implements PersonalTokensSyncService {
 
 class _FakeAppStateService implements AppStateServiceBase {
   @override
+  Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
+    String address,
+  ) =>
+      Stream.value(null);
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

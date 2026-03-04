@@ -108,6 +108,7 @@ Future<void> main() async {
   final bluetoothDeviceService =
       FF1BluetoothDeviceService(store, bluetoothDeviceBox);
   final appStateService = AppStateService(
+    store: store,
     appStateBox: store.box<AppStateEntity>(),
     appStateAddressBox: store.box<AppStateAddressEntity>(),
   );

@@ -16,6 +16,7 @@ import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/wallet_address.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -376,7 +377,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     final addresses = addressPlaylists
         .map((playlist) => playlist.ownerAddress)
         .whereType<String>()
-        .map((address) => address.toUpperCase())
+        .map((address) => address.toNormalizedAddress())
         .toSet()
         .toList(growable: false);
 
