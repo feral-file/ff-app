@@ -14,6 +14,8 @@ import 'package:drift/native.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fake_indexer_service_isolate.dart';
+
 class _FakePendingAddressesStore extends PendingAddressesStore {
   final List<String> stored = <String>[];
 
@@ -101,6 +103,7 @@ void main() {
       ),
       personalTokensSyncService: personalTokensSyncService,
       pendingAddressesStore: _FakePendingAddressesStore(),
+      indexerServiceIsolate: FakeIndexerServiceIsolate(),
     );
   });
 

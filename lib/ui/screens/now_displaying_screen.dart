@@ -7,6 +7,7 @@ import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
+import 'package:app/widgets/gallery_thumbnail_widgets.dart';
 import 'package:app/widgets/now_displaying_bar/now_displaying_quick_setting_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -240,12 +241,15 @@ class _TokenPreview extends StatelessWidget {
                       imageUrl: item.thumbnailUrl!,
                       fit: BoxFit.contain,
                       placeholder: (_, _) =>
-                          const _GalleryNoThumbnailPlaceholder(),
+                          const GalleryThumbnailPlaceholder(),
                       errorWidget: (_, _, _) =>
-                          const _GalleryNoThumbnailPlaceholder(),
+                          const GalleryThumbnailErrorWidget(),
                     ),
                   )
-                : const _GalleryNoThumbnailPlaceholder(),
+                : const AspectRatio(
+                    aspectRatio: 4 / 5,
+                    child: GalleryNoThumbnailWidget(),
+                  ),
           ),
           const Divider(
             color: AppColor.primaryBlack,
@@ -331,29 +335,6 @@ class _InteractButton extends StatelessWidget {
         child: Text(
           'Interact',
           style: AppTypography.body(context).black,
-        ),
-      ),
-    );
-  }
-}
-
-/// Placeholder when no thumbnail; matches old GalleryNoThumbnailWidget usage
-/// (AspectRatio 4/5 area, dark grey, icon).
-class _GalleryNoThumbnailPlaceholder extends StatelessWidget {
-  const _GalleryNoThumbnailPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 4 / 5,
-      child: ColoredBox(
-        color: PrimitivesTokens.colorsDarkGrey,
-        child: Center(
-          child: Icon(
-            Icons.image_not_supported_outlined,
-            size: LayoutConstants.iconSizeLarge,
-            color: PrimitivesTokens.colorsLightGrey,
-          ),
         ),
       ),
     );

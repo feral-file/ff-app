@@ -13,6 +13,8 @@ import 'package:drift/native.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fake_indexer_service_isolate.dart';
+
 class _FakePendingAddressesStore extends PendingAddressesStore {
   _FakePendingAddressesStore({List<String>? initial}) : _stored = [...?initial];
 
@@ -62,6 +64,7 @@ void main() {
         ),
         personalTokensSyncService: _FakePersonalTokensSyncService(),
         pendingAddressesStore: pending,
+        indexerServiceIsolate: FakeIndexerServiceIsolate(),
       );
 
       expect(
@@ -105,6 +108,7 @@ void main() {
         ),
         personalTokensSyncService: _FakePersonalTokensSyncService(),
         pendingAddressesStore: _FakePendingAddressesStore(),
+        indexerServiceIsolate: FakeIndexerServiceIsolate(),
       );
 
       expect(
@@ -148,6 +152,7 @@ void main() {
         ),
         personalTokensSyncService: _FakePersonalTokensSyncService(),
         pendingAddressesStore: _FakePendingAddressesStore(),
+        indexerServiceIsolate: FakeIndexerServiceIsolate(),
       );
 
       expect(

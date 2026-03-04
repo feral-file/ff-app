@@ -1,9 +1,11 @@
 import 'package:app/app/providers/playlists_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/error_view.dart';
+import 'package:app/widgets/playlist/playlist_header_with_collection_state.dart';
 import 'package:app/widgets/playlist/playlist_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -73,6 +75,15 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
       // Load more curated only (pagination applies to dp1).
       ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadMore();
     }
+  }
+
+  String _creatorForAddressPlaylist(Playlist playlist) {
+    final address = playlist.ownerAddress;
+    if (address == null || address.isEmpty) return '';
+    if (address.length > 10) {
+      return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+    }
+    return address;
   }
 
   void _loadPlaylists() {
@@ -153,6 +164,20 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
           SliverToBoxAdapter(
             child: PlaylistSection(
               sectionName: 'Personal',
+              playlistHeaderBuilder: (playlist, itemCount) {
+                final ownerAddress = playlist.ownerAddress;
+                if (ownerAddress == null || ownerAddress.isEmpty) return null;
+                final creator = _creatorForAddressPlaylist(playlist);
+                return PlaylistHeaderWithCollectionState(
+                  primaryText: playlist.name,
+                  secondaryText: creator,
+                  total: itemCount,
+                  ownerAddress: ownerAddress,
+                  onRetry: () => ref
+                      .read(addressServiceProvider)
+                      .indexAndSyncAddress(ownerAddress),
+                );
+              },
               sectionIcon: SvgPicture.asset(
                 'assets/images/icon_account.svg',
                 width: LayoutConstants.iconSizeDefault,

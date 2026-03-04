@@ -1,4 +1,5 @@
 import 'package:app/app/providers/playlists_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
@@ -8,6 +9,7 @@ import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/load_more_indicator.dart';
 import 'package:app/widgets/loading_view.dart';
+import 'package:app/widgets/playlist/playlist_header_with_collection_state.dart';
 import 'package:app/widgets/playlist/playlist_list_row.dart';
 import 'package:app/widgets/playlist/section_details_header.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +82,15 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
         _scrollController.position.maxScrollExtent) {
       ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadMore();
     }
+  }
+
+  String _creatorForAddressPlaylist(Playlist playlist) {
+    final address = playlist.ownerAddress;
+    if (address == null || address.isEmpty) return '';
+    if (address.length > 10) {
+      return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+    }
+    return address;
   }
 
   Future<void> _onRefresh() async {
@@ -170,12 +181,34 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                   ),
                   SliverList.builder(
                     itemCount: playlists.length,
-                    itemBuilder: (context, index) => PlaylistRowItem(
-                      playlist: playlists[index],
-                      onItemTap: (item) {
-                        context.push('${Routes.works}/${item.id}');
-                      },
-                    ),
+                    itemBuilder: (context, index) {
+                      final playlist = playlists[index];
+                      return PlaylistRowItem(
+                        playlist: playlist,
+                        headerBuilder: widget.filter == AllPlaylistsFilter.personal
+                            ? (p, itemCount) {
+                                final ownerAddress = p.ownerAddress;
+                                if (ownerAddress == null ||
+                                    ownerAddress.isEmpty) {
+                                  return null;
+                                }
+                                final creator = _creatorForAddressPlaylist(p);
+                                return PlaylistHeaderWithCollectionState(
+                                  primaryText: p.name,
+                                  secondaryText: creator,
+                                  total: itemCount,
+                                  ownerAddress: ownerAddress,
+                                  onRetry: () => ref
+                                      .read(addressServiceProvider)
+                                      .indexAndSyncAddress(ownerAddress),
+                                );
+                              }
+                            : null,
+                        onItemTap: (item) {
+                          context.push('${Routes.works}/${item.id}');
+                        },
+                      );
+                    },
                   ),
                   if (hasMore || isLoadingMore)
                     SliverToBoxAdapter(
