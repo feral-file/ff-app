@@ -1,28 +1,37 @@
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/domain/models/ff1_device.dart';
-import 'package:logging/logging.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod/src/providers/future_provider.dart';
 
-final _log = Logger('FF1ConnectionProviders');
 // ============================================================================
 // Connected Devices List
 // ============================================================================
 
-/// Get all devices that have successfully connected to WiFi (have topicId)
-final connectedFF1DevicesProvider = FutureProvider<List<FF1Device>>((
-  ref,
-) async {
-  final allDevices = await ref.watch(allFF1BluetoothDevicesProvider.future);
-  return allDevices.where((device) => device.topicId.isNotEmpty).toList();
-});
+/// Get all devices that have successfully connected to WiFi (have topicId).
+///
+/// Derives from [allFF1BluetoothDevicesProvider]; auto-updates when it changes.
+final connectedFF1DevicesProvider = Provider<AsyncValue<List<FF1Device>>>(
+  (Ref ref) {
+    final allDevices = ref.watch(allFF1BluetoothDevicesProvider);
+    return allDevices.whenData(
+      (List<FF1Device> devices) =>
+          devices.where((FF1Device d) => d.topicId.isNotEmpty).toList(),
+    );
+  },
+);
 
-/// Get only disconnected devices (no topicId yet)
-final disconnectedFF1DevicesProvider = FutureProvider<List<FF1Device>>((
-  ref,
-) async {
-  final allDevices = await ref.watch(allFF1BluetoothDevicesProvider.future);
-  return allDevices.where((device) => device.topicId.isEmpty).toList();
-});
+/// Get only disconnected devices (no topicId yet).
+///
+/// Derives from [allFF1BluetoothDevicesProvider]; auto-updates when it changes.
+final disconnectedFF1DevicesProvider = Provider<AsyncValue<List<FF1Device>>>(
+  (Ref ref) {
+    final allDevices = ref.watch(allFF1BluetoothDevicesProvider);
+    return allDevices.whenData(
+      (List<FF1Device> devices) =>
+          devices.where((FF1Device d) => d.topicId.isEmpty).toList(),
+    );
+  },
+);
 
 // ============================================================================
 // Device Management Operations
@@ -36,11 +45,6 @@ final FutureProviderFamily<void, String> forgetFF1DeviceProvider =
     ) async {
       final deviceService = ref.read(ff1BluetoothDeviceServiceProvider);
       await deviceService.removeDevice(deviceId);
-      ref
-        ..invalidate(allFF1BluetoothDevicesProvider)
-        ..invalidate(connectedFF1DevicesProvider)
-        ..invalidate(disconnectedFF1DevicesProvider)
-        ..invalidate(activeFF1BluetoothDeviceProvider);
     });
 
 /// Disconnect device (remove topicId but keep device in storage)
@@ -52,9 +56,4 @@ final FutureProviderFamily<void, String> disconnectFF1DeviceProvider =
       final deviceService = ref.read(ff1BluetoothDeviceServiceProvider);
       await deviceService.updateTopicId(deviceId, '');
       await deviceService.updateConnectionState(deviceId, 0);
-      ref
-        ..invalidate(allFF1BluetoothDevicesProvider)
-        ..invalidate(connectedFF1DevicesProvider)
-        ..invalidate(disconnectedFF1DevicesProvider)
-        ..invalidate(activeFF1BluetoothDeviceProvider);
     });

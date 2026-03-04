@@ -105,7 +105,8 @@ Future<void> main() async {
   // Initialize ObjectBox store for Bluetooth device storage
   final store = await initializeObjectBox();
   final bluetoothDeviceBox = store.box<FF1BluetoothDeviceEntity>();
-  final bluetoothDeviceService = FF1BluetoothDeviceService(bluetoothDeviceBox);
+  final bluetoothDeviceService =
+      FF1BluetoothDeviceService(store, bluetoothDeviceBox);
   final appStateService = AppStateService(
     appStateBox: store.box<AppStateEntity>(),
     appStateAddressBox: store.box<AppStateAddressEntity>(),
