@@ -121,7 +121,7 @@ class BaseDP1FeedServiceImpl extends BaseDP1FeedService {
   @override
   Future<bool> deletePlaylist(String id) async {
     await api.deletePlaylist(id);
-    await databaseService.deletePlaylistById(id);
+    await databaseService.deletePlaylist(id);
     return true;
   }
 

@@ -988,6 +988,34 @@ class AppDatabase extends _$AppDatabase {
         .go();
   }
 
+  /// Delete playlist entries and items for address-based playlists in one
+  /// transaction.
+  ///
+  /// Uses two raw SQL statements: delete items first (subquery reads
+  /// playlist_entries), then delete playlist_entries. [addresses] must be
+  /// pre-normalized by the caller.
+  Future<void> deleteItemsAndEntriesOfAddresses(List<String> addresses) async {
+    if (addresses.isEmpty) return;
+    final placeholders = addresses.map((_) => '?').join(',');
+    await transaction(() async {
+      await customStatement(
+        'DELETE FROM items WHERE id IN ('
+        'SELECT pe.item_id FROM playlist_entries pe '
+        'INNER JOIN playlists p ON p.id = pe.playlist_id '
+        'WHERE p.type = 1 AND LOWER(TRIM(COALESCE(p.owner_address,\'\'))) IN ($placeholders)'
+        ')',
+        addresses,
+      );
+      await customStatement(
+        'DELETE FROM playlist_entries WHERE playlist_id IN ('
+        'SELECT id FROM playlists '
+        'WHERE type = 1 AND LOWER(TRIM(COALESCE(owner_address,\'\'))) IN ($placeholders)'
+        ')',
+        addresses,
+      );
+    });
+  }
+
   /// Force WAL checkpoint to write pending changes to main database file.
   /// This is useful after bulk writes to ensure data is persisted.
   Future<void> checkpoint() async {
@@ -1060,10 +1088,17 @@ class AppDatabase extends _$AppDatabase {
 
   /// Delete all playlists of given type and baseUrl.
   /// Matches old repo's deleteAllPlaylists(kind, baseUrl).
+  /// Deletes playlist_entries first to avoid orphaned rows.
   Future<int> deletePlaylistsByTypeAndBaseUrl({
     required PlaylistType type,
     required String baseUrl,
   }) async {
+    await customStatement(
+      'DELETE FROM playlist_entries WHERE playlist_id IN ('
+      'SELECT id FROM playlists WHERE type = ? AND base_url = ?'
+      ')',
+      [type.value, baseUrl],
+    );
     return (delete(
           playlists,
         )..where((p) => p.type.equals(type.value) & p.baseUrl.equals(baseUrl)))

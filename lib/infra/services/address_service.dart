@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:app/domain/extensions/playlist_ext.dart';
-import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -389,12 +388,8 @@ class AddressService {
         return;
       }
 
-      final items = await _databaseService.getPlaylistItems(playlistId);
-      for (final item in items) {
-        await _databaseService.deletePlaylistItem(item.id);
-      }
-
-      await _databaseService.deletePlaylist(playlistId);
+      await _databaseService.deleteItemsOfAddresses([normalizedAddress]);
+      await _databaseService.deletePlaylist(playlistId, skipEntries: true);
 
       _log.info('Removed address playlist: $playlistId');
     } catch (e, stack) {
