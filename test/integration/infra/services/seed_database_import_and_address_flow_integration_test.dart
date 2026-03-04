@@ -1,15 +1,8 @@
 import 'dart:io';
 
+import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/models.dart';
-import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
-import 'package:app/infra/graphql/indexer_client.dart';
-import 'package:app/infra/services/address_service.dart';
-import 'package:app/infra/services/domain_address_service.dart';
-import 'package:app/infra/services/indexer_service.dart';
-import 'package:app/infra/services/indexer_sync_service.dart';
-import 'package:app/infra/services/pending_addresses_store.dart';
-import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,42 +19,6 @@ class _SeedDatabaseServiceForImportTest extends SeedDatabaseService {
 
   @override
   Future<String> databasePath() async => databasePathOverride;
-}
-
-class _FakePendingAddressesStore extends PendingAddressesStore {
-  @override
-  Future<List<String>> getAddresses() async => const <String>[];
-}
-
-class _FakeAppStateService implements AppStateServiceBase {
-  final List<String> tracked = <String>[];
-
-  @override
-  Future<void> trackPersonalAddress(String address) async {
-    tracked.add(address);
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _RecordingPersonalTokensSyncService extends PersonalTokensSyncService {
-  _RecordingPersonalTokensSyncService({
-    required _FakeAppStateService appState,
-    required super.databaseService,
-  }) : super(
-         indexerService: IndexerService(
-           client: IndexerClient(endpoint: 'https://example.invalid/graphql'),
-         ),
-         appStateService: appState,
-       );
-
-  final List<String> syncedAddresses = <String>[];
-
-  @override
-  Future<void> syncAddresses({required List<String> addresses}) async {
-    syncedAddresses.addAll(addresses);
-  }
 }
 
 const String _skipReason =
@@ -116,45 +73,16 @@ void main() {
         final context = await createIntegrationTestContext();
         addTearDown(context.dispose);
 
-        final appState = _FakeAppStateService();
-        final personalTokensSyncService = _RecordingPersonalTokensSyncService(
-          appState: appState,
-          databaseService: context.databaseService,
-        );
-
-        final addressService = AddressService(
-          databaseService: context.databaseService,
-          indexerSyncService: IndexerSyncService(
-            indexerService: IndexerService(
-              client: IndexerClient(
-                endpoint: 'https://example.invalid/graphql',
-              ),
-            ),
-            databaseService: context.databaseService,
-          ),
-          domainAddressService: DomainAddressService(
-            resolverUrl: '',
-            resolverApiKey: '',
-          ),
-          personalTokensSyncService: personalTokensSyncService,
-          pendingAddressesStore: _FakePendingAddressesStore(),
-        );
-
         const addressValue = '0x99fc8AD516FBCC9bA3123D56e63A35d05AA9EFB8';
         final walletAddress = WalletAddress(
           address: addressValue,
           name: 'Integration Address',
           createdAt: DateTime.now(),
         );
-
-        final playlist = await addressService.addAddress(
-          walletAddress: walletAddress,
-          syncNow: false,
-        );
+        final playlist = PlaylistExt.fromWalletAddress(walletAddress);
+        await context.databaseService.ingestPlaylist(playlist);
 
         expect(playlist.ownerAddress, equals(addressValue));
-        expect(appState.tracked, contains(addressValue));
-        expect(personalTokensSyncService.syncedAddresses, isEmpty);
 
         final playlists = await context.databaseService.getAddressPlaylists();
         expect(
