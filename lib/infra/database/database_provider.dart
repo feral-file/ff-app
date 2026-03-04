@@ -2,6 +2,7 @@ import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
+import 'package:app/infra/database/objectbox_models.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:objectbox/objectbox.dart';
 
@@ -42,7 +43,7 @@ final objectBoxStoreProvider = FutureProvider<Store>((ref) async {
 /// final container = ProviderContainer(
 ///   overrides: [
 ///     ff1BluetoothDeviceServiceProvider.overrideWithValue(
-///       FF1BluetoothDeviceService(box),
+///       FF1BluetoothDeviceService(store, store.box<FF1BluetoothDeviceEntity>()),
 ///     ),
 ///   ],
 /// );
@@ -52,6 +53,6 @@ final ff1BluetoothDeviceServiceProvider = Provider<FF1BluetoothDeviceService>((
 ) {
   throw UnimplementedError(
     'FF1BluetoothDeviceService must be initialized after ObjectBox setup. '
-    'Override this provider in ProviderScope with FF1BluetoothDeviceService(box).',
+    'Override this provider in ProviderScope with FF1BluetoothDeviceService(store, box).',
   );
 });

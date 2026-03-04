@@ -176,6 +176,16 @@ class MockFF1BluetoothDeviceService implements FF1BluetoothDeviceService {
   ) async {}
 
   @override
+  Stream<List<FF1Device>> watchAllDevices() async* {
+    yield getAllDevices();
+  }
+
+  @override
+  Stream<FF1Device?> watchActiveDevice() async* {
+    yield getActiveDevice();
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 

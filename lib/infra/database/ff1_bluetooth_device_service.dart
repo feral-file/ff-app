@@ -15,13 +15,27 @@ import 'package:objectbox/objectbox.dart';
 /// - Managing active device state
 /// - Tracking connection states
 class FF1BluetoothDeviceService {
-  /// Creates a FF1BluetoothDeviceService
-  FF1BluetoothDeviceService(this._box) {
+  /// Creates a FF1BluetoothDeviceService.
+  ///
+  /// [store] is used for [watchAllDevices] to react to ObjectBox changes.
+  FF1BluetoothDeviceService(this._store, this._box) {
     _log = Logger('FF1BluetoothDeviceService');
   }
 
+  final Store _store;
   final Box<FF1BluetoothDeviceEntity> _box;
   late final Logger _log;
+
+  /// Stream of all devices; emits whenever the ObjectBox entity changes.
+  ///
+  /// Use this instead of [getAllDevices] when you need reactive updates
+  /// (e.g. migration, add/remove device) without manual invalidate.
+  Stream<List<FF1Device>> watchAllDevices() async* {
+    yield getAllDevices();
+    await for (final _ in _store.watch<FF1BluetoothDeviceEntity>()) {
+      yield getAllDevices();
+    }
+  }
 
   /// Get all stored Bluetooth devices
   List<FF1Device> getAllDevices() {
@@ -65,6 +79,17 @@ class FF1BluetoothDeviceService {
     } catch (e, stack) {
       _log.severe('Failed to get device by remote ID: $remoteId', e, stack);
       rethrow;
+    }
+  }
+
+  /// Stream of the active device; emits whenever the ObjectBox entity changes.
+  ///
+  /// Use this instead of [getActiveDevice] when you need reactive updates
+  /// (e.g. migration, setActiveDevice) without manual invalidate.
+  Stream<FF1Device?> watchActiveDevice() async* {
+    yield getActiveDevice();
+    await for (final _ in _store.watch<FF1BluetoothDeviceEntity>()) {
+      yield getActiveDevice();
     }
   }
 
