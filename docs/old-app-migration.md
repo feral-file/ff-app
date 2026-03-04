@@ -27,7 +27,8 @@ Provide a lightweight, one-time migration path for users upgrading from the old 
 4. Address migration (legacy SQLite -> current storage)
 - Uses raw `sqlite3` reads against legacy SQLite files.
 - Does not use Drift for legacy-address extraction.
-- Searches candidate SQLite paths and reads personal playlist addresses.
+- Reads legacy SQLite directly from app documents path:
+  - `getApplicationDocumentsDirectory()/playlist_cache.sqlite`
 - Reads `playlists.owner_address` where `type = 1` (personal playlists).
 - Preserves raw address casing from SQLite (trim only, no forced uppercasing) so EIP-55 Ethereum and Tezos addresses remain valid.
 - Extracted addresses are inserted through current `AddressService` with `syncNow: false` (tracked in current data flow, no forced immediate sync burst).

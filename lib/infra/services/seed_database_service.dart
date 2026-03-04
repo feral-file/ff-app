@@ -89,7 +89,7 @@ class _SeedDatabaseS3Location {
 
 /// Service responsible for downloading and placing the seed database.
 ///
-/// On first install the local `playlist_cache.sqlite` does not exist.
+/// On first install the local `dp1_library.sqlite` does not exist.
 /// Calling `downloadAndPlace` fetches the seed from S3-compatible storage
 /// and writes it
 /// to the correct path, so Drift opens it on the next DB operation instead
@@ -115,7 +115,7 @@ class SeedDatabaseService {
   final Future<Directory> Function() _temporaryDirectoryProvider;
 
   /// The canonical database file name used by AppDatabase.
-  static const _dbFileName = 'playlist_cache.sqlite';
+  static const _dbFileName = 'dp1_library.sqlite';
 
   /// Returns the absolute path where the database should live.
   Future<String> databasePath() async {
