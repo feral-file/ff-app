@@ -1,4 +1,5 @@
 import 'package:app/app/route_observer.dart';
+import 'package:app/app/routing/app_navigator_key.dart';
 import 'package:app/app/routing/page_transitions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/infra/services/release_notes_service.dart';
@@ -47,6 +48,7 @@ routerProvider = Provider.family<GoRouter, String>((
   initialLocation,
 ) {
   return GoRouter(
+    navigatorKey: appNavigatorKey,
     debugLogDiagnostics: true,
     initialLocation: initialLocation,
     observers: [routeObserver],

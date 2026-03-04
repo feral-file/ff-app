@@ -119,6 +119,9 @@ class AppConfig {
     fallback: 'https://raw.githubusercontent.com/bitmark-inc/feral-file-docs/main',
   );
 
+   /// Pubdoc URL.
+  static String get pubdocUrl => dotenv.get('PUBDOC_URL', fallback: '');
+
   /// S3-compatible access key for seed database artifact requests.
   static String get s3AccessKeyId =>
       dotenv.get('S3_ACCESS_KEY_ID', fallback: '');

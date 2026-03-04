@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
@@ -300,28 +303,41 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
   final connectionNotifier = ref.read(ff1WifiConnectionProvider.notifier);
 
   activeDeviceAsync.when(
-    data: (device) {
+    data: (device) async {
       // Use Future.microtask to defer the connection call
       // to avoid modifying other providers during build phase
-      Future.microtask(() {
-        if (device != null) {
-          logger.info(
-            'Active device changed: ${device.deviceId}, connecting...',
-          );
-          // Intentionally not awaiting to avoid blocking
-          // ignore: discarded_futures
-          connectionNotifier.connect(
-            device: device,
-            userId: 'user_id',
-            apiKey: AppConfig.ff1RelayerApiKey,
-          );
-        } else {
-          logger.info('No active device, disconnecting...');
-          // Intentionally not awaiting to avoid blocking
-          // ignore: discarded_futures
-          connectionNotifier.disconnect();
-        }
-      });
+      unawaited(
+        Future.microtask(() async {
+          if (device != null) {
+            logger.info(
+              'Active device changed: ${device.deviceId}, connecting...',
+            );
+            // Intentionally not awaiting to avoid blocking
+            // ignore: discarded_futures
+            await connectionNotifier.connect(
+              device: device,
+              userId: 'user_id',
+              apiKey: AppConfig.ff1RelayerApiKey,
+            );
+
+            final versionService = ref.read(versionServiceProvider);
+            final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
+            unawaited(
+              versionService.checkDeviceVersionCompatibility(
+                branchName: device.branchName,
+                deviceVersion: deviceStatus?.latestVersion ?? '',
+                deviceName: device.deviceId,
+                requiredDeviceUpdate: true,
+              ),
+            );
+          } else {
+            logger.info('No active device, disconnecting...');
+            // Intentionally not awaiting to avoid blocking
+            // ignore: discarded_futures
+            connectionNotifier.disconnect();
+          }
+        }),
+      );
     },
     error: (error, stack) {
       logger.severe('Error loading active device', error, stack);
