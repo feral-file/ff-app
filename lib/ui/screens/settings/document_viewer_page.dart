@@ -1,8 +1,8 @@
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/infra/config/app_config.dart';
-import 'package:app/ui/markdown_changelog_style.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/markdown_changelog_style.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:flutter/material.dart';
