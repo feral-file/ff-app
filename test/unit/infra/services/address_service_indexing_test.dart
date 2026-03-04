@@ -1,7 +1,6 @@
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/services/indexer_service.dart';
-import 'package:app/infra/services/indexer_service_isolate.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_indexer_service_isolate.dart';
@@ -52,12 +51,11 @@ void main() {
               tokenNumber: '1',
             ),
           ],
-          nextOffset: null,
         );
 
       // Simulate indexAndSyncAddress flow (slow-path):
       // 1. fetchTokens(offset:0) returns empty -> need index
-      fake.fetchTokensResult = const TokensPage(tokens: [], nextOffset: null);
+      fake.fetchTokensResult = const TokensPage(tokens: []);
       final page0 = await fake.fetchTokensPageByAddresses(
         addresses: ['0xabc'],
         offset: 0,
@@ -83,7 +81,6 @@ void main() {
             tokenNumber: '1',
           ),
         ],
-        nextOffset: null,
       );
       await fake.fetchTokensPageByAddresses(
         addresses: ['0xabc'],

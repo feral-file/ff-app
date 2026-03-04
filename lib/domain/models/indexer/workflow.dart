@@ -48,6 +48,9 @@ enum IndexingJobStatus {
       this == IndexingJobStatus.failed ||
       this == IndexingJobStatus.canceled;
 
+  bool get isFailed =>
+      this == IndexingJobStatus.failed || this == IndexingJobStatus.canceled;
+
   /// True when the job completed successfully.
   bool get isSuccess => this == IndexingJobStatus.completed;
 }

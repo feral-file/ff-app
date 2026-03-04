@@ -1,17 +1,25 @@
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
 
-/// Playlist Title - Displays playlist info with primary and secondary text
+/// Playlist Title - Displays playlist info with primary and secondary text.
+///
+/// Mirrors old repo layout: total is grouped into [statusText] (e.g. "Up to date • X works"),
+/// not shown as a separate row. When [showDivider] is true, secondary is hidden and a
+/// divider is rendered below (detail page style).
 class PlaylistTitle extends StatelessWidget {
   /// Creates a PlaylistTitle.
   const PlaylistTitle({
     required this.primaryText,
     required this.secondaryText,
-    this.total,
-    this.onTap,
     this.statusText,
+    this.onTap,
     this.onRetry,
+    this.subtitle,
+    this.onSubtitleTap,
+    this.trailing,
+    this.showDivider = false,
     this.padding,
     super.key,
   });
@@ -19,34 +27,43 @@ class PlaylistTitle extends StatelessWidget {
   /// Primary text (playlist title).
   final String primaryText;
 
-  /// Secondary text (creator, channel, etc.).
+  /// Secondary text (creator, address, etc.). Hidden when [showDivider] is true.
   final String secondaryText;
 
-  /// Optional total number of items.
-  final int? total;
+  /// Optional status text (e.g. "Up to date • X works", "Syncing • X ready • Y found").
+  /// Total is included in status, not as a separate row.
+  final String? statusText;
 
   /// Optional tap callback.
   final VoidCallback? onTap;
 
-  /// Optional status text shown under the title (e.g., sync state).
-  final String? statusText;
-
-  /// Optional retry callback shown when [statusText] is present.
+  /// Optional retry callback shown when [statusText] is present and failed/canceled.
   final VoidCallback? onRetry;
+
+  /// Optional subtitle (e.g. channel name). Shown as a separate tappable line.
+  final String? subtitle;
+
+  /// Tap handler for the subtitle line.
+  final VoidCallback? onSubtitleTap;
+
+  /// Optional trailing widget (e.g. options menu button).
+  final Widget? trailing;
+
+  /// When true, hides secondary text, uses 16px vertical padding, and adds a divider below.
+  final bool showDivider;
 
   /// Optional custom padding.
   final EdgeInsets? padding;
 
   @override
   Widget build(BuildContext context) {
-    final effectivePadding =
-        padding ??
+    final effectivePadding = padding ??
         EdgeInsets.symmetric(
-          horizontal: LayoutConstants.pageHorizontalDefault,
-          vertical: LayoutConstants.space4,
+          horizontal: LayoutConstants.space3,
+          vertical: showDivider ? LayoutConstants.space4 : LayoutConstants.space4,
         );
 
-    return GestureDetector(
+    final content = GestureDetector(
       onTap: onTap,
       child: Container(
         color: Colors.transparent,
@@ -69,25 +86,32 @@ class PlaylistTitle extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      SizedBox(width: LayoutConstants.space2),
-                      Text(
-                        secondaryText,
-                        style: AppTypography.body(context).italic.grey,
+                      if (!showDivider) ...[
+                        SizedBox(width: LayoutConstants.space2),
+                        Text(
+                          secondaryText,
+                          style: AppTypography.body(context).italic.grey,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                  // Subtitle (channel)
+                  if (subtitle != null && subtitle!.isNotEmpty) ...[
+                    SizedBox(height: LayoutConstants.space1),
+                    GestureDetector(
+                      onTap: onSubtitleTap,
+                      behavior: HitTestBehavior.opaque,
+                      child: Text(
+                        subtitle!,
+                        style: AppTypography.body(context).grey,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    ],
-                  ),
-                  // Total count if available
-                  if (total != null) ...[
-                    SizedBox(height: LayoutConstants.space1),
-                    Text(
-                      '$total works',
-                      style: AppTypography.bodySmall(context).grey.italic,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
+                  // Status (includes total when applicable, e.g. "Up to date • X works")
                   if (statusText != null && statusText!.isNotEmpty) ...[
                     SizedBox(height: LayoutConstants.space1),
                     Row(
@@ -124,9 +148,31 @@ class PlaylistTitle extends StatelessWidget {
                 ],
               ),
             ),
+            if (trailing != null) ...[
+              SizedBox(width: LayoutConstants.space2),
+              SizedBox(
+                width: LayoutConstants.minTouchTarget,
+                height: LayoutConstants.minTouchTarget,
+                child: Center(child: trailing),
+              ),
+            ],
           ],
         ),
       ),
     );
+
+    if (showDivider) {
+      return Column(
+        children: [
+          content,
+          const Divider(
+            height: 1,
+            thickness: 1,
+            color: AppColor.primaryBlack,
+          ),
+        ],
+      );
+    }
+    return content;
   }
 }

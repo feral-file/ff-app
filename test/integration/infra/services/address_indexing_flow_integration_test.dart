@@ -58,6 +58,7 @@ void main() {
       ),
       pendingAddressesStore: PendingAddressesStore(),
       indexerServiceIsolate: spyIsolate,
+      appStateService: _FakeAppStateService(),
     );
   });
 
@@ -84,7 +85,7 @@ void main() {
       const pollInterval = Duration(seconds: 5);
       const timeout = Duration(minutes: 20);
       final deadline = DateTime.now().add(timeout);
-      int tokenCount = 0;
+      var tokenCount = 0;
 
       while (DateTime.now().isBefore(deadline)) {
         final playlists =

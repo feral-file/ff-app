@@ -4,6 +4,7 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/extensions.dart';
+import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/domain/utils/customer_support_util.dart';
@@ -193,6 +194,94 @@ class UIHelper {
                     text: 'Delete',
                     onTap: () async {
                       await onRemove(walletAddress);
+                      if (!context.mounted) {
+                        return;
+                      }
+                      context.pop();
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  OutlineButton(
+                    onTap: () => context.pop(),
+                    text: 'Cancel',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Show delete playlist confirmation.
+  static void showDeletePlaylistConfirmation(
+    BuildContext context,
+    Playlist playlist,
+    FutureOr<void> Function(Playlist playlist) onRemove,
+  ) {
+    final theme = Theme.of(context);
+    final playlistTitle =
+        playlist.name.isNotEmpty ? playlist.name : 'Playlist';
+
+    final bottomSheetKey = GlobalKey();
+
+    unawaited(
+      showModalBottomSheet(
+        context: context,
+        enableDrag: false,
+        backgroundColor: Colors.transparent,
+        routeSettings: RouteSettings(
+          name: ignoreBackLayerPopUpRouteName,
+          arguments: {
+            'key': bottomSheetKey,
+          },
+        ),
+        barrierColor: Colors.black.withValues(alpha: 0.5),
+        builder: (context) => SafeArea(
+          key: bottomSheetKey,
+          child: ColoredBox(
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.auGreyBackground,
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(20),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Delete collection',
+                    style: AppTypography.h2(context).white,
+                  ),
+                  const SizedBox(height: 40),
+                  RichText(
+                    textScaler: MediaQuery.textScalerOf(context),
+                    text: TextSpan(
+                      style: AppTypography.body(context).white,
+                      children: <TextSpan>[
+                        const TextSpan(
+                          text: 'Are you sure you want to delete the playlist',
+                        ),
+                        TextSpan(
+                          text: ' "$playlistTitle"',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const TextSpan(
+                          text: '?',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  PrimaryAsyncButton(
+                    text: 'Delete',
+                    onTap: () async {
+                      await onRemove(playlist);
                       if (!context.mounted) {
                         return;
                       }

@@ -1,4 +1,3 @@
-import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart';
@@ -12,7 +11,7 @@ class FakeIndexerServiceIsolate implements IndexerServiceIsolateOperations {
     AddressIndexingResult(address: '0xabc', workflowId: 'wf-1'),
   ];
   AddressIndexingJobResponse? pullStatusResult;
-  TokensPage fetchTokensResult = const TokensPage(tokens: [], nextOffset: null);
+  TokensPage fetchTokensResult = const TokensPage(tokens: []);
 
   @override
   Future<List<AddressIndexingResult>> indexAddressesList(

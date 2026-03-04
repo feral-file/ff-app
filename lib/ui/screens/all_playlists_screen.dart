@@ -111,7 +111,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
 
     final title = widget.filter == AllPlaylistsFilter.curated
         ? 'Curated'
-        : 'Personal';
+        : 'Me';
     // Descriptions from Feral File app (old repo) for consistency.
     final description = widget.filter == AllPlaylistsFilter.curated
         ? 'Playlists assembled by Feral File and a small group of invited '
@@ -161,6 +161,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
               return CustomScrollView(
                 controller: _scrollController,
                 slivers: [
+                  const SliverToBoxAdapter(child: SizedBox(height: 21)),
                   SliverToBoxAdapter(
                     child: SectionDetailsHeader(
                       icon: SvgPicture.asset(
@@ -176,9 +177,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                       description: description,
                     ),
                   ),
-                  SliverToBoxAdapter(
-                    child: SizedBox(height: LayoutConstants.space6),
-                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 50)),
                   SliverList.builder(
                     itemCount: playlists.length,
                     itemBuilder: (context, index) {

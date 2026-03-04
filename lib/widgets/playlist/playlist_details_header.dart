@@ -51,7 +51,7 @@ class PlaylistDetailsHeader extends StatelessWidget {
           Padding(
             padding: EdgeInsets.symmetric(
               horizontal: LayoutConstants.pageHorizontalDefault,
-              vertical: LayoutConstants.space4,
+              vertical: LayoutConstants.space4, // 16px (old repo)
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -110,8 +110,8 @@ class PlaylistDetailsHeader extends StatelessWidget {
           ),
           if (showDivider)
             const Divider(
-              height: LayoutConstants.dividerThickness,
-              thickness: LayoutConstants.dividerThickness,
+              height: 1,
+              thickness: 1,
               color: AppColor.primaryBlack,
             ),
         ],

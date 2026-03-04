@@ -1,5 +1,8 @@
 import 'package:app/domain/models/indexer/workflow.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod/src/providers/future_provider.dart';
+import 'package:riverpod/src/providers/provider.dart';
 
 /// In-memory indexing job status by address for the current app session.
 ///
@@ -68,7 +71,20 @@ final addressIndexingJobProvider =
     );
 
 /// Convenience provider to watch a single address.
-final indexingJobStatusProvider =
+final ProviderFamily<AddressIndexingJobResponse?, String> indexingJobStatusProvider =
     Provider.family<AddressIndexingJobResponse?, String>((ref, address) {
   return ref.watch(addressIndexingJobProvider).getJob(address);
 });
+
+/// Persisted indexing process status per address.
+///
+/// Refetches when [indexingJobStatusProvider] for the same address changes,
+/// so UI stays in sync during polling.
+final FutureProviderFamily<AddressIndexingProcessStatus?, String> addressIndexingProcessStatusProvider =
+    FutureProvider.family<AddressIndexingProcessStatus?, String>(
+  (ref, address) async {
+    ref.watch(indexingJobStatusProvider(address));
+    final appState = ref.watch(appStateServiceProvider);
+    return appState.getAddressIndexingStatus(address);
+  },
+);

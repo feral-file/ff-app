@@ -35,6 +35,12 @@ class _FakePendingAddressesStore extends PendingAddressesStore {
 
 class _FakeAppStateService implements AppStateService {
   @override
+  Future<void> setAddressIndexingStatus({
+    required String address,
+    required AddressIndexingProcessStatus status,
+  }) async {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -104,6 +110,7 @@ void main() {
       personalTokensSyncService: personalTokensSyncService,
       pendingAddressesStore: _FakePendingAddressesStore(),
       indexerServiceIsolate: FakeIndexerServiceIsolate(),
+      appStateService: _FakeAppStateService(),
     );
   });
 

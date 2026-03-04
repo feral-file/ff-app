@@ -391,10 +391,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
       await appState.setAddressIndexingStatus(
         address: address,
-        status: AddressIndexingProcessStatus(
-          state: AddressIndexingProcessState.indexingTriggered,
-          updatedAt: DateTime.now().toUtc(),
-        ),
+        status: AddressIndexingProcessStatus.indexingTriggeredPending(),
       );
 
       await addressService.addAddress(

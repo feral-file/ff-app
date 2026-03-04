@@ -24,7 +24,7 @@ void main() {
       );
 
       await isolate.start();
-      addTearDown(() => isolate.stop());
+      addTearDown(isolate.stop);
 
       // Against fake endpoint, expect network/connection error.
       // Verifies the request-response protocol completes (error path).

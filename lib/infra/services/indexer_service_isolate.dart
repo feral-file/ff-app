@@ -255,7 +255,7 @@ void _isolateEntry(List<Object?> args) {
         switch (op) {
           case 'indexAddressesList':
             final addresses =
-                (args is Map? ? args as Map? : null)?['addresses'] as List?;
+                (args is Map? ? args : null)?['addresses'] as List?;
             if (addresses == null || addresses.isEmpty) {
               throw ArgumentError('addresses must not be empty');
             }
@@ -268,7 +268,7 @@ void _isolateEntry(List<Object?> args) {
 
           case 'getAddressIndexingJobStatus':
             final workflowId =
-                (args is Map? ? args as Map? : null)?['workflowId'] as String?;
+                (args is Map? ? args : null)?['workflowId'] as String?;
             if (workflowId == null || workflowId.isEmpty) {
               throw ArgumentError('workflowId must not be empty');
             }
@@ -278,7 +278,7 @@ void _isolateEntry(List<Object?> args) {
             return status.toJson();
 
           case 'fetchTokensPageByAddresses':
-            final map = args is Map? ? args as Map? : null;
+            final map = args is Map? ? args : null;
             final addresses = map?['addresses'] as List?;
             if (addresses == null || addresses.isEmpty) {
               throw ArgumentError('addresses must not be empty');

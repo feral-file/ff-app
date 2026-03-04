@@ -1,4 +1,5 @@
 import 'package:app/domain/models/models.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
@@ -27,6 +28,11 @@ class _FakePendingAddressesStore extends PendingAddressesStore {
 }
 
 class _FakePersonalTokensSyncService implements PersonalTokensSyncService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeAppStateService implements AppStateServiceBase {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -65,6 +71,7 @@ void main() {
         personalTokensSyncService: _FakePersonalTokensSyncService(),
         pendingAddressesStore: pending,
         indexerServiceIsolate: FakeIndexerServiceIsolate(),
+        appStateService: _FakeAppStateService(),
       );
 
       expect(
@@ -109,6 +116,7 @@ void main() {
         personalTokensSyncService: _FakePersonalTokensSyncService(),
         pendingAddressesStore: _FakePendingAddressesStore(),
         indexerServiceIsolate: FakeIndexerServiceIsolate(),
+        appStateService: _FakeAppStateService(),
       );
 
       expect(
@@ -153,6 +161,7 @@ void main() {
         personalTokensSyncService: _FakePersonalTokensSyncService(),
         pendingAddressesStore: _FakePendingAddressesStore(),
         indexerServiceIsolate: FakeIndexerServiceIsolate(),
+        appStateService: _FakeAppStateService(),
       );
 
       expect(

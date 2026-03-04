@@ -163,7 +163,7 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
         if (personalPlaylists.isNotEmpty)
           SliverToBoxAdapter(
             child: PlaylistSection(
-              sectionName: 'Personal',
+              sectionName: 'Me',
               playlistHeaderBuilder: (playlist, itemCount) {
                 final ownerAddress = playlist.ownerAddress;
                 if (ownerAddress == null || ownerAddress.isEmpty) return null;

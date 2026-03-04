@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:app/domain/extensions/playlist_ext.dart';
+import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/domain_address_service.dart';
@@ -22,11 +24,13 @@ class AddressService {
     required PersonalTokensSyncService personalTokensSyncService,
     required PendingAddressesStore pendingAddressesStore,
     required IndexerServiceIsolateOperations indexerServiceIsolate,
+    required AppStateServiceBase appStateService,
   }) : _databaseService = databaseService,
        _domainAddressService = domainAddressService,
        _personalTokensSyncService = personalTokensSyncService,
        _pendingAddressesStore = pendingAddressesStore,
-       _indexerServiceIsolate = indexerServiceIsolate {
+       _indexerServiceIsolate = indexerServiceIsolate,
+       _appStateService = appStateService {
     _indexerSyncService = indexerSyncService;
     _log = Logger('AddressService');
   }
@@ -36,6 +40,7 @@ class AddressService {
   final PersonalTokensSyncService _personalTokensSyncService;
   final PendingAddressesStore _pendingAddressesStore;
   final IndexerServiceIsolateOperations _indexerServiceIsolate;
+  final AppStateServiceBase _appStateService;
   late final IndexerSyncService _indexerSyncService;
   late final Logger _log;
 
@@ -99,24 +104,68 @@ class AddressService {
     }
     if (totalIngested > 0) {
       _log.info('IndexAndSync fast-path completed for $queryAddress');
+      await _appStateService.setAddressIndexingStatus(
+        address: queryAddress,
+        status: AddressIndexingProcessStatus.completed(),
+      );
       return;
     }
 
     // Slow-path: trigger indexing
-    final workflowId = await index(queryAddress);
-    if (workflowId == null || workflowId.isEmpty) {
-      throw Exception('No workflow ID returned for address: $queryAddress');
+    String workflowId;
+    try {
+      final id = await index(queryAddress);
+      if (id == null || id.isEmpty) {
+        await _appStateService.setAddressIndexingStatus(
+          address: queryAddress,
+          status: AddressIndexingProcessStatus.failed(),
+        );
+        throw Exception('Failed to trigger indexing');
+      }
+      workflowId = id;
+    } catch (e, stack) {
+      await _appStateService.setAddressIndexingStatus(
+        address: queryAddress,
+        status: AddressIndexingProcessStatus.failed(),
+      );
+      Error.throwWithStackTrace(e, stack);
     }
 
-    const pollInterval = Duration(seconds: 5);
+    await _appStateService.setAddressIndexingStatus(
+      address: queryAddress,
+      status: AddressIndexingProcessStatus.indexingTriggered(
+        workflowId: workflowId,
+      ),
+    );
+
+    const pollInterval = Duration(seconds: 15);
     const maxAttempts = 60;
 
+    await _appStateService.setAddressIndexingStatus(
+      address: queryAddress,
+      status: AddressIndexingProcessStatus.waitingForIndexStatus(),
+    );
+
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
-      final status = await pullStatus(workflowId);
+      AddressIndexingJobResponse status;
+      try {
+        status = await pullStatus(workflowId);
+      } catch (e, stack) {
+        await _appStateService.setAddressIndexingStatus(
+          address: queryAddress,
+          status: AddressIndexingProcessStatus.failed(),
+        );
+        Error.throwWithStackTrace(e, stack);
+      }
+
       _onIndexingJobStatusCallback?.call(status);
 
       if (status.status.isDone) {
-        if (!status.status.isSuccess) {
+        if (status.status.isFailed) {
+          await _appStateService.setAddressIndexingStatus(
+            address: queryAddress,
+            status: AddressIndexingProcessStatus.failed(),
+          );
           throw Exception(
             'Indexing failed with status: ${status.status.name}',
           );
@@ -124,19 +173,28 @@ class AddressService {
         break;
       }
 
-      // Incremental UX: fetch and ingest on each poll
+      // Incremental UX: fetch and ingest on each poll (don't change status on failure)
       offset = 0;
       while (true) {
-        final count = await syncTokens(queryAddress, offset: offset);
-        if (count == 0) break;
-        offset += count;
-        if (count < 50) break;
+        try {
+          final count = await syncTokens(queryAddress, offset: offset);
+          if (count == 0) break;
+          offset += count;
+          if (count < 50) break;
+        } catch (_) {
+          break;
+        }
       }
 
       await Future<void>.delayed(pollInterval);
     }
 
-    // Final fetch after completion
+    // Final fetch after completion: set syncingTokens, then completed
+    await _appStateService.setAddressIndexingStatus(
+      address: queryAddress,
+      status: AddressIndexingProcessStatus.syncingTokens(),
+    );
+
     offset = 0;
     while (true) {
       final count = await syncTokens(queryAddress, offset: offset);
@@ -144,6 +202,11 @@ class AddressService {
       offset += count;
       if (count < 50) break;
     }
+
+    await _appStateService.setAddressIndexingStatus(
+      address: queryAddress,
+      status: AddressIndexingProcessStatus.completed(),
+    );
 
     _log.info('IndexAndSync completed for $queryAddress');
   }
@@ -201,6 +264,10 @@ class AddressService {
         // DB not ready yet: persist the address in the pending store so it
         // survives navigation and is migrated to SQLite after the seed lands.
         await _pendingAddressesStore.addAddress(normalizedAddress);
+        await _appStateService.setAddressIndexingStatus(
+          address: normalizedAddress,
+          status: AddressIndexingProcessStatus.idle(),
+        );
         if (syncNow) {
           // track address and sync immediately
           _scheduleAddressIndexing(normalizedAddress);
@@ -235,6 +302,10 @@ class AddressService {
       );
 
       await _databaseService.ingestPlaylist(playlist);
+      await _appStateService.setAddressIndexingStatus(
+        address: normalizedAddress,
+        status: AddressIndexingProcessStatus.idle(),
+      );
       if (syncNow) {
         _scheduleAddressIndexing(normalizedAddress);
       } else {

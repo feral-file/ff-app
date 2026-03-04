@@ -54,6 +54,7 @@ final addressServiceProvider = Provider<AddressService>((ref) {
     personalTokensSyncService: personalTokensSyncService,
     pendingAddressesStore: pendingAddressesStore,
     indexerServiceIsolate: indexerServiceIsolate,
+    appStateService: ref.watch(appStateServiceProvider),
   );
 
   service.setIndexingJobStatusCallback((response) {

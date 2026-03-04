@@ -138,7 +138,6 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
                   PlaylistTitle(
                     primaryText: playlistTitle,
                     secondaryText: creator,
-                    total: state.total,
                   ),
               loading: () => PlaylistTitle(
                 primaryText: playlistTitle,
