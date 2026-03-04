@@ -133,7 +133,7 @@ Future<void> main() async {
   // stays locked and is opened by SeedDownloadNotifier once the background
   // download completes (or fails).
   final dbFolder = await getApplicationDocumentsDirectory();
-  final dbFile = File(p.join(dbFolder.path, 'playlist_cache.sqlite'));
+  final dbFile = File(p.join(dbFolder.path, 'dp1_library.sqlite'));
   if (dbFile.existsSync()) {
     SeedDatabaseGate.complete();
   }
