@@ -214,9 +214,8 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                   ref.read(onboardingActionsProvider).completeOnboarding(),
                 );
                 context.popUntil(Routes.startSetupFf1);
-                // TODO: Navigate to Device config instead
                 unawaited(
-                  context.push(Routes.home),
+                  context.push(Routes.deviceConfiguration),
                 );
               }
             }
@@ -325,16 +324,17 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                           if (status == _ConnectFF1Status.portalIsSet) ...[
                             SizedBox(height: LayoutConstants.space5),
                             PrimaryButton(
-                              onTap: () async {
-                                // TODO: Navigate to Device config instead
+                              onTap: () {
                                 unawaited(
                                   ref
                                       .read(onboardingActionsProvider)
                                       .completeOnboarding(),
                                 );
-                                context.go(Routes.home);
+                                unawaited(
+                                  context.push(Routes.deviceConfiguration),
+                                );
                               },
-                              text: 'Start using the app',
+                              text: 'Go to Settings',
                             ),
                           ],
                         ],

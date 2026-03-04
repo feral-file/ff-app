@@ -183,8 +183,9 @@ class _EnterWiFiPasswordScreenState
           ref.read(onboardingActionsProvider).completeOnboarding(),
         );
 
-        // TODO: navigate to bluetoothConnectedDeviceConfig(isFromOnboarding: )
-        context.go(Routes.home);
+        unawaited(
+          context.push(Routes.deviceConfiguration),
+        );
       } else if (next.status == WiFiConnectionStatus.error) {
         final error = next.error;
 

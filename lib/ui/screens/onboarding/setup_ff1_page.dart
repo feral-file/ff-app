@@ -15,9 +15,14 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/onboarding/onboarding_shell.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:logging/logging.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+final Logger _log = Logger('OnboardingSetupFf1Page');
 
 /// Onboarding step: setup FF1.
 class OnboardingSetupFf1Page extends ConsumerWidget {
@@ -104,7 +109,14 @@ class OnboardingSetupFf1Page extends ConsumerWidget {
   }
 
   /// On learn more button pressed.
-  void onLearnMore(BuildContext context) {
-    // TODO(feral-file): implement FF1 learn-more navigation (e.g. open docs URL).
+  Future<void> onLearnMore(BuildContext context) async {
+    try {
+      final uri = Uri.parse('https://feralfile.com/install');
+      if (!uri.hasScheme) return;
+
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } on PlatformException catch (e) {
+      _log.warning('Failed to open learn more URL: $e');
+    }
   }
 }

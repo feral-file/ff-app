@@ -220,10 +220,17 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
               height: 1,
             ),
           ),
-          if (!widget.payload.isInSetupProcess) ...[
-            const SliverToBoxAdapter(
+          if (widget.payload.isInSetupProcess) ...[
+            SliverToBoxAdapter(
               child: SizedBox(
-                height: 20,
+                height: LayoutConstants.space20,
+              ),
+            ),
+          ],
+          if (!widget.payload.isInSetupProcess) ...[
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: LayoutConstants.space5,
               ),
             ),
             SliverToBoxAdapter(
