@@ -1,8 +1,10 @@
 import 'package:app/app/providers/address_indexing_job_provider.dart';
+import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/playlist_details_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
+import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -90,7 +92,20 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
   Widget build(BuildContext context) {
     final playlist = widget.playlist;
     final playlistTitle = playlist.name;
+    final isAddressPlaylist = playlist.isAddressPlaylist;
+    // For address playlists: use creator (address shorthand). For curated: use channel name.
     final creator = widget.playlistCreator ?? '';
+
+    // For non-address playlists, resolve channel name for the right-side display.
+    final channelId = playlist.channelId;
+    final channelAsync = (!isAddressPlaylist &&
+            channelId != null &&
+            channelId.isNotEmpty &&
+            widget.headerBuilder == null)
+        ? ref.watch(channelByIdProvider(channelId))
+        : const AsyncValue<Channel?>.data(null);
+    final channel = channelAsync.asData?.value;
+    final rightSideText = isAddressPlaylist ? creator : (channel?.name ?? '');
 
     final nextDetailsAsync = widget.isActive
         ? ref.watch(playlistDetailsProvider(playlist.id))
@@ -152,15 +167,15 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
                   ) ??
                   PlaylistTitle(
                     primaryText: playlistTitle,
-                    secondaryText: creator,
+                    secondaryText: rightSideText,
                   ),
               loading: () => PlaylistTitle(
                 primaryText: playlistTitle,
-                secondaryText: creator,
+                secondaryText: rightSideText,
               ),
               error: (_, _) => PlaylistTitle(
                 primaryText: playlistTitle,
-                secondaryText: creator,
+                secondaryText: rightSideText,
               ),
             ),
             detailsAsync.when(

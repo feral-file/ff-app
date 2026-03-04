@@ -60,26 +60,11 @@ class PlaylistDetailsHeader extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              style: AppTypography.body(context).white,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (total != null) ...[
-                            SizedBox(width: LayoutConstants.space1),
-                            Text(
-                              '($total)',
-                              style: AppTypography.bodySmall(context).grey,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ],
+                      Text(
+                        title,
+                        style: AppTypography.body(context).white,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       if (subtitle != null && subtitle!.isNotEmpty) ...[
                         SizedBox(height: LayoutConstants.space1),
@@ -92,6 +77,15 @@ class PlaylistDetailsHeader extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
+                        ),
+                      ],
+                      if (total != null) ...[
+                        SizedBox(height: LayoutConstants.space1),
+                        Text(
+                          '$total works',
+                          style: AppTypography.bodySmall(context).grey,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ],

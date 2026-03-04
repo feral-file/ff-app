@@ -171,17 +171,11 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
                               context, ref, playlist,
                             ),
                           ),
-                          data: (channel) => PlaylistHeaderWithCollectionState(
+                          data: (_) => PlaylistHeaderWithCollectionState(
                             primaryText: playlist.name,
                             secondaryText: '',
                             total: state.total,
                             ownerAddress: ownerAddress,
-                            subtitle: channel?.name,
-                            onSubtitleTap: channel != null
-                                ? () => context.push(
-                                      '${Routes.channels}/${channel.id}',
-                                    )
-                                : null,
                             showDivider: true,
                             onRetry: () => ref
                                 .read(addressServiceProvider)
