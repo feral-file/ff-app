@@ -24,6 +24,8 @@ import 'package:app/ui/screens/release_note_detail_screen.dart';
 import 'package:app/ui/screens/release_notes_screen.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
 import 'package:app/ui/screens/send_wifi_credentials_screen.dart';
+import 'package:app/ui/screens/settings/document_viewer_page.dart';
+import 'package:app/ui/screens/settings/settings_page.dart';
 import 'package:app/ui/screens/work_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -176,6 +178,37 @@ routerProvider = Provider.family<GoRouter, String>((
           state,
           const ReleaseNotesScreen(),
         ),
+      ),
+
+      // Settings (Account) route.
+      GoRoute(
+        path: Routes.settings,
+        name: RouteNames.settings,
+        pageBuilder: (context, state) => buildCupertinoTransitionPage(
+          context,
+          state,
+          const SettingsPage(),
+        ),
+        routes: [
+          GoRoute(
+            path: 'eula',
+            name: RouteNames.settingsEula,
+            pageBuilder: (context, state) => buildCupertinoTransitionPage(
+              context,
+              state,
+              const DocumentViewerPage(document: SettingsDocument.eula),
+            ),
+          ),
+          GoRoute(
+            path: 'privacy',
+            name: RouteNames.settingsPrivacy,
+            pageBuilder: (context, state) => buildCupertinoTransitionPage(
+              context,
+              state,
+              const DocumentViewerPage(document: SettingsDocument.privacy),
+            ),
+          ),
+        ],
       ),
 
       // Release note detail route.
