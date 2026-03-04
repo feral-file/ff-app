@@ -76,6 +76,15 @@ abstract class Routes {
 
   /// Release note detail route path.
   static const releaseNoteDetail = '/release-notes/detail';
+
+  /// Settings (Account) page route path.
+  static const settings = '/settings';
+
+  /// EULA document viewer (child of settings).
+  static const settingsEula = '/settings/eula';
+
+  /// Privacy Policy document viewer (child of settings).
+  static const settingsPrivacy = '/settings/privacy';
 }
 
 /// Named routes for type-safe navigation.
@@ -164,4 +173,13 @@ abstract class RouteNames {
 
   /// Release note detail route name.
   static const releaseNoteDetail = 'release-note-detail';
+
+  /// Settings (Account) route name.
+  static const settings = 'settings';
+
+  /// EULA document viewer route name.
+  static const settingsEula = 'settings-eula';
+
+  /// Privacy Policy document viewer route name.
+  static const settingsPrivacy = 'settings-privacy';
 }

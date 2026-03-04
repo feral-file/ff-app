@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:app/app/providers/app_overlay_provider.dart';
-import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -21,7 +19,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import 'package:logging/logging.dart';
 
 // Global keys for each page to preserve state
 final GlobalKey<PlaylistsTabPageState> _playlistsPageKey =
@@ -42,7 +39,6 @@ class HomeIndexPage extends ConsumerStatefulWidget {
 }
 
 class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
-  static final Logger _log = Logger('HomeIndexPage');
   late HomeIndexHeaderTab _selectedTab;
   late ScrollController _scrollController;
 
@@ -227,6 +223,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         ),
         onTap: () {
           Navigator.of(context).pop();
+          unawaited(context.push(Routes.settings));
         },
       ),
       // Support & Feedback
@@ -262,22 +259,6 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           Navigator.of(context).pop();
           unawaited(context.push(Routes.releaseNotes));
         },
-      ),
-      OptionItem(
-        title: 'Forget I exist',
-        icon: const Icon(
-          Icons.delete_forever_outlined,
-          color: AppColor.white,
-        ),
-        onTap: _clearLocalDataAndRestartOnboarding,
-      ),
-      OptionItem(
-        title: 'Clean metadata',
-        icon: const Icon(
-          Icons.refresh,
-          color: AppColor.white,
-        ),
-        onTap: _rebuildMetadata,
       ),
     ];
   }
@@ -341,72 +322,6 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           content: Text('Could not open email client.'),
         ),
       );
-    }
-  }
-
-  Future<void> _clearLocalDataAndRestartOnboarding() async {
-    Navigator.of(context).pop();
-
-    final toastOverlayId = ref
-        .read(appOverlayProvider.notifier)
-        .showToast(
-          message: 'Cleaning local data...',
-        );
-    await WidgetsBinding.instance.endOfFrame;
-
-    Object? cleanupError;
-    try {
-      await ref
-          .read(localDataCleanupServiceProvider)
-          .clearLocalData()
-          .timeout(const Duration(seconds: 20));
-    } on Object catch (e, st) {
-      cleanupError = e;
-      _log.severe('Forget I exist cleanup failed', e, st);
-    } finally {
-      if (mounted) {
-        ref.read(appOverlayProvider.notifier).dismissOverlay(toastOverlayId);
-      }
-    }
-
-    if (!mounted) {
-      return;
-    }
-
-    if (cleanupError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cleanup did not fully complete. Opening onboarding.'),
-        ),
-      );
-    }
-    context.go(Routes.onboardingIntroducePage);
-  }
-
-  Future<void> _rebuildMetadata() async {
-    Navigator.of(context).pop();
-
-    // Set tab to Playlists and pop all detailed screens before showing toast.
-    setState(() => _selectedTab = HomeIndexHeaderTab.playlists);
-    final router = GoRouter.of(context);
-    while (router.canPop()) {
-      router.pop();
-    }
-
-    final toastOverlayId = ref
-        .read(appOverlayProvider.notifier)
-        .showToast(
-          message: 'Cleaning metadata...',
-        );
-    await WidgetsBinding.instance.endOfFrame;
-
-    try {
-      await ref.read(localDataCleanupServiceProvider).rebuildMetadata();
-    } finally {
-      // Dismiss toast immediately after cleaning completes (no wait for refetch).
-      if (mounted) {
-        ref.read(appOverlayProvider.notifier).dismissOverlay(toastOverlayId);
-      }
     }
   }
 

@@ -24,6 +24,9 @@ const _routesThatHideNowDisplayingBar = <String>[
   Routes.deviceConfiguration,
   Routes.ff1Updating,
   Routes.nowDisplaying,
+  Routes.settings,
+  Routes.settingsEula,
+  Routes.settingsPrivacy,
 ];
 
 /// Syncs scroll + keyboard visibility into [nowDisplayingVisibilityProvider].
