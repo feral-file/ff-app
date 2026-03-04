@@ -162,66 +162,83 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
         // Personal playlists section (preview).
         if (personalPlaylists.isNotEmpty)
           SliverToBoxAdapter(
-            child: PlaylistSection(
-              sectionName: 'Me',
-              playlistHeaderBuilder: (playlist, itemCount) {
-                final ownerAddress = playlist.ownerAddress;
-                if (ownerAddress == null || ownerAddress.isEmpty) return null;
-                final creator = _creatorForAddressPlaylist(playlist);
-                return PlaylistHeaderWithCollectionState(
-                  primaryText: playlist.name,
-                  secondaryText: creator,
-                  total: itemCount,
-                  ownerAddress: ownerAddress,
-                  onRetry: () => ref
-                      .read(addressServiceProvider)
-                      .indexAndSyncAddress(ownerAddress),
-                );
-              },
-              sectionIcon: SvgPicture.asset(
-                'assets/images/icon_account.svg',
-                width: LayoutConstants.iconSizeDefault,
-                height: LayoutConstants.iconSizeDefault,
-                colorFilter: const ColorFilter.mode(
-                  AppColor.auQuickSilver,
-                  BlendMode.srcIn,
+            child: Column(
+              children: [
+                PlaylistSection(
+                  sectionName: 'Me',
+                  playlistHeaderBuilder: (playlist, itemCount) {
+                    final ownerAddress = playlist.ownerAddress;
+                    if (ownerAddress == null || ownerAddress.isEmpty)
+                      return null;
+                    final creator = _creatorForAddressPlaylist(playlist);
+                    return PlaylistHeaderWithCollectionState(
+                      primaryText: playlist.name,
+                      secondaryText: creator,
+                      total: itemCount,
+                      ownerAddress: ownerAddress,
+                      onRetry: () => ref
+                          .read(addressServiceProvider)
+                          .indexAndSyncAddress(ownerAddress),
+                    );
+                  },
+                  sectionIcon: SvgPicture.asset(
+                    'assets/images/icon_account.svg',
+                    width: LayoutConstants.iconSizeDefault,
+                    height: LayoutConstants.iconSizeDefault,
+                    colorFilter: const ColorFilter.mode(
+                      AppColor.auQuickSilver,
+                      BlendMode.srcIn,
+                    ),
+                  ),
+                  playlists: personalPlaylists.take(_previewCount).toList(),
+                  isActive: widget.isActive,
+                  hasMore: personalPlaylists.length > _previewCount,
+                  onViewAllTap: personalPlaylists.length > _previewCount
+                      ? () => context.push(
+                          '${Routes.allPlaylists}?filter=personal',
+                        )
+                      : null,
+                  onPlaylistItemTap: (item) {
+                    context.push('${Routes.works}/${item.id}');
+                  },
                 ),
-              ),
-              playlists: personalPlaylists.take(_previewCount).toList(),
-              isActive: widget.isActive,
-              hasMore: personalPlaylists.length > _previewCount,
-              onViewAllTap: personalPlaylists.length > _previewCount
-                  ? () => context.push('${Routes.allPlaylists}?filter=personal')
-                  : null,
-              onPlaylistItemTap: (item) {
-                context.push('${Routes.works}/${item.id}');
-              },
+                SizedBox(height: LayoutConstants.space12),
+              ],
             ),
           ),
 
         // Curated playlists section (preview).
         if (curatedSectionPlaylists.isNotEmpty)
           SliverToBoxAdapter(
-            child: PlaylistSection(
-              sectionName: 'Curated',
-              sectionIcon: SvgPicture.asset(
-                'assets/images/D.svg',
-                width: LayoutConstants.iconSizeDefault,
-                height: LayoutConstants.iconSizeDefault,
-                colorFilter: const ColorFilter.mode(
-                  AppColor.auQuickSilver,
-                  BlendMode.srcIn,
+            child: Column(
+              children: [
+                PlaylistSection(
+                  sectionName: 'Curated',
+                  sectionIcon: SvgPicture.asset(
+                    'assets/images/D.svg',
+                    width: LayoutConstants.iconSizeDefault,
+                    height: LayoutConstants.iconSizeDefault,
+                    colorFilter: const ColorFilter.mode(
+                      AppColor.auQuickSilver,
+                      BlendMode.srcIn,
+                    ),
+                  ),
+                  playlists: curatedSectionPlaylists
+                      .take(_previewCount)
+                      .toList(),
+                  isActive: widget.isActive,
+                  hasMore: curatedSectionPlaylists.length > _previewCount,
+                  onViewAllTap: curatedSectionPlaylists.length > _previewCount
+                      ? () => context.push(
+                          '${Routes.allPlaylists}?filter=curated',
+                        )
+                      : null,
+                  onPlaylistItemTap: (item) {
+                    context.push('${Routes.works}/${item.id}');
+                  },
                 ),
-              ),
-              playlists: curatedSectionPlaylists.take(_previewCount).toList(),
-              isActive: widget.isActive,
-              hasMore: curatedSectionPlaylists.length > _previewCount,
-              onViewAllTap: curatedSectionPlaylists.length > _previewCount
-                  ? () => context.push('${Routes.allPlaylists}?filter=curated')
-                  : null,
-              onPlaylistItemTap: (item) {
-                context.push('${Routes.works}/${item.id}');
-              },
+                SizedBox(height: LayoutConstants.space12),
+              ],
             ),
           ),
 

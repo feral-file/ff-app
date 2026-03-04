@@ -1,5 +1,5 @@
-import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
@@ -9,7 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Sleep mode indicator for the now displaying bar.
 ///
-/// Matches old repo SleepModeIndicator structure with scale animation.
+/// Shows a blinking (opacity) animation while processing sleep/wake.
 class SleepModeIndicator extends ConsumerStatefulWidget {
   const SleepModeIndicator({
     required this.isSleeping,
@@ -25,10 +25,10 @@ class SleepModeIndicator extends ConsumerStatefulWidget {
 class _SleepModeIndicatorState extends ConsumerState<SleepModeIndicator>
     with SingleTickerProviderStateMixin {
   static const _processingAnimationDuration = Duration(milliseconds: 150);
-  static const _pressedScale = 0.6;
+  static const _blinkOpacityMin = 0.3;
 
   late AnimationController _animationController;
-  late Animation<double> _scaleAnimation;
+  late Animation<double> _blinkAnimation;
   bool _isProcessing = false;
 
   @override
@@ -38,10 +38,10 @@ class _SleepModeIndicatorState extends ConsumerState<SleepModeIndicator>
       duration: _processingAnimationDuration,
       vsync: this,
     );
-    _scaleAnimation =
+    _blinkAnimation =
         Tween<double>(
-          begin: 1.2,
-          end: _pressedScale,
+          begin: 1.0,
+          end: _blinkOpacityMin,
         ).animate(
           CurvedAnimation(
             parent: _animationController,
@@ -64,9 +64,6 @@ class _SleepModeIndicatorState extends ConsumerState<SleepModeIndicator>
     }
 
     final device = (status.object as DP1NowDisplayingObject).connectedDevice;
-    if (device.topicId.isEmpty) {
-      return;
-    }
 
     if (_isProcessing) {
       return;
@@ -81,12 +78,10 @@ class _SleepModeIndicatorState extends ConsumerState<SleepModeIndicator>
     _animationController.repeat(reverse: true);
 
     try {
-      final control = ref.read(ff1WifiControlProvider);
-      if (widget.isSleeping) {
-        await control.resume(topicId: device.topicId);
-      } else {
-        await control.pause(topicId: device.topicId);
-      }
+      await ref.read(canvasClientServiceV2Provider).setSleepMode(
+        device,
+        !widget.isSleeping,
+      );
     } finally {
       if (!mounted) {
         return;
@@ -108,30 +103,45 @@ class _SleepModeIndicatorState extends ConsumerState<SleepModeIndicator>
         ? PrimitivesTokens.colorsSleepModeInactive
         : PrimitivesTokens.colorsSleepModeActive;
 
-    return GestureDetector(
-      onTap: _handleTap,
-      child: AnimatedBuilder(
-        animation: _scaleAnimation,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: _scaleAnimation.value,
-            child: SizedBox(
-              width: LayoutConstants.sleepModeIndicatorSize,
-              height: LayoutConstants.sleepModeIndicatorSize,
-              child: Padding(
-                padding: EdgeInsets.all(
-                  LayoutConstants.sleepModeIndicatorPadding,
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
+    final semanticsLabel = widget.isSleeping
+        ? 'Tap to wake FF1'
+        : 'Tap to put FF1 to sleep';
+
+    return Semantics(
+      label: semanticsLabel,
+      button: true,
+      child: GestureDetector(
+        onTap: _handleTap,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: LayoutConstants.minTouchTarget,
+          height: LayoutConstants.minTouchTarget,
+          child: Center(
+            child: AnimatedBuilder(
+              animation: _blinkAnimation,
+              builder: (context, child) {
+                return Opacity(
+                  opacity: _blinkAnimation.value,
+                  child: SizedBox(
+                    width: LayoutConstants.sleepModeIndicatorSize,
+                    height: LayoutConstants.sleepModeIndicatorSize,
+                    child: Padding(
+                      padding: EdgeInsets.all(
+                        LayoutConstants.sleepModeIndicatorPadding,
+                      ),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }

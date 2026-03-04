@@ -4,12 +4,20 @@ import 'package:app/widgets/load_more_indicator.dart';
 import 'package:app/widgets/work_item_thumbnail.dart';
 import 'package:flutter/material.dart';
 
+/// Number of placeholder items shown in loading skeleton.
+const int _loadingItemsCount = 8;
+
 /// DP1 Carousel - Horizontal scrollable carousel for displaying work items.
 /// Uses domain [PlaylistItem] only.
+///
+/// When [isLoading] is true and [items] is empty, shows a skeleton carousel to
+/// reserve layout height and prevent UI bounce. When [items] is empty and
+/// [isLoading] is false, renders [SizedBox.shrink].
 class DP1Carousel extends StatefulWidget {
   /// Creates a DP1Carousel.
   const DP1Carousel({
     required this.items,
+    this.isLoading = false,
     this.onItemTap,
     this.scrollController,
     this.isLoadingMore = false,
@@ -19,6 +27,10 @@ class DP1Carousel extends StatefulWidget {
 
   /// List of work items to display (domain).
   final List<PlaylistItem> items;
+
+  /// Whether the initial data is loading. When true and [items] is empty,
+  /// shows a skeleton carousel instead of collapsing.
+  final bool isLoading;
 
   /// Callback when an item is tapped.
   final void Function(PlaylistItem item)? onItemTap;
@@ -81,8 +93,30 @@ class _DP1CarouselState extends State<DP1Carousel> {
     }
   }
 
+  /// Placeholder items for loading skeleton. Lazily created once.
+  static List<PlaylistItem>? _cachedPlaceholders;
+
+  static List<PlaylistItem> _placeholderItems() {
+    _cachedPlaceholders ??= List<PlaylistItem>.generate(
+      _loadingItemsCount,
+      (index) => PlaylistItem(
+        id: 'dp1_carousel_loading_$index',
+        kind: PlaylistItemKind.dp1Item,
+        title: 'Loading',
+      ),
+      growable: false,
+    );
+    return _cachedPlaceholders!;
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.items.isEmpty && !widget.isLoading) {
+      return const SizedBox.shrink();
+    }
+    final displayItems = widget.items.isEmpty && widget.isLoading
+        ? _placeholderItems()
+        : widget.items;
     return SizedBox(
       height: LayoutConstants.dp1CarouselHeight,
       child: CustomScrollView(
@@ -95,18 +129,20 @@ class _DP1CarouselState extends State<DP1Carousel> {
               horizontal: LayoutConstants.dp1CarouselContentPaddingHorizontal,
             ),
             sliver: SliverList.builder(
-              itemCount: widget.items.length,
+              itemCount: displayItems.length,
               itemBuilder: (context, index) => Padding(
                 padding: EdgeInsets.only(
-                  right: index < widget.items.length - 1
+                  right: index < displayItems.length - 1
                       ? LayoutConstants.workThumbnailGap
                       : 0,
                 ),
                 child: WorkItemThumbnail(
-                  item: widget.items[index],
-                  onTap: () {
-                    widget.onItemTap?.call(widget.items[index]);
-                  },
+                  item: displayItems[index],
+                  onTap: widget.items.isNotEmpty
+                      ? () {
+                          widget.onItemTap?.call(displayItems[index]);
+                        }
+                      : null,
                 ),
               ),
             ),
