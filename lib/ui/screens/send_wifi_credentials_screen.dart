@@ -59,6 +59,7 @@ class _EnterWiFiPasswordScreenState
   final _passwordController = TextEditingController();
   final _passwordFocusNode = FocusNode();
   bool _isProcessing = false;
+  String _passwordText = '';
 
   /// Parse SSID from networkSsid (may contain "ssid|security" format)
   String _parseSSID(String ssid) {
@@ -88,7 +89,7 @@ class _EnterWiFiPasswordScreenState
     final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
     if (isOpen) {
       // Auto-submit for open networks
-      Future.microtask(() => unawaited(_handleSendCredentials()));
+      unawaited(Future.microtask(_handleSendCredentials));
     } else {
       // Request focus on password field after first frame
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -110,7 +111,6 @@ class _EnterWiFiPasswordScreenState
     final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
     final password = isOpen ? '' : _passwordController.text.trim();
 
-    // TODO: Disable, enable password field
     if (!isOpen && password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -151,6 +151,8 @@ class _EnterWiFiPasswordScreenState
             connectionState.status != WiFiConnectionStatus.error);
     final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
     final parsedSsid = _parseSSID(widget.payload.wifiAccessPoint.ssid);
+    // Open networks don't need a password; closed networks require one.
+    final canSubmit = isOpen || _passwordText.trim().isNotEmpty;
     final reservedBottomBarHeight = shouldReserveNowDisplayingBar
         ? LayoutConstants.nowDisplayingBarReservedHeight
         : 0.0;
@@ -303,7 +305,8 @@ class _EnterWiFiPasswordScreenState
                                 hintText: 'Password',
                                 defaultObscure: false,
                                 isEnabled: !isProcessing,
-                                onChanged: (_) {},
+                                onChanged: (v) =>
+                                    setState(() => _passwordText = v),
                               ),
                             ],
                           ),
@@ -320,7 +323,7 @@ class _EnterWiFiPasswordScreenState
                               LayoutConstants.space3 + LayoutConstants.space1,
                         ),
                         color: PrimitivesTokens.colorsWhite,
-                        onTap: _handleSendCredentials,
+                        onTap: canSubmit ? _handleSendCredentials : null,
                         text: 'Submit',
                       ),
                     ),

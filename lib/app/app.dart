@@ -112,6 +112,21 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     });
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _deeplinkActionsSubscription?.close();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !_started) {
+      return;
+    }
+    unawaited(_syncSeedDatabaseOnResume());
+  }
+
   void _startDeeplinkHandling() {
     _deeplinkActionsSubscription ??= ref
         .listenManual<AsyncValue<DeeplinkNavigationAction>>(
@@ -217,10 +232,10 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   Future<void> _logStartupFeedState() async {
     try {
       final databaseService = ref.read(databaseServiceProvider);
-      final channels =
-          await databaseService.getChannelsByType(ChannelType.dp1);
-      final playlists =
-          await databaseService.getAllPlaylists(type: PlaylistType.dp1);
+      final channels = await databaseService.getChannelsByType(ChannelType.dp1);
+      final playlists = await databaseService.getAllPlaylists(
+        type: PlaylistType.dp1,
+      );
       _log.info(
         'Startup cache counts: dp1Channels=${channels.length}, '
         'dp1Playlists=${playlists.length}',
@@ -442,12 +457,6 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     }
     return '${address.substring(0, 6)}...'
         '${address.substring(address.length - 4)}';
-  }
-
-  @override
-  void dispose() {
-    _deeplinkActionsSubscription?.close();
-    super.dispose();
   }
 
   @override
