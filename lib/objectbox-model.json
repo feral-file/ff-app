@@ -125,7 +125,7 @@
     },
     {
       "id": "10:3855157679464200367",
-      "lastPropertyId": "12:3462060407990166466",
+      "lastPropertyId": "13:3764280306253148323",
       "name": "AppStateAddressEntity",
       "properties": [
         {
@@ -190,6 +190,11 @@
           "id": "12:3462060407990166466",
           "name": "feedBareIngestCompletedAtUs",
           "type": 6
+        },
+        {
+          "id": "13:3764280306253148323",
+          "name": "indexingProcessWorkflowId",
+          "type": 9
         }
       ],
       "relations": []

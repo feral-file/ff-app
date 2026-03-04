@@ -242,6 +242,9 @@ class AppStateAddressEntity {
   /// Error details for indexing process state transitions.
   String indexingProcessErrorMessage;
 
+  /// Indexer workflow ID for resume (when state is indexingTriggered, etc).
+  String indexingProcessWorkflowId;
+
   /// Last write timestamp for this row.
   int updatedAtUs;
 
@@ -256,6 +259,7 @@ class AppStateAddressEntity {
     this.indexingProcessStateIndex = 0,
     this.indexingProcessUpdatedAtUs = 0,
     this.indexingProcessErrorMessage = '',
+    this.indexingProcessWorkflowId = '',
     required this.updatedAtUs,
   });
 }

@@ -188,6 +188,10 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     if (didReplaceSeedDatabase) {
       _refreshProvidersAfterSeedDatabaseReplace();
     }
+
+    // Resume any pending address indexing flows (e.g. after app kill).
+    final addressService = ref.read(addressServiceProvider);
+    unawaited(addressService.resumePendingIndexingFlows());
   }
 
   Future<void> _triggerForceUpdateCheck() async {

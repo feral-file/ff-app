@@ -240,10 +240,14 @@ class AppStateService extends AppStateServiceBase {
     final errorMessage = entity.indexingProcessErrorMessage.trim().isEmpty
         ? null
         : entity.indexingProcessErrorMessage;
+    final workflowId = entity.indexingProcessWorkflowId.trim().isEmpty
+        ? null
+        : entity.indexingProcessWorkflowId;
     return AddressIndexingProcessStatus._(
       state: state,
       updatedAt: updatedAt,
       errorMessage: errorMessage,
+      workflowId: workflowId,
     );
   }
 
@@ -517,12 +521,13 @@ class AppStateService extends AppStateServiceBase {
   }) async {
     final normalizedAddress = _normalizeAddressKey(address);
     await _lock.synchronized(() async {
-      final row = _getOrCreateAddressState(_normalizeAddressKey(address))
+      final row = _getOrCreateAddressState(normalizedAddress)
         ..indexingProcessStateIndex = status.state.index
         ..indexingProcessUpdatedAtUs = status.updatedAt
             .toUtc()
             .microsecondsSinceEpoch
         ..indexingProcessErrorMessage = status.errorMessage ?? ''
+        ..indexingProcessWorkflowId = status.workflowId ?? ''
         ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
       _appStateAddressBox.put(row);
     });

@@ -163,7 +163,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(10, 3855157679464200367),
     name: 'AppStateAddressEntity',
-    lastPropertyId: const obx_int.IdUid(12, 3462060407990166466),
+    lastPropertyId: const obx_int.IdUid(13, 3764280306253148323),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -237,6 +237,12 @@ final _entities = <obx_int.ModelEntity>[
         id: const obx_int.IdUid(12, 3462060407990166466),
         name: 'feedBareIngestCompletedAtUs',
         type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(13, 3764280306253148323),
+        name: 'indexingProcessWorkflowId',
+        type: 9,
         flags: 0,
       ),
     ],
@@ -601,7 +607,10 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final indexingProcessErrorMessageOffset = fbb.writeString(
           object.indexingProcessErrorMessage,
         );
-        fbb.startTable(13);
+        final indexingProcessWorkflowIdOffset = fbb.writeString(
+          object.indexingProcessWorkflowId,
+        );
+        fbb.startTable(14);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, normalizedAddressOffset);
         fbb.addOffset(2, feedBaseUrlOffset);
@@ -614,6 +623,7 @@ obx_int.ModelDefinition getObjectBoxModel() {
         fbb.addInt64(9, object.updatedAtUs);
         fbb.addBool(10, object.hasFeedBareIngestCompleted);
         fbb.addInt64(11, object.feedBareIngestCompletedAtUs);
+        fbb.addOffset(12, indexingProcessWorkflowIdOffset);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -663,6 +673,9 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final indexingProcessErrorMessageParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGet(buffer, rootOffset, 20, '');
+        final indexingProcessWorkflowIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 28, '');
         final updatedAtUsParam = const fb.Int64Reader().vTableGet(
           buffer,
           rootOffset,
@@ -680,6 +693,7 @@ obx_int.ModelDefinition getObjectBoxModel() {
           indexingProcessStateIndex: indexingProcessStateIndexParam,
           indexingProcessUpdatedAtUs: indexingProcessUpdatedAtUsParam,
           indexingProcessErrorMessage: indexingProcessErrorMessageParam,
+          indexingProcessWorkflowId: indexingProcessWorkflowIdParam,
           updatedAtUs: updatedAtUsParam,
         )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
 
@@ -956,6 +970,12 @@ class AppStateAddressEntity_ {
   static final feedBareIngestCompletedAtUs =
       obx.QueryIntegerProperty<AppStateAddressEntity>(
         _entities[2].properties[11],
+      );
+
+  /// See [AppStateAddressEntity.indexingProcessWorkflowId].
+  static final indexingProcessWorkflowId =
+      obx.QueryStringProperty<AppStateAddressEntity>(
+        _entities[2].properties[12],
       );
 }
 

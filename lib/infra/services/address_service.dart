@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:app/domain/extensions/playlist_ext.dart';
+import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -68,87 +70,68 @@ class AddressService {
     return _indexerServiceIsolate.getAddressIndexingJobStatus(workflowId);
   }
 
-  /// Fetches tokens page for address and ingests into DB. Returns count ingested.
-  Future<int> syncTokens(String address, {int offset = 0}) async {
+  /// Fetches token pages for address and ingests into DB.
+  ///
+  /// Paginates from [startOffset] until no more tokens. Returns total ingested.
+  Future<int> syncTokens(String address, {int startOffset = 0}) async {
     const pageSize = 50;
-    final page = await _indexerServiceIsolate.fetchTokensPageByAddresses(
-      addresses: [address],
-      limit: pageSize,
-      offset: offset,
-    );
-    if (page.tokens.isEmpty) return 0;
-    await _databaseService.ingestTokensForAddress(
-      address: address,
-      tokens: page.tokens,
-    );
-    return page.tokens.length;
+    var offset = startOffset;
+    var total = 0;
+    while (true) {
+      final page = await _indexerServiceIsolate.fetchTokensPageByAddresses(
+        addresses: [address],
+        limit: pageSize,
+        offset: offset,
+      );
+      if (page.tokens.isEmpty) return total;
+      await _databaseService.ingestTokensForAddress(
+        address: address,
+        tokens: page.tokens,
+      );
+      final count = page.tokens.length;
+      total += count;
+      offset += count;
+      if (count < pageSize) break;
+    }
+    return total;
   }
 
-  /// Runs full indexing flow: index → poll → fetch+ingest each poll until done.
+  /// Runs indexing flow: index → poll → fetch+ingest.
   ///
-  /// Fast-path: if tokens exist at offset 0, paginate and ingest.
-  /// Slow-path: trigger index, poll status, fetch+ingest on each poll (incremental UX).
-  Future<void> indexAndSyncAddress(String address) async {
+  /// Single flow. Each step has a flag — set to false when that step was
+  /// already done (e.g. on app restart). Pass [workflowId] when [runTriggerIndex]
+  /// is false and [runPoll] is true.
+  ///
+  /// Steps: (1) fast-path fetch, (2) trigger index, (3) poll until done,
+  /// (4) final fetch+ingest.
+  Future<void> indexAndSyncAddress(
+    String address, {
+    bool runFastPathFetch = true,
+    bool runTriggerIndex = true,
+    bool runPoll = true,
+    bool runFinalFetch = true,
+    String? workflowId,
+  }) async {
     final queryAddress = _addressForIndexer(address);
+    String? effectiveWorkflowId = workflowId;
 
-    // Fast-path: try fetch first
-    var offset = 0;
-    var totalIngested = 0;
-    while (true) {
-      final count = await syncTokens(queryAddress, offset: offset);
-      if (count == 0) break;
-      totalIngested += count;
-      offset += count;
-      if (count < 50) break;
-    }
-    if (totalIngested > 0) {
-      _log.info('IndexAndSync fast-path completed for $queryAddress');
-      await _appStateService.setAddressIndexingStatus(
-        address: queryAddress,
-        status: AddressIndexingProcessStatus.completed(),
-      );
-      return;
+    // Step 1: Fast-path fetch
+    if (runFastPathFetch) {
+      unawaited(syncTokens(queryAddress));
     }
 
-    // Slow-path: trigger indexing
-    String workflowId;
-    try {
-      final id = await index(queryAddress);
-      if (id == null || id.isEmpty) {
-        await _appStateService.setAddressIndexingStatus(
-          address: queryAddress,
-          status: AddressIndexingProcessStatus.failed(),
-        );
-        throw Exception('Failed to trigger indexing');
-      }
-      workflowId = id;
-    } catch (e, stack) {
-      await _appStateService.setAddressIndexingStatus(
-        address: queryAddress,
-        status: AddressIndexingProcessStatus.failed(),
-      );
-      Error.throwWithStackTrace(e, stack);
-    }
-
-    await _appStateService.setAddressIndexingStatus(
-      address: queryAddress,
-      status: AddressIndexingProcessStatus.indexingTriggered(
-        workflowId: workflowId,
-      ),
-    );
-
-    const pollInterval = Duration(seconds: 15);
-    const maxAttempts = 60;
-
-    await _appStateService.setAddressIndexingStatus(
-      address: queryAddress,
-      status: AddressIndexingProcessStatus.waitingForIndexStatus(),
-    );
-
-    for (var attempt = 0; attempt < maxAttempts; attempt++) {
-      AddressIndexingJobResponse status;
+    // Step 2: Trigger indexing
+    if (runTriggerIndex) {
       try {
-        status = await pullStatus(workflowId);
+        final id = await index(queryAddress);
+        if (id == null || id.isEmpty) {
+          await _appStateService.setAddressIndexingStatus(
+            address: queryAddress,
+            status: AddressIndexingProcessStatus.failed(),
+          );
+          throw Exception('Failed to trigger indexing');
+        }
+        effectiveWorkflowId = id;
       } catch (e, stack) {
         await _appStateService.setAddressIndexingStatus(
           address: queryAddress,
@@ -157,57 +140,181 @@ class AddressService {
         Error.throwWithStackTrace(e, stack);
       }
 
-      _onIndexingJobStatusCallback?.call(status);
+      await _appStateService.setAddressIndexingStatus(
+        address: queryAddress,
+        status: AddressIndexingProcessStatus.indexingTriggered(
+          workflowId: effectiveWorkflowId!,
+        ),
+      );
+    }
 
-      if (status.status.isDone) {
-        if (status.status.isFailed) {
-        await _appStateService.setAddressIndexingStatus(
-          address: queryAddress,
-          status: AddressIndexingProcessStatus.failed(),
-        );
-        throw Exception(
-            'Indexing failed with status: ${status.status.name}',
-          );
-        }
-        break;
-      }
+    if (runPoll &&
+        (effectiveWorkflowId == null || effectiveWorkflowId.isEmpty)) {
+      await _appStateService.setAddressIndexingStatus(
+        address: queryAddress,
+        status: AddressIndexingProcessStatus.failed(),
+      );
+      throw Exception(
+        'workflowId required when runTriggerIndex is false and runPoll is true',
+      );
+    }
 
-      // Incremental UX: fetch and ingest on each poll (don't change status on failure)
-      offset = 0;
-      while (true) {
+    // Step 3: Poll until done
+    if (runPoll) {
+      final wfId = effectiveWorkflowId!;
+      const pollInterval = Duration(seconds: 15);
+      const maxAttempts = 60;
+
+      await _appStateService.setAddressIndexingStatus(
+        address: queryAddress,
+        status: AddressIndexingProcessStatus.waitingForIndexStatus(),
+      );
+
+      for (var attempt = 0; attempt < maxAttempts; attempt++) {
+        AddressIndexingJobResponse status;
         try {
-          final count = await syncTokens(queryAddress, offset: offset);
-          if (count == 0) break;
-          offset += count;
-          if (count < 50) break;
-        } catch (_) {
+          status = await pullStatus(wfId);
+        } catch (e, stack) {
+          await _appStateService.setAddressIndexingStatus(
+            address: queryAddress,
+            status: AddressIndexingProcessStatus.failed(),
+          );
+          Error.throwWithStackTrace(e, stack);
+        }
+
+        _onIndexingJobStatusCallback?.call(status);
+
+        if (status.status.isDone) {
+          if (status.status.isFailed) {
+            await _appStateService.setAddressIndexingStatus(
+              address: queryAddress,
+              status: AddressIndexingProcessStatus.failed(),
+            );
+            throw Exception(
+              'Indexing failed with status: ${status.status.name}',
+            );
+          }
           break;
         }
+
+        try {
+          unawaited(syncTokens(queryAddress));
+        } on Object {
+          // Ignore fetch errors during poll; will retry next poll.
+        }
+
+        await Future<void>.delayed(pollInterval);
       }
-
-      await Future<void>.delayed(pollInterval);
     }
 
-    // Final fetch after completion: set syncingTokens, then completed
-    await _appStateService.setAddressIndexingStatus(
-      address: queryAddress,
-      status: AddressIndexingProcessStatus.syncingTokens(),
-    );
-
-    offset = 0;
-    while (true) {
-      final count = await syncTokens(queryAddress, offset: offset);
-      if (count == 0) break;
-      offset += count;
-      if (count < 50) break;
+    // Step 4: Final fetch+ingest
+    if (runFinalFetch) {
+      await _appStateService.setAddressIndexingStatus(
+        address: queryAddress,
+        status: AddressIndexingProcessStatus.syncingTokens(),
+      );
+      await syncTokens(queryAddress);
+      await _appStateService.setAddressIndexingStatus(
+        address: queryAddress,
+        status: AddressIndexingProcessStatus.completed(),
+      );
     }
-
-    await _appStateService.setAddressIndexingStatus(
-      address: queryAddress,
-      status: AddressIndexingProcessStatus.completed(),
-    );
 
     _log.info('IndexAndSync completed for $queryAddress');
+  }
+
+  /// Resumes pending indexing flows for addresses with non-completed status.
+  ///
+  /// Called at app startup. For each address: await 100–500 ms random delay
+  /// to avoid doing a lot of work at the same time, then fire-and-forget
+  /// the resume. Runs sequentially per address.
+  Future<void> resumePendingIndexingFlows() async {
+    final playlists = await getAddressPlaylists();
+    final addresses = playlists
+        .map((p) => p.ownerAddress)
+        .whereType<String>()
+        .map((a) => a.toNormalizedAddress())
+        .toSet()
+        .toList(growable: false);
+
+    if (addresses.isEmpty) return;
+
+    final statuses = await _appStateService.getAllAddressIndexingStatuses();
+    final toResume = addresses
+        .where((addr) {
+          final status = statuses[addr];
+          return status != null &&
+              status.state != AddressIndexingProcessState.completed;
+        })
+        .toList(growable: false);
+
+    if (toResume.isEmpty) return;
+
+    _log.info('Resuming ${toResume.length} pending indexing flow(s)');
+
+    final random = Random();
+
+    for (final address in toResume) {
+      await Future<void>.delayed(
+        Duration(milliseconds: 100 + random.nextInt(401)),
+      );
+
+      final status = statuses[address];
+      if (status == null) continue;
+
+      unawaited(
+        _runResumeForAddress(address, status).catchError(
+          (Object error, StackTrace stack) {
+            _log.warning(
+              'Resume indexing failed for $address',
+              error,
+              stack,
+            );
+          },
+        ),
+      );
+    }
+  }
+
+  Future<void> _runResumeForAddress(
+    String address,
+    AddressIndexingProcessStatus status,
+  ) async {
+    switch (status.state) {
+      case AddressIndexingProcessState.idle:
+      case AddressIndexingProcessState.failed:
+      case AddressIndexingProcessState.stopped:
+        _scheduleAddressIndexing(address);
+        break;
+      case AddressIndexingProcessState.indexingTriggered:
+      case AddressIndexingProcessState.waitingForIndexStatus:
+      case AddressIndexingProcessState.paused:
+        final wfId = status.workflowId;
+        if (wfId != null && wfId.isNotEmpty) {
+          await indexAndSyncAddress(
+            address,
+            runFastPathFetch: false,
+            runTriggerIndex: false,
+            runPoll: true,
+            runFinalFetch: true,
+            workflowId: wfId,
+          );
+        } else {
+          _scheduleAddressIndexing(address);
+        }
+        break;
+      case AddressIndexingProcessState.syncingTokens:
+        await indexAndSyncAddress(
+          address,
+          runFastPathFetch: false,
+          runTriggerIndex: false,
+          runPoll: false,
+          runFinalFetch: true,
+        );
+        break;
+      case AddressIndexingProcessState.completed:
+        break;
+    }
   }
 
   String _addressForIndexer(String address) => address.toNormalizedAddress();
@@ -361,8 +468,7 @@ class AddressService {
     required WalletAddress walletAddress,
   }) async {
     try {
-      final normalizedAddress =
-          walletAddress.address.toNormalizedAddress();
+      final normalizedAddress = walletAddress.address.toNormalizedAddress();
       final playlistId = PlaylistExt.addressPlaylistId(normalizedAddress);
 
       _log.info('Removing address: $normalizedAddress');
