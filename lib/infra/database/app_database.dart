@@ -1141,7 +1141,7 @@ LazyDatabase _openConnection() {
     await SeedDatabaseGate.future;
 
     final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'playlist_cache.sqlite'));
+    final file = File(p.join(dbFolder.path, 'dp1_library.sqlite'));
     await _resetDatabaseIfSchemaConflicts(file, dbFolder);
 
     _log.info('Opening database at: ${file.path}');

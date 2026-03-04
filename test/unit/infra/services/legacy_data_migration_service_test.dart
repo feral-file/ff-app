@@ -18,6 +18,32 @@ class _FakeLegacyStorageLocator extends LegacyStorageLocator {
 
 void main() {
   group('LegacyDataMigrationService', () {
+    test(
+      'shouldRunMigration is true when legacy DB exists and not migrated',
+      () async {
+        final service = LegacyDataMigrationService(
+          storageLocator: _FakeLegacyStorageLocator(hasLegacyDb: true),
+          isMigratedOverride: () async => false,
+        );
+
+        final shouldRun = await service.shouldRunMigration();
+        expect(shouldRun, isTrue);
+      },
+    );
+
+    test(
+      'shouldRunMigration is false when legacy DB is missing',
+      () async {
+        final service = LegacyDataMigrationService(
+          storageLocator: _FakeLegacyStorageLocator(hasLegacyDb: false),
+          isMigratedOverride: () async => false,
+        );
+
+        final shouldRun = await service.shouldRunMigration();
+        expect(shouldRun, isFalse);
+      },
+    );
+
     test('skips migration when already migrated', () async {
       var setMigratedCalled = false;
       final migratedAddresses = <String>[];
