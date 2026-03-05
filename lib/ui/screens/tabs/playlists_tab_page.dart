@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:app/app/providers/playlists_provider.dart';
+import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/error_view.dart';
+import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/playlist_header_with_collection_state.dart';
 import 'package:app/widgets/playlist/playlist_section.dart';
 import 'package:flutter/material.dart';
@@ -97,6 +101,28 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
   Widget build(BuildContext context) {
     super.build(context);
 
+    final seedState = ref.watch(seedDownloadProvider);
+    if (seedState.status == SeedDownloadStatus.syncing) {
+      return Center(
+        child: LoadingWidget(
+          backgroundColor: Colors.transparent,
+          text: 'Preparing feed… '
+              '${((seedState.progress ?? 0) * 100).round()}%',
+        ),
+      );
+    }
+    if (seedState.status == SeedDownloadStatus.error) {
+      return Center(
+        child: ErrorView(
+          error: seedState.errorMessage ??
+              "We couldn't prepare your feed. Check your connection, "
+                  'then Retry.',
+          onRetry: () =>
+              unawaited(ref.read(seedDownloadRetryProvider)()),
+        ),
+      );
+    }
+
     // Watch both providers (curated = dp1, personal = addressBased).
     final nextCuratedState = widget.isActive
         ? ref.watch(playlistsProvider(PlaylistType.dp1))
@@ -168,8 +194,9 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
                   sectionName: 'Me',
                   playlistHeaderBuilder: (playlist, itemCount) {
                     final ownerAddress = playlist.ownerAddress;
-                    if (ownerAddress == null || ownerAddress.isEmpty)
+                    if (ownerAddress == null || ownerAddress.isEmpty) {
                       return null;
+                    }
                     final creator = _creatorForAddressPlaylist(playlist);
                     return PlaylistHeaderWithCollectionState(
                       primaryText: playlist.name,

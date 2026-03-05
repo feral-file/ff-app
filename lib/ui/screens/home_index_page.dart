@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -53,8 +54,9 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScrollChange);
-    _scrollController.dispose();
+    _scrollController
+      ..removeListener(_onScrollChange)
+      ..dispose();
     super.dispose();
   }
 
@@ -65,11 +67,19 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
 
   @override
   Widget build(BuildContext context) {
+    final seedState = ref.watch(seedDownloadProvider);
+    final isScrollEnabled =
+        seedState.status != SeedDownloadStatus.syncing &&
+        seedState.status != SeedDownloadStatus.error;
+
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
       body: NestedScrollView(
         controller: _scrollController,
         floatHeaderSlivers: true,
+        physics: isScrollEnabled
+            ? null
+            : const NeverScrollableScrollPhysics(),
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           final height = LayoutConstants.minTouchTarget;
 
@@ -155,7 +165,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
                             ),
                           ),
                           SizedBox(width: LayoutConstants.space3),
-                          searchButton,
+                          if (isScrollEnabled) searchButton,
                           hamburgerButton,
                           SizedBox(width: LayoutConstants.space3),
                         ],
@@ -167,14 +177,20 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
             ),
           ];
         },
-        body: SingleChildScrollView(
-          child: Column(
-            children: [
-              SizedBox(height: LayoutConstants.space10),
-              _buildContent(),
-              const BottomSpacing(),
-            ],
-          ),
+        body: CustomScrollView(
+          physics: isScrollEnabled
+              ? null
+              : const NeverScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: SizedBox(height: LayoutConstants.space10),
+            ),
+            SliverFillRemaining(
+              hasScrollBody: true,
+              child: _buildContent(),
+            ),
+            SliverToBoxAdapter(child: const BottomSpacing()),
+          ],
         ),
       ),
     );
@@ -333,11 +349,9 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
   }
 
   Widget _buildContent() {
-    // Use Stack with Offstage instead of IndexedStack (matches old app)
-    // Offstage keeps widgets alive (not disposed) while hiding them
-    // This allows each page to have independent constraints
-    // Combined with AutomaticKeepAliveClientMixin in each page, state is preserved
-    // Each page can determine its own height (limited or unlimited) independently
+    // Use Stack with Offstage instead of IndexedStack (matches old app).
+    // Offstage keeps widgets alive (not disposed) while hiding them.
+    // Each page can determine its own height independently.
     return Stack(
       children: [
         Offstage(

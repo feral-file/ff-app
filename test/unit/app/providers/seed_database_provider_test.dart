@@ -7,6 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   int syncCallCount = 0;
 
+  /// Progress values to report via onProgress (e.g. [0.0, 0.5, 1.0]).
+  List<double> progressValues = const [0.0, 0.5, 1.0];
+
   @override
   Future<bool> syncIfNeeded({
     required Future<void> Function() beforeReplace,
@@ -16,6 +19,9 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   }) async {
     syncCallCount++;
     await beforeReplace();
+    for (final p in progressValues) {
+      onProgress?.call(p);
+    }
     await afterReplace();
     return false;
   }
@@ -59,5 +65,37 @@ void main() {
       container.read(seedDownloadProvider).status,
       SeedDownloadStatus.done,
     );
+  });
+
+  test('progress is updated during sync', () async {
+    final fakeSyncService = _FakeSeedDatabaseSyncService();
+    final states = <SeedDownloadState>[];
+
+    final container = ProviderContainer.test(
+      overrides: [
+        seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.listen(seedDownloadProvider, (prev, next) => states.add(next));
+
+    final notifier = container.read(seedDownloadProvider.notifier);
+    await notifier.syncAtAppStart(
+      beforeReplace: () async {},
+      afterReplace: () async {},
+    );
+
+    expect(
+      container.read(seedDownloadProvider).status,
+      SeedDownloadStatus.done,
+    );
+    expect(container.read(seedDownloadProvider).progress, isNull);
+
+    final syncingStates =
+        states.where((s) => s.status == SeedDownloadStatus.syncing);
+    expect(syncingStates, isNotEmpty);
+    final withProgress = syncingStates.where((s) => s.progress != null);
+    expect(withProgress, isNotEmpty);
   });
 }

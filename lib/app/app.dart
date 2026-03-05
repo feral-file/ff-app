@@ -468,6 +468,13 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     // Keep AppLifecycleNotifier alive so it can attach
     // the WidgetsBinding observer.
     ref.watch(appLifecycleProvider);
-    return widget.child;
+    return ProviderScope(
+      overrides: [
+        seedDownloadRetryProvider.overrideWithValue(() async {
+          await _syncSeedDatabaseIfNeeded(showUpdatingToast: true);
+        }),
+      ],
+      child: widget.child,
+    );
   }
 }

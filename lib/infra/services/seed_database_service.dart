@@ -216,7 +216,7 @@ class SeedDatabaseService {
         options: Options(
           headers: headers,
           // 10-minute timeout for a ~300 MB file on slow connections.
-          receiveTimeout: const Duration(minutes: 10),
+          receiveTimeout: const Duration(minutes: 120),
           sendTimeout: const Duration(seconds: 30),
         ),
       );
