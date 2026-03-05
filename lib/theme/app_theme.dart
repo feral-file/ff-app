@@ -8,14 +8,51 @@ import 'package:flutter/material.dart';
 /// Note: UI text must use [AppTypography]. We keep [ThemeData] minimal to avoid
 /// duplicating typography scale in multiple places.
 class AppTheme {
+  static const double _cupertinoPressedOpacity = 0.12;
+
+  static final WidgetStateProperty<Color?> _cupertinoOverlayColor =
+      WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.pressed)) {
+          return AppColor.primaryBlack.withValues(
+            alpha: _cupertinoPressedOpacity,
+          );
+        }
+        if (states.contains(WidgetState.focused) ||
+            states.contains(WidgetState.hovered)) {
+          return AppColor.primaryBlack.withValues(alpha: 0.04);
+        }
+        return Colors.transparent;
+      });
+
   /// Light theme configuration.
   static ThemeData lightTheme() {
     return ThemeData(
       fontFamily: AppTypography.ppMori,
+      splashFactory: NoSplash.splashFactory,
+      splashColor: Colors.transparent,
+      highlightColor: Colors.transparent,
       textSelectionTheme: const TextSelectionThemeData(
         cursorColor: AppColor.auQuickSilver,
         selectionHandleColor: AppColor.auQuickSilver,
         selectionColor: AppColor.auQuickSilver,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ButtonStyle(
+          splashFactory: NoSplash.splashFactory,
+          overlayColor: _cupertinoOverlayColor,
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: ButtonStyle(
+          splashFactory: NoSplash.splashFactory,
+          overlayColor: _cupertinoOverlayColor,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: ButtonStyle(
+          splashFactory: NoSplash.splashFactory,
+          overlayColor: _cupertinoOverlayColor,
+        ),
       ),
       primaryColor: AppColor.primaryBlack,
       scaffoldBackgroundColor: AppColor.white,
