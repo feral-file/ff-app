@@ -1,28 +1,12 @@
 import 'package:app/domain/models/models.dart';
-import 'package:app/infra/database/database_provider.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Provider for addresses.
 ///
-/// Watches address-based playlists and converts them to [WalletAddress] for UI.
+/// Watches ObjectBox address entities and converts to [WalletAddress]
+/// for UI (e.g. onboarding). Source of truth for tracked addresses.
 final addressesProvider = StreamProvider<List<WalletAddress>>((ref) {
-  final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService.watchPlaylists(type: PlaylistType.addressBased).map((
-    playlists,
-  ) {
-    return playlists
-        .where(
-          (playlist) =>
-              playlist.ownerAddress != null &&
-              playlist.ownerAddress!.isNotEmpty,
-        )
-        .map(
-          (playlist) => WalletAddress(
-            address: playlist.ownerAddress!,
-            name: playlist.name,
-            createdAt: playlist.createdAt ?? DateTime.now(),
-          ),
-        )
-        .toList();
-  });
+  final appStateService = ref.watch(appStateServiceProvider);
+  return appStateService.watchTrackedAddressesAsWalletAddresses();
 });

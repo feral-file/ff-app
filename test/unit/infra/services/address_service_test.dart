@@ -41,6 +41,9 @@ class _FakeAppStateService implements AppStateService {
   }) async {}
 
   @override
+  Future<void> addTrackedAddress(String address, {String alias = ''}) async {}
+
+  @override
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
   ) =>

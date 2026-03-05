@@ -12,8 +12,8 @@ import 'package:app/ui/screens/add_address_screen.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
+import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/onboarding/onboarding_shell.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
@@ -189,7 +189,7 @@ class _AddressList extends ConsumerWidget {
         );
       },
       loading: () => const Center(
-        child: CupertinoActivityIndicator(),
+        child: LoadingWidget(showText: false),
       ),
       error: (error, stackTrace) => const SizedBox.shrink(),
     );

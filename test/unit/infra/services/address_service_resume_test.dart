@@ -1,6 +1,4 @@
 import 'package:app/domain/extensions/playlist_ext.dart';
-import 'package:app/domain/models/indexer/asset_token.dart';
-import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
@@ -10,7 +8,6 @@ import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/address_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
-import 'package:app/infra/services/indexer_service_isolate.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/personal_tokens_sync_service.dart';
@@ -41,6 +38,9 @@ class _FakeAppStateServiceForResume implements AppStateServiceBase {
   }) async {
     setStatusCalls.add('$address:${status.state.name}');
   }
+
+  @override
+  Future<void> addTrackedAddress(String address, {String alias = ''}) async {}
 
   @override
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
@@ -151,8 +151,6 @@ void main() {
         address,
         runFastPathFetch: false,
         runTriggerIndex: false,
-        runPoll: true,
-        runFinalFetch: true,
         workflowId: 'wf-1',
       );
 
@@ -191,7 +189,6 @@ void main() {
         runFastPathFetch: false,
         runTriggerIndex: false,
         runPoll: false,
-        runFinalFetch: true,
       );
 
       expect(fakeIndexer.callSequence, contains('fetchTokens'));

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:app/domain/extensions/playlist_ext.dart';
-import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -113,7 +112,7 @@ class AddressService {
     String? workflowId,
   }) async {
     final queryAddress = _addressForIndexer(address);
-    String? effectiveWorkflowId = workflowId;
+    var effectiveWorkflowId = workflowId;
 
     // Step 1: Fast-path fetch
     if (runFastPathFetch) {
@@ -143,7 +142,7 @@ class AddressService {
       await _appStateService.setAddressIndexingStatus(
         address: queryAddress,
         status: AddressIndexingProcessStatus.indexingTriggered(
-          workflowId: effectiveWorkflowId!,
+          workflowId: effectiveWorkflowId,
         ),
       );
     }
@@ -285,7 +284,6 @@ class AddressService {
       case AddressIndexingProcessState.failed:
       case AddressIndexingProcessState.stopped:
         _scheduleAddressIndexing(address);
-        break;
       case AddressIndexingProcessState.indexingTriggered:
       case AddressIndexingProcessState.waitingForIndexStatus:
       case AddressIndexingProcessState.paused:
@@ -295,23 +293,18 @@ class AddressService {
             address,
             runFastPathFetch: false,
             runTriggerIndex: false,
-            runPoll: true,
-            runFinalFetch: true,
             workflowId: wfId,
           );
         } else {
           _scheduleAddressIndexing(address);
         }
-        break;
       case AddressIndexingProcessState.syncingTokens:
         await indexAndSyncAddress(
           address,
           runFastPathFetch: false,
           runTriggerIndex: false,
           runPoll: false,
-          runFinalFetch: true,
         );
-        break;
       case AddressIndexingProcessState.completed:
         break;
     }
@@ -359,6 +352,10 @@ class AddressService {
         // DB not ready yet: persist the address in the pending store so it
         // survives navigation and is migrated to SQLite after the seed lands.
         await _pendingAddressesStore.addAddress(normalizedAddress);
+        await _appStateService.addTrackedAddress(
+          normalizedAddress,
+          alias: walletAddress.name,
+        );
         await _appStateService.setAddressIndexingStatus(
           address: normalizedAddress,
           status: AddressIndexingProcessStatus.idle(),
@@ -397,6 +394,10 @@ class AddressService {
       );
 
       await _databaseService.ingestPlaylist(playlist);
+      await _appStateService.addTrackedAddress(
+        normalizedAddress,
+        alias: walletAddress.name,
+      );
       await _appStateService.setAddressIndexingStatus(
         address: normalizedAddress,
         status: AddressIndexingProcessStatus.idle(),
@@ -482,6 +483,8 @@ class AddressService {
 
       await _databaseService.deleteItemsOfAddresses([normalizedAddress]);
       await _databaseService.deletePlaylist(playlistId, skipEntries: true);
+
+      await _appStateService.clearAddressState(normalizedAddress);
 
       _log.info('Removed address playlist: $playlistId');
     } catch (e, stack) {

@@ -111,6 +111,7 @@ Future<void> main() async {
     store: store,
     appStateBox: store.box<AppStateEntity>(),
     appStateAddressBox: store.box<AppStateAddressEntity>(),
+    trackedAddressBox: store.box<TrackedAddressEntity>(),
   );
 
   final legacyStorageLocator = LegacyStorageLocator();

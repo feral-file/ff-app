@@ -2,22 +2,50 @@ import 'dart:async';
 
 import 'package:app/app/providers/addresses_provider.dart';
 import 'package:app/domain/models/models.dart';
-import 'package:app/infra/database/app_database.dart';
-import 'package:app/infra/database/database_provider.dart';
-import 'package:app/infra/database/database_service.dart';
-import 'package:drift/native.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+/// Fake [AppStateService] that exposes controlled [watchTrackedAddressesAsWalletAddresses].
+class _FakeAppStateServiceForAddresses implements AppStateService {
+  List<WalletAddress> _addresses = [];
+
+  set addresses(List<WalletAddress> value) => _addresses = value;
+
+  @override
+  Stream<List<WalletAddress>> watchTrackedAddressesAsWalletAddresses() async* {
+    yield [];
+    yield List.from(_addresses);
+  }
+
+  @override
+  Future<void> setAddressIndexingStatus({
+    required String address,
+    required AddressIndexingProcessStatus status,
+  }) async {}
+
+  @override
+  Future<void> addTrackedAddress(String address, {String alias = ''}) async {}
+
+  @override
+  Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
+    String address,
+  ) =>
+      Stream.value(null);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
-  test('addressesProvider maps address playlists to wallet addresses', () async {
-    // Unit test: verifies stream mapping from playlist rows to wallet-address view model.
-    final db = AppDatabase.forTesting(NativeDatabase.memory());
-    addTearDown(db.close);
-    final dbService = DatabaseService(db);
+  test(
+    'addressesProvider maps ObjectBox address entities to wallet addresses',
+      () async {
+    final fake = _FakeAppStateServiceForAddresses();
+
     final container = ProviderContainer.test(
       overrides: [
-        databaseServiceProvider.overrideWith((ref) => dbService),
+        appStateServiceProvider.overrideWithValue(fake),
       ],
     );
     addTearDown(container.dispose);
@@ -36,15 +64,13 @@ void main() {
     );
     addTearDown(sub.close);
 
-    await dbService.ingestPlaylist(
-      const Playlist(
-        id: 'pl_addr_1',
+    fake.addresses = [
+      WalletAddress(
+        address: '0xabc',
         name: 'Address A',
-        type: PlaylistType.addressBased,
-        ownerAddress: '0xabc',
-        ownerChain: 'ETH',
+        createdAt: DateTime.now(),
       ),
-    );
+    ];
 
     final addresses = await completer.future;
     expect(addresses.length, 1);

@@ -1,8 +1,10 @@
+import 'package:app/domain/extensions/extensions.dart';
+import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/objectbox.g.dart'
-    show AppStateAddressEntity_, AppStateEntity_;
+    show AppStateAddressEntity_, AppStateEntity_, TrackedAddressEntity_;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:objectbox/objectbox.dart';
@@ -111,19 +113,6 @@ class AddressIndexingProcessStatus {
 ///
 /// Declares the public API only; implementations live in [AppStateService].
 abstract class AppStateServiceBase {
-  Future<DateTime> getLastRefreshTime(String baseUrl);
-  Future<void> setLastRefreshTime(String baseUrl, DateTime time);
-  Future<bool> hasFeedBareIngestCompleted(String baseUrl);
-  Future<void> setFeedBareIngestCompleted({
-    required String baseUrl,
-    required bool completed,
-    DateTime? completedAt,
-  });
-  Future<void> deleteLastRefreshTime(String baseUrl);
-  Future<Duration> getCacheDuration();
-  Future<void> setCacheDuration(Duration duration);
-  Future<DateTime> getLastFeedUpdatedAt();
-  Future<void> setLastFeedUpdatedAt(DateTime time);
   Future<bool> hasSeenOnboarding();
   Future<void> setHasSeenOnboarding({required bool hasSeen});
   Future<bool> hasSeenPlayToFf1Tooltip();
@@ -134,9 +123,6 @@ abstract class AppStateServiceBase {
     required int anchor,
   });
   Future<void> clearAddressAnchor(String address);
-  Future<AddressIndexingProcessStatus?> getAddressIndexingStatus(
-    String address,
-  );
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
   );
@@ -144,12 +130,14 @@ abstract class AppStateServiceBase {
     required String address,
     required AddressIndexingProcessStatus status,
   });
+  /// Adds address to tracked list (with optional alias) and ensures
+  /// [AppStateAddressEntity] exists. Call before setAddressIndexingStatus.
+  Future<void> addTrackedAddress(String address, {String alias = ''});
   Future<void> clearAddressState(String address);
   Future<Map<String, AddressIndexingProcessStatus>>
   getAllAddressIndexingStatuses();
   Future<void> trackPersonalAddress(String address);
   Future<List<String>> getTrackedPersonalAddresses();
-  void debugLogSummary();
 }
 
 /// Single typed state service for app-level + per-address local state.
@@ -161,19 +149,20 @@ class AppStateService extends AppStateServiceBase {
     required Store store,
     required Box<AppStateEntity> appStateBox,
     required Box<AppStateAddressEntity> appStateAddressBox,
+    required Box<TrackedAddressEntity> trackedAddressBox,
     Logger? logger,
   }) : _store = store,
        _appStateBox = appStateBox,
        _appStateAddressBox = appStateAddressBox,
+       _trackedAddressBox = trackedAddressBox,
        _log = logger ?? Logger('AppStateService');
 
   static const _scope = 'app';
-  static const _defaultCacheDurationSeconds = 86400;
-  static final DateTime _defaultLastFeedUpdatedAt = DateTime(2023).toUtc();
 
   final Store _store;
   final Box<AppStateEntity> _appStateBox;
   final Box<AppStateAddressEntity> _appStateAddressBox;
+  final Box<TrackedAddressEntity> _trackedAddressBox;
   final Logger _log;
   final Lock _lock = Lock();
 
@@ -193,28 +182,37 @@ class AppStateService extends AppStateServiceBase {
     return created;
   }
 
-  AppStateAddressEntity? _findAddressState(String normalizedAddress) {
+  /// Row key: normalized address.
+  AppStateAddressEntity? _findAddressState(String rowKey) {
     final query = _appStateAddressBox
-        .query(
-          AppStateAddressEntity_.normalizedAddress.equals(normalizedAddress),
-        )
+        .query(AppStateAddressEntity_.normalizedAddress.equals(rowKey))
         .build();
     final existing = query.findFirst();
     query.close();
     return existing;
   }
 
-  AppStateAddressEntity _getOrCreateAddressState(String normalizedAddress) {
-    final existing = _findAddressState(normalizedAddress);
-    if (existing != null) {
-      return existing;
-    }
+  /// Creates a new [AppStateAddressEntity]. Use when we know it does not exist
+  /// yet (e.g. when adding a tracked address).
+  AppStateAddressEntity _createAddressState(String rowKey) {
+    final nowUs = DateTime.now().toUtc().microsecondsSinceEpoch;
     final created = AppStateAddressEntity(
-      normalizedAddress: normalizedAddress,
-      updatedAtUs: DateTime.now().toUtc().microsecondsSinceEpoch,
+      normalizedAddress: rowKey,
+      updatedAtUs: nowUs,
     );
     created.id = _appStateAddressBox.put(created);
     return created;
+  }
+
+  TrackedAddressEntity? _findTrackedAddress(String normalizedAddress) {
+    final query = _trackedAddressBox
+        .query(
+          TrackedAddressEntity_.normalizedAddress.equals(normalizedAddress),
+        )
+        .build();
+    final existing = query.findFirst();
+    query.close();
+    return existing;
   }
 
   String _normalizeAddressKey(String address) => address.toNormalizedAddress();
@@ -249,159 +247,6 @@ class AppStateService extends AppStateServiceBase {
       errorMessage: errorMessage,
       workflowId: workflowId,
     );
-  }
-
-  @override
-  Future<DateTime> getLastRefreshTime(String baseUrl) async {
-    return _lock.synchronized(() {
-      final app = _getOrCreateSingleton();
-      if (app.globalLastRefreshEpochUs > 0) {
-        return DateTime.fromMicrosecondsSinceEpoch(
-          app.globalLastRefreshEpochUs,
-          isUtc: true,
-        );
-      }
-
-      final query = _appStateAddressBox
-          .query(AppStateAddressEntity_.feedBaseUrl.equals(baseUrl))
-          .build();
-      final rows = query.find();
-      query.close();
-
-      if (rows.isEmpty) {
-        return DateTime(1970);
-      }
-
-      final latestUs = rows
-          .map((e) => e.feedLastRefreshAtUs)
-          .fold<int>(0, (a, b) => b > a ? b : a);
-      if (latestUs <= 0) {
-        return DateTime(1970);
-      }
-
-      return DateTime.fromMicrosecondsSinceEpoch(latestUs, isUtc: true);
-    });
-  }
-
-  /// Update refresh timestamp for one feed base URL.
-  @override
-  Future<void> setLastRefreshTime(String baseUrl, DateTime time) async {
-    await _lock.synchronized(() async {
-      final app = _getOrCreateSingleton()
-        ..globalLastRefreshEpochUs = 0
-        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
-      _appStateBox.put(app);
-
-      final key = 'FEED::$baseUrl';
-      final row = _getOrCreateAddressState(key)
-        ..feedBaseUrl = baseUrl
-        ..feedLastRefreshAtUs = time.toUtc().microsecondsSinceEpoch
-        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
-      _appStateAddressBox.put(row);
-    });
-  }
-
-  /// Whether initial DP1 bare ingest completed successfully for one feed.
-  @override
-  Future<bool> hasFeedBareIngestCompleted(String baseUrl) async {
-    return _lock.synchronized(() {
-      final query = _appStateAddressBox
-          .query(AppStateAddressEntity_.feedBaseUrl.equals(baseUrl))
-          .build();
-      final rows = query.find();
-      query.close();
-      if (rows.isEmpty) {
-        return false;
-      }
-      return rows.any((row) => row.hasFeedBareIngestCompleted);
-    });
-  }
-
-  /// Mark initial DP1 bare ingest completion status for one feed.
-  @override
-  Future<void> setFeedBareIngestCompleted({
-    required String baseUrl,
-    required bool completed,
-    DateTime? completedAt,
-  }) async {
-    await _lock.synchronized(() async {
-      final key = 'FEED::$baseUrl';
-      final nowUs = DateTime.now().toUtc().microsecondsSinceEpoch;
-      final row = _getOrCreateAddressState(key)
-        ..feedBaseUrl = baseUrl
-        ..hasFeedBareIngestCompleted = completed
-        ..feedBareIngestCompletedAtUs = completed
-            ? (completedAt ?? DateTime.now()).toUtc().microsecondsSinceEpoch
-            : 0
-        ..updatedAtUs = nowUs;
-      _appStateAddressBox.put(row);
-    });
-  }
-
-  /// Remove feed refresh timestamp for one base URL.
-  @override
-  Future<void> deleteLastRefreshTime(String baseUrl) async {
-    await _lock.synchronized(() async {
-      final query = _appStateAddressBox
-          .query(AppStateAddressEntity_.feedBaseUrl.equals(baseUrl))
-          .build();
-      final rows = query.find();
-      query.close();
-      for (final row in rows) {
-        row
-          ..feedLastRefreshAtUs = 0
-          ..hasFeedBareIngestCompleted = false
-          ..feedBareIngestCompletedAtUs = 0
-          ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
-        _appStateAddressBox.put(row);
-      }
-    });
-  }
-
-  /// Global feed cache TTL.
-  @override
-  Future<Duration> getCacheDuration() async {
-    return _lock.synchronized(() {
-      final app = _getOrCreateSingleton();
-      final seconds = app.feedCacheDurationSeconds > 0
-          ? app.feedCacheDurationSeconds
-          : _defaultCacheDurationSeconds;
-      return Duration(seconds: seconds);
-    });
-  }
-
-  /// Set global feed cache TTL.
-  @override
-  Future<void> setCacheDuration(Duration duration) async {
-    await _lock.synchronized(() async {
-      final app = _getOrCreateSingleton()
-        ..feedCacheDurationSeconds = duration.inSeconds
-        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
-      _appStateBox.put(app);
-    });
-  }
-
-  /// Global feed last-updated timestamp.
-  @override
-  Future<DateTime> getLastFeedUpdatedAt() async {
-    return _lock.synchronized(() {
-      final app = _getOrCreateSingleton();
-      return _fromUs(
-        app.feedLastUpdatedAtUs,
-        fallback: _defaultLastFeedUpdatedAt,
-      );
-    });
-  }
-
-  /// Set global feed last-updated timestamp.
-  @override
-  Future<void> setLastFeedUpdatedAt(DateTime time) async {
-    await _lock.synchronized(() async {
-      final app = _getOrCreateSingleton()
-        ..feedLastUpdatedAtUs = time.toUtc().microsecondsSinceEpoch
-        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
-      _appStateBox.put(app);
-    });
   }
 
   /// Whether user completed onboarding.
@@ -461,7 +306,10 @@ class AppStateService extends AppStateServiceBase {
     required int anchor,
   }) async {
     await _lock.synchronized(() async {
-      final row = _getOrCreateAddressState(_normalizeAddressKey(address))
+      final normalized = _normalizeAddressKey(address);
+      var row = _findAddressState(normalized);
+      if (row == null) row = _createAddressState(normalized);
+      row
         ..hasIndexerAnchor = true
         ..indexerAnchor = anchor
         ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
@@ -485,12 +333,10 @@ class AppStateService extends AppStateServiceBase {
     });
   }
 
-  /// Get per-address indexing process status.
-  @override
-  Future<AddressIndexingProcessStatus?> getAddressIndexingStatus(
+  Future<AddressIndexingProcessStatus?> _getAddressIndexingStatus(
     String address,
   ) async {
-    return _lock.synchronized(() {
+    return _lock.synchronized(() async {
       final row = _findAddressState(_normalizeAddressKey(address));
       if (row == null || row.indexingProcessUpdatedAtUs <= 0) {
         return null;
@@ -507,9 +353,9 @@ class AppStateService extends AppStateServiceBase {
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
   ) async* {
-    yield await getAddressIndexingStatus(address);
+    yield await _getAddressIndexingStatus(address);
     await for (final _ in _store.watch<AppStateAddressEntity>()) {
-      yield await getAddressIndexingStatus(address);
+      yield await _getAddressIndexingStatus(address);
     }
   }
 
@@ -521,7 +367,9 @@ class AppStateService extends AppStateServiceBase {
   }) async {
     final normalizedAddress = _normalizeAddressKey(address);
     await _lock.synchronized(() async {
-      final row = _getOrCreateAddressState(normalizedAddress)
+      var row = _findAddressState(normalizedAddress);
+      if (row == null) row = _createAddressState(normalizedAddress);
+      row
         ..indexingProcessStateIndex = status.state.index
         ..indexingProcessUpdatedAtUs = status.updatedAt
             .toUtc()
@@ -534,11 +382,40 @@ class AppStateService extends AppStateServiceBase {
     _log.info('Set address indexing status for $address: ${status.state}');
   }
 
+  @override
+  Future<void> addTrackedAddress(String address, {String alias = ''}) async {
+    final normalized = _normalizeAddressKey(address);
+    if (normalized.isEmpty || normalized.startsWith('FEED::')) {
+      return;
+    }
+    await _lock.synchronized(() async {
+      final existing = _findTrackedAddress(normalized);
+      if (existing != null) {
+        return;
+      }
+      final nowUs = DateTime.now().toUtc().microsecondsSinceEpoch;
+      final entity = TrackedAddressEntity(
+        normalizedAddress: normalized,
+        alias: alias,
+        createdAtUs: nowUs,
+      );
+      entity.id = _trackedAddressBox.put(entity);
+      // Create AppStateAddressEntity (1:1 with tracked address). New address,
+      // so state does not exist yet.
+      _createAddressState(normalized);
+    });
+  }
+
   /// Remove all app-state row data for a specific address key.
   @override
   Future<void> clearAddressState(String address) async {
     await _lock.synchronized(() async {
-      final row = _findAddressState(_normalizeAddressKey(address));
+      final normalized = _normalizeAddressKey(address);
+      final tracked = _findTrackedAddress(normalized);
+      if (tracked != null) {
+        _trackedAddressBox.remove(tracked.id);
+      }
+      final row = _findAddressState(normalized);
       if (row != null) {
         _appStateAddressBox.remove(row.id);
       }
@@ -566,25 +443,15 @@ class AppStateService extends AppStateServiceBase {
 
   @override
   Future<void> trackPersonalAddress(String address) async {
-    await _lock.synchronized(() async {
-      final normalized = _normalizeAddressKey(address);
-      if (normalized.isEmpty || normalized.startsWith('FEED::')) {
-        return;
-      }
-      final row = _getOrCreateAddressState(normalized)
-        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
-      _appStateAddressBox.put(row);
-    });
+    await addTrackedAddress(address);
   }
 
   @override
   Future<List<String>> getTrackedPersonalAddresses() async {
     return _lock.synchronized(() {
-      final addresses = _appStateAddressBox
+      final addresses = _trackedAddressBox
           .getAll()
           .map((row) => row.normalizedAddress)
-          .where((address) => address.isNotEmpty)
-          .where((address) => !address.startsWith('FEED::'))
           .toSet()
           .toList();
       addresses.sort();
@@ -592,11 +459,38 @@ class AppStateService extends AppStateServiceBase {
     });
   }
 
-  @override
-  void debugLogSummary() {
-    _log.fine(
-      'AppState summary: app=${_appStateBox.count()}, address=${_appStateAddressBox.count()}',
-    );
+  /// Stream of tracked addresses as [WalletAddress] for UI (e.g. onboarding).
+  ///
+  /// Watches [TrackedAddressEntity]; emits when the tracked-address list
+  /// changes.
+  Stream<List<WalletAddress>> watchTrackedAddressesAsWalletAddresses() async* {
+    yield _trackedEntitiesToWalletAddresses(_trackedAddressBox.getAll());
+    await for (final _ in _store.watch<TrackedAddressEntity>()) {
+      yield _trackedEntitiesToWalletAddresses(_trackedAddressBox.getAll());
+    }
+  }
+
+  List<WalletAddress> _trackedEntitiesToWalletAddresses(
+    List<TrackedAddressEntity> entities,
+  ) {
+    final list = <WalletAddress>[];
+    for (final row in entities) {
+      final name = row.alias.trim().isNotEmpty
+          ? row.alias
+          : row.normalizedAddress.shortenAddress();
+      list.add(
+        WalletAddress(
+          address: row.normalizedAddress,
+          name: name,
+          createdAt: DateTime.fromMicrosecondsSinceEpoch(
+            row.createdAtUs,
+            isUtc: true,
+          ),
+        ),
+      );
+    }
+    list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return list;
   }
 }
 
@@ -607,6 +501,7 @@ final appStateServiceProvider = Provider<AppStateService>((ref) {
     store: store,
     appStateBox: store.box<AppStateEntity>(),
     appStateAddressBox: store.box<AppStateAddressEntity>(),
+    trackedAddressBox: store.box<TrackedAddressEntity>(),
     logger: Logger('AppStateService'),
   );
 });
