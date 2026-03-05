@@ -14,6 +14,7 @@ import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/common/touch_target.dart';
+import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/ff_display_button.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -111,7 +112,10 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
       ),
       body: SafeArea(
         child: detailsAsync.when(
-          loading: () => const LoadingView(),
+          loading: () => const DelayedLoadingGate(
+            isLoading: true,
+            child: LoadingView(),
+          ),
           error: (error, _) => ErrorView(
             error:
                 'We couldn’t load this playlist. Check your connection, then Retry.',
@@ -156,7 +160,9 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
                                 .read(addressServiceProvider)
                                 .indexAndSyncAddress(ownerAddress),
                             trailing: _buildOptionsButton(
-                              context, ref, playlist,
+                              context,
+                              ref,
+                              playlist,
                             ),
                           ),
                           error: (_, _) => PlaylistHeaderWithCollectionState(
@@ -169,7 +175,9 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
                                 .read(addressServiceProvider)
                                 .indexAndSyncAddress(ownerAddress),
                             trailing: _buildOptionsButton(
-                              context, ref, playlist,
+                              context,
+                              ref,
+                              playlist,
                             ),
                           ),
                           data: (_) => PlaylistHeaderWithCollectionState(
@@ -182,7 +190,9 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
                                 .read(addressServiceProvider)
                                 .indexAndSyncAddress(ownerAddress),
                             trailing: _buildOptionsButton(
-                              context, ref, playlist,
+                              context,
+                              ref,
+                              playlist,
                             ),
                           ),
                         )
@@ -267,7 +277,9 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
                   playlist,
                   (p) async {
                     final addr = p.ownerAddress!;
-                    await ref.read(addressServiceProvider).removeAddress(
+                    await ref
+                        .read(addressServiceProvider)
+                        .removeAddress(
                           walletAddress: WalletAddress(
                             address: addr,
                             name: p.name,

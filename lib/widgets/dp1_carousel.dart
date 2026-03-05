@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/load_more_indicator.dart';
@@ -18,6 +20,7 @@ class DP1Carousel extends StatefulWidget {
   const DP1Carousel({
     required this.items,
     this.isLoading = false,
+    this.loadingDelay = const Duration(milliseconds: 500),
     this.onItemTap,
     this.scrollController,
     this.isLoadingMore = false,
@@ -31,6 +34,9 @@ class DP1Carousel extends StatefulWidget {
   /// Whether the initial data is loading. When true and [items] is empty,
   /// shows a skeleton carousel instead of collapsing.
   final bool isLoading;
+
+  /// Delay before showing initial loading skeleton.
+  final Duration loadingDelay;
 
   /// Callback when an item is tapped.
   final void Function(PlaylistItem item)? onItemTap;
@@ -51,12 +57,15 @@ class DP1Carousel extends StatefulWidget {
 class _DP1CarouselState extends State<DP1Carousel> {
   late final ScrollController _scrollController;
   bool _hasTriggeredLoadMore = false;
+  bool _showDelayedLoading = false;
+  Timer? _loadingDelayTimer;
 
   @override
   void initState() {
     super.initState();
     _scrollController = widget.scrollController ?? ScrollController();
     _scrollController.addListener(_onScroll);
+    _syncLoadingDelay();
   }
 
   @override
@@ -66,10 +75,18 @@ class _DP1CarouselState extends State<DP1Carousel> {
       // Reset load more trigger when items change
       _hasTriggeredLoadMore = false;
     }
+    final hasLoadingInputsChanged =
+        oldWidget.isLoading != widget.isLoading ||
+        oldWidget.items.isEmpty != widget.items.isEmpty ||
+        oldWidget.loadingDelay != widget.loadingDelay;
+    if (hasLoadingInputsChanged) {
+      _syncLoadingDelay();
+    }
   }
 
   @override
   void dispose() {
+    _loadingDelayTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     if (widget.scrollController == null) {
       _scrollController.dispose();
@@ -93,6 +110,41 @@ class _DP1CarouselState extends State<DP1Carousel> {
     }
   }
 
+  void _syncLoadingDelay() {
+    _loadingDelayTimer?.cancel();
+
+    final shouldDelayShow = widget.items.isEmpty && widget.isLoading;
+    if (!shouldDelayShow) {
+      if (_showDelayedLoading) {
+        setState(() {
+          _showDelayedLoading = false;
+        });
+      }
+      return;
+    }
+
+    if (widget.loadingDelay <= Duration.zero) {
+      if (!_showDelayedLoading) {
+        setState(() {
+          _showDelayedLoading = true;
+        });
+      }
+      return;
+    }
+
+    if (_showDelayedLoading) {
+      setState(() {
+        _showDelayedLoading = false;
+      });
+    }
+    _loadingDelayTimer = Timer(widget.loadingDelay, () {
+      if (!mounted || widget.items.isNotEmpty || !widget.isLoading) return;
+      setState(() {
+        _showDelayedLoading = true;
+      });
+    });
+  }
+
   /// Placeholder items for loading skeleton. Lazily created once.
   static List<PlaylistItem>? _cachedPlaceholders;
 
@@ -111,10 +163,14 @@ class _DP1CarouselState extends State<DP1Carousel> {
 
   @override
   Widget build(BuildContext context) {
+    final isLoadingVisible = widget.isLoading && _showDelayedLoading;
     if (widget.items.isEmpty && !widget.isLoading) {
       return const SizedBox.shrink();
     }
-    final displayItems = widget.items.isEmpty && widget.isLoading
+    if (widget.items.isEmpty && widget.isLoading && !isLoadingVisible) {
+      return const SizedBox(height: LayoutConstants.dp1CarouselHeight);
+    }
+    final displayItems = widget.items.isEmpty && isLoadingVisible
         ? _placeholderItems()
         : widget.items;
     return SizedBox(

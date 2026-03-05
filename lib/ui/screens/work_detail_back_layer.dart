@@ -17,6 +17,7 @@ import 'package:app/nft_rendering/video_player_widget.dart';
 import 'package:app/nft_rendering/webview_rendering_widget.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/bottom_spacing.dart';
+import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/gallery_thumbnail_widgets.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/work_detail/artwork_details_header.dart';
@@ -145,7 +146,10 @@ class PreviewPlaceholder extends StatefulWidget {
 
 class _PreviewPlaceholderState extends State<PreviewPlaceholder> {
   @override
-  Widget build(BuildContext context) => const LoadingView();
+  Widget build(BuildContext context) => const DelayedLoadingGate(
+    isLoading: true,
+    child: LoadingView(),
+  );
 }
 
 /// Copied from old repo [NoPreviewWidget]. Exact same structure.

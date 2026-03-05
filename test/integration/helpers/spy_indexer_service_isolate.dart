@@ -1,4 +1,5 @@
 import 'package:app/domain/models/indexer/workflow.dart';
+import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart';
 
 /// Wraps a real [IndexerServiceIsolate] and records call order for integration

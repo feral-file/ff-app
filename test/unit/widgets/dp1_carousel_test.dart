@@ -25,7 +25,7 @@ void main() {
     );
 
     testWidgets(
-      'renders loading skeleton when items empty and isLoading true',
+      'delays loading skeleton by 500ms when items empty and isLoading true',
       (tester) async {
         await tester.pumpWidget(
           const MaterialApp(
@@ -37,6 +37,12 @@ void main() {
             ),
           ),
         );
+
+        // Delayed state keeps layout height but hides skeleton.
+        expect(find.byType(CustomScrollView), findsNothing);
+        expect(find.byType(WorkItemThumbnail), findsNothing);
+
+        await tester.pump(const Duration(milliseconds: 500));
 
         expect(find.byType(CustomScrollView), findsOneWidget);
         expect(find.byType(WorkItemThumbnail), findsWidgets);

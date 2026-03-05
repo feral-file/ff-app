@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:app/app/now_displaying/now_displaying_app_shell.dart';
+import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
 import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
@@ -59,15 +59,15 @@ class App extends ConsumerWidget {
       builder: (context, child) {
         return _AppStartupBootstrap(
           router: router,
-          child: Stack(
-            children: [
-              NowDisplayingAppShell(
-                router: router,
-                child: child ?? const SizedBox.shrink(),
-              ),
-              const AppGlobalOverlayLayer(),
-              const ForceUpdateOverlay(),
-            ],
+          child: NowDisplayingVisibilitySync(
+            router: router,
+            child: Stack(
+              children: [
+                child ?? const SizedBox.shrink(),
+                AppGlobalOverlayLayer(router: router),
+                const ForceUpdateOverlay(),
+              ],
+            ),
           ),
         );
       },

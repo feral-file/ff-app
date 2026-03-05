@@ -9,6 +9,7 @@ import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/channels/channel_section.dart';
+import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:flutter/material.dart';
@@ -94,21 +95,25 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
     final seedState = ref.watch(seedDownloadProvider);
     if (seedState.status == SeedDownloadStatus.syncing) {
       return Center(
-        child: LoadingWidget(
-          backgroundColor: Colors.transparent,
-          text: 'Preparing feed… '
-              '${((seedState.progress ?? 0) * 100).round()}%',
+        child: DelayedLoadingGate(
+          isLoading: true,
+          child: LoadingWidget(
+            backgroundColor: Colors.transparent,
+            text:
+                'Preparing feed… '
+                '${((seedState.progress ?? 0) * 100).round()}%',
+          ),
         ),
       );
     }
     if (seedState.status == SeedDownloadStatus.error) {
       return Center(
         child: ErrorView(
-          error: seedState.errorMessage ??
+          error:
+              seedState.errorMessage ??
               "We couldn't prepare your feed. Check your connection, "
                   'then Retry.',
-          onRetry: () =>
-              unawaited(ref.read(seedDownloadRetryProvider)()),
+          onRetry: () => unawaited(ref.read(seedDownloadRetryProvider)()),
         ),
       );
     }
