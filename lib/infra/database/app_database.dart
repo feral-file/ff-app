@@ -329,8 +329,7 @@ class AppDatabase extends _$AppDatabase {
     final query = select(playlists)
       ..orderBy([
         (t) => OrderingTerm.asc(publisherOrderExpr),
-        (t) => OrderingTerm.desc(t.createdAtUs),
-        (t) => OrderingTerm.asc(t.id),
+        (t) => OrderingTerm.asc(t.createdAtUs),
       ]);
 
     if (type != null) {
@@ -537,8 +536,7 @@ class AppDatabase extends _$AppDatabase {
 
     query.orderBy([
       (t) => OrderingTerm.asc(publisherOrderExpr),
-      (t) => OrderingTerm.desc(t.createdAtUs),
-      (t) => OrderingTerm.asc(t.id),
+      (t) => OrderingTerm.asc(t.createdAtUs),
     ]);
 
     return query.get();
