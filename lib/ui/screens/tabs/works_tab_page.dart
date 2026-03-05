@@ -6,6 +6,7 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
+import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/load_more_indicator.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -90,21 +91,25 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
     final seedState = ref.watch(seedDownloadProvider);
     if (seedState.status == SeedDownloadStatus.syncing) {
       return Center(
-        child: LoadingWidget(
-          backgroundColor: Colors.transparent,
-          text: 'Preparing feed… '
-              '${((seedState.progress ?? 0) * 100).round()}%',
+        child: DelayedLoadingGate(
+          isLoading: true,
+          child: LoadingWidget(
+            backgroundColor: Colors.transparent,
+            text:
+                'Preparing feed… '
+                '${((seedState.progress ?? 0) * 100).round()}%',
+          ),
         ),
       );
     }
     if (seedState.status == SeedDownloadStatus.error) {
       return Center(
         child: ErrorView(
-          error: seedState.errorMessage ??
+          error:
+              seedState.errorMessage ??
               "We couldn't prepare your feed. Check your connection, "
                   'then Retry.',
-          onRetry: () =>
-              unawaited(ref.read(seedDownloadRetryProvider)()),
+          onRetry: () => unawaited(ref.read(seedDownloadRetryProvider)()),
         ),
       );
     }
