@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:app/app/providers/channels_provider.dart';
+import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
@@ -7,6 +10,7 @@ import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/channels/channel_section.dart';
 import 'package:app/widgets/error_view.dart';
+import 'package:app/widgets/loading_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -86,6 +90,28 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    final seedState = ref.watch(seedDownloadProvider);
+    if (seedState.status == SeedDownloadStatus.syncing) {
+      return Center(
+        child: LoadingWidget(
+          backgroundColor: Colors.transparent,
+          text: 'Preparing feed… '
+              '${((seedState.progress ?? 0) * 100).round()}%',
+        ),
+      );
+    }
+    if (seedState.status == SeedDownloadStatus.error) {
+      return Center(
+        child: ErrorView(
+          error: seedState.errorMessage ??
+              "We couldn't prepare your feed. Check your connection, "
+                  'then Retry.',
+          onRetry: () =>
+              unawaited(ref.read(seedDownloadRetryProvider)()),
+        ),
+      );
+    }
 
     // Watch curated channels provider (tab shows only curated).
     final nextCuratedState = widget.isActive

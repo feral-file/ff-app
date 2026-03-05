@@ -32,6 +32,7 @@ class SeedDownloadState {
   const SeedDownloadState({
     required this.status,
     this.errorMessage,
+    this.progress,
   });
 
   /// Current download status.
@@ -40,14 +41,19 @@ class SeedDownloadState {
   /// Error message when [status] is [SeedDownloadStatus.error].
   final String? errorMessage;
 
+  /// Download progress 0.0–1.0 when [status] is [SeedDownloadStatus.syncing].
+  final double? progress;
+
   /// Returns a copy with the given fields replaced.
   SeedDownloadState copyWith({
     SeedDownloadStatus? status,
     String? errorMessage,
+    double? progress,
   }) {
     return SeedDownloadState(
       status: status ?? this.status,
       errorMessage: errorMessage ?? this.errorMessage,
+      progress: progress ?? this.progress,
     );
   }
 }
@@ -77,14 +83,15 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       return false;
     }
 
-    state = const SeedDownloadState(status: SeedDownloadStatus.syncing);
+    state = const SeedDownloadState(
+      status: SeedDownloadStatus.syncing,
+      progress: 0,
+    );
 
     final service = ref.read(seedDatabaseSyncServiceProvider);
 
-    // Track progress locally — we log every 10 % but do NOT push intermediate
-    // values into Riverpod state. Updating state on every byte chunk floods the
-    // provider observer log with thousands of update messages.
-    var lastLoggedBucket = -1;
+    // Throttle state updates to every 1% to avoid flooding provider observer.
+    var lastProgressBucket = -1;
 
     try {
       final updated = await service.syncIfNeeded(
@@ -92,11 +99,13 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         afterReplace: afterReplace,
         failSilently: true,
         onProgress: (progress) {
-          final bucket = (progress * 10).floor(); // 0–10
-          if (bucket > lastLoggedBucket) {
-            lastLoggedBucket = bucket;
-            final pct = (progress * 100).round();
-            _log.info('Seed database sync download: $pct%');
+          final bucket = (progress * 100).floor();
+          if (bucket > lastProgressBucket) {
+            lastProgressBucket = bucket;
+            _log.info(
+              'Seed database sync download: ${(progress * 100).round()}%',
+            );
+            state = state.copyWith(progress: progress);
           }
         },
       );
@@ -127,6 +136,14 @@ final seedDownloadProvider =
     NotifierProvider<SeedDownloadNotifier, SeedDownloadState>(
       SeedDownloadNotifier.new,
     );
+
+/// Provider for retrying seed download. Must be overridden by the app
+/// bootstrap with the actual sync logic.
+final seedDownloadRetryProvider = Provider<Future<void> Function()>((ref) {
+  throw UnimplementedError(
+    'seedDownloadRetryProvider must be overridden by the app',
+  );
+});
 
 /// Provider for [SeedDatabaseService].
 final seedDatabaseServiceProvider = Provider<SeedDatabaseService>((ref) {
