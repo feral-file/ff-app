@@ -15,6 +15,7 @@ import 'package:app/ui/screens/work_detail_back_layer.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/bottom_spacing.dart';
+import 'package:app/widgets/common/touch_target.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/ff_display_button.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -266,10 +267,13 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     width: LayoutConstants.minTouchTarget,
                     height: LayoutConstants.minTouchTarget,
                     child: Center(
-                      child: SvgPicture.asset(
-                        'assets/images/more_circle.svg',
-                        width: 22,
-                        height: 22,
+                      child: TouchTarget(
+                        minSize: LayoutConstants.minTouchTarget,
+                        child: SvgPicture.asset(
+                          'assets/images/more_circle.svg',
+                          width: 22,
+                          height: 22,
+                        ),
                       ),
                     ),
                   ),

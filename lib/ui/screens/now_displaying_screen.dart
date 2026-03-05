@@ -7,6 +7,7 @@ import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
+import 'package:app/widgets/common/touch_target.dart';
 import 'package:app/widgets/gallery_thumbnail_widgets.dart';
 import 'package:app/widgets/now_displaying_bar/now_displaying_quick_setting_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -44,10 +45,13 @@ class NowDisplayingScreen extends ConsumerWidget {
                     maxWidth: LayoutConstants.minTouchTarget,
                     maxHeight: LayoutConstants.minTouchTarget,
                   ),
-                  icon: SvgPicture.asset(
-                    'assets/images/more_circle.svg',
-                    width: LayoutConstants.iconSizeMedium,
-                    height: LayoutConstants.iconSizeMedium,
+                  icon: TouchTarget(
+                    minSize: LayoutConstants.minTouchTarget,
+                    child: SvgPicture.asset(
+                      'assets/images/more_circle.svg',
+                      width: LayoutConstants.iconSizeMedium,
+                      height: LayoutConstants.iconSizeMedium,
+                    ),
                   ),
                 ),
               ]

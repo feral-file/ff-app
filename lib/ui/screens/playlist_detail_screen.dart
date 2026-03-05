@@ -13,6 +13,7 @@ import 'package:app/infra/database/database_provider.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
+import 'package:app/widgets/common/touch_target.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/ff_display_button.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -291,7 +292,10 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
         minWidth: 44,
         minHeight: 44,
       ),
-      icon: SvgPicture.asset('assets/images/more_circle.svg'),
+      icon: TouchTarget(
+        minSize: LayoutConstants.minTouchTarget,
+        child: SvgPicture.asset('assets/images/more_circle.svg'),
+      ),
     );
   }
 }

@@ -15,6 +15,7 @@ import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
+import 'package:app/widgets/common/touch_target.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
@@ -51,12 +52,15 @@ class OptionsButton extends ConsumerWidget {
             onTap: () {
               _showOptions(context, ref, device);
             },
-            child: SvgPicture.asset(
-              'assets/images/more_circle.svg',
-              width: 22,
-              colorFilter: const ColorFilter.mode(
-                AppColor.white,
-                BlendMode.srcIn,
+            child: TouchTarget(
+              minSize: LayoutConstants.minTouchTarget,
+              child: SvgPicture.asset(
+                'assets/images/more_circle.svg',
+                width: 22,
+                colorFilter: const ColorFilter.mode(
+                  AppColor.white,
+                  BlendMode.srcIn,
+                ),
               ),
             ),
           ),
