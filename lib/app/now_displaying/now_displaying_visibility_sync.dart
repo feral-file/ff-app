@@ -8,7 +8,11 @@ import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-const _routesThatHideNowDisplayingBar = <String>[
+/// Route paths where now displaying must not be shown.
+///
+/// This list mirrors the legacy app behavior for screens that suppress
+/// the floating now displaying bar.
+const routesThatHideNowDisplayingBar = <String>[
   Routes.onboarding,
   Routes.onboardingIntroducePage,
   Routes.onboardingAddAddressPage,
@@ -23,24 +27,54 @@ const _routesThatHideNowDisplayingBar = <String>[
   Routes.deviceConfiguration,
   Routes.ff1Updating,
   Routes.nowDisplaying,
+  Routes.keyboardControl,
+  Routes.releaseNotes,
+  Routes.releaseNoteDetail,
   Routes.settings,
   Routes.settingsEula,
   Routes.settingsPrivacy,
   Routes.scanQrPage,
 ];
 
+/// Minimum scrollable content extent required before scroll should toggle
+/// now displaying visibility.
+const nowDisplayingScrollToggleThreshold = 100.0;
+
+/// Returns true when the now displaying bar should be visible for [path].
+bool shouldShowNowDisplayingForPath(String path) {
+  for (final hidden in routesThatHideNowDisplayingBar) {
+    if (path == hidden || path.startsWith('$hidden/')) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// Returns true if a scroll event should affect now displaying visibility.
+bool shouldReactToNowDisplayingScroll({
+  required Axis axis,
+  required double maxScrollExtent,
+}) {
+  return axis == Axis.vertical &&
+      maxScrollExtent >= nowDisplayingScrollToggleThreshold;
+}
+
 /// Syncs scroll + keyboard visibility into [nowDisplayingVisibilityProvider].
 ///
 /// This keeps the provider pure: it exposes update methods; this widget
 /// is responsible for wiring platform/UI signals into those methods.
 class NowDisplayingVisibilitySync extends ConsumerStatefulWidget {
+  /// Creates a [NowDisplayingVisibilitySync].
   const NowDisplayingVisibilitySync({
     required this.child,
     required this.router,
     super.key,
   });
 
+  /// Subtree that sends scroll notifications for visibility sync.
   final Widget child;
+
+  /// Router used to map current path into show/hide visibility.
   final GoRouter router;
 
   @override
@@ -51,7 +85,7 @@ class NowDisplayingVisibilitySync extends ConsumerStatefulWidget {
 class _NowDisplayingVisibilitySyncState
     extends ConsumerState<NowDisplayingVisibilitySync> {
   late final KeyboardVisibilityController _keyboardVisibilityController;
-  StreamSubscription<bool>? _keyboardSubscription;
+  late final StreamSubscription<bool> _keyboardSubscription;
 
   @override
   void initState() {
@@ -74,8 +108,9 @@ class _NowDisplayingVisibilitySyncState
         return;
       }
 
-      final notifier = ref.read(nowDisplayingVisibilityProvider.notifier);
-      notifier.setKeyboardVisibility(_keyboardVisibilityController.isVisible);
+      ref
+          .read(nowDisplayingVisibilityProvider.notifier)
+          .setKeyboardVisibility(_keyboardVisibilityController.isVisible);
       _handleRouteChanged();
     });
   }
@@ -83,7 +118,7 @@ class _NowDisplayingVisibilitySyncState
   @override
   void dispose() {
     widget.router.routeInformationProvider.removeListener(_handleRouteChanged);
-    _keyboardSubscription?.cancel();
+    unawaited(_keyboardSubscription.cancel());
     super.dispose();
   }
 
@@ -97,16 +132,14 @@ class _NowDisplayingVisibilitySyncState
   }
 
   bool _shouldShowForPath(String path) {
-    for (final hidden in _routesThatHideNowDisplayingBar) {
-      if (path == hidden || path.startsWith('$hidden/')) {
-        return false;
-      }
-    }
-    return true;
+    return shouldShowNowDisplayingForPath(path);
   }
 
   bool _onScrollNotification(UserScrollNotification notification) {
-    if (notification.metrics.axis != Axis.vertical) {
+    if (!shouldReactToNowDisplayingScroll(
+      axis: notification.metrics.axis,
+      maxScrollExtent: notification.metrics.maxScrollExtent,
+    )) {
       return false;
     }
 

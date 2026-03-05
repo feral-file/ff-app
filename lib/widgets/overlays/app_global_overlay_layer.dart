@@ -3,15 +3,24 @@ import 'dart:async';
 import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/widgets/now_displaying_bar/now_displaying_bar.dart';
+import 'package:app/widgets/now_displaying_bar/two_stop_draggable_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 const _toastAnimationDuration = Duration(milliseconds: 220);
 
 /// App-level overlay layer rendered above the navigation/content stack.
 class AppGlobalOverlayLayer extends ConsumerWidget {
   /// Creates an [AppGlobalOverlayLayer].
-  const AppGlobalOverlayLayer({super.key});
+  const AppGlobalOverlayLayer({
+    required this.router,
+    super.key,
+  });
+
+  /// App router used by the global now displaying overlay.
+  final GoRouter router;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -24,24 +33,44 @@ class AppGlobalOverlayLayer extends ConsumerWidget {
           decoration: TextDecoration.none,
         );
 
-    return Material(
-      type: MaterialType.transparency,
-      child: DefaultTextStyle(
-        style: defaultToastTextStyle,
-        child: IgnorePointer(
-          ignoring: overlays.isEmpty,
-          child: Stack(
-            children: [
-              for (final overlay in overlays)
-                if (overlay is AppToastOverlayItem)
-                  _ToastOverlayPresenter(
-                    key: ValueKey<String>(overlay.id),
-                    overlay: overlay,
-                  ),
-            ],
+    return Stack(
+      children: [
+        ValueListenableBuilder<bool>(
+          valueListenable: isNowDisplayingBarExpanded,
+          builder: (context, expanded, _) {
+            if (!expanded) {
+              return const SizedBox.shrink();
+            }
+
+            return Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: NowDisplayingSheetController.collapse,
+                child: const ColoredBox(
+                  color: Colors.transparent,
+                ),
+              ),
+            );
+          },
+        ),
+        NowDisplayingBarOverlay(router: router),
+        Material(
+          type: MaterialType.transparency,
+          child: DefaultTextStyle(
+            style: defaultToastTextStyle,
+            child: Stack(
+              children: [
+                for (final overlay in overlays)
+                  if (overlay is AppToastOverlayItem)
+                    _ToastOverlayPresenter(
+                      key: ValueKey<String>(overlay.id),
+                      overlay: overlay,
+                    ),
+              ],
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -186,12 +215,12 @@ class _ToastCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.32),
+            color: Colors.black.withValues(alpha: 0.32),
             blurRadius: 28,
             offset: const Offset(0, 14),
           ),
           BoxShadow(
-            color: Colors.black.withOpacity(0.22),
+            color: Colors.black.withValues(alpha: 0.22),
             blurRadius: 8,
             offset: const Offset(0, 3),
             spreadRadius: -1,
