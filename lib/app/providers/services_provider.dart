@@ -6,6 +6,7 @@ import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart'
     hide ff1BluetoothDeviceServiceProvider;
+import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
@@ -84,7 +85,17 @@ final bootstrapServiceProvider = Provider<BootstrapService>((ref) {
 
 /// Provider for composing support emails from the app.
 final supportEmailServiceProvider = Provider<SupportEmailService>((ref) {
-  return SupportEmailService();
+  final deviceInfoService = ref.watch(deviceInfoServiceProvider);
+  FF1BluetoothDeviceService? ff1Service;
+  try {
+    ff1Service = ref.watch(ff1BluetoothDeviceServiceProvider);
+  } on UnimplementedError {
+    ff1Service = null;
+  }
+  return SupportEmailService(
+    deviceInfoService: deviceInfoService,
+    ff1DeviceService: ff1Service,
+  );
 });
 
 /// Provider for [RemoteConfigService].
