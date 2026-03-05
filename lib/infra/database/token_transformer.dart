@@ -34,6 +34,7 @@ class TokenTransformer {
       kind: PlaylistItemKind.indexerToken,
       title: title,
       subtitle: subtitle,
+      source: token.getPreviewUrl(),
       thumbnailUrl: _resolveThumbnailUrl(token),
       tokenData: token.toRestJson(),
       sortKeyUs: sortKeyUs,

@@ -17,6 +17,7 @@ void main() {
           metadata: TokenMetadata(
             name: 'Test Artwork',
             imageUrl: 'https://example.com/thumb.jpg',
+            animationUrl: 'https://example.com/animation.mp4',
             artists: [
               Artist(did: 'did:1', name: 'Artist 1'),
               Artist(did: 'did:2', name: 'Artist 2'),
@@ -31,8 +32,34 @@ void main() {
         expect(item.title, 'Test Artwork');
         expect(item.subtitle, 'Artist 1, Artist 2');
         expect(item.artists?.map((a) => a.name), ['Artist 1', 'Artist 2']);
+        expect(item.source, 'https://example.com/animation.mp4');
         expect(item.thumbnailUrl, 'https://example.com/thumb.jpg');
         expect(item.tokenData, isNotNull);
+      });
+
+      test('prefers enrichment animation URL for source', () {
+        final token = AssetToken(
+          id: 1,
+          cid: 'cid_test123',
+          chain: 'eip155:1',
+          standard: 'ERC-721',
+          contractAddress: '0xCONTRACT',
+          tokenNumber: '1',
+          enrichmentSource: EnrichmentSource(
+            name: 'Enriched Name',
+            animationUrl: 'https://example.com/enrichment-animation.mp4',
+            imageUrl: 'https://example.com/enrichment-image.jpg',
+          ),
+          metadata: TokenMetadata(
+            name: 'Metadata Name',
+            animationUrl: 'https://example.com/metadata-animation.mp4',
+            imageUrl: 'https://example.com/metadata-image.jpg',
+          ),
+        );
+
+        final item = TokenTransformer.assetTokenToPlaylistItem(token: token);
+
+        expect(item.source, 'https://example.com/enrichment-animation.mp4');
       });
 
       test('handles missing title', () {
