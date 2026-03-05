@@ -56,9 +56,11 @@ ff1DeviceRealtimeMetricsStreamProvider = StreamProvider.autoDispose
         return const Stream<DeviceRealtimeMetrics>.empty();
       }
 
-      final deviceData = ref.watch(ff1DeviceDataProvider);
-      final isSleeping = deviceData.playerStatus?.isSleeping ?? false;
-      if (!deviceData.isConnected || isSleeping) {
+      final isConnected = ref.watch(ff1DeviceConnectedProvider);
+      final isSleeping = ref.watch(
+        ff1CurrentPlayerStatusProvider.select((s) => s?.isSleeping ?? false),
+      );
+      if (!isConnected || isSleeping) {
         return const Stream<DeviceRealtimeMetrics>.empty();
       }
 

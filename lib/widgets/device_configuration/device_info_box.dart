@@ -138,9 +138,6 @@ class DeviceInfoBox extends ConsumerWidget {
           divider,
 
           // WiFi Network
-          // Check if the device is connected to WiFi
-          // If not connected, show "Not connected" message
-          // If connected, show the connected WiFi name
           if (deviceStatus != null) ...[
             DeviceInfoItem(
               title: 'Device Wifi Network',
@@ -182,6 +179,33 @@ class DeviceInfoBox extends ConsumerWidget {
               ),
             ),
           ),
+
+          // Wi-Fi MAC address (Linux WiFi interfaces start with "wl")
+          if (deviceStatus?.macInfo != null) ...[
+            for (final entry in deviceStatus!.macInfo!.entries
+                .where((e) => e.key.startsWith('wl'))) ...[
+              divider,
+              DeviceInfoItem(
+                title: 'Wi-Fi MAC',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        entry.value,
+                        style: AppTypography.body(context).white.copyWith(
+                          color: isConnected
+                              ? AppColor.white
+                              : AppColor.disabledColor,
+                        ),
+                      ),
+                    ),
+                    _copyButton(context, entry.value),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ],
       ),
     );

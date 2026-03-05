@@ -70,6 +70,9 @@ class LayoutConstants {
   /// Space 6 (24px)
   static final double space6 = PrimitivesTokens.spacingSpace6.toDouble();
 
+  /// Space 7 (28px)
+  static final double space7 = PrimitivesTokens.spacingSpace7.toDouble();
+
   /// Space 8 (32px)
   static final double space8 = PrimitivesTokens.spacingSpace8.toDouble();
 
