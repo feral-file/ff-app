@@ -338,10 +338,15 @@ class AddressService {
   /// `PendingAddressesStore` and no SQLite write is attempted.
   /// `_AppStartupBootstrap` will migrate pending addresses into SQLite and
   /// start the workers once the database gate opens.
+  ///
+  /// When [fromPendingMigration] is true, the address was already added via
+  /// the pending path (tracked + idle status set). Skip redundant state updates
+  /// to avoid duplicate idle logs and emissions.
   Future<Playlist> addAddress({
     required WalletAddress walletAddress,
     String channelId = 'my_collection',
     bool syncNow = true,
+    bool fromPendingMigration = false,
   }) async {
     try {
       final chain = walletAddress.chain;
@@ -360,11 +365,12 @@ class AddressService {
           address: normalizedAddress,
           status: AddressIndexingProcessStatus.idle(),
         );
-        if (syncNow) {
-          // track address and sync immediately
-          _scheduleAddressIndexing(normalizedAddress);
-        } else {
-          // track address and sync later
+        // Do NOT call _scheduleAddressIndexing here: the playlist does not
+        // exist in Drift yet. ingestTokensForAddress requires the playlist to
+        // exist and would skip ingestion otherwise. _migratePendingAddresses
+        // will create the playlist and call _scheduleAddressIndexing once the
+        // seed is ready.
+        if (!syncNow) {
           await _personalTokensSyncService.trackAddress(normalizedAddress);
         }
         _log.info(
@@ -394,14 +400,16 @@ class AddressService {
       );
 
       await _databaseService.ingestPlaylist(playlist);
-      await _appStateService.addTrackedAddress(
-        normalizedAddress,
-        alias: walletAddress.name,
-      );
-      await _appStateService.setAddressIndexingStatus(
-        address: normalizedAddress,
-        status: AddressIndexingProcessStatus.idle(),
-      );
+      if (!fromPendingMigration) {
+        await _appStateService.addTrackedAddress(
+          normalizedAddress,
+          alias: walletAddress.name,
+        );
+        await _appStateService.setAddressIndexingStatus(
+          address: normalizedAddress,
+          status: AddressIndexingProcessStatus.idle(),
+        );
+      }
       if (syncNow) {
         _scheduleAddressIndexing(normalizedAddress);
       } else {

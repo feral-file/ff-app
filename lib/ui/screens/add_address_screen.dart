@@ -117,14 +117,16 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
       addAddressProvider,
       (previous, next) {
         // When verification succeeds, navigate to the alias screen.
-        if (next is AsyncData<Address?> &&
+          if (next is AsyncData<Address?> &&
             next.value != null &&
             (previous is! AsyncData<Address?> || previous.value == null)) {
           if (context.mounted) {
             final payload = AddAliasScreenPayload(
               address: next.value?.address ?? '',
               domain: next.value?.domain,
-              syncNow: !widget.payload.isFromOnboarding,
+              // Always sync now so indexing flow runs. During onboarding the
+              // pending path defers to migration; when DB is ready we index immediately.
+              syncNow: true,
             );
             unawaited(context.push(Routes.addAliasPage, extra: payload));
           }

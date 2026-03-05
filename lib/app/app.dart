@@ -402,6 +402,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
             createdAt: DateTime.now(),
             name: address.shortenAddress(),
           ),
+          fromPendingMigration: true,
         );
         _log.info('Migrated pending address: $address');
       } on Object catch (e, st) {
