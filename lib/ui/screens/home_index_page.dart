@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -8,6 +9,7 @@ import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/device_config_screen.dart';
+import 'package:app/widgets/no_pairing_device_dialog.dart';
 import 'package:app/ui/screens/scan_qr_page.dart';
 import 'package:app/ui/screens/tabs/channels_tab_page.dart';
 import 'package:app/ui/screens/tabs/playlists_tab_page.dart';
@@ -227,6 +229,13 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         ),
         onTap: () {
           Navigator.of(context).pop();
+          final isPaired =
+              ref.read(activeFF1BluetoothDeviceProvider).value != null;
+          if (!isPaired) {
+            unawaited(_showNoPairingDialog());
+            return;
+          }
+
           unawaited(
             context.push(
               Routes.deviceConfiguration,
@@ -321,6 +330,25 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _showNoPairingDialog() async {
+    const screenKey = 'No pairing';
+    if (UIHelper.currentDialogTitle == screenKey) {
+      return;
+    }
+
+    UIHelper.currentDialogTitle = screenKey;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      isScrollControlled: true,
+      builder: (context) => const NoPairingDeviceDialog(),
+    );
+
+    UIHelper.currentDialogTitle = '';
   }
 
   void _showMenu(BuildContext context) {
