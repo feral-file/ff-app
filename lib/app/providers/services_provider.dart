@@ -1,7 +1,5 @@
 import 'package:app/app/providers/address_indexing_job_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
-import 'package:app/app/routing/app_navigator_key.dart';
-import 'package:app/infra/api/pubdoc_api.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart'
@@ -26,7 +24,6 @@ import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:app/infra/services/remote_config_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
-import 'package:app/infra/services/version_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // ignore_for_file: lines_longer_than_80_chars // Reason: provider documentation lines intentionally keep fully-qualified refs.
@@ -180,20 +177,3 @@ final legacyDataMigrationServiceProvider = Provider<LegacyDataMigrationService>(
     );
   },
 );
-
-/// Provider for [PubDocApi] (release notes + version compatibility).
-final pubDocApiProvider = Provider<PubDocApi>((ref) {
-  return PubDocApiImpl();
-});
-
-/// Provider for [VersionService].
-final versionServiceProvider =
-    Provider<VersionService>(
-      (ref) {
-        final pubDocApi = ref.watch(pubDocApiProvider);
-        return VersionService(
-          pubDocApi: pubDocApi,
-          navigatorKey: appNavigatorKey,
-        );
-      },
-    );
