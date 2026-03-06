@@ -1,4 +1,4 @@
-// ignore_for_file: discarded_futures
+// ignore_for_file: discarded_futures, document_ignores
 
 import 'dart:async';
 
@@ -14,7 +14,9 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 final _log = Logger('FeralFileWebview');
 
+/// WebView wrapper used for NFT media rendering.
 class FeralFileWebview extends StatefulWidget {
+  /// Creates a webview with loading and lifecycle-safe callbacks.
   const FeralFileWebview({
     required this.uri,
     super.key,
@@ -28,23 +30,43 @@ class FeralFileWebview extends StatefulWidget {
     this.onHttpError,
     this.onConsoleMessage,
   });
+
+  /// Initial URL to load when `overriddenHtml` is null.
   final Uri uri;
+
+  /// Optional inline HTML string to render instead of loading [uri].
   final String? overriddenHtml;
+
+  /// Whether to mute media after the page finishes loading.
   final bool isMute;
+
+  /// WebView background color and loading placeholder background.
   final Color backgroundColor;
+
+  /// Optional web user-agent override.
   final String? userAgent;
+
+  /// Called when a page finished loading.
   final void Function(WebViewController webViewController)? onLoaded;
+
+  /// Called when page loading starts.
   final void Function(WebViewController webViewController)? onStarted;
+
+  /// Called when the webview reports a resource loading error.
   final void Function(
     WebViewController webViewController,
     WebResourceError error,
   )?
   onResourceError;
+
+  /// Called when the webview reports an HTTP response error.
   final void Function(
     WebViewController webViewController,
     HttpResponseError error,
   )?
   onHttpError;
+
+  /// Called when JavaScript writes a console message.
   final void Function(
     WebViewController webViewController,
     JavaScriptConsoleMessage consoleMessage,
@@ -52,17 +74,18 @@ class FeralFileWebview extends StatefulWidget {
   onConsoleMessage;
 
   @override
-  State<FeralFileWebview> createState() => FeralFileWebviewState();
+  State<FeralFileWebview> createState() => _FeralFileWebviewState();
 }
 
-class FeralFileWebviewState extends State<FeralFileWebview> {
+class _FeralFileWebviewState extends State<FeralFileWebview> {
   late WebViewController _webViewController;
   double _loadingProgress = 0;
+  bool _isDisposed = false;
 
   @override
   void initState() {
     super.initState();
-    _webViewController = getWebViewController();
+    _webViewController = _getWebViewController();
     _webViewController.load(
       widget.uri,
       widget.overriddenHtml,
@@ -103,13 +126,11 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
       ),
       Positioned.fill(
         child: IgnorePointer(
-          ignoring: _loadingProgress >= 1.0,
-          child: Container(
-            child: AnimatedOpacity(
-              opacity: _loadingProgress < 1.0 ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              child: _buildLoadingWidget(),
-            ),
+          ignoring: _loadingProgress >= 1,
+          child: AnimatedOpacity(
+            opacity: _loadingProgress < 1 ? 1 : 0,
+            duration: const Duration(milliseconds: 300),
+            child: _buildLoadingWidget(),
           ),
         ),
       ),
@@ -118,9 +139,10 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
 
   @override
   void dispose() {
-    super.dispose();
-    // webViewController dispose itself
+    _isDisposed = true;
+    // webViewController disposes itself.
     _webViewController.onDispose();
+    super.dispose();
   }
 
   @override
@@ -135,7 +157,7 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
     }
   }
 
-  WebViewController getWebViewController() {
+  WebViewController _getWebViewController() {
     late final PlatformWebViewControllerCreationParams params;
     if (WebViewPlatform.instance is WebKitWebViewPlatform) {
       params = WebKitWebViewControllerCreationParams(
@@ -163,22 +185,18 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (progress) {
-            setState(() {
-              _loadingProgress = progress / 100;
-            });
+            _setLoadingProgress(progress / 100);
           },
           onPageStarted: (url) async {
+            if (_isDisposed || !mounted) return;
             _log.info('Page started loading: $url');
-            setState(() {
-              _loadingProgress = 0.0;
-            });
+            _setLoadingProgress(0);
             unawaited(webViewController.skipPrint());
             widget.onStarted?.call(webViewController);
           },
           onPageFinished: (url) async {
-            setState(() {
-              _loadingProgress = 1.0;
-            });
+            if (_isDisposed || !mounted) return;
+            _setLoadingProgress(1);
             widget.onLoaded?.call(webViewController);
             if (widget.isMute) {
               await webViewController.mute();
@@ -210,5 +228,14 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
       );
     }
     return webViewController;
+  }
+
+  void _setLoadingProgress(double value) {
+    if (_isDisposed || !mounted) {
+      return;
+    }
+    setState(() {
+      _loadingProgress = value;
+    });
   }
 }
