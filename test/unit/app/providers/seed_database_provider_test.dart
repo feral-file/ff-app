@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   int syncCallCount = 0;
+  bool? lastFailSilently;
 
   /// Progress values to report via onProgress (e.g. [0.0, 0.5, 1.0]).
   List<double> progressValues = const [0.0, 0.5, 1.0];
@@ -17,6 +18,7 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
     void Function(double progress)? onProgress,
     bool failSilently = false,
   }) async {
+    lastFailSilently = failSilently;
     syncCallCount++;
     await beforeReplace();
     for (final p in progressValues) {
@@ -65,6 +67,7 @@ void main() {
       container.read(seedDownloadProvider).status,
       SeedDownloadStatus.done,
     );
+    expect(fakeSyncService.lastFailSilently, isTrue);
   });
 
   test('progress is updated during sync', () async {
@@ -92,10 +95,31 @@ void main() {
     );
     expect(container.read(seedDownloadProvider).progress, isNull);
 
-    final syncingStates =
-        states.where((s) => s.status == SeedDownloadStatus.syncing);
+    final syncingStates = states.where(
+      (s) => s.status == SeedDownloadStatus.syncing,
+    );
     expect(syncingStates, isNotEmpty);
     final withProgress = syncingStates.where((s) => s.progress != null);
     expect(withProgress, isNotEmpty);
+  });
+
+  test('passes silent-fail flag through to sync service', () async {
+    final fakeSyncService = _FakeSeedDatabaseSyncService();
+    final container = ProviderContainer.test(
+      overrides: [
+        seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container
+        .read(seedDownloadProvider.notifier)
+        .syncAtAppStart(
+          beforeReplace: () async {},
+          afterReplace: () async {},
+          failSilently: false,
+        );
+
+    expect(fakeSyncService.lastFailSilently, isFalse);
   });
 }

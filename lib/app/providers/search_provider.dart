@@ -30,6 +30,41 @@ class SearchResults {
   int get totalCount => channels.length + playlists.length + works.length;
 }
 
+/// Search result kind for suggestion/list navigation.
+enum SearchResultKind {
+  /// Search result is a channel.
+  channel,
+
+  /// Search result is a playlist.
+  playlist,
+
+  /// Search result is a work/item.
+  work,
+}
+
+/// Lightweight result item surfaced by suggestion/provider responses.
+class SearchSuggestion {
+  /// Creates a [SearchSuggestion].
+  const SearchSuggestion({
+    required this.id,
+    required this.title,
+    required this.kind,
+    this.subtitle,
+  });
+
+  /// Destination model id.
+  final String id;
+
+  /// Main display title.
+  final String title;
+
+  /// Result kind used for routing.
+  final SearchResultKind kind;
+
+  /// Optional metadata shown under the title.
+  final String? subtitle;
+}
+
 /// Notifier for search query state.
 class SearchQueryNotifier extends Notifier<String> {
   @override
@@ -50,6 +85,101 @@ class SearchQueryNotifier extends Notifier<String> {
 final searchQueryProvider = NotifierProvider<SearchQueryNotifier, String>(
   SearchQueryNotifier.new,
 );
+
+/// Notifier for live search input state.
+class SearchInputQueryNotifier extends Notifier<String> {
+  @override
+  String build() => '';
+
+  /// Update the raw search input.
+  void setQuery(String query) {
+    state = query;
+  }
+
+  /// Clear the raw search input.
+  void clear() {
+    state = '';
+  }
+}
+
+/// Search input provider used for live suggestions.
+final searchInputQueryProvider =
+    NotifierProvider<SearchInputQueryNotifier, String>(
+      SearchInputQueryNotifier.new,
+    );
+
+/// Suggestion results provider using debounced input query.
+final searchSuggestionsProvider =
+    FutureProvider.autoDispose<List<SearchSuggestion>>((
+      ref,
+    ) async {
+      final query = ref.watch(searchInputQueryProvider).trim();
+      final log = Logger('SearchSuggestionsProvider');
+
+      if (query.length < 2) {
+        return const <SearchSuggestion>[];
+      }
+
+      // Lightweight debounce to avoid querying local DB on every keystroke.
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+
+      // Ignore stale queries after debounce.
+      if (query != ref.read(searchInputQueryProvider).trim()) {
+        return const <SearchSuggestion>[];
+      }
+
+      try {
+        final databaseService = ref.watch(databaseServiceProvider);
+        final result = await Future.wait([
+          databaseService.searchChannelsByTitle(query, limit: 4),
+          databaseService.searchPlaylistsByTitle(query, limit: 4),
+          databaseService.searchItemsByTitle(query, limit: 6),
+        ]);
+
+        final channels = result[0] as List<Channel>;
+        final playlists = result[1] as List<Playlist>;
+        final works = result[2] as List<PlaylistItem>;
+
+        final suggestions = <SearchSuggestion>[];
+        for (final item in channels) {
+          suggestions.add(
+            SearchSuggestion(
+              id: item.id,
+              title: item.name,
+              subtitle: 'Channel',
+              kind: SearchResultKind.channel,
+            ),
+          );
+        }
+
+        for (final item in playlists) {
+          suggestions.add(
+            SearchSuggestion(
+              id: item.id,
+              title: item.name,
+              subtitle: 'Playlist',
+              kind: SearchResultKind.playlist,
+            ),
+          );
+        }
+
+        for (final item in works) {
+          suggestions.add(
+            SearchSuggestion(
+              id: item.id,
+              title: item.title ?? '',
+              subtitle: 'Work',
+              kind: SearchResultKind.work,
+            ),
+          );
+        }
+
+        return suggestions;
+      } catch (e, stack) {
+        log.severe('Search suggestions failed', e, stack);
+        rethrow;
+      }
+    });
 
 /// Search results provider.
 /// Automatically searches when query changes.

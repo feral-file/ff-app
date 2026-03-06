@@ -42,6 +42,8 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
   SearchResults? _lastSuccessfulResults;
   SearchFilterType _filterType = SearchFilterType.channels;
   SearchSortOrder _sortOrder = SearchSortOrder.relevance;
+  SearchSourceFilter _sourceFilter = SearchSourceFilter.all;
+  SearchDateFilter _dateFilter = SearchDateFilter.all;
 
   @override
   bool get wantKeepAlive => true;
@@ -56,7 +58,12 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
           if (!mounted) return;
           setState(() {
             _lastSuccessfulResults = data;
-            final available = availableTypesFromResults(data);
+            final facetedResults = filterSearchResults(
+              data,
+              sourceFilter: _sourceFilter,
+              dateFilter: _dateFilter,
+            );
+            final available = availableTypesFromResults(facetedResults);
             final nextType = selectInitialType(
               available: available,
               current: _filterType,
@@ -81,6 +88,22 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
 
   void _onSearchSubmitted(String query) {
     ref.read(searchQueryProvider.notifier).setQuery(query);
+    ref.read(searchInputQueryProvider.notifier).setQuery(query);
+    FocusScope.of(context).unfocus();
+  }
+
+  void _onSearchTextChanged(String query) {
+    ref.read(searchInputQueryProvider.notifier).setQuery(query);
+  }
+
+  void _onSuggestionTap(BuildContext context, SearchSuggestion suggestion) {
+    final route = switch (suggestion.kind) {
+      SearchResultKind.channel => '${Routes.channels}/${suggestion.id}',
+      SearchResultKind.playlist => '${Routes.playlists}/${suggestion.id}',
+      SearchResultKind.work => '${Routes.works}/${suggestion.id}',
+    };
+
+    unawaited(context.push(route));
   }
 
   @override
@@ -88,13 +111,20 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
     super.build(context);
 
     final query = ref.watch(searchQueryProvider);
+    final inputQuery = ref.watch(searchInputQueryProvider);
+    final suggestionsAsync = ref.watch(searchSuggestionsProvider);
     final resultsAsync = ref.watch(searchResultsProvider);
     final unfilteredResults =
         resultsAsync.asData?.value ??
         _lastSuccessfulResults ??
         const SearchResults(channels: [], playlists: [], works: []);
+    final facetedResults = filterSearchResults(
+      unfilteredResults,
+      sourceFilter: _sourceFilter,
+      dateFilter: _dateFilter,
+    );
 
-    final availableTypes = availableTypesFromResults(unfilteredResults);
+    final availableTypes = availableTypesFromResults(facetedResults);
     final safeFilterType =
         selectInitialType(available: availableTypes, current: _filterType) ??
         _filterType;
@@ -112,13 +142,21 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
             onSortOrderChanged: (order) {
               setState(() => _sortOrder = order);
             },
+            sourceFilter: _sourceFilter,
+            onSourceFilterChanged: (source) {
+              setState(() => _sourceFilter = source);
+            },
+            dateFilter: _dateFilter,
+            onDateFilterChanged: (date) {
+              setState(() => _dateFilter = date);
+            },
           ),
           Expanded(
             child: _buildResultsSection(
               context: context,
               query: query,
               resultsAsync: resultsAsync,
-              unfilteredResults: unfilteredResults,
+              facetedResults: facetedResults,
               filterType: safeFilterType,
             ),
           ),
@@ -147,6 +185,16 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
           )
         : resultsContent;
 
+    final shouldShowSuggestions = inputQuery.isNotEmpty && inputQuery != query;
+
+    final resultsBody = shouldShowSuggestions
+        ? _buildSuggestionSection(
+            context: context,
+            suggestionsState: suggestionsAsync,
+            query: inputQuery,
+          )
+        : resultsWithOverlay;
+
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
       appBar: _buildOldStyleSearchAppBar(context),
@@ -157,11 +205,92 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
             child: search_widgets.SearchBar(
               controller: _searchController,
               onSubmitted: _onSearchSubmitted,
+              onChanged: _onSearchTextChanged,
               autoFocus: true,
             ),
           ),
-          Expanded(child: resultsWithOverlay),
+          Expanded(child: resultsBody),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSuggestionSection({
+    required BuildContext context,
+    required AsyncValue<List<SearchSuggestion>> suggestionsState,
+    required String query,
+  }) {
+    return suggestionsState.when(
+      data: (suggestions) {
+        if (suggestions.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: EdgeInsets.all(LayoutConstants.pageHorizontalDefault),
+              child: Text(
+                'No suggestions found for "$query"',
+                style: AppTypography.body(context).white,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                LayoutConstants.pageHorizontalDefault,
+                LayoutConstants.space2,
+                LayoutConstants.pageHorizontalDefault,
+                LayoutConstants.space2,
+              ),
+              child: Text(
+                'Suggestions',
+                style: AppTypography.body(context).white,
+              ),
+            ),
+            Expanded(
+              child: ListView.separated(
+                itemCount: suggestions.length,
+                separatorBuilder: (context, _) => Divider(
+                  color: AppColor.auGrey,
+                  height: 1,
+                  thickness: 1,
+                ),
+                itemBuilder: (context, index) {
+                  final suggestion = suggestions[index];
+                  return ListTile(
+                    title: Text(
+                      suggestion.title,
+                      style: AppTypography.body(context).white,
+                    ),
+                    subtitle: Text(
+                      suggestion.subtitle ?? '',
+                      style: AppTypography.caption(context).copyWith(
+                        color: AppColor.auGrey,
+                      ),
+                    ),
+                    onTap: () => _onSuggestionTap(context, suggestion),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+      loading: () => Center(
+        child: LoadingWidget(
+          backgroundColor: AppColor.auGreyBackground.withValues(alpha: 0.8),
+          text: 'Searching...',
+        ),
+      ),
+      error: (error, stack) => Center(
+        child: Text(
+          'Unable to load suggestions right now',
+          style: AppTypography.body(context).white,
+          textAlign: TextAlign.center,
+        ),
       ),
     );
   }
@@ -223,7 +352,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
     required BuildContext context,
     required String query,
     required AsyncValue<SearchResults> resultsAsync,
-    required SearchResults unfilteredResults,
+    required SearchResults facetedResults,
     required SearchFilterType filterType,
   }) {
     if (resultsAsync.hasError) {
@@ -239,7 +368,10 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
       return const SizedBox.shrink();
     }
 
-    final results = resultsAsync.asData?.value ?? unfilteredResults;
+    final results = sortSearchResults(
+      facetedResults,
+      _sortOrder,
+    );
     if (results.isEmpty) {
       return _buildEmptyView(context);
     }

@@ -165,12 +165,15 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
         : channelPreviewPageSize;
     final pageItems = next.take(listenSize).toList();
     final current = state.works;
+    final hasMore = next.length > pageItems.length;
     final hasChanged =
-        current.length != pageItems.length || !listEquals(current, pageItems);
+        current.length != pageItems.length ||
+        !listEquals(current, pageItems) ||
+        state.hasMore != hasMore;
     if (hasChanged) {
       state = ChannelPreviewState.loaded(
         works: pageItems,
-        hasMore: next.length > pageItems.length,
+        hasMore: hasMore,
       );
     }
   }

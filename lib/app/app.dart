@@ -244,6 +244,13 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
         'Startup cache counts: dp1Channels=${channels.length}, '
         'dp1Playlists=${playlists.length}',
       );
+      if (channels.isEmpty && playlists.isEmpty) {
+        _log.warning(
+          'Seed-backed DP1 content is currently empty; if this is a fresh '
+          'install, open channel/playlist feeds and tap Retry to re-run seed '
+          'sync.',
+        );
+      }
     } on Exception catch (e, stack) {
       _log.warning('Failed to read startup cache counts', e, stack);
     }
@@ -273,6 +280,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
   Future<bool> _syncSeedDatabaseIfNeeded({
     required bool showUpdatingToast,
+    bool failSilently = true,
   }) async {
     var personalAddresses = <String>[];
     String? toastOverlayId;
@@ -287,7 +295,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
               toastOverlayId = ref
                   .read(appOverlayProvider.notifier)
                   .showToast(
-                    message: 'Updating feed...',
+                    message: 'Updating art library...',
                   );
               await WidgetsBinding.instance.endOfFrame;
             }
@@ -309,6 +317,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
               }
             }
           },
+          failSilently: failSilently,
         );
   }
 
@@ -472,7 +481,10 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     return ProviderScope(
       overrides: [
         seedDownloadRetryProvider.overrideWithValue(() async {
-          await _syncSeedDatabaseIfNeeded(showUpdatingToast: true);
+          await _syncSeedDatabaseIfNeeded(
+            showUpdatingToast: true,
+            failSilently: false,
+          );
         }),
       ],
       child: widget.child,

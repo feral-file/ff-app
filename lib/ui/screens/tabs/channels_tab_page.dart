@@ -100,7 +100,7 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
           child: LoadingWidget(
             backgroundColor: Colors.transparent,
             text:
-                'Preparing feed… '
+                'Updating art library... '
                 '${((seedState.progress ?? 0) * 100).round()}%',
           ),
         ),
