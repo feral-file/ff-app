@@ -692,6 +692,65 @@ class FF1WifiControl {
     }
   }
 
+  /// Set the device volume.
+  ///
+  /// [topicId] — device identifier on the relayer
+  /// [percent] — target volume level (0–100); values outside this range are
+  ///   accepted by the method but may be rejected by the device firmware.
+  Future<FF1CommandResponse> setVolume({
+    required String topicId,
+    required int percent,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending setVolume($percent) command to device');
+
+      final request = FF1WifiSetVolumeRequest(percent: percent);
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send setVolume command: $e');
+      rethrow;
+    }
+  }
+
+  /// Toggle mute state on the device.
+  ///
+  /// [topicId] — device identifier on the relayer
+  Future<FF1CommandResponse> toggleMute({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending toggleMute command to device');
+
+      const request = FF1WifiToggleMuteRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send toggleMute command: $e');
+      rethrow;
+    }
+  }
+
   /// Fetches realtime device metrics via relayer command channel.
   Future<DeviceRealtimeMetrics> getDeviceRealtimeMetrics({
     required String topicId,

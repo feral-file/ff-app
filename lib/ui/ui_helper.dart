@@ -221,8 +221,7 @@ class UIHelper {
     FutureOr<void> Function(Playlist playlist) onRemove,
   ) {
     final theme = Theme.of(context);
-    final playlistTitle =
-        playlist.name.isNotEmpty ? playlist.name : 'Playlist';
+    final playlistTitle = playlist.name.isNotEmpty ? playlist.name : 'Playlist';
 
     final bottomSheetKey = GlobalKey();
 
@@ -726,7 +725,10 @@ class DrawerItem extends StatefulWidget {
     required this.item,
     super.key,
     this.color,
-    this.padding = const EdgeInsets.symmetric(vertical: 16, horizontal: 13),
+    this.padding = const EdgeInsets.symmetric(
+      vertical: 16,
+      horizontal: 12,
+    ),
   });
 
   final OptionItem item;
@@ -776,10 +778,10 @@ class _DrawerItemState extends State<DrawerItem> {
           children: [
             if (icon != null) ...[
               SizedBox(
-                width: 30,
+                width: LayoutConstants.space7,
                 child: Center(child: icon),
               ),
-              const SizedBox(width: 34),
+              SizedBox(width: LayoutConstants.space8),
             ],
             Expanded(
               child: Text(
