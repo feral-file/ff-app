@@ -6,6 +6,7 @@ on:
     paths:
       - 'lib/**'
       - 'ios/**'
+      - pubspec.yaml
 
 jobs:
   build-ios:
