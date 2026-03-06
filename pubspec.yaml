@@ -28,102 +28,70 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
-  flutter:
-    sdk: flutter
-
-  flutter_riverpod: 3.2.0
-  flutter_dotenv: ^5.2.1
   after_layout: ^1.2.0
-  bubble: ^1.2.1
-  carousel_slider: ^5.0.0
-  collection: 1.19.1
+  app_links: 7.0.0
+  audio_session: ^0.2.2
+  backdrop: 0.9.1
   cached_network_image: 3.4.1
-
-  connectivity_plus: 7.0.0
+  collection: 1.19.1
   crypto: 3.0.7
-  cryptography: 2.9.0
   device_info_plus: 12.3.0
   dio: 5.9.0
+  drift: 2.30.1
   easy_debounce: 2.0.3
-  flutter_markdown: 0.7.7+1
-  flutter_svg: 2.2.3
-  gif_view: 1.0.3
-  http: 1.6.0
-  image_picker: 1.2.1
-  infinite_scroll_pagination: 5.1.1
-  jiffy: 6.4.4
+  fast_base58: ^0.2.1
+  fl_chart: 1.1.1
+  flutter:
+    sdk: flutter
+  flutter_blue_plus: 2.1.0
+  flutter_dotenv: ^5.2.1
+  flutter_email_sender: 8.0.0
   flutter_keyboard_visibility: 6.0.0
+  flutter_markdown: 0.7.7+1
+  flutter_pdfview: 1.4.4
+  flutter_riverpod: 3.2.0
+  flutter_svg: 2.2.3
+  flutter_widget_from_html: 0.17.1
+  gif_view: 1.0.3
+  go_router: 17.0.1
+  graphql: 5.2.0
+  hive_flutter: 1.1.0
+  http: 1.6.0
+  jiffy: 6.4.4
+  just_audio: ^0.10.4
   logging: 1.3.0
   meta: ^1.17.0
-  mime: 2.0.0
-  open_settings_plus: 0.4.0
+  mobile_scanner:
+  objectbox: 5.1.0
+  objectbox_flutter_libs: 5.1.0
   package_info_plus: 9.0.0
-  page_transition: 2.2.1
+  path: ^1.9.0
   path_provider: 2.1.5
   permission_handler: 12.0.1
-  qr_flutter: 4.1.0
-  fl_chart: 1.1.1
-  mobile_scanner:
+  riverpod: any
   roundcheckbox: 2.0.5
+  rxdart: ^0.28.0
+  sentry: 9.14.0
   sentry_dio: 9.14.0
   sentry_drift: 9.14.0
   sentry_flutter: 9.14.0
   sentry_link: 9.14.0
   sentry_logging: 9.14.0
-  share_plus: 12.0.1
+  shimmer: 3.0.0
+  sqlite3: ^2.9.3
+  sqlite3_flutter_libs: 0.5.41
   synchronized: 3.4.0
-  system_date_time_format:
-  app_links: 7.0.0
   url_launcher: 6.3.2
   uuid:
-  web_socket_channel: 3.0.1
-  easy_localization: 3.0.8
-  flutter_widget_from_html: 0.17.1
-  sentry: 9.14.0
-  path: ^1.9.0
-  convert: 3.1.2
-  sqflite: 2.4.2
-  hive: 2.2.3
-  hive_flutter: 1.1.0
-  image: 4.7.2
-  flutter_inappwebview: 6.1.5
-  html: 0.15.6
   video_player: 2.10.1
-  shimmer: 3.0.0
-  graphql: 5.2.0
-  flutter_pdfview: 1.4.4
-  just_audio: ^0.10.4
-  audio_session: ^0.2.2
+  wallet: ^0.0.18
+  web_socket_channel: 3.0.1
   webview_flutter: ^4.13.0
   webview_flutter_android: ^4.7.0
   webview_flutter_wkwebview: ^3.14.0
-  backdrop: 0.9.1
-  wakelock_plus: 1.4.0
-  flutter_email_sender: 8.0.0
-  go_router: 17.0.1
-  flutter_blue_plus: 2.1.0
-  flutter_timezone: 5.0.1
-  meilisearch: 0.17.1
-  objectbox: 5.1.0
-  objectbox_flutter_libs: 5.1.0
-  flutter_sticky_header: 0.8.0
-  sliver_sticky_collapsable_panel: 3.0.2
-  super_tooltip: 2.1.0
-  drift: 2.30.1
-  sqlite3_flutter_libs: 0.5.41
-  sqlite3: ^2.9.3
-  fast_base58: ^0.2.1
-  wallet: ^0.0.18
-
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: 1.0.8
-  rxdart: ^0.28.0
-
-  riverpod: any
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
+  build_runner: ^2.4.13
+  drift_dev: ^2.30.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -131,14 +99,11 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: 6.0.0
-  very_good_analysis: ^10.0.0
-
-  # Code generation
-  build_runner: ^2.4.13
-  drift_dev: ^2.30.0
+  flutter_test:
+    sdk: flutter
   objectbox_generator: 5.1.0
-
   path_provider_platform_interface: any
+  very_good_analysis: ^10.0.0
 dependency_overrides:
   path_provider_foundation: 2.5.1
 
