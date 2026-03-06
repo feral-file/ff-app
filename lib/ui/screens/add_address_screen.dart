@@ -14,7 +14,6 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/domain/models/models.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/add_alias_screen.dart';
 import 'package:app/ui/screens/scan_qr_page.dart';
@@ -44,8 +43,6 @@ class AddAddressScreen extends ConsumerStatefulWidget {
 class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
   late final TextEditingController _inputController;
   final _addressFocusNode = FocusNode();
-  bool _isAddingDomainAlias = false;
-  String? _autoAliasError;
 
   @override
   void initState() {
@@ -70,50 +67,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
   void _handleVerifyAddress() {
     final text = _inputController.text.trim();
     if (text.isEmpty) return;
-    setState(() {
-      _autoAliasError = null;
-      _isAddingDomainAlias = false;
-    });
-    unawaited(
-      ref.read(addAddressProvider.notifier).verify(text),
-    );
-  }
-
-  bool _shouldSkipAliasScreen(Address? address) {
-    return address != null &&
-        address.domain != null &&
-        address.domain!.isNotEmpty;
-  }
-
-  Future<void> _addDomainAlias(String address, String? alias) async {
-    setState(() => _isAddingDomainAlias = true);
-
-    try {
-      await ref.read(addAliasProvider.notifier).add(address, alias);
-
-      if (!mounted) {
-        return;
-      }
-
-      final addAliasState = ref.read(addAliasProvider);
-      if (addAliasState.hasError) {
-        setState(() {
-          _autoAliasError = switch (addAliasState.error) {
-            AddAddressException(:final type) => type.message,
-            _ => "We couldn't add this address. Please try again.",
-          };
-        });
-        return;
-      }
-
-      if (context.mounted && Navigator.of(context).canPop()) {
-        context.pop();
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isAddingDomainAlias = false);
-      }
-    }
+    unawaited(ref.read(addAddressFlowProvider.notifier).submit(text));
   }
 
   /// Handle QR scan
@@ -135,44 +89,39 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final addAddressState = ref.watch(addAddressProvider);
+    final addAddressFlowState = ref.watch(addAddressFlowProvider);
     final shouldReserveNowDisplayingBar = ref.watch(
       nowDisplayingShouldShowProvider,
     );
 
-    // Listen for state changes
-    ref.listen<AsyncValue<Address?>>(
-      addAddressProvider,
+    ref.listen<AsyncValue<AddAddressFlowResult>>(
+      addAddressFlowProvider,
       (previous, next) {
-        // Skip alias for domain entries and keep the existing
-        // alias screen for raw addresses.
-        if (next is AsyncData<Address?> &&
-            next.value != null &&
-            (previous is! AsyncData<Address?> || previous.value == null)) {
-          final verifiedAddress = next.value;
-          if (_shouldSkipAliasScreen(verifiedAddress)) {
-            unawaited(
-              _addDomainAlias(
-                verifiedAddress!.address,
-                verifiedAddress.domain,
-              ),
-            );
+        if (next case AsyncData(:final value)) {
+          if (value case AddAddressFlowNeedsAlias(
+            :final address,
+            :final domain,
+          )) {
+            if (context.mounted) {
+              final payload = AddAliasScreenPayload(
+                address: address,
+                domain: domain,
+              );
+              unawaited(context.push(Routes.addAliasPage, extra: payload));
+            }
             return;
           }
 
-          if (context.mounted) {
-            final payload = AddAliasScreenPayload(
-              address: next.value?.address ?? '',
-              domain: next.value?.domain,
-              // Always sync now so indexing flow runs.
-            );
-            unawaited(context.push(Routes.addAliasPage, extra: payload));
+          if (value is AddAddressFlowCompleted) {
+            if (context.mounted) {
+              context.pop();
+            }
           }
         }
       },
     );
 
-    final isSubmitting = addAddressState.isLoading || _isAddingDomainAlias;
+    final isSubmitting = addAddressFlowState.isLoading;
     final isInputEmpty = _inputController.text.trim().isEmpty;
     final isSubmitEnabled = !isSubmitting && !isInputEmpty;
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
@@ -227,9 +176,12 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                             hintStyle: AppTypography.body(context).white,
                           ),
                           onSubmitted: (_) => _handleVerifyAddress(),
-                          onChanged: (_) => setState(() {
-                            _autoAliasError = null;
-                          }),
+                          onChanged: (_) {
+                            setState(() {});
+                            if (addAddressFlowState.hasError) {
+                              ref.read(addAddressFlowProvider.notifier).reset();
+                            }
+                          },
                         ),
                       ),
                       if (isSubmitting)
@@ -257,17 +209,14 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                 // Error message
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: addAddressState.hasError || _autoAliasError != null
+                  child: addAddressFlowState.hasError
                       ? Text(
-                          addAddressState.hasError
-                              ? switch (addAddressState.error) {
-                                  AddAddressException(:final type) =>
-                                    type.message,
-                                  _ =>
-                                    "We couldn't validate this address. "
-                                        'Check it and try again.',
-                                }
-                              : _autoAliasError!,
+                          switch (addAddressFlowState.error) {
+                            AddAddressException(:final type) => type.message,
+                            _ =>
+                              "We couldn't validate this address. "
+                                  'Check it and try again.',
+                          },
                           style: AppTypography.body(context).red,
                         )
                       : const SizedBox.shrink(),
