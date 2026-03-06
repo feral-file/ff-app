@@ -25,4 +25,30 @@ void main() {
     expect(results.isEmpty, isTrue);
     expect(results.totalCount, 0);
   });
+
+  test(
+    'searchSuggestionsProvider returns no suggestions for short query',
+    () async {
+      final container = ProviderContainer.test();
+      addTearDown(container.dispose);
+
+      container.read(searchInputQueryProvider.notifier).setQuery('a');
+      final suggestions = await container.read(
+        searchSuggestionsProvider.future,
+      );
+      expect(suggestions, isEmpty);
+    },
+  );
+
+  test('searchInputQueryProvider tracks typing state', () {
+    final container = ProviderContainer.test();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(searchInputQueryProvider.notifier);
+    notifier.setQuery('dmi');
+    expect(container.read(searchInputQueryProvider), 'dmi');
+
+    notifier.clear();
+    expect(container.read(searchInputQueryProvider), '');
+  });
 }

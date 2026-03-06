@@ -109,4 +109,299 @@ void main() {
       expect(filtered.works, isNotEmpty);
     });
   });
+
+  group('sortSearchResults', () {
+    final channelA = Channel(
+      id: 'ch_a',
+      name: 'Gamma',
+      type: ChannelType.dp1,
+      createdAt: DateTime(2024, 1, 1),
+      updatedAt: DateTime(2024, 1, 2),
+    );
+
+    final channelB = Channel(
+      id: 'ch_b',
+      name: 'Alpha',
+      type: ChannelType.dp1,
+      createdAt: DateTime(2024, 1, 3),
+      updatedAt: null,
+    );
+
+    final playlistA = Playlist(
+      id: 'pl_a',
+      name: 'Zeta',
+      type: PlaylistType.dp1,
+      createdAt: DateTime(2024, 1, 1),
+      updatedAt: null,
+    );
+
+    final playlistB = Playlist(
+      id: 'pl_b',
+      name: 'Beta',
+      type: PlaylistType.dp1,
+      createdAt: DateTime(2024, 1, 5),
+      updatedAt: DateTime(2024, 1, 4),
+    );
+
+    final workA = PlaylistItem(
+      id: 'wk_a',
+      kind: PlaylistItemKind.dp1Item,
+      title: 'banana',
+      updatedAt: DateTime(2024, 1, 2),
+    );
+
+    final workB = PlaylistItem(
+      id: 'wk_b',
+      kind: PlaylistItemKind.dp1Item,
+      title: 'Apple',
+      updatedAt: DateTime(2024, 1, 5),
+    );
+
+    final unsorted = SearchResults(
+      channels: [channelA, channelB],
+      playlists: [playlistA, playlistB],
+      works: [workA, workB],
+    );
+
+    test('keeps relevance order unchanged', () {
+      final sorted = sortSearchResults(unsorted, SearchSortOrder.relevance);
+
+      expect(sorted.channels.map((c) => c.id), ['ch_a', 'ch_b']);
+      expect(sorted.playlists.map((p) => p.id), ['pl_a', 'pl_b']);
+      expect(sorted.works.map((w) => w.id), ['wk_a', 'wk_b']);
+    });
+
+    test('sorts all result groups A to Z', () {
+      final sorted = sortSearchResults(unsorted, SearchSortOrder.aToZ);
+
+      expect(sorted.channels.map((c) => c.id), ['ch_b', 'ch_a']);
+      expect(sorted.playlists.map((p) => p.id), ['pl_b', 'pl_a']);
+      expect(sorted.works.map((w) => w.id), ['wk_b', 'wk_a']);
+    });
+
+    test('sorts all result groups by recent first', () {
+      final sorted = sortSearchResults(unsorted, SearchSortOrder.recent);
+
+      expect(sorted.channels.map((c) => c.id), ['ch_b', 'ch_a']);
+      expect(sorted.playlists.map((p) => p.id), ['pl_b', 'pl_a']);
+      expect(sorted.works.map((w) => w.id), ['wk_b', 'wk_a']);
+    });
+  });
+
+  group('filterSearchResults', () {
+    final now = DateTime(2024, 2, 1);
+
+    final base = SearchResults(
+      channels: [
+        Channel(
+          id: 'ch_dp1',
+          name: 'DP1 Channel',
+          type: ChannelType.dp1,
+          createdAt: DateTime(2023, 12, 12),
+          updatedAt: DateTime(2024, 1, 20),
+        ),
+        Channel(
+          id: 'ch_local',
+          name: 'Personal Channel',
+          type: ChannelType.localVirtual,
+          createdAt: DateTime(2023, 11, 1),
+        ),
+      ],
+      playlists: [
+        Playlist(
+          id: 'pl_dp1',
+          name: 'DP1 Playlist',
+          type: PlaylistType.dp1,
+          createdAt: DateTime(2023, 12, 1),
+          updatedAt: DateTime(2024, 1, 5),
+        ),
+        Playlist(
+          id: 'pl_personal',
+          name: 'Personal Playlist',
+          type: PlaylistType.addressBased,
+          createdAt: DateTime(2023, 11, 1),
+        ),
+      ],
+      works: [
+        PlaylistItem(
+          id: 'wk_dp1',
+          kind: PlaylistItemKind.dp1Item,
+          title: 'Work One',
+          updatedAt: DateTime(2024, 1, 24),
+        ),
+        PlaylistItem(
+          id: 'wk_dp2',
+          kind: PlaylistItemKind.indexerToken,
+          title: 'Work Two',
+          updatedAt: DateTime(2023, 10, 1),
+        ),
+      ],
+    );
+
+    test('filters to only DP1 source for channels and playlists', () {
+      final filtered = filterSearchResults(
+        base,
+        sourceFilter: SearchSourceFilter.dp1,
+        dateFilter: SearchDateFilter.all,
+      );
+
+      expect(filtered.channels.map((c) => c.id), ['ch_dp1']);
+      expect(filtered.playlists.map((p) => p.id), ['pl_dp1']);
+      expect(filtered.works.map((w) => w.id), ['wk_dp1', 'wk_dp2']);
+    });
+
+    test('filters to only personal source for channels and playlists', () {
+      final filtered = filterSearchResults(
+        base,
+        sourceFilter: SearchSourceFilter.personal,
+        dateFilter: SearchDateFilter.all,
+      );
+
+      expect(filtered.channels.map((c) => c.id), ['ch_local']);
+      expect(filtered.playlists.map((p) => p.id), ['pl_personal']);
+      expect(filtered.works, isEmpty);
+    });
+
+    test('filters by date buckets deterministically', () {
+      final recent = SearchResults(
+        channels: [
+          Channel(
+            id: 'ch_recent',
+            name: 'Recent',
+            type: ChannelType.dp1,
+            updatedAt: DateTime(2024, 1, 30),
+          ),
+          Channel(
+            id: 'ch_old',
+            name: 'Old',
+            type: ChannelType.dp1,
+            updatedAt: DateTime(2022, 12, 1),
+          ),
+        ],
+        playlists: [
+          Playlist(
+            id: 'pl_recent',
+            name: 'Recent',
+            type: PlaylistType.dp1,
+            updatedAt: DateTime(2024, 1, 26),
+          ),
+          Playlist(
+            id: 'pl_old',
+            name: 'Old',
+            type: PlaylistType.dp1,
+            updatedAt: DateTime(2022, 12, 2),
+          ),
+        ],
+        works: [
+          PlaylistItem(
+            id: 'wk_recent',
+            kind: PlaylistItemKind.dp1Item,
+            title: 'Recent',
+            updatedAt: DateTime(2024, 1, 27),
+          ),
+          PlaylistItem(
+            id: 'wk_very_old',
+            kind: PlaylistItemKind.dp1Item,
+            title: 'Very Old',
+            updatedAt: DateTime(2022, 11, 1),
+          ),
+        ],
+      );
+
+      final lastWeek = filterSearchResults(
+        recent,
+        dateFilter: SearchDateFilter.lastWeek,
+        now: () => now,
+      );
+
+      expect(lastWeek.channels.map((c) => c.id), ['ch_recent']);
+      expect(lastWeek.playlists.map((p) => p.id), ['pl_recent']);
+      expect(lastWeek.works.map((w) => w.id), ['wk_recent']);
+
+      final older = filterSearchResults(
+        recent,
+        dateFilter: SearchDateFilter.older,
+        now: () => now,
+      );
+
+      expect(older.channels.map((c) => c.id), ['ch_old']);
+      expect(older.playlists.map((p) => p.id), ['pl_old']);
+      expect(older.works.map((w) => w.id), ['wk_very_old']);
+    });
+
+    test('applies source and date filters together', () {
+      final reference = DateTime(2024, 2, 1);
+
+      final mixed = SearchResults(
+        channels: [
+          Channel(
+            id: 'ch_recent_dp1',
+            name: 'Recent DP1',
+            type: ChannelType.dp1,
+            updatedAt: DateTime(2024, 1, 30),
+          ),
+          Channel(
+            id: 'ch_recent_personal',
+            name: 'Recent Personal',
+            type: ChannelType.localVirtual,
+            updatedAt: DateTime(2024, 1, 30),
+          ),
+          Channel(
+            id: 'ch_old_dp1',
+            name: 'Old DP1',
+            type: ChannelType.dp1,
+            updatedAt: DateTime(2023, 1, 1),
+          ),
+        ],
+        playlists: [
+          Playlist(
+            id: 'pl_recent_dp1',
+            name: 'Recent DP1',
+            type: PlaylistType.dp1,
+            updatedAt: DateTime(2024, 1, 30),
+          ),
+          Playlist(
+            id: 'pl_recent_personal',
+            name: 'Recent Personal',
+            type: PlaylistType.addressBased,
+            updatedAt: DateTime(2024, 1, 30),
+          ),
+          Playlist(
+            id: 'pl_old_dp1',
+            name: 'Old DP1',
+            type: PlaylistType.dp1,
+            updatedAt: DateTime(2023, 1, 1),
+          ),
+        ],
+        works: [
+          PlaylistItem(
+            id: 'wk_recent_dp1',
+            kind: PlaylistItemKind.dp1Item,
+            title: 'Recent DP1 Work',
+            updatedAt: DateTime(2024, 1, 30),
+          ),
+          PlaylistItem(
+            id: 'wk_recent_local',
+            kind: PlaylistItemKind.indexerToken,
+            title: 'Recent Local Work',
+            updatedAt: DateTime(2024, 1, 30),
+          ),
+        ],
+      );
+
+      final filtered = filterSearchResults(
+        mixed,
+        sourceFilter: SearchSourceFilter.dp1,
+        dateFilter: SearchDateFilter.lastWeek,
+        now: () => reference,
+      );
+
+      expect(filtered.channels.map((c) => c.id), ['ch_recent_dp1']);
+      expect(filtered.playlists.map((p) => p.id), ['pl_recent_dp1']);
+      expect(filtered.works.map((w) => w.id), [
+        'wk_recent_dp1',
+        'wk_recent_local',
+      ]);
+    });
+  });
 }
