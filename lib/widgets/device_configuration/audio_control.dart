@@ -52,6 +52,9 @@ class _AudioControlState extends ConsumerState<AudioControl> {
   /// Optimistic mute flag shown on the icon.
   bool _isMuted = false;
 
+  /// Volume remembered before muting so that unmute can restore it.
+  double _volumeBeforeMute = 50;
+
   /// True once local state has been seeded from device status.
   bool _syncedFromDevice = false;
 
@@ -64,13 +67,73 @@ class _AudioControlState extends ConsumerState<AudioControl> {
     _applyDeviceStatus(ref.read(ff1CurrentDeviceStatusProvider));
   }
 
-  /// Seeds [_volume] / [_isMuted] from [status].
+  /// Commits a volume drag, auto-unmuting when dragged above 0 while muted.
+  ///
+  /// Reverts both [_volume] and [_isMuted] on command failure.
+  Future<void> _onVolumeChangeEnd(double v) async {
+    final prevVolume = _volume;
+    final prevMuted = _isMuted;
+    final control = ref.read(ff1WifiControlProvider);
+
+    try {
+      if ((_isMuted && v > 0) || (!_isMuted && v == 0)) {
+        setState(() => _isMuted = !_isMuted);
+        _log.info('Toggling mute: $_isMuted');
+        await control.toggleMute(topicId: widget.topicId);
+      }
+
+      await control.setVolume(topicId: widget.topicId, percent: v.round());
+    } on Exception catch (e) {
+      setState(() {
+        _volume = prevVolume;
+        _isMuted = prevMuted;
+      });
+      _log.warning('Error setting volume: $e');
+    }
+  }
+
+  /// Toggles mute state with optimistic UI and revert-on-failure.
+  ///
+  /// Muting saves the current volume and drives the slider to 0.
+  /// Unmuting restores [_volumeBeforeMute].
+  Future<void> _onMuteTapped() async {
+    final prevMuted = _isMuted;
+    final prevVolume = _volume;
+
+    setState(() {
+      if (_isMuted) {
+        _log.info('Unmuting');
+        _isMuted = false;
+        _volume = _volumeBeforeMute;
+      } else {
+        _log.info('Muting');
+        _volumeBeforeMute = _volume;
+        _isMuted = true;
+        _volume = 0;
+      }
+    });
+
+    try {
+      await ref
+          .read(ff1WifiControlProvider)
+          .toggleMute(topicId: widget.topicId);
+    } on Exception catch (e) {
+      setState(() {
+        _isMuted = prevMuted;
+        _volume = prevVolume;
+      });
+      _log.warning('Error toggling mute: $e');
+    }
+  }
+
+  /// Seeds [_volume] / [_isMuted] / [_volumeBeforeMute] from [status].
   ///
   /// No-op if [status] is null or we have already synced.
   void _applyDeviceStatus(FF1DeviceStatus? status) {
     if (status == null || _syncedFromDevice) return;
     _volume = status.volume?.toDouble() ?? _volume;
     _isMuted = status.isMuted ?? _isMuted;
+    _volumeBeforeMute = _volume;
     _syncedFromDevice = true;
   }
 
@@ -83,7 +146,6 @@ class _AudioControlState extends ConsumerState<AudioControl> {
       }
     });
 
-    final control = ref.read(ff1WifiControlProvider);
     final activeColor = widget.isEnable
         ? AppColor.white
         : AppColor.white.withValues(alpha: 0.4);
@@ -91,19 +153,7 @@ class _AudioControlState extends ConsumerState<AudioControl> {
     return Row(
       children: [
         GestureDetector(
-          onTap: widget.isEnable
-              ? () async {
-                  final prev = _isMuted;
-                  setState(() => _isMuted = !_isMuted);
-                  try {
-                    await control.toggleMute(topicId: widget.topicId);
-                  } on Exception catch (e) {
-                    // Command failed — revert to last confirmed state.
-                    setState(() => _isMuted = prev);
-                    _log.warning('Error toggling mute: $e');
-                  }
-                }
-              : null,
+          onTap: widget.isEnable ? _onMuteTapped : null,
           child: Icon(
             _isMuted ? Icons.volume_off : Icons.volume_up,
             color: activeColor,
@@ -130,21 +180,7 @@ class _AudioControlState extends ConsumerState<AudioControl> {
               onChanged: widget.isEnable
                   ? (v) => setState(() => _volume = v)
                   : null,
-              onChangeEnd: widget.isEnable
-                  ? (v) async {
-                      final prevVolume = _volume;
-                      try {
-                        await control.setVolume(
-                          topicId: widget.topicId,
-                          percent: v.round(),
-                        );
-                      } on Exception catch (e) {
-                        // Command failed — snap back to last confirmed volume.
-                        setState(() => _volume = prevVolume);
-                        _log.warning('Error setting volume: $e');
-                      }
-                    }
-                  : null,
+              onChangeEnd: widget.isEnable ? _onVolumeChangeEnd : null,
             ),
           ),
         ),
