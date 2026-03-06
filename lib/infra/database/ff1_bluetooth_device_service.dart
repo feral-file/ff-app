@@ -111,12 +111,27 @@ class FF1BluetoothDeviceService {
   }
 
   /// Add or update a device
+  ///
+  /// Removes all existing entities with the same [device.deviceId] before
+  /// inserting the new one to avoid duplicates and ensure topicId updates
+  /// are persisted correctly.
   Future<void> putDevice(FF1Device device) async {
     try {
       final now = DateTime.now().microsecondsSinceEpoch;
 
-      // Check if device exists
-      final existing = getDeviceById(device.deviceId);
+      // Remove all old entities with the same deviceId
+      final query = _box
+          .query(FF1BluetoothDeviceEntity_.deviceId.equals(device.deviceId))
+          .build();
+      final existingList = query.find();
+      int? preservedCreatedAtUs;
+      if (existingList.isNotEmpty) {
+        preservedCreatedAtUs = existingList.first.createdAtUs;
+        for (final entity in existingList) {
+          _box.remove(entity.id);
+        }
+      }
+      query.close();
 
       final entity = FF1BluetoothDeviceEntity(
         deviceId: device.deviceId,
@@ -124,18 +139,7 @@ class FF1BluetoothDeviceService {
         name: device.name,
         topicId: device.topicId,
         branchName: device.branchName,
-        createdAtUs: existing != null
-            ? _box
-                      .query(
-                        FF1BluetoothDeviceEntity_.deviceId.equals(
-                          device.deviceId,
-                        ),
-                      )
-                      .build()
-                      .findFirst()
-                      ?.createdAtUs ??
-                  now
-            : now,
+        createdAtUs: preservedCreatedAtUs ?? now,
         updatedAtUs: now,
       );
 

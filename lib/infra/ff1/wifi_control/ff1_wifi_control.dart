@@ -146,6 +146,9 @@ class FF1WifiControl {
   /// Check if transport is connected
   bool get isConnected => _transport.isConnected;
 
+  /// Check if transport is currently connecting
+  bool get isConnecting => _transport.isConnecting;
+
   /// Current player status (last received)
   FF1PlayerStatus? get currentPlayerStatus => _currentPlayerStatus;
 

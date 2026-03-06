@@ -42,6 +42,10 @@ abstract class FF1WifiTransport {
   /// Check if transport is connected
   bool get isConnected;
 
+  /// Check if transport is currently connecting (establishing connection).
+  /// Default false for transports that connect synchronously.
+  bool get isConnecting => false;
+
   /// Stream of incoming notification messages from device
   ///
   /// Only emits [FF1NotificationMessage] types (device → app status updates).

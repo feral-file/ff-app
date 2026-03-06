@@ -7,7 +7,7 @@ import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/domain/models/wallet_address.dart';
-import 'package:app/domain/utils/customer_support_util.dart';
+import 'package:app/infra/services/support_email_service.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/buttons/outline_button.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
@@ -477,16 +477,28 @@ class UIHelper {
     } on Exception catch (_) {}
   }
 
-  /// Show customer support
-  static Future<void> showCustomerSupport(BuildContext context) async {
-    /// On confirm attach crash log
-    void onConfirmAttachCrashLog({required bool attachCrashLog}) {
-      UIHelper.hideInfoDialog(context);
+  /// Show customer support dialog asking whether to attach debug log.
+  ///
+  /// When user chooses "Attach debug log" or "Send without log", closes the
+  /// dialog and calls [supportEmailService].composeSupportEmail with the chosen
+  /// [attachLogs] value. If [onSendComplete] is provided (e.g. when opened from
+  /// an error dialog), it is invoked so the caller can close the error dialog.
+  static Future<void> showCustomerSupport(
+    BuildContext context, {
+    required SupportEmailService supportEmailService,
+    VoidCallback? onSendComplete,
+  }) async {
+    const recipient = 'support@feralfile.com';
+
+    void onConfirmAttachCrashLog({required bool attachLogs}) {
+      Navigator.pop(context);
       unawaited(
-        CustomerSupportUtil.sendSupportEmail(
-          attachLogs: attachCrashLog,
+        supportEmailService.composeSupportEmail(
+          recipient: recipient,
+          attachLogs: attachLogs,
         ),
       );
+      onSendComplete?.call();
     }
 
     await UIHelper.showDialog<void>(
@@ -502,12 +514,12 @@ class UIHelper {
           SizedBox(height: LayoutConstants.space6),
           PrimaryButton(
             text: 'Attach debug log',
-            onTap: () => onConfirmAttachCrashLog(attachCrashLog: true),
+            onTap: () => onConfirmAttachCrashLog(attachLogs: true),
           ),
           SizedBox(height: LayoutConstants.space3),
           OutlineButton(
             text: 'Send without log',
-            onTap: () => onConfirmAttachCrashLog(attachCrashLog: false),
+            onTap: () => onConfirmAttachCrashLog(attachLogs: false),
           ),
           SizedBox(height: LayoutConstants.space4),
         ],

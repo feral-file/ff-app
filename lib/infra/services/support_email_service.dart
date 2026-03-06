@@ -27,11 +27,13 @@ class SupportEmailService {
 
   /// Compose an email to support with optional attached app log file.
   ///
+  /// When [attachLogs] is true, attaches the app log file if available.
   /// Subject and body match the old repo format. Uses [FlutterEmailSender]
   /// first (supports attachments). If that fails, falls back to [url_launcher]
   /// with a mailto: URL (no attachments).
   Future<void> composeSupportEmail({
     required String recipient,
+    bool attachLogs = true,
   }) async {
     await _deviceInfoService.init();
 
@@ -40,13 +42,15 @@ class SupportEmailService {
     final buildNumber = packageInfo.buildNumber;
 
     final attachmentPaths = <String>[];
-    final logFile = AppLogger.currentLogFile;
-    if (logFile != null && logFile.existsSync()) {
-      attachmentPaths.add(logFile.path);
-    } else {
-      _logger.warning('No log file found to attach to support email.');
+    if (attachLogs) {
+      final logFile = AppLogger.currentLogFile;
+      if (logFile != null && logFile.existsSync()) {
+        attachmentPaths.add(logFile.path);
+      } else {
+        _logger.warning('No log file found to attach to support email.');
+      }
     }
-    final attachLogs = attachmentPaths.isNotEmpty;
+    final hasLogsAttached = attachmentPaths.isNotEmpty;
 
     final deviceName = _deviceInfoService.deviceName;
     final osName = _deviceInfoService.deviceOSName;
@@ -62,7 +66,7 @@ class SupportEmailService {
     final subject =
         'Support: $shortSummary — App $appVersion ($buildNumber) — Device $ff1DeviceId';
 
-    final yesNoLog = attachLogs ? 'yes' : 'no';
+    final yesNoLog = hasLogsAttached ? 'yes' : 'no';
 
     final buffer = StringBuffer()
       ..writeln('What happened? (1 sentence)')
