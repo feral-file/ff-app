@@ -85,11 +85,23 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'Pressing keyboard done/enter submits domain input',
+    (tester) async {
+      await _assertDomainInputSkipsAliasScreen(
+        tester,
+        domain: 'alice.eth',
+        submitByKeyboardAction: true,
+      );
+    },
+  );
 }
 
 Future<void> _assertDomainInputSkipsAliasScreen(
   WidgetTester tester, {
   required String domain,
+  bool submitByKeyboardAction = false,
 }) async {
   final calls = <_AddAliasCall>[];
 
@@ -111,9 +123,14 @@ Future<void> _assertDomainInputSkipsAliasScreen(
   );
 
   await tester.enterText(find.byType(TextField), domain);
+  await tester.tap(find.byType(TextField));
   await tester.pump();
 
-  await tester.tap(find.text('Submit'));
+  if (submitByKeyboardAction) {
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+  } else {
+    await tester.tap(find.text('Submit'));
+  }
   await tester.pump();
   await tester.pump();
 

@@ -215,6 +215,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                           focusNode: _addressFocusNode,
                           controller: _inputController,
                           enabled: !isSubmitting,
+                          textInputAction: TextInputAction.done,
                           style: AppTypography.body(context).white,
                           cursorColor: isSubmitting
                               ? AppColor.feralFileMediumGrey
@@ -225,6 +226,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                             hintText: 'Address or ENS / Tezos domain',
                             hintStyle: AppTypography.body(context).white,
                           ),
+                          onSubmitted: (_) => _handleVerifyAddress(),
                           onChanged: (_) => setState(() {
                             _autoAliasError = null;
                           }),
