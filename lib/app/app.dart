@@ -5,6 +5,7 @@ import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
+import 'package:app/app/providers/ff1_ble_lifecycle_provider.dart';
 import 'package:app/app/providers/force_update_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
@@ -106,11 +107,13 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.router.routeInformationProvider.addListener(_handleRouteChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_started) {
         return;
       }
       _started = true;
+      _handleRouteChanged();
       _startDeeplinkHandling();
       unawaited(_bootstrapAtAppStart());
     });
@@ -119,16 +122,46 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.router.routeInformationProvider.removeListener(_handleRouteChanged);
     _deeplinkActionsSubscription?.close();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed || !_started) {
+    if (!_started) {
       return;
     }
-    unawaited(_syncSeedDatabaseOnResume());
+    final routePath = _currentRoutePath();
+    unawaited(
+      ref
+          .read(ff1BleLifecycleCoordinatorProvider.notifier)
+          .handleLifecycleChanged(state, routePath: routePath),
+    );
+
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_syncSeedDatabaseOnResume());
+    }
+  }
+
+  void _handleRouteChanged() {
+    if (!_started) {
+      return;
+    }
+
+    unawaited(
+      ref
+          .read(ff1BleLifecycleCoordinatorProvider.notifier)
+          .handleRouteChanged(_currentRoutePath()),
+    );
+  }
+
+  String _currentRoutePath() {
+    final path = widget.router.routeInformationProvider.value.uri.path;
+    if (path.isEmpty) {
+      return Routes.home;
+    }
+    return path;
   }
 
   void _startDeeplinkHandling() {

@@ -19,6 +19,7 @@ import 'package:logging/logging.dart';
 /// Separation: Transport handles BLE operations. Protocol handles encoding/decoding.
 /// Control layer (in app/) orchestrates commands using this transport.
 class FF1BleTransport {
+  /// Creates a BLE transport with optional protocol and logger overrides.
   FF1BleTransport({
     FF1BleProtocol? protocol,
     Logger? logger,
@@ -30,10 +31,10 @@ class FF1BleTransport {
   final FF1BleProtocol _protocol;
   final Logger _log;
 
-  // FF1 Service UUID
+  /// FF1 primary service UUID.
   static const String serviceUuid = 'f7826da6-4fa2-4e98-8024-bc5b71e0893e';
 
-  // Command/WiFi characteristic UUID (used for all app<->device communication)
+  /// FF1 command/WiFi characteristic UUID used for app<->device communication.
   static const String commandCharUuid = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 
   // Characteristic cache (remoteId -> characteristic)
@@ -101,7 +102,7 @@ class FF1BleTransport {
     // Services reset (Android reconnection)
     FlutterBluePlus.events.onServicesReset.listen((event) {
       _log.info('Services reset: ${event.device.remoteId.str}');
-      event.device.discoverServices();
+      unawaited(event.device.discoverServices());
     });
   }
 
@@ -109,8 +110,8 @@ class FF1BleTransport {
   ///
   /// [blDevice] - FF1 device to connect to
   /// [timeout] - connection timeout
-  /// [maxRetries] - max connection attempts (default 0 when using Riverpod retry)
-  /// [shouldContinue] - optional callback to check if connection should continue
+  /// [maxRetries] - max connection attempts (0 when Riverpod handles retry)
+  /// [shouldContinue] - optional callback to check whether to continue
   ///
   /// Note: When using Riverpod's automatic retry, set maxRetries to 0.
   /// Riverpod will handle retries with proper exponential backoff.
@@ -197,7 +198,7 @@ class FF1BleTransport {
       await device.connect(
         timeout: timeout,
         mtu: null,
-        // Using free license (for individuals, nonprofits, educational, small orgs <50 employees)
+        // Use the free flutter_blue_plus license for eligible organizations.
         license: License.free,
       );
 
@@ -255,12 +256,12 @@ class FF1BleTransport {
           (s) => s.uuid.toString() == serviceUuid,
         );
         if (ff1Service == null) {
+          final availableUuids = services
+              .map((s) => s.uuid.toString())
+              .join(', ');
           _log.warning(
-            'FF1 service not found. Looking for UUID: $serviceUuid',
-          );
-          _log.warning(
-            'Available service UUIDs: '
-            '${services.map((s) => s.uuid.toString()).join(", ")}',
+            'FF1 service not found for UUID $serviceUuid. '
+            'Available service UUIDs: $availableUuids',
           );
           throw Exception('FF1 service not found');
         }
@@ -311,10 +312,30 @@ class FF1BleTransport {
     _characteristics.remove(blDevice.remoteId.str);
   }
 
+  /// Disconnect all BLE sessions and stop in-progress scans.
+  Future<void> disconnectAll() async {
+    await FlutterBluePlus.stopScan();
+
+    final connectedDevices = FlutterBluePlus.connectedDevices;
+    for (final device in connectedDevices) {
+      try {
+        await device.disconnect();
+      } on Exception catch (e) {
+        _log.warning(
+          'Failed to disconnect BLE device ${device.remoteId.str}: $e',
+        );
+      }
+    }
+
+    _characteristics.clear();
+    _responseCallbacks.clear();
+    _connectCompleter = null;
+  }
+
   /// Scan for FF1 devices
   ///
   /// [timeout] - scan duration
-  /// [onDevice] - callback for each discovered device (return true to stop scan)
+  /// [onDevice] - callback for each discovered device; true stops scanning.
   Future<void> scan({
     required FutureOr<bool> Function(List<BluetoothDevice>) onDevice,
     Duration timeout = const Duration(seconds: 30),
@@ -437,7 +458,7 @@ class FF1BleTransport {
   ) async {
     try {
       await char.write(value);
-    } catch (e) {
+    } on Object catch (e) {
       _log.warning('Write failed, retrying: $e');
 
       if (e is FlutterBluePlusException && _canIgnoreError(e)) {
@@ -495,7 +516,7 @@ class FF1BleTransport {
       } else {
         _log.warning('No callback for topic: ${response.topic}');
       }
-    } catch (e) {
+    } on Object catch (e) {
       _log.warning('Failed to parse response: $e');
     }
   }

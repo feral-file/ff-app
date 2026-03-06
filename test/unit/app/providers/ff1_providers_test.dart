@@ -452,4 +452,9 @@ class FakeFF1BleTransport implements FF1BleTransport {
   Future<void> disconnect(BluetoothDevice device) async {
     // Mock: do nothing
   }
+
+  @override
+  Future<void> disconnectAll() async {
+    // Mock: do nothing
+  }
 }
