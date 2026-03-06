@@ -159,22 +159,25 @@ class _EnterWiFiPasswordScreenState
         : 0.0;
     final bottomInset = reservedBottomBarHeight;
 
-    // Listen for success and navigate
+    // Listen for success and navigate.
+    // Use `next` (not connectionState): ref.listen fires before rebuild, so
+    // connectionState still holds the previous build's value; `next` has the
+    // newly emitted state (including topicId when status becomes success).
     ref.listen(connectWiFiProvider, (previous, next) {
       if (next.status == WiFiConnectionStatus.success) {
-        if (connectionState.topicId != null) {
+        if (next.topicId != null) {
           // hide qr code on device
           unawaited(
             ref
                 .read(ff1WifiControlProvider)
                 .showPairingQRCode(
-                  topicId: connectionState.topicId!,
+                  topicId: next.topicId!,
                   show: false,
                 ),
           );
 
           final ffDevice = widget.payload.device.copyWith(
-            topicId: connectionState.topicId,
+            topicId: next.topicId,
           );
 
           unawaited(
