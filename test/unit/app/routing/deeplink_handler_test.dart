@@ -28,7 +28,7 @@ void main() {
 
     test('classifies playlist deeplink', () {
       expect(
-        classifyDeeplink('feralfile://playlist/playlist-001'),
+        classifyDeeplink('feralfile://playlists/playlist-001'),
         DeeplinkType.appRoute,
       );
     });
@@ -44,32 +44,39 @@ void main() {
   group('resolveAppLocationFromDeeplink', () {
     test('resolves location from feralfile scheme path', () {
       expect(
-        resolveAppLocationFromDeeplink('feralfile://playlist/playlist-123'),
-        '/playlist/playlist-123',
+        resolveAppLocationFromDeeplink('feralfile://playlists/playlist-123'),
+        '/playlists/playlist-123',
       );
     });
 
     test('resolves location from link host path', () {
       expect(
         resolveAppLocationFromDeeplink(
-          'https://link.feralfile.com/playlist/playlist-456',
+          'https://link.feralfile.com/playlists/playlist-456',
         ),
-        '/playlist/playlist-456',
+        '/playlists/playlist-456',
       );
     });
 
-    test('keeps deeplink query string', () {
+    test('resolves playlists index location', () {
       expect(
-        resolveAppLocationFromDeeplink(
-          'https://link.feralfile.com/playlist?id=playlist-789',
-        ),
-        '/playlist?id=playlist-789',
+        resolveAppLocationFromDeeplink('https://link.feralfile.com/playlists'),
+        '/playlists',
       );
     });
 
     test('returns null for unsupported host', () {
       expect(
         resolveAppLocationFromDeeplink('https://example.com/playlist/abc'),
+        isNull,
+      );
+    });
+
+    test('returns null for non-canonical playlist route', () {
+      expect(
+        resolveAppLocationFromDeeplink(
+          'https://link.feralfile.com/playlist/playlist-123',
+        ),
         isNull,
       );
     });
@@ -84,13 +91,13 @@ void main() {
 
       final nextActionFuture = handler.actions.first;
       await handler.handleRawLink(
-        'feralfile://playlist/playlist-action-id',
+        'feralfile://playlists/playlist-action-id',
         source: DeeplinkSource.scan,
       );
 
       final action = await nextActionFuture;
       expect(action.type, DeeplinkType.appRoute);
-      expect(action.location, '/playlist/playlist-action-id');
+      expect(action.location, '/playlists/playlist-action-id');
       expect(action.source, DeeplinkSource.scan);
     });
   });

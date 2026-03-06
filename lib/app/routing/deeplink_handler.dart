@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/constants/deeplink_constants.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -98,21 +99,25 @@ String? resolveAppLocationFromDeeplink(String rawLink) {
     return null;
   }
 
-  if (!_isSupportedAppDeeplinkLocation(location)) {
+  final canonicalLocation = _normalizePlaylistsLocation(location);
+  if (canonicalLocation == null) {
     return null;
   }
-
-  final query = uri.query;
-  if (query.isNotEmpty) {
-    return '$location?$query';
-  }
-  return location;
+  return canonicalLocation;
 }
 
-bool _isSupportedAppDeeplinkLocation(String location) {
-  return location == '/playlist' ||
-      location.startsWith('/playlist/') ||
-      location.startsWith('/playlists/');
+String? _normalizePlaylistsLocation(String location) {
+  if (location == Routes.playlists || location == '${Routes.playlists}/') {
+    return Routes.playlists;
+  }
+  if (location.startsWith('${Routes.playlists}/')) {
+    final playlistId = location.substring('${Routes.playlists}/'.length).trim();
+    if (playlistId.isEmpty || playlistId.contains('/')) {
+      return null;
+    }
+    return '${Routes.playlists}/$playlistId';
+  }
+  return null;
 }
 
 /// Abstraction over app_links for testability.
