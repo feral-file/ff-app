@@ -148,7 +148,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     if (action.type == DeeplinkType.deviceConnect) {
       if (action.source == DeeplinkSource.scan) {
         unawaited(
-          widget.router.push(
+          widget.router.pushReplacement(
             Routes.connectFF1Page,
             extra: ConnectFF1PagePayload(
               deeplink: action.link,
@@ -157,7 +157,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
         );
       } else {
         unawaited(
-          widget.router.push(
+          widget.router.pushReplacement(
             Routes.startSetupFf1,
             extra: StartSetupFf1PagePayload(deeplink: action.link),
           ),

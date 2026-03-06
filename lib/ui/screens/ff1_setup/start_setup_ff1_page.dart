@@ -106,49 +106,55 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
         : 0.0;
     final bottomInset = reservedBottomBarHeight;
 
-    return Scaffold(
-      backgroundColor: PrimitivesTokens.colorsDarkGrey,
-      appBar: const SetupAppBar(
-        title: 'Setup FF1',
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: LayoutConstants.setupPageHorizontal,
-          ),
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(height: LayoutConstants.space12),
-                  _HeroIllustration(),
-                  SizedBox(height: LayoutConstants.space12),
-                  _BodyCopy(
-                    deviceName: deviceName,
-                  ),
-                  const Spacer(),
-                ],
-              ),
-              Positioned(
-                bottom: LayoutConstants.space4 + bottomInset,
-                left: 0,
-                right: 0,
-                child: _StartButton(
-                  text: 'Continue',
-                  onPressed: () async {
-                    // If deeplink is provided (from QR scan), use QR-based flow
-                    if (widget.payload.deeplink != null) {
-                      await _handleQRBasedSetup(widget.payload.deeplink!);
-                    }
-                    // If device is already selected (from BLE picker), start setup
-                    else if (widget.payload.selectedDevice != null) {
-                      await _handleSelectedDeviceSetup();
-                    }
-                  },
+    final isDeeplinkFlow = widget.payload.deeplink != null;
+
+    return PopScope(
+      canPop: !isDeeplinkFlow,
+      child: Scaffold(
+        backgroundColor: PrimitivesTokens.colorsDarkGrey,
+        appBar: SetupAppBar(
+          title: 'Setup FF1',
+          hasBackButton: !isDeeplinkFlow,
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: LayoutConstants.setupPageHorizontal,
+            ),
+            child: Stack(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(height: LayoutConstants.space12),
+                    _HeroIllustration(),
+                    SizedBox(height: LayoutConstants.space12),
+                    _BodyCopy(
+                      deviceName: deviceName,
+                    ),
+                    const Spacer(),
+                  ],
                 ),
-              ),
-            ],
+                Positioned(
+                  bottom: LayoutConstants.space4 + bottomInset,
+                  left: 0,
+                  right: 0,
+                  child: _StartButton(
+                    text: 'Continue',
+                    onPressed: () async {
+                      // If deeplink is provided (from QR scan), use QR-based flow
+                      if (widget.payload.deeplink != null) {
+                        await _handleQRBasedSetup(widget.payload.deeplink!);
+                      }
+                      // If device is already selected (from BLE picker), start setup
+                      else if (widget.payload.selectedDevice != null) {
+                        await _handleSelectedDeviceSetup();
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -176,7 +182,6 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
         ),
       );
     }
-
   }
 
   Future<void> _handleSelectedDeviceSetup() async {

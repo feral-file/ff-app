@@ -50,9 +50,9 @@ class IntroducePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: PrimitivesTokens.colorsDarkGrey,
-      appBar: const SetupAppBar(
+      appBar: SetupAppBar(
         withDivider: false,
-        hasBackButton: false,
+        hasBackButton: payload.deeplink != null,
       ),
       body: OnboardingShell(
         content: Column(
