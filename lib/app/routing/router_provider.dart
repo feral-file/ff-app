@@ -136,13 +136,10 @@ routerProvider = Provider.family<GoRouter, String>((
         path: Routes.addAddressPage,
         name: RouteNames.addAddress,
         pageBuilder: (context, state) {
-          final payload = state.extra is AddAddressScreenPayload
-              ? state.extra! as AddAddressScreenPayload
-              : const AddAddressScreenPayload();
           return buildCupertinoTransitionPage(
             context,
             state,
-            AddAddressScreen(payload: payload),
+            const AddAddressScreen(),
           );
         },
       ),
