@@ -65,6 +65,44 @@ void main() {
       expect(state.error, isNull);
     });
 
+    test('watch updates to empty list when no playlists exist', () async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final dbService = DatabaseService(db);
+
+      await dbService.ingestChannel(
+        Channel(
+          id: 'ch_1',
+          name: 'Test Channel',
+          type: ChannelType.dp1,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          databaseServiceProvider.overrideWith((ref) => dbService),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      // Keep the provider alive to receive the watch stream emissions.
+      final listener = container.listen(
+        channelPreviewProvider('ch_1'),
+        (_, __) {},
+      );
+      addTearDown(listener.close);
+
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+
+      final state = container.read(channelPreviewProvider('ch_1'));
+      expect(state.works, isEmpty);
+      expect(state.hasMore, isFalse);
+      expect(state.isLoading, isFalse);
+      expect(state.error, isNull);
+    });
+
     test(
       'load() with playlist and items returns first page of works',
       () async {

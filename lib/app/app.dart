@@ -7,6 +7,7 @@ import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/force_update_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
@@ -93,6 +94,9 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     with WidgetsBindingObserver {
   bool _started = false;
   bool _isResumeSeedSyncInProgress = false;
+  bool _isProcessingRouteDeeplink = false;
+  DeeplinkNavigationAction? _pendingRouteDeeplinkAction;
+  final Completer<void> _bootstrapReadyCompleter = Completer<void>();
   ProviderSubscription<AsyncValue<DeeplinkNavigationAction>>?
   _deeplinkActionsSubscription;
 
@@ -159,39 +163,101 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
           ),
         );
       }
+      return;
+    }
+
+    if (action.type == DeeplinkType.appRoute) {
+      _pendingRouteDeeplinkAction = action;
+      unawaited(_processPendingRouteDeeplink());
+    }
+  }
+
+  Future<void> _processPendingRouteDeeplink() async {
+    if (_isProcessingRouteDeeplink) {
+      return;
+    }
+    _isProcessingRouteDeeplink = true;
+
+    try {
+      while (mounted && _pendingRouteDeeplinkAction != null) {
+        final action = _pendingRouteDeeplinkAction!;
+        _pendingRouteDeeplinkAction = null;
+
+        final location = action.location;
+        if (location == null || location.isEmpty) {
+          continue;
+        }
+
+        await _waitUntilReadyForRouteNavigation();
+        if (!mounted) {
+          return;
+        }
+
+        // Keep navigation stack as [home, detail] so back goes to home.
+        widget.router.go(Routes.home);
+        await widget.router.push(location);
+      }
+    } finally {
+      _isProcessingRouteDeeplink = false;
+    }
+  }
+
+  Future<void> _waitUntilReadyForRouteNavigation() async {
+    await _bootstrapReadyCompleter.future;
+
+    if (!SeedDatabaseGate.isCompleted) {
+      await SeedDatabaseGate.future;
+    }
+
+    while (mounted) {
+      final hasDoneOnboarding = await ref.read(
+        hasDoneOnboardingProvider.future,
+      );
+      if (hasDoneOnboarding) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      ref.invalidate(hasDoneOnboardingProvider);
     }
   }
 
   Future<void> _bootstrapAtAppStart() async {
-    unawaited(_triggerForceUpdateCheck());
+    try {
+      unawaited(_triggerForceUpdateCheck());
 
-    _log.info(
-      'Starting app bootstrap: seedGate=${SeedDatabaseGate.isCompleted}',
-    );
+      _log.info(
+        'Starting app bootstrap: seedGate=${SeedDatabaseGate.isCompleted}',
+      );
 
-    unawaited(_migrateLegacyDataInBackground());
+      unawaited(_migrateLegacyDataInBackground());
 
-    final didReplaceSeedDatabase = await _syncSeedDatabaseAtStartup();
-    _log.info(
-      'Seed database sync at startup replaced file: $didReplaceSeedDatabase',
-    );
-    await _recoverFromDatabaseResetIfNeeded();
+      final didReplaceSeedDatabase = await _syncSeedDatabaseAtStartup();
+      _log.info(
+        'Seed database sync at startup replaced file: $didReplaceSeedDatabase',
+      );
+      await _recoverFromDatabaseResetIfNeeded();
 
-    final bootstrap = ref.read(bootstrapProvider.notifier);
-    await bootstrap.bootstrap();
+      final bootstrap = ref.read(bootstrapProvider.notifier);
+      await bootstrap.bootstrap();
 
-    await _logStartupFeedState();
+      await _logStartupFeedState();
 
-    // After the database is open and bootstrap is done, migrate any addresses
-    // that were added during onboarding before the seed was downloaded.
-    await _migratePendingAddresses();
-    if (didReplaceSeedDatabase) {
-      _refreshProvidersAfterSeedDatabaseReplace();
+      // After the database is open and bootstrap is done, migrate any
+      // addresses that were added during onboarding before the seed was
+      // downloaded.
+      await _migratePendingAddresses();
+      if (didReplaceSeedDatabase) {
+        _refreshProvidersAfterSeedDatabaseReplace();
+      }
+
+      // Resume any pending address indexing flows (e.g. after app kill).
+      final addressService = ref.read(addressServiceProvider);
+      unawaited(addressService.resumePendingIndexingFlows());
+    } finally {
+      if (!_bootstrapReadyCompleter.isCompleted) {
+        _bootstrapReadyCompleter.complete();
+      }
     }
-
-    // Resume any pending address indexing flows (e.g. after app kill).
-    final addressService = ref.read(addressServiceProvider);
-    unawaited(addressService.resumePendingIndexingFlows());
   }
 
   Future<void> _triggerForceUpdateCheck() async {
@@ -244,6 +310,13 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
         'Startup cache counts: dp1Channels=${channels.length}, '
         'dp1Playlists=${playlists.length}',
       );
+      if (channels.isEmpty && playlists.isEmpty) {
+        _log.warning(
+          'Seed-backed DP1 content is currently empty; if this is a fresh '
+          'install, open channel/playlist feeds and tap Retry to re-run seed '
+          'sync.',
+        );
+      }
     } on Exception catch (e, stack) {
       _log.warning('Failed to read startup cache counts', e, stack);
     }
@@ -273,6 +346,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
   Future<bool> _syncSeedDatabaseIfNeeded({
     required bool showUpdatingToast,
+    bool failSilently = true,
   }) async {
     var personalAddresses = <String>[];
     String? toastOverlayId;
@@ -287,7 +361,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
               toastOverlayId = ref
                   .read(appOverlayProvider.notifier)
                   .showToast(
-                    message: 'Updating feed...',
+                    message: 'Updating art library...',
                   );
               await WidgetsBinding.instance.endOfFrame;
             }
@@ -309,6 +383,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
               }
             }
           },
+          failSilently: failSilently,
         );
   }
 
@@ -472,7 +547,10 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     return ProviderScope(
       overrides: [
         seedDownloadRetryProvider.overrideWithValue(() async {
-          await _syncSeedDatabaseIfNeeded(showUpdatingToast: true);
+          await _syncSeedDatabaseIfNeeded(
+            showUpdatingToast: true,
+            failSilently: false,
+          );
         }),
       ],
       child: widget.child,

@@ -78,6 +78,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   Future<bool> syncAtAppStart({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
+    bool failSilently = true,
   }) async {
     if (state.status == SeedDownloadStatus.syncing) {
       return false;
@@ -97,7 +98,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       final updated = await service.syncIfNeeded(
         beforeReplace: beforeReplace,
         afterReplace: afterReplace,
-        failSilently: true,
+        failSilently: failSilently,
         onProgress: (progress) {
           final bucket = (progress * 100).floor();
           if (bucket > lastProgressBucket) {
