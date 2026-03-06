@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/search_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
@@ -433,7 +434,12 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
             SizedBox(height: LayoutConstants.space6),
             PrimaryButton(
               onTap: () {
-                unawaited(UIHelper.showCustomerSupport(context));
+                unawaited(
+                  UIHelper.showCustomerSupport(
+                    context,
+                    supportEmailService: ref.read(supportEmailServiceProvider),
+                  ),
+                );
               },
               text: 'Help',
             ),

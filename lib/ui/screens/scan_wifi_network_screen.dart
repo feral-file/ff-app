@@ -102,7 +102,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
 
     return Scaffold(
       appBar: const SetupAppBar(
-        title: 'Select WiFi Network',
+        title: 'Select Network',
       ),
       backgroundColor: PrimitivesTokens.colorsDarkGrey,
       body: SafeArea(
@@ -249,7 +249,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
               color: Colors.transparent,
               child: Padding(
                 padding: EdgeInsets.symmetric(
-                  vertical: LayoutConstants.space5,
+                  vertical: LayoutConstants.space3,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -288,10 +288,21 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
           headerStyle: AppTypography.body(context).white,
           withDivider: false,
           headerPadding: EdgeInsets.symmetric(
-            vertical: LayoutConstants.space5,
+            vertical: LayoutConstants.space3,
           ),
-          iconOnUnExpanded: const SizedBox.shrink(),
-          iconOnExpanded: const SizedBox.shrink(),
+          iconOnUnExpanded: Icon(
+            Icons.arrow_forward_ios,
+            size: LayoutConstants.iconSizeSmall,
+            color: AppColor.white,
+          ),
+          iconOnExpanded: RotatedBox(
+            quarterTurns: 1,
+            child: Icon(
+              Icons.arrow_forward_ios,
+              color: AppColor.white,
+              size: LayoutConstants.iconSizeSmall,
+            ),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

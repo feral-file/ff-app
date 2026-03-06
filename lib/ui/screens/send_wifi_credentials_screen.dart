@@ -5,6 +5,7 @@ import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -199,8 +200,15 @@ class _EnterWiFiPasswordScreenState
                 error.title,
                 error.message,
                 closeButton: 'Contact support',
-                onClose: () async {
-                  unawaited(UIHelper.showCustomerSupport(context));
+                onClose: () {
+                  unawaited(
+                    UIHelper.showCustomerSupport(
+                      context,
+                      supportEmailService:
+                          ref.read(supportEmailServiceProvider),
+                      onSendComplete: () => Navigator.pop(context),
+                    ),
+                  );
                 },
               ).then((_) {
                 if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) &&
@@ -247,8 +255,15 @@ class _EnterWiFiPasswordScreenState
               'Wi‑Fi setup failed',
               "FF1 couldn't complete Wi‑Fi setup because of an unexpected issue. Contact support for help.",
               closeButton: 'Contact support',
-              onClose: () async {
-                unawaited(UIHelper.showCustomerSupport(context));
+              onClose: () {
+                unawaited(
+                  UIHelper.showCustomerSupport(
+                    context,
+                    supportEmailService:
+                        ref.read(supportEmailServiceProvider),
+                    onSendComplete: () => Navigator.pop(context),
+                  ),
+                );
               },
             ).then((_) {
               if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) &&
@@ -267,7 +282,7 @@ class _EnterWiFiPasswordScreenState
 
     return Scaffold(
       appBar: const SetupAppBar(
-        title: 'Enter WiFi Password',
+        title: 'Select Network',
       ),
       backgroundColor: PrimitivesTokens.colorsDarkGrey,
       body: SafeArea(
@@ -349,18 +364,17 @@ class _EnterWiFiPasswordScreenState
           SizedBox(height: LayoutConstants.space16),
           Text.rich(
             TextSpan(
+              style: AppTypography.body(context).white.regular,
               children: [
-                TextSpan(
+                const TextSpan(
                   text: 'Connecting to ',
-                  style: AppTypography.h2(context).white.regular,
                 ),
                 TextSpan(
                   text: ssid,
-                  style: AppTypography.h2(context).white.bold,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                TextSpan(
+                const TextSpan(
                   text: '...',
-                  style: AppTypography.h2(context).white.regular,
                 ),
               ],
             ),
@@ -425,11 +439,7 @@ class _PasswordTextFieldState extends State<PasswordTextField> {
         hintText: widget.hintText,
         hintStyle: widget.style,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(
-            LayoutConstants.space2 +
-                LayoutConstants.space2 +
-                LayoutConstants.space1,
-          ),
+          borderRadius: BorderRadius.circular(5),
           borderSide: BorderSide.none,
         ),
         fillColor: AppColor.primaryBlack,

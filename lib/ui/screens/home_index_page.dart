@@ -188,10 +188,9 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
               child: SizedBox(height: LayoutConstants.space10),
             ),
             SliverFillRemaining(
-              hasScrollBody: true,
               child: _buildContent(),
             ),
-            SliverToBoxAdapter(child: const BottomSpacing()),
+            const SliverToBoxAdapter(child: BottomSpacing()),
           ],
         ),
       ),
@@ -361,13 +360,12 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
 
   Future<void> _contactSupport() async {
     try {
-      await ref
-          .read(supportEmailServiceProvider)
-          .composeSupportEmail(recipient: 'support@feralfile.com');
+      await ref.read(supportEmailServiceProvider).composeSupportEmail(
+            recipient: 'support@feralfile.com',
+            attachLogs: true,
+          );
     } on Exception {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Could not open email client.'),

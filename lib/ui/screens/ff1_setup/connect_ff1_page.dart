@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -239,7 +240,16 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
               exception.message,
               closeButton: exception.shouldShowSupport ? 'Contact support' : '',
               onClose: exception.shouldShowSupport
-                  ? () => unawaited(UIHelper.showCustomerSupport(context))
+                  ? () {
+                      unawaited(
+                        UIHelper.showCustomerSupport(
+                          context,
+                          supportEmailService:
+                              ref.read(supportEmailServiceProvider),
+                          onSendComplete: () => Navigator.pop(context),
+                        ),
+                      );
+                    }
                   : null,
             );
           } else {
@@ -248,9 +258,14 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
               'Connect failed',
               state.exception.toString(),
               closeButton: 'Contact support',
-              onClose: () async {
+              onClose: () {
                 unawaited(
-                  UIHelper.showCustomerSupport(context),
+                  UIHelper.showCustomerSupport(
+                    context,
+                    supportEmailService:
+                        ref.read(supportEmailServiceProvider),
+                    onSendComplete: () => Navigator.pop(context),
+                  ),
                 );
               },
             );
