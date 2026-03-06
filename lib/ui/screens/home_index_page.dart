@@ -88,9 +88,11 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           // Search button - navigates to search screen
           final searchButton = GestureDetector(
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) => const SearchTabPage(),
+              unawaited(
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) => const SearchTabPage(),
+                  ),
                 ),
               );
             },
@@ -187,7 +189,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
             SliverToBoxAdapter(
               child: SizedBox(height: LayoutConstants.space10),
             ),
-            SliverFillRemaining(
+            SliverToBoxAdapter(
               child: _buildContent(),
             ),
             const SliverToBoxAdapter(child: BottomSpacing()),
@@ -351,10 +353,12 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
   }
 
   void _showMenu(BuildContext context) {
-    UIHelper.showCenterMenu(
-      context,
-      options: _defaultOptions,
-      bottomWidget: _addAddressButton(),
+    unawaited(
+      UIHelper.showCenterMenu(
+        context,
+        options: _defaultOptions,
+        bottomWidget: _addAddressButton(),
+      ),
     );
   }
 
@@ -362,7 +366,6 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     try {
       await ref.read(supportEmailServiceProvider).composeSupportEmail(
             recipient: 'support@feralfile.com',
-            attachLogs: true,
           );
     } on Exception {
       if (!mounted) return;
