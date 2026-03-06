@@ -333,7 +333,7 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
         Future.microtask(() async {
           if (device != null) {
             logger.info(
-              'Active device changed: ${device.deviceId}, connecting...',
+              'Active device changed: ${device.toJson()}, connecting...',
             );
             // Intentionally not awaiting to avoid blocking
             // ignore: discarded_futures
