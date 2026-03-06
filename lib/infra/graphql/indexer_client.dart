@@ -3,6 +3,7 @@ import 'dart:collection';
 
 import 'package:graphql/client.dart';
 import 'package:sentry/sentry.dart';
+import 'package:sentry_link/sentry_link.dart';
 
 /// GraphQL client for the indexer service.
 /// Handles fetching tokens from the indexer API.
@@ -16,10 +17,16 @@ class IndexerClient {
     this.maxConcurrentRequests = 10,
     this.maxRequestsPerSecond = 10,
   }) : _client = GraphQLClient(
-         link: HttpLink(
-           '$endpoint/graphql',
-           defaultHeaders: defaultHeaders,
-         ),
+         link: Link.from([
+           SentryGql.link(
+             shouldStartTransaction: true,
+             graphQlErrorsMarkTransactionAsFailed: true,
+           ),
+           HttpLink(
+             '$endpoint/graphql',
+             defaultHeaders: defaultHeaders,
+           ),
+         ]),
          cache: GraphQLCache(),
        ),
        _availableRequests = maxRequestsPerSecond {
@@ -230,26 +237,31 @@ class IndexerClient {
     required OperationException? exception,
   }) {
     try {
-      Sentry.captureEvent(
-        SentryEvent(
-          message: SentryMessage('IndexerClient $operation GraphQL exception'),
-          level: SentryLevel.error,
-          tags: {
-            'layer': 'infra/graphql',
-            'operation': operation,
-          },
-          extra: {
-            'vars': vars,
-            'doc': doc,
-            'graphqlErrors': exception?.graphqlErrors
-                .map((e) => e.message)
-                .toList(),
-            'linkException': exception?.linkException?.toString(),
-          },
-          throwable: exception,
+      unawaited(
+        Sentry.captureEvent(
+          SentryEvent(
+            message: SentryMessage(
+              'IndexerClient $operation GraphQL exception',
+            ),
+            level: SentryLevel.error,
+            tags: {
+              'layer': 'infra/graphql',
+              'operation': operation,
+            },
+            contexts: Contexts()
+              ..['indexer_graphql'] = {
+                'vars': vars,
+                'doc': doc,
+                'graphqlErrors': exception?.graphqlErrors
+                    .map((e) => e.message)
+                    .toList(),
+                'linkException': exception?.linkException?.toString(),
+              },
+            throwable: exception,
+          ),
         ),
       );
-    } catch (_) {
+    } on Object catch (_) {
       // Avoid cascading failures from error reporting.
     }
   }
@@ -262,22 +274,25 @@ class IndexerClient {
     required StackTrace stackTrace,
   }) {
     try {
-      Sentry.captureEvent(
-        SentryEvent(
-          message: SentryMessage('IndexerClient $operation failed'),
-          level: SentryLevel.error,
-          tags: {
-            'layer': 'infra/graphql',
-            'operation': operation,
-          },
-          extra: {
-            'vars': vars,
-            'doc': doc,
-          },
-          throwable: error,
+      unawaited(
+        Sentry.captureEvent(
+          SentryEvent(
+            message: SentryMessage('IndexerClient $operation failed'),
+            level: SentryLevel.error,
+            tags: {
+              'layer': 'infra/graphql',
+              'operation': operation,
+            },
+            contexts: Contexts()
+              ..['indexer_graphql'] = {
+                'vars': vars,
+                'doc': doc,
+              },
+            throwable: error,
+          ),
         ),
       );
-    } catch (_) {
+    } on Object catch (_) {
       // Avoid cascading failures from error reporting.
     }
   }

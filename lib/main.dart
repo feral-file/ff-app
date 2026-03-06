@@ -13,24 +13,52 @@ import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/logging/app_logger.dart';
 import 'package:app/infra/services/legacy_storage_locator.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:sentry_logging/sentry_logging.dart';
 
 Future<void> main() async {
   // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Configure logging sinks (console and file).
+  // Load configuration.
+  await AppConfig.initialize();
+
+  final sentryDsn = AppConfig.sentryDsn;
+  if (sentryDsn.isNotEmpty) {
+    await SentryFlutter.init(
+      (options) {
+        options
+          ..dsn = sentryDsn
+          ..environment = kReleaseMode ? 'release' : 'debug'
+          ..tracesSampleRate = 0.1
+          ..addIntegration(LoggingIntegration())
+          ..beforeSend = (event, hint) {
+            return kDebugMode ? null : event;
+          }
+          ..beforeSendTransaction = (transaction, hint) {
+            return kDebugMode ? null : transaction;
+          };
+      },
+      appRunner: _bootstrapApp,
+    );
+    return;
+  }
+
+  await _bootstrapApp();
+}
+
+Future<void> _bootstrapApp() async {
+  // Configure logging sinks (console, file, and Sentry when enabled).
   await AppLogger.initialize();
   final logFilePath = AppLogger.currentLogFile?.path;
   if (logFilePath != null) {
     debugPrint('Log file path: $logFilePath');
   }
-
-  // Load configuration
-  await AppConfig.initialize();
 
   // Validate configuration and fail fast if required values are missing
   if (!AppConfig.isValid) {
@@ -105,8 +133,10 @@ Future<void> main() async {
   // Initialize ObjectBox store for Bluetooth device storage
   final store = await initializeObjectBox();
   final bluetoothDeviceBox = store.box<FF1BluetoothDeviceEntity>();
-  final bluetoothDeviceService =
-      FF1BluetoothDeviceService(store, bluetoothDeviceBox);
+  final bluetoothDeviceService = FF1BluetoothDeviceService(
+    store,
+    bluetoothDeviceBox,
+  );
   final appStateService = AppStateService(
     store: store,
     appStateBox: store.box<AppStateEntity>(),
@@ -147,6 +177,12 @@ Future<void> main() async {
     initialLocation = Routes.onboardingIntroducePage;
   }
 
+  await _attachPostOnboardingSentryContext(
+    hasDoneOnboarding: hasDoneOnboarding || hasLegacySqliteDatabase,
+    appStateService: appStateService,
+    bluetoothDeviceService: bluetoothDeviceService,
+  );
+
   runApp(
     ProviderScope(
       observers: [AppProviderObserver()],
@@ -162,4 +198,36 @@ Future<void> main() async {
       ),
     ),
   );
+}
+
+Future<void> _attachPostOnboardingSentryContext({
+  required bool hasDoneOnboarding,
+  required AppStateService appStateService,
+  required FF1BluetoothDeviceService bluetoothDeviceService,
+}) async {
+  if (!hasDoneOnboarding || !Sentry.isEnabled) {
+    return;
+  }
+
+  try {
+    final addedAddresses = await appStateService.getTrackedPersonalAddresses();
+    final ff1DeviceIds =
+        bluetoothDeviceService
+            .getAllDevices()
+            .map((device) => device.deviceId.trim())
+            .where((id) => id.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+
+    return Sentry.configureScope((scope) async {
+      await scope.setContexts('post_onboarding_state', {
+          'added_addresses': addedAddresses,
+          'ff1_device_ids': ff1DeviceIds,
+        });
+    });
+  } on Object catch (error, stackTrace) {
+    debugPrint('Failed to attach post-onboarding Sentry context: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
 }
