@@ -6,20 +6,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Source of a deeplink event.
 enum DeeplinkSource {
+  /// Deeplink from app startup initial URI.
   initialLink,
+
+  /// Deeplink emitted from app link stream while app is running.
   appLink,
+
+  /// Deeplink from QR scan flow.
   scan,
 }
 
 /// Supported deeplink types.
 enum DeeplinkType {
+  /// Deeplink to FF1 device connection flow.
   deviceConnect,
+
+  /// Deeplink that maps to an app route handled by go_router.
+  appRoute,
+
+  /// Unsupported deeplink.
   unknown,
 }
 
 /// Navigation target resolved from deeplink source + context.
 enum DeeplinkTargetRoute {
+  /// Start setup route for FF1 onboarding/setup flow.
   startSetupFf1,
+
+  /// Direct connect route for FF1 connection flow.
   connectFF1,
 }
 
@@ -30,6 +44,7 @@ class DeeplinkNavigationAction {
     required this.link,
     required this.source,
     required this.type,
+    this.location,
   });
 
   /// The deeplink link.
@@ -40,6 +55,9 @@ class DeeplinkNavigationAction {
 
   /// The type of the deeplink.
   final DeeplinkType type;
+
+  /// Resolved go_router location when [type] is [DeeplinkType.appRoute].
+  final String? location;
 }
 
 /// Normalizes a deeplink by trimming and decoding percent-encoded separators.
@@ -52,7 +70,49 @@ DeeplinkType classifyDeeplink(String link) {
   if (deviceConnectDeepLinks.any(link.startsWith)) {
     return DeeplinkType.deviceConnect;
   }
+  if (resolveAppLocationFromDeeplink(link) != null) {
+    return DeeplinkType.appRoute;
+  }
   return DeeplinkType.unknown;
+}
+
+/// Resolves an app deeplink URI to a go_router location.
+String? resolveAppLocationFromDeeplink(String rawLink) {
+  final link = normalizeDeeplink(rawLink);
+  final uri = Uri.tryParse(link);
+  if (uri == null) {
+    return null;
+  }
+
+  String? location;
+  if (uri.scheme == 'feralfile') {
+    final host = uri.host.trim();
+    if (host.isEmpty) {
+      return null;
+    }
+    location = '/$host${uri.path}';
+  } else if ((uri.scheme == 'https' || uri.scheme == 'http') &&
+      appDeeplinkHosts.contains(uri.host)) {
+    location = uri.path.isEmpty ? '/' : uri.path;
+  } else {
+    return null;
+  }
+
+  if (!_isSupportedAppDeeplinkLocation(location)) {
+    return null;
+  }
+
+  final query = uri.query;
+  if (query.isNotEmpty) {
+    return '$location?$query';
+  }
+  return location;
+}
+
+bool _isSupportedAppDeeplinkLocation(String location) {
+  return location == '/playlist' ||
+      location.startsWith('/playlist/') ||
+      location.startsWith('/playlists/');
 }
 
 /// Abstraction over app_links for testability.
@@ -205,6 +265,9 @@ class DeeplinkHandler {
         link: link,
         source: source,
         type: type,
+        location: type == DeeplinkType.appRoute
+            ? resolveAppLocationFromDeeplink(link)
+            : null,
       );
       if (!_actionsController.isClosed) {
         _actionsController.add(action);

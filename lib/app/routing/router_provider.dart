@@ -318,6 +318,30 @@ routerProvider = Provider.family<GoRouter, String>((
         },
       ),
 
+      // Deeplink alias route: /playlist/:playlistId -> /playlists/:playlistId
+      GoRoute(
+        path: '/playlist/:playlistId',
+        redirect: (context, state) {
+          final playlistId = state.pathParameters['playlistId'];
+          if (playlistId == null || playlistId.isEmpty) {
+            return Routes.home;
+          }
+          return '${Routes.playlists}/$playlistId';
+        },
+      ),
+
+      // Deeplink alias route: /playlist?id=... -> /playlists/:playlistId
+      GoRoute(
+        path: '/playlist',
+        redirect: (context, state) {
+          final playlistId = state.uri.queryParameters['id']?.trim();
+          if (playlistId == null || playlistId.isEmpty) {
+            return Routes.home;
+          }
+          return '${Routes.playlists}/$playlistId';
+        },
+      ),
+
       // Work detail route
       GoRoute(
         path: '${Routes.works}/:workId',
