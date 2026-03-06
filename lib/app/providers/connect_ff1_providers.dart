@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/providers/version_provider.dart';
 import 'package:app/domain/extensions/string_ext.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
@@ -178,7 +178,6 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     final compatibility = await versionService.checkDeviceVersionCompatibility(
       branchName: ff1DeviceInfo.branchName,
       deviceVersion: ff1DeviceInfo.version,
-      deviceName: ff1DeviceInfo.deviceId,
     );
 
     if (compatibility == VersionCompatibilityResult.needUpdateApp) {

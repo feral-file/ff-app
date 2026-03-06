@@ -28,21 +28,21 @@ AddressIndexingProcessStatus _status(AddressIndexingProcessState state) {
 
 void main() {
   group('deriveIndexingStatusText', () {
-    test('idle + no readyCount: returns null', () {
+    test('idle + no readyCount: shows Syncing', () {
       final result = deriveIndexingStatusText(
         processStatus: _status(AddressIndexingProcessState.idle),
         readyCount: null,
       );
-      expect(result.text, isNull);
+      expect(result.text, 'Syncing');
       expect(result.showRetry, isFalse);
     });
 
-    test('idle: returns null regardless of readyCount', () {
+    test('idle: shows Syncing with ready count', () {
       final result = deriveIndexingStatusText(
         processStatus: _status(AddressIndexingProcessState.idle),
         readyCount: 3,
       );
-      expect(result.text, isNull);
+      expect(result.text, 'Syncing • 3 ready');
       expect(result.showRetry, isFalse);
     });
 
@@ -133,11 +133,11 @@ void main() {
       expect(result.showRetry, isFalse);
     });
 
-    test('processStatus null defaults to idle: returns null', () {
+    test('processStatus null defaults to idle: shows Syncing with ready', () {
       final result = deriveIndexingStatusText(
         readyCount: 4,
       );
-      expect(result.text, isNull);
+      expect(result.text, 'Syncing • 4 ready');
       expect(result.showRetry, isFalse);
     });
 

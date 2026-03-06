@@ -7,6 +7,7 @@ import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/force_update_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
@@ -93,6 +94,9 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     with WidgetsBindingObserver {
   bool _started = false;
   bool _isResumeSeedSyncInProgress = false;
+  bool _isProcessingRouteDeeplink = false;
+  DeeplinkNavigationAction? _pendingRouteDeeplinkAction;
+  final Completer<void> _bootstrapReadyCompleter = Completer<void>();
   ProviderSubscription<AsyncValue<DeeplinkNavigationAction>>?
   _deeplinkActionsSubscription;
 
@@ -159,39 +163,101 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
           ),
         );
       }
+      return;
+    }
+
+    if (action.type == DeeplinkType.appRoute) {
+      _pendingRouteDeeplinkAction = action;
+      unawaited(_processPendingRouteDeeplink());
+    }
+  }
+
+  Future<void> _processPendingRouteDeeplink() async {
+    if (_isProcessingRouteDeeplink) {
+      return;
+    }
+    _isProcessingRouteDeeplink = true;
+
+    try {
+      while (mounted && _pendingRouteDeeplinkAction != null) {
+        final action = _pendingRouteDeeplinkAction!;
+        _pendingRouteDeeplinkAction = null;
+
+        final location = action.location;
+        if (location == null || location.isEmpty) {
+          continue;
+        }
+
+        await _waitUntilReadyForRouteNavigation();
+        if (!mounted) {
+          return;
+        }
+
+        // Keep navigation stack as [home, detail] so back goes to home.
+        widget.router.go(Routes.home);
+        await widget.router.push(location);
+      }
+    } finally {
+      _isProcessingRouteDeeplink = false;
+    }
+  }
+
+  Future<void> _waitUntilReadyForRouteNavigation() async {
+    await _bootstrapReadyCompleter.future;
+
+    if (!SeedDatabaseGate.isCompleted) {
+      await SeedDatabaseGate.future;
+    }
+
+    while (mounted) {
+      final hasDoneOnboarding = await ref.read(
+        hasDoneOnboardingProvider.future,
+      );
+      if (hasDoneOnboarding) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      ref.invalidate(hasDoneOnboardingProvider);
     }
   }
 
   Future<void> _bootstrapAtAppStart() async {
-    unawaited(_triggerForceUpdateCheck());
+    try {
+      unawaited(_triggerForceUpdateCheck());
 
-    _log.info(
-      'Starting app bootstrap: seedGate=${SeedDatabaseGate.isCompleted}',
-    );
+      _log.info(
+        'Starting app bootstrap: seedGate=${SeedDatabaseGate.isCompleted}',
+      );
 
-    unawaited(_migrateLegacyDataInBackground());
+      unawaited(_migrateLegacyDataInBackground());
 
-    final didReplaceSeedDatabase = await _syncSeedDatabaseAtStartup();
-    _log.info(
-      'Seed database sync at startup replaced file: $didReplaceSeedDatabase',
-    );
-    await _recoverFromDatabaseResetIfNeeded();
+      final didReplaceSeedDatabase = await _syncSeedDatabaseAtStartup();
+      _log.info(
+        'Seed database sync at startup replaced file: $didReplaceSeedDatabase',
+      );
+      await _recoverFromDatabaseResetIfNeeded();
 
-    final bootstrap = ref.read(bootstrapProvider.notifier);
-    await bootstrap.bootstrap();
+      final bootstrap = ref.read(bootstrapProvider.notifier);
+      await bootstrap.bootstrap();
 
-    await _logStartupFeedState();
+      await _logStartupFeedState();
 
-    // After the database is open and bootstrap is done, migrate any addresses
-    // that were added during onboarding before the seed was downloaded.
-    await _migratePendingAddresses();
-    if (didReplaceSeedDatabase) {
-      _refreshProvidersAfterSeedDatabaseReplace();
+      // After the database is open and bootstrap is done, migrate any
+      // addresses that were added during onboarding before the seed was
+      // downloaded.
+      await _migratePendingAddresses();
+      if (didReplaceSeedDatabase) {
+        _refreshProvidersAfterSeedDatabaseReplace();
+      }
+
+      // Resume any pending address indexing flows (e.g. after app kill).
+      final addressService = ref.read(addressServiceProvider);
+      unawaited(addressService.resumePendingIndexingFlows());
+    } finally {
+      if (!_bootstrapReadyCompleter.isCompleted) {
+        _bootstrapReadyCompleter.complete();
+      }
     }
-
-    // Resume any pending address indexing flows (e.g. after app kill).
-    final addressService = ref.read(addressServiceProvider);
-    unawaited(addressService.resumePendingIndexingFlows());
   }
 
   Future<void> _triggerForceUpdateCheck() async {

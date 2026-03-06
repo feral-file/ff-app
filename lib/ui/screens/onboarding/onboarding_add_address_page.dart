@@ -8,7 +8,6 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/models.dart';
-import 'package:app/ui/screens/add_address_screen.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
@@ -115,12 +114,7 @@ class OnboardingAddAddressPage extends ConsumerWidget {
   }
 
   void _onAddAddressPressed(BuildContext context) {
-    unawaited(
-      context.push(
-        Routes.addAddressPage,
-        extra: const AddAddressScreenPayload(isFromOnboarding: true),
-      ),
-    );
+    unawaited(context.push(Routes.addAddressPage));
   }
 
   Future<void> _onNext(BuildContext context, WidgetRef ref) async {

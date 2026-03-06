@@ -32,13 +32,7 @@ enum VersionCompatibilityResult {
   unknown,
 
   /// The device was not found.
-  deviceNotFound
-  ;
-
-  /// Whether the result represents a compatible state.
-  bool get isValid =>
-      this != VersionCompatibilityResult.needUpdateApp &&
-      this != VersionCompatibilityResult.needUpdateDevice;
+  deviceNotFound,
 }
 
 /// Service responsible for checking version compatibility between
@@ -66,7 +60,6 @@ class VersionService {
        _packageInfoLoader = packageInfoLoader ?? PackageInfo.fromPlatform;
 
   final PubDocApi _pubDocApi;
-  // Nullable: when null (unit tests) dialog display is skipped entirely.
   final GlobalKey<NavigatorState>? _navigatorKey;
   final Logger _log;
   final String? _platformOverride;
@@ -89,15 +82,12 @@ class VersionService {
   /// - `needUpdateDevice` → [showDeviceNotCompatibleDialog]
   ///   (only when [requiredDeviceUpdate] is `true`)
   ///
-  /// [deviceName] is used in the dialog text; defaults to `'FF1'`.
-  ///
   /// Returns a [VersionCompatibilityResult] describing whether the app
   /// needs an update, the device needs an update, or they are compatible.
   Future<VersionCompatibilityResult> checkDeviceVersionCompatibility({
     required String branchName,
     required String deviceVersion,
     bool requiredDeviceUpdate = false,
-    String deviceName = 'FF1',
   }) async {
     final compatibilityData = await _pubDocApi.getVersionCompatibility();
     if (compatibilityData.isEmpty) {
@@ -139,10 +129,10 @@ class VersionService {
     if (_navigatorKey != null) {
       switch (result) {
         case VersionCompatibilityResult.needUpdateApp:
-          await showVersionNotCompatibleDialog(deviceName);
+          await showVersionNotCompatibleDialog();
         case VersionCompatibilityResult.needUpdateDevice:
           if (requiredDeviceUpdate) {
-            await showDeviceNotCompatibleDialog(deviceName);
+            await showDeviceNotCompatibleDialog();
           }
         case VersionCompatibilityResult.compatible:
         case VersionCompatibilityResult.unknown:
@@ -218,6 +208,24 @@ class VersionService {
     return VersionCompatibilityResult.compatible;
   }
 
+  String? _findLatestCompatibleVersion(
+    Map<String, dynamic> branchData,
+    String deviceVersion,
+  ) {
+    String? latestVersion;
+
+    for (final version in branchData.keys) {
+      if (compareVersion(version, deviceVersion) >= 0) {
+        continue;
+      }
+      if (latestVersion == null || compareVersion(version, latestVersion) > 0) {
+        latestVersion = version;
+      }
+    }
+
+    return latestVersion;
+  }
+
   String? get _currentPlatformTag {
     if (_platformOverride != null) {
       return _platformOverride;
@@ -234,7 +242,7 @@ class VersionService {
   /// Opens the platform-appropriate app store listing so the user can update.
   ///
   /// Uses [_kAppStoreUrl] on iOS and [_kPlayStoreUrl] on Android.
-  Future<void> openLatestVersion() async {
+  Future<void> openStoreUrl() async {
     final url = Platform.isIOS ? _kAppStoreUrl : _kPlayStoreUrl;
     final uri = Uri.parse(url);
     if (!uri.hasScheme) return;
@@ -249,13 +257,8 @@ class VersionService {
   }
 
   /// Shows a non-dismissible dialog informing the user that the current app
-  /// version is not compatible with [deviceName] and prompting an app update.
-  ///
-  /// Resolves the current [BuildContext] from [_navigatorKey]. Returns early
-  /// if the context is unavailable or the widget is no longer mounted.
-  /// Reads the current package version from [getPackageInfo] to include in
-  /// the message. Tapping "Update now" calls [openLatestVersion].
-  Future<void> showVersionNotCompatibleDialog(String deviceName) async {
+  /// version is not compatible with their FF1 and prompting an app update.
+  Future<void> showVersionNotCompatibleDialog() async {
     var context = _navigatorKey?.currentContext;
     if (context == null || !context.mounted) {
       return;
@@ -287,15 +290,10 @@ class VersionService {
                     text: '$version ($buildNumber)',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  const TextSpan(text: ' is not compatible with your '),
-                  TextSpan(
-                    text: deviceName,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
                   const TextSpan(
                     text:
-                        '. Please update the app to continue '
-                        'using your device.',
+                        ' is not compatible with your FF1. '
+                        'Please update the app to continue using your FF1.',
                   ),
                 ],
               ),
@@ -303,7 +301,7 @@ class VersionService {
             const SizedBox(height: 16),
             PrimaryAsyncButton(
               text: 'Update now',
-              onTap: openLatestVersion,
+              onTap: openStoreUrl,
             ),
           ],
         ),
@@ -311,12 +309,9 @@ class VersionService {
     );
   }
 
-  /// Shows a non-dismissible dialog informing the user that [deviceName] is
+  /// Shows a non-dismissible dialog informing the user that their FF1 is
   /// running firmware that is too old for this app version.
-  ///
-  /// Resolves the current [BuildContext] from [_navigatorKey]. Returns early
-  /// if the context is unavailable or the widget is no longer mounted.
-  Future<void> showDeviceNotCompatibleDialog(String deviceName) async {
+  Future<void> showDeviceNotCompatibleDialog() async {
     final context = _navigatorKey?.currentContext;
     if (context == null || !context.mounted) {
       return;
@@ -333,14 +328,9 @@ class VersionService {
               text: TextSpan(
                 style: AppTypography.body(context).white,
                 children: [
-                  const TextSpan(text: 'Your '),
-                  TextSpan(
-                    text: deviceName,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
                   const TextSpan(
                     text:
-                        ' is running an older software version. '
+                        'Your FF1 is running an older software version. '
                         'Please update your FF1 to ensure full functionality.',
                   ),
                 ],
@@ -350,23 +340,5 @@ class VersionService {
         ),
       ),
     );
-  }
-
-  String? _findLatestCompatibleVersion(
-    Map<String, dynamic> branchData,
-    String deviceVersion,
-  ) {
-    String? latestVersion;
-
-    for (final version in branchData.keys) {
-      if (compareVersion(version, deviceVersion) >= 0) {
-        continue;
-      }
-      if (latestVersion == null || compareVersion(version, latestVersion) > 0) {
-        latestVersion = version;
-      }
-    }
-
-    return latestVersion;
   }
 }

@@ -7,6 +7,7 @@ import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -35,6 +36,7 @@ class WiFiNetwork {
 
 /// State representing WiFi connection progress for a device
 class WiFiConnectionState {
+  /// Constructor.
   const WiFiConnectionState({
     this.deviceId,
     this.status = WiFiConnectionStatus.idle,
@@ -43,16 +45,32 @@ class WiFiConnectionState {
     this.selectedNetwork,
     this.topicId,
     this.error,
+    this.isConnectionFailed = false,
   });
 
+  /// Device ID.
   final String? deviceId;
+
+  /// Status.
   final WiFiConnectionStatus status;
   final String? message;
+
+  /// Scanned networks.
   final List<WiFiNetwork>? scannedNetworks;
+
+  /// Selected network.
   final WiFiNetwork? selectedNetwork;
+
+  /// Topic ID.
   final String? topicId;
+
+  /// Error.
   final Object? error;
 
+  /// Whether the connection failed.
+  final bool isConnectionFailed;
+
+  /// Copy with updated fields.
   WiFiConnectionState copyWith({
     String? deviceId,
     WiFiConnectionStatus? status,
@@ -61,6 +79,7 @@ class WiFiConnectionState {
     WiFiNetwork? selectedNetwork,
     String? topicId,
     Object? error,
+    bool? isConnectionFailed,
   }) {
     return WiFiConnectionState(
       deviceId: deviceId ?? this.deviceId,
@@ -70,26 +89,38 @@ class WiFiConnectionState {
       selectedNetwork: selectedNetwork ?? this.selectedNetwork,
       topicId: topicId ?? this.topicId,
       error: error,
+      isConnectionFailed: isConnectionFailed ?? this.isConnectionFailed,
     );
   }
 }
 
+/// WiFi connection status.
 enum WiFiConnectionStatus {
+  /// Idle.
   idle,
-  // Step 1: Initial BLE connection
+
+  /// Connecting.
   connecting,
-  // Step 2: Scanning for available networks
+
+  /// Scanning for available networks.
   scanningNetworks,
-  // Step 3: User selects network
+
+  /// User selects network.
   selectingNetwork,
-  // Step 4: User enters password and we send credentials
+
+  /// User enters password and we send credentials.
   sendingCredentials,
-  // Step 5: Waiting for device to connect to WiFi and respond
+
+  /// Waiting for device to connect to WiFi and respond.
   waitingForDeviceConnection,
-  // Step 6: Hiding QR code after successful connection
+
+  /// Hiding QR code after successful connection.
   finalizingConnection,
-  // Final state
+
+  /// Success.
   success,
+
+  /// Error.
   error,
 }
 
@@ -116,23 +147,48 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
 
   /// Step 1 & 2: Connect to device and scan for WiFi networks
   ///
+  /// If [FF1Device.remoteId] is empty (device was paired without a cached BLE
+  /// address), the method first scans by device name to resolve the address
+  /// before connecting.
+  ///
   /// Uses Riverpod's automatic retry for BLE operations.
   Future<void> connectAndScanNetworks({
     required FF1Device device,
   }) async {
+    var connectionEstablished = false;
+
     try {
       state = state.copyWith(
         deviceId: device.deviceId,
         status: WiFiConnectionStatus.connecting,
+        isConnectionFailed: false,
       );
-      final blDevice = device.toBluetoothDevice();
+
+      // Step 1: Resolve BluetoothDevice — scan first if remoteId is absent.
+      late final BluetoothDevice blDevice;
+      if (device.remoteId.isEmpty) {
+        _log.info(
+          'remoteId is empty for ${device.name}, scanning by name to resolve',
+        );
+        final control = ref.read(ff1ControlProvider);
+        final found = await control.scanForName(name: device.name);
+        if (found == null) {
+          throw FF1BluetoothError(
+            'Could not find ${device.name} via Bluetooth scan',
+          );
+        }
+        _log.info('Found device via scan: ${found.remoteId}');
+        blDevice = found;
+      } else {
+        blDevice = device.toBluetoothDevice();
+      }
 
       // Step 1: Connect to device (with automatic retry)
-      // TODO: check the remoteID empty => scan & connect
       await ref.read(
         ff1BleConnectProvider(FF1BleConnectParams(blDevice: blDevice)).future,
       );
       _log.info('Connected to device: ${device.deviceId}');
+      connectionEstablished = true;
 
       state = state.copyWith(
         status: WiFiConnectionStatus.scanningNetworks,
@@ -167,17 +223,19 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         scannedNetworks: networks,
       );
     } on FF1Error catch (e) {
-      _log.severe('FF1 Error during scan: $e');
+      _log.severe('FF1 Error during connect/scan: $e');
       state = state.copyWith(
         status: WiFiConnectionStatus.error,
         error: e,
-        message: 'Scan failed: ${e.message}',
+        isConnectionFailed: !connectionEstablished,
+        message: e.message,
       );
     } on Exception catch (e, st) {
-      _log.severe('Unexpected error during scan', e, st);
+      _log.severe('Unexpected error during connect/scan', e, st);
       state = state.copyWith(
         status: WiFiConnectionStatus.error,
         error: e,
+        isConnectionFailed: !connectionEstablished,
         message: 'Unexpected error: $e',
       );
     }
@@ -206,8 +264,6 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         message: 'Sending WiFi credentials to device...',
       );
       final blDevice = device.toBluetoothDevice();
-
-      // TODO: Check device connection
 
       // Step 5: Send WiFi credentials (connect_wifi command) with automatic retry
       // Device will attempt to connect to WiFi and respond with topicId
