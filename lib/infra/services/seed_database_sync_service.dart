@@ -43,10 +43,19 @@ class SeedDatabaseSyncService {
       final shouldReplace =
           !hasLocalDatabase ||
           (remoteEtag.isNotEmpty && remoteEtag != localEtag);
+
+      _log.info(
+        'Seed sync pre-check: hasLocal=$hasLocalDatabase, '
+        'localEtag=${localEtag.isEmpty ? '<empty>' : localEtag}, '
+        'remoteEtag=${remoteEtag.isEmpty ? '<empty>' : remoteEtag}, '
+        'shouldReplace=$shouldReplace',
+      );
       if (!shouldReplace) {
         _log.fine('Seed database ETag unchanged; skipping download.');
         return false;
       }
+
+      _log.info('Seed DB refresh needed; downloading latest seed snapshot.');
 
       final tempPath = await _seedDatabaseService.downloadToTemporaryFile(
         onProgress: onProgress,
@@ -63,6 +72,14 @@ class SeedDatabaseSyncService {
             : 'Seed database installed.',
       );
       return true;
+    } on FormatException catch (e, st) {
+      if (!failSilently) rethrow;
+      _log.warning(
+        'Seed database sync skipped due to invalid seed configuration (S3_*).',
+        e,
+        st,
+      );
+      return false;
     } on DioException catch (e, st) {
       if (!failSilently) rethrow;
       _log.warning('Seed database sync skipped (network failure).', e, st);

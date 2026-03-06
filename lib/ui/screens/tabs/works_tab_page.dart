@@ -96,7 +96,7 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
           child: LoadingWidget(
             backgroundColor: Colors.transparent,
             text:
-                'Preparing feed… '
+                'Updating art library... '
                 '${((seedState.progress ?? 0) * 100).round()}%',
           ),
         ),
