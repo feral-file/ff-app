@@ -5,11 +5,12 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
+import 'package:sentry_dio/sentry_dio.dart';
 
 /// REST client for communicating with FF1 devices through the Relayer API.
 ///
 /// This client sends commands to FF1 devices via HTTP GET to the Relayer's
-/// REST endpoint. Each command is sent to the device identified by [topicId].
+/// REST endpoint. Each command is sent to a specific device topic.
 class FF1WifiRestClient {
   /// Create a new REST client.
   ///
@@ -23,7 +24,7 @@ class FF1WifiRestClient {
   }) : _castApiUrl = castApiUrl,
        _apiKey = apiKey,
        _logger = logger ?? Logger('FF1WifiRestClient'),
-       _dio = Dio();
+       _dio = Dio()..addSentry();
 
   final String _castApiUrl;
   final String _apiKey;

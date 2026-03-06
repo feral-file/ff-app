@@ -9,8 +9,8 @@ import 'package:drift/native.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sentry_drift/sentry_drift.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
-
 
 part 'app_database.g.dart';
 
@@ -997,18 +997,18 @@ class AppDatabase extends _$AppDatabase {
     final placeholders = addresses.map((_) => '?').join(',');
     await transaction(() async {
       await customStatement(
-        'DELETE FROM items WHERE id IN ('
+        'DELETE FROM items WHERE id IN ( '
         'SELECT pe.item_id FROM playlist_entries pe '
         'INNER JOIN playlists p ON p.id = pe.playlist_id '
-        'WHERE p.type = 1 AND LOWER(TRIM(COALESCE(p.owner_address,\'\'))) IN ($placeholders)'
-        ')',
+        'WHERE p.type = 1 '
+        "AND LOWER(TRIM(COALESCE(p.owner_address, ''))) IN ($placeholders))",
         addresses,
       );
       await customStatement(
-        'DELETE FROM playlist_entries WHERE playlist_id IN ('
+        'DELETE FROM playlist_entries WHERE playlist_id IN ( '
         'SELECT id FROM playlists '
-        'WHERE type = 1 AND LOWER(TRIM(COALESCE(owner_address,\'\'))) IN ($placeholders)'
-        ')',
+        'WHERE type = 1 '
+        "AND LOWER(TRIM(COALESCE(owner_address, ''))) IN ($placeholders))",
         addresses,
       );
     });
@@ -1092,9 +1092,8 @@ class AppDatabase extends _$AppDatabase {
     required String baseUrl,
   }) async {
     await customStatement(
-      'DELETE FROM playlist_entries WHERE playlist_id IN ('
-      'SELECT id FROM playlists WHERE type = ? AND base_url = ?'
-      ')',
+      'DELETE FROM playlist_entries WHERE playlist_id IN ( '
+      'SELECT id FROM playlists WHERE type = ? AND base_url = ?)',
       [type.value, baseUrl],
     );
     return (delete(
@@ -1149,7 +1148,10 @@ LazyDatabase _openConnection() {
       final driftIsolate = await DriftIsolate.spawn(
         () => _makeNativeDatabase(file),
       );
-      return driftIsolate.connect();
+      final connection = await driftIsolate.connect();
+      return connection.interceptWith(
+        SentryQueryInterceptor(databaseName: file.path),
+      );
     } on Object catch (e, st) {
       _log.warning(
         'Failed to open database. Recreating from scratch and retrying once.',
@@ -1161,7 +1163,10 @@ LazyDatabase _openConnection() {
       final driftIsolate = await DriftIsolate.spawn(
         () => _makeNativeDatabase(file),
       );
-      return driftIsolate.connect();
+      final connection = await driftIsolate.connect();
+      return connection.interceptWith(
+        SentryQueryInterceptor(databaseName: file.path),
+      );
     }
   });
 }

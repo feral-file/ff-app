@@ -2,6 +2,7 @@ import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:graphql/client.dart';
 import 'package:logging/logging.dart';
+import 'package:sentry_link/sentry_link.dart';
 import 'package:wallet/wallet.dart' as wallet;
 
 /// Service for validating raw addresses and resolving ENS/TNS domains.
@@ -128,12 +129,18 @@ class DomainAddressService {
 
     final client = GraphQLClient(
       cache: GraphQLCache(dataIdFromObject: (_) => null),
-      link: HttpLink(
-        _resolverUrl,
-        defaultHeaders: {
-          if (_resolverApiKey.isNotEmpty) 'X-API-KEY': _resolverApiKey,
-        },
-      ),
+      link: Link.from([
+        SentryGql.link(
+          shouldStartTransaction: true,
+          graphQlErrorsMarkTransactionAsFailed: true,
+        ),
+        HttpLink(
+          _resolverUrl,
+          defaultHeaders: {
+            if (_resolverApiKey.isNotEmpty) 'X-API-KEY': _resolverApiKey,
+          },
+        ),
+      ]),
       queryRequestTimeout: const Duration(seconds: 10),
     );
 

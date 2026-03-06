@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sentry_dio/sentry_dio.dart';
 
 class _SeedDatabaseS3Location {
   const _SeedDatabaseS3Location({
@@ -103,7 +104,7 @@ class SeedDatabaseService {
     Dio? dio,
     DateTime Function()? nowUtc,
     Future<Directory> Function()? temporaryDirectoryProvider,
-  }) : _dio = dio ?? Dio(),
+  }) : _dio = (dio ?? Dio())..addSentry(),
        _nowUtc = nowUtc ?? (() => DateTime.now().toUtc()),
        _temporaryDirectoryProvider =
            temporaryDirectoryProvider ?? getTemporaryDirectory;
