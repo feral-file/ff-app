@@ -3,10 +3,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'App version'
+        description: "App version"
         required: false
       build-number:
-        description: 'Build number (CFBundleVersion). Defaults to latest TestFlight build + 1 if omitted.'
+        description: "Build number (CFBundleVersion). Defaults to latest TestFlight build + 1 if omitted."
         required: false
       message:
         description: Change logs
@@ -30,7 +30,7 @@ jobs:
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.2' #latest-stable
+          xcode-version: "26.2" #latest-stable
 
       - uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -116,8 +116,8 @@ jobs:
         id: profiles
         uses: Apple-Actions/download-provisioning-profiles@v5
         with:
-          bundle-id: 'com.feralfile.app'
-          profile-type: 'IOS_APP_STORE'
+          bundle-id: "com.feralfile.app"
+          profile-type: "IOS_APP_STORE"
           issuer-id: ${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}
           api-key-id: ${{ secrets.FF_TESTFLIGHT_KEY_ID }}
           api-private-key: ${{ secrets.FF_TESTFLIGHT_API_TOKEN }}
@@ -125,7 +125,7 @@ jobs:
       - name: Extract provisioning profile metadata
         run: |
           PROFILES='${{ steps.profiles.outputs.profiles }}'
-          
+
           if [[ -z "$PROFILES" ]]; then
             echo "No provisioning profiles downloaded"
             exit 1
@@ -248,20 +248,20 @@ jobs:
           IPA_PATH="$(ls "$EXPORT_PATH"/*.ipa | head -1)"
           echo "IOS_IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
 
-      - name: Install sentry-cli & create Sentry release and upload iOS debug symbols
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-        run: |
-          curl -sL https://sentry.io/get-cli/ | bash
-          sentry-cli --version
-          RELEASE="com.feralfile.app@${IOS_BUILD_NAME}+${IOS_BUILD_NUMBER}"
-          echo "Sentry release: $RELEASE"
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases new "$RELEASE"
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases set-commits "$RELEASE" --auto || true
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" debug-files upload --include-sources --wait "$ARCHIVE_PATH/dSYMs"
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases finalize "$RELEASE"
+      # - name: Install sentry-cli & create Sentry release and upload iOS debug symbols
+      #   env:
+      #     SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      #     SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      #     SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+      #   run: |
+      #     curl -sL https://sentry.io/get-cli/ | bash
+      #     sentry-cli --version
+      #     RELEASE="com.feralfile.app@${IOS_BUILD_NAME}+${IOS_BUILD_NUMBER}"
+      #     echo "Sentry release: $RELEASE"
+      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases new "$RELEASE"
+      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases set-commits "$RELEASE" --auto || true
+      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" debug-files upload --include-sources --wait "$ARCHIVE_PATH/dSYMs"
+      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases finalize "$RELEASE"
 
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v3
