@@ -97,12 +97,16 @@ class FF1WifiConnectionState {
   /// Creates a connection state.
   const FF1WifiConnectionState({
     required this.isConnected,
+    this.isConnecting = false,
     this.device,
     this.error,
   });
 
   /// Whether device is connected over WiFi.
   final bool isConnected;
+
+  /// Whether connection is in progress (establishing WebSocket).
+  final bool isConnecting;
 
   /// Connected device.
   final FF1Device? device;
@@ -113,11 +117,13 @@ class FF1WifiConnectionState {
   /// Copy with updated fields.
   FF1WifiConnectionState copyWith({
     bool? isConnected,
+    bool? isConnecting,
     FF1Device? device,
     Object? error,
   }) {
     return FF1WifiConnectionState(
       isConnected: isConnected ?? this.isConnected,
+      isConnecting: isConnecting ?? this.isConnecting,
       device: device ?? this.device,
       error: error,
     );
@@ -153,7 +159,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       return;
     }
 
-    state = state.copyWith(device: device);
+    state = state.copyWith(device: device, isConnecting: true);
 
     try {
       await _control.connect(
@@ -164,14 +170,20 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
 
       state = state.copyWith(
         isConnected: true,
+        isConnecting: false,
         device: device,
       );
     } on Exception catch (e) {
       state = state.copyWith(
         isConnected: false,
+        isConnecting: false,
         error: e,
       );
       rethrow;
+    } finally {
+      if (state.isConnecting) {
+        state = state.copyWith(isConnecting: false);
+      }
     }
   }
 
@@ -189,6 +201,9 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   }
 
   /// Reconnect to device (using cached params)
+  ///
+  /// Does not set [isConnecting]; "Connecting" status is shown only for
+  /// initial connect, not for background reconnects (app resume, etc.).
   Future<void> reconnect() async {
     if (state.device == null) {
       return;
@@ -283,6 +298,14 @@ final ff1DeviceConnectedProvider = Provider<bool>((ref) {
     loading: () => false,
     error: (_, _) => false,
   );
+});
+
+/// Whether WebSocket connection to relayer is in progress.
+///
+/// Used by now displaying bar to show "Connecting to FF1-XXX" during connect.
+final ff1WifiConnectingProvider = Provider<bool>((ref) {
+  final connectionState = ref.watch(ff1WifiConnectionProvider);
+  return connectionState.isConnecting;
 });
 
 // ============================================================================

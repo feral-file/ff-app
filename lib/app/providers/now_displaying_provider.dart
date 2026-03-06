@@ -137,6 +137,10 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       ff1ConnectionStatusStreamProvider,
       (_, _) => unawaited(Future.microtask(_recompute)),
     );
+    ref.listen<bool>(
+      ff1WifiConnectingProvider,
+      (_, _) => unawaited(Future.microtask(_recompute)),
+    );
     ref.listen<AsyncValue<List<PlaylistItem>>>(
       nowDisplayingCachedPlaylistItemsProvider,
       (_, _) => unawaited(Future.microtask(_recompute)),
@@ -177,6 +181,10 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     }
 
     final isConnected = ref.read(ff1DeviceConnectedProvider);
+    final isConnecting = ref.read(ff1WifiConnectingProvider);
+    if (isConnecting) {
+      return DeviceConnecting(device);
+    }
     if (!isConnected) {
       return DeviceDisconnected(device);
     }
@@ -305,6 +313,12 @@ class LoadingNowDisplaying extends NowDisplayingStatus {
 
   final FF1Device? device;
   final String? playlistId;
+}
+
+class DeviceConnecting extends NowDisplayingStatus {
+  const DeviceConnecting(this.device);
+
+  final FF1Device device;
 }
 
 class DeviceDisconnected extends NowDisplayingStatus {

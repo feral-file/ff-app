@@ -229,6 +229,9 @@ class FakeWifiTransport implements FF1WifiTransport {
   bool get isConnected => false;
 
   @override
+  bool get isConnecting => false;
+
+  @override
   Future<void> connect({
     required FF1Device device,
     required String userId,

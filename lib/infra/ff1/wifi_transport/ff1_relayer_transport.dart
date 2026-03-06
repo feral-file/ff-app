@@ -79,6 +79,9 @@ class FF1RelayerTransport implements FF1WifiTransport {
   bool get isConnected => _isConnected;
 
   @override
+  bool get isConnecting => _isConnecting;
+
+  @override
   Stream<FF1NotificationMessage> get notificationStream =>
       _notificationController.stream;
 
@@ -430,6 +433,11 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
       };
       mainSendPort.send(errorData);
       unawaited(closeChannel());
+      // Send disconnected so main schedules reconnect (initial connect failure)
+      const disconnectedEvent = _RelayerEventMessage(
+        type: _RelayerEventType.disconnected,
+      );
+      mainSendPort.send(disconnectedEvent.toJson());
     }
   }
 

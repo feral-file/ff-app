@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/widgets.dart';
@@ -56,6 +57,11 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
         ref
             .read(tokensSyncCoordinatorProvider.notifier)
             .syncAllTrackedAddresses(),
+      );
+      // Reconnect relayer WebSocket when app resumes; Timer-based reconnect
+      // does not fire while app is suspended.
+      unawaited(
+        ref.read(ff1WifiConnectionProvider.notifier).reconnect(),
       );
     }
   }

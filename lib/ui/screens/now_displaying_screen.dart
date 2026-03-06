@@ -136,6 +136,24 @@ class _Body extends ConsumerWidget {
       );
     }
 
+    if (status is DeviceConnecting) {
+      final device = (status as DeviceConnecting).device;
+      final name = device.name.isNotEmpty ? device.name : 'FF1';
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: AppColor.white),
+            SizedBox(height: LayoutConstants.space4),
+            Text(
+              'Connecting to $name',
+              style: AppTypography.body(context).white,
+            ),
+          ],
+        ),
+      );
+    }
+
     if (status is DeviceDisconnected) {
       final device = (status as DeviceDisconnected).device;
       return Padding(
