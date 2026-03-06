@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
@@ -20,9 +23,11 @@ void main() {
   late IntegrationTestContext context;
   late AddressService addressService;
   late SpyIndexerServiceIsolate spyIsolate;
+  late _TestAppStateService testAppStateService;
 
   setUpAll(() async {
     context = await createIntegrationTestContext();
+    testAppStateService = _TestAppStateService();
 
     final realIsolate = IndexerServiceIsolate(
       endpoint: AppConfig.indexerApiUrl,
@@ -54,11 +59,11 @@ void main() {
       personalTokensSyncService: PersonalTokensSyncService(
         indexerService: indexerService,
         databaseService: context.databaseService,
-        appStateService: _FakeAppStateService(),
+        appStateService: testAppStateService,
       ),
       pendingAddressesStore: PendingAddressesStore(),
       indexerServiceIsolate: spyIsolate,
-      appStateService: _FakeAppStateService(),
+      appStateService: testAppStateService,
     );
   });
 
@@ -80,6 +85,7 @@ void main() {
         value: inputDomain,
       );
       final resolvedAddress = playlist.ownerAddress!;
+      testAppStateService.setTargetAddress(resolvedAddress);
 
       // Poll until tokens in DB > 100 (indexing completes).
       const pollInterval = Duration(seconds: 5);
@@ -94,7 +100,7 @@ void main() {
           (p) => p.ownerAddress?.toUpperCase() == resolvedAddress.toUpperCase(),
         ).toList();
         if (match.isNotEmpty) {
-          tokenCount = match.first.itemCount ?? 0;
+          tokenCount = match.first.itemCount;
           if (tokenCount > 100) break;
         }
         await Future<void>.delayed(pollInterval);
@@ -105,6 +111,12 @@ void main() {
         greaterThan(100),
         reason: 'Expected >100 tokens ingested for $inputDomain.',
       );
+
+      // Wait for background indexing to fully complete before test exits.
+      // AddressService._scheduleAddressIndexing fires unawaited work; if we exit
+      // early, tearDown closes the DB while that work still runs, causing
+      // "Channel was closed" and "failed after test completion" on CI.
+      await testAppStateService.whenIndexingCompleted();
 
       // Verify all flow steps are called. Implementation uses fast-path fetch
       // (fetchTokens) before index for incremental UX, so we only assert:
@@ -127,8 +139,32 @@ void main() {
   );
 }
 
-class _FakeAppStateService implements AppStateServiceBase {
+/// App state service that completes a future when indexing reaches [completed]
+/// for the target address. Used to wait for background indexing before tearDown.
+class _TestAppStateService implements AppStateServiceBase {
+  _TestAppStateService();
+
   final List<String> _tracked = <String>[];
+  String? _targetAddressNormalized;
+  Completer<void>? _completer;
+
+  void setTargetAddress(String address) {
+    _targetAddressNormalized = address.toNormalizedAddress();
+    _completer = Completer<void>();
+  }
+
+  /// Waits for indexing to complete for the target address. Call after
+  /// [setTargetAddress]. Times out after 5 minutes to avoid hanging.
+  Future<void> whenIndexingCompleted() async {
+    final c = _completer;
+    if (c == null) return;
+    await c.future.timeout(
+      const Duration(minutes: 5),
+      onTimeout: () => throw TimeoutException(
+        'Indexing did not complete within 5 minutes',
+      ),
+    );
+  }
 
   @override
   Future<void> addTrackedAddress(String address, {String alias = ''}) async {
@@ -139,7 +175,18 @@ class _FakeAppStateService implements AppStateServiceBase {
   Future<void> setAddressIndexingStatus({
     required String address,
     required AddressIndexingProcessStatus status,
-  }) async {}
+  }) async {
+    if (_targetAddressNormalized == null || _completer == null || _completer!.isCompleted) {
+      return;
+    }
+    if (address.toNormalizedAddress() != _targetAddressNormalized) return;
+    // Complete on terminal states so we never hang (completed or failed).
+    if (status.state == AddressIndexingProcessState.completed ||
+        status.state == AddressIndexingProcessState.failed ||
+        status.state == AddressIndexingProcessState.stopped) {
+      _completer!.complete();
+    }
+  }
 
   @override
   Future<void> trackPersonalAddress(String address) async {
