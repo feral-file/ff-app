@@ -19,12 +19,12 @@ class IndexingStatusText {
 /// ready/found counts.
 ///
 /// Patterns:
+/// - idle: Syncing • {ready} (fallback for already-indexed addresses)
 /// - indexingTriggered, waitingForIndexStatus, syncingTokens: Syncing • ...
 ///   (IndexingJobStatus.completed is just one step; process may still be syncing)
 /// - paused: Paused • {ready} ready • resumes later
 /// - completed: Up to date • {works} works (only when processStatus.state is completed)
 /// - failed: Sync issue (+ retry)
-/// - idle + readyCount: fallback for already-indexed addresses
 IndexingStatusText deriveIndexingStatusText({
   required int? readyCount, AddressIndexingProcessStatus? processStatus,
   AddressIndexingJobResponse? job,
