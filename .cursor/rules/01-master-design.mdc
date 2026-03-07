@@ -1,88 +1,40 @@
 ---
-description: Feral File Flutter master design (DP-1 + Riverpod flow + comms layering + tokens)
+description: Core architecture boundaries and non-negotiable system constraints for ff-app
 globs:
   - "lib/**"
   - "test/**"
-  - "pubspec.yaml"
 alwaysApply: true
 ---
 
-# Cursor Project Rule — Feral File Mobile (Flutter)
+# Core Architecture Rule
 
-You are working in a **Flutter** codebase. Follow these rules **by default** unless the user explicitly overrides.
+Use this rule for structural decisions and layering boundaries.
 
-## 1) Master constraints (do not violate)
-- **Riverpod is mandatory** as the master flow driver (global state, app events, orchestration).
-- **DP-1 terminology lock:** only **Channel / Playlist / Work** as domain objects. “Exhibition/Season/Program” are *playlist roles* (UI chrome), never new types.
-- **Deletion-first:** prefer removing legacy/duplicate concepts over extending them.
-- **OSS-first posture:** keep protocol/data surfaces portable and auditable.
-- **No legacy by default:** no migration/legacy compatibility layer unless explicitly requested and approved.
+## 1) Non-negotiable constraints
+- Riverpod is the single shared flow driver for app/business state and external FF1 events.
+- Offline-first behavior is required: local persistence remains the primary read path.
+- FF1 integration must preserve the `transport -> protocol -> control` separation.
+- Deletion-first: remove legacy/duplicate paths before adding new ones.
+- No migration/legacy compatibility layers unless explicitly requested.
+- Prefer stateless, testable services/utilities by default; introduce stateful services only when lifecycle/orchestration/session needs require state.
 
-(Background: Strategy + app spec + trust constraints.) 
+## 2) Layer boundaries
+- `ui/`: rendering and interaction only.
+- `app/`: orchestration, providers/notifiers, navigation intents.
+- `domain/`: pure business logic and domain models.
+- `infra/`: persistence, network, protocol/transport adapters.
 
-## 2) Architecture (Flutter layering)
-Hard layering:
-- `ui/` (widgets, screens)  
-- `app/` (Riverpod providers/notifiers; flow orchestration; navigation intents)  
-- `domain/` (DP-1 models, normalization, pure logic)  
-- `infra/` (storage, transports, protocol implementation)
+Required direction:
+- `ui -> app -> domain -> infra`
 
-Rules:
-- UI never calls transports directly.
-- Side effects live behind providers (repositories/services).
-- Domain is pure and testable (no Flutter imports).
-- Existing code that violates this should be removed/replaced, not wrapped with compatibility abstractions.
+## 3) Boundary enforcement
+- Widgets must not call transports/protocol clients directly.
+- Side effects (network/db/device) must execute behind app/infra boundaries, not in widget build paths.
+- Domain code must stay Flutter-free and testable.
+- Changes that violate layering should be replaced, not wrapped with compatibility abstractions.
+- Services should be dependency-injected and resettable in tests; avoid singleton-held mutable business state.
 
-## 3) Riverpod usage rules (flow driver)
-- All cross-screen state and external device events must enter via Riverpod providers.
-- Prefer `Notifier/AsyncNotifier` patterns for state machines.
-- Use provider overrides for tests; never require a real FF1 in unit tests.
-
-## 4) Offline-first DP-1 data design
-- Persist DP-1 entities (Channel/Playlist/Work) and relationships.
-- Personal playlists and curated playlists are both DP-1 **Playlists** (no custom “CuratedPlaylist”).
-- Use DP-1 IDs (`ch_*`, `pl_*`, `wk_*`) consistently.
-
-## 5) FF1 comms: transport/protocol/control split (required)
-Implement three distinct layers:
-1) **Transport**: Bluetooth / Wi-Fi adapters (LAN + relayer). Handles connection lifecycle.
-2) **Protocol**: message formats + versioning + serialization.
-3) **Control**: command/state machine using protocol interfaces.
-
-Rule: changing protocol must not force rewriting control logic.
-
-## 6) Global external events
-External events (disconnect, FF1 internet down, pairing required) must:
-- propagate through Riverpod
-- render via a shared global notice component
-- work on any screen without special-case hacks
-
-## 7) Master Theme / Figma token readiness
-- Centralize tokens (typography scale, spacing, radii, colors).
-- Do not scatter literal sizes/colors across widgets.
-- Prefer token references so updating from Figma exports is low-friction.
-
-## 8) Default behavior when implementing
-- Produce the **smallest coherent change**.
-- If asked to add a feature, first ask: “What can be deleted or simplified?”
-- If a new concept is proposed, map it to DP-1 terms or refuse it.
-- **Write testable code when applicable**: keep `domain/` pure, inject side-effect dependencies via providers, and avoid hidden singleton state.
-- Follow mandatory TDD flow from `.cursor/rules/35-testing-tdd.mdc` (includes post-implementation validation).
-- If asked to fix a Sentry issue using a short-id, first run `scripts/agent-helpers/sentry_issue_report.sh --issue-id <short-id>` to fetch issue details and use that output to analyze root cause before implementing the fix.
-
-## 9) Out of scope (do not add)
-- Auth / passkeys / wallets
-- Localization
-- Performance benchmarks
-- Per-exhibition hacks or one-off object types
-- Legacy migration by default
-
-## 10) Definition of Done (DoD)
-A task is considered complete when:
-1. **Post-implementation script clean** — see `.cursor/rules/35-testing-tdd.mdc` §4.
-2. **Build succeeds** — `flutter build` succeeds without errors on both Android and iOS targets.
-3. **Architecture respected** — Follows layering (ui/ → app/ → domain/ → infra/), no violations of separation rules.
-4. **DP-1 terminology locked** — Only Channel/Playlist/Work as domain objects; playlist roles expressed via fields/enums.
-5. **Riverpod flow maintained** — All side effects routed through providers; no hidden singleton state.
-6. **Testable code (if applicable)** — Dependencies are injectable (providers/constructors), critical logic has unit tests (use fakes via overrides).
-7. **Commit message clear** — Describes the *why*, not just the *what*; references task/issue if applicable.
+## 4) Completion architecture checks
+- Architecture boundaries remain intact after changes.
+- No hidden singleton business-flow state is introduced.
+- FF1 control logic changes do not require transport/protocol rewrites unless interface contracts changed.

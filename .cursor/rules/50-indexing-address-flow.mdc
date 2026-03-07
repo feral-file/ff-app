@@ -1,138 +1,35 @@
 ---
-description: Indexing address flow — trigger, poll status, incremental token fetch
+description: Canonical address indexing flow (trigger, poll, incremental ingest)
 globs:
+  - "lib/infra/services/address_service.dart"
   - "lib/infra/services/indexer_service.dart"
   - "lib/infra/services/indexer_sync_service.dart"
   - "lib/infra/services/personal_tokens_sync_service.dart"
-  - "lib/infra/workers/**/*.dart"
   - "lib/app/providers/indexer_tokens_provider.dart"
 alwaysApply: true
 ---
 
-# Cursor Rule: Indexing Address Flow
+# Address Indexing Flow Rule
 
-This document describes the canonical flow for indexing an address and ingesting tokens.
+This rule governs address indexing behavior only.
 
-## Flow Steps
+## 1) Canonical flow
+1. Trigger indexing for address list (`indexAddressesList`).
+2. Poll workflow status per address (`getAddressIndexingJobStatus`).
+3. Fetch token pages incrementally while job is active.
+4. Ingest fetched tokens into local DB immediately.
+5. Stop when terminal status is reached.
 
-### Step 1: Trigger indexing
+## 2) Incremental UX requirement
+- On each status poll while non-terminal, fetch and ingest available token pages.
+- Users must see partial token results before job completion.
 
-| Field           | Value                                                                                                 |
-| --------------- | ----------------------------------------------------------------------------------------------------- |
-| **Name**        | Trigger indexing                                                                                      |
-| **Description** | Call the indexer to queue address(es) for indexing. Indexer starts a background workflow per address. |
-| **Input**       | `addresses: List<String>` — wallet addresses to index (e.g. `["0x1234...", "tz1..."]`)                |
-| **Output**      | `List<AddressIndexingResult>` — per-address `{ address, workflow_id }`                                |
-| **API**         | `IndexerService.indexAddressesList(addresses)`                                                        |
-| **GraphQL**     | `mutation triggerAddressIndexing($addresses: [String!]!)`                                             |
+## 3) Terminal state handling
+- Stop polling when `status.isDone == true`.
+- `completed`: success path.
+- `failed` or `canceled`: terminal error path; stop fetching.
 
-**Output shape:**
-
-```json
-{ "jobs": [{ "address": "0x1234...", "workflow_id": "uuid-string" }, ...] }
-```
-
----
-
-### Step 2: Poll job status
-
-| Field           | Value                                                                                                            |
-| --------------- | ---------------------------------------------------------------------------------------------------------------- |
-| **Name**        | Poll job status                                                                                                  |
-| **Description** | Query the indexer for the current status of an indexing workflow. Repeat until `status.isDone` is true.          |
-| **Input**       | `workflowId: String` — from Step 1 output                                                                        |
-| **Output**      | `AddressIndexingJobResponse` — `{ workflow_id, address, status, total_tokens_indexed?, total_tokens_viewable? }` |
-| **API**         | `IndexerService.getAddressIndexingJobStatus(workflowId)`                                                         |
-| **GraphQL**     | `query indexingJob($workflow_id: String!)`                                                                       |
-
-**Output shape:**
-
-```json
-{
-  "workflow_id": "uuid-string",
-  "address": "0x1234...",
-  "status": "running" | "paused" | "completed" | "failed" | "canceled",
-  "total_tokens_indexed": 42,
-  "total_tokens_viewable": 40
-}
-```
-
----
-
-### Step 3: Fetch tokens
-
-| Field           | Value                                                                                                                     |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **Name**        | Fetch tokens                                                                                                              |
-| **Description** | Fetch a page of tokens for the address from the indexer. Call **on every** status poll so users see tokens incrementally. |
-| **Input**       | `address: String`, `limit?: int` (max 255, default 50), `offset?: int` (0 for first page)                                 |
-| **Output**      | `TokensPage` — `{ tokens: List<AssetToken>, nextOffset?: int }`                                                           |
-| **API**         | `IndexerService.fetchTokensPageByAddresses(addresses, limit, offset)`                                                     |
-| **GraphQL**     | `query getTokens($owners: [String!], $chains: [String!], $limit: Uint8, $offset: Uint64)`                                 |
-
-**Output shape:**
-
-```json
-{
-  "items": [
-    /* AssetToken objects */
-  ],
-  "offset": 50
-}
-```
-
-- `offset`: next page cursor; `null` when no more pages
-
----
-
-### Step 4: Ingest tokens
-
-| Field           | Value                                                                                               |
-| --------------- | --------------------------------------------------------------------------------------------------- |
-| **Name**        | Ingest tokens                                                                                       |
-| **Description** | Persist fetched tokens into the local DB for the address playlist. UI can display them immediately. |
-| **Input**       | `address: String`, `tokens: List<AssetToken>`                                                       |
-| **Output**      | void (success) or throws on failure                                                                 |
-| **API**         | `DatabaseService.ingestTokensForAddress(address, tokens)`                                           |
-
----
-
-### Step 5: Check done and loop
-
-| Field           | Value                                                                                                 |
-| --------------- | ----------------------------------------------------------------------------------------------------- |
-| **Name**        | Check done and loop                                                                                   |
-| **Description** | If `status.isDone` is true, exit the poll loop. Otherwise wait `pollInterval` and repeat from Step 2. |
-| **Input**       | `status: IndexingJobStatus` — from Step 2 output                                                      |
-| **Output**      | `continue: bool` — false when `status.isDone` is true                                                 |
-
-**Loop:** For each `(address, workflowId)` from Step 1, repeat Steps 2 → 3 → 4 → 5 until Step 5 returns `continue: false`.
-
----
-
-## Incremental UX (mandatory)
-
-Each time we get job status (Step 2), we **must** run Step 3 and Step 4. Users see tokens appear as they are indexed, without waiting for the full job to complete.
-
-## When to stop polling (Step 5)
-
-Stop the poll loop when `status.isDone` is true. `IndexingJobStatus.isDone` is true for these terminal states:
-
-| status    | isDone | isSuccess | Meaning                                       |
-| --------- | ------ | --------- | --------------------------------------------- |
-| running   | false  | false     | Indexing in progress; keep polling            |
-| paused    | false  | false     | Job paused; keep polling or handle separately |
-| completed | true   | true      | Success; stop polling                         |
-| failed    | true   | false     | Job failed; stop polling                      |
-| canceled  | true   | false     | Job canceled; stop polling                    |
-
-**Rule:** Exit the loop when `status.isDone` is true. If `status.isSuccess` is false (failed/canceled), treat as error; do not fetch more tokens for that workflow.
-
-## References
-
-- `lib/domain/models/indexer/workflow.dart` — `IndexingJobStatus`, `AddressIndexingJobResponse`
-- `lib/infra/services/indexer_service.dart` — network-only indexer API
-- `lib/infra/graphql/queries/mutations.dart` — `triggerOwnerIndexingList`
-- `lib/infra/graphql/queries/workflow_queries.dart` — `addressIndexingJobStatusQuery`
-- `lib/infra/graphql/queries/token_queries.dart` — `getTokens`
-- `test/integration/helpers/indexer_domain_integration_helpers.dart` — `waitForAddressIndexingCompletion`, `fetchAllTokensByOffsetCursor`
+## 4) Data integrity constraints
+- Preserve per-address workflow mapping (`address <-> workflow_id`).
+- Avoid duplicate token ingestion for the same address/page cursor.
+- Keep poll loop idempotent and resumable.
