@@ -68,6 +68,7 @@ External events (disconnect, FF1 internet down, pairing required) must:
 - If a new concept is proposed, map it to DP-1 terms or refuse it.
 - **Write testable code when applicable**: keep `domain/` pure, inject side-effect dependencies via providers, and avoid hidden singleton state.
 - Follow mandatory TDD flow from `.cursor/rules/35-testing-tdd.mdc` (includes post-implementation validation).
+- If asked to fix a Sentry issue using a short-id, first run `scripts/agent-helpers/sentry_issue_report.sh --issue-id <short-id>` to fetch issue details and use that output to analyze root cause before implementing the fix.
 
 ## 9) Out of scope (do not add)
 - Auth / passkeys / wallets

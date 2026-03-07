@@ -41,3 +41,14 @@ A task is complete only when:
 1. Post-implementation checks: run the script with changed files only, fix all lint issues and test failures, re-run until clean; then `flutter build` succeeds.
 2. Architecture/layering and DP-1 terminology constraints remain intact.
 3. Riverpod remains the flow driver; side effects stay out of widgets.
+
+## 5) Sentry issue fix workflow
+When asked to fix a Sentry issue and given a short-id:
+1. Use `scripts/agent-helpers/sentry_issue_report.sh --issue-id <short-id>` first to retrieve issue details and analyze root cause.
+2. Implement the fix with tests updated only when needed.
+3. In the pull request, include:
+   - Sentry issue URL built from the short-id (`https://bitmark-inc.sentry.io/issues/<SHORT_ID>/`).
+   - Short summary of the issue.
+   - Root cause.
+   - Solution.
+4. Deliver only fixed code and updated tests if needed. Do not add extra documents unless explicitly required.
