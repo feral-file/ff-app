@@ -17,7 +17,10 @@ Reference:
   https://docs.sentry.io/api/requests/
 
 Environment fallback:
+  SENTRY_TOKEN (preferred)
   SENTRY_AUTH_TOKEN
+  SENTRY_PROJECT_ID
+  SENTRY_ORG_NAME
 USAGE
 }
 
@@ -166,7 +169,7 @@ api_get() {
 ORG_NAME=""
 PROJECT_ID=""
 ISSUE_ID=""
-TOKEN="${SENTRY_AUTH_TOKEN:-}"
+TOKEN="${SENTRY_TOKEN:-${SENTRY_AUTH_TOKEN:-}}"
 OUTPUT_PATH=""
 BASE_URL="https://sentry.io"
 MAX_FRAMES=12
@@ -214,14 +217,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -z "$ORG_NAME" ]]; then
+  ORG_NAME="${SENTRY_ORG_NAME:-}"
+fi
+
+if [[ -z "$PROJECT_ID" ]]; then
+  PROJECT_ID="${SENTRY_PROJECT_ID:-}"
+fi
+
+if [[ -z "$TOKEN" ]]; then
+  TOKEN="${SENTRY_TOKEN:-${SENTRY_AUTH_TOKEN:-}}"
+fi
+
 if [[ -z "$ORG_NAME" || -z "$PROJECT_ID" || -z "$ISSUE_ID" ]]; then
-  echo 'Error: --org-name, --project-id, and --issue-id are required.' >&2
+  echo 'Error: org name, project id, and issue id are required.' >&2
+  echo 'Provide flags (--org-name, --project-id, --issue-id) or env vars (SENTRY_ORG_NAME, SENTRY_PROJECT_ID) with --issue-id.' >&2
   usage
   exit 1
 fi
 
 if [[ -z "$TOKEN" ]]; then
-  echo 'Error: missing Sentry token (use --token or SENTRY_AUTH_TOKEN).' >&2
+  echo 'Error: missing Sentry token (use --token, SENTRY_TOKEN, or SENTRY_AUTH_TOKEN).' >&2
   exit 1
 fi
 
