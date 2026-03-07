@@ -27,6 +27,7 @@ import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/theme/app_theme.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
 import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
+import 'package:app/app/widgets/builder_overlay_scope.dart';
 import 'package:app/ui/widgets/force_update_overlay.dart';
 import 'package:app/widgets/overlays/app_global_overlay_layer.dart';
 import 'package:flutter/material.dart';
@@ -58,16 +59,18 @@ class App extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme(),
       builder: (context, child) {
-        return _AppStartupBootstrap(
-          router: router,
-          child: NowDisplayingVisibilitySync(
+        return BuilderOverlayScope(
+          child: _AppStartupBootstrap(
             router: router,
-            child: Stack(
-              children: [
-                child ?? const SizedBox.shrink(),
-                AppGlobalOverlayLayer(router: router),
-                const ForceUpdateOverlay(),
-              ],
+            child: NowDisplayingVisibilitySync(
+              router: router,
+              child: Stack(
+                children: [
+                  child ?? const SizedBox.shrink(),
+                  AppGlobalOverlayLayer(router: router),
+                  const ForceUpdateOverlay(),
+                ],
+              ),
             ),
           ),
         );
