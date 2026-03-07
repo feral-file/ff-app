@@ -12,12 +12,13 @@ import 'package:logging/logging.dart';
 /// This enables non-UI layers (providers/notifiers) to pause/resume background
 /// work when the app goes to background/foreground.
 ///
-/// When the app transitions to background (paused/inactive/detached), this
+/// When the app transitions to background (paused/detached), this
 /// notifier triggers a WAL checkpoint to ensure all in-flight data is written
 /// to disk. This is the single durability point for all database operations.
 class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
   late final Logger _log;
   late final _Observer _observer;
+  final _checkpointGate = _LifecycleCheckpointGate();
 
   @override
   AppLifecycleState build() {
@@ -48,9 +49,7 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
     // Checkpoint database when app goes to background to ensure durability.
     // This is the single point where we persist all WAL changes to disk,
     // replacing expensive per-operation checkpoints.
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.detached) {
+    if (shouldCheckpointForLifecycleState(state)) {
       unawaited(_checkpointDatabase());
     } else if (state == AppLifecycleState.resumed) {
       unawaited(
@@ -67,12 +66,36 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
   }
 
   Future<void> _checkpointDatabase() async {
+    await _checkpointGate.run(() async {
+      try {
+        final databaseService = ref.read(databaseServiceProvider);
+        await databaseService.checkpoint();
+        _log.info('Database checkpoint completed on app background');
+      } on Exception catch (e) {
+        _log.warning('Failed to checkpoint database: $e');
+      }
+    });
+  }
+}
+
+bool shouldCheckpointForLifecycleState(AppLifecycleState state) {
+  return state == AppLifecycleState.paused ||
+      state == AppLifecycleState.detached;
+}
+
+class _LifecycleCheckpointGate {
+  bool _isRunning = false;
+
+  Future<void> run(Future<void> Function() action) async {
+    if (_isRunning) {
+      return;
+    }
+
+    _isRunning = true;
     try {
-      final databaseService = ref.read(databaseServiceProvider);
-      await databaseService.checkpoint();
-      _log.info('Database checkpoint completed on app background');
-    } on Exception catch (e) {
-      _log.warning('Failed to checkpoint database: $e');
+      await action();
+    } finally {
+      _isRunning = false;
     }
   }
 }
