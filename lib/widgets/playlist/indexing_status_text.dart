@@ -26,7 +26,8 @@ class IndexingStatusText {
 /// - completed: Up to date • {works} works (only when processStatus.state is completed)
 /// - failed: Sync issue (+ retry)
 IndexingStatusText deriveIndexingStatusText({
-  required int? readyCount, AddressIndexingProcessStatus? processStatus,
+  required int? readyCount,
+  AddressIndexingProcessStatus? processStatus,
   AddressIndexingJobResponse? job,
 }) {
   final state = processStatus?.state ?? AddressIndexingProcessState.idle;
@@ -80,14 +81,17 @@ IndexingStatusText deriveIndexingStatusText({
               text: _joinParts(<String>[
                 'Syncing',
                 if (readyCount != null) '$readyCount ready',
-                if (job.totalTokensViewable != null)
-                  '${job.totalTokensViewable} found',
+                if (job.totalTokensIndexed != null)
+                  '${job.totalTokensIndexed} found',
               ]),
               showRetry: false,
             );
           case IndexingJobStatus.failed:
           case IndexingJobStatus.canceled:
-            return const IndexingStatusText(text: 'Sync issue', showRetry: true);
+            return const IndexingStatusText(
+              text: 'Sync issue',
+              showRetry: true,
+            );
         }
       }
       return IndexingStatusText(
