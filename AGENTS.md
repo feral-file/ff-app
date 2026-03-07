@@ -52,3 +52,9 @@ When asked to fix a Sentry issue and given a short-id:
    - Root cause.
    - Solution.
 4. Deliver only fixed code and updated tests if needed. Do not add extra documents unless explicitly required.
+
+## 6) Commit message format
+- All commits must follow the Conventional Commits specification.
+- Use the format: `<type>(<optional-scope>): <description>`.
+- Common types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`, `build`, `ci`, `perf`, `style`.
+- Use `!` after type/scope for breaking changes (example: `feat(api)!: remove legacy endpoint`).
