@@ -89,6 +89,11 @@ class AppDatabase extends _$AppDatabase {
     );
 
     await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_playlists_type_channel_created '
+      'ON playlists(type, channel_id, created_at_us)',
+    );
+
+    await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_items_kind_updated '
       'ON items(kind, updated_at_us)',
     );
@@ -517,29 +522,28 @@ class AppDatabase extends _$AppDatabase {
   /// - 0 = DP1
   /// - 1 = address-based
   Future<List<PlaylistData>> getAllPlaylists({PlaylistType? type}) async {
-    const publisherOrderExpr = CustomExpression<int>(
+    final variables = <Variable<Object>>[];
+    final whereClause =
+        type == null
+            ? ''
+            : (() {
+              variables.add(Variable<int>(type.value));
+              return 'WHERE p.type = ?';
+            })();
+
+    final result = await customSelect(
       '''
-      COALESCE(
-        (
-          SELECT c.publisher_id
-          FROM channels c
-          WHERE c.id = playlists.channel_id
-        ),
-        2147483647
-      )
+      SELECT p.*
+      FROM playlists p
+      LEFT JOIN channels c ON c.id = p.channel_id
+      $whereClause
+      ORDER BY COALESCE(c.publisher_id, 2147483647) ASC, p.created_at_us ASC
       ''',
-    );
-    final query = select(playlists);
-    if (type != null) {
-      query.where((t) => t.type.equals(type.value));
-    }
+      variables: variables,
+      readsFrom: {playlists, channels},
+    ).map((row) => playlists.map(row.data)).get();
 
-    query.orderBy([
-      (t) => OrderingTerm.asc(publisherOrderExpr),
-      (t) => OrderingTerm.asc(t.createdAtUs),
-    ]);
-
-    return query.get();
+    return result;
   }
 
   /// Get address-based playlists.
