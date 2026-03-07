@@ -8,6 +8,16 @@ on:
         required: false
         type: string
         default: '8'
+      feed_endpoint:
+        description: Authoritative feed endpoint origin
+        required: false
+        type: string
+        default: 'https://dp1-feed-operator-api-prod.autonomy-system.workers.dev'
+      required_channel_ids:
+        description: Comma-separated channel IDs to require in snapshot
+        required: false
+        type: string
+        default: ''
 
 jobs:
   snapshot:
@@ -32,6 +42,17 @@ jobs:
           set -euo pipefail
 
           args=("--threads" "${{ inputs.threads }}")
+          args+=("--channels-feed-endpoint" "${{ inputs.feed_endpoint }}")
+
+          if [[ -n "${{ inputs.required_channel_ids }}" ]]; then
+            IFS=',' read -ra required_ids <<< "${{ inputs.required_channel_ids }}"
+            for channel_id in "${required_ids[@]}"; do
+              trimmed="$(echo "$channel_id" | xargs)"
+              if [[ -n "$trimmed" ]]; then
+                args+=("--require-channel-id" "$trimmed")
+              fi
+            done
+          fi
 
           node scripts/build_feed_indexer_sqlite.js "${args[@]}"
 
