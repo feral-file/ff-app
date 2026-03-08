@@ -144,6 +144,23 @@ tests:
 If any value is missing or malformed, those tests are skipped at runtime with a
 clear message rather than failing app startup.
 
+### Orbit 2 seed snapshot build inputs
+
+`scripts/build_feed_indexer_sqlite.js` supports authoritative channel sources while keeping runtime seed-DB-first.
+
+Primary flags:
+
+- `--channels-feed-endpoint <origin>`: source channels from feed `/api/v1/channels`
+- `--channels-source <url-or-file>`: source channels from legacy config or publish artifact JSON
+- `--require-channel-id <id>`: fail build if required channel is missing
+
+The snapshot workflow (`.github/workflows/create-db-snapshot.yml`) now exposes:
+
+- `feed_endpoint`
+- `required_channel_ids` (comma-separated)
+
+This removes manual channel URL edits from the operational path and fails clearly when the canary channel is missing.
+
 ---
 
 ## Key flows to test
@@ -175,6 +192,23 @@ Run:
 ```bash
 flutter test
 ```
+
+### Casey canary preflight (Orbit 2)
+
+Use this preflight before running the >4h hardware soak:
+
+```bash
+node scripts/run_casey_canary_soak.js \
+  --db scripts/ff_feed_indexer_seed.sqlite \
+  --channel-id <CASEY_CHANNEL_ID> \
+  --report ./casey-canary-report.json
+```
+
+What it enforces:
+
+- canary channel exists in seed DB
+- minimum playlist/item thresholds are met
+- reproducible report file includes required evidence checklist for the >=4h soak run
 
 ---
 
