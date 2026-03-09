@@ -9,6 +9,9 @@ import 'package:go_router/go_router.dart';
 /// Main app bar for detail screens (playlist, channel, work, etc.).
 /// Adapted from Feral File old repo MainAppBar.
 /// Has back button with optional label, optional centered title, and actions.
+///
+/// Use [MainAppBar.preferred] when placing in [Scaffold.appBar] so height
+/// adapts to [MediaQuery.textScalerOf] for accessibility (larger text).
 class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// Creates a MainAppBar.
   const MainAppBar({
@@ -31,54 +34,83 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// Optional action widgets on the right.
   final List<Widget> actions;
 
+  /// Returns a [PreferredSizeWidget] with height that adapts to text scaling.
+  ///
+  /// Use this for [Scaffold.appBar] so the app bar grows when the user
+  /// enables larger text (Settings > Display > Font size).
+  static PreferredSizeWidget preferred(
+    BuildContext context, {
+    String? backTitle,
+    String? centeredTitle,
+    Color? backgroundColor,
+    List<Widget> actions = const [],
+  }) {
+    final textScaler = MediaQuery.textScalerOf(context);
+    final scaleFactor = textScaler.scale(1).clamp(1.0, 1.5);
+    final height = LayoutConstants.space18 * scaleFactor;
+    return PreferredSize(
+      preferredSize: Size.fromHeight(height),
+      child: MainAppBar(
+        backTitle: backTitle,
+        centeredTitle: centeredTitle,
+        backgroundColor: backgroundColor,
+        actions: actions,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final appBar = SafeArea(
       bottom: false,
       child: Container(
         width: double.infinity,
-        padding: EdgeInsets.symmetric(
-          horizontal: LayoutConstants.space3,
-          vertical: LayoutConstants.space5,
-        ),
+        padding: EdgeInsets.symmetric(horizontal: LayoutConstants.space3),
         color: backgroundColor ?? Colors.transparent,
-        child: Stack(
+        child: Row(
           children: [
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              child: _BackButton(
-                title: backTitle ?? 'Index',
-                onTap: () => context.pop(),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _BackButton(
+                  title: backTitle ?? 'Index',
+                  onTap: () => context.pop(),
+                ),
               ),
             ),
-            if (centeredTitle != null)
-              Center(
-                child: Text(
-                  centeredTitle!,
-                  style: AppTypography.h3(context).white.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+            Expanded(
+              child: Center(
+                child: centeredTitle != null
+                    ? Text(
+                        centeredTitle!,
+                        style: AppTypography.h4(context).white.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      )
+                    : const SizedBox.shrink(),
               ),
-            if (actions.isNotEmpty)
-              Positioned(
-                right: 0,
-                top: 0,
-                bottom: 0,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < actions.length; i++) ...[
-                      actions[i],
-                      if (i < actions.length - 1)
-                        SizedBox(width: LayoutConstants.space2),
-                    ],
-                  ],
-                ),
+            ),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: actions.isNotEmpty
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          for (var i = 0; i < actions.length; i++) ...[
+                            actions[i],
+                            if (i < actions.length - 1)
+                              SizedBox(width: LayoutConstants.space2),
+                          ],
+                        ],
+                      )
+                    : const SizedBox.shrink(),
               ),
+            ),
           ],
         ),
       ),
@@ -126,7 +158,6 @@ class _BackButton extends StatelessWidget {
           color: Colors.transparent,
           padding: EdgeInsets.symmetric(vertical: LayoutConstants.space2),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
               SvgPicture.asset(
                 'assets/images/icon_back.svg',
@@ -138,10 +169,14 @@ class _BackButton extends StatelessWidget {
                 ),
               ),
               SizedBox(width: LayoutConstants.space3),
-              Text(
-                title,
-                style: AppTypography.body(context).copyWith(
-                  color: PrimitivesTokens.colorsGrey,
+              Flexible(
+                child: Text(
+                  title,
+                  style: AppTypography.body(context).copyWith(
+                    color: PrimitivesTokens.colorsGrey,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
               ),
             ],

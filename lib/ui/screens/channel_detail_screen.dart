@@ -33,7 +33,8 @@ class ChannelDetailScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
-      appBar: const MainAppBar(
+      appBar: MainAppBar.preferred(
+        context,
         backTitle: 'Channels',
         backgroundColor: AppColor.auGreyBackground,
       ),

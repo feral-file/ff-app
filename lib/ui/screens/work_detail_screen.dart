@@ -117,7 +117,8 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     return asyncData.when(
       loading: () => Scaffold(
         backgroundColor: AppColor.auGreyBackground,
-        appBar: MainAppBar(
+        appBar: MainAppBar.preferred(
+          context,
           backTitle: widget.backTitle ?? 'Work',
           backgroundColor: AppColor.auGreyBackground,
         ),
@@ -128,7 +129,8 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
       ),
       error: (error, _) => Scaffold(
         backgroundColor: AppColor.auGreyBackground,
-        appBar: MainAppBar(
+        appBar: MainAppBar.preferred(
+          context,
           backTitle: widget.backTitle ?? 'Work',
           backgroundColor: AppColor.auGreyBackground,
         ),
@@ -142,7 +144,8 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
         if (data == null) {
           return Scaffold(
             backgroundColor: AppColor.auGreyBackground,
-            appBar: MainAppBar(
+            appBar: MainAppBar.preferred(
+              context,
               backTitle: widget.backTitle ?? 'Work',
               backgroundColor: AppColor.auGreyBackground,
             ),
@@ -166,7 +169,8 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                 backgroundColor: AppColor.auGreyBackground,
                 resizeToAvoidBottomInset: false,
                 frontLayerElevation: 1,
-                appBar: MainAppBar(
+                appBar: MainAppBar.preferred(
+                  context,
                   backTitle: widget.backTitle ?? 'Work',
                   backgroundColor: AppColor.auGreyBackground,
                   actions: [
