@@ -64,6 +64,8 @@ class SeedDownloadState {
 /// it can perform an ETag-based refresh. On completion (success/failure/skip)
 /// it opens `SeedDatabaseGate` so Drift can proceed.
 class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
+  bool _syncInProgress = false;
+
   @override
   SeedDownloadState build() {
     return const SeedDownloadState(status: SeedDownloadStatus.idle);
@@ -73,6 +75,10 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   ///
   /// No-ops if a sync is already in progress.
   ///
+  /// Emits [SeedDownloadStatus.syncing] only when a download actually starts
+  /// (ETag changed or no local DB). If ETag is unchanged, status stays idle
+  /// until done.
+  ///
   /// This method may be called again after startup (for example, when the app
   /// resumes from background) to check for a newer remote snapshot.
   Future<bool> syncAtAppStart({
@@ -80,14 +86,10 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     required Future<void> Function() afterReplace,
     bool failSilently = true,
   }) async {
-    if (state.status == SeedDownloadStatus.syncing) {
+    if (_syncInProgress) {
       return false;
     }
-
-    state = const SeedDownloadState(
-      status: SeedDownloadStatus.syncing,
-      progress: 0,
-    );
+    _syncInProgress = true;
 
     final service = ref.read(seedDatabaseSyncServiceProvider);
 
@@ -98,6 +100,12 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       final updated = await service.syncIfNeeded(
         beforeReplace: beforeReplace,
         afterReplace: afterReplace,
+        onDownloadStarted: () {
+          state = const SeedDownloadState(
+            status: SeedDownloadStatus.syncing,
+            progress: 0,
+          );
+        },
         failSilently: failSilently,
         onProgress: (progress) {
           final bucket = (progress * 100).floor();
@@ -128,6 +136,8 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       // Open the gate even on failure so the Drift DB is not blocked forever.
       SeedDatabaseGate.complete();
       return false;
+    } finally {
+      _syncInProgress = false;
     }
   }
 }

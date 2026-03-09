@@ -29,9 +29,14 @@ class SeedDatabaseSyncService {
   final Logger _log;
 
   /// Syncs seed DB from remote when ETag differs from local ObjectBox config.
+  ///
+  /// [onDownloadStarted] is invoked only when a download will occur (ETag
+  /// changed or no local DB). Use it to emit syncing status without flashing
+  /// when the check finds nothing to update.
   Future<bool> syncIfNeeded({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
+    void Function()? onDownloadStarted,
     void Function(double progress)? onProgress,
     bool failSilently = false,
   }) async {
@@ -56,6 +61,7 @@ class SeedDatabaseSyncService {
       }
 
       _log.info('Seed DB refresh needed; downloading latest seed snapshot.');
+      onDownloadStarted?.call();
 
       final tempPath = await _seedDatabaseService.downloadToTemporaryFile(
         onProgress: onProgress,

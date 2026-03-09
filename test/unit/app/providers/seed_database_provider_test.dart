@@ -11,15 +11,24 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   /// Progress values to report via onProgress (e.g. [0.0, 0.5, 1.0]).
   List<double> progressValues = const [0.0, 0.5, 1.0];
 
+  /// When true, skips download (simulates ETag unchanged). onDownloadStarted
+  /// is not called.
+  bool skipDownload = false;
+
   @override
   Future<bool> syncIfNeeded({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
+    void Function()? onDownloadStarted,
     void Function(double progress)? onProgress,
     bool failSilently = false,
   }) async {
     lastFailSilently = failSilently;
     syncCallCount++;
+    if (skipDownload) {
+      return false;
+    }
+    onDownloadStarted?.call();
     await beforeReplace();
     for (final p in progressValues) {
       onProgress?.call(p);
@@ -101,6 +110,34 @@ void main() {
     expect(syncingStates, isNotEmpty);
     final withProgress = syncingStates.where((s) => s.progress != null);
     expect(withProgress, isNotEmpty);
+  });
+
+  test('does not emit syncing when ETag unchanged (no download)', () async {
+    final fakeSyncService = _FakeSeedDatabaseSyncService()..skipDownload = true;
+    final states = <SeedDownloadState>[];
+
+    final container = ProviderContainer.test(
+      overrides: [
+        seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.listen(seedDownloadProvider, (prev, next) => states.add(next));
+
+    await container
+        .read(seedDownloadProvider.notifier)
+        .syncAtAppStart(
+          beforeReplace: () async {},
+          afterReplace: () async {},
+        );
+
+    expect(container.read(seedDownloadProvider).status, SeedDownloadStatus.done);
+
+    final syncingStates = states.where(
+      (s) => s.status == SeedDownloadStatus.syncing,
+    );
+    expect(syncingStates, isEmpty);
   });
 
   test('passes silent-fail flag through to sync service', () async {
