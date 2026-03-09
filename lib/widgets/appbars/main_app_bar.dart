@@ -78,34 +78,39 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
                 ),
               ),
             ),
-            if (centeredTitle != null)
-              Expanded(
-                flex: 2,
-                child: Center(
-                  child: Text(
-                    centeredTitle!,
-                    style: AppTypography.h4(context).white.copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-              )
-            else if (actions.isNotEmpty)
-              const Spacer(),
-            if (actions.isNotEmpty)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var i = 0; i < actions.length; i++) ...[
-                    actions[i],
-                    if (i < actions.length - 1)
-                      SizedBox(width: LayoutConstants.space2),
-                  ],
-                ],
+            Expanded(
+              child: Center(
+                child: centeredTitle != null
+                    ? Text(
+                        centeredTitle!,
+                        style: AppTypography.h4(context).white.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      )
+                    : const SizedBox.shrink(),
               ),
+            ),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: actions.isNotEmpty
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          for (var i = 0; i < actions.length; i++) ...[
+                            actions[i],
+                            if (i < actions.length - 1)
+                              SizedBox(width: LayoutConstants.space2),
+                          ],
+                        ],
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ),
           ],
         ),
       ),
