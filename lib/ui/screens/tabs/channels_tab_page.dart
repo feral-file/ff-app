@@ -7,6 +7,7 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/screens/tabs/tab_reload_guard.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/channels/channel_section.dart';
 import 'package:app/widgets/delayed_loading.dart';
@@ -82,10 +83,27 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
   }
 
   void _loadChannels() {
-    ref.read(channelsProvider(ChannelType.dp1).notifier).loadChannels();
-    ref
-        .read(channelsProvider(ChannelType.localVirtual).notifier)
-        .loadChannels();
+    final curatedState = ref.read(channelsProvider(ChannelType.dp1));
+    final shouldLoadCurated = shouldLoadTabData(
+      isLoading: curatedState.isLoading,
+      hasCachedItems: curatedState.channels.isNotEmpty,
+      hasError: curatedState.error != null,
+    );
+    if (shouldLoadCurated) {
+      ref.read(channelsProvider(ChannelType.dp1).notifier).loadChannels();
+    }
+
+    final personalState = ref.read(channelsProvider(ChannelType.localVirtual));
+    final shouldLoadPersonal = shouldLoadTabData(
+      isLoading: personalState.isLoading,
+      hasCachedItems: personalState.channels.isNotEmpty,
+      hasError: personalState.error != null,
+    );
+    if (shouldLoadPersonal) {
+      ref
+          .read(channelsProvider(ChannelType.localVirtual).notifier)
+          .loadChannels();
+    }
   }
 
   @override

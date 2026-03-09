@@ -7,6 +7,7 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/screens/tabs/tab_reload_guard.dart';
 import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -92,10 +93,27 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
   }
 
   void _loadPlaylists() {
-    ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
-    ref
-        .read(playlistsProvider(PlaylistType.addressBased).notifier)
-        .loadPlaylists();
+    final curatedState = ref.read(playlistsProvider(PlaylistType.dp1));
+    final shouldLoadCurated = shouldLoadTabData(
+      isLoading: curatedState.isLoading,
+      hasCachedItems: curatedState.playlists.isNotEmpty,
+      hasError: curatedState.error != null,
+    );
+    if (shouldLoadCurated) {
+      ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
+    }
+
+    final personalState = ref.read(playlistsProvider(PlaylistType.addressBased));
+    final shouldLoadPersonal = shouldLoadTabData(
+      isLoading: personalState.isLoading,
+      hasCachedItems: personalState.playlists.isNotEmpty,
+      hasError: personalState.error != null,
+    );
+    if (shouldLoadPersonal) {
+      ref
+          .read(playlistsProvider(PlaylistType.addressBased).notifier)
+          .loadPlaylists();
+    }
   }
 
   @override
