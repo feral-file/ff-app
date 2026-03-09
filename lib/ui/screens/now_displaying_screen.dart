@@ -31,7 +31,8 @@ class NowDisplayingScreen extends ConsumerWidget {
     final showMoreIcon = status is NowDisplayingSuccess;
 
     return Scaffold(
-      appBar: MainAppBar(
+      appBar: MainAppBar.preferred(
+        context,
         centeredTitle: 'Now playing',
         backgroundColor: AppColor.auGreyBackground,
         actions: showMoreIcon
