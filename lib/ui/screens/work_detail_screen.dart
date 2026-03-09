@@ -496,6 +496,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                             _infoHeaderHeight) *
                         0.5,
                   ),
+                  if (_isInfoExpand) const BottomSpacing(),
                 ],
               ),
             ),
