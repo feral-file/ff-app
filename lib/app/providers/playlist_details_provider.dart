@@ -67,6 +67,7 @@ class PlaylistDetailsNotifier
   final String _playlistId;
   static final _log = Logger('PlaylistDetailsNotifier');
   StreamSubscription<List<PlaylistItem>>? _dbSubscription;
+  bool _isPlaylistLoaded = false;
 
   @override
   AsyncValue<PlaylistDetailsState> build() {
@@ -82,7 +83,30 @@ class PlaylistDetailsNotifier
     unawaited(
       Future.microtask(_setupDatabaseListener),
     );
+    unawaited(
+      Future.microtask(_loadPlaylistMeta),
+    );
     return const AsyncValue.loading();
+  }
+
+  Future<void> _loadPlaylistMeta() async {
+    if (!ref.mounted || _isPlaylistLoaded) return;
+    _isPlaylistLoaded = true;
+    try {
+      final playlist = await ref
+          .read(databaseServiceProvider)
+          .getPlaylistById(_playlistId);
+      if (!ref.mounted) return;
+      final current = switch (state) {
+        AsyncData(value: final v) => v,
+        _ => null,
+      };
+      if (current != null) {
+        state = AsyncValue.data(current.copyWith(playlist: playlist));
+      }
+    } catch (e, s) {
+      _log.warning('Failed to load playlist metadata for $_playlistId', e, s);
+    }
   }
 
   /// Watch playlist items in DB; on change reload or update total (like old Bloc).
@@ -111,8 +135,17 @@ class PlaylistDetailsNotifier
       _ => null,
     };
     if (current == null || current.items.isEmpty) {
-      final limit = _pageSize > fullList.length ? _pageSize : fullList.length;
-      unawaited(_loadInitial(limit: limit, offset: 0));
+      final initialItems = fullList.take(_pageSize).toList();
+      final hasMore = fullList.length > initialItems.length;
+      state = AsyncValue.data(
+        PlaylistDetailsState(
+          playlist: current?.playlist,
+          items: initialItems,
+          total: fullList.length,
+          hasMore: hasMore,
+          offset: initialItems.length,
+        ),
+      );
       return;
     }
     // Same as Bloc: use loaded count for comparison and reload slice size.
@@ -138,37 +171,6 @@ class PlaylistDetailsNotifier
       if (current.total != fullList.length) {
         state = AsyncValue.data(current.copyWith(total: fullList.length));
       }
-    }
-  }
-
-  Future<void> _loadInitial({
-    required int limit,
-    required int offset,
-  }) async {
-    try {
-      final databaseService = ref.read(databaseServiceProvider);
-      final playlist = await databaseService.getPlaylistById(_playlistId);
-      if (!ref.mounted) return;
-      final items = await databaseService.getPlaylistItems(
-        _playlistId,
-        limit: limit,
-        offset: offset,
-      );
-      if (!ref.mounted) return;
-      final nextOffset = offset + items.length;
-      state = AsyncValue.data(
-        PlaylistDetailsState(
-          playlist: playlist,
-          items: items,
-          total: items.length,
-          hasMore: items.length >= limit,
-          offset: nextOffset,
-        ),
-      );
-    } catch (e, stack) {
-      if (!ref.mounted) return;
-      _log.severe('Failed to load playlist details for $_playlistId', e, stack);
-      state = AsyncValue.error(e, stack);
     }
   }
 
