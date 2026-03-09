@@ -174,13 +174,14 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                       onDeviceSelected: (device) async {
                         final canvas = ref.read(canvasClientServiceV2Provider);
                         final items = [item];
-                        final singleWorkPlaylist =
-                            PlaylistExt.fromPlaylistItem(items);
-                        final dp1 =
-                            DatabaseConverters.playlistAndItemsToDP1Playlist(
-                          singleWorkPlaylist,
+                        final singleWorkPlaylist = PlaylistExt.fromPlaylistItem(
                           items,
                         );
+                        final dp1 =
+                            DatabaseConverters.playlistAndItemsToDP1Playlist(
+                              singleWorkPlaylist,
+                              items,
+                            );
                         await canvas.castPlaylist(
                           device,
                           dp1,
@@ -246,9 +247,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                       color: Colors.transparent,
                       height:
                           (MediaQuery.of(context).size.height -
-                                  (_appBarBottomDy ?? 80) -
-                                  _infoHeaderHeight) *
-                              0.5,
+                              (_appBarBottomDy ?? 80) -
+                              _infoHeaderHeight) *
+                          0.5,
                       width: MediaQuery.of(context).size.width,
                     ),
                   ),
@@ -322,7 +323,8 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
             ],
           ),
         ),
-        if (!_isInfoExpand) const BottomSpacing(),
+        if (!_isInfoExpand)
+          const BottomSpacing(checkNowDisplayingVisibility: false),
       ],
     );
   }
@@ -426,7 +428,10 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     visible: false,
                     child: Padding(
                       padding: const EdgeInsets.only(
-                          left: 16, right: 16, bottom: 20),
+                        left: 16,
+                        right: 16,
+                        bottom: 20,
+                      ),
                       child: OutlineButton(
                         color: Colors.transparent,
                         text: '',
@@ -467,10 +472,10 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                           ownerAddressesAsync.when(
                             data: (addresses) =>
                                 buildWorkDetailTokenOwnershipSection(
-                              context,
-                              ownerAddresses: addresses,
-                              token: token,
-                            ),
+                                  context,
+                                  ownerAddresses: addresses,
+                                  token: token,
+                                ),
                             loading: () => const SizedBox.shrink(),
                             error: (_, _) => const SizedBox.shrink(),
                           ),
@@ -478,10 +483,10 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                           ownerAddressesAsync.when(
                             data: (addresses) =>
                                 buildWorkDetailProvenanceSection(
-                              context,
-                              ownerAddresses: addresses,
-                              token: token,
-                            ),
+                                  context,
+                                  ownerAddresses: addresses,
+                                  token: token,
+                                ),
                             loading: () => const SizedBox.shrink(),
                             error: (_, _) => const SizedBox.shrink(),
                           ),
@@ -491,12 +496,14 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     ),
                   ),
                   SizedBox(
-                    height: (MediaQuery.of(context).size.height -
+                    height:
+                        (MediaQuery.of(context).size.height -
                             (_appBarBottomDy ?? 80) -
                             _infoHeaderHeight) *
                         0.5,
                   ),
-                  if (_isInfoExpand) const BottomSpacing(),
+                  if (_isInfoExpand)
+                    const BottomSpacing(checkNowDisplayingVisibility: false),
                 ],
               ),
             ),

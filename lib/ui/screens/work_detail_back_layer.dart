@@ -97,7 +97,7 @@ class WorkDetailBackLayer extends StatelessWidget {
                   color: Colors.transparent,
                 ),
               ),
-              const BottomSpacing(),
+              const BottomSpacing(checkNowDisplayingVisibility: false),
             ],
           ),
       ],
