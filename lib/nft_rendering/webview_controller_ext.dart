@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -9,9 +8,7 @@ extension WebViewControllerExtension on WebViewController {
     try {
       await runJavaScript(source);
     } catch (e) {
-      if (kDebugMode) {
-        print('Error evaluateJavascript: $e');
-      }
+      _log.fine('evaluateJavascript failed: $e');
     }
   }
 

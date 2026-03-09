@@ -51,7 +51,7 @@ routerProvider = Provider.family<GoRouter, String>((
 ) {
   return GoRouter(
     navigatorKey: appNavigatorKey,
-    debugLogDiagnostics: true,
+    debugLogDiagnostics: false,
     initialLocation: initialLocation,
     observers: [
       routeObserver,
