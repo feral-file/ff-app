@@ -266,10 +266,10 @@ class SeedDatabaseService {
             // 10-minute timeout for a ~300 MB file on slow connections.
             receiveTimeout: const Duration(minutes: 120),
             sendTimeout: const Duration(seconds: 30),
-            fileAccessMode: resumeFrom > 0
-                ? FileAccessMode.writeOnlyAppend
-                : FileAccessMode.write,
           ),
+          fileAccessMode: resumeFrom > 0
+              ? FileAccessMode.append
+              : FileAccessMode.write,
         );
         return;
       } on DioException catch (e) {
