@@ -1,3 +1,5 @@
+import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
+import 'package:app/app/providers/current_route_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -91,7 +93,30 @@ class NowDisplayingVisibilityNotifier
       });
     });
 
-    return const NowDisplayingVisibilityState.initial();
+    // Listen to current route (path + modal/drawer) from AppRouteObserver.
+    // Route (modal/drawer) has higher priority than path: when modal/drawer
+    // is shown, hide regardless of path.
+    ref.listen(currentRouteProvider, (previous, next) {
+      _applyRouteState(next);
+    });
+
+    // Initial sync from current route state
+    final routeState = ref.read(currentRouteProvider);
+    return _initialStateFromRoute(routeState);
+  }
+
+  void _applyRouteState(AppRouteState routeState) {
+    state = state.copyWith(
+      shouldShowNowDisplaying: shouldShowNowDisplayingForRoute(routeState),
+      bottomSheetVisibility: routeState.hasModalOrDrawer,
+    );
+  }
+
+  NowDisplayingVisibilityState _initialStateFromRoute(AppRouteState routeState) {
+    return NowDisplayingVisibilityState.initial().copyWith(
+      shouldShowNowDisplaying: shouldShowNowDisplayingForRoute(routeState),
+      bottomSheetVisibility: routeState.hasModalOrDrawer,
+    );
   }
 
   void setShouldShowNowDisplaying(bool value) {

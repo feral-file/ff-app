@@ -1,47 +1,26 @@
 import 'dart:async';
 
+import 'package:app/app/now_displaying/now_displaying_visibility_config.dart';
+import 'package:app/app/providers/current_route_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
-import 'package:app/app/routing/routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
-/// Route paths where now displaying must not be shown.
-///
-/// This list mirrors the legacy app behavior for screens that suppress
-/// the floating now displaying bar.
-const routesThatHideNowDisplayingBar = <String>[
-  Routes.onboarding,
-  Routes.onboardingIntroducePage,
-  Routes.onboardingAddAddressPage,
-  Routes.onboardingSetupFf1Page,
-  Routes.ff1DevicePickerPage,
-  Routes.connectFF1Page,
-  Routes.addAddressPage,
-  Routes.addAliasPage,
-  Routes.startSetupFf1,
-  Routes.scanWifiNetworks,
-  Routes.enterWifiPassword,
-  Routes.deviceConfiguration,
-  Routes.ff1Updating,
-  Routes.nowDisplaying,
-  Routes.keyboardControl,
-  Routes.releaseNotes,
-  Routes.releaseNoteDetail,
-  Routes.settings,
-  Routes.settingsEula,
-  Routes.settingsPrivacy,
-  Routes.scanQrPage,
-];
 
 /// Minimum scrollable content extent required before scroll should toggle
 /// now displaying visibility.
 const nowDisplayingScrollToggleThreshold = 100.0;
 
-/// Returns true when the now displaying bar should be visible for [path].
-bool shouldShowNowDisplayingForPath(String path) {
+/// Returns true when the now displaying bar should be visible for [routeState].
+///
+/// Route (modal/drawer) has higher priority than path: when modal/drawer
+/// is shown, returns false regardless of path.
+bool shouldShowNowDisplayingForRoute(AppRouteState routeState) {
+  if (routeState.hasModalOrDrawer) {
+    return false;
+  }
+  final path = routeState.path;
   for (final hidden in routesThatHideNowDisplayingBar) {
     if (path == hidden || path.startsWith('$hidden/')) {
       return false;
@@ -61,21 +40,18 @@ bool shouldReactToNowDisplayingScroll({
 
 /// Syncs scroll + keyboard visibility into [nowDisplayingVisibilityProvider].
 ///
-/// This keeps the provider pure: it exposes update methods; this widget
-/// is responsible for wiring platform/UI signals into those methods.
+/// Route visibility (path + modal/drawer) is driven by [currentRouteProvider],
+/// which is updated by [AppRouteObserver]. This widget only wires scroll and
+/// keyboard signals.
 class NowDisplayingVisibilitySync extends ConsumerStatefulWidget {
   /// Creates a [NowDisplayingVisibilitySync].
   const NowDisplayingVisibilitySync({
     required this.child,
-    required this.router,
     super.key,
   });
 
   /// Subtree that sends scroll notifications for visibility sync.
   final Widget child;
-
-  /// Router used to map current path into show/hide visibility.
-  final GoRouter router;
 
   @override
   ConsumerState<NowDisplayingVisibilitySync> createState() =>
@@ -98,41 +74,22 @@ class _NowDisplayingVisibilitySyncState
       notifier.setKeyboardVisibility,
     );
 
-    // Sync route/location visibility from go_router.
-    widget.router.routeInformationProvider.addListener(_handleRouteChanged);
-
     // Riverpod forbids modifying providers while the widget tree is building.
-    // Defer the "initial sync" writes until after the first frame.
+    // Defer the initial keyboard sync until after the first frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
       }
-
       ref
           .read(nowDisplayingVisibilityProvider.notifier)
           .setKeyboardVisibility(_keyboardVisibilityController.isVisible);
-      _handleRouteChanged();
     });
   }
 
   @override
   void dispose() {
-    widget.router.routeInformationProvider.removeListener(_handleRouteChanged);
     unawaited(_keyboardSubscription.cancel());
     super.dispose();
-  }
-
-  void _handleRouteChanged() {
-    final routeInfo = widget.router.routeInformationProvider.value;
-    final path = routeInfo.uri.path.isEmpty ? Routes.home : routeInfo.uri.path;
-
-    ref
-        .read(nowDisplayingVisibilityProvider.notifier)
-        .setShouldShowNowDisplaying(_shouldShowForPath(path));
-  }
-
-  bool _shouldShowForPath(String path) {
-    return shouldShowNowDisplayingForPath(path);
   }
 
   bool _onScrollNotification(UserScrollNotification notification) {

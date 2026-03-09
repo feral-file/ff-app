@@ -61,7 +61,6 @@ class App extends ConsumerWidget {
         return _AppStartupBootstrap(
           router: router,
           child: NowDisplayingVisibilitySync(
-            router: router,
             child: Stack(
               children: [
                 child ?? const SizedBox.shrink(),
