@@ -769,14 +769,10 @@ class FF1WifiControl {
                 topicId: topicId,
                 command: request.command,
                 params: request.params,
-                timeout: const Duration(seconds: 30),
               )
               as Map<String, dynamic>;
       final payload = _unwrapMetricsPayload(response);
       return DeviceRealtimeMetrics.fromJson(payload);
-    } on TimeoutException catch (e) {
-      _log.warning('Timed out fetching realtime metrics: $e');
-      rethrow;
     } catch (e) {
       _log.severe('Failed to fetch realtime metrics: $e');
       rethrow;

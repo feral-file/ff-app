@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('FF1WifiControl.getDeviceRealtimeMetrics', () {
-    test('uses 30 second timeout for realtime metrics request', () async {
+    test('uses default 6 second timeout for realtime metrics request', () async {
       final restClient = _RecordingRestClient();
       final control = FF1WifiControl(
         transport: _FakeWifiTransport(),
@@ -20,7 +20,7 @@ void main() {
 
       expect(restClient.lastTopicId, 'topic_1');
       expect(restClient.lastCommand, 'metrics');
-      expect(restClient.lastTimeout, const Duration(seconds: 30));
+      expect(restClient.lastTimeout, const Duration(seconds: 6));
     });
 
     test('rethrows TimeoutException from metrics request', () async {
@@ -48,7 +48,7 @@ class _RecordingRestClient {
     required String topicId,
     required String command,
     required Map<String, dynamic> params,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 6),
   }) async {
     lastTopicId = topicId;
     lastCommand = command;
@@ -69,7 +69,7 @@ class _TimeoutRestClient {
     required String topicId,
     required String command,
     required Map<String, dynamic> params,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 6),
   }) async {
     throw TimeoutException('Future not completed');
   }
