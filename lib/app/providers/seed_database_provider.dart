@@ -75,9 +75,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   ///
   /// No-ops if a sync is already in progress.
   ///
-  /// Emits [SeedDownloadStatus.syncing] only when a download actually starts
-  /// (ETag changed or no local DB). If ETag is unchanged, status stays idle
-  /// until done.
+  /// Emits [SeedDownloadStatus.syncing] only when a download starts for a
+  /// first install (!hasLocalDatabase). For updates (existing DB), status
+  /// stays idle. If ETag is unchanged, status stays idle until done.
   ///
   /// This method may be called again after startup (for example, when the app
   /// resumes from background) to check for a newer remote snapshot.
@@ -100,11 +100,18 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       final updated = await service.syncIfNeeded(
         beforeReplace: beforeReplace,
         afterReplace: afterReplace,
-        onDownloadStarted: () {
-          state = const SeedDownloadState(
-            status: SeedDownloadStatus.syncing,
-            progress: 0,
-          );
+        onDownloadStarted: ({
+          required bool hasLocalDatabase,
+          required String localEtag,
+          required String remoteEtag,
+        }) {
+          // Only show syncing for first install; updates run in background.
+          if (!hasLocalDatabase) {
+            state = const SeedDownloadState(
+              status: SeedDownloadStatus.syncing,
+              progress: 0,
+            );
+          }
         },
         failSilently: failSilently,
         onProgress: (progress) {

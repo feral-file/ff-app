@@ -15,11 +15,19 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   /// is not called.
   bool skipDownload = false;
 
+  /// When skipDownload is false, passed to onDownloadStarted. Use false for
+  /// first install (emits syncing), true for update (no syncing).
+  bool hasLocalDatabase = false;
+
   @override
   Future<bool> syncIfNeeded({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
-    void Function()? onDownloadStarted,
+    void Function({
+      required bool hasLocalDatabase,
+      required String localEtag,
+      required String remoteEtag,
+    })? onDownloadStarted,
     void Function(double progress)? onProgress,
     bool failSilently = false,
   }) async {
@@ -28,7 +36,11 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
     if (skipDownload) {
       return false;
     }
-    onDownloadStarted?.call();
+    onDownloadStarted?.call(
+      hasLocalDatabase: hasLocalDatabase,
+      localEtag: 'local',
+      remoteEtag: 'remote',
+    );
     await beforeReplace();
     for (final p in progressValues) {
       onProgress?.call(p);
@@ -110,6 +122,35 @@ void main() {
     expect(syncingStates, isNotEmpty);
     final withProgress = syncingStates.where((s) => s.progress != null);
     expect(withProgress, isNotEmpty);
+  });
+
+  test('does not emit syncing when updating existing DB', () async {
+    final fakeSyncService = _FakeSeedDatabaseSyncService()
+      ..hasLocalDatabase = true; // Update scenario, not first install.
+    final states = <SeedDownloadState>[];
+
+    final container = ProviderContainer.test(
+      overrides: [
+        seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.listen(seedDownloadProvider, (prev, next) => states.add(next));
+
+    await container
+        .read(seedDownloadProvider.notifier)
+        .syncAtAppStart(
+          beforeReplace: () async {},
+          afterReplace: () async {},
+        );
+
+    expect(container.read(seedDownloadProvider).status, SeedDownloadStatus.done);
+
+    final syncingStates = states.where(
+      (s) => s.status == SeedDownloadStatus.syncing,
+    );
+    expect(syncingStates, isEmpty);
   });
 
   test('does not emit syncing when ETag unchanged (no download)', () async {
