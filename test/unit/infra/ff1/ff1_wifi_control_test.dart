@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
+import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,7 +20,7 @@ void main() {
       await control.getDeviceRealtimeMetrics(topicId: 'topic_1');
 
       expect(restClient.lastTopicId, 'topic_1');
-      expect(restClient.lastCommand, 'metrics');
+      expect(restClient.lastCommand, 'deviceMetrics');
       expect(restClient.lastTimeout, const Duration(seconds: 6));
     });
 
