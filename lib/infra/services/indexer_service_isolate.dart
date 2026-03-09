@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:isolate';
 
 import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:app/domain/models/indexer/rebuild_metadata_result.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/indexer_service.dart';
@@ -20,6 +21,7 @@ abstract class IndexerServiceIsolateOperations {
     int? limit,
     int? offset,
   });
+  Future<AssetToken?> rebuildMetadataAndFetchToken(String cid);
 }
 
 /// Runs indexer API calls in a dedicated isolate to avoid blocking the main isolate.
@@ -165,6 +167,21 @@ class IndexerServiceIsolate implements IndexerServiceIsolateOperations {
     return TokensPage(tokens: tokens, nextOffset: nextOffset);
   }
 
+  @override
+  Future<AssetToken?> rebuildMetadataAndFetchToken(String cid) async {
+    await _ensureStarted();
+    final result = await _sendRequest('rebuildMetadataAndFetchToken', {
+      'cid': cid,
+    });
+    final parsed = RebuildMetadataResult.fromJson(
+      Map<String, dynamic>.from(result),
+    );
+    if (parsed is RebuildMetadataFailed) {
+      throw Exception(parsed.error);
+    }
+    return (parsed as RebuildMetadataDone).assetToken;
+  }
+
   Future<Map<String, dynamic>> _sendRequest(
     String op,
     Map<String, dynamic> args,
@@ -293,6 +310,13 @@ void _isolateEntry(List<Object?> args) {
               'nextOffset': page.nextOffset,
             };
 
+          case 'rebuildMetadataAndFetchToken':
+            final cid = (args is Map? ? args : null)?['cid'] as String?;
+            if (cid == null || cid.isEmpty) {
+              throw ArgumentError('cid must not be empty');
+            }
+            return _rebuildMetadataAndFetchToken(indexerService, cid);
+
           default:
             throw ArgumentError('Unknown op: $op');
         }
@@ -310,4 +334,48 @@ void _isolateEntry(List<Object?> args) {
   });
 
   mainSendPort.send(<Object?>[null, receivePort.sendPort]);
+}
+
+/// Runs trigger + poll loop + fetch in isolate. Polls every 2-3s, max ~60 times.
+/// Returns [RebuildMetadataDone] or [RebuildMetadataFailed]; never throws so
+/// main receives structured response via toJson/fromJson across isolate boundary.
+Future<Map<String, dynamic>> _rebuildMetadataAndFetchToken(
+  IndexerService indexerService,
+  String cid,
+) async {
+  const pollInterval = Duration(seconds: 3);
+  const maxPollCount = 60;
+
+  try {
+    final result = await indexerService.triggerMetadataIndexing([cid]);
+    final workflowId = result.workflowId;
+    final runId = result.runId;
+
+    for (var i = 0; i < maxPollCount; i++) {
+      final status = await indexerService.getWorkflowStatus(
+        workflowId: workflowId,
+        runId: runId,
+      );
+      if (status.isTerminal) {
+        if (!status.isSuccess) {
+          return RebuildMetadataFailed(
+            error: 'Metadata rebuild failed: workflow status ${status.status}',
+          ).toJson();
+        }
+        final token = await indexerService.getTokenByCid(cid);
+        if (token == null) {
+          return const RebuildMetadataFailed(
+            error: 'Token not found after metadata rebuild',
+          ).toJson();
+        }
+        return RebuildMetadataDone(token: token.toRestJson()).toJson();
+      }
+      await Future<void>.delayed(pollInterval);
+    }
+    return RebuildMetadataFailed(
+      error: 'Metadata rebuild timed out after $maxPollCount polls',
+    ).toJson();
+  } on Object catch (e) {
+    return RebuildMetadataFailed(error: e.toString()).toJson();
+  }
 }

@@ -1,3 +1,4 @@
+import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart';
@@ -43,5 +44,11 @@ class SpyIndexerServiceIsolate implements IndexerServiceIsolateOperations {
       limit: limit,
       offset: offset,
     );
+  }
+
+  @override
+  Future<AssetToken?> rebuildMetadataAndFetchToken(String cid) async {
+    callSequence.add('rebuildMetadataAndFetchToken');
+    return _delegate.rebuildMetadataAndFetchToken(cid);
   }
 }
