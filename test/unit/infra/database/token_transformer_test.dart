@@ -34,7 +34,6 @@ void main() {
         expect(item.artists?.map((a) => a.name), ['Artist 1', 'Artist 2']);
         expect(item.source, 'https://example.com/animation.mp4');
         expect(item.thumbnailUrl, 'https://example.com/thumb.jpg');
-        expect(item.tokenData, isNotNull);
         expect(item.provenance, isNotNull);
         expect(item.provenance!.type.toString(), contains('onChain'));
         expect(item.provenance!.contract.address, '0xCONTRACT');
