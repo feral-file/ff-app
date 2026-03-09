@@ -385,6 +385,70 @@ class IndexerService {
     }
   }
 
+  /// Trigger metadata refresh for tokens by CIDs.
+  /// Returns workflow_id and run_id for polling via [getWorkflowStatus].
+  Future<TriggerIndexingResult> triggerMetadataIndexing(
+    List<String> tokenCids,
+  ) async {
+    if (tokenCids.isEmpty) {
+      throw ArgumentError('tokenCids must not be empty');
+    }
+
+    try {
+      final data = await _client.mutate(
+        doc: triggerMetadataIndexingMutation,
+        vars: {'token_cids': tokenCids},
+        subKey: 'triggerMetadataIndexing',
+      );
+
+      if (data == null) {
+        throw Exception(
+          'Indexer returned null triggerMetadataIndexing payload',
+        );
+      }
+
+      return TriggerIndexingResult.fromJson(
+        Map<String, dynamic>.from(data as Map),
+      );
+    } catch (e, stack) {
+      _log.severe('Failed to trigger metadata indexing', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Get workflow status by workflow_id and run_id.
+  /// Used to poll until metadata indexing reaches terminal state.
+  Future<WorkflowStatusResponse> getWorkflowStatus({
+    required String workflowId,
+    required String runId,
+  }) async {
+    if (workflowId.isEmpty || runId.isEmpty) {
+      throw ArgumentError('workflowId and runId must not be empty');
+    }
+
+    try {
+      final data = await _client.query(
+        doc: workflowStatusQuery,
+        vars: {
+          'workflow_id': workflowId,
+          'run_id': runId,
+        },
+        subKey: 'workflowStatus',
+      );
+
+      if (data == null) {
+        throw Exception('Indexer returned null workflowStatus payload');
+      }
+
+      return WorkflowStatusResponse.fromJson(
+        Map<String, dynamic>.from(data as Map),
+      );
+    } catch (e, stack) {
+      _log.severe('Failed to fetch workflow status', e, stack);
+      rethrow;
+    }
+  }
+
   /// Get a single token by CID.
   ///
   /// Note: This uses `getManualTokens` under the hood to keep the client

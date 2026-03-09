@@ -22,4 +22,15 @@ const String triggerOwnerIndexingList = r'''
 /// Back-compat alias (will be removed when callers are migrated).
 const String triggerAddressIndexingList = triggerOwnerIndexingList;
 
+/// Triggers metadata refresh for tokens by CIDs.
+/// Returns workflow_id and run_id for polling workflow status.
+const String triggerMetadataIndexingMutation = r'''
+  mutation triggerMetadataIndexing($token_cids: [String!]) {
+    triggerMetadataIndexing(token_cids: $token_cids) {
+      workflow_id
+      run_id
+    }
+  }
+''';
+
 // End of file.

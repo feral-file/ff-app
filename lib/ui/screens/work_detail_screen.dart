@@ -8,6 +8,7 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/domain/extensions/asset_token_ext.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/dp1/dp1_intent.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/converters.dart' show DatabaseConverters;
@@ -16,11 +17,11 @@ import 'package:app/ui/screens/work_detail_back_layer.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/bottom_spacing.dart';
+import 'package:app/widgets/buttons/outline_button.dart';
 import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/ff_display_button.dart';
 import 'package:app/widgets/loading_view.dart';
-import 'package:app/widgets/buttons/outline_button.dart';
 import 'package:app/widgets/webview_controller_text_field.dart';
 import 'package:app/widgets/work_detail/artwork_details_header.dart';
 import 'package:app/widgets/work_detail/work_detail_sections.dart';
@@ -168,7 +169,6 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
               BackdropScaffold(
                 backgroundColor: AppColor.auGreyBackground,
                 resizeToAvoidBottomInset: false,
-                frontLayerElevation: 1,
                 appBar: MainAppBar.preferred(
                   context,
                   backTitle: widget.backTitle ?? 'Work',
@@ -178,13 +178,14 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                       onDeviceSelected: (device) async {
                         final canvas = ref.read(canvasClientServiceV2Provider);
                         final items = [item];
-                        final singleWorkPlaylist =
-                            PlaylistExt.fromPlaylistItem(items);
-                        final dp1 =
-                            DatabaseConverters.playlistAndItemsToDP1Playlist(
-                          singleWorkPlaylist,
+                        final singleWorkPlaylist = PlaylistExt.fromPlaylistItem(
                           items,
                         );
+                        final dp1 =
+                            DatabaseConverters.playlistAndItemsToDP1Playlist(
+                              singleWorkPlaylist,
+                              items,
+                            );
                         await canvas.castPlaylist(
                           device,
                           dp1,
@@ -250,9 +251,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                       color: Colors.transparent,
                       height:
                           (MediaQuery.of(context).size.height -
-                                  (_appBarBottomDy ?? 80) -
-                                  _infoHeaderHeight) *
-                              0.5,
+                              (_appBarBottomDy ?? 80) -
+                              _infoHeaderHeight) *
+                          0.5,
                       width: MediaQuery.of(context).size.width,
                     ),
                   ),
@@ -284,7 +285,6 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                 child: ArtworkDetailsHeader(
                   title: item.title ?? '',
                   subTitle: subTitle,
-                  onSubTitleTap: null,
                 ),
               ),
               if (_isInfoExpand)
@@ -390,7 +390,80 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
         ),
         onTap: () async {
           Navigator.of(context).pop();
-          ref.invalidate(workDetailStateProvider(widget.workId));
+          final cid = item.cid;
+          if (cid == null || cid.isEmpty) {
+            if (context.mounted) {
+              await UIHelper.showDialog<void>(
+                context,
+                'Rebuild metadata',
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'This work has no token to rebuild metadata for',
+                      style: AppTypography.body(context).white,
+                    ),
+                    const SizedBox(height: 24),
+                    OutlineButton(
+                      text: 'OK',
+                      onTap: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return;
+          }
+          try {
+            await ref
+                .read(workDetailStateProvider(widget.workId).notifier)
+                .rebuildMetadata(item);
+            if (context.mounted) {
+              await UIHelper.showDialog<void>(
+                context,
+                'Metadata rebuilt',
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'The work metadata has been refreshed.',
+                      style: AppTypography.body(context).white,
+                    ),
+                    const SizedBox(height: 24),
+                    OutlineButton(
+                      text: 'OK',
+                      onTap: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              );
+            }
+          } catch (e) {
+            if (context.mounted) {
+              await UIHelper.showDialog<void>(
+                context,
+                'Rebuild metadata',
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "We couldn't rebuild metadata. Check your connection, "
+                      'then Retry.',
+                      style: AppTypography.body(context).white,
+                    ),
+                    const SizedBox(height: 24),
+                    OutlineButton(
+                      text: 'OK',
+                      onTap: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
         },
       ),
     ];
@@ -410,12 +483,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     return Stack(
       children: [
         Visibility(
-          visible: true,
           child: WebviewControllerTextField(
-            webViewController: null,
             focusNode: _focusNode,
             textController: _textController,
-            disableKeys: const [],
           ),
         ),
         NotificationListener<UserScrollNotification>(
@@ -430,7 +500,10 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     visible: false,
                     child: Padding(
                       padding: const EdgeInsets.only(
-                          left: 16, right: 16, bottom: 20),
+                        left: 16,
+                        right: 16,
+                        bottom: 20,
+                      ),
                       child: OutlineButton(
                         color: Colors.transparent,
                         text: '',
@@ -471,10 +544,10 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                           ownerAddressesAsync.when(
                             data: (addresses) =>
                                 buildWorkDetailTokenOwnershipSection(
-                              context,
-                              ownerAddresses: addresses,
-                              token: token,
-                            ),
+                                  context,
+                                  ownerAddresses: addresses,
+                                  token: token,
+                                ),
                             loading: () => const SizedBox.shrink(),
                             error: (_, _) => const SizedBox.shrink(),
                           ),
@@ -482,10 +555,10 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                           ownerAddressesAsync.when(
                             data: (addresses) =>
                                 buildWorkDetailProvenanceSection(
-                              context,
-                              ownerAddresses: addresses,
-                              token: token,
-                            ),
+                                  context,
+                                  ownerAddresses: addresses,
+                                  token: token,
+                                ),
                             loading: () => const SizedBox.shrink(),
                             error: (_, _) => const SizedBox.shrink(),
                           ),
@@ -495,7 +568,8 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     ),
                   ),
                   SizedBox(
-                    height: (MediaQuery.of(context).size.height -
+                    height:
+                        (MediaQuery.of(context).size.height -
                             (_appBarBottomDy ?? 80) -
                             _infoHeaderHeight) *
                         0.5,
