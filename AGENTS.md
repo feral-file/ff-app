@@ -93,3 +93,18 @@ Use Conventional Commits:
 - `<type>(<optional-scope>): <description>`
 - Types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`, `build`, `ci`, `perf`, `style`
 - Use `!` for breaking changes.
+
+## Review guidelines
+Follow these guidelines for all PR reviews and change requests.
+
+- Review priority:
+  1. Riverpod correctness and best practices per https://riverpod.dev/docs/root/do_dont
+  2. UI/error copy voice compliance per `.cursor/rules/05-engineering-voice.mdc`
+  3. Flutter performance best practices per https://docs.flutter.dev/perf/best-practices
+  4. Master-flow integrity against `docs/project_spec.md` and `docs/app_flows.md`
+  5. Principle compliance with `.cursor/rules/01-master-design.mdc`
+- Riverpod reviews must aggressively flag anti-patterns from the Riverpod do/don't guide (provider misuse, hidden mutable flow state, widget-driven side effects, or architecture drift away from Riverpod as the flow driver).
+- UI text and error messages must strictly follow the engineering voice document (`.cursor/rules/05-engineering-voice.mdc`). If copy violates voice/clarity/tone rules, explicitly recommend replacement text in review comments.
+- For Flutter code, check for violations of the Flutter performance guide and flag regressions as high-priority findings.
+- For every newly added dependency in `pubspec.yaml`, run `scripts/pub_dependency_report.sh`, verify whether each added package is on the latest version, and recommend upgrading to the latest stable version by default.
+- Review flow impact explicitly: read `docs/project_spec.md` and `docs/app_flows.md`, map the change to current master flows, and comment on any invariant/responsibility violation.
