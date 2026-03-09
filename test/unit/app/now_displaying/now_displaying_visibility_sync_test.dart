@@ -1,32 +1,89 @@
+import 'package:app/app/now_displaying/now_displaying_visibility_config.dart';
 import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
+import 'package:app/app/providers/current_route_provider.dart';
 import 'package:app/app/routing/routes.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('shouldShowNowDisplayingForPath', () {
+  group('shouldShowNowDisplayingForRoute', () {
     test('returns false for hidden routes from legacy behavior', () {
       for (final path in routesThatHideNowDisplayingBar) {
-        expect(shouldShowNowDisplayingForPath(path), isFalse);
+        expect(
+          shouldShowNowDisplayingForRoute(
+            AppRouteState(path: path, currentRoute: null),
+          ),
+          isFalse,
+        );
       }
     });
 
     test('returns false for children of hidden routes', () {
       expect(
-        shouldShowNowDisplayingForPath('${Routes.settings}/nested'),
+        shouldShowNowDisplayingForRoute(
+          AppRouteState(
+            path: '${Routes.settings}/nested',
+            currentRoute: null,
+          ),
+        ),
         isFalse,
       );
       expect(
-        shouldShowNowDisplayingForPath('${Routes.onboarding}/nested'),
+        shouldShowNowDisplayingForRoute(
+          AppRouteState(
+            path: '${Routes.onboarding}/nested',
+            currentRoute: null,
+          ),
+        ),
         isFalse,
       );
     });
 
     test('returns true for home and DP-1 browsing routes', () {
-      expect(shouldShowNowDisplayingForPath(Routes.home), isTrue);
-      expect(shouldShowNowDisplayingForPath(Routes.channels), isTrue);
-      expect(shouldShowNowDisplayingForPath('${Routes.playlists}/abc'), isTrue);
-      expect(shouldShowNowDisplayingForPath('${Routes.works}/xyz'), isTrue);
+      expect(
+        shouldShowNowDisplayingForRoute(
+          AppRouteState(path: Routes.home, currentRoute: null),
+        ),
+        isTrue,
+      );
+      expect(
+        shouldShowNowDisplayingForRoute(
+          AppRouteState(path: Routes.channels, currentRoute: null),
+        ),
+        isTrue,
+      );
+      expect(
+        shouldShowNowDisplayingForRoute(
+          AppRouteState(
+            path: '${Routes.playlists}/abc',
+            currentRoute: null,
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        shouldShowNowDisplayingForRoute(
+          AppRouteState(
+            path: '${Routes.works}/xyz',
+            currentRoute: null,
+          ),
+        ),
+        isTrue,
+      );
+    });
+
+    test('returns false when modal/drawer is shown (route has priority)', () {
+      final modalRoute = ModalBottomSheetRoute<void>(
+        isScrollControlled: false,
+        builder: (context) => const SizedBox.shrink(),
+      );
+      expect(
+        shouldShowNowDisplayingForRoute(
+          AppRouteState(path: Routes.home, currentRoute: modalRoute),
+        ),
+        isFalse,
+      );
     });
   });
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/providers/scan_qr_provider.dart';
 import 'package:app/app/route_observer.dart';
 import 'package:app/app/routing/deeplink_handler.dart';
+import 'package:app/ui/screens/scan_qr_camera_session.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
@@ -41,13 +42,21 @@ class ScanQrPage extends ConsumerStatefulWidget {
 
 class _ScanQrPageState extends ConsumerState<ScanQrPage>
     with RouteAware, WidgetsBindingObserver {
-  final MobileScannerController _controller = MobileScannerController();
+  final MobileScannerController _controller = MobileScannerController(
+    autoStart: false,
+  );
+  late final ScanQrCameraSession _cameraSession;
   Timer? _clearErrorTimer;
 
   @override
   void initState() {
     super.initState();
+    _cameraSession = ScanQrCameraSession(
+      startCamera: _controller.start,
+      stopCamera: _controller.stop,
+    );
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_resumeCamera());
   }
 
   @override
@@ -82,11 +91,11 @@ class _ScanQrPageState extends ConsumerState<ScanQrPage>
   }
 
   Future<void> _pauseCamera() async {
-    await _controller.stop();
+    await _cameraSession.pause();
   }
 
   Future<void> _resumeCamera() async {
-    await _controller.start();
+    await _cameraSession.resume();
   }
 
   Future<void> _handleBarcode(BarcodeCapture capture) async {
@@ -140,6 +149,7 @@ class _ScanQrPageState extends ConsumerState<ScanQrPage>
     _clearErrorTimer?.cancel();
     routeObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(_cameraSession.dispose());
     unawaited(_controller.dispose());
     super.dispose();
   }

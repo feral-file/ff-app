@@ -76,7 +76,8 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
-      appBar: MainAppBar(
+      appBar: MainAppBar.preferred(
+        context,
         backTitle: 'Playlists',
         backgroundColor: AppColor.auGreyBackground,
         actions: [

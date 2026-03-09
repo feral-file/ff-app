@@ -39,11 +39,16 @@ class PlayButton extends StatelessWidget {
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              text,
-              style: AppTypography.body(context).copyWith(
-                color: PrimitivesTokens.colorsBlack,
+            Flexible(
+              child: Text(
+                text,
+                style: AppTypography.body(context).copyWith(
+                  color: PrimitivesTokens.colorsBlack,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ),
             SizedBox(width: LayoutConstants.space3),

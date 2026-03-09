@@ -10,9 +10,8 @@ import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/tabs/tab_reload_guard.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/channels/channel_section.dart';
-import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/error_view.dart';
-import 'package:app/widgets/loading_view.dart';
+import 'package:app/widgets/seed_sync_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -112,16 +111,8 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
 
     final seedState = ref.watch(seedDownloadProvider);
     if (seedState.status == SeedDownloadStatus.syncing) {
-      return Center(
-        child: DelayedLoadingGate(
-          isLoading: true,
-          child: LoadingWidget(
-            backgroundColor: Colors.transparent,
-            text:
-                'Updating art library... '
-                '${((seedState.progress ?? 0) * 100).round()}%',
-          ),
-        ),
+      return SeedSyncLoadingIndicator(
+        progress: seedState.progress,
       );
     }
     if (seedState.status == SeedDownloadStatus.error) {
