@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
+import 'package:app/infra/logging/log_sanitizer.dart';
+import 'package:app/infra/logging/structured_logger.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:logging/logging.dart';
@@ -19,21 +21,28 @@ import 'package:logging/logging.dart';
 /// Separation: Transport handles BLE operations. Protocol handles encoding/decoding.
 /// Control layer (in app/) orchestrates commands using this transport.
 class FF1BleTransport {
+  /// Creates a BLE transport and starts listening to BLE lifecycle events.
   FF1BleTransport({
     FF1BleProtocol? protocol,
     Logger? logger,
   }) : _protocol = protocol ?? const FF1BleProtocol(),
-       _log = logger ?? Logger('FF1BleTransport') {
+       _structuredLog = AppStructuredLog.forLogger(
+         logger ?? Logger('FF1BleTransport'),
+         context: {
+           'layer': 'ff1',
+           'component': 'ble_transport',
+         },
+       ) {
     _startListening();
   }
 
   final FF1BleProtocol _protocol;
-  final Logger _log;
+  final StructuredLogger _structuredLog;
 
-  // FF1 Service UUID
+  /// FF1 service UUID.
   static const String serviceUuid = 'f7826da6-4fa2-4e98-8024-bc5b71e0893e';
 
-  // Command/WiFi characteristic UUID (used for all app<->device communication)
+  /// Command/Wi-Fi characteristic UUID used for app/device communication.
   static const String commandCharUuid = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 
   // Characteristic cache (remoteId -> characteristic)
@@ -52,16 +61,35 @@ class FF1BleTransport {
       final device = event.device;
       final state = event.connectionState;
 
-      _log.info('Connection state: ${device.remoteId.str} -> ${state.name}');
+      _structuredLog.info(
+        category: LogCategory.ble,
+        event: 'connection_state_changed',
+        message: 'connection state ${state.name}',
+        entityId: device.remoteId.str,
+        payload: {
+          'deviceId': device.remoteId.str,
+          'state': state.name,
+        },
+      );
 
       if (state == BluetoothConnectionState.connected) {
         try {
           // Wait for connection to stabilize
-          _log.info('Connection established, stabilizing...');
+          _structuredLog.info(
+            category: LogCategory.ble,
+            event: 'connect_established',
+            message: 'connect established for ${device.remoteId.str}',
+            entityId: device.remoteId.str,
+          );
           await Future<void>.delayed(const Duration(seconds: 2));
 
           // Discover characteristics
-          _log.info('Starting service discovery...');
+          _structuredLog.info(
+            category: LogCategory.ble,
+            event: 'service_discovery_started',
+            message: 'service discovery started',
+            entityId: device.remoteId.str,
+          );
           await _discoverCharacteristics(device);
 
           // Complete connection
@@ -69,8 +97,15 @@ class FF1BleTransport {
             _connectCompleter?.complete();
           }
           _connectCompleter = null;
-        } catch (e) {
-          _log.warning('Failed to discover characteristics: $e');
+        } on Object catch (e, stack) {
+          _structuredLog.warning(
+            category: LogCategory.ble,
+            event: 'service_discovery_failed',
+            message: 'service discovery failed',
+            entityId: device.remoteId.str,
+            error: e,
+            stackTrace: stack,
+          );
           if (_connectCompleter?.isCompleted == false) {
             _connectCompleter?.completeError(e);
           }
@@ -78,7 +113,16 @@ class FF1BleTransport {
           await device.disconnect();
         }
       } else if (state == BluetoothConnectionState.disconnected) {
-        _log.warning('Device disconnected: ${device.disconnectReason}');
+        _structuredLog.warning(
+          category: LogCategory.ble,
+          event: 'device_disconnected',
+          message: 'device disconnected',
+          entityId: device.remoteId.str,
+          payload: {
+            'deviceId': device.remoteId.str,
+            'disconnectReason': device.disconnectReason?.toString(),
+          },
+        );
         if (_connectCompleter?.isCompleted == false) {
           _connectCompleter?.completeError(
             FF1DisconnectedError(disconnectReason: device.disconnectReason),
@@ -93,15 +137,32 @@ class FF1BleTransport {
       final value = event.value;
 
       if (characteristic.uuid.toString() == commandCharUuid) {
-        _log.fine('Received notification: ${value.length} bytes');
+        _structuredLog.info(
+          category: LogCategory.ble,
+          event: 'characteristic_notify_received',
+          message: 'notification received ${value.length} bytes',
+          entityId: characteristic.device.remoteId.str,
+          payload: {
+            'characteristic': characteristic.uuid.toString(),
+            'payload': LogSanitizer.sanitizeBlePayload(value),
+          },
+        );
         _handleResponse(value);
       }
     });
 
     // Services reset (Android reconnection)
     FlutterBluePlus.events.onServicesReset.listen((event) {
-      _log.info('Services reset: ${event.device.remoteId.str}');
-      event.device.discoverServices();
+      _structuredLog.info(
+        category: LogCategory.ble,
+        event: 'services_reset',
+        message: 'services reset',
+        entityId: event.device.remoteId.str,
+        payload: {
+          'deviceId': event.device.remoteId.str,
+        },
+      );
+      unawaited(event.device.discoverServices());
     });
   }
 
@@ -109,8 +170,8 @@ class FF1BleTransport {
   ///
   /// [blDevice] - FF1 device to connect to
   /// [timeout] - connection timeout
-  /// [maxRetries] - max connection attempts (default 0 when using Riverpod retry)
-  /// [shouldContinue] - optional callback to check if connection should continue
+  /// [maxRetries] - max connection attempts (default 0 with Riverpod retry).
+  /// [shouldContinue] - optional callback that gates whether connect continues.
   ///
   /// Note: When using Riverpod's automatic retry, set maxRetries to 0.
   /// Riverpod will handle retries with proper exponential backoff.
@@ -122,43 +183,84 @@ class FF1BleTransport {
   }) async {
     // Check if operation should continue (for cancellation)
     if (shouldContinue != null && !shouldContinue()) {
-      _log.info('Connection cancelled by caller');
+      _structuredLog.info(
+        category: LogCategory.ble,
+        event: 'connect_cancelled',
+        message: 'connection cancelled by caller',
+        entityId: blDevice.remoteId.str,
+      );
       throw const FF1ConnectionCancelledError();
     }
 
     if (maxRetries == 0) {
       // Single attempt - Riverpod handles retry
-      _log.info('Connecting to ${blDevice.advName}');
+      _structuredLog.info(
+        category: LogCategory.ble,
+        event: 'connect_started',
+        message: 'connect started for ${blDevice.advName}',
+        entityId: blDevice.remoteId.str,
+      );
 
       try {
         await _connectOnce(blDevice, timeout: timeout);
-        _log.info('Connected to ${blDevice.advName}');
-      } catch (e) {
+        _structuredLog.info(
+          category: LogCategory.ble,
+          event: 'connect_succeeded',
+          message: 'connect succeeded for ${blDevice.advName}',
+          entityId: blDevice.remoteId.str,
+        );
+      } on Object catch (e) {
         if (e is FF1ConnectionCancelledError) {
           rethrow;
         }
         await blDevice.disconnect();
-        _log.warning('Connection failed: $e');
+        _structuredLog.warning(
+          category: LogCategory.ble,
+          event: 'connect_failed',
+          message: 'connect failed for ${blDevice.advName}',
+          entityId: blDevice.remoteId.str,
+          error: e,
+        );
         rethrow;
       }
     } else {
       // Manual retry logic (legacy, for backwards compatibility)
       for (var attempt = 0; attempt <= maxRetries; attempt++) {
         if (shouldContinue != null && !shouldContinue()) {
-          _log.info('Connection cancelled by caller');
+          _structuredLog.info(
+            category: LogCategory.ble,
+            event: 'connect_cancelled',
+            message: 'connection cancelled by caller',
+            entityId: blDevice.remoteId.str,
+          );
           throw const FF1ConnectionCancelledError();
         }
 
         try {
-          _log.info(
-            'Connecting to ${blDevice.advName} (attempt ${attempt + 1}/${maxRetries + 1})',
+          _structuredLog.info(
+            category: LogCategory.ble,
+            event: 'connect_started',
+            message: 'connect started for ${blDevice.advName}',
+            entityId: blDevice.remoteId.str,
+            payload: {
+              'attempt': attempt + 1,
+              'maxAttempts': maxRetries + 1,
+            },
           );
 
           await _connectOnce(blDevice, timeout: timeout);
 
-          _log.info('Connected to ${blDevice.advName}');
+          _structuredLog.info(
+            category: LogCategory.ble,
+            event: 'connect_succeeded',
+            message: 'connect succeeded for ${blDevice.advName}',
+            entityId: blDevice.remoteId.str,
+            payload: {
+              'attempt': attempt + 1,
+            },
+          );
           return;
-        } catch (e) {
+        } on Object catch (e) {
           if (e is FF1ConnectionCancelledError) {
             rethrow;
           }
@@ -166,11 +268,31 @@ class FF1BleTransport {
           await blDevice.disconnect();
 
           if (attempt >= maxRetries) {
-            _log.severe('Failed after ${attempt + 1} attempts: $e');
+            _structuredLog.error(
+              event: 'connect_failed',
+              message:
+                  'connect failed after ${attempt + 1} attempts '
+                  'for ${blDevice.advName}',
+              error: e,
+              payload: {
+                'attempts': attempt + 1,
+                'maxAttempts': maxRetries + 1,
+              },
+              entityId: blDevice.remoteId.str,
+            );
             rethrow;
           }
 
-          _log.info('Retry ${attempt + 1}/$maxRetries after 2s...');
+          _structuredLog.info(
+            category: LogCategory.ble,
+            event: 'connect_retry_scheduled',
+            message: 'connect retry scheduled after delay',
+            entityId: blDevice.remoteId.str,
+            payload: {
+              'attempt': attempt + 1,
+              'maxRetries': maxRetries,
+            },
+          );
           await Future<void>.delayed(const Duration(seconds: 2));
         }
       }
@@ -183,7 +305,12 @@ class FF1BleTransport {
     required Duration timeout,
   }) async {
     if (device.isConnected) {
-      _log.fine('Already connected: ${device.remoteId.str}');
+      _structuredLog.info(
+        category: LogCategory.ble,
+        event: 'connect_skipped_already_connected',
+        message: 'device already connected',
+        entityId: device.remoteId.str,
+      );
       return;
     }
 
@@ -197,7 +324,7 @@ class FF1BleTransport {
       await device.connect(
         timeout: timeout,
         mtu: null,
-        // Using free license (for individuals, nonprofits, educational, small orgs <50 employees)
+        // Using free license for individuals/nonprofits/education/small orgs.
         license: License.free,
       );
 
@@ -213,7 +340,7 @@ class FF1BleTransport {
           throw error;
         },
       );
-    } catch (e) {
+    } on Object catch (e) {
       if (_connectCompleter?.isCompleted == false) {
         _connectCompleter?.completeError(e);
       }
@@ -232,31 +359,59 @@ class FF1BleTransport {
 
     for (var i = 0; i < timeouts.length; i++) {
       try {
-        _log.info('Discovering services (attempt ${i + 1}/${timeouts.length})');
+        _structuredLog.info(
+          category: LogCategory.ble,
+          event: 'service_discovery_attempt',
+          message: 'discovering services',
+          entityId: device.remoteId.str,
+          payload: {
+            'attempt': i + 1,
+            'maxAttempts': timeouts.length,
+          },
+        );
 
         await Future<void>.delayed(const Duration(seconds: 2));
         final services = await device.discoverServices(
           timeout: timeouts[i].inSeconds,
         );
 
-        _log.info('Found ${services.length} services on device');
+        _structuredLog.info(
+          category: LogCategory.ble,
+          event: 'services_found',
+          message: 'found ${services.length} services',
+          entityId: device.remoteId.str,
+          payload: {'servicesCount': services.length},
+        );
 
         // Find FF1 service by UUID
         final ff1Service = services.firstWhereOrNull(
           (s) => s.uuid.toString() == serviceUuid,
         );
         if (ff1Service == null) {
-          _log.warning(
-            'FF1 service not found. Looking for UUID: $serviceUuid',
-          );
-          _log.warning(
-            'Available service UUIDs: '
-            '${services.map((s) => s.uuid.toString()).join(", ")}',
+          _structuredLog.warning(
+            category: LogCategory.ble,
+            event: 'ff1_service_not_found',
+            message: 'FF1 service not found',
+            entityId: device.remoteId.str,
+            payload: {
+              'expectedServiceUuid': serviceUuid,
+              'availableServiceUuids': services
+                  .map((s) => s.uuid.toString())
+                  .toList(),
+            },
           );
           throw Exception('FF1 service not found');
         }
 
-        _log.info('Found FF1 service: ${ff1Service.uuid}');
+        _structuredLog.info(
+          category: LogCategory.ble,
+          event: 'ff1_service_found',
+          message: 'FF1 service found',
+          entityId: device.remoteId.str,
+          payload: {
+            'serviceUuid': ff1Service.uuid.toString(),
+          },
+        );
 
         // Find command characteristic
         final commandChar = ff1Service.characteristics.firstWhereOrNull(
@@ -278,10 +433,28 @@ class FF1BleTransport {
         // Cache characteristic
         _characteristics[device.remoteId.str] = commandChar;
 
-        _log.fine('Successfully discovered characteristics');
+        _structuredLog.info(
+          category: LogCategory.ble,
+          event: 'characteristic_discovery_succeeded',
+          message: 'characteristics discovered',
+          entityId: device.remoteId.str,
+          payload: {
+            'characteristicUuid': commandChar.uuid.toString(),
+          },
+        );
         return;
-      } catch (e) {
-        _log.warning('Discovery attempt ${i + 1} failed: $e');
+      } on Object catch (e) {
+        _structuredLog.warning(
+          category: LogCategory.ble,
+          event: 'service_discovery_attempt_failed',
+          message: 'service discovery attempt failed',
+          entityId: device.remoteId.str,
+          error: e,
+          payload: {
+            'attempt': i + 1,
+            'maxAttempts': timeouts.length,
+          },
+        );
 
         if (i == timeouts.length - 1) {
           rethrow;
@@ -305,12 +478,19 @@ class FF1BleTransport {
   /// Scan for FF1 devices
   ///
   /// [timeout] - scan duration
-  /// [onDevice] - callback for each discovered device (return true to stop scan)
+  /// [onDevice] - callback for each discovered device; return true to stop.
   Future<void> scan({
     required FutureOr<bool> Function(List<BluetoothDevice>) onDevice,
     Duration timeout = const Duration(seconds: 30),
   }) async {
-    _log.info('Starting scan (timeout: ${timeout.inSeconds}s)');
+    _structuredLog.info(
+      category: LogCategory.ble,
+      event: 'scan_started',
+      message: 'scan started',
+      payload: {
+        'timeoutSeconds': timeout.inSeconds,
+      },
+    );
 
     await FlutterBluePlus.stopScan();
     await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -318,7 +498,14 @@ class FF1BleTransport {
     // Check already-connected devices
     final connectedDevices = FlutterBluePlus.connectedDevices;
     if (await onDevice(connectedDevices)) {
-      _log.info('Device found in connected devices');
+      _structuredLog.info(
+        category: LogCategory.ble,
+        event: 'scan_device_found',
+        message: 'device found in connected devices',
+        payload: {
+          'connectedDeviceCount': connectedDevices.length,
+        },
+      );
       return;
     }
 
@@ -328,7 +515,14 @@ class FF1BleTransport {
       final shouldStop = await onDevice([...devices, ...connectedDevices]);
 
       if (shouldStop) {
-        _log.info('Device found, stopping scan');
+        _structuredLog.info(
+          category: LogCategory.ble,
+          event: 'scan_stopped',
+          message: 'scan stopped after device found',
+          payload: {
+            'scanResultCount': devices.length,
+          },
+        );
         await FlutterBluePlus.stopScan();
       }
     });
@@ -345,7 +539,11 @@ class FF1BleTransport {
       await Future<void>.delayed(const Duration(milliseconds: 1000));
     }
 
-    _log.info('Scan complete');
+    _structuredLog.info(
+      category: LogCategory.ble,
+      event: 'scan_completed',
+      message: 'scan complete',
+    );
   }
 
   /// Scan for a device by name (deviceId shown on FF1 screen)
@@ -427,12 +625,34 @@ class FF1BleTransport {
     List<int> value,
   ) async {
     try {
+      _structuredLog.info(
+        category: LogCategory.ble,
+        event: 'characteristic_write',
+        message: 'characteristic write',
+        entityId: char.device.remoteId.str,
+        payload: {
+          'characteristic': char.uuid.toString(),
+          'payload': LogSanitizer.sanitizeBlePayload(value),
+        },
+      );
       await char.write(value);
-    } catch (e) {
-      _log.warning('Write failed, retrying: $e');
+    } on Object catch (e) {
+      _structuredLog.warning(
+        category: LogCategory.ble,
+        event: 'characteristic_write_failed',
+        message: 'characteristic write failed, retrying',
+        entityId: char.device.remoteId.str,
+        error: e,
+      );
 
       if (e is FlutterBluePlusException && _canIgnoreError(e)) {
-        _log.fine('Ignoring error code ${e.code}');
+        _structuredLog.info(
+          category: LogCategory.ble,
+          event: 'characteristic_write_ignored_error',
+          message: 'ignored write error code ${e.code}',
+          entityId: char.device.remoteId.str,
+          payload: {'errorCode': e.code},
+        );
         return;
       }
 
@@ -444,7 +664,12 @@ class FF1BleTransport {
 
       if (device.isConnected) {
         if (!isDataTooLong) {
-          _log.info('Rediscovering services after write failure...');
+          _structuredLog.info(
+            category: LogCategory.ble,
+            event: 'service_rediscovery_started',
+            message: 'rediscovering services after write failure',
+            entityId: char.device.remoteId.str,
+          );
           await device.discoverServices();
 
           // Wait for services to be discovered
@@ -453,16 +678,31 @@ class FF1BleTransport {
 
         try {
           await char.write(value, allowLongWrite: isDataTooLong);
-        } catch (e2) {
+        } on Object catch (e2) {
           if (e2 is FlutterBluePlusException && _canIgnoreError(e2)) {
-            _log.fine('Ignoring error code ${e2.code}');
+            _structuredLog.info(
+              category: LogCategory.ble,
+              event: 'characteristic_write_ignored_error',
+              message: 'ignored write retry error code ${e2.code}',
+              entityId: char.device.remoteId.str,
+              payload: {'errorCode': e2.code},
+            );
             return;
           }
-          _log.severe('Write failed after retry: $e2');
+          _structuredLog.error(
+            event: 'characteristic_write_failed',
+            message: 'write failed after retry',
+            error: e2,
+            entityId: char.device.remoteId.str,
+          );
           rethrow;
         }
       } else {
-        _log.severe('Device disconnected, cannot retry write');
+        _structuredLog.error(
+          event: 'characteristic_write_failed',
+          message: 'device disconnected, cannot retry write',
+          entityId: char.device.remoteId.str,
+        );
         rethrow;
       }
     }
@@ -478,16 +718,36 @@ class FF1BleTransport {
   void _handleResponse(List<int> bytes) {
     try {
       final response = _protocol.parseResponse(bytes);
-      _log.fine('Response: $response');
+      _structuredLog.info(
+        category: LogCategory.ble,
+        event: 'response_received',
+        message: 'response received',
+        payload: {
+          'topic': response.topic,
+          'payload': LogSanitizer.sanitizeBlePayload(bytes),
+        },
+      );
 
       final callback = _responseCallbacks[response.topic];
       if (callback != null) {
         callback(response);
       } else {
-        _log.warning('No callback for topic: ${response.topic}');
+        _structuredLog.warning(
+          category: LogCategory.ble,
+          event: 'response_unhandled',
+          message: 'no callback for topic ${response.topic}',
+          payload: {
+            'topic': response.topic,
+          },
+        );
       }
-    } catch (e) {
-      _log.warning('Failed to parse response: $e');
+    } on Object catch (e) {
+      _structuredLog.warning(
+        category: LogCategory.ble,
+        event: 'response_parse_failed',
+        message: 'failed to parse response',
+        error: e,
+      );
     }
   }
 

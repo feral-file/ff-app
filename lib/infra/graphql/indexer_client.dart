@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:collection';
 
+import 'package:app/infra/logging/log_sanitizer.dart';
+import 'package:app/infra/logging/structured_logger.dart';
 import 'package:graphql/client.dart';
+import 'package:logging/logging.dart';
 import 'package:sentry/sentry.dart';
 import 'package:sentry_link/sentry_link.dart';
 
@@ -16,6 +19,7 @@ class IndexerClient {
     this.mutationTimeout = const Duration(seconds: 15),
     this.maxConcurrentRequests = 10,
     this.maxRequestsPerSecond = 10,
+    Logger? logger,
   }) : _client = GraphQLClient(
          link: Link.from([
            SentryGql.link(
@@ -29,7 +33,14 @@ class IndexerClient {
          ]),
          cache: GraphQLCache(),
        ),
-       _availableRequests = maxRequestsPerSecond {
+       _availableRequests = maxRequestsPerSecond,
+       _structuredLog = AppStructuredLog.forLogger(
+         logger ?? Logger('IndexerClient'),
+         context: {
+           'layer': 'infra/graphql',
+           'client': 'indexer',
+         },
+       ) {
     _rateLimitWindowTimer = Timer.periodic(
       const Duration(seconds: 1),
       (_) => _onRateLimitWindowReset(),
@@ -52,6 +63,7 @@ class IndexerClient {
 
   /// Max requests allowed to start per second.
   final int maxRequestsPerSecond;
+  final StructuredLogger _structuredLog;
 
   final Queue<_QueuedIndexerRequest<dynamic>> _pendingRequests =
       Queue<_QueuedIndexerRequest<dynamic>>();
@@ -70,6 +82,21 @@ class IndexerClient {
     String? subKey,
   }) async {
     return _enqueue<Map<String, dynamic>?>(() async {
+      final operation = _extractOperationDescriptor(
+        doc,
+        defaultType: 'query',
+      );
+      final stopwatch = Stopwatch()..start();
+      _structuredLog.info(
+        category: LogCategory.graphql,
+        event: 'graphql_operation_started',
+        message: 'query ${operation.name} started',
+        payload: {
+          'operationType': operation.type,
+          'operationName': operation.name,
+          'variables': LogSanitizer.sanitizeGraphqlVariables(vars),
+        },
+      );
       try {
         final result = await _client.query(
           QueryOptions(
@@ -81,6 +108,20 @@ class IndexerClient {
         );
 
         if (result.hasException) {
+          _structuredLog.error(
+            event: 'graphql_operation_failed',
+            message:
+                'query ${operation.name} failed durationMs='
+                '${stopwatch.elapsedMilliseconds}',
+            error: result.exception,
+            payload: {
+              'operationType': operation.type,
+              'operationName': operation.name,
+              'durationMs': stopwatch.elapsedMilliseconds,
+              'variables': LogSanitizer.sanitizeGraphqlVariables(vars),
+              'error': _sanitizeGraphqlException(result.exception),
+            },
+          );
           _captureGraphQLError(
             operation: 'query',
             doc: doc,
@@ -91,6 +132,19 @@ class IndexerClient {
         }
 
         final data = result.data;
+        _structuredLog.info(
+          category: LogCategory.graphql,
+          event: 'graphql_operation_completed',
+          message:
+              'query ${operation.name} completed durationMs='
+              '${stopwatch.elapsedMilliseconds}',
+          payload: {
+            'operationType': operation.type,
+            'operationName': operation.name,
+            'durationMs': stopwatch.elapsedMilliseconds,
+            'hasData': data != null,
+          },
+        );
         if (data == null) return null;
         if (subKey == null) return Map<String, dynamic>.from(data);
 
@@ -99,6 +153,21 @@ class IndexerClient {
             ? value
             : Map<String, dynamic>.from(data);
       } catch (e, stack) {
+        _structuredLog.error(
+          event: 'graphql_operation_failed',
+          message:
+              'query ${operation.name} failed durationMs='
+              '${stopwatch.elapsedMilliseconds}',
+          error: e,
+          stackTrace: stack,
+          payload: {
+            'operationType': operation.type,
+            'operationName': operation.name,
+            'durationMs': stopwatch.elapsedMilliseconds,
+            'variables': LogSanitizer.sanitizeGraphqlVariables(vars),
+            'error': LogSanitizer.sanitizeError(e),
+          },
+        );
         _captureUnhandledError(
           operation: 'query',
           doc: doc,
@@ -118,6 +187,21 @@ class IndexerClient {
     String? subKey,
   }) async {
     return _enqueue<Map<String, dynamic>?>(() async {
+      final operation = _extractOperationDescriptor(
+        doc,
+        defaultType: 'mutation',
+      );
+      final stopwatch = Stopwatch()..start();
+      _structuredLog.info(
+        category: LogCategory.graphql,
+        event: 'graphql_operation_started',
+        message: 'mutation ${operation.name} started',
+        payload: {
+          'operationType': operation.type,
+          'operationName': operation.name,
+          'variables': LogSanitizer.sanitizeGraphqlVariables(vars),
+        },
+      );
       try {
         final result = await _client
             .mutate(
@@ -131,6 +215,20 @@ class IndexerClient {
             .timeout(mutationTimeout);
 
         if (result.hasException) {
+          _structuredLog.error(
+            event: 'graphql_operation_failed',
+            message:
+                'mutation ${operation.name} failed durationMs='
+                '${stopwatch.elapsedMilliseconds}',
+            error: result.exception,
+            payload: {
+              'operationType': operation.type,
+              'operationName': operation.name,
+              'durationMs': stopwatch.elapsedMilliseconds,
+              'variables': LogSanitizer.sanitizeGraphqlVariables(vars),
+              'error': _sanitizeGraphqlException(result.exception),
+            },
+          );
           _captureGraphQLError(
             operation: 'mutation',
             doc: doc,
@@ -141,6 +239,19 @@ class IndexerClient {
         }
 
         final data = result.data;
+        _structuredLog.info(
+          category: LogCategory.graphql,
+          event: 'graphql_operation_completed',
+          message:
+              'mutation ${operation.name} completed durationMs='
+              '${stopwatch.elapsedMilliseconds}',
+          payload: {
+            'operationType': operation.type,
+            'operationName': operation.name,
+            'durationMs': stopwatch.elapsedMilliseconds,
+            'hasData': data != null,
+          },
+        );
         if (data == null) return null;
         if (subKey == null) return Map<String, dynamic>.from(data);
 
@@ -149,6 +260,21 @@ class IndexerClient {
             ? value
             : Map<String, dynamic>.from(data);
       } catch (e, stack) {
+        _structuredLog.error(
+          event: 'graphql_operation_failed',
+          message:
+              'mutation ${operation.name} failed durationMs='
+              '${stopwatch.elapsedMilliseconds}',
+          error: e,
+          stackTrace: stack,
+          payload: {
+            'operationType': operation.type,
+            'operationName': operation.name,
+            'durationMs': stopwatch.elapsedMilliseconds,
+            'variables': LogSanitizer.sanitizeGraphqlVariables(vars),
+            'error': LogSanitizer.sanitizeError(e),
+          },
+        );
         _captureUnhandledError(
           operation: 'mutation',
           doc: doc,
@@ -296,6 +422,39 @@ class IndexerClient {
       // Avoid cascading failures from error reporting.
     }
   }
+
+  _GraphqlOperationDescriptor _extractOperationDescriptor(
+    String doc, {
+    required String defaultType,
+  }) {
+    final pattern = RegExp(
+      r'^\s*(query|mutation|subscription)\s+([A-Za-z0-9_]+)?',
+      multiLine: true,
+      caseSensitive: false,
+    );
+    final match = pattern.firstMatch(doc);
+    final type = (match?.group(1)?.toLowerCase() ?? defaultType).trim();
+    final name = (match?.group(2)?.trim().isNotEmpty ?? false)
+        ? match!.group(2)!.trim()
+        : 'anonymous';
+    return _GraphqlOperationDescriptor(type: type, name: name);
+  }
+
+  Map<String, dynamic> _sanitizeGraphqlException(
+    OperationException? exception,
+  ) {
+    if (exception == null) {
+      return {'type': 'OperationException', 'message': 'null'};
+    }
+
+    return {
+      'type': 'OperationException',
+      'graphqlErrors': exception.graphqlErrors
+          .map((error) => error.message)
+          .toList(growable: false),
+      'linkException': exception.linkException?.toString(),
+    };
+  }
 }
 
 class _QueuedIndexerRequest<T> {
@@ -306,4 +465,14 @@ class _QueuedIndexerRequest<T> {
 
   final Future<T> Function() operation;
   final Completer<T> completer;
+}
+
+class _GraphqlOperationDescriptor {
+  const _GraphqlOperationDescriptor({
+    required this.type,
+    required this.name,
+  });
+
+  final String type;
+  final String name;
 }
