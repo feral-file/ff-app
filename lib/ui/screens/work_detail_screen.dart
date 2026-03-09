@@ -1,9 +1,10 @@
 import 'dart:async';
 
+import 'package:after_layout/after_layout.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
+import 'package:app/app/utils/html/au_html_style.dart';
 import 'package:app/design/app_typography.dart';
-import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/asset_token_ext.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/dp1/dp1_intent.dart';
@@ -15,11 +16,12 @@ import 'package:app/ui/screens/work_detail_back_layer.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/bottom_spacing.dart';
-import 'package:app/widgets/common/touch_target.dart';
 import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/ff_display_button.dart';
 import 'package:app/widgets/loading_view.dart';
+import 'package:app/widgets/buttons/outline_button.dart';
+import 'package:app/widgets/webview_controller_text_field.dart';
 import 'package:app/widgets/work_detail/artwork_details_header.dart';
 import 'package:app/widgets/work_detail/work_detail_sections.dart';
 import 'package:backdrop/backdrop.dart';
@@ -51,7 +53,7 @@ class WorkDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
-    with SingleTickerProviderStateMixin {
+    with AfterLayoutMixin<WorkDetailScreen>, SingleTickerProviderStateMixin {
   static const double _infoShrinkPosition = 0.001;
   static const double _infoExpandPosition = 0.29;
 
@@ -61,6 +63,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
   late AnimationController _animationController;
   bool _isInfoExpand = false;
   double? _appBarBottomDy;
+  final FocusNode _focusNode = FocusNode();
+  final TextEditingController _textController = TextEditingController();
+  final FocusNode _selectTextFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -72,11 +77,21 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
       value: _infoShrinkPosition,
       upperBound: _infoExpandPosition,
     );
+    _infoShrink();
+  }
+
+  @override
+  void afterFirstLayout(BuildContext context) {
+    const appBarHeight = kToolbarHeight + 20;
+    _appBarBottomDy ??= appBarHeight + MediaQuery.of(context).padding.top;
   }
 
   @override
   void dispose() {
     _animationController.dispose();
+    _focusNode.dispose();
+    _textController.dispose();
+    _selectTextFocusNode.dispose();
     super.dispose();
   }
 
@@ -84,6 +99,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     setState(() {
       _isInfoExpand = false;
     });
+    _selectTextFocusNode.unfocus();
     _animationController.animateTo(_infoShrinkPosition);
   }
 
@@ -139,81 +155,105 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
           );
         }
 
-        _appBarBottomDy ??=
-            kToolbarHeight +
-            LayoutConstants.space5 +
-            MediaQuery.of(context).padding.top;
-
         final item = data.item;
         final artistStr = artistStringFromPlaylistItem(item);
 
         return Scaffold(
           backgroundColor: AppColor.auGreyBackground,
-          body: BackdropScaffold(
-            backgroundColor: AppColor.auGreyBackground,
-            appBar: MainAppBar(
-              backTitle: widget.backTitle ?? 'Work',
-              backgroundColor: AppColor.auGreyBackground,
-              actions: [
-                FFDisplayButton(
-                  onDeviceSelected: (device) async {
-                    final canvas = ref.read(canvasClientServiceV2Provider);
-                    final items = [item];
-                    final singleWorkPlaylist = PlaylistExt.fromPlaylistItem(
-                      items,
-                    );
-                    final dp1 =
-                        DatabaseConverters.playlistAndItemsToDP1Playlist(
+          body: Stack(
+            children: [
+              BackdropScaffold(
+                backgroundColor: AppColor.auGreyBackground,
+                resizeToAvoidBottomInset: false,
+                frontLayerElevation: 1,
+                appBar: MainAppBar(
+                  backTitle: widget.backTitle ?? 'Work',
+                  backgroundColor: AppColor.auGreyBackground,
+                  actions: [
+                    FFDisplayButton(
+                      onDeviceSelected: (device) async {
+                        final canvas = ref.read(canvasClientServiceV2Provider);
+                        final items = [item];
+                        final singleWorkPlaylist =
+                            PlaylistExt.fromPlaylistItem(items);
+                        final dp1 =
+                            DatabaseConverters.playlistAndItemsToDP1Playlist(
                           singleWorkPlaylist,
                           items,
                         );
-                    await canvas.castPlaylist(
-                      device,
-                      dp1,
-                      DP1Intent.displayNow(),
-                      usingUrl: false,
-                    );
-                  },
+                        await canvas.castPlaylist(
+                          device,
+                          dp1,
+                          DP1Intent.displayNow(),
+                          usingUrl: false,
+                        );
+                      },
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            backLayer: WorkDetailBackLayer(
-              item: item,
-              isFullScreen: false,
-              mimeType: data.mimeType,
-            ),
-            reverseAnimationCurve: Curves.ease,
-            frontLayer: _buildFrontLayer(context, data),
-            frontLayerBackgroundColor: AppColor.auGreyBackground,
-            backLayerBackgroundColor: AppColor.auGreyBackground,
-            animationController: _animationController,
-            revealBackLayerAtStart: true,
-            frontLayerScrim: Colors.transparent,
-            backLayerScrim: Colors.transparent,
-            subHeaderAlwaysActive: false,
-            frontLayerShape: const BeveledRectangleBorder(),
-            // Expand is also triggered by package backdrop: see _buildInactiveLayer() in
-            // backdrop/lib/src/scaffold.dart — a GestureDetector(onTap: () => fling())
-            // overlays the front panel when back layer is revealed; tap on subHeader
-            // area hits that overlay and calls fling() (expand). Our 3-dot uses a
-            // GestureDetector to show options; the overlay is on top so it may still
-            // win. Drag (onVerticalDragEnd below) is the other place we call _infoExpand.
-            subHeader: DecoratedBox(
-              decoration: const BoxDecoration(
-                color: AppColor.auGreyBackground,
+                backLayer: WorkDetailBackLayer(
+                  item: item,
+                  isFullScreen: false,
+                  mimeType: data.mimeType,
+                ),
+                reverseAnimationCurve: Curves.ease,
+                frontLayer: _buildFrontLayer(context, data),
+                frontLayerBackgroundColor: AppColor.auGreyBackground,
+                backLayerBackgroundColor: AppColor.auGreyBackground,
+                animationController: _animationController,
+                revealBackLayerAtStart: true,
+                frontLayerScrim: Colors.transparent,
+                backLayerScrim: Colors.transparent,
+                subHeaderAlwaysActive: false,
+                frontLayerShape: const BeveledRectangleBorder(),
+                subHeader: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    color: AppColor.auGreyBackground,
+                  ),
+                  child: GestureDetector(
+                    onVerticalDragEnd: (details) {
+                      final dy = details.primaryVelocity ?? 0;
+                      if (dy <= 0) {
+                        _infoExpand();
+                      } else {
+                        _infoShrink();
+                      }
+                    },
+                    child: Container(
+                      child: _buildSubHeader(
+                        context,
+                        data,
+                        item,
+                        artistStr,
+                      ),
+                    ),
+                  ),
+                ),
               ),
-              child: GestureDetector(
-                onVerticalDragEnd: (details) {
-                  final dy = details.primaryVelocity ?? 0;
-                  if (dy <= 0) {
-                    _infoExpand();
-                  } else {
-                    _infoShrink();
-                  }
-                },
-                child: _buildSubHeader(context, data, item, artistStr),
-              ),
-            ),
+              if (_isInfoExpand)
+                Positioned(
+                  top: _appBarBottomDy ?? 80,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: _infoShrink,
+                    onVerticalDragEnd: (details) {
+                      final dy = details.primaryVelocity ?? 0;
+                      if (dy > 0) {
+                        _infoShrink();
+                      }
+                    },
+                    child: Container(
+                      color: Colors.transparent,
+                      height:
+                          (MediaQuery.of(context).size.height -
+                                  (_appBarBottomDy ?? 80) -
+                                  _infoHeaderHeight) *
+                              0.5,
+                      width: MediaQuery.of(context).size.width,
+                    ),
+                  ),
+                ),
+            ],
           ),
         );
       },
@@ -226,21 +266,21 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     PlaylistItem item,
     String artistStr,
   ) {
+    var subTitle = '';
+    if (artistStr.isNotEmpty) {
+      subTitle = artistStr;
+    }
     return Column(
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(
-            LayoutConstants.space3,
-            LayoutConstants.space2,
-            0,
-            LayoutConstants.space2,
-          ),
+          padding: const EdgeInsets.fromLTRB(12, 8, 0, 8),
           child: Row(
             children: [
               Expanded(
                 child: ArtworkDetailsHeader(
                   title: item.title ?? '',
-                  subTitle: artistStr,
+                  subTitle: subTitle,
+                  onSubTitleTap: null,
                 ),
               ),
               if (_isInfoExpand)
@@ -253,33 +293,30 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     minWidth: 44,
                     minHeight: 44,
                   ),
-                  icon: Icon(
+                  icon: const Icon(
                     Icons.close,
-                    size: LayoutConstants.iconSizeDefault,
+                    size: 18,
                     color: AppColor.white,
                   ),
                 )
               else
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _showArtworkOptionsDialog(
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: () => _showArtworkOptionsDialog(
                     context,
                     item,
                     data.token,
                   ),
-                  child: SizedBox(
-                    width: LayoutConstants.minTouchTarget,
-                    height: LayoutConstants.minTouchTarget,
-                    child: Center(
-                      child: TouchTarget(
-                        minSize: LayoutConstants.minTouchTarget,
-                        child: SvgPicture.asset(
-                          'assets/images/more_circle.svg',
-                          width: 22,
-                          height: 22,
-                        ),
-                      ),
-                    ),
+                  constraints: const BoxConstraints(
+                    maxWidth: 44,
+                    maxHeight: 44,
+                    minWidth: 44,
+                    minHeight: 44,
+                  ),
+                  icon: SvgPicture.asset(
+                    'assets/images/more_circle.svg',
+                    width: 22,
+                    height: 22,
                   ),
                 ),
             ],
@@ -296,6 +333,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     AssetToken? token,
   ) async {
     if (!context.mounted) return;
+    _focusNode.unfocus();
 
     // Match old artwork_detail_page: same order, same icon sizes (pixel-exact).
     final options = <OptionItem>[
@@ -365,75 +403,105 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
         ? token.displayDescription
         : '';
 
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: SizedBox(
-        width: double.infinity,
-        child: Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: LayoutConstants.pageHorizontalDefault,
-              ),
+    return Stack(
+      children: [
+        Visibility(
+          visible: true,
+          child: WebviewControllerTextField(
+            webViewController: null,
+            focusNode: _focusNode,
+            textController: _textController,
+            disableKeys: const [],
+          ),
+        ),
+        NotificationListener<UserScrollNotification>(
+          onNotification: (_) => true,
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: SizedBox(
+              width: double.infinity,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (descriptionHtml.isNotEmpty) ...[
-                    SelectionArea(
-                      child: HtmlWidget(
-                        descriptionHtml,
-                        textStyle: AppTypography.body(context).white,
-                        onTapUrl: (url) async {
-                          await launchUrl(
-                            Uri.parse(url),
-                            mode: LaunchMode.externalApplication,
-                          );
-                          return true;
-                        },
+                  Visibility(
+                    visible: false,
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                          left: 16, right: 16, bottom: 20),
+                      child: OutlineButton(
+                        color: Colors.transparent,
+                        text: '',
+                        onTap: () {},
                       ),
                     ),
-                    SizedBox(height: LayoutConstants.space10),
-                  ],
-                  buildWorkDetailMetadataSection(
-                    context,
-                    item: item,
-                    token: token,
                   ),
-                  if (token != null)
-                    ownerAddressesAsync.when(
-                      data: (addresses) => buildWorkDetailTokenOwnershipSection(
-                        context,
-                        ownerAddresses: addresses,
-                        token: token,
-                      ),
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, _) => const SizedBox.shrink(),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Semantics(
+                          label: 'Desc',
+                          child: SelectionArea(
+                            focusNode: _selectTextFocusNode,
+                            child: HtmlWidget(
+                              descriptionHtml,
+                              customStylesBuilder: auHtmlStyle,
+                              textStyle: AppTypography.body(context).white,
+                              onTapUrl: (url) async {
+                                await launchUrl(
+                                  Uri.parse(url),
+                                  mode: LaunchMode.externalApplication,
+                                );
+                                return true;
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 40),
+                        buildWorkDetailMetadataSection(
+                          context,
+                          item: item,
+                          token: token,
+                        ),
+                        if (token != null)
+                          ownerAddressesAsync.when(
+                            data: (addresses) =>
+                                buildWorkDetailTokenOwnershipSection(
+                              context,
+                              ownerAddresses: addresses,
+                              token: token,
+                            ),
+                            loading: () => const SizedBox.shrink(),
+                            error: (_, _) => const SizedBox.shrink(),
+                          ),
+                        if (token != null)
+                          ownerAddressesAsync.when(
+                            data: (addresses) =>
+                                buildWorkDetailProvenanceSection(
+                              context,
+                              ownerAddresses: addresses,
+                              token: token,
+                            ),
+                            loading: () => const SizedBox.shrink(),
+                            error: (_, _) => const SizedBox.shrink(),
+                          ),
+                        buildWorkDetailRightSection(context, item, token),
+                        const SizedBox(height: 80),
+                      ],
                     ),
-                  if (token != null)
-                    ownerAddressesAsync.when(
-                      data: (addresses) => buildWorkDetailProvenanceSection(
-                        context,
-                        ownerAddresses: addresses,
-                        token: token,
-                      ),
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, _) => const SizedBox.shrink(),
-                    ),
-                  buildWorkDetailRightSection(context, item, token),
-                  SizedBox(height: LayoutConstants.space20),
+                  ),
+                  SizedBox(
+                    height: (MediaQuery.of(context).size.height -
+                            (_appBarBottomDy ?? 80) -
+                            _infoHeaderHeight) *
+                        0.5,
+                  ),
                 ],
               ),
             ),
-            SizedBox(
-              height:
-                  (MediaQuery.of(context).size.height -
-                      (_appBarBottomDy ?? 80) -
-                      _infoHeaderHeight) *
-                  0.5,
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
