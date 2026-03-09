@@ -1,4 +1,5 @@
 import 'package:app/infra/services/seed_database_service.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -50,6 +51,86 @@ void main() {
       expect(
         headers['authorization'],
         contains('SignedHeaders=host;x-amz-content-sha256;x-amz-date'),
+      );
+    });
+  });
+
+  group('SeedDatabaseService retryable download errors', () {
+    DioException _dioException({
+      required DioExceptionType type,
+      int? statusCode,
+    }) {
+      return DioException(
+        requestOptions: RequestOptions(path: 'https://example.invalid/seed.db'),
+        type: type,
+        response: statusCode == null
+            ? null
+            : Response<void>(
+                requestOptions: RequestOptions(
+                  path: 'https://example.invalid/seed.db',
+                ),
+                statusCode: statusCode,
+              ),
+      );
+    }
+
+    test('retries on timeout and connectivity failures', () {
+      expect(
+        SeedDatabaseService.isRetryableDownloadError(
+          _dioException(type: DioExceptionType.connectionTimeout),
+        ),
+        isTrue,
+      );
+      expect(
+        SeedDatabaseService.isRetryableDownloadError(
+          _dioException(type: DioExceptionType.connectionError),
+        ),
+        isTrue,
+      );
+      expect(
+        SeedDatabaseService.isRetryableDownloadError(
+          _dioException(type: DioExceptionType.receiveTimeout),
+        ),
+        isTrue,
+      );
+    });
+
+    test('retries on retry-friendly HTTP status codes', () {
+      expect(
+        SeedDatabaseService.isRetryableDownloadError(
+          _dioException(type: DioExceptionType.badResponse, statusCode: 429),
+        ),
+        isTrue,
+      );
+      expect(
+        SeedDatabaseService.isRetryableDownloadError(
+          _dioException(type: DioExceptionType.badResponse, statusCode: 504),
+        ),
+        isTrue,
+      );
+    });
+
+    test('does not retry on non-retryable HTTP status codes', () {
+      expect(
+        SeedDatabaseService.isRetryableDownloadError(
+          _dioException(type: DioExceptionType.badResponse, statusCode: 400),
+        ),
+        isFalse,
+      );
+      expect(
+        SeedDatabaseService.isRetryableDownloadError(
+          _dioException(type: DioExceptionType.badResponse, statusCode: 404),
+        ),
+        isFalse,
+      );
+    });
+
+    test('does not retry cancellations', () {
+      expect(
+        SeedDatabaseService.isRetryableDownloadError(
+          _dioException(type: DioExceptionType.cancel),
+        ),
+        isFalse,
       );
     });
   });
