@@ -97,14 +97,49 @@ Use Conventional Commits:
 ## Review guidelines
 Follow these guidelines for all PR reviews and change requests.
 
-- Review priority:
-  1. Riverpod correctness and best practices per https://riverpod.dev/docs/root/do_dont
-  2. UI/error copy voice compliance per `.cursor/rules/05-engineering-voice.mdc`
-  3. Flutter performance best practices per https://docs.flutter.dev/perf/best-practices
-  4. Master-flow integrity against `docs/project_spec.md` and `docs/app_flows.md`
-  5. Principle compliance with `.cursor/rules/01-master-design.mdc`
-- Riverpod reviews must aggressively flag anti-patterns from the Riverpod do/don't guide (provider misuse, hidden mutable flow state, widget-driven side effects, or architecture drift away from Riverpod as the flow driver).
-- UI text and error messages must strictly follow the engineering voice document (`.cursor/rules/05-engineering-voice.mdc`). If copy violates voice/clarity/tone rules, explicitly recommend replacement text in review comments.
-- For Flutter code, check for violations of the Flutter performance guide and flag regressions as high-priority findings.
-- For every newly added dependency in `pubspec.yaml`, run `scripts/pub_dependency_report.sh`, verify whether each added package is on the latest version, and recommend upgrading to the latest stable version by default.
-- Review flow impact explicitly: read `docs/project_spec.md` and `docs/app_flows.md`, map the change to current master flows, and comment on any invariant/responsibility violation.
+### Review priority
+1. Riverpod correctness and best practices per https://riverpod.dev/docs/root/do_dont
+2. UI/error copy voice compliance per `.cursor/rules/05-engineering-voice.mdc`
+3. Flutter performance best practices per https://docs.flutter.dev/perf/best-practices
+4. Master-flow integrity against `docs/project_spec.md` and `docs/app_flows.md`
+5. Principle compliance with `.cursor/rules/01-master-design.mdc`
+
+### Required expanded review posture
+- Do not review only for local correctness of the submitted diff.
+- Read the PR description first, infer the real product/flow goal, then review whether the chosen implementation is the right solution for that goal.
+- Because this app does not require backward-compatibility or migration-safe edits by default, do not bias toward minimal-change solutions during review.
+- Actively consider stronger alternatives, including:
+  - larger refactors,
+  - responsibility re-allocation across layers,
+  - API reshaping,
+  - deleting obsolete abstractions,
+  - and breaking changes that would produce a cleaner long-term design.
+- If a better solution likely requires broad code movement or a breaking change, explicitly say so instead of constraining feedback to the current patch shape.
+
+### Hindsight and refactor review
+After reviewing the implementation, always add a hindsight section:
+1. What architectural pain points became visible only after implementation?
+2. What would be done differently if implementing from scratch now?
+3. What refactors would simplify the system, even if they are not required to ship this PR?
+4. What existing abstractions, providers, services, or flows should be deleted, merged, or redefined?
+
+Do not limit hindsight feedback to incremental cleanup. Prefer identifying structural improvements.
+
+### Tests and docs sufficiency review
+At the end of every substantial review, explicitly assess:
+1. Do we have enough unit tests for the logic introduced or changed?
+2. Do we have enough integration coverage for the affected flow?
+3. Are current tests verifying the intended behavior rather than implementation details?
+4. Does the change require updates to `docs/project_spec.md`, `docs/app_flows.md`, or other developer docs?
+5. If documentation is missing, specify exactly what should be documented.
+
+### Preferred review output shape
+When a PR is non-trivial, structure the review into:
+1. Critical correctness issues
+2. Architecture / flow issues
+3. Better alternative designs
+4. Hindsight refactors
+5. Test gaps
+6. Documentation gaps
+
+When relevant, include an explicit "recommended alternative approach" section that may replace the submitted design entirely.
