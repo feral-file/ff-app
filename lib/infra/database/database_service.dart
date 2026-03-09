@@ -1619,7 +1619,8 @@ class DatabaseService {
 
   /// Enrich a single playlist item with token data.
   ///
-  /// Updates the item in database with thumbnailUri and artists from token.
+  /// Updates the item in database with provenance, source, thumbnail, artists,
+  /// and other DP-1 fields from the token.
   Future<void> enrichPlaylistItemWithToken({
     required String itemId,
     required AssetToken token,
@@ -1628,27 +1629,12 @@ class DatabaseService {
       final enrichedItem = TokenTransformer.assetTokenToPlaylistItem(
         token: token,
       );
-
-      // Create companion with enriched data
-      final companion = ItemsCompanion(
-        id: Value(itemId),
-        kind: const Value(1), // indexer token
-        title: Value(enrichedItem.title),
-        subtitle: Value(enrichedItem.subtitle),
-        thumbnailUri: Value(enrichedItem.thumbnailUrl),
-        listArtistJson:
-            enrichedItem.artists != null && enrichedItem.artists!.isNotEmpty
-            ? Value(
-                jsonEncode(
-                  enrichedItem.artists!.map((a) => a.toJson()).toList(),
-                ),
-              )
-            : const Value(null),
-        tokenDataJson: Value(jsonEncode(token.toRestJson())),
-        enrichmentStatus: const Value(enrichmentStatusEnriched),
-        updatedAtUs: Value(BigInt.from(DateTime.now().microsecondsSinceEpoch)),
+      final companion = _buildEnrichmentCompanion(
+        itemId: itemId,
+        enrichedItem: enrichedItem,
+        tokenJson: jsonEncode(token.toRestJson()),
+        nowUs: BigInt.from(DateTime.now().microsecondsSinceEpoch),
       );
-
       await _db.upsertItem(companion);
     } catch (e, stack) {
       _log.severe('Failed to enrich item $itemId', e, stack);
@@ -1707,6 +1693,57 @@ class DatabaseService {
     }
   }
 
+  /// Build [ItemsCompanion] for enrichment from [PlaylistItem] and token JSON.
+  ///
+  /// Persists provenance, sourceUri, refUri, durationSec, license, repro,
+  /// display, thumbnail, artists, and tokenData to preserve DP-1 compatibility.
+  static ItemsCompanion _buildEnrichmentCompanion({
+    required String itemId,
+    required PlaylistItem enrichedItem,
+    required String tokenJson,
+    required BigInt nowUs,
+  }) {
+    return ItemsCompanion(
+      id: Value(itemId),
+      kind: const Value(1), // indexer token
+      title: Value(enrichedItem.title),
+      subtitle: Value(enrichedItem.subtitle),
+      thumbnailUri: Value(enrichedItem.thumbnailUrl),
+      provenanceJson: enrichedItem.provenance != null
+          ? Value(jsonEncode(enrichedItem.provenance!.toJson()))
+          : const Value.absent(),
+      sourceUri: enrichedItem.source != null
+          ? Value(enrichedItem.source)
+          : const Value.absent(),
+      refUri: enrichedItem.ref != null
+          ? Value(enrichedItem.ref)
+          : const Value.absent(),
+      durationSec: enrichedItem.duration > 0
+          ? Value(enrichedItem.duration)
+          : const Value.absent(),
+      license: enrichedItem.license != null
+          ? Value(enrichedItem.license!.value)
+          : const Value.absent(),
+      reproJson: enrichedItem.repro != null
+          ? Value(jsonEncode(enrichedItem.repro!.toJson()))
+          : const Value.absent(),
+      displayJson: enrichedItem.display != null
+          ? Value(jsonEncode(enrichedItem.display!.toJson()))
+          : const Value.absent(),
+      listArtistJson:
+          enrichedItem.artists != null && enrichedItem.artists!.isNotEmpty
+          ? Value(
+              jsonEncode(
+                enrichedItem.artists!.map((a) => a.toJson()).toList(),
+              ),
+            )
+          : const Value(null),
+      tokenDataJson: Value(tokenJson),
+      enrichmentStatus: const Value(enrichmentStatusEnriched),
+      updatedAtUs: Value(nowUs),
+    );
+  }
+
   static Future<void> _enrichPlaylistItemsWithTokensBatchOnDatabase({
     required AppDatabase db,
     required List<(String, AssetToken)> enrichments,
@@ -1719,24 +1756,11 @@ class DatabaseService {
           final enrichedItem = TokenTransformer.assetTokenToPlaylistItem(
             token: token,
           );
-
-          return ItemsCompanion(
-            id: Value(itemId),
-            kind: const Value(1), // indexer token
-            title: Value(enrichedItem.title),
-            subtitle: Value(enrichedItem.subtitle),
-            thumbnailUri: Value(enrichedItem.thumbnailUrl),
-            listArtistJson:
-                enrichedItem.artists != null && enrichedItem.artists!.isNotEmpty
-                ? Value(
-                    jsonEncode(
-                      enrichedItem.artists!.map((a) => a.toJson()).toList(),
-                    ),
-                  )
-                : const Value(null),
-            tokenDataJson: Value(jsonEncode(token.toRestJson())),
-            enrichmentStatus: const Value(enrichmentStatusEnriched),
-            updatedAtUs: Value(nowUs),
+          return _buildEnrichmentCompanion(
+            itemId: itemId,
+            enrichedItem: enrichedItem,
+            tokenJson: jsonEncode(token.toRestJson()),
+            nowUs: nowUs,
           );
         })
         .toList(growable: false);

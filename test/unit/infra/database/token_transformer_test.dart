@@ -35,6 +35,44 @@ void main() {
         expect(item.source, 'https://example.com/animation.mp4');
         expect(item.thumbnailUrl, 'https://example.com/thumb.jpg');
         expect(item.tokenData, isNotNull);
+        expect(item.provenance, isNotNull);
+        expect(item.provenance!.type.toString(), contains('onChain'));
+        expect(item.provenance!.contract.address, '0xCONTRACT');
+        expect(item.provenance!.contract.tokenId, '1');
+      });
+
+      test('builds provenance for Tezos FA2 token', () {
+        final token = AssetToken(
+          id: 1,
+          cid: 'tezos:mainnet:fa2:KT1ABC:42',
+          chain: 'tezos:mainnet',
+          standard: 'fa2',
+          contractAddress: 'KT1ABC',
+          tokenNumber: '42',
+        );
+
+        final item = TokenTransformer.assetTokenToPlaylistItem(token: token);
+
+        expect(item.provenance, isNotNull);
+        expect(item.provenance!.contract.chain.toString(), contains('tezos'));
+        expect(item.provenance!.contract.standard.toString(), contains('fa2'));
+        expect(item.provenance!.contract.address, 'KT1ABC');
+        expect(item.provenance!.contract.tokenId, '42');
+      });
+
+      test('returns null provenance when address or tokenId empty', () {
+        final token = AssetToken(
+          id: 1,
+          cid: 'bad_cid',
+          chain: 'eip155:1',
+          standard: 'ERC-721',
+          contractAddress: '',
+          tokenNumber: '1',
+        );
+
+        final item = TokenTransformer.assetTokenToPlaylistItem(token: token);
+
+        expect(item.provenance, isNull);
       });
 
       test('prefers enrichment animation URL for source', () {

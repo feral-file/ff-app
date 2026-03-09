@@ -450,14 +450,29 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      "We couldn't rebuild metadata. Check your connection, "
-                      'then Retry.',
+                      "Rebuild metadata is incomplete. Try again later "
+                      'or contact support for help.',
                       style: AppTypography.body(context).white,
                     ),
                     const SizedBox(height: 24),
                     OutlineButton(
-                      text: 'OK',
+                      text: 'Retry later',
                       onTap: () => Navigator.pop(context),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlineButton(
+                      text: 'Contact support',
+                      onTap: () {
+                        Navigator.pop(context);
+                        unawaited(
+                          UIHelper.showCustomerSupport(
+                            context,
+                            supportEmailService:
+                                ref.read(supportEmailServiceProvider),
+                            onSendComplete: () {},
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
