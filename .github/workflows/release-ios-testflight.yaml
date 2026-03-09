@@ -11,6 +11,9 @@ on:
       message:
         description: Change logs
         required: false
+  release:
+    types:
+      - published
 
 jobs:
   build-upload:
@@ -55,6 +58,22 @@ jobs:
           echo "Lines: $(wc -l < .env) lines"
 
       - run: flutter pub get
+
+      - name: Resolve release version from tag
+        id: release_meta
+        run: |
+          VERSION_VALUE=""
+          if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            VERSION_VALUE="${GITHUB_REF_NAME}"
+            if [[ -z "$VERSION_VALUE" ]]; then
+              echo "Missing tag name in GITHUB_REF_NAME for release event"
+              exit 1
+            fi
+          else
+            VERSION_VALUE="${{ inputs.version }}"
+          fi
+          echo "version=$VERSION_VALUE" >> "$GITHUB_OUTPUT"
+          echo "Resolved iOS release version: ${VERSION_VALUE:-<auto>}"
 
       - name: Cache pods
         id: cache-pods
@@ -151,8 +170,8 @@ jobs:
         env:
           DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
         run: |
-          BUILD_NAME="${{ inputs.version }}"
-          BUILD_NUMBER="${{ inputs['build-number'] }}"
+          BUILD_NAME="${{ steps.release_meta.outputs.version }}"
+          BUILD_NUMBER="${{ github.event_name == 'workflow_dispatch' && inputs['build-number'] || '' }}"
           if [[ -z "$BUILD_NAME" || -z "$BUILD_NUMBER" ]]; then
             ASC_API_KEY_FILE="$(mktemp)"
             printf '%s' "${{ secrets.FF_TESTFLIGHT_API_TOKEN }}" > "$ASC_API_KEY_FILE"
@@ -187,6 +206,7 @@ jobs:
 
             echo "Latest iOS version: $LATEST_VERSION, latest build: $LATEST_BUILD"
           fi
+
           echo "Using iOS version: $BUILD_NAME"
           echo "Using iOS build number: $BUILD_NUMBER"
           echo "IOS_BUILD_NAME=$BUILD_NAME" >> "$GITHUB_ENV"
