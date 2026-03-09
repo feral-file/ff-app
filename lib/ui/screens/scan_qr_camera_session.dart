@@ -40,12 +40,16 @@ class ScanQrCameraSession {
   }
 
   Future<void> _enqueueStateTransition() {
+    // Capture desired state at enqueue time so racing resume/pause don't overwrite
+    // each other. Each transition applies the state that was requested when it
+    // was enqueued.
+    final wantedRun = _shouldRun;
     final transition = _queue.then((_) async {
-      if (_isDisposed || _isRunning == _shouldRun) {
+      if (_isDisposed || _isRunning == wantedRun) {
         return;
       }
 
-      if (_shouldRun) {
+      if (wantedRun) {
         await _startCamera();
         _isRunning = true;
         return;
