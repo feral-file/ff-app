@@ -141,7 +141,7 @@ void main() {
       expect(result.showRetry, isFalse);
     });
 
-    test('syncingTokens + job completed: shows Syncing not Up to date', () {
+    test('syncingTokens + job completed: shows Syncing with indexed found count', () {
       const job = AddressIndexingJobResponse(
         workflowId: 'wf_1',
         address: '0xabc',
@@ -154,7 +154,7 @@ void main() {
         job: job,
         readyCount: 5,
       );
-      expect(result.text, 'Syncing • 5 ready • 9 found');
+      expect(result.text, 'Syncing • 5 ready • 10 found');
       expect(result.showRetry, isFalse);
     });
   });

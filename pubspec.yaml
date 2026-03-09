@@ -79,6 +79,7 @@ dependencies:
 
   # UI, widgets, and rendering
   after_layout: ^1.2.0
+  html: ^0.15.4
   backdrop: 0.9.1
   cached_network_image: 3.4.1
   fl_chart: 1.1.1

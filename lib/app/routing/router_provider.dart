@@ -1,5 +1,7 @@
+import 'package:app/app/providers/current_route_provider.dart';
 import 'package:app/app/route_observer.dart';
 import 'package:app/app/routing/app_navigator_key.dart';
+import 'package:app/app/routing/app_route_observer.dart';
 import 'package:app/app/routing/page_transitions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/infra/services/release_notes_service.dart';
@@ -51,13 +53,24 @@ routerProvider = Provider.family<GoRouter, String>((
     navigatorKey: appNavigatorKey,
     debugLogDiagnostics: true,
     initialLocation: initialLocation,
-    observers: [routeObserver],
+    observers: [
+      routeObserver,
+      AppRouteObserver(
+        onRouteChanged: (path, currentRoute) {
+          // Defer to avoid "modify provider while building" when observer
+          // fires during Navigator restoreState/didChangeDependencies.
+          Future.microtask(() {
+            ref.read(currentRouteProvider.notifier).update(path, currentRoute);
+          });
+        },
+      ),
+    ],
     // Deep links like device_connect are handled by DeeplinkHandler via
     // app_links, not by GoRouter route matching. When Flutter's
-    // RouteInformationProvider also forwards the same URL to GoRouter (e.g.
-    // on a cold-start from a universal link), we redirect to the initial
-    // location so GoRouter doesn't throw and DeeplinkHandler still processes
-    // the link correctly.
+    // RouteInformationProvider also forwards the same URL to GoRouter
+    // (e.g. on a cold-start from a universal link), we redirect to the
+    // initial location so GoRouter doesn't throw and DeeplinkHandler
+    // still processes the link correctly.
     redirect: (context, state) {
       final path = state.uri.path;
       if (path.startsWith('/device_connect')) {
@@ -65,8 +78,9 @@ routerProvider = Provider.family<GoRouter, String>((
       }
       return null;
     },
-    // Safety net: redirect to initialLocation for any URL that doesn't match
-    // a registered route (e.g. future deep link schemes not yet known to GoRouter).
+    // Safety net: redirect to initialLocation for any URL that doesn't
+    // match a registered route (e.g. future deep link schemes not yet
+    // known to GoRouter).
     onException: (context, state, router) {
       _log.warning('No route found for: ${state.uri}; redirecting to $initialLocation');
       router.go(initialLocation);

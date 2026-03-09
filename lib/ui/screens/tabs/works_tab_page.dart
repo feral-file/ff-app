@@ -6,10 +6,9 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
-import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/load_more_indicator.dart';
-import 'package:app/widgets/loading_view.dart';
+import 'package:app/widgets/seed_sync_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -90,16 +89,8 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
 
     final seedState = ref.watch(seedDownloadProvider);
     if (seedState.status == SeedDownloadStatus.syncing) {
-      return Center(
-        child: DelayedLoadingGate(
-          isLoading: true,
-          child: LoadingWidget(
-            backgroundColor: Colors.transparent,
-            text:
-                'Updating art library... '
-                '${((seedState.progress ?? 0) * 100).round()}%',
-          ),
-        ),
+      return SeedSyncLoadingIndicator(
+        progress: seedState.progress,
       );
     }
     if (seedState.status == SeedDownloadStatus.error) {
