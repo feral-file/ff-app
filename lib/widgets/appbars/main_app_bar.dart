@@ -61,59 +61,63 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appBar = SafeArea(
-      bottom: false,
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.symmetric(horizontal: LayoutConstants.space3),
-        color: backgroundColor ?? Colors.transparent,
-        child: Row(
-          children: [
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: _BackButton(
-                  title: backTitle ?? 'Index',
-                  onTap: () => context.pop(),
+    final appBar = LayoutBuilder(
+      builder: (context, constraints) {
+        return SafeArea(
+          bottom: false,
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: LayoutConstants.space3),
+            color: backgroundColor ?? Colors.transparent,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _BackButton(
+                      title: backTitle ?? 'Index',
+                      onTap: () => context.pop(),
+                    ),
+                  ),
                 ),
-              ),
+                Expanded(
+                  child: Center(
+                    child: centeredTitle != null
+                        ? Text(
+                            centeredTitle!,
+                            style: AppTypography.h4(context).white.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: actions.isNotEmpty
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              for (var i = 0; i < actions.length; i++) ...[
+                                actions[i],
+                                if (i < actions.length - 1)
+                                  SizedBox(width: LayoutConstants.space2),
+                              ],
+                            ],
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ],
             ),
-            Expanded(
-              child: Center(
-                child: centeredTitle != null
-                    ? Text(
-                        centeredTitle!,
-                        style: AppTypography.h4(context).white.copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ),
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: actions.isNotEmpty
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          for (var i = 0; i < actions.length; i++) ...[
-                            actions[i],
-                            if (i < actions.length - 1)
-                              SizedBox(width: LayoutConstants.space2),
-                          ],
-                        ],
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
 
     final systemUiOverlayStyle = SystemUiOverlayStyle(
@@ -129,7 +133,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   @override
-  Size get preferredSize => Size.fromHeight(LayoutConstants.space18);
+  Size get preferredSize => const Size.fromHeight(69);
 }
 
 class _BackButton extends StatelessWidget {
