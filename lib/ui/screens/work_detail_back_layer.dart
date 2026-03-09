@@ -48,9 +48,7 @@ class WorkDetailBackLayer extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          height: LayoutConstants.space12,
-        ),
+        const SizedBox(height: 45),
         Expanded(
           child: Stack(
             children: [
@@ -87,14 +85,12 @@ class WorkDetailBackLayer extends StatelessWidget {
             ],
           ),
         ),
-        SizedBox(
-          height: LayoutConstants.space12,
-        ),
+        const SizedBox(height: 45),
         if (!isFullScreen)
           Column(
             children: [
               Padding(
-                padding: EdgeInsets.symmetric(vertical: LayoutConstants.space2),
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: const ArtworkDetailsHeader(
                   title: 'I',
                   subTitle: 'I',
