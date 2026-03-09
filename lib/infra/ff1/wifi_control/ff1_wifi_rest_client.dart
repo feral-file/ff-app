@@ -84,13 +84,11 @@ class FF1WifiRestClient {
 
       // Handle various response formats
       if (responseData is Map<String, dynamic>) {
-        _logger.fine('Command response: $responseData');
         return responseData;
       }
 
       if (responseData is Map) {
         final result = Map<String, dynamic>.from(responseData);
-        _logger.fine('Command response: $result');
         return result;
       }
 

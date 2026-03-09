@@ -241,15 +241,6 @@ class FF1BleTransport {
 
         _log.info('Found ${services.length} services on device');
 
-        // Log all available services for debugging
-        for (final service in services) {
-          _log.info(
-            'Service: ${service.uuid} '
-            '(primary: ${service.isPrimary}, '
-            'characteristics: ${service.characteristics.length})',
-          );
-        }
-
         // Find FF1 service by UUID
         final ff1Service = services.firstWhereOrNull(
           (s) => s.uuid.toString() == serviceUuid,
