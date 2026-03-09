@@ -1,0 +1,45 @@
+---
+description: Spec-driven workflow for large features, flow changes, and architectural refactors
+globs:
+  - "lib/**"
+  - "test/**"
+  - "docs/**"
+  - "AGENTS.md"
+alwaysApply: true
+---
+
+# Spec-Driven Development Rule
+
+Apply this rule whenever the request is a large feature, major flow/screen change, or architectural refactor.
+
+## Required planning workflow
+1. Read `docs/project_spec.md`.
+2. Read `docs/app_flows.md`.
+3. Summarize the current implementation before proposing changes:
+   - current flow
+   - affected screens
+   - affected modules/services
+   - constraints/invariants that must be preserved
+4. Read any additional relevant architecture/rule docs.
+5. Produce or update a feature spec before implementation.
+6. Generate an implementation task plan from that feature spec.
+7. Then implement and verify.
+
+Canonical sequence:
+`spec -> design -> tasks -> implementation -> verification`
+
+## Flow/screen change requirements
+If modifying a major flow or important screen, explicitly document:
+- current end-to-end behavior
+- entry points and outcomes
+- failure/edge states
+- module/service touch points
+
+## Enforcement
+- Do not invent new flows that contradict `docs/project_spec.md` or `docs/app_flows.md`.
+- If documentation and implementation conflict, prefer implemented behavior for current-state planning and note the mismatch in docs/spec updates.
+- Do not start large changes without first producing/updating a feature spec.
+
+## Verification expectations
+After implementation, run verification using
+`.cursor/rules/35-testing-tdd.mdc` as the canonical quality-gate rule.
