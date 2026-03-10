@@ -8,6 +8,30 @@ import 'package:app/widgets/now_displaying_bar/sleep_mode_indicator.dart';
 import 'package:app/widgets/now_displaying_bar/top_line.dart';
 import 'package:flutter/material.dart';
 
+/// Wraps [child] with [GestureDetector] when [onTap] is non-null.
+/// Used to isolate the navigate tap area from the sleep indicator tap area.
+class _TapToNavigate extends StatelessWidget {
+  const _TapToNavigate({
+    required this.onTap,
+    required this.child,
+  });
+
+  final VoidCallback? onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (onTap != null) {
+      return GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: child,
+      );
+    }
+    return child;
+  }
+}
+
 /// Collapsed now playing bar matching old repo structure.
 ///
 /// Container > HeaderWithAnimated > header: Column(TopLine, Row(DisplayItem, SleepModeIndicator))
@@ -66,10 +90,13 @@ class _CollapsedNowPlayingBarState extends State<CollapsedNowPlayingBar>
             Row(
               children: [
                 Expanded(
-                  child: NowDisplayingDisplayItem(
-                    item: playingObject.currentItem,
-                    deviceName: playingObject.connectedDevice.name,
-                    isPlaying: true,
+                  child: _TapToNavigate(
+                    onTap: widget.onTap,
+                    child: NowDisplayingDisplayItem(
+                      item: playingObject.currentItem,
+                      deviceName: playingObject.connectedDevice.name,
+                      isPlaying: true,
+                    ),
                   ),
                 ),
                 SizedBox(width: LayoutConstants.space4),
@@ -85,12 +112,6 @@ class _CollapsedNowPlayingBarState extends State<CollapsedNowPlayingBar>
       ),
     );
 
-    if (widget.onTap != null) {
-      return GestureDetector(
-        onTap: widget.onTap,
-        child: content,
-      );
-    }
     return content;
   }
 }

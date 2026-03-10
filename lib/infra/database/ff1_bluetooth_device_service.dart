@@ -15,13 +15,27 @@ import 'package:objectbox/objectbox.dart';
 /// - Managing active device state
 /// - Tracking connection states
 class FF1BluetoothDeviceService {
-  /// Creates a FF1BluetoothDeviceService
-  FF1BluetoothDeviceService(this._box) {
+  /// Creates a FF1BluetoothDeviceService.
+  ///
+  /// [store] is used for [watchAllDevices] to react to ObjectBox changes.
+  FF1BluetoothDeviceService(this._store, this._box) {
     _log = Logger('FF1BluetoothDeviceService');
   }
 
+  final Store _store;
   final Box<FF1BluetoothDeviceEntity> _box;
   late final Logger _log;
+
+  /// Stream of all devices; emits whenever the ObjectBox entity changes.
+  ///
+  /// Use this instead of [getAllDevices] when you need reactive updates
+  /// (e.g. migration, add/remove device) without manual invalidate.
+  Stream<List<FF1Device>> watchAllDevices() async* {
+    yield getAllDevices();
+    await for (final _ in _store.watch<FF1BluetoothDeviceEntity>()) {
+      yield getAllDevices();
+    }
+  }
 
   /// Get all stored Bluetooth devices
   List<FF1Device> getAllDevices() {
@@ -68,6 +82,17 @@ class FF1BluetoothDeviceService {
     }
   }
 
+  /// Stream of the active device; emits whenever the ObjectBox entity changes.
+  ///
+  /// Use this instead of [getActiveDevice] when you need reactive updates
+  /// (e.g. migration, setActiveDevice) without manual invalidate.
+  Stream<FF1Device?> watchActiveDevice() async* {
+    yield getActiveDevice();
+    await for (final _ in _store.watch<FF1BluetoothDeviceEntity>()) {
+      yield getActiveDevice();
+    }
+  }
+
   /// Get the currently active device
   FF1Device? getActiveDevice() {
     try {
@@ -86,12 +111,27 @@ class FF1BluetoothDeviceService {
   }
 
   /// Add or update a device
+  ///
+  /// Removes all existing entities with the same [device.deviceId] before
+  /// inserting the new one to avoid duplicates and ensure topicId updates
+  /// are persisted correctly.
   Future<void> putDevice(FF1Device device) async {
     try {
       final now = DateTime.now().microsecondsSinceEpoch;
 
-      // Check if device exists
-      final existing = getDeviceById(device.deviceId);
+      // Remove all old entities with the same deviceId
+      final query = _box
+          .query(FF1BluetoothDeviceEntity_.deviceId.equals(device.deviceId))
+          .build();
+      final existingList = query.find();
+      int? preservedCreatedAtUs;
+      if (existingList.isNotEmpty) {
+        preservedCreatedAtUs = existingList.first.createdAtUs;
+        for (final entity in existingList) {
+          _box.remove(entity.id);
+        }
+      }
+      query.close();
 
       final entity = FF1BluetoothDeviceEntity(
         deviceId: device.deviceId,
@@ -99,18 +139,7 @@ class FF1BluetoothDeviceService {
         name: device.name,
         topicId: device.topicId,
         branchName: device.branchName,
-        createdAtUs: existing != null
-            ? _box
-                      .query(
-                        FF1BluetoothDeviceEntity_.deviceId.equals(
-                          device.deviceId,
-                        ),
-                      )
-                      .build()
-                      .findFirst()
-                      ?.createdAtUs ??
-                  now
-            : now,
+        createdAtUs: preservedCreatedAtUs ?? now,
         updatedAtUs: now,
       );
 

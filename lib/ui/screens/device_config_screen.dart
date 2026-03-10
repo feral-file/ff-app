@@ -12,6 +12,7 @@ import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/custom_app_bar.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
+import 'package:app/widgets/device_configuration/audio_control.dart';
 import 'package:app/widgets/device_configuration/canvas_setting.dart';
 import 'package:app/widgets/device_configuration/device_info_box.dart';
 import 'package:app/widgets/device_configuration/device_metrics_section.dart';
@@ -213,6 +214,42 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
               height: LayoutConstants.space5,
             ),
           ),
+          if (deviceStatus?.volume != null &&
+              deviceStatus?.isMuted != null) ...[
+            const SliverToBoxAdapter(
+              child: Divider(
+                color: AppColor.primaryBlack,
+                thickness: 1,
+                height: 1,
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: LayoutConstants.pageHorizontalDefault,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(height: LayoutConstants.space5),
+                    Text(
+                      'Audio',
+                      style: AppTypography.body(context).white,
+                    ),
+                    SizedBox(height: LayoutConstants.space3),
+                    AudioControl(
+                      topicId: topicId,
+                      isEnable: isControllable,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: SizedBox(height: LayoutConstants.space5),
+            ),
+          ],
           const SliverToBoxAdapter(
             child: Divider(
               color: AppColor.primaryBlack,
@@ -220,10 +257,17 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
               height: 1,
             ),
           ),
-          if (!widget.payload.isInSetupProcess) ...[
-            const SliverToBoxAdapter(
+          if (widget.payload.isInSetupProcess) ...[
+            SliverToBoxAdapter(
               child: SizedBox(
-                height: 20,
+                height: LayoutConstants.space20,
+              ),
+            ),
+          ],
+          if (!widget.payload.isInSetupProcess) ...[
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: LayoutConstants.space5,
               ),
             ),
             SliverToBoxAdapter(

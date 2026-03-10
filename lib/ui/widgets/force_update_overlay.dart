@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:app/app/providers/force_update_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/version_info.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/buttons/outline_button.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
 import 'package:flutter/material.dart';
@@ -41,22 +44,13 @@ class ForceUpdateOverlay extends ConsumerWidget {
                 onUpdate: () => ref
                     .read(forceUpdateServiceProvider)
                     .openStoreUrl(versionInfo.link),
-                onSupport: () async {
-                  try {
-                    await ref
-                        .read(supportEmailServiceProvider)
-                        .composeSupportEmail(
-                          recipient: 'support@feralfile.com',
-                        );
-                  } on Exception {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Could not open email client.'),
-                        ),
-                      );
-                    }
-                  }
+                onSupport: () {
+                  unawaited(
+                    UIHelper.showCustomerSupport(
+                      context,
+                      supportEmailService: ref.read(supportEmailServiceProvider),
+                    ),
+                  );
                 },
               ),
             ),
@@ -78,7 +72,7 @@ class _ForceUpdateDialogContent extends StatelessWidget {
 
   final VersionInfo versionInfo;
   final VoidCallback onUpdate;
-  final Future<void> Function() onSupport;
+  final VoidCallback onSupport;
 
   @override
   Widget build(BuildContext context) {
@@ -113,7 +107,7 @@ class _ForceUpdateDialogContent extends StatelessWidget {
             SizedBox(height: LayoutConstants.space4),
             OutlineButton(
               text: 'Contact Support',
-              onTap: () => onSupport(),
+              onTap: onSupport,
               textColor: AppColor.white,
               borderColor: AppColor.white,
             ),

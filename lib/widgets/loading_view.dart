@@ -75,6 +75,7 @@ class LoadingWidget extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               GifView.asset(
                 'assets/images/loading_white.gif',
@@ -87,7 +88,7 @@ class LoadingWidget extends StatelessWidget {
                 SizedBox(height: LayoutConstants.space3),
                 Text(
                   text ?? 'Loading...',
-                  style: AppTypography.bodySmall(context).white,
+                  style: AppTypography.body(context).white,
                   maxLines: 1,
                   overflow: TextOverflow.fade,
                   softWrap: false,

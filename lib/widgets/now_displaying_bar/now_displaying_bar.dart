@@ -91,8 +91,11 @@ class _NowDisplayingBarCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     switch (status) {
       case NoDevicePaired():
-        return const _NowPlayingStatusBar(
-          text: 'Pair an FF1 to start playing from any screen',
+        return const SizedBox.shrink();
+      case DeviceConnecting(:final device):
+        final name = device.name.isNotEmpty ? device.name : 'FF1';
+        return _NowPlayingStatusBar(
+          text: 'Connecting to $name',
         );
       case DeviceDisconnected(:final device):
         final name = device.name.isNotEmpty ? device.name : 'FF1';

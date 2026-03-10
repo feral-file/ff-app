@@ -4,9 +4,11 @@ import 'package:app/nft_rendering/nft_error_widget.dart';
 import 'package:app/nft_rendering/nft_loading_widget.dart';
 import 'package:app/nft_rendering/nft_rendering_widget.dart';
 import 'package:audio_session/audio_session.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:logging/logging.dart';
+
+final _log = Logger('AudioNFTRenderingWidget');
 
 class AudioNFTRenderingWidget extends NFTRenderingWidget {
   const AudioNFTRenderingWidget({
@@ -77,9 +79,7 @@ class _AudioNFTRenderingWidgetState
       widget.onLoaded?.call(time: _player?.duration?.inSeconds);
       await _player?.play();
     } catch (e) {
-      if (kDebugMode) {
-        print('Error while setting audio source: $audioURL. Error: $e');
-      }
+      _log.warning('Failed to play audio source: $audioURL. Error: $e');
     }
   }
 

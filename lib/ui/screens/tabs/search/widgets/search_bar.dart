@@ -10,6 +10,7 @@ class SearchBar extends StatefulWidget {
   const SearchBar({
     required this.controller,
     required this.onSubmitted,
+    required this.onChanged,
     super.key,
     this.hintText,
     this.autoFocus = false,
@@ -20,6 +21,9 @@ class SearchBar extends StatefulWidget {
 
   /// Called when the user submits a search query.
   final void Function(String) onSubmitted;
+
+  /// Called when the user updates the search text.
+  final void Function(String) onChanged;
 
   /// Placeholder text shown when the input is empty.
   final String? hintText;
@@ -81,6 +85,7 @@ class _SearchBarState extends State<SearchBar> {
                 isDense: true,
               ),
               onSubmitted: widget.onSubmitted,
+              onChanged: widget.onChanged,
             ),
           ),
           SizedBox(width: LayoutConstants.space3),

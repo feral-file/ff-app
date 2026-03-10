@@ -3,14 +3,17 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'App version'
+        description: "App version"
         required: false
       build-number:
-        description: 'Build number (CFBundleVersion). Defaults to latest TestFlight build + 1 if omitted.'
+        description: "Build number (CFBundleVersion). Defaults to latest TestFlight build + 1 if omitted."
         required: false
       message:
         description: Change logs
         required: false
+  release:
+    types:
+      - published
 
 jobs:
   build-upload:
@@ -25,12 +28,12 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.38.9
+          flutter-version: 3.41.2
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.2' #latest-stable
+          xcode-version: "26.2" #latest-stable
 
       - uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -55,6 +58,22 @@ jobs:
           echo "Lines: $(wc -l < .env) lines"
 
       - run: flutter pub get
+
+      - name: Resolve release version from tag
+        id: release_meta
+        run: |
+          VERSION_VALUE=""
+          if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            VERSION_VALUE="${GITHUB_REF_NAME}"
+            if [[ -z "$VERSION_VALUE" ]]; then
+              echo "Missing tag name in GITHUB_REF_NAME for release event"
+              exit 1
+            fi
+          else
+            VERSION_VALUE="${{ inputs.version }}"
+          fi
+          echo "version=$VERSION_VALUE" >> "$GITHUB_OUTPUT"
+          echo "Resolved iOS release version: ${VERSION_VALUE:-<auto>}"
 
       - name: Cache pods
         id: cache-pods
@@ -116,8 +135,8 @@ jobs:
         id: profiles
         uses: Apple-Actions/download-provisioning-profiles@v5
         with:
-          bundle-id: 'com.feralfile.app'
-          profile-type: 'IOS_APP_STORE'
+          bundle-id: "com.feralfile.app"
+          profile-type: "IOS_APP_STORE"
           issuer-id: ${{ secrets.FF_TESTFLIGHT_ISSUER_ID }}
           api-key-id: ${{ secrets.FF_TESTFLIGHT_KEY_ID }}
           api-private-key: ${{ secrets.FF_TESTFLIGHT_API_TOKEN }}
@@ -125,7 +144,7 @@ jobs:
       - name: Extract provisioning profile metadata
         run: |
           PROFILES='${{ steps.profiles.outputs.profiles }}'
-          
+
           if [[ -z "$PROFILES" ]]; then
             echo "No provisioning profiles downloaded"
             exit 1
@@ -151,8 +170,8 @@ jobs:
         env:
           DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
         run: |
-          BUILD_NAME="${{ inputs.version }}"
-          BUILD_NUMBER="${{ inputs['build-number'] }}"
+          BUILD_NAME="${{ steps.release_meta.outputs.version }}"
+          BUILD_NUMBER="${{ github.event_name == 'workflow_dispatch' && inputs['build-number'] || '' }}"
           if [[ -z "$BUILD_NAME" || -z "$BUILD_NUMBER" ]]; then
             ASC_API_KEY_FILE="$(mktemp)"
             printf '%s' "${{ secrets.FF_TESTFLIGHT_API_TOKEN }}" > "$ASC_API_KEY_FILE"
@@ -187,8 +206,11 @@ jobs:
 
             echo "Latest iOS version: $LATEST_VERSION, latest build: $LATEST_BUILD"
           fi
+
           echo "Using iOS version: $BUILD_NAME"
           echo "Using iOS build number: $BUILD_NUMBER"
+          echo "IOS_BUILD_NAME=$BUILD_NAME" >> "$GITHUB_ENV"
+          echo "IOS_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
 
           ARCHIVE_PATH="$RUNNER_TEMP/Runner.xcarchive"
           # Don't specify DEVELOPMENT_TEAM, CODE_SIGN_STYLE, or PROVISIONING_PROFILE
@@ -245,6 +267,21 @@ jobs:
 
           IPA_PATH="$(ls "$EXPORT_PATH"/*.ipa | head -1)"
           echo "IOS_IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
+
+      # - name: Install sentry-cli & create Sentry release and upload iOS debug symbols
+      #   env:
+      #     SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      #     SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      #     SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+      #   run: |
+      #     curl -sL https://sentry.io/get-cli/ | bash
+      #     sentry-cli --version
+      #     RELEASE="com.feralfile.app@${IOS_BUILD_NAME}+${IOS_BUILD_NUMBER}"
+      #     echo "Sentry release: $RELEASE"
+      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases new "$RELEASE"
+      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases set-commits "$RELEASE" --auto || true
+      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" debug-files upload --include-sources --wait "$ARCHIVE_PATH/dSYMs"
+      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases finalize "$RELEASE"
 
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v3

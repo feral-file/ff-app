@@ -102,7 +102,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
 
     return Scaffold(
       appBar: const SetupAppBar(
-        title: 'Select WiFi Network',
+        title: 'Select Network',
       ),
       backgroundColor: PrimitivesTokens.colorsDarkGrey,
       body: SafeArea(
@@ -132,39 +132,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                   ] else ...[
                     if (hasError || networks.isEmpty)
                       SliverToBoxAdapter(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // TODO: Handle case connect to device failed
-                            Text(
-                              hasError
-                                  ? 'Cannot get available networks from your FF1'
-                                  : 'No wifi networks found by FF1',
-                              style: AppTypography.caption(context).bold.white,
-                            ),
-                            SizedBox(height: LayoutConstants.space2),
-                            Text(
-                              hasError
-                                  ? connectionState.message ??
-                                        'There might be an issue with the WiFi module on your FF1. Please try restarting your FF1 and scan again.'
-                                  : 'Make sure WiFi networks are available nearby, then try again.',
-                              style: AppTypography.body(context).white,
-                            ),
-                            SizedBox(height: LayoutConstants.space5),
-                            PrimaryButton(
-                              onTap: () {
-                                unawaited(
-                                  ref
-                                      .read(connectWiFiProvider.notifier)
-                                      .connectAndScanNetworks(
-                                        device: widget.payload.device,
-                                      ),
-                                );
-                              },
-                              text: 'Retry',
-                            ),
-                          ],
-                        ),
+                        child: _errorOrEmptyView(context, connectionState),
                       ),
                   ],
                   if (networks.isNotEmpty)
@@ -182,6 +150,54 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _errorOrEmptyView(
+    BuildContext context,
+    WiFiConnectionState connectionState,
+  ) {
+    final hasError = connectionState.status == WiFiConnectionStatus.error;
+
+    final String title;
+    final String description;
+
+    if (hasError) {
+      if (connectionState.isConnectionFailed) {
+        title = 'Could not connect to FF1';
+        description =
+            'Make sure your FF1 is powered on and within Bluetooth range, '
+            'then retry.';
+      } else {
+        title = 'Cannot get available networks from FF1';
+        description =
+            connectionState.message ??
+            'There might be an issue with the WiFi module on your FF1. '
+                'Try restarting your FF1 and scan again.';
+      }
+    } else {
+      title = 'No WiFi networks found by FF1';
+      description = 'Make sure WiFi networks are available nearby, then retry.';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: AppTypography.caption(context).bold.white),
+        SizedBox(height: LayoutConstants.space2),
+        Text(description, style: AppTypography.body(context).white),
+        SizedBox(height: LayoutConstants.space5),
+        PrimaryButton(
+          onTap: () {
+            unawaited(
+              ref
+                  .read(connectWiFiProvider.notifier)
+                  .connectAndScanNetworks(device: widget.payload.device),
+            );
+          },
+          text: 'Try again',
+        ),
+      ],
     );
   }
 
@@ -233,7 +249,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
               color: Colors.transparent,
               child: Padding(
                 padding: EdgeInsets.symmetric(
-                  vertical: LayoutConstants.space5,
+                  vertical: LayoutConstants.space3,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -272,10 +288,21 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
           headerStyle: AppTypography.body(context).white,
           withDivider: false,
           headerPadding: EdgeInsets.symmetric(
-            vertical: LayoutConstants.space5,
+            vertical: LayoutConstants.space3,
           ),
-          iconOnUnExpanded: const SizedBox.shrink(),
-          iconOnExpanded: const SizedBox.shrink(),
+          iconOnUnExpanded: Icon(
+            Icons.arrow_forward_ios,
+            size: LayoutConstants.iconSizeSmall,
+            color: AppColor.white,
+          ),
+          iconOnExpanded: RotatedBox(
+            quarterTurns: 1,
+            child: Icon(
+              Icons.arrow_forward_ios,
+              color: AppColor.white,
+              size: LayoutConstants.iconSizeSmall,
+            ),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

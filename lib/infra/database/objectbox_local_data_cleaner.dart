@@ -9,12 +9,16 @@ class ObjectBoxLocalDataCleaner {
   final Store _store;
 
   /// Removes all rows from every local ObjectBox entity used by the app.
+  ///
+  /// Includes [TrackedAddressEntity] (user-added addresses) which was previously
+  /// omitted and caused addresses to persist after "forget I exist".
   Future<void> clearAll() async {
     _store.runInTransaction(TxMode.write, () {
       _store.box<FF1BluetoothDeviceEntity>().removeAll();
       _store.box<RemoteAppConfigEntity>().removeAll();
       _store.box<AppStateEntity>().removeAll();
       _store.box<AppStateAddressEntity>().removeAll();
+      _store.box<TrackedAddressEntity>().removeAll();
     });
   }
 }

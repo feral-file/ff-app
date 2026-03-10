@@ -1,10 +1,8 @@
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/gallery_thumbnail_widgets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:logging/logging.dart';
 
 final _log = Logger('WorkItemThumbnail');
@@ -64,30 +62,8 @@ class WorkItemThumbnail extends StatelessWidget {
       placeholder: (context, url) => const GalleryThumbnailPlaceholder(),
       errorWidget: (context, url, error) {
         _log.warning('Failed to load thumbnail for work ${item.id}: $error');
-        return const _NoThumbnail();
+        return const GalleryThumbnailErrorWidget();
       },
-    );
-  }
-}
-
-class _NoThumbnail extends StatelessWidget {
-  const _NoThumbnail();
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: AppColor.auGreyBackground,
-      child: Center(
-        child: SvgPicture.asset(
-          'assets/images/no_thumbnail.svg',
-          width: LayoutConstants.space12,
-          height: LayoutConstants.space12,
-          colorFilter: const ColorFilter.mode(
-            AppColor.auQuickSilver,
-            BlendMode.srcIn,
-          ),
-        ),
-      ),
     );
   }
 }

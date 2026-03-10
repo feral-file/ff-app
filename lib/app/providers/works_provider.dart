@@ -593,6 +593,30 @@ class WorkDetailNotifier extends Notifier<AsyncValue<WorkDetailData?>> {
       // Leave token null; UI shows item-only content.
     }
   }
+
+  /// Trigger metadata rebuild for the work, then fetch and enrich the item.
+  /// Runs trigger + poll + fetch in [IndexerServiceIsolate]. Caller must handle
+  /// null CID (show toast) and errors.
+  Future<void> rebuildMetadata(PlaylistItem item) async {
+    final cid = item.provenance?.cid;
+    if (cid == null || cid.isEmpty) return;
+
+    final indexerServiceIsolate = ref.read(indexerServiceIsolateProvider);
+    final databaseService = ref.read(databaseServiceProvider);
+
+    final token = await indexerServiceIsolate.rebuildMetadataAndFetchToken(cid);
+    if (!ref.mounted) return;
+    if (token == null) {
+      throw Exception('Token not found after metadata rebuild');
+    }
+
+    await databaseService.enrichPlaylistItemWithToken(
+      itemId: item.id,
+      token: token,
+    );
+    // No invalidate: watchPlaylistItemById emits when DB updates, _onItemChanged
+    // refreshes state and _loadAndEmit fetches the updated token.
+  }
 }
 
 /// Provider for work detail screen. Listens to the database so UI refreshes

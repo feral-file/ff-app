@@ -87,7 +87,7 @@ class _PlaylistSectionState extends State<PlaylistSection> {
                 onViewAllTap: widget.hasMore ? widget.onViewAllTap : null,
                 hasMore: widget.hasMore,
               ),
-              SizedBox(height: LayoutConstants.space2),
+              SizedBox(height: LayoutConstants.space3),
             ],
           );
         }

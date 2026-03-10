@@ -1,0 +1,35 @@
+---
+description: Canonical address indexing flow (trigger, poll, incremental ingest)
+globs:
+  - "lib/infra/services/address_service.dart"
+  - "lib/infra/services/indexer_service.dart"
+  - "lib/infra/services/indexer_sync_service.dart"
+  - "lib/infra/services/personal_tokens_sync_service.dart"
+  - "lib/app/providers/indexer_tokens_provider.dart"
+alwaysApply: true
+---
+
+# Address Indexing Flow Rule
+
+This rule governs address indexing behavior only.
+
+## 1) Canonical flow
+1. Trigger indexing for address list (`indexAddressesList`).
+2. Poll workflow status per address (`getAddressIndexingJobStatus`).
+3. Fetch token pages incrementally while job is active.
+4. Ingest fetched tokens into local DB immediately.
+5. Stop when terminal status is reached.
+
+## 2) Incremental UX requirement
+- On each status poll while non-terminal, fetch and ingest available token pages.
+- Users must see partial token results before job completion.
+
+## 3) Terminal state handling
+- Stop polling when `status.isDone == true`.
+- `completed`: success path.
+- `failed` or `canceled`: terminal error path; stop fetching.
+
+## 4) Data integrity constraints
+- Preserve per-address workflow mapping (`address <-> workflow_id`).
+- Avoid duplicate token ingestion for the same address/page cursor.
+- Keep poll loop idempotent and resumable.

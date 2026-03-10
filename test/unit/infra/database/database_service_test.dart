@@ -155,6 +155,64 @@ void main() {
         },
       );
 
+      test('deleteItemsOfAddresses removes entries and items for address', () async {
+        const address = '0xabc123';
+        final playlist = Playlist(
+          id: 'pl_addr',
+          name: 'Address Playlist',
+          type: PlaylistType.addressBased,
+          ownerAddress: address,
+          sortMode: PlaylistSortMode.provenance,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        await service.ingestPlaylists([playlist]);
+
+        final items = [
+          PlaylistItem(
+            id: 'item_1',
+            kind: PlaylistItemKind.indexerToken,
+            title: 'Item 1',
+            updatedAt: DateTime.now(),
+          ),
+          PlaylistItem(
+            id: 'item_2',
+            kind: PlaylistItemKind.indexerToken,
+            title: 'Item 2',
+            updatedAt: DateTime.now(),
+          ),
+        ];
+        await service.ingestPlaylistItems(items);
+
+        final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+        await db.upsertPlaylistEntries([
+          PlaylistEntriesCompanion.insert(
+            playlistId: 'pl_addr',
+            itemId: 'item_1',
+            position: const Value(0),
+            sortKeyUs: BigInt.zero,
+            updatedAtUs: nowUs,
+          ),
+          PlaylistEntriesCompanion.insert(
+            playlistId: 'pl_addr',
+            itemId: 'item_2',
+            position: const Value(1),
+            sortKeyUs: BigInt.zero,
+            updatedAtUs: nowUs,
+          ),
+        ]);
+        await db.updatePlaylistItemCount('pl_addr');
+
+        expect(await service.getPlaylistItems('pl_addr'), hasLength(2));
+
+        await service.deleteItemsOfAddresses([address]);
+
+        expect(await service.getPlaylistItems('pl_addr'), isEmpty);
+        expect(await service.getPlaylistItemById('item_1'), isNull);
+        expect(await service.getPlaylistItemById('item_2'), isNull);
+        expect(await service.getPlaylistById('pl_addr'), isNotNull);
+      });
+
       test('getAllPlaylists returns all playlists when type is null', () async {
         final playlists = [
           Playlist(
@@ -221,6 +279,101 @@ void main() {
           equals(PlaylistType.addressBased),
         );
       });
+
+      test(
+        'getAllPlaylists orders by publisher ID then playlist created_at ASC',
+        () async {
+          final t2024 = DateTime.parse('2024-01-01T00:00:00Z');
+          final t2025 = DateTime.parse('2025-01-01T00:00:00Z');
+          final t2026 = DateTime.parse('2026-01-01T00:00:00Z');
+
+          // Ingest publishers
+          await service.ingestPublisher(id: 10, name: 'Publisher 10');
+          await service.ingestPublisher(id: 20, name: 'Publisher 20');
+
+          // Ingest channels
+          await service.ingestChannels([
+            Channel(
+              id: 'ch_pub20_a',
+              name: 'Channel pub20 A',
+              type: ChannelType.dp1,
+              publisherId: 20,
+              createdAt: t2024,
+              updatedAt: t2024,
+            ),
+            Channel(
+              id: 'ch_pub20_b',
+              name: 'Channel pub20 B',
+              type: ChannelType.dp1,
+              publisherId: 20,
+              createdAt: t2025,
+              updatedAt: t2025,
+            ),
+            Channel(
+              id: 'ch_pub10',
+              name: 'Channel pub10',
+              type: ChannelType.dp1,
+              publisherId: 10,
+              createdAt: t2026,
+              updatedAt: t2026,
+            ),
+          ]);
+
+          // Ingest playlists with mixed creation times
+          await service.ingestPlaylists([
+            // Publisher 20, channel A, newer playlist
+            Playlist(
+              id: 'pl_pub20_a_new',
+              name: 'Playlist pub20 A new',
+              type: PlaylistType.dp1,
+              channelId: 'ch_pub20_a',
+              createdAt: t2024.add(const Duration(minutes: 2)),
+              updatedAt: t2024.add(const Duration(minutes: 2)),
+            ),
+            // Publisher 20, channel A, older playlist
+            Playlist(
+              id: 'pl_pub20_a_old',
+              name: 'Playlist pub20 A old',
+              type: PlaylistType.dp1,
+              channelId: 'ch_pub20_a',
+              createdAt: t2024.add(const Duration(minutes: 1)),
+              updatedAt: t2024.add(const Duration(minutes: 1)),
+            ),
+            // Publisher 20, channel B, playlist
+            Playlist(
+              id: 'pl_pub20_b',
+              name: 'Playlist pub20 B',
+              type: PlaylistType.dp1,
+              channelId: 'ch_pub20_b',
+              createdAt: t2025.add(const Duration(minutes: 1)),
+              updatedAt: t2025.add(const Duration(minutes: 1)),
+            ),
+            // Publisher 10, newer playlist
+            Playlist(
+              id: 'pl_pub10',
+              name: 'Playlist pub10',
+              type: PlaylistType.dp1,
+              channelId: 'ch_pub10',
+              createdAt: t2026.add(const Duration(minutes: 1)),
+              updatedAt: t2026.add(const Duration(minutes: 1)),
+            ),
+          ]);
+
+          final retrieved = await service.getAllPlaylists();
+
+          // Verify ordering: publisher 10 first, then 20
+          // Within each publisher, ordered by playlist created_at ASC
+          expect(
+            retrieved.map((p) => p.id),
+            equals([
+              'pl_pub10',               // Publisher 10
+              'pl_pub20_a_old',         // Publisher 20, created earlier
+              'pl_pub20_a_new',         // Publisher 20, created later
+              'pl_pub20_b',             // Publisher 20, created latest
+            ]),
+          );
+        },
+      );
     });
 
     group('PlaylistItem operations', () {

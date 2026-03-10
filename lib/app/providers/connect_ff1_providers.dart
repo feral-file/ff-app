@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/domain/extensions/extensions.dart';
+import 'package:app/app/providers/version_provider.dart';
+import 'package:app/domain/extensions/string_ext.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
+import 'package:app/infra/services/version_service.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -113,19 +115,18 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         }
 
         _log.info(
-          '[ConnectFF1Notifier] Device ${ff1DeviceInfo.name} has empty remoteID, scan and connect',
+          '[ConnectFF1Notifier] Device ${ff1DeviceInfo.name} has empty '
+          'remoteID, scan and connect',
         );
-        final foundDevice = await control.scanForName(name: ff1DeviceInfo.name);
+        final foundDevice = await control.scanForName(
+          name: ff1DeviceInfo.name,
+        );
         if (foundDevice != null) {
-          await control.connect(
-            blDevice: foundDevice,
-          );
           blDevice = foundDevice;
         }
-      } else {
-        await control.connect(blDevice: blDevice);
       }
 
+      await control.connect(blDevice: blDevice);
       await _handlePostConnect(ff1DeviceInfo, blDevice);
     } on FF1ConnectionCancelledError catch (_) {
       _log.info('[ConnectFF1Notifier] Connection cancelled by user');
@@ -151,8 +152,8 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         '[ConnectFF1Notifier] Device info not provided, fetching via get_info',
       );
       try {
-        // Add delay to ensure connection is stable and characteristics are discovered
-        // Connection state handler already waits 1s, but add extra delay for getInfo
+        // Extra delay after the 1 s connection-state wait to ensure
+        // characteristics are discovered before getInfo.
         await Future<void>.delayed(const Duration(milliseconds: 500));
 
         final control = ref.read(ff1ControlProvider);
@@ -160,30 +161,31 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         ff1DeviceInfo = getInfoResponse.toFF1DeviceInfo;
 
         _log.info(
-          '[ConnectFF1Page] Got device info: topicId=${ff1DeviceInfo.topicId}, '
-          'isConnectedToInternet=${ff1DeviceInfo.isConnectedToInternet}, '
-          'branchName=${ff1DeviceInfo.branchName}, version=${ff1DeviceInfo.version}',
+          '[ConnectFF1Page] Got device info: '
+          'topicId=${ff1DeviceInfo.topicId}, '
+          'internet=${ff1DeviceInfo.isConnectedToInternet}, '
+          'branch=${ff1DeviceInfo.branchName}, '
+          'version=${ff1DeviceInfo.version}',
         );
-
-        // TODO: Check version compatibility
-        // // Check version compatibility
-        // final compatible =
-        //     await injector<VersionService>().checkDeviceVersionCompatibility(
-        //   dBranch: ff1Device.branchName,
-        //   dVersion: ff1Device.version,
-        //   requiredDeviceUpdate: false,
-        // );
-
-        // if (compatible == VersionCompatibilityResult.needUpdateApp) {
-        //   _log.info(
-        //     'FF1 version is not compatible with the app. Please update the app.',
-        //   );
-        //   return;
-        // }
       } on Exception catch (e) {
         _log.warning('[ConnectFF1Page] Failed to get device info: $e');
         rethrow;
       }
+    }
+
+    // Check version compatibility
+    final versionService = ref.read(versionServiceProvider);
+    final compatibility = await versionService.checkDeviceVersionCompatibility(
+      branchName: ff1DeviceInfo.branchName,
+      deviceVersion: ff1DeviceInfo.version,
+    );
+
+    if (compatibility == VersionCompatibilityResult.needUpdateApp) {
+      _log.info(
+        '[ConnectFF1Notifier] App update required for device '
+        '${ff1DeviceInfo.deviceId}.',
+      );
+      return;
     }
 
     var ff1Device = FF1Device.fromBluetoothDeviceAndDeviceInfo(

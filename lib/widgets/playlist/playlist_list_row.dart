@@ -1,8 +1,13 @@
+import 'package:app/app/providers/address_indexing_job_provider.dart';
+import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/playlist_details_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/extensions/playlist_ext.dart';
+import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/widgets/dp1_carousel.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/playlist/playlist_title.dart';
@@ -47,8 +52,6 @@ class PlaylistRowItem extends ConsumerStatefulWidget {
 }
 
 class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
-  static const int _loadingItemsCount = 8;
-
   late ScrollController _carouselScrollController;
   AsyncValue<PlaylistDetailsState> _cachedDetailsAsync =
       const AsyncValue<PlaylistDetailsState>.loading();
@@ -89,7 +92,20 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
   Widget build(BuildContext context) {
     final playlist = widget.playlist;
     final playlistTitle = playlist.name;
+    final isAddressPlaylist = playlist.isAddressPlaylist;
+    // For address playlists: use creator (address shorthand). For curated: use channel name.
     final creator = widget.playlistCreator ?? '';
+
+    // For non-address playlists, resolve channel name for the right-side display.
+    final channelId = playlist.channelId;
+    final channelAsync = (!isAddressPlaylist &&
+            channelId != null &&
+            channelId.isNotEmpty &&
+            widget.headerBuilder == null)
+        ? ref.watch(channelByIdProvider(channelId))
+        : const AsyncValue<Channel?>.data(null);
+    final channel = channelAsync.asData?.value;
+    final rightSideText = isAddressPlaylist ? creator : (channel?.name ?? '');
 
     final nextDetailsAsync = widget.isActive
         ? ref.watch(playlistDetailsProvider(playlist.id))
@@ -111,6 +127,20 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
       _cachedDetailsAsync = nextDetailsAsync;
     }
     final isLoading = detailsAsync.isLoading;
+
+    // For address playlists with empty items: show loading skeleton until
+    // indexing completes (or fails). Prevents bounce when tokens are not yet
+    // ingested.
+    AddressIndexingProcessStatus? processStatus;
+    if (playlist.isAddressPlaylist && playlist.ownerAddress != null) {
+      final statusAsync = ref.watch(
+        addressIndexingProcessStatusProvider(playlist.ownerAddress!),
+      );
+      processStatus = switch (statusAsync) {
+        AsyncData(value: final v) => v,
+        _ => null,
+      };
+    }
 
     return GestureDetector(
       onTap: isLoading
@@ -137,31 +167,41 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
                   ) ??
                   PlaylistTitle(
                     primaryText: playlistTitle,
-                    secondaryText: creator,
-                    total: state.total,
+                    secondaryText: rightSideText,
                   ),
               loading: () => PlaylistTitle(
                 primaryText: playlistTitle,
-                secondaryText: creator,
+                secondaryText: rightSideText,
               ),
               error: (_, _) => PlaylistTitle(
                 primaryText: playlistTitle,
-                secondaryText: creator,
+                secondaryText: rightSideText,
               ),
             ),
             detailsAsync.when(
               data: (state) {
-                if (state.items.isEmpty) {
-                  return const SizedBox.shrink();
-                }
+                final itemsEmpty = state.items.isEmpty;
+                final showLoadingSkeleton = itemsEmpty &&
+                    playlist.isAddressPlaylist &&
+                    processStatus?.state !=
+                        AddressIndexingProcessState.completed &&
+                    processStatus?.state !=
+                        AddressIndexingProcessState.failed &&
+                    processStatus?.state !=
+                        AddressIndexingProcessState.stopped;
                 return DP1Carousel(
                   items: state.items,
+                  isLoading: showLoadingSkeleton,
                   onItemTap: widget.onItemTap,
                   scrollController: _carouselScrollController,
                   isLoadingMore: state.isLoadingMore,
                 );
               },
-              loading: _buildLoadingCarousel,
+              loading: () => DP1Carousel(
+                items: const [],
+                isLoading: true,
+                scrollController: _carouselScrollController,
+              ),
               error: (_, _) => SizedBox(
                 height: LayoutConstants.dp1CarouselHeight,
                 child: ErrorView(
@@ -174,23 +214,6 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildLoadingCarousel() {
-    final placeholderItems = List<PlaylistItem>.generate(
-      _loadingItemsCount,
-      (index) => PlaylistItem(
-        id: 'pl_loading_$index',
-        kind: PlaylistItemKind.dp1Item,
-        title: 'Loading',
-      ),
-      growable: false,
-    );
-
-    return DP1Carousel(
-      items: placeholderItems,
-      scrollController: _carouselScrollController,
     );
   }
 }

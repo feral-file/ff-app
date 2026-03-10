@@ -9,13 +9,14 @@ import 'dart:async';
 
 import 'package:app/app/providers/add_address_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
+import 'package:app/app/providers/scan_qr_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/domain/models/models.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/add_alias_screen.dart';
+import 'package:app/ui/screens/scan_qr_page.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
 import 'package:flutter/foundation.dart';
@@ -27,27 +28,12 @@ import 'package:logging/logging.dart';
 
 final _log = Logger('AddAddressScreen');
 
-/// Payload for add address screen.
-class AddAddressScreenPayload {
-  /// Constructor
-  const AddAddressScreenPayload({
-    this.isFromOnboarding = false,
-  });
-
-  /// Whether this screen is opened from onboarding.
-  final bool isFromOnboarding;
-}
-
-/// Onboarding page for adding a new view-only address.
+/// Page for adding a new view-only address.
 class AddAddressScreen extends ConsumerStatefulWidget {
   /// Constructor
   const AddAddressScreen({
-    required this.payload,
     super.key,
   });
-
-  /// Payload for the screen.
-  final AddAddressScreenPayload payload;
 
   @override
   ConsumerState<AddAddressScreen> createState() =>
@@ -81,46 +67,61 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
   void _handleVerifyAddress() {
     final text = _inputController.text.trim();
     if (text.isEmpty) return;
-    unawaited(
-      ref.read(addAddressProvider.notifier).verify(text),
-    );
+    unawaited(ref.read(addAddressFlowProvider.notifier).submit(text));
   }
 
   /// Handle QR scan
-  void _handleQRScan() {
-    // TODO(feral-file): Implement QR scan navigation.
-    // For now, this is a placeholder
-    _log.info('QR scan not yet implemented');
+  Future<void> _handleQRScan() async {
+    final result = await context.push<String>(
+      Routes.scanQrPage,
+      extra: const ScanQrPagePayload(
+        mode: ScanQrMode.address,
+      ),
+    );
+    if (!mounted || result == null || result.isEmpty) {
+      return;
+    }
+
+    _inputController.text = result;
+    _handleVerifyAddress();
+    _log.info('Address scanned and submitted');
   }
 
   @override
   Widget build(BuildContext context) {
-    final addAddressState = ref.watch(addAddressProvider);
+    final addAddressFlowState = ref.watch(addAddressFlowProvider);
     final shouldReserveNowDisplayingBar = ref.watch(
       nowDisplayingShouldShowProvider,
     );
 
-    // Listen for state changes
-    ref.listen<AsyncValue<Address?>>(
-      addAddressProvider,
+    ref.listen<AsyncValue<AddAddressFlowResult>>(
+      addAddressFlowProvider,
       (previous, next) {
-        // When verification succeeds, navigate to the alias screen.
-        if (next is AsyncData<Address?> &&
-            next.value != null &&
-            (previous is! AsyncData<Address?> || previous.value == null)) {
-          if (context.mounted) {
-            final payload = AddAliasScreenPayload(
-              address: next.value?.address ?? '',
-              domain: next.value?.domain,
-              syncNow: !widget.payload.isFromOnboarding,
-            );
-            unawaited(context.push(Routes.addAliasPage, extra: payload));
+        if (next case AsyncData(:final value)) {
+          if (value case AddAddressFlowNeedsAlias(
+            :final address,
+            :final domain,
+          )) {
+            if (context.mounted) {
+              final payload = AddAliasScreenPayload(
+                address: address,
+                domain: domain,
+              );
+              unawaited(context.push(Routes.addAliasPage, extra: payload));
+            }
+            return;
+          }
+
+          if (value is AddAddressFlowCompleted) {
+            if (context.mounted) {
+              context.pop();
+            }
           }
         }
       },
     );
 
-    final isSubmitting = addAddressState.isLoading;
+    final isSubmitting = addAddressFlowState.isLoading;
     final isInputEmpty = _inputController.text.trim().isEmpty;
     final isSubmitEnabled = !isSubmitting && !isInputEmpty;
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
@@ -163,6 +164,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                           focusNode: _addressFocusNode,
                           controller: _inputController,
                           enabled: !isSubmitting,
+                          textInputAction: TextInputAction.done,
                           style: AppTypography.body(context).white,
                           cursorColor: isSubmitting
                               ? AppColor.feralFileMediumGrey
@@ -173,7 +175,13 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                             hintText: 'Address or ENS / Tezos domain',
                             hintStyle: AppTypography.body(context).white,
                           ),
-                          onChanged: (_) => setState(() {}),
+                          onSubmitted: (_) => _handleVerifyAddress(),
+                          onChanged: (_) {
+                            setState(() {});
+                            if (addAddressFlowState.hasError) {
+                              ref.read(addAddressFlowProvider.notifier).reset();
+                            }
+                          },
                         ),
                       ),
                       if (isSubmitting)
@@ -201,9 +209,9 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                 // Error message
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: addAddressState.hasError
+                  child: addAddressFlowState.hasError
                       ? Text(
-                          switch (addAddressState.error) {
+                          switch (addAddressFlowState.error) {
                             AddAddressException(:final type) => type.message,
                             _ =>
                               "We couldn't validate this address. "

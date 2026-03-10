@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
     paths:
       - 'lib/**'
+      - pubspec.yaml
 
 jobs:
   unit-test:
@@ -41,7 +42,7 @@ jobs:
             exit 1
           fi
 
-          COVERAGE_PERCENT="$(awk -F, '
+          COVERAGE_PERCENT="$(awk -F: '
             /^LF:/ { lf += $2 }
             /^LH:/ { lh += $2 }
             END {

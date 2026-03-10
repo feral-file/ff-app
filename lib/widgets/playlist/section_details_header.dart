@@ -34,7 +34,7 @@ class SectionDetailsHeader extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: EdgeInsets.symmetric(
-          horizontal: LayoutConstants.pageHorizontalDefault,
+          horizontal: LayoutConstants.space3,
           vertical: LayoutConstants.space4,
         ),
         child: Column(

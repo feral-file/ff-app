@@ -79,7 +79,7 @@ class WorkGridCard extends StatelessWidget {
   Widget _buildThumbnail() {
     final url = item.thumbnailUrl;
     if (url == null || url.isEmpty) {
-      return const GalleryThumbnailErrorWidget();
+      return const GalleryNoThumbnailWidget();
     }
 
     return CachedNetworkImage(

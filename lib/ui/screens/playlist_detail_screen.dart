@@ -6,17 +6,23 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_intent.dart';
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/database/converters.dart' show DatabaseConverters;
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
+import 'package:app/widgets/common/touch_target.dart';
+import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/ff_display_button.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/playlist_details_header.dart';
+import 'package:app/widgets/playlist/playlist_header_with_collection_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 /// Playlist detail screen.
@@ -70,7 +76,8 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
-      appBar: MainAppBar(
+      appBar: MainAppBar.preferred(
+        context,
         backTitle: 'Playlists',
         backgroundColor: AppColor.auGreyBackground,
         actions: [
@@ -106,7 +113,10 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
       ),
       body: SafeArea(
         child: detailsAsync.when(
-          loading: () => const LoadingView(),
+          loading: () => const DelayedLoadingGate(
+            isLoading: true,
+            child: LoadingView(),
+          ),
           error: (error, _) => ErrorView(
             error:
                 'We couldn’t load this playlist. Check your connection, then Retry.',
@@ -131,25 +141,77 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
                 ? const AsyncValue<Channel?>.data(null)
                 : ref.watch(channelByIdProvider(channelId));
 
+            final ownerAddress = playlist.ownerAddress;
+            final isAddressPlaylist =
+                ownerAddress != null && ownerAddress.isNotEmpty;
+
             return CustomScrollView(
               controller: _scrollController,
               slivers: [
                 SliverToBoxAdapter(
-                  child: channelAsync.when(
-                    loading: () => PlaylistDetailsHeader(
-                      title: playlist.name,
-                      total: state.total,
-                    ),
-                    error: (_, _) => PlaylistDetailsHeader(
-                      title: playlist.name,
-                      total: state.total,
-                    ),
-                    data: (channel) => PlaylistDetailsHeader(
-                      title: playlist.name,
-                      total: state.total,
-                      subtitle: channel?.name,
-                    ),
-                  ),
+                  child: isAddressPlaylist
+                      ? channelAsync.when(
+                          loading: () => PlaylistHeaderWithCollectionState(
+                            primaryText: playlist.name,
+                            secondaryText: '',
+                            total: state.total,
+                            ownerAddress: ownerAddress,
+                            showDivider: true,
+                            onRetry: () => ref
+                                .read(addressServiceProvider)
+                                .indexAndSyncAddress(ownerAddress),
+                            trailing: _buildOptionsButton(
+                              context,
+                              ref,
+                              playlist,
+                            ),
+                          ),
+                          error: (_, _) => PlaylistHeaderWithCollectionState(
+                            primaryText: playlist.name,
+                            secondaryText: '',
+                            total: state.total,
+                            ownerAddress: ownerAddress,
+                            showDivider: true,
+                            onRetry: () => ref
+                                .read(addressServiceProvider)
+                                .indexAndSyncAddress(ownerAddress),
+                            trailing: _buildOptionsButton(
+                              context,
+                              ref,
+                              playlist,
+                            ),
+                          ),
+                          data: (_) => PlaylistHeaderWithCollectionState(
+                            primaryText: playlist.name,
+                            secondaryText: '',
+                            total: state.total,
+                            ownerAddress: ownerAddress,
+                            showDivider: true,
+                            onRetry: () => ref
+                                .read(addressServiceProvider)
+                                .indexAndSyncAddress(ownerAddress),
+                            trailing: _buildOptionsButton(
+                              context,
+                              ref,
+                              playlist,
+                            ),
+                          ),
+                        )
+                      : channelAsync.when(
+                          loading: () => PlaylistDetailsHeader(
+                            title: playlist.name,
+                            total: state.total,
+                          ),
+                          error: (_, _) => PlaylistDetailsHeader(
+                            title: playlist.name,
+                            total: state.total,
+                          ),
+                          data: (channel) => PlaylistDetailsHeader(
+                            title: playlist.name,
+                            total: state.total,
+                            subtitle: channel?.name,
+                          ),
+                        ),
                 ),
                 SliverToBoxAdapter(
                   child: SizedBox(height: LayoutConstants.space6),
@@ -191,6 +253,61 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildOptionsButton(
+    BuildContext context,
+    WidgetRef ref,
+    Playlist playlist,
+  ) {
+    return IconButton(
+      padding: EdgeInsets.zero,
+      onPressed: () {
+        UIHelper.showDrawerAction(
+          context,
+          options: [
+            OptionItem(
+              title: 'Delete',
+              icon: const Icon(Icons.delete_outline, size: 20),
+              onTap: () {
+                Navigator.pop(context);
+                UIHelper.showDeletePlaylistConfirmation(
+                  context,
+                  playlist,
+                  (p) async {
+                    final addr = p.ownerAddress!;
+                    await ref
+                        .read(addressServiceProvider)
+                        .removeAddress(
+                          walletAddress: WalletAddress(
+                            address: addr,
+                            name: p.name,
+                            createdAt: p.createdAt ?? DateTime.now(),
+                          ),
+                        );
+                    if (context.mounted) {
+                      context.pop();
+                    }
+                  },
+                );
+              },
+            ),
+            OptionItem.emptyOptionItem,
+          ],
+          title: playlist.name,
+        );
+      },
+      constraints: const BoxConstraints(
+        maxWidth: 44,
+        maxHeight: 44,
+        minWidth: 44,
+        minHeight: 44,
+      ),
+      icon: TouchTarget(
+        minSize: LayoutConstants.minTouchTarget,
+        child: SvgPicture.asset('assets/images/more_circle.svg'),
       ),
     );
   }

@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:app/app/providers/app_overlay_provider.dart';
-import 'package:app/app/providers/local_data_cleanup_provider.dart';
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -9,6 +9,7 @@ import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/device_config_screen.dart';
+import 'package:app/ui/screens/scan_qr_page.dart';
 import 'package:app/ui/screens/tabs/channels_tab_page.dart';
 import 'package:app/ui/screens/tabs/playlists_tab_page.dart';
 import 'package:app/ui/screens/tabs/search_tab_page.dart';
@@ -16,12 +17,12 @@ import 'package:app/ui/screens/tabs/works_tab_page.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/home_index_header.dart';
+import 'package:app/widgets/no_pairing_device_dialog.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import 'package:logging/logging.dart';
 
 // Global keys for each page to preserve state
 final GlobalKey<PlaylistsTabPageState> _playlistsPageKey =
@@ -42,7 +43,6 @@ class HomeIndexPage extends ConsumerStatefulWidget {
 }
 
 class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
-  static final Logger _log = Logger('HomeIndexPage');
   late HomeIndexHeaderTab _selectedTab;
   late ScrollController _scrollController;
 
@@ -56,8 +56,9 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScrollChange);
-    _scrollController.dispose();
+    _scrollController
+      ..removeListener(_onScrollChange)
+      ..dispose();
     super.dispose();
   }
 
@@ -68,20 +69,30 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
 
   @override
   Widget build(BuildContext context) {
+    final seedState = ref.watch(seedDownloadProvider);
+    final isScrollEnabled =
+        seedState.status != SeedDownloadStatus.syncing &&
+        seedState.status != SeedDownloadStatus.error;
+
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
       body: NestedScrollView(
         controller: _scrollController,
         floatHeaderSlivers: true,
+        physics: isScrollEnabled
+            ? null
+            : const NeverScrollableScrollPhysics(),
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           final height = LayoutConstants.minTouchTarget;
 
           // Search button - navigates to search screen
           final searchButton = GestureDetector(
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) => const SearchTabPage(),
+              unawaited(
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) => const SearchTabPage(),
+                  ),
                 ),
               );
             },
@@ -158,7 +169,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
                             ),
                           ),
                           SizedBox(width: LayoutConstants.space3),
-                          searchButton,
+                          if (isScrollEnabled) searchButton,
                           hamburgerButton,
                           SizedBox(width: LayoutConstants.space3),
                         ],
@@ -170,14 +181,19 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
             ),
           ];
         },
-        body: SingleChildScrollView(
-          child: Column(
-            children: [
-              SizedBox(height: LayoutConstants.space10),
-              _buildContent(),
-              const BottomSpacing(),
-            ],
-          ),
+        body: CustomScrollView(
+          physics: isScrollEnabled
+              ? null
+              : const NeverScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: SizedBox(height: LayoutConstants.space10),
+            ),
+            SliverToBoxAdapter(
+              child: _buildContent(),
+            ),
+            const SliverToBoxAdapter(child: BottomSpacing()),
+          ],
         ),
       ),
     );
@@ -195,6 +211,12 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           ),
           onTap: () {
             Navigator.of(context).pop();
+            unawaited(
+              context.push(
+                Routes.scanQrPage,
+                extra: const ScanQrPagePayload(),
+              ),
+            );
           },
         ),
       // FF1 Setting
@@ -208,6 +230,13 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         ),
         onTap: () {
           Navigator.of(context).pop();
+          final isPaired =
+              ref.read(activeFF1BluetoothDeviceProvider).value != null;
+          if (!isPaired) {
+            unawaited(_showNoPairingDialog());
+            return;
+          }
+
           unawaited(
             context.push(
               Routes.deviceConfiguration,
@@ -227,6 +256,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         ),
         onTap: () {
           Navigator.of(context).pop();
+          unawaited(context.push(Routes.settings));
         },
       ),
       // Support & Feedback
@@ -262,22 +292,6 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           Navigator.of(context).pop();
           unawaited(context.push(Routes.releaseNotes));
         },
-      ),
-      OptionItem(
-        title: 'Forget I exist',
-        icon: const Icon(
-          Icons.delete_forever_outlined,
-          color: AppColor.white,
-        ),
-        onTap: _clearLocalDataAndRestartOnboarding,
-      ),
-      OptionItem(
-        title: 'Clean metadata',
-        icon: const Icon(
-          Icons.refresh,
-          color: AppColor.white,
-        ),
-        onTap: _rebuildMetadata,
       ),
     ];
   }
@@ -319,23 +333,42 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     );
   }
 
+  Future<void> _showNoPairingDialog() async {
+    const screenKey = 'No pairing';
+    if (UIHelper.currentDialogTitle == screenKey) {
+      return;
+    }
+
+    UIHelper.currentDialogTitle = screenKey;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      isScrollControlled: true,
+      builder: (context) => const NoPairingDeviceDialog(),
+    );
+
+    UIHelper.currentDialogTitle = '';
+  }
+
   void _showMenu(BuildContext context) {
-    UIHelper.showCenterMenu(
-      context,
-      options: _defaultOptions,
-      bottomWidget: _addAddressButton(),
+    unawaited(
+      UIHelper.showCenterMenu(
+        context,
+        options: _defaultOptions,
+        bottomWidget: _addAddressButton(),
+      ),
     );
   }
 
   Future<void> _contactSupport() async {
     try {
-      await ref
-          .read(supportEmailServiceProvider)
-          .composeSupportEmail(recipient: 'support@feralfile.com');
+      await ref.read(supportEmailServiceProvider).composeSupportEmail(
+            recipient: 'support@feralfile.com',
+          );
     } on Exception {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Could not open email client.'),
@@ -344,78 +377,10 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
     }
   }
 
-  Future<void> _clearLocalDataAndRestartOnboarding() async {
-    Navigator.of(context).pop();
-
-    final toastOverlayId = ref
-        .read(appOverlayProvider.notifier)
-        .showToast(
-          message: 'Cleaning local data...',
-        );
-    await WidgetsBinding.instance.endOfFrame;
-
-    Object? cleanupError;
-    try {
-      await ref
-          .read(localDataCleanupServiceProvider)
-          .clearLocalData()
-          .timeout(const Duration(seconds: 20));
-    } on Object catch (e, st) {
-      cleanupError = e;
-      _log.severe('Forget I exist cleanup failed', e, st);
-    } finally {
-      if (mounted) {
-        ref.read(appOverlayProvider.notifier).dismissOverlay(toastOverlayId);
-      }
-    }
-
-    if (!mounted) {
-      return;
-    }
-
-    if (cleanupError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cleanup did not fully complete. Opening onboarding.'),
-        ),
-      );
-    }
-    context.go(Routes.onboardingIntroducePage);
-  }
-
-  Future<void> _rebuildMetadata() async {
-    Navigator.of(context).pop();
-
-    // Set tab to Playlists and pop all detailed screens before showing toast.
-    setState(() => _selectedTab = HomeIndexHeaderTab.playlists);
-    final router = GoRouter.of(context);
-    while (router.canPop()) {
-      router.pop();
-    }
-
-    final toastOverlayId = ref
-        .read(appOverlayProvider.notifier)
-        .showToast(
-          message: 'Cleaning metadata...',
-        );
-    await WidgetsBinding.instance.endOfFrame;
-
-    try {
-      await ref.read(localDataCleanupServiceProvider).rebuildMetadata();
-    } finally {
-      // Dismiss toast immediately after cleaning completes (no wait for refetch).
-      if (mounted) {
-        ref.read(appOverlayProvider.notifier).dismissOverlay(toastOverlayId);
-      }
-    }
-  }
-
   Widget _buildContent() {
-    // Use Stack with Offstage instead of IndexedStack (matches old app)
-    // Offstage keeps widgets alive (not disposed) while hiding them
-    // This allows each page to have independent constraints
-    // Combined with AutomaticKeepAliveClientMixin in each page, state is preserved
-    // Each page can determine its own height (limited or unlimited) independently
+    // Use Stack with Offstage instead of IndexedStack (matches old app).
+    // Offstage keeps widgets alive (not disposed) while hiding them.
+    // Each page can determine its own height independently.
     return Stack(
       children: [
         Offstage(

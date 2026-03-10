@@ -57,24 +57,7 @@ class ChannelListRow extends ConsumerStatefulWidget {
 }
 
 class _ChannelListRowState extends ConsumerState<ChannelListRow> {
-  static const int _loadingItemsCount = 8;
-
   ChannelPreviewState _cachedPreviewState = ChannelPreviewState.initial();
-
-  Widget _buildLoadingCarousel() {
-    final placeholderItems = List<PlaylistItem>.generate(
-      _loadingItemsCount,
-      (index) => PlaylistItem(
-        id: 'ch_loading_$index',
-        kind: PlaylistItemKind.dp1Item,
-        title: 'Loading',
-      ),
-      growable: false,
-    );
-    return DP1Carousel(
-      items: placeholderItems,
-    );
-  }
 
   @override
   void didUpdateWidget(ChannelListRow oldWidget) {
@@ -124,8 +107,14 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
     final hasMore = widget.channelData.works.isEmpty && previewState.hasMore;
     final isLoadingMore =
         widget.channelData.works.isEmpty && previewState.isLoadingMore;
-    final isLoading =
-        widget.channelData.works.isEmpty && previewState.isLoading;
+    // Show loading skeleton when works empty and we're in preview mode, unless
+    // we've finished loading with no items (hasMore false) or hit an error.
+    // initial() has isLoading=false — show skeleton anyway to prevent bounce
+    // before load() sets isLoading=true.
+    final isLoading = widget.channelData.works.isEmpty &&
+        works.isEmpty &&
+        (previewState.isLoading ||
+            (previewState.hasMore && previewState.error == null));
     final error = widget.channelData.works.isEmpty ? previewState.error : null;
 
     return Container(
@@ -166,23 +155,19 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
                 ),
               ),
             ),
-          // Show a skeleton carousel while loading so the layout height is
-          // reserved and no jump occurs when the real carousel appears.
-          if (isLoading && works.isEmpty)
-            _buildLoadingCarousel()
-          else if (works.isNotEmpty)
-            DP1Carousel(
-              items: works,
-              onItemTap: widget.onItemTap,
-              isLoadingMore: isLoadingMore,
-              onLoadMore: hasMore
-                  ? () {
-                      ref
-                          .read(channelPreviewProvider(channelId).notifier)
-                          .loadMore();
-                    }
-                  : null,
-            ),
+          DP1Carousel(
+            items: works,
+            isLoading: isLoading && works.isEmpty,
+            onItemTap: widget.onItemTap,
+            isLoadingMore: isLoadingMore,
+            onLoadMore: hasMore
+                ? () {
+                    ref
+                        .read(channelPreviewProvider(channelId).notifier)
+                        .loadMore();
+                  }
+                : null,
+          ),
         ],
       ),
     );

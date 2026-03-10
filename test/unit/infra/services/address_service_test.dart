@@ -14,6 +14,8 @@ import 'package:drift/native.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fake_indexer_service_isolate.dart';
+
 class _FakePendingAddressesStore extends PendingAddressesStore {
   final List<String> stored = <String>[];
 
@@ -32,6 +34,21 @@ class _FakePendingAddressesStore extends PendingAddressesStore {
 }
 
 class _FakeAppStateService implements AppStateService {
+  @override
+  Future<void> setAddressIndexingStatus({
+    required String address,
+    required AddressIndexingProcessStatus status,
+  }) async {}
+
+  @override
+  Future<void> addTrackedAddress(String address, {String alias = ''}) async {}
+
+  @override
+  Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
+    String address,
+  ) =>
+      Stream.value(null);
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -101,6 +118,8 @@ void main() {
       ),
       personalTokensSyncService: personalTokensSyncService,
       pendingAddressesStore: _FakePendingAddressesStore(),
+      indexerServiceIsolate: FakeIndexerServiceIsolate(),
+      appStateService: _FakeAppStateService(),
     );
   });
 

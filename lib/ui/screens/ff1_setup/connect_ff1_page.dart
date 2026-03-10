@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/constants/constants.dart';
+import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/theme/app_color.dart';
@@ -32,19 +35,39 @@ enum _ConnectFF1Status {
 
 final _log = Logger('ConnectFF1Page');
 
+/// Parse [FF1DeviceInfo] from a device-connect deeplink.
+FF1DeviceInfo? parseFF1DeviceInfoFromDeeplink(String deeplink) {
+  final prefix = deviceConnectDeepLinks.firstWhere(
+    (value) => deeplink.startsWith(value),
+    orElse: () => '',
+  );
+  if (prefix.isEmpty) {
+    return null;
+  }
+
+  var path = deeplink.replaceFirst(prefix, '');
+  if (path.startsWith('/')) {
+    path = path.substring(1);
+  }
+  return path.toFF1DeviceInfo;
+}
+
 /// Payload for the connect FF1 page
 class ConnectFF1PagePayload {
   /// Constructor
   ConnectFF1PagePayload({
-    required this.device,
-    this.ff1DeviceInfo,
-  });
+    this.device,
+    this.deeplink,
+  }) : assert(
+         device != null || deeplink != null,
+         'ConnectFF1PagePayload needs bluetooth device or deeplink.',
+       );
 
   /// Bluetooth device
-  final BluetoothDevice device;
+  final BluetoothDevice? device;
 
-  /// FF1 device
-  final FF1DeviceInfo? ff1DeviceInfo;
+  /// Device connect deeplink.
+  final String? deeplink;
 }
 
 /// Connect FF1 page
@@ -75,8 +98,16 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
     // Start connection flow using the provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final fallbackDevice =
+          widget.payload.device ?? BluetoothDevice.fromId('');
+      final ff1DeviceInfo = widget.payload.deeplink == null
+          ? null
+          : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
       unawaited(
-        _connectFF1Notifier.connectBle(widget.payload.device),
+        _connectFF1Notifier.connectBle(
+          fallbackDevice,
+          ff1DeviceInfo: ff1DeviceInfo,
+        ),
       );
     });
   }
@@ -109,7 +140,14 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   Future<void> _startConnectFlow() async {
     _startTime = DateTime.now();
     _log.info('[ConnectFF1Page] Start connecting to FF1');
-    await _connectFF1Notifier.connectBle(widget.payload.device);
+    final fallbackDevice = widget.payload.device ?? BluetoothDevice.fromId('');
+    final ff1DeviceInfo = widget.payload.deeplink == null
+        ? null
+        : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
+    await _connectFF1Notifier.connectBle(
+      fallbackDevice,
+      ff1DeviceInfo: ff1DeviceInfo,
+    );
   }
 
   void _recordDuration({required bool success}) {
@@ -136,7 +174,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     _log.info('[ConnectFF1Page] Cancel pressed, cancelling connection');
     _connectFF1Notifier.cancelConnection();
     try {
-      await widget.payload.device.disconnect();
+      await widget.payload.device?.disconnect();
     } on Exception catch (e) {
       _log.info('[ConnectFF1Page] Error while disconnecting: $e');
     }
@@ -177,9 +215,8 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                   ref.read(onboardingActionsProvider).completeOnboarding(),
                 );
                 context.popUntil(Routes.startSetupFf1);
-                // TODO: Navigate to Device config instead
                 unawaited(
-                  context.push(Routes.home),
+                  context.push(Routes.deviceConfiguration),
                 );
               }
             }
@@ -203,7 +240,16 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
               exception.message,
               closeButton: exception.shouldShowSupport ? 'Contact support' : '',
               onClose: exception.shouldShowSupport
-                  ? () => unawaited(UIHelper.showCustomerSupport(context))
+                  ? () {
+                      unawaited(
+                        UIHelper.showCustomerSupport(
+                          context,
+                          supportEmailService:
+                              ref.read(supportEmailServiceProvider),
+                          onSendComplete: () => Navigator.pop(context),
+                        ),
+                      );
+                    }
                   : null,
             );
           } else {
@@ -212,9 +258,14 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
               'Connect failed',
               state.exception.toString(),
               closeButton: 'Contact support',
-              onClose: () async {
+              onClose: () {
                 unawaited(
-                  UIHelper.showCustomerSupport(context),
+                  UIHelper.showCustomerSupport(
+                    context,
+                    supportEmailService:
+                        ref.read(supportEmailServiceProvider),
+                    onSendComplete: () => Navigator.pop(context),
+                  ),
                 );
               },
             );
@@ -288,16 +339,17 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                           if (status == _ConnectFF1Status.portalIsSet) ...[
                             SizedBox(height: LayoutConstants.space5),
                             PrimaryButton(
-                              onTap: () async {
-                                // TODO: Navigate to Device config instead
+                              onTap: () {
                                 unawaited(
                                   ref
                                       .read(onboardingActionsProvider)
                                       .completeOnboarding(),
                                 );
-                                context.go(Routes.home);
+                                unawaited(
+                                  context.push(Routes.deviceConfiguration),
+                                );
                               },
-                              text: 'Start using the app',
+                              text: 'Go to Settings',
                             ),
                           ],
                         ],

@@ -176,6 +176,16 @@ class MockFF1BluetoothDeviceService implements FF1BluetoothDeviceService {
   ) async {}
 
   @override
+  Stream<List<FF1Device>> watchAllDevices() async* {
+    yield getAllDevices();
+  }
+
+  @override
+  Stream<FF1Device?> watchActiveDevice() async* {
+    yield getActiveDevice();
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 
@@ -189,6 +199,12 @@ class MockAppStateService implements AppStateService {
   Future<void> setHasSeenOnboarding({required bool hasSeen}) async {
     this.hasSeen = hasSeen;
   }
+
+  @override
+  Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
+    String address,
+  ) =>
+      Stream.value(null);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
@@ -211,6 +227,9 @@ class FakeWifiTransport implements FF1WifiTransport {
 
   @override
   bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
 
   @override
   Future<void> connect({

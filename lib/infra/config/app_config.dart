@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Application configuration loaded from environment variables.
@@ -42,7 +43,8 @@ class AppConfig {
   static String get assetUrl => dotenv.get('ASSET_URL', fallback: '');
 
   /// FF1 Relayer server URL (WebSocket endpoint for device communication).
-  /// Reads from FF1_RELAYER_URL (new naming), falls back to TV_NOTIFICATION_URL (old naming).
+  /// Reads from FF1_RELAYER_URL (new naming), falls back to
+  /// TV_NOTIFICATION_URL (old naming).
   /// Converts scheme to wss:// for secure WebSocket if needed.
   static String get ff1RelayerUrl {
     var url = dotenv.get(
@@ -64,7 +66,8 @@ class AppConfig {
   }
 
   /// FF1 Relayer API Key for authentication.
-  /// Reads from FF1_RELAYER_API_KEY (new naming), falls back to TV_API_KEY (old naming).
+  /// Reads from FF1_RELAYER_API_KEY (new naming), falls back to
+  /// TV_API_KEY (old naming).
   static String get ff1RelayerApiKey => dotenv.get(
     'FF1_RELAYER_API_KEY',
     fallback: dotenv.get('TV_API_KEY', fallback: ''),
@@ -80,13 +83,14 @@ class AppConfig {
       dotenv.get('DOMAIN_RESOLVER_API_KEY', fallback: '');
 
   /// FF1 Cast API URL (REST endpoint for sending commands).
-  /// Uses FF1_RELAYER_URL as the base URL, converting scheme from ws:// to https://.
+  /// Uses FF1_RELAYER_URL as the base URL, converting scheme from
+  /// ws:// to https://.
   static String get ff1CastApiUrl {
     var url = dotenv.get('FF1_RELAYER_URL', fallback: '');
 
     // Log warning if not configured
     if (url.isEmpty) {
-      print('⚠️  WARNING: FF1_RELAYER_URL not configured in .env file');
+      debugPrint('⚠️  WARNING: FF1_RELAYER_URL not configured in .env file');
       return '';
     }
 
@@ -112,6 +116,17 @@ class AppConfig {
     fallback: dotenv.get('PUBDOC_URL', fallback: ''),
   );
 
+  /// Base URL for feral-file-docs repo (e.g. raw GitHub).
+  /// EULA/Privacy docs use: {feralfileDocsUrl}/agreements/{docPath}/en_US.md
+  static String get feralfileDocsUrl => dotenv.get(
+    'FERALFILE_DOCS_URL',
+    fallback:
+        'https://raw.githubusercontent.com/bitmark-inc/feral-file-docs/main',
+  );
+
+  /// Pubdoc URL.
+  static String get pubdocUrl => dotenv.get('PUBDOC_URL', fallback: '');
+
   /// S3-compatible access key for seed database artifact requests.
   static String get s3AccessKeyId =>
       dotenv.get('S3_ACCESS_KEY_ID', fallback: '');
@@ -134,6 +149,9 @@ class AppConfig {
 
   /// Region used for AWS Signature V4 requests against S3-compatible APIs.
   static String get s3Region => dotenv.get('S3_REGION', fallback: 'auto');
+
+  /// Sentry DSN used for crash/error reporting.
+  static String get sentryDsn => dotenv.get('SENTRY_DSN', fallback: '');
 
   /// Check if configuration is valid (all required keys present).
   ///
@@ -170,6 +188,7 @@ class AppConfig {
     if (errors.isEmpty) {
       return 'Configuration is valid';
     }
-    return 'Missing required configuration:\n${errors.map((e) => '  • $e').join('\n')}';
+    final details = errors.map((e) => '  • $e').join('\n');
+    return 'Missing required configuration:\n$details';
   }
 }

@@ -1,8 +1,10 @@
+import 'package:app/app/providers/address_indexing_job_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart'
     hide ff1BluetoothDeviceServiceProvider;
+import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
@@ -15,6 +17,7 @@ import 'package:app/infra/services/device_info_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/force_update_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
+import 'package:app/infra/services/indexer_service_isolate.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/legacy_data_migration_service.dart';
 import 'package:app/infra/services/pending_addresses_store.dart';
@@ -43,14 +46,23 @@ final addressServiceProvider = Provider<AddressService>((ref) {
     personalTokensSyncServiceProvider,
   );
   final pendingAddressesStore = ref.watch(pendingAddressesStoreProvider);
+  final indexerServiceIsolate = ref.watch(indexerServiceIsolateProvider);
 
-  return AddressService(
+  final service = AddressService(
     databaseService: databaseService,
     indexerSyncService: indexerSyncService,
     domainAddressService: domainAddressService,
     personalTokensSyncService: personalTokensSyncService,
     pendingAddressesStore: pendingAddressesStore,
+    indexerServiceIsolate: indexerServiceIsolate,
+    appStateService: ref.watch(appStateServiceProvider),
   );
+
+  service.setIndexingJobStatusCallback((response) {
+    ref.read(addressIndexingJobProvider.notifier).updateJob(response);
+  });
+
+  return service;
 });
 
 /// Provider for ENS/TNS address resolution and address/domain validation.
@@ -70,7 +82,17 @@ final bootstrapServiceProvider = Provider<BootstrapService>((ref) {
 
 /// Provider for composing support emails from the app.
 final supportEmailServiceProvider = Provider<SupportEmailService>((ref) {
-  return SupportEmailService();
+  final deviceInfoService = ref.watch(deviceInfoServiceProvider);
+  FF1BluetoothDeviceService? ff1Service;
+  try {
+    ff1Service = ref.watch(ff1BluetoothDeviceServiceProvider);
+  } on UnimplementedError {
+    ff1Service = null;
+  }
+  return SupportEmailService(
+    deviceInfoService: deviceInfoService,
+    ff1DeviceService: ff1Service,
+  );
 });
 
 /// Provider for [RemoteConfigService].
@@ -110,6 +132,17 @@ final canvasClientServiceV2Provider = Provider<CanvasClientServiceV2>((ref) {
 final indexerServiceProvider = Provider<IndexerService>((ref) {
   final client = ref.watch(indexerClientProvider);
   return IndexerService(client: client);
+});
+
+/// Provider for IndexerServiceIsolate (runs indexer API in dedicated isolate).
+final indexerServiceIsolateProvider =
+    Provider<IndexerServiceIsolateOperations>((ref) {
+  final isolate = IndexerServiceIsolate(
+    endpoint: AppConfig.indexerApiUrl,
+    apiKey: AppConfig.indexerApiKey,
+  );
+  ref.onDispose(isolate.stop);
+  return isolate;
 });
 
 /// Provider for IndexerSyncService (fetch + local ingestion).

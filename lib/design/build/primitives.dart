@@ -82,5 +82,6 @@ class PrimitivesTokens {
   static const spacingSpace4 = 16;
   static const spacingSpace5 = 20;
   static const spacingSpace6 = 24;
+  static const spacingSpace7 = 28;
   static const spacingSpace8 = 32;
 }

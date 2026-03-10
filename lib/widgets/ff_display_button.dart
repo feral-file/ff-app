@@ -272,7 +272,7 @@ class PlayToFF1Tooltip extends StatelessWidget {
             ),
           ),
           Positioned(
-            top: -LayoutConstants.space2,
+            top: -(LayoutConstants.iconSizeSmall / 2),
             right: LayoutConstants.space8,
             child: Transform.rotate(
               angle: math.pi / 4,

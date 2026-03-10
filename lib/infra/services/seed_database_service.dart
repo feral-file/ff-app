@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:app/infra/config/app_config.dart';
+import 'package:app/infra/logging/structured_dio_logging_interceptor.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sentry_dio/sentry_dio.dart';
 
 class _SeedDatabaseS3Location {
   const _SeedDatabaseS3Location({
@@ -89,7 +91,7 @@ class _SeedDatabaseS3Location {
 
 /// Service responsible for downloading and placing the seed database.
 ///
-/// On first install the local `playlist_cache.sqlite` does not exist.
+/// On first install the local `dp1_library.sqlite` does not exist.
 /// Calling `downloadAndPlace` fetches the seed from S3-compatible storage
 /// and writes it
 /// to the correct path, so Drift opens it on the next DB operation instead
@@ -103,8 +105,17 @@ class SeedDatabaseService {
     Dio? dio,
     DateTime Function()? nowUtc,
     Future<Directory> Function()? temporaryDirectoryProvider,
-  }) : _dio = dio ?? Dio(),
+    int maxDownloadAttempts = 3,
+  }) : _dio = (dio ?? Dio())
+         ..addSentry()
+         ..interceptors.add(
+           StructuredDioLoggingInterceptor(
+             logger: _log,
+             component: 'seed_database',
+           ),
+         ),
        _nowUtc = nowUtc ?? (() => DateTime.now().toUtc()),
+       _maxDownloadAttempts = maxDownloadAttempts < 1 ? 1 : maxDownloadAttempts,
        _temporaryDirectoryProvider =
            temporaryDirectoryProvider ?? getTemporaryDirectory;
 
@@ -113,9 +124,10 @@ class SeedDatabaseService {
   final Dio _dio;
   final DateTime Function() _nowUtc;
   final Future<Directory> Function() _temporaryDirectoryProvider;
+  final int _maxDownloadAttempts;
 
   /// The canonical database file name used by AppDatabase.
-  static const _dbFileName = 'playlist_cache.sqlite';
+  static const _dbFileName = 'dp1_library.sqlite';
 
   /// Returns the absolute path where the database should live.
   Future<String> databasePath() async {
@@ -205,20 +217,11 @@ class SeedDatabaseService {
         headers[HttpHeaders.rangeHeader] = 'bytes=0-${maxBytes - 1}';
       }
 
-      await _dio.download(
-        location.objectUri.toString(),
-        tempPath,
-        onReceiveProgress: (received, total) {
-          if (total > 0 && onProgress != null) {
-            onProgress((received / total).clamp(0.0, 1.0));
-          }
-        },
-        options: Options(
-          headers: headers,
-          // 10-minute timeout for a ~300 MB file on slow connections.
-          receiveTimeout: const Duration(minutes: 10),
-          sendTimeout: const Duration(seconds: 30),
-        ),
+      await _downloadWithRetryAndResume(
+        uri: location.objectUri,
+        tempPath: tempPath,
+        headers: headers,
+        onProgress: onProgress,
       );
 
       final tempFile = File(tempPath);
@@ -235,6 +238,90 @@ class SeedDatabaseService {
       await _cleanupTemp(tempPath);
       rethrow;
     }
+  }
+
+  Future<void> _downloadWithRetryAndResume({
+    required Uri uri,
+    required String tempPath,
+    required Map<String, String> headers,
+    void Function(double progress)? onProgress,
+  }) async {
+    DioException? lastDioException;
+
+    for (var attempt = 1; attempt <= _maxDownloadAttempts; attempt++) {
+      final targetFile = File(tempPath);
+      final resumeFrom = targetFile.existsSync() ? targetFile.lengthSync() : 0;
+
+      final requestHeaders = Map<String, String>.from(headers);
+      if (resumeFrom > 0) {
+        requestHeaders[HttpHeaders.rangeHeader] = 'bytes=$resumeFrom-';
+      }
+
+      try {
+        await _dio.download(
+          uri.toString(),
+          tempPath,
+          onReceiveProgress: (received, total) {
+            if (onProgress == null || total <= 0) {
+              return;
+            }
+            final downloaded = resumeFrom + received;
+            final expectedTotal = resumeFrom + total;
+            onProgress((downloaded / expectedTotal).clamp(0.0, 1.0));
+          },
+          options: Options(
+            headers: requestHeaders,
+            // 10-minute timeout for a ~300 MB file on slow connections.
+            receiveTimeout: const Duration(minutes: 120),
+            sendTimeout: const Duration(seconds: 30),
+          ),
+          fileAccessMode: resumeFrom > 0
+              ? FileAccessMode.append
+              : FileAccessMode.write,
+        );
+        return;
+      } on DioException catch (e) {
+        lastDioException = e;
+
+        if (attempt >= _maxDownloadAttempts || !isRetryableDownloadError(e)) {
+          rethrow;
+        }
+
+        final delayMs = 500 * (1 << (attempt - 1));
+        _log.warning(
+          'Seed download attempt $attempt/$_maxDownloadAttempts failed; '
+          'retrying in ${delayMs}ms',
+          e,
+        );
+        await Future<void>.delayed(Duration(milliseconds: delayMs));
+      }
+    }
+
+    if (lastDioException != null) {
+      throw lastDioException;
+    }
+  }
+
+  /// Returns whether the failure is safe to retry for large file downloads.
+  @visibleForTesting
+  static bool isRetryableDownloadError(DioException exception) {
+    if (exception.type == DioExceptionType.connectionTimeout ||
+        exception.type == DioExceptionType.sendTimeout ||
+        exception.type == DioExceptionType.receiveTimeout ||
+        exception.type == DioExceptionType.connectionError ||
+        exception.type == DioExceptionType.unknown) {
+      return true;
+    }
+
+    if (exception.type == DioExceptionType.badResponse) {
+      final statusCode = exception.response?.statusCode ?? 0;
+      return statusCode == 408 ||
+          statusCode == 425 ||
+          statusCode == 429 ||
+          statusCode >= 500;
+    }
+
+    return false;
   }
 
   /// Replaces the live SQLite database file with a downloaded temp seed file.

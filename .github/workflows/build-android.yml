@@ -6,6 +6,7 @@ on:
     paths:
       - 'lib/**'
       - 'android/**'
+      - pubspec.yaml
 jobs:
   build-android:
     runs-on: self-hosted

@@ -1,4 +1,5 @@
 import 'package:app/domain/models/indexer/asset_token.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:logging/logging.dart';
@@ -30,7 +31,7 @@ class IndexerSyncService {
   }) async {
     _log.info('Syncing tokens for ${addresses.length} addresses');
     final queryAddresses = addresses
-        .map(_normalizeAddressForIndexerQuery)
+        .map((a) => a.toNormalizedAddress())
         .toList(growable: false);
 
     final tokens = await _indexerService.fetchTokensByAddresses(
@@ -46,14 +47,14 @@ class IndexerSyncService {
         tokens: tokens,
       );
 
-      final normalizedAddress = address.toUpperCase();
+      final normalizedAddress = address.toNormalizedAddress();
       final ownedCount = tokens.where((AssetToken token) {
         final owners = token.owners?.items ?? const <Owner>[];
         if (owners.isEmpty) {
-          return token.currentOwner?.toUpperCase() == normalizedAddress;
+          return token.currentOwner?.toNormalizedAddress() == normalizedAddress;
         }
         return owners.any(
-          (owner) => owner.ownerAddress.toUpperCase() == normalizedAddress,
+          (o) => o.ownerAddress.toNormalizedAddress() == normalizedAddress,
         );
       }).length;
 
@@ -72,7 +73,7 @@ class IndexerSyncService {
     int? limit,
     int? offset,
   }) async {
-    final queryAddress = _normalizeAddressForIndexerQuery(address);
+    final queryAddress = address.toNormalizedAddress();
     final page = await _indexerService.fetchTokensPageByAddresses(
       addresses: <String>[queryAddress],
       limit: limit,
@@ -90,12 +91,6 @@ class IndexerSyncService {
     );
   }
 
-  String _normalizeAddressForIndexerQuery(String address) {
-    if (address.startsWith('0X')) {
-      return '0x${address.substring(2)}';
-    }
-    return address;
-  }
 }
 
 class AddressSyncPageResult {

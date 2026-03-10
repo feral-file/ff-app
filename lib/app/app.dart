@@ -1,30 +1,38 @@
 import 'dart:async';
 
-import 'package:app/app/now_displaying/now_displaying_app_shell.dart';
+import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
 import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/force_update_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
+import 'package:app/app/routing/deeplink_handler.dart';
 import 'package:app/app/routing/router_provider.dart';
+import 'package:app/app/routing/routes.dart';
+import 'package:app/app/widgets/builder_overlay_scope.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/wallet_address.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/theme/app_theme.dart';
+import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
+import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/ui/widgets/force_update_overlay.dart';
 import 'package:app/widgets/overlays/app_global_overlay_layer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 
 /// Root application widget.
@@ -51,16 +59,18 @@ class App extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme(),
       builder: (context, child) {
-        return _AppStartupBootstrap(
-          child: Stack(
-            children: [
-              NowDisplayingAppShell(
-                router: router,
-                child: child ?? const SizedBox.shrink(),
+        return BuilderOverlayScope(
+          child: _AppStartupBootstrap(
+            router: router,
+            child: NowDisplayingVisibilitySync(
+              child: Stack(
+                children: [
+                  child ?? const SizedBox.shrink(),
+                  AppGlobalOverlayLayer(router: router),
+                  const ForceUpdateOverlay(),
+                ],
               ),
-              const AppGlobalOverlayLayer(),
-              const ForceUpdateOverlay(),
-            ],
+            ),
           ),
         );
       },
@@ -70,9 +80,11 @@ class App extends ConsumerWidget {
 
 class _AppStartupBootstrap extends ConsumerStatefulWidget {
   const _AppStartupBootstrap({
+    required this.router,
     required this.child,
   });
 
+  final GoRouter router;
   final Widget child;
 
   @override
@@ -84,6 +96,11 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     with WidgetsBindingObserver {
   bool _started = false;
   bool _isResumeSeedSyncInProgress = false;
+  bool _isProcessingRouteDeeplink = false;
+  DeeplinkNavigationAction? _pendingRouteDeeplinkAction;
+  final Completer<void> _bootstrapReadyCompleter = Completer<void>();
+  ProviderSubscription<AsyncValue<DeeplinkNavigationAction>>?
+  _deeplinkActionsSubscription;
 
   static final _log = Logger('AppStartupBootstrap');
 
@@ -96,7 +113,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
         return;
       }
       _started = true;
-
+      _startDeeplinkHandling();
       unawaited(_bootstrapAtAppStart());
     });
   }
@@ -104,6 +121,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _deeplinkActionsSubscription?.close();
     super.dispose();
   }
 
@@ -115,31 +133,132 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     unawaited(_syncSeedDatabaseOnResume());
   }
 
+  void _startDeeplinkHandling() {
+    _deeplinkActionsSubscription ??= ref
+        .listenManual<AsyncValue<DeeplinkNavigationAction>>(
+          deeplinkActionsProvider,
+          (previous, next) {
+            next.whenData(_handleDeeplinkNavigation);
+          },
+        );
+    unawaited(
+      ref.read(deeplinkHandlerProvider).start(),
+    );
+  }
+
+  void _handleDeeplinkNavigation(DeeplinkNavigationAction action) {
+    if (action.type == DeeplinkType.deviceConnect) {
+      if (action.source == DeeplinkSource.scan) {
+        unawaited(
+          widget.router.pushReplacement(
+            Routes.connectFF1Page,
+            extra: ConnectFF1PagePayload(
+              deeplink: action.link,
+            ),
+          ),
+        );
+      } else {
+        unawaited(
+          widget.router.pushReplacement(
+            Routes.startSetupFf1,
+            extra: StartSetupFf1PagePayload(deeplink: action.link),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (action.type == DeeplinkType.appRoute) {
+      _pendingRouteDeeplinkAction = action;
+      unawaited(_processPendingRouteDeeplink());
+    }
+  }
+
+  Future<void> _processPendingRouteDeeplink() async {
+    if (_isProcessingRouteDeeplink) {
+      return;
+    }
+    _isProcessingRouteDeeplink = true;
+
+    try {
+      while (mounted && _pendingRouteDeeplinkAction != null) {
+        final action = _pendingRouteDeeplinkAction!;
+        _pendingRouteDeeplinkAction = null;
+
+        final location = action.location;
+        if (location == null || location.isEmpty) {
+          continue;
+        }
+
+        await _waitUntilReadyForRouteNavigation();
+        if (!mounted) {
+          return;
+        }
+
+        // Keep navigation stack as [home, detail] so back goes to home.
+        widget.router.go(Routes.home);
+        await widget.router.push(location);
+      }
+    } finally {
+      _isProcessingRouteDeeplink = false;
+    }
+  }
+
+  Future<void> _waitUntilReadyForRouteNavigation() async {
+    await _bootstrapReadyCompleter.future;
+
+    if (!SeedDatabaseGate.isCompleted) {
+      await SeedDatabaseGate.future;
+    }
+
+    while (mounted) {
+      final hasDoneOnboarding = await ref.read(
+        hasDoneOnboardingProvider.future,
+      );
+      if (hasDoneOnboarding) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      ref.invalidate(hasDoneOnboardingProvider);
+    }
+  }
+
   Future<void> _bootstrapAtAppStart() async {
-    unawaited(_triggerForceUpdateCheck());
+    try {
+      unawaited(_triggerForceUpdateCheck());
 
-    _log.info(
-      'Starting app bootstrap: seedGate=${SeedDatabaseGate.isCompleted}',
-    );
+      _log.info(
+        'Starting app bootstrap: seedGate=${SeedDatabaseGate.isCompleted}',
+      );
 
-    unawaited(_migrateLegacyDataInBackground());
+      unawaited(_migrateLegacyDataInBackground());
 
-    final didReplaceSeedDatabase = await _syncSeedDatabaseAtStartup();
-    _log.info(
-      'Seed database sync at startup replaced file: $didReplaceSeedDatabase',
-    );
-    await _recoverFromDatabaseResetIfNeeded();
+      final didReplaceSeedDatabase = await _syncSeedDatabaseAtStartup();
+      _log.info(
+        'Seed database sync at startup replaced file: $didReplaceSeedDatabase',
+      );
+      await _recoverFromDatabaseResetIfNeeded();
 
-    final bootstrap = ref.read(bootstrapProvider.notifier);
-    await bootstrap.bootstrap();
+      final bootstrap = ref.read(bootstrapProvider.notifier);
+      await bootstrap.bootstrap();
 
-    await _logStartupFeedState();
+      await _logStartupFeedState();
 
-    // After the database is open and bootstrap is done, migrate any addresses
-    // that were added during onboarding before the seed was downloaded.
-    await _migratePendingAddresses();
-    if (didReplaceSeedDatabase) {
-      _refreshProvidersAfterSeedDatabaseReplace();
+      // After the database is open and bootstrap is done, migrate any
+      // addresses that were added during onboarding before the seed was
+      // downloaded.
+      await _migratePendingAddresses();
+      if (didReplaceSeedDatabase) {
+        _refreshProvidersAfterSeedDatabaseReplace();
+      }
+
+      // Resume any pending address indexing flows (e.g. after app kill).
+      final addressService = ref.read(addressServiceProvider);
+      unawaited(addressService.resumePendingIndexingFlows());
+    } finally {
+      if (!_bootstrapReadyCompleter.isCompleted) {
+        _bootstrapReadyCompleter.complete();
+      }
     }
   }
 
@@ -185,14 +304,21 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   Future<void> _logStartupFeedState() async {
     try {
       final databaseService = ref.read(databaseServiceProvider);
-      final channels =
-          await databaseService.getChannelsByType(ChannelType.dp1);
-      final playlists =
-          await databaseService.getAllPlaylists(type: PlaylistType.dp1);
+      final channels = await databaseService.getChannelsByType(ChannelType.dp1);
+      final playlists = await databaseService.getAllPlaylists(
+        type: PlaylistType.dp1,
+      );
       _log.info(
         'Startup cache counts: dp1Channels=${channels.length}, '
         'dp1Playlists=${playlists.length}',
       );
+      if (channels.isEmpty && playlists.isEmpty) {
+        _log.warning(
+          'Seed-backed DP1 content is currently empty; if this is a fresh '
+          'install, open channel/playlist feeds and tap Retry to re-run seed '
+          'sync.',
+        );
+      }
     } on Exception catch (e, stack) {
       _log.warning('Failed to read startup cache counts', e, stack);
     }
@@ -222,6 +348,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
   Future<bool> _syncSeedDatabaseIfNeeded({
     required bool showUpdatingToast,
+    bool failSilently = true,
   }) async {
     var personalAddresses = <String>[];
     String? toastOverlayId;
@@ -236,7 +363,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
               toastOverlayId = ref
                   .read(appOverlayProvider.notifier)
                   .showToast(
-                    message: 'Updating feed...',
+                    message: 'Updating art library...',
                   );
               await WidgetsBinding.instance.endOfFrame;
             }
@@ -258,6 +385,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
               }
             }
           },
+          failSilently: failSilently,
         );
   }
 
@@ -351,6 +479,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
             createdAt: DateTime.now(),
             name: address.shortenAddress(),
           ),
+          fromPendingMigration: true,
         );
         _log.info('Migrated pending address: $address');
       } on Object catch (e, st) {
@@ -376,7 +505,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     final addresses = addressPlaylists
         .map((playlist) => playlist.ownerAddress)
         .whereType<String>()
-        .map((address) => address.toUpperCase())
+        .map((address) => address.toNormalizedAddress())
         .toSet()
         .toList(growable: false);
 
@@ -391,10 +520,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
       await appState.setAddressIndexingStatus(
         address: address,
-        status: AddressIndexingProcessStatus(
-          state: AddressIndexingProcessState.indexingTriggered,
-          updatedAt: DateTime.now().toUtc(),
-        ),
+        status: AddressIndexingProcessStatus.indexingTriggeredPending(),
       );
 
       await addressService.addAddress(
@@ -420,6 +546,16 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     // Keep AppLifecycleNotifier alive so it can attach
     // the WidgetsBinding observer.
     ref.watch(appLifecycleProvider);
-    return widget.child;
+    return ProviderScope(
+      overrides: [
+        seedDownloadRetryProvider.overrideWithValue(() async {
+          await _syncSeedDatabaseIfNeeded(
+            showUpdatingToast: true,
+            failSilently: false,
+          );
+        }),
+      ],
+      child: widget.child,
+    );
   }
 }

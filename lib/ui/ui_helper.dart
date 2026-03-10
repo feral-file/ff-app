@@ -4,9 +4,10 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/extensions.dart';
+import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/domain/models/wallet_address.dart';
-import 'package:app/domain/utils/customer_support_util.dart';
+import 'package:app/infra/services/support_email_service.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/buttons/outline_button.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
@@ -213,6 +214,93 @@ class UIHelper {
     );
   }
 
+  /// Show delete playlist confirmation.
+  static void showDeletePlaylistConfirmation(
+    BuildContext context,
+    Playlist playlist,
+    FutureOr<void> Function(Playlist playlist) onRemove,
+  ) {
+    final theme = Theme.of(context);
+    final playlistTitle = playlist.name.isNotEmpty ? playlist.name : 'Playlist';
+
+    final bottomSheetKey = GlobalKey();
+
+    unawaited(
+      showModalBottomSheet(
+        context: context,
+        enableDrag: false,
+        backgroundColor: Colors.transparent,
+        routeSettings: RouteSettings(
+          name: ignoreBackLayerPopUpRouteName,
+          arguments: {
+            'key': bottomSheetKey,
+          },
+        ),
+        barrierColor: Colors.black.withValues(alpha: 0.5),
+        builder: (context) => SafeArea(
+          key: bottomSheetKey,
+          child: ColoredBox(
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.auGreyBackground,
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(20),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Delete collection',
+                    style: AppTypography.h2(context).white,
+                  ),
+                  const SizedBox(height: 40),
+                  RichText(
+                    textScaler: MediaQuery.textScalerOf(context),
+                    text: TextSpan(
+                      style: AppTypography.body(context).white,
+                      children: <TextSpan>[
+                        const TextSpan(
+                          text: 'Are you sure you want to delete the playlist',
+                        ),
+                        TextSpan(
+                          text: ' "$playlistTitle"',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const TextSpan(
+                          text: '?',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  PrimaryAsyncButton(
+                    text: 'Delete',
+                    onTap: () async {
+                      await onRemove(playlist);
+                      if (!context.mounted) {
+                        return;
+                      }
+                      context.pop();
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  OutlineButton(
+                    onTap: () => context.pop(),
+                    text: 'Cancel',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Show info dialog
   static Future<void> showInfoDialog(
     BuildContext context,
@@ -389,16 +477,28 @@ class UIHelper {
     } on Exception catch (_) {}
   }
 
-  /// Show customer support
-  static Future<void> showCustomerSupport(BuildContext context) async {
-    /// On confirm attach crash log
-    void onConfirmAttachCrashLog({required bool attachCrashLog}) {
-      UIHelper.hideInfoDialog(context);
+  /// Show customer support dialog asking whether to attach debug log.
+  ///
+  /// When user chooses "Attach debug log" or "Send without log", closes the
+  /// dialog and calls [supportEmailService].composeSupportEmail with the chosen
+  /// [attachLogs] value. If [onSendComplete] is provided (e.g. when opened from
+  /// an error dialog), it is invoked so the caller can close the error dialog.
+  static Future<void> showCustomerSupport(
+    BuildContext context, {
+    required SupportEmailService supportEmailService,
+    VoidCallback? onSendComplete,
+  }) async {
+    const recipient = 'support@feralfile.com';
+
+    void onConfirmAttachCrashLog({required bool attachLogs}) {
+      Navigator.pop(context);
       unawaited(
-        CustomerSupportUtil.sendSupportEmail(
-          attachLogs: attachCrashLog,
+        supportEmailService.composeSupportEmail(
+          recipient: recipient,
+          attachLogs: attachLogs,
         ),
       );
+      onSendComplete?.call();
     }
 
     await UIHelper.showDialog<void>(
@@ -414,12 +514,12 @@ class UIHelper {
           SizedBox(height: LayoutConstants.space6),
           PrimaryButton(
             text: 'Attach debug log',
-            onTap: () => onConfirmAttachCrashLog(attachCrashLog: true),
+            onTap: () => onConfirmAttachCrashLog(attachLogs: true),
           ),
           SizedBox(height: LayoutConstants.space3),
           OutlineButton(
             text: 'Send without log',
-            onTap: () => onConfirmAttachCrashLog(attachCrashLog: false),
+            onTap: () => onConfirmAttachCrashLog(attachLogs: false),
           ),
           SizedBox(height: LayoutConstants.space4),
         ],
@@ -637,7 +737,10 @@ class DrawerItem extends StatefulWidget {
     required this.item,
     super.key,
     this.color,
-    this.padding = const EdgeInsets.symmetric(vertical: 16, horizontal: 13),
+    this.padding = const EdgeInsets.symmetric(
+      vertical: 16,
+      horizontal: 12,
+    ),
   });
 
   final OptionItem item;
@@ -687,10 +790,10 @@ class _DrawerItemState extends State<DrawerItem> {
           children: [
             if (icon != null) ...[
               SizedBox(
-                width: 30,
+                width: LayoutConstants.space7,
                 child: Center(child: icon),
               ),
-              const SizedBox(width: 34),
+              SizedBox(width: LayoutConstants.space8),
             ],
             Expanded(
               child: Text(

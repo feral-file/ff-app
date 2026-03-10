@@ -32,6 +32,7 @@ class SeedDownloadState {
   const SeedDownloadState({
     required this.status,
     this.errorMessage,
+    this.progress,
   });
 
   /// Current download status.
@@ -40,14 +41,19 @@ class SeedDownloadState {
   /// Error message when [status] is [SeedDownloadStatus.error].
   final String? errorMessage;
 
+  /// Download progress 0.0–1.0 when [status] is [SeedDownloadStatus.syncing].
+  final double? progress;
+
   /// Returns a copy with the given fields replaced.
   SeedDownloadState copyWith({
     SeedDownloadStatus? status,
     String? errorMessage,
+    double? progress,
   }) {
     return SeedDownloadState(
       status: status ?? this.status,
       errorMessage: errorMessage ?? this.errorMessage,
+      progress: progress ?? this.progress,
     );
   }
 }
@@ -58,6 +64,8 @@ class SeedDownloadState {
 /// it can perform an ETag-based refresh. On completion (success/failure/skip)
 /// it opens `SeedDatabaseGate` so Drift can proceed.
 class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
+  bool _syncInProgress = false;
+
   @override
   SeedDownloadState build() {
     return const SeedDownloadState(status: SeedDownloadStatus.idle);
@@ -67,36 +75,53 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   ///
   /// No-ops if a sync is already in progress.
   ///
+  /// Emits [SeedDownloadStatus.syncing] only when a download starts for a
+  /// first install (!hasLocalDatabase). For updates (existing DB), status
+  /// stays idle. If ETag is unchanged, status stays idle until done.
+  ///
   /// This method may be called again after startup (for example, when the app
   /// resumes from background) to check for a newer remote snapshot.
   Future<bool> syncAtAppStart({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
+    bool failSilently = true,
   }) async {
-    if (state.status == SeedDownloadStatus.syncing) {
+    if (_syncInProgress) {
       return false;
     }
-
-    state = const SeedDownloadState(status: SeedDownloadStatus.syncing);
+    _syncInProgress = true;
 
     final service = ref.read(seedDatabaseSyncServiceProvider);
 
-    // Track progress locally — we log every 10 % but do NOT push intermediate
-    // values into Riverpod state. Updating state on every byte chunk floods the
-    // provider observer log with thousands of update messages.
-    var lastLoggedBucket = -1;
+    // Throttle state updates to every 1% to avoid flooding provider observer.
+    var lastProgressBucket = -1;
 
     try {
       final updated = await service.syncIfNeeded(
         beforeReplace: beforeReplace,
         afterReplace: afterReplace,
-        failSilently: true,
+        onDownloadStarted: ({
+          required bool hasLocalDatabase,
+          required String localEtag,
+          required String remoteEtag,
+        }) {
+          // Only show syncing for first install; updates run in background.
+          if (!hasLocalDatabase) {
+            state = const SeedDownloadState(
+              status: SeedDownloadStatus.syncing,
+              progress: 0,
+            );
+          }
+        },
+        failSilently: failSilently,
         onProgress: (progress) {
-          final bucket = (progress * 10).floor(); // 0–10
-          if (bucket > lastLoggedBucket) {
-            lastLoggedBucket = bucket;
-            final pct = (progress * 100).round();
-            _log.info('Seed database sync download: $pct%');
+          final bucket = (progress * 100).floor();
+          if (bucket > lastProgressBucket) {
+            lastProgressBucket = bucket;
+            _log.info(
+              'Seed database sync download: ${(progress * 100).round()}%',
+            );
+            state = state.copyWith(progress: progress);
           }
         },
       );
@@ -118,6 +143,8 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       // Open the gate even on failure so the Drift DB is not blocked forever.
       SeedDatabaseGate.complete();
       return false;
+    } finally {
+      _syncInProgress = false;
     }
   }
 }
@@ -127,6 +154,14 @@ final seedDownloadProvider =
     NotifierProvider<SeedDownloadNotifier, SeedDownloadState>(
       SeedDownloadNotifier.new,
     );
+
+/// Provider for retrying seed download. Must be overridden by the app
+/// bootstrap with the actual sync logic.
+final seedDownloadRetryProvider = Provider<Future<void> Function()>((ref) {
+  throw UnimplementedError(
+    'seedDownloadRetryProvider must be overridden by the app',
+  );
+});
 
 /// Provider for [SeedDatabaseService].
 final seedDatabaseServiceProvider = Provider<SeedDatabaseService>((ref) {

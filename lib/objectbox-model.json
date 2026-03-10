@@ -125,7 +125,7 @@
     },
     {
       "id": "10:3855157679464200367",
-      "lastPropertyId": "12:3462060407990166466",
+      "lastPropertyId": "15:3445134738243097972",
       "name": "AppStateAddressEntity",
       "properties": [
         {
@@ -140,16 +140,6 @@
           "indexId": "9:3962431394130676537",
           "type": 9,
           "flags": 2080
-        },
-        {
-          "id": "3:8877341932018307913",
-          "name": "feedBaseUrl",
-          "type": 9
-        },
-        {
-          "id": "4:1404419168567981741",
-          "name": "feedLastRefreshAtUs",
-          "type": 6
         },
         {
           "id": "5:7031346450320634061",
@@ -182,14 +172,9 @@
           "type": 6
         },
         {
-          "id": "11:671751466930742228",
-          "name": "hasFeedBareIngestCompleted",
-          "type": 1
-        },
-        {
-          "id": "12:3462060407990166466",
-          "name": "feedBareIngestCompletedAtUs",
-          "type": 6
+          "id": "13:3764280306253148323",
+          "name": "indexingProcessWorkflowId",
+          "type": 9
         }
       ],
       "relations": []
@@ -249,10 +234,41 @@
         }
       ],
       "relations": []
+    },
+    {
+      "id": "13:2953628364725163367",
+      "lastPropertyId": "4:3266366044635203300",
+      "name": "TrackedAddressEntity",
+      "properties": [
+        {
+          "id": "1:8240218798167199216",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:6582619908301915819",
+          "name": "normalizedAddress",
+          "indexId": "12:6965894134390285096",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:3236910916000618783",
+          "name": "alias",
+          "type": 9
+        },
+        {
+          "id": "4:3266366044635203300",
+          "name": "createdAtUs",
+          "type": 6
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "12:8386579186992898493",
-  "lastIndexId": "11:7170931557671098195",
+  "lastEntityId": "13:2953628364725163367",
+  "lastIndexId": "12:6965894134390285096",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",
   "modelVersion": 5,
@@ -309,7 +325,13 @@
     8634257928218582145,
     8352808654578695977,
     5237487681711859762,
-    5058690585758162742
+    5058690585758162742,
+    8175324511364461655,
+    3445134738243097972,
+    8877341932018307913,
+    1404419168567981741,
+    671751466930742228,
+    3462060407990166466
   ],
   "retiredRelationUids": [],
   "version": 1

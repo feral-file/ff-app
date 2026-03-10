@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
@@ -5,6 +8,7 @@ import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/load_more_indicator.dart';
+import 'package:app/widgets/seed_sync_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -82,6 +86,24 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    final seedState = ref.watch(seedDownloadProvider);
+    if (seedState.status == SeedDownloadStatus.syncing) {
+      return SeedSyncLoadingIndicator(
+        progress: seedState.progress,
+      );
+    }
+    if (seedState.status == SeedDownloadStatus.error) {
+      return Center(
+        child: ErrorView(
+          error:
+              seedState.errorMessage ??
+              "We couldn't prepare your feed. Check your connection, "
+                  'then Retry.',
+          onRetry: () => unawaited(ref.read(seedDownloadRetryProvider)()),
+        ),
+      );
+    }
 
     final worksState = widget.isActive
         ? ref.watch(worksProvider)

@@ -1,7 +1,10 @@
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/models.dart';
+import 'package:app/infra/logging/log_sanitizer.dart';
+import 'package:app/infra/logging/structured_logger.dart';
 import 'package:graphql/client.dart';
 import 'package:logging/logging.dart';
+import 'package:sentry_link/sentry_link.dart';
 import 'package:wallet/wallet.dart' as wallet;
 
 /// Service for validating raw addresses and resolving ENS/TNS domains.
@@ -12,11 +15,14 @@ class DomainAddressService {
     required String resolverApiKey,
   }) : _resolverUrl = resolverUrl,
        _resolverApiKey = resolverApiKey,
-       _log = Logger('DomainAddressService');
+       _structuredLog = AppStructuredLog.forLogger(
+         Logger('DomainAddressService'),
+         context: {'layer': 'infra/domain_address'},
+       );
 
   final String _resolverUrl;
   final String _resolverApiKey;
-  final Logger _log;
+  final StructuredLogger _structuredLog;
 
   static const String _lookupQuery = '''
     query {
@@ -120,21 +126,49 @@ class DomainAddressService {
     required String chain,
   }) async {
     if (_resolverUrl.isEmpty) {
-      _log.warning(
-        'DOMAIN_RESOLVER_URL is empty; cannot resolve domain $domain',
+      _structuredLog.warning(
+        category: LogCategory.graphql,
+        event: 'domain_resolve_skipped',
+        message: 'resolver URL missing for domain lookup',
+        payload: {
+          'domain': domain,
+          'chain': chain,
+        },
       );
       return null;
     }
 
     final client = GraphQLClient(
       cache: GraphQLCache(dataIdFromObject: (_) => null),
-      link: HttpLink(
-        _resolverUrl,
-        defaultHeaders: {
-          if (_resolverApiKey.isNotEmpty) 'X-API-KEY': _resolverApiKey,
-        },
-      ),
+      link: Link.from([
+        SentryGql.link(
+          shouldStartTransaction: true,
+          graphQlErrorsMarkTransactionAsFailed: true,
+        ),
+        HttpLink(
+          _resolverUrl,
+          defaultHeaders: {
+            if (_resolverApiKey.isNotEmpty) 'X-API-KEY': _resolverApiKey,
+          },
+        ),
+      ]),
       queryRequestTimeout: const Duration(seconds: 10),
+    );
+
+    const operationName = 'lookup';
+    final stopwatch = Stopwatch()..start();
+    _structuredLog.info(
+      category: LogCategory.graphql,
+      event: 'graphql_operation_started',
+      message: 'query $operationName started',
+      payload: {
+        'operationType': 'query',
+        'operationName': operationName,
+        'variables': LogSanitizer.sanitizeGraphqlVariables({
+          'chain': chain,
+          'domain': domain,
+        }),
+      },
     );
 
     try {
@@ -150,8 +184,25 @@ class DomainAddressService {
       );
 
       if (result.hasException) {
-        _log.warning(
-          'Failed to resolve domain $domain on $chain: ${result.exception}',
+        _structuredLog.warning(
+          category: LogCategory.graphql,
+          event: 'graphql_operation_failed',
+          message:
+              'query $operationName failed durationMs='
+              '${stopwatch.elapsedMilliseconds}',
+          error: result.exception,
+          payload: {
+            'operationType': 'query',
+            'operationName': operationName,
+            'durationMs': stopwatch.elapsedMilliseconds,
+            'variables': LogSanitizer.sanitizeGraphqlVariables({
+              'chain': chain,
+              'domain': domain,
+            }),
+            'error': LogSanitizer.sanitizeError(
+              result.exception!,
+            ),
+          },
         );
         return null;
       }
@@ -171,12 +222,38 @@ class DomainAddressService {
         return null;
       }
 
+      _structuredLog.info(
+        category: LogCategory.graphql,
+        event: 'graphql_operation_completed',
+        message:
+            'query $operationName completed durationMs='
+            '${stopwatch.elapsedMilliseconds}',
+        payload: {
+          'operationType': 'query',
+          'operationName': operationName,
+          'durationMs': stopwatch.elapsedMilliseconds,
+          'resolved': true,
+        },
+      );
       return address;
     } on Object catch (e, stack) {
-      _log.warning(
-        'Domain resolve request failed for $domain on $chain',
-        e,
-        stack,
+      _structuredLog.error(
+        event: 'graphql_operation_failed',
+        message:
+            'query $operationName failed durationMs='
+            '${stopwatch.elapsedMilliseconds}',
+        error: e,
+        stackTrace: stack,
+        payload: {
+          'operationType': 'query',
+          'operationName': operationName,
+          'durationMs': stopwatch.elapsedMilliseconds,
+          'variables': LogSanitizer.sanitizeGraphqlVariables({
+            'chain': chain,
+            'domain': domain,
+          }),
+          'error': LogSanitizer.sanitizeError(e),
+        },
       );
       return null;
     }

@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/version_provider.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
@@ -94,12 +97,16 @@ class FF1WifiConnectionState {
   /// Creates a connection state.
   const FF1WifiConnectionState({
     required this.isConnected,
+    this.isConnecting = false,
     this.device,
     this.error,
   });
 
   /// Whether device is connected over WiFi.
   final bool isConnected;
+
+  /// Whether connection is in progress (establishing WebSocket).
+  final bool isConnecting;
 
   /// Connected device.
   final FF1Device? device;
@@ -110,11 +117,13 @@ class FF1WifiConnectionState {
   /// Copy with updated fields.
   FF1WifiConnectionState copyWith({
     bool? isConnected,
+    bool? isConnecting,
     FF1Device? device,
     Object? error,
   }) {
     return FF1WifiConnectionState(
       isConnected: isConnected ?? this.isConnected,
+      isConnecting: isConnecting ?? this.isConnecting,
       device: device ?? this.device,
       error: error,
     );
@@ -150,7 +159,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       return;
     }
 
-    state = state.copyWith(device: device);
+    state = state.copyWith(device: device, isConnecting: true);
 
     try {
       await _control.connect(
@@ -161,14 +170,20 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
 
       state = state.copyWith(
         isConnected: true,
+        isConnecting: false,
         device: device,
       );
     } on Exception catch (e) {
       state = state.copyWith(
         isConnected: false,
+        isConnecting: false,
         error: e,
       );
       rethrow;
+    } finally {
+      if (state.isConnecting) {
+        state = state.copyWith(isConnecting: false);
+      }
     }
   }
 
@@ -186,6 +201,9 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   }
 
   /// Reconnect to device (using cached params)
+  ///
+  /// Does not set [isConnecting]; "Connecting" status is shown only for
+  /// initial connect, not for background reconnects (app resume, etc.).
   Future<void> reconnect() async {
     if (state.device == null) {
       return;
@@ -282,6 +300,14 @@ final ff1DeviceConnectedProvider = Provider<bool>((ref) {
   );
 });
 
+/// Whether WebSocket connection to relayer is in progress.
+///
+/// Used by now displaying bar to show "Connecting to FF1-XXX" during connect.
+final ff1WifiConnectingProvider = Provider<bool>((ref) {
+  final connectionState = ref.watch(ff1WifiConnectionProvider);
+  return connectionState.isConnecting;
+});
+
 // ============================================================================
 // Auto-connect to active FF1 device
 // ============================================================================
@@ -300,28 +326,40 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
   final connectionNotifier = ref.read(ff1WifiConnectionProvider.notifier);
 
   activeDeviceAsync.when(
-    data: (device) {
+    data: (device) async {
       // Use Future.microtask to defer the connection call
       // to avoid modifying other providers during build phase
-      Future.microtask(() {
-        if (device != null) {
-          logger.info(
-            'Active device changed: ${device.deviceId}, connecting...',
-          );
-          // Intentionally not awaiting to avoid blocking
-          // ignore: discarded_futures
-          connectionNotifier.connect(
-            device: device,
-            userId: 'user_id',
-            apiKey: AppConfig.ff1RelayerApiKey,
-          );
-        } else {
-          logger.info('No active device, disconnecting...');
-          // Intentionally not awaiting to avoid blocking
-          // ignore: discarded_futures
-          connectionNotifier.disconnect();
-        }
-      });
+      unawaited(
+        Future.microtask(() async {
+          if (device != null) {
+            logger.info(
+              'Active device changed: ${device.toJson()}, connecting...',
+            );
+            // Intentionally not awaiting to avoid blocking
+            // ignore: discarded_futures
+            await connectionNotifier.connect(
+              device: device,
+              userId: 'user_id',
+              apiKey: AppConfig.ff1RelayerApiKey,
+            );
+
+            final versionService = ref.read(versionServiceProvider);
+            final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
+            unawaited(
+              versionService.checkDeviceVersionCompatibility(
+                branchName: device.branchName,
+                deviceVersion: deviceStatus?.latestVersion ?? '',
+                requiredDeviceUpdate: true,
+              ),
+            );
+          } else {
+            logger.info('No active device, disconnecting...');
+            // Intentionally not awaiting to avoid blocking
+            // ignore: discarded_futures
+            connectionNotifier.disconnect();
+          }
+        }),
+      );
     },
     error: (error, stack) {
       logger.severe('Error loading active device', error, stack);

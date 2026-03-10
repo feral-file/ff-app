@@ -1,44 +1,57 @@
 import 'dart:async';
 
+import 'package:app/app/now_displaying/now_displaying_visibility_config.dart';
+import 'package:app/app/providers/current_route_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
-import 'package:app/app/routing/routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-const _routesThatHideNowDisplayingBar = <String>[
-  Routes.onboarding,
-  Routes.onboardingIntroducePage,
-  Routes.onboardingAddAddressPage,
-  Routes.onboardingSetupFf1Page,
-  Routes.ff1DevicePickerPage,
-  Routes.handleBluetoothDeviceScanDeeplinkPage,
-  Routes.connectFF1Page,
-  Routes.addAddressPage,
-  Routes.addAliasPage,
-  Routes.startSetupFf1,
-  Routes.scanWifiNetworks,
-  Routes.enterWifiPassword,
-  Routes.deviceConfiguration,
-  Routes.ff1Updating,
-  Routes.nowDisplaying,
-];
+/// Minimum scrollable content extent required before scroll should toggle
+/// now displaying visibility.
+const nowDisplayingScrollToggleThreshold = 100.0;
+
+/// Returns true when the now displaying bar should be visible for [routeState].
+///
+/// Route (modal/drawer) has higher priority than path: when modal/drawer
+/// is shown, returns false regardless of path.
+bool shouldShowNowDisplayingForRoute(AppRouteState routeState) {
+  if (routeState.hasModalOrDrawer) {
+    return false;
+  }
+  final path = routeState.path;
+  for (final hidden in routesThatHideNowDisplayingBar) {
+    if (path == hidden || path.startsWith('$hidden/')) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// Returns true if a scroll event should affect now displaying visibility.
+bool shouldReactToNowDisplayingScroll({
+  required Axis axis,
+  required double maxScrollExtent,
+}) {
+  return axis == Axis.vertical &&
+      maxScrollExtent >= nowDisplayingScrollToggleThreshold;
+}
 
 /// Syncs scroll + keyboard visibility into [nowDisplayingVisibilityProvider].
 ///
-/// This keeps the provider pure: it exposes update methods; this widget
-/// is responsible for wiring platform/UI signals into those methods.
+/// Route visibility (path + modal/drawer) is driven by [currentRouteProvider],
+/// which is updated by [AppRouteObserver]. This widget only wires scroll and
+/// keyboard signals.
 class NowDisplayingVisibilitySync extends ConsumerStatefulWidget {
+  /// Creates a [NowDisplayingVisibilitySync].
   const NowDisplayingVisibilitySync({
     required this.child,
-    required this.router,
     super.key,
   });
 
+  /// Subtree that sends scroll notifications for visibility sync.
   final Widget child;
-  final GoRouter router;
 
   @override
   ConsumerState<NowDisplayingVisibilitySync> createState() =>
@@ -48,7 +61,7 @@ class NowDisplayingVisibilitySync extends ConsumerStatefulWidget {
 class _NowDisplayingVisibilitySyncState
     extends ConsumerState<NowDisplayingVisibilitySync> {
   late final KeyboardVisibilityController _keyboardVisibilityController;
-  StreamSubscription<bool>? _keyboardSubscription;
+  late final StreamSubscription<bool> _keyboardSubscription;
 
   @override
   void initState() {
@@ -61,49 +74,29 @@ class _NowDisplayingVisibilitySyncState
       notifier.setKeyboardVisibility,
     );
 
-    // Sync route/location visibility from go_router.
-    widget.router.routeInformationProvider.addListener(_handleRouteChanged);
-
     // Riverpod forbids modifying providers while the widget tree is building.
-    // Defer the "initial sync" writes until after the first frame.
+    // Defer the initial keyboard sync until after the first frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
       }
-
-      final notifier = ref.read(nowDisplayingVisibilityProvider.notifier);
-      notifier.setKeyboardVisibility(_keyboardVisibilityController.isVisible);
-      _handleRouteChanged();
+      ref
+          .read(nowDisplayingVisibilityProvider.notifier)
+          .setKeyboardVisibility(_keyboardVisibilityController.isVisible);
     });
   }
 
   @override
   void dispose() {
-    widget.router.routeInformationProvider.removeListener(_handleRouteChanged);
-    _keyboardSubscription?.cancel();
+    unawaited(_keyboardSubscription.cancel());
     super.dispose();
   }
 
-  void _handleRouteChanged() {
-    final routeInfo = widget.router.routeInformationProvider.value;
-    final path = routeInfo.uri.path.isEmpty ? Routes.home : routeInfo.uri.path;
-
-    ref
-        .read(nowDisplayingVisibilityProvider.notifier)
-        .setShouldShowNowDisplaying(_shouldShowForPath(path));
-  }
-
-  bool _shouldShowForPath(String path) {
-    for (final hidden in _routesThatHideNowDisplayingBar) {
-      if (path == hidden || path.startsWith('$hidden/')) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   bool _onScrollNotification(UserScrollNotification notification) {
-    if (notification.metrics.axis != Axis.vertical) {
+    if (!shouldReactToNowDisplayingScroll(
+      axis: notification.metrics.axis,
+      maxScrollExtent: notification.metrics.maxScrollExtent,
+    )) {
       return false;
     }
 

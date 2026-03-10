@@ -116,7 +116,8 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
-      appBar: const MainAppBar(
+      appBar: MainAppBar.preferred(
+        context,
         backTitle: 'Index',
       ),
       body: SafeArea(

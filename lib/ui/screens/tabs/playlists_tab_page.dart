@@ -1,10 +1,17 @@
+import 'dart:async';
+
 import 'package:app/app/providers/playlists_provider.dart';
+import 'package:app/app/providers/seed_database_provider.dart';
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/screens/tabs/tab_reload_guard.dart';
 import 'package:app/widgets/error_view.dart';
+import 'package:app/widgets/playlist/playlist_header_with_collection_state.dart';
 import 'package:app/widgets/playlist/playlist_section.dart';
+import 'package:app/widgets/seed_sync_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -75,16 +82,62 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     }
   }
 
+  String _creatorForAddressPlaylist(Playlist playlist) {
+    final address = playlist.ownerAddress;
+    if (address == null || address.isEmpty) return '';
+    if (address.length > 10) {
+      return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+    }
+    return address;
+  }
+
   void _loadPlaylists() {
-    ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
-    ref
-        .read(playlistsProvider(PlaylistType.addressBased).notifier)
-        .loadPlaylists();
+    final curatedState = ref.read(playlistsProvider(PlaylistType.dp1));
+    final shouldLoadCurated = shouldLoadTabData(
+      isLoading: curatedState.isLoading,
+      hasCachedItems: curatedState.playlists.isNotEmpty,
+      hasError: curatedState.error != null,
+    );
+    if (shouldLoadCurated) {
+      ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
+    }
+
+    final personalState = ref.read(
+      playlistsProvider(PlaylistType.addressBased),
+    );
+    final shouldLoadPersonal = shouldLoadTabData(
+      isLoading: personalState.isLoading,
+      hasCachedItems: personalState.playlists.isNotEmpty,
+      hasError: personalState.error != null,
+    );
+    if (shouldLoadPersonal) {
+      ref
+          .read(playlistsProvider(PlaylistType.addressBased).notifier)
+          .loadPlaylists();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    final seedState = ref.watch(seedDownloadProvider);
+    if (seedState.status == SeedDownloadStatus.syncing) {
+      return SeedSyncLoadingIndicator(
+        progress: seedState.progress,
+      );
+    }
+    if (seedState.status == SeedDownloadStatus.error) {
+      return Center(
+        child: ErrorView(
+          error:
+              seedState.errorMessage ??
+              "We couldn't prepare your feed. Check your connection, "
+                  'then Retry.',
+          onRetry: () => unawaited(ref.read(seedDownloadRetryProvider)()),
+        ),
+      );
+    }
 
     // Watch both providers (curated = dp1, personal = addressBased).
     final nextCuratedState = widget.isActive
@@ -151,52 +204,84 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
         // Personal playlists section (preview).
         if (personalPlaylists.isNotEmpty)
           SliverToBoxAdapter(
-            child: PlaylistSection(
-              sectionName: 'Personal',
-              sectionIcon: SvgPicture.asset(
-                'assets/images/icon_account.svg',
-                width: LayoutConstants.iconSizeDefault,
-                height: LayoutConstants.iconSizeDefault,
-                colorFilter: const ColorFilter.mode(
-                  AppColor.auQuickSilver,
-                  BlendMode.srcIn,
+            child: Column(
+              children: [
+                PlaylistSection(
+                  sectionName: 'Me',
+                  playlistHeaderBuilder: (playlist, itemCount) {
+                    final ownerAddress = playlist.ownerAddress;
+                    if (ownerAddress == null || ownerAddress.isEmpty) {
+                      return null;
+                    }
+                    final creator = _creatorForAddressPlaylist(playlist);
+                    return PlaylistHeaderWithCollectionState(
+                      primaryText: playlist.name,
+                      secondaryText: creator,
+                      total: itemCount,
+                      ownerAddress: ownerAddress,
+                      onRetry: () => ref
+                          .read(addressServiceProvider)
+                          .indexAndSyncAddress(ownerAddress),
+                    );
+                  },
+                  sectionIcon: SvgPicture.asset(
+                    'assets/images/icon_account.svg',
+                    width: LayoutConstants.iconSizeDefault,
+                    height: LayoutConstants.iconSizeDefault,
+                    colorFilter: const ColorFilter.mode(
+                      AppColor.auQuickSilver,
+                      BlendMode.srcIn,
+                    ),
+                  ),
+                  playlists: personalPlaylists.take(_previewCount).toList(),
+                  isActive: widget.isActive,
+                  hasMore: personalPlaylists.length > _previewCount,
+                  onViewAllTap: personalPlaylists.length > _previewCount
+                      ? () => context.push(
+                          '${Routes.allPlaylists}?filter=personal',
+                        )
+                      : null,
+                  onPlaylistItemTap: (item) {
+                    context.push('${Routes.works}/${item.id}');
+                  },
                 ),
-              ),
-              playlists: personalPlaylists.take(_previewCount).toList(),
-              isActive: widget.isActive,
-              hasMore: personalPlaylists.length > _previewCount,
-              onViewAllTap: personalPlaylists.length > _previewCount
-                  ? () => context.push('${Routes.allPlaylists}?filter=personal')
-                  : null,
-              onPlaylistItemTap: (item) {
-                context.push('${Routes.works}/${item.id}');
-              },
+                SizedBox(height: LayoutConstants.space12),
+              ],
             ),
           ),
 
         // Curated playlists section (preview).
         if (curatedSectionPlaylists.isNotEmpty)
           SliverToBoxAdapter(
-            child: PlaylistSection(
-              sectionName: 'Curated',
-              sectionIcon: SvgPicture.asset(
-                'assets/images/D.svg',
-                width: LayoutConstants.iconSizeDefault,
-                height: LayoutConstants.iconSizeDefault,
-                colorFilter: const ColorFilter.mode(
-                  AppColor.auQuickSilver,
-                  BlendMode.srcIn,
+            child: Column(
+              children: [
+                PlaylistSection(
+                  sectionName: 'Curated',
+                  sectionIcon: SvgPicture.asset(
+                    'assets/images/D.svg',
+                    width: LayoutConstants.iconSizeDefault,
+                    height: LayoutConstants.iconSizeDefault,
+                    colorFilter: const ColorFilter.mode(
+                      AppColor.auQuickSilver,
+                      BlendMode.srcIn,
+                    ),
+                  ),
+                  playlists: curatedSectionPlaylists
+                      .take(_previewCount)
+                      .toList(),
+                  isActive: widget.isActive,
+                  hasMore: curatedSectionPlaylists.length > _previewCount,
+                  onViewAllTap: curatedSectionPlaylists.length > _previewCount
+                      ? () => context.push(
+                          '${Routes.allPlaylists}?filter=curated',
+                        )
+                      : null,
+                  onPlaylistItemTap: (item) {
+                    context.push('${Routes.works}/${item.id}');
+                  },
                 ),
-              ),
-              playlists: curatedSectionPlaylists.take(_previewCount).toList(),
-              isActive: widget.isActive,
-              hasMore: curatedSectionPlaylists.length > _previewCount,
-              onViewAllTap: curatedSectionPlaylists.length > _previewCount
-                  ? () => context.push('${Routes.allPlaylists}?filter=curated')
-                  : null,
-              onPlaylistItemTap: (item) {
-                context.push('${Routes.works}/${item.id}');
-              },
+                SizedBox(height: LayoutConstants.space12),
+              ],
             ),
           ),
 

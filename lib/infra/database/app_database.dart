@@ -9,8 +9,8 @@ import 'package:drift/native.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sentry_drift/sentry_drift.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
-
 
 part 'app_database.g.dart';
 
@@ -86,6 +86,11 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_playlists_owner '
       'ON playlists(type, owner_address)',
+    );
+
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_playlists_type_channel_created '
+      'ON playlists(type, channel_id, created_at_us)',
     );
 
     await customStatement(
@@ -329,8 +334,7 @@ class AppDatabase extends _$AppDatabase {
     final query = select(playlists)
       ..orderBy([
         (t) => OrderingTerm.asc(publisherOrderExpr),
-        (t) => OrderingTerm.desc(t.createdAtUs),
-        (t) => OrderingTerm.asc(t.id),
+        (t) => OrderingTerm.asc(t.createdAtUs),
       ]);
 
     if (type != null) {
@@ -518,30 +522,28 @@ class AppDatabase extends _$AppDatabase {
   /// - 0 = DP1
   /// - 1 = address-based
   Future<List<PlaylistData>> getAllPlaylists({PlaylistType? type}) async {
-    const publisherOrderExpr = CustomExpression<int>(
+    final variables = <Variable<Object>>[];
+    final whereClause =
+        type == null
+            ? ''
+            : (() {
+              variables.add(Variable<int>(type.value));
+              return 'WHERE p.type = ?';
+            })();
+
+    final result = await customSelect(
       '''
-      COALESCE(
-        (
-          SELECT c.publisher_id
-          FROM channels c
-          WHERE c.id = playlists.channel_id
-        ),
-        2147483647
-      )
+      SELECT p.*
+      FROM playlists p
+      LEFT JOIN channels c ON c.id = p.channel_id
+      $whereClause
+      ORDER BY COALESCE(c.publisher_id, 2147483647) ASC, p.created_at_us ASC
       ''',
-    );
-    final query = select(playlists);
-    if (type != null) {
-      query.where((t) => t.type.equals(type.value));
-    }
+      variables: variables,
+      readsFrom: {playlists, channels},
+    ).map((row) => playlists.map(row.data)).get();
 
-    query.orderBy([
-      (t) => OrderingTerm.asc(publisherOrderExpr),
-      (t) => OrderingTerm.desc(t.createdAtUs),
-      (t) => OrderingTerm.asc(t.id),
-    ]);
-
-    return query.get();
+    return result;
   }
 
   /// Get address-based playlists.
@@ -988,6 +990,34 @@ class AppDatabase extends _$AppDatabase {
         .go();
   }
 
+  /// Delete playlist entries and items for address-based playlists in one
+  /// transaction.
+  ///
+  /// Uses two raw SQL statements: delete items first (subquery reads
+  /// playlist_entries), then delete playlist_entries. [addresses] must be
+  /// pre-normalized by the caller.
+  Future<void> deleteItemsAndEntriesOfAddresses(List<String> addresses) async {
+    if (addresses.isEmpty) return;
+    final placeholders = addresses.map((_) => '?').join(',');
+    await transaction(() async {
+      await customStatement(
+        'DELETE FROM items WHERE id IN ( '
+        'SELECT pe.item_id FROM playlist_entries pe '
+        'INNER JOIN playlists p ON p.id = pe.playlist_id '
+        'WHERE p.type = 1 '
+        "AND LOWER(TRIM(COALESCE(p.owner_address, ''))) IN ($placeholders))",
+        addresses,
+      );
+      await customStatement(
+        'DELETE FROM playlist_entries WHERE playlist_id IN ( '
+        'SELECT id FROM playlists '
+        'WHERE type = 1 '
+        "AND LOWER(TRIM(COALESCE(owner_address, ''))) IN ($placeholders))",
+        addresses,
+      );
+    });
+  }
+
   /// Force WAL checkpoint to write pending changes to main database file.
   /// This is useful after bulk writes to ensure data is persisted.
   Future<void> checkpoint() async {
@@ -1060,10 +1090,16 @@ class AppDatabase extends _$AppDatabase {
 
   /// Delete all playlists of given type and baseUrl.
   /// Matches old repo's deleteAllPlaylists(kind, baseUrl).
+  /// Deletes playlist_entries first to avoid orphaned rows.
   Future<int> deletePlaylistsByTypeAndBaseUrl({
     required PlaylistType type,
     required String baseUrl,
   }) async {
+    await customStatement(
+      'DELETE FROM playlist_entries WHERE playlist_id IN ( '
+      'SELECT id FROM playlists WHERE type = ? AND base_url = ?)',
+      [type.value, baseUrl],
+    );
     return (delete(
           playlists,
         )..where((p) => p.type.equals(type.value) & p.baseUrl.equals(baseUrl)))
@@ -1106,7 +1142,7 @@ LazyDatabase _openConnection() {
     await SeedDatabaseGate.future;
 
     final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'playlist_cache.sqlite'));
+    final file = File(p.join(dbFolder.path, 'dp1_library.sqlite'));
     await _resetDatabaseIfSchemaConflicts(file, dbFolder);
 
     _log.info('Opening database at: ${file.path}');
@@ -1116,7 +1152,10 @@ LazyDatabase _openConnection() {
       final driftIsolate = await DriftIsolate.spawn(
         () => _makeNativeDatabase(file),
       );
-      return driftIsolate.connect();
+      final connection = await driftIsolate.connect();
+      return connection.interceptWith(
+        SentryQueryInterceptor(databaseName: file.path),
+      );
     } on Object catch (e, st) {
       _log.warning(
         'Failed to open database. Recreating from scratch and retrying once.',
@@ -1128,7 +1167,10 @@ LazyDatabase _openConnection() {
       final driftIsolate = await DriftIsolate.spawn(
         () => _makeNativeDatabase(file),
       );
-      return driftIsolate.connect();
+      final connection = await driftIsolate.connect();
+      return connection.interceptWith(
+        SentryQueryInterceptor(databaseName: file.path),
+      );
     }
   });
 }

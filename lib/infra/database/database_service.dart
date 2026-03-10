@@ -9,6 +9,7 @@ import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/converters.dart';
 import 'package:app/infra/database/token_transformer.dart';
@@ -706,15 +707,40 @@ class DatabaseService {
   ///
   /// This deletes the playlist record and all its entries.
   /// Items are not deleted (they may be referenced by other playlists).
-  Future<void> deletePlaylist(String playlistId) async {
+  /// Set [skipEntries] to true when entries were already deleted (e.g. by
+  /// [deleteItemsOfAddresses]).
+  Future<void> deletePlaylist(String playlistId, {bool skipEntries = false}) async {
     try {
-      // Delete all playlist entries first
-      await _db.deletePlaylistEntries(playlistId);
-      // Then delete the playlist record
+      if (!skipEntries) {
+        await _db.deletePlaylistEntries(playlistId);
+      }
       await _db.deletePlaylist(playlistId);
       _log.info('Deleted playlist: $playlistId');
     } catch (e, stack) {
       _log.severe('Failed to delete playlist $playlistId', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Delete playlist entries and items for address-based playlists.
+  ///
+  /// Matches playlists by [addresses] (case-insensitive) and removes all
+  /// playlist entries and items belonging to those playlists in one SQL batch.
+  Future<void> deleteItemsOfAddresses(List<String> addresses) async {
+    if (addresses.isEmpty) return;
+
+    final normalized = addresses
+        .map((a) => a.toNormalizedAddress())
+        .where((a) => a.isNotEmpty)
+        .toSet()
+        .toList();
+    if (normalized.isEmpty) return;
+
+    try {
+      await _db.deleteItemsAndEntriesOfAddresses(normalized);
+      _log.info('Deleted items and entries for address(es)');
+    } catch (e, stack) {
+      _log.severe('Failed to delete items of addresses', e, stack);
       rethrow;
     }
   }
@@ -731,12 +757,12 @@ class DatabaseService {
     if (cids.isEmpty) return;
 
     try {
-      final normalizedAddress = address.toUpperCase();
+      final normalizedAddress = address.toNormalizedAddress();
 
       final playlists = await getAddressPlaylists();
       Playlist? addressPlaylist;
       for (final playlist in playlists) {
-        if (playlist.ownerAddress?.toUpperCase() == normalizedAddress) {
+        if (playlist.ownerAddress?.toNormalizedAddress() == normalizedAddress) {
           addressPlaylist = playlist;
           break;
         }
@@ -804,13 +830,13 @@ class DatabaseService {
     required List<AssetToken> tokens,
   }) async {
     try {
-      final normalizedAddress = address.toUpperCase();
+      final normalizedAddress = address.toNormalizedAddress();
 
       // Find the address playlist
       final playlists = await getAddressPlaylists();
       Playlist? addressPlaylist;
       for (final playlist in playlists) {
-        if (playlist.ownerAddress?.toUpperCase() == normalizedAddress) {
+        if (playlist.ownerAddress?.toNormalizedAddress() == normalizedAddress) {
           addressPlaylist = playlist;
           break;
         }
@@ -1129,15 +1155,6 @@ class DatabaseService {
       result.add((playlist, items));
     }
     return result;
-  }
-
-  /// Delete a single playlist by ID and its entries.
-  /// Matches old repo's deletePlaylistById / delete playlist from Drift.
-  Future<void> deletePlaylistById(String playlistId) async {
-    await _db.deletePlaylistEntries(playlistId);
-    await (_db.delete(
-      _db.playlists,
-    )..where((p) => p.id.equals(playlistId))).go();
   }
 
   /// Delete all playlists of given kind and baseUrl.
@@ -1602,7 +1619,8 @@ class DatabaseService {
 
   /// Enrich a single playlist item with token data.
   ///
-  /// Updates the item in database with thumbnailUri and artists from token.
+  /// Updates the item in database with provenance, source, thumbnail, artists,
+  /// and other DP-1 fields from the token.
   Future<void> enrichPlaylistItemWithToken({
     required String itemId,
     required AssetToken token,
@@ -1611,27 +1629,12 @@ class DatabaseService {
       final enrichedItem = TokenTransformer.assetTokenToPlaylistItem(
         token: token,
       );
-
-      // Create companion with enriched data
-      final companion = ItemsCompanion(
-        id: Value(itemId),
-        kind: const Value(1), // indexer token
-        title: Value(enrichedItem.title),
-        subtitle: Value(enrichedItem.subtitle),
-        thumbnailUri: Value(enrichedItem.thumbnailUrl),
-        listArtistJson:
-            enrichedItem.artists != null && enrichedItem.artists!.isNotEmpty
-            ? Value(
-                jsonEncode(
-                  enrichedItem.artists!.map((a) => a.toJson()).toList(),
-                ),
-              )
-            : const Value(null),
-        tokenDataJson: Value(jsonEncode(token.toRestJson())),
-        enrichmentStatus: const Value(enrichmentStatusEnriched),
-        updatedAtUs: Value(BigInt.from(DateTime.now().microsecondsSinceEpoch)),
+      final companion = _buildEnrichmentCompanion(
+        itemId: itemId,
+        enrichedItem: enrichedItem,
+        tokenJson: jsonEncode(token.toRestJson()),
+        nowUs: BigInt.from(DateTime.now().microsecondsSinceEpoch),
       );
-
       await _db.upsertItem(companion);
     } catch (e, stack) {
       _log.severe('Failed to enrich item $itemId', e, stack);
@@ -1690,6 +1693,57 @@ class DatabaseService {
     }
   }
 
+  /// Build [ItemsCompanion] for enrichment from [PlaylistItem] and token JSON.
+  ///
+  /// Persists provenance, sourceUri, refUri, durationSec, license, repro,
+  /// display, thumbnail, artists, and tokenData to preserve DP-1 compatibility.
+  static ItemsCompanion _buildEnrichmentCompanion({
+    required String itemId,
+    required PlaylistItem enrichedItem,
+    required String tokenJson,
+    required BigInt nowUs,
+  }) {
+    return ItemsCompanion(
+      id: Value(itemId),
+      kind: const Value(1), // indexer token
+      title: Value(enrichedItem.title),
+      subtitle: Value(enrichedItem.subtitle),
+      thumbnailUri: Value(enrichedItem.thumbnailUrl),
+      provenanceJson: enrichedItem.provenance != null
+          ? Value(jsonEncode(enrichedItem.provenance!.toJson()))
+          : const Value.absent(),
+      sourceUri: enrichedItem.source != null
+          ? Value(enrichedItem.source)
+          : const Value.absent(),
+      refUri: enrichedItem.ref != null
+          ? Value(enrichedItem.ref)
+          : const Value.absent(),
+      durationSec: enrichedItem.duration > 0
+          ? Value(enrichedItem.duration)
+          : const Value.absent(),
+      license: enrichedItem.license != null
+          ? Value(enrichedItem.license!.value)
+          : const Value.absent(),
+      reproJson: enrichedItem.repro != null
+          ? Value(jsonEncode(enrichedItem.repro!.toJson()))
+          : const Value.absent(),
+      displayJson: enrichedItem.display != null
+          ? Value(jsonEncode(enrichedItem.display!.toJson()))
+          : const Value.absent(),
+      listArtistJson:
+          enrichedItem.artists != null && enrichedItem.artists!.isNotEmpty
+          ? Value(
+              jsonEncode(
+                enrichedItem.artists!.map((a) => a.toJson()).toList(),
+              ),
+            )
+          : const Value(null),
+      tokenDataJson: Value(tokenJson),
+      enrichmentStatus: const Value(enrichmentStatusEnriched),
+      updatedAtUs: Value(nowUs),
+    );
+  }
+
   static Future<void> _enrichPlaylistItemsWithTokensBatchOnDatabase({
     required AppDatabase db,
     required List<(String, AssetToken)> enrichments,
@@ -1702,24 +1756,11 @@ class DatabaseService {
           final enrichedItem = TokenTransformer.assetTokenToPlaylistItem(
             token: token,
           );
-
-          return ItemsCompanion(
-            id: Value(itemId),
-            kind: const Value(1), // indexer token
-            title: Value(enrichedItem.title),
-            subtitle: Value(enrichedItem.subtitle),
-            thumbnailUri: Value(enrichedItem.thumbnailUrl),
-            listArtistJson:
-                enrichedItem.artists != null && enrichedItem.artists!.isNotEmpty
-                ? Value(
-                    jsonEncode(
-                      enrichedItem.artists!.map((a) => a.toJson()).toList(),
-                    ),
-                  )
-                : const Value(null),
-            tokenDataJson: Value(jsonEncode(token.toRestJson())),
-            enrichmentStatus: const Value(enrichmentStatusEnriched),
-            updatedAtUs: Value(nowUs),
+          return _buildEnrichmentCompanion(
+            itemId: itemId,
+            enrichedItem: enrichedItem,
+            tokenJson: jsonEncode(token.toRestJson()),
+            nowUs: nowUs,
           );
         })
         .toList(growable: false);

@@ -29,9 +29,19 @@ class SeedDatabaseSyncService {
   final Logger _log;
 
   /// Syncs seed DB from remote when ETag differs from local ObjectBox config.
+  ///
+  /// [onDownloadStarted] is invoked only when a download will occur (ETag
+  /// changed or no local DB). Receives [hasLocalDatabase], [localEtag], and
+  /// [remoteEtag] so the caller can decide whether to emit syncing status
+  /// (e.g. only when [hasLocalDatabase] is false, first install).
   Future<bool> syncIfNeeded({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
+    void Function({
+      required bool hasLocalDatabase,
+      required String localEtag,
+      required String remoteEtag,
+    })? onDownloadStarted,
     void Function(double progress)? onProgress,
     bool failSilently = false,
   }) async {
@@ -43,10 +53,24 @@ class SeedDatabaseSyncService {
       final shouldReplace =
           !hasLocalDatabase ||
           (remoteEtag.isNotEmpty && remoteEtag != localEtag);
+
+      _log.info(
+        'Seed sync pre-check: hasLocal=$hasLocalDatabase, '
+        'localEtag=${localEtag.isEmpty ? '<empty>' : localEtag}, '
+        'remoteEtag=${remoteEtag.isEmpty ? '<empty>' : remoteEtag}, '
+        'shouldReplace=$shouldReplace',
+      );
       if (!shouldReplace) {
         _log.fine('Seed database ETag unchanged; skipping download.');
         return false;
       }
+
+      _log.info('Seed DB refresh needed; downloading latest seed snapshot.');
+      onDownloadStarted?.call(
+        hasLocalDatabase: hasLocalDatabase,
+        localEtag: localEtag,
+        remoteEtag: remoteEtag,
+      );
 
       final tempPath = await _seedDatabaseService.downloadToTemporaryFile(
         onProgress: onProgress,
@@ -63,6 +87,14 @@ class SeedDatabaseSyncService {
             : 'Seed database installed.',
       );
       return true;
+    } on FormatException catch (e, st) {
+      if (!failSilently) rethrow;
+      _log.warning(
+        'Seed database sync skipped due to invalid seed configuration (S3_*).',
+        e,
+        st,
+      );
+      return false;
     } on DioException catch (e, st) {
       if (!failSilently) rethrow;
       _log.warning('Seed database sync skipped (network failure).', e, st);

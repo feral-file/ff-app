@@ -16,4 +16,16 @@ const String addressIndexingJobStatusQuery = r'''
   }
 ''';
 
+/// Fetch workflow status by workflow_id and run_id.
+/// Used to poll until metadata indexing reaches terminal state.
+const String workflowStatusQuery = r'''
+  query workflowStatus($workflow_id: String!, $run_id: String!) {
+    workflowStatus(workflow_id: $workflow_id, run_id: $run_id) {
+      workflow_id
+      run_id
+      status
+    }
+  }
+''';
+
 // End of file.

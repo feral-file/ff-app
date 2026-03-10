@@ -10,6 +10,7 @@ import 'package:app/objectbox.g.dart' show AppStateEntity_;
 import 'package:hive_flutter/hive_flutter.dart' as hive_flutter;
 import 'package:logging/logging.dart';
 import 'package:objectbox/objectbox.dart';
+import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
 /// Summary of one-time legacy migration results.
 class LegacyDataMigrationResult {
@@ -30,7 +31,7 @@ class LegacyDataMigrationResult {
   final int importedDevices;
 }
 
-/// Migrates legacy app data (Hive) into current storage layers.
+/// Migrates legacy app data (SQLite + Hive) into current storage layers.
 class LegacyDataMigrationService {
   /// Creates a legacy-data migration service.
   LegacyDataMigrationService({
@@ -220,47 +221,43 @@ class LegacyDataMigrationService {
   }
 
   Future<List<String>> _loadLegacyAddresses() async {
-    final addresses = await _readHiveAddresses();
-    if (addresses.isNotEmpty) {
-      _log.info('Loaded ${addresses.length} address(es) from legacy Hive.');
+    final sqlitePaths = await _storageLocator.findLegacySqlitePaths();
+    for (final path in sqlitePaths) {
+      final addresses = _readPersonalAddressesFromSqlite(path);
+      if (addresses.isNotEmpty) {
+        _log.info(
+          'Loaded ${addresses.length} address(es) from legacy SQLite: $path',
+        );
+        return addresses;
+      }
     }
-    return addresses;
+    return const [];
   }
 
-  Future<List<String>> _readHiveAddresses() async {
-    final box = await _openLegacyHiveBox();
-    if (box == null) {
-      return const [];
-    }
+  List<String> _readPersonalAddressesFromSqlite(String dbPath) {
+    sqlite3.Database? db;
     try {
-      final addresses = <String>{};
-      for (final key in box.keys) {
-        final keyString = key.toString();
-        if (!keyString.contains('.common.db.address.')) {
-          continue;
-        }
-        final raw = box.get(keyString);
-        if (raw == null || raw.isEmpty) {
-          continue;
-        }
-        final payload = jsonDecode(raw);
-        if (payload is! Map<String, dynamic>) {
-          continue;
-        }
-        final address = (payload['address'] as String? ?? '').trim();
-        if (address.isEmpty) {
-          continue;
-        }
-        addresses.add(address.toUpperCase());
-      }
+      db = sqlite3.sqlite3.open(dbPath, mode: sqlite3.OpenMode.readOnly);
+      const sql = '''
+        SELECT DISTINCT owner_address AS migrated_address
+        FROM playlists
+        WHERE owner_address IS NOT NULL
+          AND TRIM(owner_address) != ''
+          AND type = 1
+      ''';
 
-      return addresses.whereType<String>().toList(growable: false);
-    } on Object catch (e, st) {
-      _log.warning('Failed to load legacy addresses from Hive', e, st);
+      final rows = db.select(sql);
+      return rows
+          .map((row) => row['migrated_address'] as String?)
+          .whereType<String>()
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+    } on Object {
       return const [];
     } finally {
-      await box.close();
-      await hive_flutter.Hive.close();
+      db?.dispose();
     }
   }
 

@@ -56,6 +56,9 @@ class FeralFileWebview extends StatefulWidget {
 }
 
 class FeralFileWebviewState extends State<FeralFileWebview> {
+  static final Set<WebViewController> _retainedControllers =
+      <WebViewController>{};
+
   late WebViewController _webViewController;
   double _loadingProgress = 0;
 
@@ -118,9 +121,19 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
 
   @override
   void dispose() {
-    super.dispose();
+    _retainControllerForDeferredNativeCallbacks(_webViewController);
     // webViewController dispose itself
     _webViewController.onDispose();
+    super.dispose();
+  }
+
+  void _retainControllerForDeferredNativeCallbacks(
+    WebViewController controller,
+  ) {
+    _retainedControllers.add(controller);
+    Future<void>.delayed(const Duration(seconds: 5), () {
+      _retainedControllers.remove(controller);
+    });
   }
 
   @override
@@ -162,13 +175,11 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
       })
       ..setNavigationDelegate(
         NavigationDelegate(
-          onProgress: (progress) {
-            setState(() {
-              _loadingProgress = progress / 100;
-            });
-          },
           onPageStarted: (url) async {
             _log.info('Page started loading: $url');
+            if (!mounted) {
+              return;
+            }
             setState(() {
               _loadingProgress = 0.0;
             });
@@ -176,6 +187,9 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
             widget.onStarted?.call(webViewController);
           },
           onPageFinished: (url) async {
+            if (!mounted) {
+              return;
+            }
             setState(() {
               _loadingProgress = 1.0;
             });
@@ -196,9 +210,6 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
           onNavigationRequest: (request) async {
             _log.info('Navigation request to: ${request.url}');
             return NavigationDecision.navigate;
-          },
-          onUrlChange: (url) {
-            _log.info('Url changed: $url');
           },
         ),
       );

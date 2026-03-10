@@ -258,6 +258,9 @@ class FF1DeviceStatus {
     this.installedVersion,
     this.latestVersion,
     this.internetConnected,
+    this.volume,
+    this.isMuted,
+    this.macInfo,
   });
 
   /// Deserialize from JSON.
@@ -268,12 +271,24 @@ class FF1DeviceStatus {
       rotation = _parseScreenOrientation(rawRotation);
     }
 
+    // macInfo is a map from network interface name to MAC address string.
+    Map<String, String>? macInfo;
+    final rawMac = json['macInfo'];
+    if (rawMac is Map) {
+      macInfo = rawMac.map(
+        (k, v) => MapEntry(k.toString(), v.toString()),
+      );
+    }
+
     return FF1DeviceStatus(
       connectedWifi: json['connectedWifi'] as String?,
       screenRotation: rotation,
       installedVersion: json['installedVersion'] as String?,
       latestVersion: json['latestVersion'] as String?,
       internetConnected: json['internetConnected'] as bool?,
+      volume: json['volume'] as int?,
+      isMuted: json['isMuted'] as bool?,
+      macInfo: macInfo,
     );
   }
 
@@ -292,6 +307,16 @@ class FF1DeviceStatus {
   /// Whether device has internet connection.
   final bool? internetConnected;
 
+  /// Current volume level (0–100).
+  final int? volume;
+
+  /// Whether audio output is muted.
+  final bool? isMuted;
+
+  /// MAC addresses keyed by network interface name
+  /// (e.g. `{"enp1s0": "10:bb:f3:64:0e:75", "wlp2s0": "40:9c:a7:50:90:21"}`).
+  final Map<String, String>? macInfo;
+
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
     'connectedWifi': connectedWifi,
@@ -299,11 +324,15 @@ class FF1DeviceStatus {
     'installedVersion': installedVersion,
     'latestVersion': latestVersion,
     'internetConnected': internetConnected,
+    'volume': volume,
+    'isMuted': isMuted,
+    'macInfo': macInfo,
   };
 
   @override
   String toString() =>
-      'FF1DeviceStatus(wifi: $connectedWifi, internet: $internetConnected)';
+      'FF1DeviceStatus(wifi: $connectedWifi, internet: $internetConnected, '
+      'volume: $volume, isMuted: $isMuted, macInfo: $macInfo)';
 }
 
 ScreenOrientation? _parseScreenOrientation(String value) {
@@ -623,6 +652,37 @@ class FF1WifiDragRequest extends FF1WifiCommandRequest {
 }
 
 double _round2(double v) => double.parse(v.toStringAsFixed(2));
+
+/// Set device volume command.
+///
+/// [percent] — target volume level, clamped to 0–100.
+class FF1WifiSetVolumeRequest extends FF1WifiCommandRequest {
+  /// Creates a set-volume request.
+  ///
+  /// [percent] must be in the range 0–100.
+  const FF1WifiSetVolumeRequest({required this.percent});
+
+  /// Target volume level (0–100).
+  final int percent;
+
+  @override
+  String get command => 'setVolume';
+
+  @override
+  Map<String, dynamic> get params => {'percent': percent};
+}
+
+/// Toggle mute state on the device.
+class FF1WifiToggleMuteRequest extends FF1WifiCommandRequest {
+  /// Creates a toggle-mute request.
+  const FF1WifiToggleMuteRequest();
+
+  @override
+  String get command => 'toggleMute';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
 
 /// Base class for command responses.
 class FF1CommandResponse {
