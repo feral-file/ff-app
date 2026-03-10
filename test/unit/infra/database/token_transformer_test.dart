@@ -1,3 +1,4 @@
+import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/token_transformer.dart';
@@ -30,7 +31,7 @@ void main() {
         expect(item.id, 'cid_test123');
         expect(item.kind, PlaylistItemKind.indexerToken);
         expect(item.title, 'Test Artwork');
-        expect(item.subtitle, 'Artist 1, Artist 2');
+        expect(item.artistName, 'Artist 1, Artist 2');
         expect(item.artists?.map((a) => a.name), ['Artist 1', 'Artist 2']);
         expect(item.source, 'https://example.com/animation.mp4');
         expect(item.thumbnailUrl, 'https://example.com/thumb.jpg');

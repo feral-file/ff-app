@@ -289,7 +289,10 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     );
     if (toSave.isEmpty) return <String, PlaylistItem>{};
 
-    await databaseService.upsertPlaylistItemsEnriched(toSave);
+    await databaseService.upsertPlaylistItemsEnriched(
+      toSave,
+      shouldForce: false,
+    );
     return {for (final p in toSave) p.id: p};
   }
 }

@@ -27,7 +27,7 @@ class WorkGridCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = item.title;
-    final artistName = item.subtitle ?? item.artistName;
+    final artistName = item.artistName;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

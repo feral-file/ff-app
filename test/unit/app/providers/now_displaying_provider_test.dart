@@ -301,7 +301,10 @@ class _RecordingDatabaseService extends DatabaseService {
   }
 
   @override
-  Future<void> upsertPlaylistItemsEnriched(List<PlaylistItem> items) async {
+  Future<void> upsertPlaylistItemsEnriched(
+    List<PlaylistItem> items, {
+    bool shouldForce = true,
+  }) async {
     savedEnriched = List<PlaylistItem>.from(items);
     if (!enrichmentDone.isCompleted) {
       enrichmentDone.complete();

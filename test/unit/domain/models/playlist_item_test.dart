@@ -64,7 +64,7 @@ void main() {
         id: 'item_test',
         kind: PlaylistItemKind.indexerToken,
         title: 'Test Item',
-        subtitle: 'Test Artist',
+        artists: [DP1Artist(name: 'Test Artist', id: 'artist_1')],
       );
 
       final json = item.toJson();
@@ -72,7 +72,7 @@ void main() {
       expect(json['id'], equals('item_test'));
       expect(json['kind'], equals(1)); // indexerToken
       expect(json['title'], equals('Test Item'));
-      expect(json['subtitle'], equals('Test Artist'));
+      expect(json['artists'], isNotNull);
     });
 
     test('fromJson deserializes correctly', () {
@@ -80,7 +80,9 @@ void main() {
         'id': 'item_test',
         'kind': 1,
         'title': 'Test Item',
-        'subtitle': 'Test Artist',
+        'artists': [
+          {'name': 'Test Artist', 'id': 'artist_1'},
+        ],
       };
 
       final item = PlaylistItem.fromJson(json);
@@ -88,7 +90,7 @@ void main() {
       expect(item.id, equals('item_test'));
       expect(item.kind, equals(PlaylistItemKind.indexerToken));
       expect(item.title, equals('Test Item'));
-      expect(item.subtitle, equals('Test Artist'));
+      expect(item.artistName, equals('Test Artist'));
     });
   });
 }
