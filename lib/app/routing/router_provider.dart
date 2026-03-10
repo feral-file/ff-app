@@ -565,17 +565,132 @@ routerProvider = Provider.family<GoRouter, String>((
 });
 
 String _screenNameForRoute(String path) {
-  if (path == Routes.home) {
+  final normalized = path.trim();
+  if (normalized.isEmpty || normalized == '/') {
     return 'HomeIndexPage';
   }
-  final trimmed = path.trim();
-  if (trimmed.isEmpty || trimmed == '/') {
-    return 'RootScreen';
+
+  for (final mapping in _routeScreenMappings) {
+    if (mapping.matches(normalized)) {
+      return mapping.screenName;
+    }
   }
-  final segments = trimmed.split('/').where((segment) => segment.isNotEmpty);
-  if (segments.isEmpty) {
-    return 'RootScreen';
-  }
-  final last = segments.last;
-  return '${last[0].toUpperCase()}${last.substring(1)}Screen';
+
+  return 'UnknownScreen';
+}
+
+final List<_RouteScreenMapping> _routeScreenMappings = [
+  _RouteScreenMapping(
+    screenName: 'HomeIndexPage',
+    matches: (path) => path == Routes.home,
+  ),
+  _RouteScreenMapping(
+    screenName: 'OnboardingIntroducePage',
+    matches: (path) => path == Routes.onboardingIntroducePage,
+  ),
+  _RouteScreenMapping(
+    screenName: 'OnboardingAddAddressPage',
+    matches: (path) => path == Routes.onboardingAddAddressPage,
+  ),
+  _RouteScreenMapping(
+    screenName: 'OnboardingSetupFf1Page',
+    matches: (path) => path == Routes.onboardingSetupFf1Page,
+  ),
+  _RouteScreenMapping(
+    screenName: 'FF1DevicePickerPage',
+    matches: (path) => path == Routes.ff1DevicePickerPage,
+  ),
+  _RouteScreenMapping(
+    screenName: 'ScanQrPage',
+    matches: (path) => path == Routes.scanQrPage,
+  ),
+  _RouteScreenMapping(
+    screenName: 'AddAddressScreen',
+    matches: (path) => path == Routes.addAddressPage,
+  ),
+  _RouteScreenMapping(
+    screenName: 'AddAliasScreen',
+    matches: (path) => path == Routes.addAliasPage,
+  ),
+  _RouteScreenMapping(
+    screenName: 'ReleaseNotesScreen',
+    matches: (path) => path == Routes.releaseNotes,
+  ),
+  _RouteScreenMapping(
+    screenName: 'ReleaseNoteDetailScreen',
+    matches: (path) =>
+        path == Routes.releaseNoteDetail ||
+        path.startsWith('${Routes.releaseNotes}/'),
+  ),
+  _RouteScreenMapping(
+    screenName: 'AllChannelsScreen',
+    matches: (path) => path == Routes.allChannels,
+  ),
+  _RouteScreenMapping(
+    screenName: 'ChannelDetailScreen',
+    matches: (path) =>
+        path.startsWith('${Routes.channels}/') && path != Routes.allChannels,
+  ),
+  _RouteScreenMapping(
+    screenName: 'AllPlaylistsScreen',
+    matches: (path) => path == Routes.allPlaylists,
+  ),
+  _RouteScreenMapping(
+    screenName: 'PlaylistDetailScreen',
+    matches: (path) =>
+        path.startsWith('${Routes.playlists}/') && path != Routes.allPlaylists,
+  ),
+  _RouteScreenMapping(
+    screenName: 'WorkDetailScreen',
+    matches: (path) => path.startsWith('${Routes.works}/'),
+  ),
+  _RouteScreenMapping(
+    screenName: 'NowDisplayingScreen',
+    matches: (path) => path == Routes.nowDisplaying,
+  ),
+  _RouteScreenMapping(
+    screenName: 'KeyboardControlScreen',
+    matches: (path) => path == Routes.keyboardControl,
+  ),
+  _RouteScreenMapping(
+    screenName: 'StartSetupFf1Page',
+    matches: (path) => path == Routes.startSetupFf1,
+  ),
+  _RouteScreenMapping(
+    screenName: 'ConnectFF1Page',
+    matches: (path) => path == Routes.connectFF1Page,
+  ),
+  _RouteScreenMapping(
+    screenName: 'ScanWiFiNetworkScreen',
+    matches: (path) => path == Routes.scanWifiNetworks,
+  ),
+  _RouteScreenMapping(
+    screenName: 'EnterWiFiPasswordScreen',
+    matches: (path) => path == Routes.enterWifiPassword,
+  ),
+  _RouteScreenMapping(
+    screenName: 'DeviceConfigScreen',
+    matches: (path) => path == Routes.deviceConfiguration,
+  ),
+  _RouteScreenMapping(
+    screenName: 'FF1UpdatingPage',
+    matches: (path) => path == Routes.ff1Updating,
+  ),
+  _RouteScreenMapping(
+    screenName: 'SettingsPage',
+    matches: (path) =>
+        path == Routes.settings ||
+        path == Routes.settingsEula ||
+        path == Routes.settingsPrivacy,
+  ),
+];
+
+class _RouteScreenMapping {
+  const _RouteScreenMapping({
+    required this.screenName,
+    required this.matches,
+  });
+
+  final String screenName;
+  final bool Function(String path) matches;
 }

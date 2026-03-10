@@ -19,8 +19,7 @@ void main() {
 
       StructuredLogContext.updateCurrentRoute('/ff1-device-picker');
 
-      final structured = AppStructuredLog.forLogger(logger);
-      structured.info(
+      AppStructuredLog.forLogger(logger).info(
         category: LogCategory.ui,
         event: 'ui_action',
         message: 'tapped scan_qr_button',
@@ -61,5 +60,37 @@ void main() {
       final meta = jsonDecode(metaJson) as Map<String, dynamic>;
       expect(meta['flowId'], 'flow-123');
     });
+
+    test(
+      'does not leak flow id into non-error logs after flow completes',
+      () async {
+        final records = <LogRecord>[];
+        final logger = Logger('StructuredLoggerNoLeakTest')
+          ..onRecord.listen(records.add);
+
+        final structured = AppStructuredLog.forLogger(logger);
+        await StructuredLogContext.runFlow(
+          flowId: 'flow-123',
+          action: () async {
+            structured.info(
+              category: LogCategory.domain,
+              event: 'flow_step',
+              message: 'step executed',
+            );
+          },
+        );
+
+        structured.info(
+          category: LogCategory.route,
+          event: 'route_changed',
+          message: 'viewed HomeIndexPage',
+        );
+
+        final secondMessage = records[1].message;
+        final secondMetaJson = secondMessage.split('| meta=').last.trim();
+        final secondMeta = jsonDecode(secondMetaJson) as Map<String, dynamic>;
+        expect(secondMeta.containsKey('flowId'), isFalse);
+      },
+    );
   });
 }

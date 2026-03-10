@@ -6,19 +6,22 @@ import 'package:logging/logging.dart';
 
 /// Lightweight Dio interceptor for structured request lifecycle logs.
 class StructuredDioLoggingInterceptor extends Interceptor {
+  /// Creates an interceptor for structured HTTP lifecycle logs.
   StructuredDioLoggingInterceptor({
     required Logger logger,
     this.component,
   }) : _log = AppStructuredLog.forLogger(
          logger,
          context: {
-           if (component != null && component!.isNotEmpty)
+           if (component != null && component.isNotEmpty)
              'component': component,
          },
        );
 
   static const _startTimeKey = '_structuredLogStartMs';
   final StructuredLogger _log;
+
+  /// Optional component label included in emitted metadata.
   final String? component;
 
   @override
@@ -37,9 +40,7 @@ class StructuredDioLoggingInterceptor extends Interceptor {
         'method': options.method.toUpperCase(),
         'path': options.path,
         'query': LogSanitizer.sanitizeMap(
-          options.queryParameters.map(
-            (key, value) => MapEntry(key, value),
-          ),
+          options.queryParameters.map(MapEntry.new),
         ),
         'headers': LogSanitizer.sanitizeHeaders(options.headers),
         'body': LogSanitizer.sanitizeBody(options.data),

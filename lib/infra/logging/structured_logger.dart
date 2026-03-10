@@ -7,23 +7,38 @@ import 'package:logging/logging.dart';
 
 /// Supported structured log categories.
 enum LogCategory {
+  /// User interaction events.
   ui,
+
+  /// Navigation and route transition events.
   route,
+
+  /// HTTP request lifecycle events.
   http,
+
+  /// GraphQL operation lifecycle events.
   graphql,
+
+  /// BLE transport and lifecycle events.
   ble,
+
+  /// Domain/service events.
   domain,
+
+  /// Error events.
   error,
 }
 
 /// Lightweight structured logger facade on top of [package:logging].
 class StructuredLogger {
+  /// Creates a logger wrapper with optional default context metadata.
   StructuredLogger(this._logger, {Map<String, dynamic> context = const {}})
     : _context = Map<String, dynamic>.from(context);
 
   final Logger _logger;
   final Map<String, dynamic> _context;
 
+  /// Returns a new logger with merged context metadata.
   StructuredLogger withContext(Map<String, dynamic> values) {
     return StructuredLogger(
       _logger,
@@ -34,6 +49,7 @@ class StructuredLogger {
     );
   }
 
+  /// Emits an INFO log entry with structured metadata.
   void info({
     required LogCategory category,
     required String event,
@@ -53,6 +69,7 @@ class StructuredLogger {
     );
   }
 
+  /// Emits a WARNING log entry with structured metadata.
   void warning({
     required LogCategory category,
     required String event,
@@ -76,6 +93,7 @@ class StructuredLogger {
     );
   }
 
+  /// Emits a SEVERE error entry with structured metadata.
   void error({
     required String event,
     required String message,
@@ -85,6 +103,10 @@ class StructuredLogger {
     String? entityId,
     String? flowId,
   }) {
+    final effectiveFlowId =
+        flowId ??
+        StructuredLogContext.flowId ??
+        StructuredLogContext.recentFlowId;
     _emit(
       level: Level.SEVERE,
       category: LogCategory.error,
@@ -92,7 +114,7 @@ class StructuredLogger {
       message: message,
       payload: payload,
       entityId: entityId,
-      flowId: flowId,
+      flowId: effectiveFlowId,
       error: error,
       stackTrace: stackTrace,
     );
@@ -116,7 +138,7 @@ class StructuredLogger {
       'event': event,
       'route': StructuredLogContext.currentRoute,
       'sessionId': StructuredLogContext.sessionId,
-      if ((flowId ?? StructuredLogContext.flowId) case final String id)
+      if (flowId ?? StructuredLogContext.flowId case final String id)
         'flowId': id,
       if (StructuredLogContext.uiAction case final String action)
         'uiAction': action,
@@ -135,6 +157,7 @@ class StructuredLogger {
 class AppStructuredLog {
   AppStructuredLog._();
 
+  /// Wraps an existing [Logger] with structured logging behavior.
   static StructuredLogger forLogger(
     Logger logger, {
     Map<String, dynamic> context = const {},
@@ -142,6 +165,7 @@ class AppStructuredLog {
     return StructuredLogger(logger, context: context);
   }
 
+  /// Convenience helper for standard UI action logs.
   static void logUiAction({
     required Logger logger,
     required String action,
@@ -160,6 +184,7 @@ class AppStructuredLog {
     );
   }
 
+  /// Convenience helper for domain-level event logs.
   static void logDomainEvent({
     required Logger logger,
     required String event,
@@ -176,6 +201,7 @@ class AppStructuredLog {
     );
   }
 
+  /// Runs an async flow while logging start/completion/failure events.
   static Future<T> runLoggedFlow<T>({
     required Logger logger,
     required String flowName,
