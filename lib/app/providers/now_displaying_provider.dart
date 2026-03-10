@@ -264,7 +264,7 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         connectedDevice: device,
         index: index,
         items: playlistItems,
-        isSleeping: status.isPaused,
+        isSleeping: status.isSleeping,
       ),
     );
   }
