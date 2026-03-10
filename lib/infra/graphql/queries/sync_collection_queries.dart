@@ -1,6 +1,7 @@
 /// GraphQL queries for the indexer syncCollection API.
 ///
 /// Fetches token events for an address with checkpoint-based pagination.
+/// Requests only fields used for grouping (token_id, event_type, owner_address).
 const String syncCollectionQuery = r'''
   query syncCollection(
     $address: String!
@@ -15,18 +16,14 @@ const String syncCollectionQuery = r'''
       limit: $limit
     ) {
       events {
-        id
         token_id
         event_type
         owner_address
-        occurred_at
-        metadata
       }
       next_checkpoint {
         timestamp
         event_id
       }
-      server_time
     }
   }
 ''';
