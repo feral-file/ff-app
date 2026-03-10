@@ -227,5 +227,24 @@ void main() {
       expect(action.location, '/works/work-456');
       expect(action.source, DeeplinkSource.appLink);
     });
+
+    test('deduplicates same link when delivered twice within dedup window',
+        () async {
+      final handler = DeeplinkHandler(
+        linkSource: _FakeDeeplinkLinkSource(),
+      );
+      addTearDown(handler.dispose);
+
+      final actions = <DeeplinkNavigationAction>[];
+      handler.actions.listen(actions.add);
+
+      const link = 'https://link.feralfile.com/playlists/dup-test-id';
+
+      await handler.handleRawLink(link, source: DeeplinkSource.appLink);
+      await handler.handleRawLink(link, source: DeeplinkSource.appLink);
+
+      expect(actions.length, 1);
+      expect(actions.first.location, '/playlists/dup-test-id');
+    });
   });
 }
