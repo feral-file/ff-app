@@ -5,6 +5,7 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/infra/logging/structured_logger.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
@@ -30,9 +31,13 @@ class FF1DevicePickerPage extends ConsumerStatefulWidget {
 }
 
 class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
+  final _deviceListScrollController = ScrollController();
+  double _lastLoggedOffset = 0;
+
   @override
   void initState() {
     super.initState();
+    _deviceListScrollController.addListener(_onDeviceListScrolled);
     final bluetoothState = ref.read(bluetoothAdapterStateProvider);
     final isBluetoothEnabled = bluetoothState.maybeWhen(
       data: (state) => state == BluetoothAdapterState.on,
@@ -40,9 +45,17 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
     );
     if (isBluetoothEnabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(_startScan(context));
+        unawaited(_startScan(context, trigger: 'initial_load'));
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _deviceListScrollController
+      ..removeListener(_onDeviceListScrolled)
+      ..dispose();
+    super.dispose();
   }
 
   @override
@@ -68,11 +81,13 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
           if (!wasEnabled && isNowEnabled) {
             final currentScanState = ref.read(ff1ScanProvider);
             if (!currentScanState.isScanning) {
-              _log.info(
-                '[FF1DevicePickerPage] Bluetooth enabled, auto-starting scan',
+              AppStructuredLog.logDomainEvent(
+                logger: _log,
+                event: 'ble_scan_auto_start',
+                message: 'Bluetooth enabled, auto-starting scan',
               );
               if (context.mounted) {
-                unawaited(_startScan(context));
+                unawaited(_startScan(context, trigger: 'bluetooth_enabled'));
               }
             }
           }
@@ -137,7 +152,30 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
     );
   }
 
-  Future<void> _startScan(BuildContext context) async {
+  void _onDeviceListScrolled() {
+    if (!_deviceListScrollController.hasClients) {
+      return;
+    }
+    final offset = _deviceListScrollController.offset;
+    if ((offset - _lastLoggedOffset).abs() < 100) {
+      return;
+    }
+    _lastLoggedOffset = offset;
+    AppStructuredLog.forLogger(_log).info(
+      category: LogCategory.ui,
+      event: 'ui_scroll',
+      message: 'scrolled ff1_device_list',
+      payload: {
+        'target': 'ff1_device_list',
+        'offset': offset.toStringAsFixed(1),
+      },
+    );
+  }
+
+  Future<void> _startScan(
+    BuildContext context, {
+    required String trigger,
+  }) async {
     final bluetoothState = ref.read(bluetoothAdapterStateProvider);
     final isBluetoothEnabled = bluetoothState.maybeWhen(
       data: (state) => state == BluetoothAdapterState.on,
@@ -145,25 +183,47 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
     );
 
     if (!isBluetoothEnabled) {
-      _log.warning(
-        '[FF1DevicePickerPage] Bluetooth is not enabled (state: $bluetoothState), cannot scan',
+      AppStructuredLog.forLogger(_log).warning(
+        category: LogCategory.ui,
+        event: 'scan_blocked_bluetooth_off',
+        message: 'scan blocked because bluetooth is off',
+        payload: {
+          'bluetoothState': bluetoothState.toString(),
+          'trigger': trigger,
+        },
       );
       return;
     }
 
-    _log.info('[FF1DevicePickerPage] Starting BLE scan for FF1 devices');
-    ref.read(ff1ScanProvider.notifier).clear();
-    await ref
-        .read(ff1ScanProvider.notifier)
-        .startScan(timeout: const Duration(seconds: 5));
+    await AppStructuredLog.runLoggedFlow<void>(
+      logger: _log,
+      flowName: 'ff1_device_scan',
+      payload: {'trigger': trigger},
+      action: () async {
+        AppStructuredLog.logUiAction(
+          logger: _log,
+          action: 'scan_ff1_devices',
+          payload: {'trigger': trigger},
+        );
+        ref.read(ff1ScanProvider.notifier).clear();
+        await ref
+            .read(ff1ScanProvider.notifier)
+            .startScan(timeout: const Duration(seconds: 5));
+      },
+    );
   }
 
   void _handleDeviceSelected(
     BuildContext context,
     BluetoothDevice device,
   ) {
-    _log.info(
-      '[FF1DevicePickerPage] Selected device: ${device.advName}',
+    AppStructuredLog.logUiAction(
+      logger: _log,
+      action: 'select_ff1_device',
+      entityId: device.remoteId.str,
+      payload: {
+        'deviceName': device.advName,
+      },
     );
     _navigateToStartSetupPage(context, device);
   }
@@ -172,8 +232,12 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
     BuildContext context,
     BluetoothDevice device,
   ) {
-    _log.info(
-      '[FF1DevicePickerPage] Navigating to startSetupFF1Page with device: ${device.advName}',
+    AppStructuredLog.forLogger(_log).info(
+      category: LogCategory.route,
+      event: 'navigate_to_start_setup_ff1',
+      message: 'navigate to StartSetupFf1Page',
+      entityId: device.remoteId.str,
+      payload: {'deviceName': device.advName},
     );
 
     context.pop();
@@ -206,6 +270,10 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
         PrimaryButton(
           text: 'Open Bluetooth Settings',
           onTap: () async {
+            AppStructuredLog.logUiAction(
+              logger: _log,
+              action: 'open_bluetooth_settings',
+            );
             await openAppSettings();
           },
         ),
@@ -275,7 +343,9 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
         SizedBox(height: LayoutConstants.space5),
         PrimaryButton(
           text: 'Try again',
-          onTap: () => unawaited(_startScan(context)),
+          onTap: () => unawaited(
+            _startScan(context, trigger: 'error_retry_button'),
+          ),
           color: PrimitivesTokens.colorsLightBlue,
           textColor: PrimitivesTokens.colorsBlack,
         ),
@@ -308,7 +378,9 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
         SizedBox(height: LayoutConstants.space5),
         PrimaryButton(
           text: 'Try again',
-          onTap: () => unawaited(_startScan(context)),
+          onTap: () => unawaited(
+            _startScan(context, trigger: 'empty_retry_button'),
+          ),
           color: PrimitivesTokens.colorsLightBlue,
           textColor: PrimitivesTokens.colorsBlack,
         ),
@@ -332,6 +404,7 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
         SizedBox(height: LayoutConstants.space5),
         Expanded(
           child: ListView.builder(
+            controller: _deviceListScrollController,
             itemCount: devices.length,
             itemBuilder: (context, index) {
               final device = devices[index];
@@ -354,7 +427,9 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
         SizedBox(height: LayoutConstants.space4),
         Center(
           child: TextButton(
-            onPressed: () => unawaited(_startScan(context)),
+            onPressed: () => unawaited(
+              _startScan(context, trigger: 'scan_again_link'),
+            ),
             child: Text(
               "Don't see your device? Scan again",
               style: AppTypography.body(context).white.underline,

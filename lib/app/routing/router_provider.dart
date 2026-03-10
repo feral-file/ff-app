@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:app/app/providers/current_route_provider.dart';
 import 'package:app/app/route_observer.dart';
 import 'package:app/app/routing/app_navigator_key.dart';
 import 'package:app/app/routing/app_route_observer.dart';
 import 'package:app/app/routing/page_transitions.dart';
 import 'package:app/app/routing/routes.dart';
+import 'package:app/infra/logging/structured_log_context.dart';
+import 'package:app/infra/logging/structured_logger.dart';
 import 'package:app/infra/services/release_notes_service.dart';
 import 'package:app/ui/screens/add_address_screen.dart';
 import 'package:app/ui/screens/add_alias_screen.dart';
@@ -36,7 +40,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 
-final _log = Logger('RouterProvider');
+final Logger _log = Logger('RouterProvider');
+final StructuredLogger _routeLog = AppStructuredLog.forLogger(
+  _log,
+  context: {'layer': 'routing'},
+);
 
 /// Master router provider using go_router.
 /// This is the single source of truth for navigation in the app.
@@ -49,20 +57,40 @@ routerProvider = Provider.family<GoRouter, String>((
   ref,
   initialLocation,
 ) {
+  StructuredLogContext.updateCurrentRoute(initialLocation);
   return GoRouter(
     navigatorKey: appNavigatorKey,
-    debugLogDiagnostics: false,
     initialLocation: initialLocation,
     observers: [
       routeObserver,
       AppRouteObserver(
-        onRouteChanged: (path, currentRoute) {
-          // Defer to avoid "modify provider while building" when observer
-          // fires during Navigator restoreState/didChangeDependencies.
-          Future.microtask(() {
-            ref.read(currentRouteProvider.notifier).update(path, currentRoute);
-          });
-        },
+        onRouteChanged:
+            ({
+              required fromPath,
+              required toPath,
+              required currentRoute,
+            }) {
+              StructuredLogContext.updateCurrentRoute(toPath);
+              _routeLog.info(
+                category: LogCategory.route,
+                event: 'screen_viewed',
+                message: 'viewed ${_screenNameForRoute(toPath)}',
+                payload: {
+                  'fromRoute': fromPath,
+                  'toRoute': toPath,
+                  'screenViewed': _screenNameForRoute(toPath),
+                },
+              );
+              // Defer to avoid "modify provider while building" when observer
+              // fires during Navigator restoreState/didChangeDependencies.
+              unawaited(
+                Future.microtask(() {
+                  ref
+                      .read(currentRouteProvider.notifier)
+                      .update(toPath, currentRoute);
+                }),
+              );
+            },
       ),
     ],
     // Deep links like device_connect are handled by DeeplinkHandler via
@@ -82,7 +110,15 @@ routerProvider = Provider.family<GoRouter, String>((
     // match a registered route (e.g. future deep link schemes not yet
     // known to GoRouter).
     onException: (context, state, router) {
-      _log.warning('No route found for: ${state.uri}; redirecting to $initialLocation');
+      _routeLog.warning(
+        category: LogCategory.route,
+        event: 'route_not_found',
+        message: 'unknown route ${state.uri.path}; redirecting',
+        payload: {
+          'fromRoute': state.uri.path,
+          'toRoute': initialLocation,
+        },
+      );
       router.go(initialLocation);
     },
     routes: [
@@ -183,7 +219,12 @@ routerProvider = Provider.family<GoRouter, String>((
         name: RouteNames.addAlias,
         pageBuilder: (context, state) {
           if (state.extra == null) {
-            _log.warning('AddAliasScreen: extra is null');
+            _routeLog.warning(
+              category: LogCategory.route,
+              event: 'route_payload_missing',
+              message: 'AddAliasScreen payload missing',
+              payload: {'route': Routes.addAliasPage},
+            );
             context.pop();
             return buildCupertinoTransitionPage(
               context,
@@ -194,7 +235,12 @@ routerProvider = Provider.family<GoRouter, String>((
 
           final payload = state.extra! as AddAliasScreenPayload;
           if (payload.address.isEmpty) {
-            _log.warning('AddAliasScreen: address is empty');
+            _routeLog.warning(
+              category: LogCategory.route,
+              event: 'route_payload_invalid',
+              message: 'AddAliasScreen payload address empty',
+              payload: {'route': Routes.addAliasPage},
+            );
             context.pop();
             return buildCupertinoTransitionPage(
               context,
@@ -266,7 +312,12 @@ routerProvider = Provider.family<GoRouter, String>((
         name: RouteNames.releaseNoteDetail,
         pageBuilder: (context, state) {
           if (state.extra is! ReleaseNoteEntry) {
-            _log.warning('ReleaseNoteDetailScreen: extra is invalid');
+            _routeLog.warning(
+              category: LogCategory.route,
+              event: 'route_payload_invalid',
+              message: 'ReleaseNoteDetailScreen payload invalid',
+              payload: {'route': Routes.releaseNoteDetail},
+            );
             context.pop();
             return buildCupertinoTransitionPage(
               context,
@@ -417,7 +468,12 @@ routerProvider = Provider.family<GoRouter, String>((
         name: RouteNames.connectFF1,
         pageBuilder: (context, state) {
           if (state.extra == null) {
-            _log.warning('ConnectFF1Page: extra is null');
+            _routeLog.warning(
+              category: LogCategory.route,
+              event: 'route_payload_missing',
+              message: 'ConnectFF1Page payload missing',
+              payload: {'route': Routes.connectFF1Page},
+            );
             context.pop();
             return buildCupertinoTransitionPage(
               context,
@@ -441,7 +497,12 @@ routerProvider = Provider.family<GoRouter, String>((
         name: RouteNames.scanWifiNetworks,
         pageBuilder: (context, state) {
           if (state.extra == null) {
-            _log.warning('ScanWiFiNetworkScreen: extra is null');
+            _routeLog.warning(
+              category: LogCategory.route,
+              event: 'route_payload_missing',
+              message: 'ScanWiFiNetworkScreen payload missing',
+              payload: {'route': Routes.scanWifiNetworks},
+            );
             context.pop();
             return buildCupertinoTransitionPage(
               context,
@@ -502,3 +563,134 @@ routerProvider = Provider.family<GoRouter, String>((
     ],
   );
 });
+
+String _screenNameForRoute(String path) {
+  final normalized = path.trim();
+  if (normalized.isEmpty || normalized == '/') {
+    return 'HomeIndexPage';
+  }
+
+  for (final mapping in _routeScreenMappings) {
+    if (mapping.matches(normalized)) {
+      return mapping.screenName;
+    }
+  }
+
+  return 'UnknownScreen';
+}
+
+final List<_RouteScreenMapping> _routeScreenMappings = [
+  _RouteScreenMapping(
+    screenName: 'HomeIndexPage',
+    matches: (path) => path == Routes.home,
+  ),
+  _RouteScreenMapping(
+    screenName: 'OnboardingIntroducePage',
+    matches: (path) => path == Routes.onboardingIntroducePage,
+  ),
+  _RouteScreenMapping(
+    screenName: 'OnboardingAddAddressPage',
+    matches: (path) => path == Routes.onboardingAddAddressPage,
+  ),
+  _RouteScreenMapping(
+    screenName: 'OnboardingSetupFf1Page',
+    matches: (path) => path == Routes.onboardingSetupFf1Page,
+  ),
+  _RouteScreenMapping(
+    screenName: 'FF1DevicePickerPage',
+    matches: (path) => path == Routes.ff1DevicePickerPage,
+  ),
+  _RouteScreenMapping(
+    screenName: 'ScanQrPage',
+    matches: (path) => path == Routes.scanQrPage,
+  ),
+  _RouteScreenMapping(
+    screenName: 'AddAddressScreen',
+    matches: (path) => path == Routes.addAddressPage,
+  ),
+  _RouteScreenMapping(
+    screenName: 'AddAliasScreen',
+    matches: (path) => path == Routes.addAliasPage,
+  ),
+  _RouteScreenMapping(
+    screenName: 'ReleaseNotesScreen',
+    matches: (path) => path == Routes.releaseNotes,
+  ),
+  _RouteScreenMapping(
+    screenName: 'ReleaseNoteDetailScreen',
+    matches: (path) =>
+        path == Routes.releaseNoteDetail ||
+        path.startsWith('${Routes.releaseNotes}/'),
+  ),
+  _RouteScreenMapping(
+    screenName: 'AllChannelsScreen',
+    matches: (path) => path == Routes.allChannels,
+  ),
+  _RouteScreenMapping(
+    screenName: 'ChannelDetailScreen',
+    matches: (path) =>
+        path.startsWith('${Routes.channels}/') && path != Routes.allChannels,
+  ),
+  _RouteScreenMapping(
+    screenName: 'AllPlaylistsScreen',
+    matches: (path) => path == Routes.allPlaylists,
+  ),
+  _RouteScreenMapping(
+    screenName: 'PlaylistDetailScreen',
+    matches: (path) =>
+        path.startsWith('${Routes.playlists}/') && path != Routes.allPlaylists,
+  ),
+  _RouteScreenMapping(
+    screenName: 'WorkDetailScreen',
+    matches: (path) => path.startsWith('${Routes.works}/'),
+  ),
+  _RouteScreenMapping(
+    screenName: 'NowDisplayingScreen',
+    matches: (path) => path == Routes.nowDisplaying,
+  ),
+  _RouteScreenMapping(
+    screenName: 'KeyboardControlScreen',
+    matches: (path) => path == Routes.keyboardControl,
+  ),
+  _RouteScreenMapping(
+    screenName: 'StartSetupFf1Page',
+    matches: (path) => path == Routes.startSetupFf1,
+  ),
+  _RouteScreenMapping(
+    screenName: 'ConnectFF1Page',
+    matches: (path) => path == Routes.connectFF1Page,
+  ),
+  _RouteScreenMapping(
+    screenName: 'ScanWiFiNetworkScreen',
+    matches: (path) => path == Routes.scanWifiNetworks,
+  ),
+  _RouteScreenMapping(
+    screenName: 'EnterWiFiPasswordScreen',
+    matches: (path) => path == Routes.enterWifiPassword,
+  ),
+  _RouteScreenMapping(
+    screenName: 'DeviceConfigScreen',
+    matches: (path) => path == Routes.deviceConfiguration,
+  ),
+  _RouteScreenMapping(
+    screenName: 'FF1UpdatingPage',
+    matches: (path) => path == Routes.ff1Updating,
+  ),
+  _RouteScreenMapping(
+    screenName: 'SettingsPage',
+    matches: (path) =>
+        path == Routes.settings ||
+        path == Routes.settingsEula ||
+        path == Routes.settingsPrivacy,
+  ),
+];
+
+class _RouteScreenMapping {
+  const _RouteScreenMapping({
+    required this.screenName,
+    required this.matches,
+  });
+
+  final String screenName;
+  final bool Function(String path) matches;
+}

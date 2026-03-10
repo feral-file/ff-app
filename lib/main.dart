@@ -12,14 +12,21 @@ import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/logging/app_logger.dart';
+import 'package:app/infra/logging/structured_logger.dart';
 import 'package:app/infra/services/legacy_storage_locator.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:sentry_logging/sentry_logging.dart';
+
+final StructuredLogger _startupLog = AppStructuredLog.forLogger(
+  Logger('MainBootstrap'),
+  context: {'layer': 'startup'},
+);
 
 Future<void> main() async {
   // Ensure Flutter bindings are initialized
@@ -55,6 +62,11 @@ Future<void> main() async {
 Future<void> _bootstrapApp() async {
   // Configure logging sinks (console, file, and Sentry when enabled).
   await AppLogger.initialize();
+  _startupLog.info(
+    category: LogCategory.domain,
+    event: 'app_launch',
+    message: 'app launch initialized',
+  );
   final logFilePath = AppLogger.currentLogFile?.path;
   if (logFilePath != null) {
     debugPrint('Log file path: $logFilePath');
@@ -222,9 +234,9 @@ Future<void> _attachPostOnboardingSentryContext({
 
     return Sentry.configureScope((scope) async {
       await scope.setContexts('post_onboarding_state', {
-          'added_addresses': addedAddresses,
-          'ff1_device_ids': ff1DeviceIds,
-        });
+        'added_addresses': addedAddresses,
+        'ff1_device_ids': ff1DeviceIds,
+      });
     });
   } on Object catch (error, stackTrace) {
     debugPrint('Failed to attach post-onboarding Sentry context: $error');
