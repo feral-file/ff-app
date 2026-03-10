@@ -523,13 +523,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 1 = address-based
   Future<List<PlaylistData>> getAllPlaylists({PlaylistType? type}) async {
     final variables = <Variable<Object>>[];
-    final whereClause =
-        type == null
-            ? ''
-            : (() {
-              variables.add(Variable<int>(type.value));
-              return 'WHERE p.type = ?';
-            })();
+    final whereClause = type == null
+        ? ''
+        : (() {
+            variables.add(Variable<int>(type.value));
+            return 'WHERE p.type = ?';
+          })();
 
     final result = await customSelect(
       '''
@@ -606,9 +605,19 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Upsert multiple items in a batch.
-  Future<void> upsertItems(List<ItemsCompanion> itemList) async {
+  ///
+  /// When [force] is true (default), conflicts overwrite existing rows.
+  /// When [force] is false, existing rows are preserved (INSERT OR IGNORE).
+  Future<void> upsertItems(
+    List<ItemsCompanion> itemList, {
+    bool force = true,
+  }) async {
     await batch((batch) {
-      batch.insertAllOnConflictUpdate(items, itemList);
+      if (force) {
+        batch.insertAllOnConflictUpdate(items, itemList);
+      } else {
+        batch.insertAll(items, itemList, mode: InsertMode.insertOrIgnore);
+      }
     });
   }
 

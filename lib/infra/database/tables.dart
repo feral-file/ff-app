@@ -136,9 +136,6 @@ class Items extends Table {
   /// Display title.
   TextColumn get title => text().nullable()();
 
-  /// Artists string (subtitle).
-  TextColumn get subtitle => text().nullable()();
-
   /// Thumbnail image URL.
   TextColumn get thumbnailUri => text().nullable()();
 

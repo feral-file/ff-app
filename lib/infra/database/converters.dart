@@ -246,7 +246,6 @@ class DatabaseConverters {
       id: data.id,
       kind: PlaylistItemKind.values[data.kind],
       title: data.title ?? '',
-      subtitle: data.subtitle,
       thumbnailUrl: data.thumbnailUri,
       duration: data.durationSec ?? 0,
       provenance: provenance,
@@ -286,7 +285,6 @@ class DatabaseConverters {
       id: data.id,
       kind: PlaylistItemKind.values[data.kind],
       title: data.title ?? '',
-      subtitle: data.subtitle,
       thumbnailUrl: data.thumbnailUri,
       duration: data.durationSec ?? 0,
       source: data.sourceUri,
@@ -333,7 +331,6 @@ class DatabaseConverters {
         item.updatedAt?.microsecondsSinceEpoch ?? nowUs.toInt(),
       ),
       title: Value(item.title),
-      subtitle: Value(item.subtitle),
       thumbnailUri: Value(item.thumbnailUrl),
       durationSec: Value(item.duration),
       provenanceJson: Value(provenanceJson),
@@ -447,33 +444,45 @@ class DatabaseConverters {
   }
 
   /// Convert DP1PlaylistItem (wire) to PlaylistItem domain model.
-  /// When [token] is provided, thumbnail and artists are taken from the token;
-  /// otherwise they are null.
+  /// When [token] is provided, any null/empty fields from [item] fall back to
+  /// token data (title, thumbnailUrl, artists, source).
   static PlaylistItem dp1PlaylistItemToPlaylistItem(
     DP1PlaylistItem item, {
     AssetToken? token,
   }) {
-    final thumbnailUrl = token?.getGalleryThumbnailUrl();
-    final artists = token?.metadata?.artists
-        ?.map((a) => DP1Artist(name: a.name, id: a.did))
+    // Use item value when non-empty; otherwise fall back to token.
+    final title = _nonEmptyString(item.title) ??
+        token?.displayTitle ??
+        'Unknown';
+    final source = _nonEmptyString(item.source) ?? token?.getPreviewUrl();
+    final ref = _nonEmptyString(item.ref);
+    final thumbnailUrl =
+        token?.getGalleryThumbnailUrl();
+    final artists = (token?.getArtists ?? <Artist>[])
+        .map((a) => DP1Artist(name: a.name, id: a.did))
         .toList();
+    final artistsOrNull = artists.isEmpty ? null : artists;
 
     return PlaylistItem(
       id: item.id,
       kind: PlaylistItemKind.dp1Item,
-      title: item.title ?? token?.displayTitle ?? 'Unknown',
-      source: item.source,
-      ref: item.ref,
+      title: title,
+      source: source,
+      ref: ref,
       license: item.license,
       duration: item.duration,
       provenance: item.provenance,
       repro: item.repro,
       display: item.display,
       thumbnailUrl: thumbnailUrl,
-      artists: artists,
+      artists: artistsOrNull,
       updatedAt: DateTime.now(),
     );
   }
+
+  /// Returns [s] if non-null and non-empty; otherwise null.
+  static String? _nonEmptyString(String? s) =>
+      (s != null && s.isNotEmpty) ? s : null;
 
   /// Convert ChannelData + playlist full URLs to DP1Channel (wire model).
   /// Matches old repo's Channel in ChannelReference.

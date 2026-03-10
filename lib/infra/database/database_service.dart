@@ -464,7 +464,13 @@ class DatabaseService {
   /// This is used by the enrichment service to update items with indexer token
   /// data without touching playlist_entries. Wraps writes in a transaction for
   /// efficiency.
-  Future<void> upsertPlaylistItemsEnriched(List<PlaylistItem> items) async {
+  ///
+  /// When [shouldForce] is true (default), existing rows are overwritten.
+  /// When [shouldForce] is false, existing rows are preserved.
+  Future<void> upsertPlaylistItemsEnriched(
+    List<PlaylistItem> items, {
+    bool shouldForce = true,
+  }) async {
     if (items.isEmpty) return;
 
     try {
@@ -472,7 +478,7 @@ class DatabaseService {
         final companions = items
             .map(DatabaseConverters.playlistItemToCompanion)
             .toList();
-        await _db.upsertItems(companions);
+        await _db.upsertItems(companions, force: shouldForce);
       });
 
       _log.info('Upserted ${items.length} enriched playlist items');
@@ -1707,7 +1713,6 @@ class DatabaseService {
       id: Value(itemId),
       kind: const Value(1), // indexer token
       title: Value(enrichedItem.title),
-      subtitle: Value(enrichedItem.subtitle),
       thumbnailUri: Value(enrichedItem.thumbnailUrl),
       provenanceJson: enrichedItem.provenance != null
           ? Value(jsonEncode(enrichedItem.provenance!.toJson()))

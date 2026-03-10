@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:app/infra/config/app_config.dart';
+import 'package:app/infra/logging/structured_dio_logging_interceptor.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -105,7 +106,14 @@ class SeedDatabaseService {
     DateTime Function()? nowUtc,
     Future<Directory> Function()? temporaryDirectoryProvider,
     int maxDownloadAttempts = 3,
-  }) : _dio = (dio ?? Dio())..addSentry(),
+  }) : _dio = (dio ?? Dio())
+         ..addSentry()
+         ..interceptors.add(
+           StructuredDioLoggingInterceptor(
+             logger: _log,
+             component: 'seed_database',
+           ),
+         ),
        _nowUtc = nowUtc ?? (() => DateTime.now().toUtc()),
        _maxDownloadAttempts = maxDownloadAttempts < 1 ? 1 : maxDownloadAttempts,
        _temporaryDirectoryProvider =

@@ -473,28 +473,36 @@ class AddressService {
   }
 
   /// Remove an address and its playlist.
+  ///
+  /// If [playlistId] is provided, uses it; otherwise derives it from the
+  /// normalized address via [PlaylistExt.addressPlaylistId].
   Future<void> removeAddress({
     required WalletAddress walletAddress,
+    String? playlistId,
   }) async {
     try {
       final normalizedAddress = walletAddress.address.toNormalizedAddress();
-      final playlistId = PlaylistExt.addressPlaylistId(normalizedAddress);
+      final resolvedPlaylistId =
+          playlistId ?? PlaylistExt.addressPlaylistId(normalizedAddress);
 
       _log.info('Removing address: $normalizedAddress');
       await _personalTokensSyncService.untrackAddress(normalizedAddress);
 
-      final playlist = await _databaseService.getPlaylistById(playlistId);
+      final playlist = await _databaseService.getPlaylistById(resolvedPlaylistId);
       if (playlist == null) {
-        _log.warning('Address playlist not found: $playlistId');
+        _log.warning('Address playlist not found: $resolvedPlaylistId');
         return;
       }
 
       await _databaseService.deleteItemsOfAddresses([normalizedAddress]);
-      await _databaseService.deletePlaylist(playlistId, skipEntries: true);
+      await _databaseService.deletePlaylist(
+        resolvedPlaylistId,
+        skipEntries: true,
+      );
 
       await _appStateService.clearAddressState(normalizedAddress);
 
-      _log.info('Removed address playlist: $playlistId');
+      _log.info('Removed address playlist: $resolvedPlaylistId');
     } catch (e, stack) {
       _log.severe('Failed to remove address $walletAddress', e, stack);
       rethrow;

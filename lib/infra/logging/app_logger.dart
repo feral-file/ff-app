@@ -9,12 +9,17 @@ class AppLogger {
   AppLogger._();
 
   static const int _maxFileSizeBytes = 1024 * 1024;
+  static const int _maxBufferedCharsBeforeFlush = 8 * 1024;
+  static const Duration _flushInterval = Duration(seconds: 1);
   static const _logFileName = 'app.log';
 
   static bool _initialized = false;
   static StreamSubscription<LogRecord>? _rootSubscription;
-  static StreamController<String>? _writeQueue;
+  static StreamController<_QueuedLogLine>? _writeQueue;
+  static Timer? _flushTimer;
   static File? _logFile;
+  static final StringBuffer _pendingBuffer = StringBuffer();
+  static bool _isFlushing = false;
 
   /// Initializes app logging once.
   static Future<void> initialize({Level rootLevel = Level.ALL}) async {
@@ -22,13 +27,16 @@ class AppLogger {
       return;
     }
 
-    _writeQueue = StreamController<String>();
+    _writeQueue = StreamController<_QueuedLogLine>();
     _writeQueue!.stream.listen(
-      _writeLogLine,
+      _enqueueLogLine,
       onError: (Object error) {
         debugPrint('Log queue error: $error');
       },
     );
+    _flushTimer = Timer.periodic(_flushInterval, (_) {
+      unawaited(_flushPendingBuffer());
+    });
 
     try {
       _logFile = await _createLogFile();
@@ -46,9 +54,12 @@ class AppLogger {
   /// Disposes logging resources.
   static Future<void> dispose() async {
     await _rootSubscription?.cancel();
+    _flushTimer?.cancel();
+    await _flushPendingBuffer(force: true);
     await _writeQueue?.close();
     _rootSubscription = null;
     _writeQueue = null;
+    _flushTimer = null;
     _initialized = false;
   }
 
@@ -63,7 +74,12 @@ class AppLogger {
   static void _handleLogRecord(LogRecord record) {
     final line = _formatRecord(record);
     _logToConsole(line);
-    _writeQueue?.add(line);
+    _writeQueue?.add(
+      _QueuedLogLine(
+        line: line,
+        forceFlush: record.level >= Level.SEVERE,
+      ),
+    );
   }
 
   static String _formatRecord(LogRecord record) {
@@ -88,19 +104,52 @@ class AppLogger {
     debugPrint(message.trimRight());
   }
 
-  static Future<void> _writeLogLine(String line) async {
-    final targetFile = _logFile;
-    if (targetFile == null) {
+  static Future<void> _enqueueLogLine(_QueuedLogLine queuedLine) async {
+    _pendingBuffer.write(queuedLine.line);
+    if (queuedLine.forceFlush ||
+        _pendingBuffer.length >= _maxBufferedCharsBeforeFlush) {
+      await _flushPendingBuffer(force: true);
+    }
+  }
+
+  static Future<void> _flushPendingBuffer({bool force = false}) async {
+    if (_isFlushing) {
+      if (force) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        return _flushPendingBuffer(force: force);
+      }
+      return;
+    }
+    if (!force && _pendingBuffer.isEmpty) {
+      return;
+    }
+    if (_pendingBuffer.isEmpty) {
       return;
     }
 
+    final targetFile = _logFile;
+    if (targetFile == null) {
+      _pendingBuffer.clear();
+      return;
+    }
+
+    final pendingText = _pendingBuffer.toString();
+    _pendingBuffer.clear();
+
+    _isFlushing = true;
     try {
       await _rotateIfNeeded(targetFile);
-      await targetFile.writeAsString(line, mode: FileMode.append, flush: true);
+      await targetFile.writeAsString(
+        pendingText,
+        mode: FileMode.append,
+        flush: force,
+      );
     } on Object catch (error, stackTrace) {
       debugPrint('Failed to persist log line: $error');
       debugPrintStack(stackTrace: stackTrace);
       _logFile = null;
+    } finally {
+      _isFlushing = false;
     }
   }
 
@@ -128,6 +177,12 @@ class AppLogger {
   }
 
   static String _redact(String text) {
+    if (!text.contains('Authorization') &&
+        !text.contains('eyJ') &&
+        !text.contains('X-Api-Signature')) {
+      return text;
+    }
+
     var result = text;
 
     result = result.replaceAllMapped(
@@ -147,4 +202,14 @@ class AppLogger {
 
     return result;
   }
+}
+
+class _QueuedLogLine {
+  _QueuedLogLine({
+    required this.line,
+    required this.forceFlush,
+  });
+
+  final String line;
+  final bool forceFlush;
 }

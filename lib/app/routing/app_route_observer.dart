@@ -3,8 +3,7 @@ import 'package:go_router/go_router.dart';
 
 /// NavigatorObserver that updates current route state on push/pop/replace.
 ///
-/// Calls [onRouteChanged] with the current path (from Go Router) and the top
-/// route on the Navigator stack. Used to drive [currentRouteProvider].
+/// Calls onRouteChanged with route-path transitions and the top route.
 class AppRouteObserver extends NavigatorObserver {
   /// Creates an [AppRouteObserver].
   AppRouteObserver({
@@ -13,9 +12,17 @@ class AppRouteObserver extends NavigatorObserver {
 
   /// Called when the route stack changes (push, pop, replace).
   ///
-  /// [path] is from [GoRouter.routerDelegate.state.matchedLocation].
-  /// [currentRoute] is the top route on the stack (null when stack is empty).
-  final void Function(String path, Route<dynamic>? currentRoute) onRouteChanged;
+  /// `fromPath` and `toPath` come from matched GoRouter locations.
+  /// `currentRoute` is the top route on the stack (null when stack is empty).
+  final void Function({
+    required String fromPath,
+    required String toPath,
+    required Route<dynamic>? currentRoute,
+  })
+  onRouteChanged;
+
+  String _lastPath = '/';
+  String _lastRouteType = '';
 
   void _notify(Route<dynamic>? topRoute) {
     final nav = navigator;
@@ -32,7 +39,21 @@ class AppRouteObserver extends NavigatorObserver {
       path = '/';
     }
 
-    onRouteChanged(path.isEmpty ? '/' : path, topRoute);
+    final normalizedPath = path.isEmpty ? '/' : path;
+    final routeType = topRoute?.runtimeType.toString() ?? 'none';
+    if (_lastPath == normalizedPath && _lastRouteType == routeType) {
+      return;
+    }
+
+    final previousPath = _lastPath;
+    _lastPath = normalizedPath;
+    _lastRouteType = routeType;
+
+    onRouteChanged(
+      fromPath: previousPath,
+      toPath: normalizedPath,
+      currentRoute: topRoute,
+    );
   }
 
   @override

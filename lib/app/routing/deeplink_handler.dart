@@ -99,10 +99,9 @@ String? resolveAppLocationFromDeeplink(String rawLink) {
     return null;
   }
 
-  final canonicalLocation = _normalizePlaylistsLocation(location);
-  if (canonicalLocation == null) {
-    return null;
-  }
+  final canonicalLocation = _normalizePlaylistsLocation(location) ??
+      _normalizeChannelsLocation(location) ??
+      _normalizeWorksLocation(location);
   return canonicalLocation;
 }
 
@@ -116,6 +115,46 @@ String? _normalizePlaylistsLocation(String location) {
       return null;
     }
     return '${Routes.playlists}/$playlistId';
+  }
+  return null;
+}
+
+String? _normalizeChannelsLocation(String location) {
+  if (location == Routes.channels || location == '${Routes.channels}/') {
+    return Routes.channels;
+  }
+  if (location == Routes.allChannels) {
+    return Routes.allChannels;
+  }
+  if (location.startsWith('${Routes.channels}/')) {
+    final channelId = location.substring('${Routes.channels}/'.length).trim();
+    if (channelId.isEmpty || channelId.contains('/')) {
+      return null;
+    }
+    return '${Routes.channels}/$channelId';
+  }
+  return null;
+}
+
+String? _normalizeWorksLocation(String location) {
+  if (location == Routes.works || location == '${Routes.works}/') {
+    return Routes.works;
+  }
+  if (location.startsWith('${Routes.works}/')) {
+    final workId = location.substring('${Routes.works}/'.length).trim();
+    if (workId.isEmpty || workId.contains('/')) {
+      return null;
+    }
+    return '${Routes.works}/$workId';
+  }
+  // Alias: /items/:id maps to /works/:id
+  const itemsPath = '/items';
+  if (location.startsWith('$itemsPath/')) {
+    final workId = location.substring('$itemsPath/'.length).trim();
+    if (workId.isEmpty || workId.contains('/')) {
+      return null;
+    }
+    return '${Routes.works}/$workId';
   }
   return null;
 }
@@ -167,6 +206,12 @@ final deeplinkActionsProvider = StreamProvider<DeeplinkNavigationAction>((ref) {
   return handler.actions;
 });
 
+/// Time window for deduplicating the same link delivered multiple times.
+/// On cold start or when link.feralfile.com redirects, app_links can deliver
+/// the same URI via both getInitialLink and uriLinkStream, or uriLinkStream
+/// can fire twice (e.g. Android onNewIntent with redirects).
+const Duration _deeplinkDedupWindow = Duration(seconds: 2);
+
 /// Coordinates deeplink ingestion and emits typed navigation actions.
 class DeeplinkHandler {
   /// Constructor
@@ -176,6 +221,7 @@ class DeeplinkHandler {
 
   final DeeplinkLinkSource _linkSource;
   final Map<String, bool> _handlingLinks = <String, bool>{};
+  final Map<String, DateTime> _recentlyProcessedLinks = <String, DateTime>{};
   final StreamController<DeeplinkNavigationAction> _actionsController =
       StreamController<DeeplinkNavigationAction>.broadcast();
 
@@ -266,6 +312,13 @@ class DeeplinkHandler {
         return null;
       }
 
+      _pruneExpiredDedupEntries();
+      final lastProcessed = _recentlyProcessedLinks[link];
+      if (lastProcessed != null &&
+          DateTime.now().difference(lastProcessed) < _deeplinkDedupWindow) {
+        return null;
+      }
+
       final action = DeeplinkNavigationAction(
         link: link,
         source: source,
@@ -276,12 +329,20 @@ class DeeplinkHandler {
       );
       if (!_actionsController.isClosed) {
         _actionsController.add(action);
+        _recentlyProcessedLinks[link] = DateTime.now();
       }
       return action;
     } finally {
       _handlingLinks.remove(link);
       await onFinished?.call();
     }
+  }
+
+  void _pruneExpiredDedupEntries() {
+    final now = DateTime.now();
+    _recentlyProcessedLinks.removeWhere(
+      (_, time) => now.difference(time) >= _deeplinkDedupWindow,
+    );
   }
 
   /// Disposes the handler.
