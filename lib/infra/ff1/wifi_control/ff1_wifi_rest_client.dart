@@ -48,14 +48,14 @@ class FF1WifiRestClient {
   /// [topicId] — device identifier on the relayer
   /// [command] — command name (e.g., 'rotate', 'pause', 'play')
   /// [params] — command-specific parameters
-  /// [timeout] — request timeout (default 10 seconds)
+  /// [timeout] — request timeout (default 6 seconds)
   ///
   /// Returns the response from the device as a map.
   Future<Map<String, dynamic>> sendCommand({
     required String topicId,
     required String command,
     required Map<String, dynamic> params,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 6),
   }) async {
     try {
       // Validate configuration
@@ -85,19 +85,20 @@ class FF1WifiRestClient {
         },
       );
 
-      final response = await _dio
-          .get<dynamic>(
-            url,
-            queryParameters: {'topicID': topicId},
-            data: body,
-            options: Options(
-              headers: {
-                'API-KEY': _apiKey,
-                'Content-Type': 'application/json',
-              },
-            ),
-          )
-          .timeout(timeout);
+      final response = await _dio.get<dynamic>(
+        url,
+        queryParameters: {'topicID': topicId},
+        data: body,
+        options: Options(
+          headers: {
+            'API-KEY': _apiKey,
+            'Content-Type': 'application/json',
+          },
+          connectTimeout: timeout,
+          sendTimeout: timeout,
+          receiveTimeout: timeout,
+        ),
+      );
 
       final responseData = response.data;
 
