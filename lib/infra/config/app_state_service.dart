@@ -1,4 +1,5 @@
 import 'package:app/domain/extensions/extensions.dart';
+import 'package:app/domain/models/indexer/sync_collection.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/database/objectbox_init.dart';
@@ -39,7 +40,6 @@ enum AddressIndexingProcessState {
 
 /// Persistable status for per-address indexing process.
 class AddressIndexingProcessStatus {
-
   factory AddressIndexingProcessStatus.idle() => AddressIndexingProcessStatus._(
     state: AddressIndexingProcessState.idle,
     updatedAt: DateTime.now().toUtc(),
@@ -117,12 +117,13 @@ abstract class AppStateServiceBase {
   Future<void> setHasSeenOnboarding({required bool hasSeen});
   Future<bool> hasSeenPlayToFf1Tooltip();
   Future<void> setHasSeenPlayToFf1Tooltip({required bool hasSeen});
-  Future<int?> getAddressAnchor(String address);
-  Future<void> setAddressAnchor({
+  Future<SyncCheckpoint?> getAddressCheckpoint(String address);
+  Future<void> setAddressCheckpoint({
     required String address,
-    required int anchor,
+    required SyncCheckpoint checkpoint,
   });
-  Future<void> clearAddressAnchor(String address);
+  Future<void> clearAddressCheckpoint(String address);
+  Future<List<String>> getAddressesWithCompletedIndexing();
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
   );
@@ -130,6 +131,7 @@ abstract class AppStateServiceBase {
     required String address,
     required AddressIndexingProcessStatus status,
   });
+
   /// Adds address to tracked list (with optional alias) and ensures
   /// [AppStateAddressEntity] exists. Call before setAddressIndexingStatus.
   Future<void> addTrackedAddress(String address, {String alias = ''});
@@ -287,49 +289,84 @@ class AppStateService extends AppStateServiceBase {
     });
   }
 
-  /// Get incremental indexer anchor for an address.
+  /// Get syncCollection checkpoint for an address.
   @override
-  Future<int?> getAddressAnchor(String address) async {
+  Future<SyncCheckpoint?> getAddressCheckpoint(String address) async {
     return _lock.synchronized(() {
       final row = _findAddressState(_normalizeAddressKey(address));
-      if (row == null || !row.hasIndexerAnchor) {
-        return null;
+      if (row == null || !row.hasCheckpoint) {
+        final fallbackTimestamp = DateTime.fromMicrosecondsSinceEpoch(
+          row?.updatedAtUs ?? 0,
+          isUtc: true,
+        );
+        return SyncCheckpoint(eventId: 0, timestamp: fallbackTimestamp);
       }
-      return row.indexerAnchor;
+      return SyncCheckpoint(
+        timestamp: _fromUs(
+          row.checkpointTimestampUs,
+          fallback: DateTime.now().toUtc(),
+        ),
+        eventId: row.checkpointEventId,
+      );
     });
   }
 
-  /// Persist incremental indexer anchor for an address.
+  /// Persist syncCollection checkpoint for an address.
   @override
-  Future<void> setAddressAnchor({
+  Future<void> setAddressCheckpoint({
     required String address,
-    required int anchor,
+    required SyncCheckpoint checkpoint,
   }) async {
     await _lock.synchronized(() async {
       final normalized = _normalizeAddressKey(address);
       var row = _findAddressState(normalized);
-      if (row == null) row = _createAddressState(normalized);
+      row ??= _createAddressState(normalized);
       row
-        ..hasIndexerAnchor = true
-        ..indexerAnchor = anchor
+        ..hasCheckpoint = true
+        ..checkpointTimestampUs = checkpoint.timestamp
+            .toUtc()
+            .microsecondsSinceEpoch
+        ..checkpointEventId = checkpoint.eventId
         ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
       _appStateAddressBox.put(row);
     });
   }
 
-  /// Remove incremental indexer anchor for an address.
+  /// Remove syncCollection checkpoint for an address.
   @override
-  Future<void> clearAddressAnchor(String address) async {
+  Future<void> clearAddressCheckpoint(String address) async {
     await _lock.synchronized(() async {
       final row = _findAddressState(_normalizeAddressKey(address));
       if (row == null) {
         return;
       }
       row
-        ..hasIndexerAnchor = false
-        ..indexerAnchor = 0
+        ..hasCheckpoint = false
+        ..checkpointTimestampUs = 0
+        ..checkpointEventId = 0
         ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
       _appStateAddressBox.put(row);
+    });
+  }
+
+  /// Returns addresses with indexing status completed (ready for syncCollection).
+  @override
+  Future<List<String>> getAddressesWithCompletedIndexing() async {
+    return _lock.synchronized(() {
+      final result = <String>[];
+      for (final row in _appStateAddressBox.getAll()) {
+        if (row.normalizedAddress.startsWith('FEED::')) {
+          continue;
+        }
+        if (row.indexingProcessUpdatedAtUs <= 0) {
+          continue;
+        }
+        final status = _toProcessStatus(row);
+        if (status.state == AddressIndexingProcessState.completed) {
+          result.add(row.normalizedAddress);
+        }
+      }
+      return result;
     });
   }
 
@@ -368,7 +405,7 @@ class AppStateService extends AppStateServiceBase {
     final normalizedAddress = _normalizeAddressKey(address);
     await _lock.synchronized(() async {
       var row = _findAddressState(normalizedAddress);
-      if (row == null) row = _createAddressState(normalizedAddress);
+      row ??= _createAddressState(normalizedAddress);
       row
         ..indexingProcessStateIndex = status.state.index
         ..indexingProcessUpdatedAtUs = status.updatedAt

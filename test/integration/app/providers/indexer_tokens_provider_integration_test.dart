@@ -1,4 +1,5 @@
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/domain/models/indexer/sync_collection.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -13,18 +14,28 @@ import '../../helpers/indexer_domain_integration_helpers.dart';
 import '../../helpers/integration_test_harness.dart';
 
 class IntegrationAppStateService implements AppStateService {
-  final Map<String, int> anchors = <String, int>{};
+  final Map<String, SyncCheckpoint> checkpoints = <String, SyncCheckpoint>{};
 
   @override
-  Future<int?> getAddressAnchor(String address) async => anchors[address];
+  Future<SyncCheckpoint?> getAddressCheckpoint(String address) async =>
+      checkpoints[address];
 
   @override
-  Future<void> setAddressAnchor({
+  Future<void> setAddressCheckpoint({
     required String address,
-    required int anchor,
+    required SyncCheckpoint checkpoint,
   }) async {
-    anchors[address] = anchor;
+    checkpoints[address] = checkpoint;
   }
+
+  @override
+  Future<void> clearAddressCheckpoint(String address) async {
+    checkpoints.remove(address);
+  }
+
+  @override
+  Future<List<String>> getAddressesWithCompletedIndexing() async =>
+      checkpoints.keys.toList();
 
   @override
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(

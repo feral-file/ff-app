@@ -11,6 +11,7 @@ import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_dio.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
 import 'package:app/infra/services/address_service.dart';
+import 'package:app/infra/services/address_sync_collection_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/canvas_client_service_v2.dart';
 import 'package:app/infra/services/device_info_service.dart';
@@ -160,6 +161,16 @@ final personalTokensSyncServiceProvider = Provider<PersonalTokensSyncService>((
   ref,
 ) {
   return PersonalTokensSyncService(
+    indexerService: ref.watch(indexerServiceProvider),
+    databaseService: ref.watch(databaseServiceProvider),
+    appStateService: ref.watch(appStateServiceProvider),
+  );
+});
+
+/// Provider for syncCollection-based address token updates.
+final addressSyncCollectionServiceProvider =
+    Provider<AddressSyncCollectionService>((ref) {
+  return AddressSyncCollectionService(
     indexerService: ref.watch(indexerServiceProvider),
     databaseService: ref.watch(databaseServiceProvider),
     appStateService: ref.watch(appStateServiceProvider),
