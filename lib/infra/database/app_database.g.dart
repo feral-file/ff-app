@@ -2059,17 +2059,6 @@ class $ItemsTable extends Items with TableInfo<$ItemsTable, ItemData> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _subtitleMeta = const VerificationMeta(
-    'subtitle',
-  );
-  @override
-  late final GeneratedColumn<String> subtitle = GeneratedColumn<String>(
-    'subtitle',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
   static const VerificationMeta _thumbnailUriMeta = const VerificationMeta(
     'thumbnailUri',
   );
@@ -2217,7 +2206,6 @@ class $ItemsTable extends Items with TableInfo<$ItemsTable, ItemData> {
     id,
     kind,
     title,
-    subtitle,
     thumbnailUri,
     durationSec,
     provenanceJson,
@@ -2261,12 +2249,6 @@ class $ItemsTable extends Items with TableInfo<$ItemsTable, ItemData> {
       context.handle(
         _titleMeta,
         title.isAcceptableOrUnknown(data['title']!, _titleMeta),
-      );
-    }
-    if (data.containsKey('subtitle')) {
-      context.handle(
-        _subtitleMeta,
-        subtitle.isAcceptableOrUnknown(data['subtitle']!, _subtitleMeta),
       );
     }
     if (data.containsKey('thumbnail_uri')) {
@@ -2397,10 +2379,6 @@ class $ItemsTable extends Items with TableInfo<$ItemsTable, ItemData> {
         DriftSqlType.string,
         data['${effectivePrefix}title'],
       ),
-      subtitle: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}subtitle'],
-      ),
       thumbnailUri: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}thumbnail_uri'],
@@ -2472,9 +2450,6 @@ class ItemData extends DataClass implements Insertable<ItemData> {
   /// Display title.
   final String? title;
 
-  /// Artists string (subtitle).
-  final String? subtitle;
-
   /// Thumbnail image URL.
   final String? thumbnailUri;
 
@@ -2517,7 +2492,6 @@ class ItemData extends DataClass implements Insertable<ItemData> {
     required this.id,
     required this.kind,
     this.title,
-    this.subtitle,
     this.thumbnailUri,
     this.durationSec,
     this.provenanceJson,
@@ -2539,9 +2513,6 @@ class ItemData extends DataClass implements Insertable<ItemData> {
     map['kind'] = Variable<int>(kind);
     if (!nullToAbsent || title != null) {
       map['title'] = Variable<String>(title);
-    }
-    if (!nullToAbsent || subtitle != null) {
-      map['subtitle'] = Variable<String>(subtitle);
     }
     if (!nullToAbsent || thumbnailUri != null) {
       map['thumbnail_uri'] = Variable<String>(thumbnailUri);
@@ -2588,9 +2559,6 @@ class ItemData extends DataClass implements Insertable<ItemData> {
       title: title == null && nullToAbsent
           ? const Value.absent()
           : Value(title),
-      subtitle: subtitle == null && nullToAbsent
-          ? const Value.absent()
-          : Value(subtitle),
       thumbnailUri: thumbnailUri == null && nullToAbsent
           ? const Value.absent()
           : Value(thumbnailUri),
@@ -2638,7 +2606,6 @@ class ItemData extends DataClass implements Insertable<ItemData> {
       id: serializer.fromJson<String>(json['id']),
       kind: serializer.fromJson<int>(json['kind']),
       title: serializer.fromJson<String?>(json['title']),
-      subtitle: serializer.fromJson<String?>(json['subtitle']),
       thumbnailUri: serializer.fromJson<String?>(json['thumbnailUri']),
       durationSec: serializer.fromJson<int?>(json['durationSec']),
       provenanceJson: serializer.fromJson<String?>(json['provenanceJson']),
@@ -2661,7 +2628,6 @@ class ItemData extends DataClass implements Insertable<ItemData> {
       'id': serializer.toJson<String>(id),
       'kind': serializer.toJson<int>(kind),
       'title': serializer.toJson<String?>(title),
-      'subtitle': serializer.toJson<String?>(subtitle),
       'thumbnailUri': serializer.toJson<String?>(thumbnailUri),
       'durationSec': serializer.toJson<int?>(durationSec),
       'provenanceJson': serializer.toJson<String?>(provenanceJson),
@@ -2682,7 +2648,6 @@ class ItemData extends DataClass implements Insertable<ItemData> {
     String? id,
     int? kind,
     Value<String?> title = const Value.absent(),
-    Value<String?> subtitle = const Value.absent(),
     Value<String?> thumbnailUri = const Value.absent(),
     Value<int?> durationSec = const Value.absent(),
     Value<String?> provenanceJson = const Value.absent(),
@@ -2700,7 +2665,6 @@ class ItemData extends DataClass implements Insertable<ItemData> {
     id: id ?? this.id,
     kind: kind ?? this.kind,
     title: title.present ? title.value : this.title,
-    subtitle: subtitle.present ? subtitle.value : this.subtitle,
     thumbnailUri: thumbnailUri.present ? thumbnailUri.value : this.thumbnailUri,
     durationSec: durationSec.present ? durationSec.value : this.durationSec,
     provenanceJson: provenanceJson.present
@@ -2726,7 +2690,6 @@ class ItemData extends DataClass implements Insertable<ItemData> {
       id: data.id.present ? data.id.value : this.id,
       kind: data.kind.present ? data.kind.value : this.kind,
       title: data.title.present ? data.title.value : this.title,
-      subtitle: data.subtitle.present ? data.subtitle.value : this.subtitle,
       thumbnailUri: data.thumbnailUri.present
           ? data.thumbnailUri.value
           : this.thumbnailUri,
@@ -2767,7 +2730,6 @@ class ItemData extends DataClass implements Insertable<ItemData> {
           ..write('id: $id, ')
           ..write('kind: $kind, ')
           ..write('title: $title, ')
-          ..write('subtitle: $subtitle, ')
           ..write('thumbnailUri: $thumbnailUri, ')
           ..write('durationSec: $durationSec, ')
           ..write('provenanceJson: $provenanceJson, ')
@@ -2790,7 +2752,6 @@ class ItemData extends DataClass implements Insertable<ItemData> {
     id,
     kind,
     title,
-    subtitle,
     thumbnailUri,
     durationSec,
     provenanceJson,
@@ -2812,7 +2773,6 @@ class ItemData extends DataClass implements Insertable<ItemData> {
           other.id == this.id &&
           other.kind == this.kind &&
           other.title == this.title &&
-          other.subtitle == this.subtitle &&
           other.thumbnailUri == this.thumbnailUri &&
           other.durationSec == this.durationSec &&
           other.provenanceJson == this.provenanceJson &&
@@ -2832,7 +2792,6 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
   final Value<String> id;
   final Value<int> kind;
   final Value<String?> title;
-  final Value<String?> subtitle;
   final Value<String?> thumbnailUri;
   final Value<int?> durationSec;
   final Value<String?> provenanceJson;
@@ -2851,7 +2810,6 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
     this.id = const Value.absent(),
     this.kind = const Value.absent(),
     this.title = const Value.absent(),
-    this.subtitle = const Value.absent(),
     this.thumbnailUri = const Value.absent(),
     this.durationSec = const Value.absent(),
     this.provenanceJson = const Value.absent(),
@@ -2871,7 +2829,6 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
     required String id,
     required int kind,
     this.title = const Value.absent(),
-    this.subtitle = const Value.absent(),
     this.thumbnailUri = const Value.absent(),
     this.durationSec = const Value.absent(),
     this.provenanceJson = const Value.absent(),
@@ -2893,7 +2850,6 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
     Expression<String>? id,
     Expression<int>? kind,
     Expression<String>? title,
-    Expression<String>? subtitle,
     Expression<String>? thumbnailUri,
     Expression<int>? durationSec,
     Expression<String>? provenanceJson,
@@ -2913,7 +2869,6 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
       if (id != null) 'id': id,
       if (kind != null) 'kind': kind,
       if (title != null) 'title': title,
-      if (subtitle != null) 'subtitle': subtitle,
       if (thumbnailUri != null) 'thumbnail_uri': thumbnailUri,
       if (durationSec != null) 'duration_sec': durationSec,
       if (provenanceJson != null) 'provenance_json': provenanceJson,
@@ -2935,7 +2890,6 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
     Value<String>? id,
     Value<int>? kind,
     Value<String?>? title,
-    Value<String?>? subtitle,
     Value<String?>? thumbnailUri,
     Value<int?>? durationSec,
     Value<String?>? provenanceJson,
@@ -2955,7 +2909,6 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
       id: id ?? this.id,
       kind: kind ?? this.kind,
       title: title ?? this.title,
-      subtitle: subtitle ?? this.subtitle,
       thumbnailUri: thumbnailUri ?? this.thumbnailUri,
       durationSec: durationSec ?? this.durationSec,
       provenanceJson: provenanceJson ?? this.provenanceJson,
@@ -2984,9 +2937,6 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
     }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
-    }
-    if (subtitle.present) {
-      map['subtitle'] = Variable<String>(subtitle.value);
     }
     if (thumbnailUri.present) {
       map['thumbnail_uri'] = Variable<String>(thumbnailUri.value);
@@ -3039,7 +2989,6 @@ class ItemsCompanion extends UpdateCompanion<ItemData> {
           ..write('id: $id, ')
           ..write('kind: $kind, ')
           ..write('title: $title, ')
-          ..write('subtitle: $subtitle, ')
           ..write('thumbnailUri: $thumbnailUri, ')
           ..write('durationSec: $durationSec, ')
           ..write('provenanceJson: $provenanceJson, ')
@@ -4634,7 +4583,6 @@ typedef $$ItemsTableCreateCompanionBuilder =
       required String id,
       required int kind,
       Value<String?> title,
-      Value<String?> subtitle,
       Value<String?> thumbnailUri,
       Value<int?> durationSec,
       Value<String?> provenanceJson,
@@ -4655,7 +4603,6 @@ typedef $$ItemsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<int> kind,
       Value<String?> title,
-      Value<String?> subtitle,
       Value<String?> thumbnailUri,
       Value<int?> durationSec,
       Value<String?> provenanceJson,
@@ -4692,11 +4639,6 @@ class $$ItemsTableFilterComposer extends Composer<_$AppDatabase, $ItemsTable> {
 
   ColumnFilters<String> get title => $composableBuilder(
     column: $table.title,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get subtitle => $composableBuilder(
-    column: $table.subtitle,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4790,11 +4732,6 @@ class $$ItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get subtitle => $composableBuilder(
-    column: $table.subtitle,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<String> get thumbnailUri => $composableBuilder(
     column: $table.thumbnailUri,
     builder: (column) => ColumnOrderings(column),
@@ -4878,9 +4815,6 @@ class $$ItemsTableAnnotationComposer
 
   GeneratedColumn<String> get title =>
       $composableBuilder(column: $table.title, builder: (column) => column);
-
-  GeneratedColumn<String> get subtitle =>
-      $composableBuilder(column: $table.subtitle, builder: (column) => column);
 
   GeneratedColumn<String> get thumbnailUri => $composableBuilder(
     column: $table.thumbnailUri,
@@ -4971,7 +4905,6 @@ class $$ItemsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<int> kind = const Value.absent(),
                 Value<String?> title = const Value.absent(),
-                Value<String?> subtitle = const Value.absent(),
                 Value<String?> thumbnailUri = const Value.absent(),
                 Value<int?> durationSec = const Value.absent(),
                 Value<String?> provenanceJson = const Value.absent(),
@@ -4990,7 +4923,6 @@ class $$ItemsTableTableManager
                 id: id,
                 kind: kind,
                 title: title,
-                subtitle: subtitle,
                 thumbnailUri: thumbnailUri,
                 durationSec: durationSec,
                 provenanceJson: provenanceJson,
@@ -5011,7 +4943,6 @@ class $$ItemsTableTableManager
                 required String id,
                 required int kind,
                 Value<String?> title = const Value.absent(),
-                Value<String?> subtitle = const Value.absent(),
                 Value<String?> thumbnailUri = const Value.absent(),
                 Value<int?> durationSec = const Value.absent(),
                 Value<String?> provenanceJson = const Value.absent(),
@@ -5030,7 +4961,6 @@ class $$ItemsTableTableManager
                 id: id,
                 kind: kind,
                 title: title,
-                subtitle: subtitle,
                 thumbnailUri: thumbnailUri,
                 durationSec: durationSec,
                 provenanceJson: provenanceJson,

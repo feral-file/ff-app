@@ -1,4 +1,5 @@
 import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/dp1/dp1_manifest.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/app_database.dart';
@@ -122,7 +123,7 @@ void main() {
           id: 'item_test',
           kind: PlaylistItemKind.indexerToken,
           title: 'Test Item',
-          subtitle: 'Test Artist',
+          artists: [const DP1Artist(name: 'Test Artist', id: 'artist_1')],
           thumbnailUrl: 'https://example.com/thumb.jpg',
           duration: 120,
           updatedAt: DateTime(2024),
@@ -133,7 +134,6 @@ void main() {
         expect(companion.id.value, 'item_test');
         expect(companion.kind.value, 1); // IndexerToken
         expect(companion.title.value, 'Test Item');
-        expect(companion.subtitle.value, 'Test Artist');
         expect(companion.thumbnailUri.value, 'https://example.com/thumb.jpg');
         expect(companion.durationSec.value, 120);
       });
@@ -143,7 +143,6 @@ void main() {
           id: 'item_test',
           kind: 1,
           title: 'Test Item',
-          subtitle: 'Test Artist',
           thumbnailUri: 'https://example.com/thumb.jpg',
           durationSec: 120,
           enrichmentStatus: 0,
@@ -155,7 +154,6 @@ void main() {
         expect(item.id, 'item_test');
         expect(item.kind, PlaylistItemKind.indexerToken);
         expect(item.title, 'Test Item');
-        expect(item.subtitle, 'Test Artist');
         expect(item.thumbnailUrl, 'https://example.com/thumb.jpg');
         expect(item.duration, 120);
       });

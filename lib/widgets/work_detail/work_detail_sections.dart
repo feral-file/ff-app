@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/asset_token_ext.dart';
+import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
@@ -301,14 +302,9 @@ String _localTimeString(DateTime timestamp) {
   return Jiffy.parseFromDateTime(timestamp).format(pattern: 'MMM d, y • H:mm');
 }
 
-/// Build artist string from PlaylistItem.
+/// Build artist string from PlaylistItem (derived from artists list).
 String artistStringFromPlaylistItem(PlaylistItem item) {
-  if (item.subtitle != null && item.subtitle!.isNotEmpty) {
-    return item.subtitle!;
-  }
-  final artists = item.artists;
-  if (artists == null || artists.isEmpty) return '';
-  return artists.map((a) => a.name).join(', ');
+  return item.artistName;
 }
 
 /// Metadata section: from token when available, else item-only.
