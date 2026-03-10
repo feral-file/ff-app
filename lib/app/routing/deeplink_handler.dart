@@ -99,10 +99,9 @@ String? resolveAppLocationFromDeeplink(String rawLink) {
     return null;
   }
 
-  final canonicalLocation = _normalizePlaylistsLocation(location);
-  if (canonicalLocation == null) {
-    return null;
-  }
+  final canonicalLocation = _normalizePlaylistsLocation(location) ??
+      _normalizeChannelsLocation(location) ??
+      _normalizeWorksLocation(location);
   return canonicalLocation;
 }
 
@@ -116,6 +115,46 @@ String? _normalizePlaylistsLocation(String location) {
       return null;
     }
     return '${Routes.playlists}/$playlistId';
+  }
+  return null;
+}
+
+String? _normalizeChannelsLocation(String location) {
+  if (location == Routes.channels || location == '${Routes.channels}/') {
+    return Routes.channels;
+  }
+  if (location == Routes.allChannels) {
+    return Routes.allChannels;
+  }
+  if (location.startsWith('${Routes.channels}/')) {
+    final channelId = location.substring('${Routes.channels}/'.length).trim();
+    if (channelId.isEmpty || channelId.contains('/')) {
+      return null;
+    }
+    return '${Routes.channels}/$channelId';
+  }
+  return null;
+}
+
+String? _normalizeWorksLocation(String location) {
+  if (location == Routes.works || location == '${Routes.works}/') {
+    return Routes.works;
+  }
+  if (location.startsWith('${Routes.works}/')) {
+    final workId = location.substring('${Routes.works}/'.length).trim();
+    if (workId.isEmpty || workId.contains('/')) {
+      return null;
+    }
+    return '${Routes.works}/$workId';
+  }
+  // Alias: /items/:id maps to /works/:id
+  const itemsPath = '/items';
+  if (location.startsWith('$itemsPath/')) {
+    final workId = location.substring('$itemsPath/'.length).trim();
+    if (workId.isEmpty || workId.contains('/')) {
+      return null;
+    }
+    return '${Routes.works}/$workId';
   }
   return null;
 }

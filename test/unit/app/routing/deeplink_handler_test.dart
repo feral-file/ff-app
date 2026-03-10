@@ -33,6 +33,20 @@ void main() {
       );
     });
 
+    test('classifies channel deeplink', () {
+      expect(
+        classifyDeeplink('feralfile://channels/channel-001'),
+        DeeplinkType.appRoute,
+      );
+    });
+
+    test('classifies work deeplink', () {
+      expect(
+        classifyDeeplink('feralfile://works/work-001'),
+        DeeplinkType.appRoute,
+      );
+    });
+
     test('returns unknown for unsupported deeplink', () {
       expect(
         classifyDeeplink('https://example.com/path'),
@@ -80,6 +94,83 @@ void main() {
         isNull,
       );
     });
+
+    test('resolves channel location from feralfile scheme', () {
+      expect(
+        resolveAppLocationFromDeeplink(
+          'feralfile://channels/abc-123',
+        ),
+        '/channels/abc-123',
+      );
+    });
+
+    test('resolves channel location from link host', () {
+      expect(
+        resolveAppLocationFromDeeplink(
+          'https://link.feralfile.com/channels/channel-456',
+        ),
+        '/channels/channel-456',
+      );
+    });
+
+    test('resolves channels index location', () {
+      expect(
+        resolveAppLocationFromDeeplink('https://link.feralfile.com/channels'),
+        '/channels',
+      );
+    });
+
+    test('resolves channels all location', () {
+      expect(
+        resolveAppLocationFromDeeplink(
+          'https://link.feralfile.com/channels/all',
+        ),
+        '/channels/all',
+      );
+    });
+
+    test('resolves work location from feralfile scheme', () {
+      expect(
+        resolveAppLocationFromDeeplink('feralfile://works/work-789'),
+        '/works/work-789',
+      );
+    });
+
+    test('resolves work location from link host', () {
+      expect(
+        resolveAppLocationFromDeeplink(
+          'https://link.feralfile.com/works/xyz-456',
+        ),
+        '/works/xyz-456',
+      );
+    });
+
+    test('resolves items alias to works location', () {
+      expect(
+        resolveAppLocationFromDeeplink(
+          'https://link.feralfile.com/items/item-abc',
+        ),
+        '/works/item-abc',
+      );
+    });
+
+    test('returns null for channel with invalid path segment', () {
+      expect(
+        resolveAppLocationFromDeeplink(
+          'https://link.feralfile.com/channels//',
+        ),
+        isNull,
+      );
+    });
+
+    test('returns null for non-canonical channel route', () {
+      expect(
+        resolveAppLocationFromDeeplink(
+          'https://link.feralfile.com/channel/channel-123',
+        ),
+        isNull,
+      );
+    });
   });
 
   group('DeeplinkHandler', () {
@@ -99,6 +190,42 @@ void main() {
       expect(action.type, DeeplinkType.appRoute);
       expect(action.location, '/playlists/playlist-action-id');
       expect(action.source, DeeplinkSource.scan);
+    });
+
+    test('emits app route action for channel deeplink', () async {
+      final handler = DeeplinkHandler(
+        linkSource: _FakeDeeplinkLinkSource(),
+      );
+      addTearDown(handler.dispose);
+
+      final nextActionFuture = handler.actions.first;
+      await handler.handleRawLink(
+        'https://link.feralfile.com/channels/channel-123',
+        source: DeeplinkSource.appLink,
+      );
+
+      final action = await nextActionFuture;
+      expect(action.type, DeeplinkType.appRoute);
+      expect(action.location, '/channels/channel-123');
+      expect(action.source, DeeplinkSource.appLink);
+    });
+
+    test('emits app route action for work deeplink', () async {
+      final handler = DeeplinkHandler(
+        linkSource: _FakeDeeplinkLinkSource(),
+      );
+      addTearDown(handler.dispose);
+
+      final nextActionFuture = handler.actions.first;
+      await handler.handleRawLink(
+        'https://link.feralfile.com/items/work-456',
+        source: DeeplinkSource.appLink,
+      );
+
+      final action = await nextActionFuture;
+      expect(action.type, DeeplinkType.appRoute);
+      expect(action.location, '/works/work-456');
+      expect(action.source, DeeplinkSource.appLink);
     });
   });
 }
