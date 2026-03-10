@@ -344,7 +344,10 @@ class UIHelper {
             ] else if (closeButton.isNotEmpty && onClose != null) ...[
               const SizedBox(height: 16),
               OutlineButton(
-                onTap: onClose,
+                onTap: () {
+                  Navigator.pop(context);
+                  onClose();
+                },
                 text: closeButton,
               ),
               const SizedBox(height: 15),
@@ -481,12 +484,10 @@ class UIHelper {
   ///
   /// When user chooses "Attach debug log" or "Send without log", closes the
   /// dialog and calls [supportEmailService].composeSupportEmail with the chosen
-  /// [attachLogs] value. If [onSendComplete] is provided (e.g. when opened from
-  /// an error dialog), it is invoked so the caller can close the error dialog.
+  /// [attachLogs] value.
   static Future<void> showCustomerSupport(
     BuildContext context, {
     required SupportEmailService supportEmailService,
-    VoidCallback? onSendComplete,
   }) async {
     const recipient = 'support@feralfile.com';
 
@@ -498,7 +499,6 @@ class UIHelper {
           attachLogs: attachLogs,
         ),
       );
-      onSendComplete?.call();
     }
 
     await UIHelper.showDialog<void>(
