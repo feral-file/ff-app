@@ -516,6 +516,12 @@ class AppDatabase extends _$AppDatabase {
     return (select(playlists)..where((t) => t.id.equals(id))).getSingleOrNull();
   }
 
+  /// Watch a single playlist by ID.
+  Stream<PlaylistData?> watchPlaylistById(String id) {
+    return (select(playlists)..where((t) => t.id.equals(id)))
+        .watchSingleOrNull();
+  }
+
   /// Get all playlists.
   ///
   /// When [type] is provided, results are filtered by playlist type:
@@ -988,6 +994,13 @@ class AppDatabase extends _$AppDatabase {
     await (delete(playlistEntries)..where((t) => t.itemId.equals(itemId))).go();
   }
 
+  /// Get Favorite playlist entries for rebuild-metadata snapshot.
+  Future<List<PlaylistEntryData>> getFavoriteHistoryEntries() async {
+    return (select(playlistEntries)
+          ..where((t) => t.playlistId.equals(Playlist.favoriteId)))
+        .get();
+  }
+
   /// Delete a single playlist entry by playlist ID and item ID.
   Future<void> deletePlaylistEntry({
     required String playlistId,
@@ -998,6 +1011,36 @@ class AppDatabase extends _$AppDatabase {
         ))
         .go();
   }
+
+  Selectable<PlaylistEntryData> _playlistEntryQuery(
+    String playlistId,
+    String itemId,
+  ) =>
+      (select(playlistEntries)
+            ..where(
+              (t) =>
+                  t.playlistId.equals(playlistId) & t.itemId.equals(itemId),
+            ));
+
+  /// Check whether a playlist entry exists.
+  Future<bool> hasPlaylistEntry({
+    required String playlistId,
+    required String itemId,
+  }) async {
+    final entry =
+        await _playlistEntryQuery(playlistId, itemId).getSingleOrNull();
+    return entry != null;
+  }
+
+  /// Watch whether a playlist entry exists.
+  /// Emits true when the entry exists, false when it does not.
+  Stream<bool> watchHasPlaylistEntry({
+    required String playlistId,
+    required String itemId,
+  }) =>
+      _playlistEntryQuery(playlistId, itemId)
+          .watchSingleOrNull()
+          .map((entry) => entry != null);
 
   /// Delete playlist entries and items for address-based playlists in one
   /// transaction.

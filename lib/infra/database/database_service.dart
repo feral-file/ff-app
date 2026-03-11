@@ -12,6 +12,7 @@ import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/converters.dart';
+import 'package:app/infra/database/favorite_history_snapshot.dart';
 import 'package:app/infra/database/token_transformer.dart';
 import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
@@ -400,6 +401,14 @@ class DatabaseService {
     }
   }
 
+  /// Watch a single playlist by ID.
+  Stream<Playlist?> watchPlaylistById(String id) {
+    return _db.watchPlaylistById(id).map(
+          (data) =>
+              data != null ? DatabaseConverters.playlistDataToDomain(data) : null,
+        );
+  }
+
   /// Get all playlists.
   ///
   /// When [type] is provided, results are filtered by playlist type.
@@ -427,6 +436,117 @@ class DatabaseService {
       return data.map(DatabaseConverters.playlistDataToDomainPreview).toList();
     } catch (e, stack) {
       _log.severe('Failed to get address playlists', e, stack);
+      rethrow;
+    }
+  }
+
+  // ========== Playlist Entry Operations ==========
+
+  /// Add or update a playlist entry (e.g. for Favorite/History).
+  /// Uses [sortKeyUs] for provenance ordering (higher = more recent).
+  Future<void> addPlaylistEntry({
+    required String playlistId,
+    required String itemId,
+    required int sortKeyUs,
+  }) async {
+    try {
+      final entry = DatabaseConverters.createPlaylistEntry(
+        playlistId: playlistId,
+        itemId: itemId,
+        sortKeyUs: sortKeyUs,
+      );
+      await _db.upsertPlaylistEntry(entry);
+      await _db.updatePlaylistItemCount(playlistId);
+    } catch (e, stack) {
+      _log.severe(
+        'Failed to add playlist entry $playlistId/$itemId',
+        e,
+        stack,
+      );
+      rethrow;
+    }
+  }
+
+  /// Remove a playlist entry.
+  Future<void> removePlaylistEntry({
+    required String playlistId,
+    required String itemId,
+  }) async {
+    try {
+      await _db.deletePlaylistEntry(
+        playlistId: playlistId,
+        itemId: itemId,
+      );
+      await _db.updatePlaylistItemCount(playlistId);
+    } catch (e, stack) {
+      _log.severe(
+        'Failed to remove playlist entry $playlistId/$itemId',
+        e,
+        stack,
+      );
+      rethrow;
+    }
+  }
+
+  /// Check whether a work is in a playlist (e.g. Favorite).
+  Future<bool> hasPlaylistEntry({
+    required String playlistId,
+    required String itemId,
+  }) async {
+    return _db.hasPlaylistEntry(
+      playlistId: playlistId,
+      itemId: itemId,
+    );
+  }
+
+  /// Watch whether a work is in a playlist (e.g. Favorite).
+  Stream<bool> watchHasPlaylistEntry({
+    required String playlistId,
+    required String itemId,
+  }) {
+    return _db
+        .watchHasPlaylistEntry(playlistId: playlistId, itemId: itemId)
+        .debounceTime(const Duration(milliseconds: 200));
+  }
+
+  /// Get Favorite and History entries snapshot for rebuild-metadata restore.
+  Future<List<FavoriteHistoryEntrySnapshot>>
+      getFavoriteHistoryEntriesSnapshot() async {
+    final entries = await _db.getFavoriteHistoryEntries();
+    return entries
+        .map(
+          (e) => FavoriteHistoryEntrySnapshot(
+            playlistId: e.playlistId,
+            itemId: e.itemId,
+            sortKeyUs: e.sortKeyUs.toInt(),
+          ),
+        )
+        .toList();
+  }
+
+  /// Restore Favorite and History entries after rebuild-metadata.
+  Future<void> restoreFavoriteHistoryEntries(
+    List<FavoriteHistoryEntrySnapshot> snapshot,
+  ) async {
+    if (snapshot.isEmpty) return;
+    try {
+      final companions = snapshot
+          .map(
+            (e) => DatabaseConverters.createPlaylistEntry(
+              playlistId: e.playlistId,
+              itemId: e.itemId,
+              sortKeyUs: e.sortKeyUs,
+            ),
+          )
+          .toList();
+      await _db.upsertPlaylistEntries(companions);
+      final playlistIds = snapshot.map((e) => e.playlistId).toSet();
+      for (final playlistId in playlistIds) {
+        await _db.updatePlaylistItemCount(playlistId);
+      }
+      _log.info('Restored ${snapshot.length} Favorite/History entries');
+    } catch (e, stack) {
+      _log.severe('Failed to restore Favorite/History entries', e, stack);
       rethrow;
     }
   }

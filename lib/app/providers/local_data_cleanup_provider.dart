@@ -130,6 +130,17 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
         );
       }
     },
+    getFavoriteHistorySnapshot: () async {
+      final databaseService = ref.read(databaseServiceProvider);
+      return databaseService.getFavoriteHistoryEntriesSnapshot();
+    },
+    restoreFavoriteHistory: (snapshot) async {
+      final databaseService = ref.read(databaseServiceProvider);
+      await databaseService.restoreFavoriteHistoryEntries(snapshot);
+    },
+    runBootstrap: () async {
+      await ref.read(bootstrapProvider.notifier).bootstrap();
+    },
     refetchFromBeginning: (addresses) async {
       final normalizedAddresses = addresses
           .map(normalizeAddress)

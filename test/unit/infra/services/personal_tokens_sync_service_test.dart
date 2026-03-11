@@ -48,7 +48,7 @@ void main() {
         id: 'addr:eth:0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8',
         name: 'Personal',
         type: PlaylistType.addressBased,
-        channelId: 'my_collection',
+        channelId: Channel.myCollectionId,
         ownerAddress: playlistOwner,
         ownerChain: 'eth',
       ),

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:after_layout/after_layout.dart';
+import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
 import 'package:app/app/utils/html/au_html_style.dart';
@@ -303,7 +304,44 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     color: AppColor.white,
                   ),
                 )
-              else
+              else ...[
+                Consumer(
+                  builder: (context, ref, _) {
+                    final isFavorite =
+                        ref.watch(isWorkInFavoriteProvider(item.id));
+                    return IconButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () async {
+                        await ref
+                            .read(favoritePlaylistServiceProvider)
+                            .toggleFavorite(item);
+                      },
+                      constraints: const BoxConstraints(
+                        maxWidth: 44,
+                        maxHeight: 44,
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
+                      icon: isFavorite.when(
+                        data: (isIn) => Icon(
+                          isIn ? Icons.favorite : Icons.favorite_border,
+                          size: 22,
+                          color: AppColor.white,
+                        ),
+                        loading: () => const Icon(
+                          Icons.favorite_border,
+                          size: 22,
+                          color: AppColor.white,
+                        ),
+                        error: (_, _) => const Icon(
+                          Icons.favorite_border,
+                          size: 22,
+                          color: AppColor.white,
+                        ),
+                      ),
+                    );
+                  },
+                ),
                 IconButton(
                   padding: EdgeInsets.zero,
                   onPressed: () => _showArtworkOptionsDialog(
@@ -323,6 +361,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     height: 22,
                   ),
                 ),
+              ],
             ],
           ),
         ),
@@ -451,7 +490,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      "Rebuild metadata is incomplete. Try again later "
+                      'Rebuild metadata is incomplete. Try again later '
                       'or contact support for help.',
                       style: AppTypography.body(context).white,
                     ),

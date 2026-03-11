@@ -7,6 +7,7 @@ import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/force_update_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
@@ -413,6 +414,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       ..invalidate(channelsProvider(ChannelType.localVirtual))
       ..invalidate(playlistsProvider(PlaylistType.dp1))
       ..invalidate(playlistsProvider(PlaylistType.addressBased))
+      ..invalidate(meSectionPlaylistsProvider)
       ..invalidate(worksProvider);
 
     await ref.read(databaseServiceProvider).close();
@@ -432,6 +434,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       ..invalidate(channelsProvider(ChannelType.localVirtual))
       ..invalidate(playlistsProvider(PlaylistType.dp1))
       ..invalidate(playlistsProvider(PlaylistType.addressBased))
+      ..invalidate(meSectionPlaylistsProvider)
       ..invalidate(worksProvider);
   }
 

@@ -1,3 +1,4 @@
+import 'package:app/infra/database/favorite_history_snapshot.dart';
 import 'package:logging/logging.dart';
 
 /// Clears local app data and stops background work for a fresh onboarding run.
@@ -14,6 +15,11 @@ class LocalDataCleanupService {
     restorePersonalAddressPlaylists,
     required Future<void> Function(List<String> addresses) refetchFromBeginning,
     required Future<void> Function() recreateDatabaseFromSeed,
+    required Future<List<FavoriteHistoryEntrySnapshot>> Function()
+    getFavoriteHistorySnapshot,
+    required Future<void> Function(List<FavoriteHistoryEntrySnapshot> snapshot)
+    restoreFavoriteHistory,
+    required Future<void> Function() runBootstrap,
     required void Function() pauseFeedWork,
     required void Function() pauseTokenPolling,
     Future<void> Function()? onResetCompleted,
@@ -29,6 +35,9 @@ class LocalDataCleanupService {
        _restorePersonalAddressPlaylists = restorePersonalAddressPlaylists,
        _refetchFromBeginning = refetchFromBeginning,
        _recreateDatabaseFromSeed = recreateDatabaseFromSeed,
+       _getFavoriteHistorySnapshot = getFavoriteHistorySnapshot,
+       _restoreFavoriteHistory = restoreFavoriteHistory,
+       _runBootstrap = runBootstrap,
        _pauseFeedWork = pauseFeedWork,
        _pauseTokenPolling = pauseTokenPolling,
        _onResetCompleted = onResetCompleted,
@@ -46,6 +55,11 @@ class LocalDataCleanupService {
   _restorePersonalAddressPlaylists;
   final Future<void> Function(List<String> addresses) _refetchFromBeginning;
   final Future<void> Function() _recreateDatabaseFromSeed;
+  final Future<List<FavoriteHistoryEntrySnapshot>> Function()
+  _getFavoriteHistorySnapshot;
+  final Future<void> Function(List<FavoriteHistoryEntrySnapshot> snapshot)
+  _restoreFavoriteHistory;
+  final Future<void> Function() _runBootstrap;
   final void Function() _pauseFeedWork;
   final void Function() _pauseTokenPolling;
   final Future<void> Function()? _onResetCompleted;
@@ -94,8 +108,8 @@ class LocalDataCleanupService {
     _log.info('Local data cleared and workers stopped');
   }
 
-  /// Rebuilds metadata by clearing SQLite, restoring personal playlists, and
-  /// re-fetching both personal and feed data from the beginning.
+  /// Rebuilds metadata by clearing SQLite, restoring personal playlists,
+  /// Favorite/History, and re-fetching data from the beginning.
   Future<void> rebuildMetadata() async {
     _log.info('rebuildMetadata: start');
     _pauseFeedWork();
@@ -106,12 +120,22 @@ class LocalDataCleanupService {
 
     _log.info('rebuildMetadata: getPersonalAddresses');
     final addresses = await _getPersonalAddresses();
+    _log.info('rebuildMetadata: getFavoriteHistorySnapshot');
+    final snapshot = await _getFavoriteHistorySnapshot();
     _log.info('rebuildMetadata: recreateDatabaseFromSeed');
     await _recreateDatabaseFromSeed();
+
+    _log.info('rebuildMetadata: runBootstrap');
+    await _runBootstrap();
 
     if (addresses.isNotEmpty) {
       _log.info('rebuildMetadata: restorePersonalAddressPlaylists');
       await _restorePersonalAddressPlaylists(addresses);
+    }
+
+    if (snapshot.isNotEmpty) {
+      _log.info('rebuildMetadata: restoreFavoriteHistory');
+      await _restoreFavoriteHistory(snapshot);
     }
 
     _log.info('rebuildMetadata: clearCachedImages');

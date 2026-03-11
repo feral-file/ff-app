@@ -127,9 +127,12 @@ class Channel {
       coverImageUrl: coverImageUrl ?? this.coverImageUrl,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      sortOrder: sortOrder ?? this.sortOrder,
-    );
+    sortOrder: sortOrder ?? this.sortOrder,
+  );
   }
+
+  /// Channel ID for "My Collection" (personal, pinned).
+  static const String myCollectionId = 'my_collection';
 }
 
 /// Channel type enumeration.

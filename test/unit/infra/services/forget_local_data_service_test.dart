@@ -1,3 +1,4 @@
+import 'package:app/infra/database/favorite_history_snapshot.dart';
 import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -27,6 +28,9 @@ void main() {
       recreateDatabaseFromSeed: () async {
         events.add('recreate-db-from-seed');
       },
+      getFavoriteHistorySnapshot: () async => const [],
+      restoreFavoriteHistory: (_) async {},
+      runBootstrap: () async {},
       pauseFeedWork: () {
         events.add('pause-feed');
       },
@@ -75,6 +79,9 @@ void main() {
       recreateDatabaseFromSeed: () async {
         events.add('recreate-db-from-seed');
       },
+      getFavoriteHistorySnapshot: () async => const [],
+      restoreFavoriteHistory: (_) async {},
+      runBootstrap: () async {},
       pauseFeedWork: () {
         events.add('pause-feed');
       },
@@ -126,6 +133,16 @@ void main() {
         recreateDatabaseFromSeed: () async {
           events.add('recreate-db-from-seed');
         },
+        getFavoriteHistorySnapshot: () async {
+          events.add('get-favorite-history-snapshot');
+          return const <FavoriteHistoryEntrySnapshot>[];
+        },
+        restoreFavoriteHistory: (_) async {
+          events.add('restore-favorite-history');
+        },
+        runBootstrap: () async {
+          events.add('run-bootstrap');
+        },
         pauseFeedWork: () {
           events.add('pause-feed');
         },
@@ -142,7 +159,9 @@ void main() {
         'pause-token-polling',
         'stop-workers',
         'get-addresses',
+        'get-favorite-history-snapshot',
         'recreate-db-from-seed',
+        'run-bootstrap',
         'restore:0xabc',
         'clear-cached-images',
         'refetch:0xabc',

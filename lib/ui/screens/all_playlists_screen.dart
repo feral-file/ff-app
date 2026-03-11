@@ -1,3 +1,4 @@
+import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -11,6 +12,7 @@ import 'package:app/widgets/load_more_indicator.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/playlist_header_with_collection_state.dart';
 import 'package:app/widgets/playlist/playlist_list_row.dart';
+import 'package:app/widgets/playlist/playlist_title.dart';
 import 'package:app/widgets/playlist/section_details_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,7 +28,7 @@ enum AllPlaylistsFilter {
   personal,
 }
 
-/// Maps UI filter to domain PlaylistType.
+/// Maps UI filter to domain PlaylistType (curated only; personal uses me section).
 PlaylistType _filterToType(AllPlaylistsFilter filter) {
   switch (filter) {
     case AllPlaylistsFilter.curated:
@@ -62,9 +64,12 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref
-          .read(playlistsProvider(_filterToType(widget.filter)).notifier)
-          .loadPlaylists();
+      if (widget.filter == AllPlaylistsFilter.curated) {
+        ref
+            .read(playlistsProvider(PlaylistType.dp1).notifier)
+            .loadPlaylists();
+      }
+      // Personal uses meSectionPlaylistsProvider (auto-loads on watch).
     });
   }
 
@@ -94,20 +99,34 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
   }
 
   Future<void> _onRefresh() async {
-    await ref
-        .read(playlistsProvider(_filterToType(widget.filter)).notifier)
-        .refresh();
+    if (widget.filter == AllPlaylistsFilter.curated) {
+      await ref
+          .read(playlistsProvider(PlaylistType.dp1).notifier)
+          .refresh();
+    } else {
+      ref.invalidate(meSectionPlaylistsProvider);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final playlistType = _filterToType(widget.filter);
-    final state = ref.watch(playlistsProvider(playlistType));
+    final isPersonal = widget.filter == AllPlaylistsFilter.personal;
+    final curatedState = ref.watch(playlistsProvider(PlaylistType.dp1));
+    final meSectionAsync = ref.watch(meSectionPlaylistsProvider);
 
-    final playlists = state.playlists;
-    final isLoading = state.isLoading;
-    final isLoadingMore = state.isLoadingMore;
-    final hasMore = state.hasMore;
+    final meSectionState = meSectionAsync.when(
+      data: (v) => v,
+      loading: () => null,
+      error: (_, _) => null,
+    );
+    final playlists = isPersonal
+        ? (meSectionState?.playlists ?? [])
+        : curatedState.playlists;
+    final isLoading = isPersonal
+        ? (meSectionAsync.isLoading || (meSectionState?.isLoading == true))
+        : curatedState.isLoading;
+    final isLoadingMore = !isPersonal && curatedState.isLoadingMore;
+    final hasMore = !isPersonal && curatedState.hasMore;
 
     final title = widget.filter == AllPlaylistsFilter.curated
         ? 'Curated'
@@ -140,13 +159,22 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                 return const LoadingView();
               }
 
-              if (state.error != null && playlists.isEmpty) {
+              if ((isPersonal
+                      ? meSectionAsync.hasError
+                      : curatedState.error != null) &&
+                  playlists.isEmpty) {
                 return ErrorView(
                   error:
                       'We couldn’t load playlists. Check your connection, then Retry.',
-                  onRetry: () => ref
-                      .read(playlistsProvider(playlistType).notifier)
-                      .loadPlaylists(),
+                  onRetry: () {
+                    if (isPersonal) {
+                      ref.invalidate(meSectionPlaylistsProvider);
+                    } else {
+                      ref
+                          .read(playlistsProvider(PlaylistType.dp1).notifier)
+                          .loadPlaylists();
+                    }
+                  },
                 );
               }
 
@@ -187,6 +215,12 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                         playlist: playlist,
                         headerBuilder: widget.filter == AllPlaylistsFilter.personal
                             ? (p, itemCount) {
+                                if (p.type == PlaylistType.system) {
+                                  return PlaylistTitle(
+                                    primaryText: p.name,
+                                    secondaryText: '',
+                                  );
+                                }
                                 final ownerAddress = p.ownerAddress;
                                 if (ownerAddress == null ||
                                     ownerAddress.isEmpty) {

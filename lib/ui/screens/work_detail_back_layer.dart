@@ -5,8 +5,11 @@
 import 'dart:math';
 
 import 'package:app/app/providers/now_displaying_provider.dart';
+import 'package:app/app/providers/playlist_details_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/playlist_item_ext.dart';
+import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/nft_rendering/audio_rendering_widget.dart';
@@ -22,9 +25,12 @@ import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/gallery_thumbnail_widgets.dart';
 import 'package:app/widgets/loading_view.dart';
+import 'package:app/widgets/playlist/playlist_list_row.dart';
+import 'package:app/widgets/playlist/playlist_title.dart';
 import 'package:app/widgets/work_detail/artwork_details_header.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -65,10 +71,20 @@ class WorkDetailBackLayer extends ConsumerWidget {
 
     final isPlayingOnFF1 = playingObject != null;
 
+    final favoriteDetailsAsync = ref.watch(
+      playlistDetailsProvider(Playlist.favoriteId),
+    );
+    final showFavoriteRow =
+        !isFullScreen &&
+        (favoriteDetailsAsync.whenOrNull(
+              data: (state) => state.items.isNotEmpty,
+            ) ??
+            false);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 45),
+        SizedBox(height: LayoutConstants.space4),
         Expanded(
           child: Stack(
             children: [
@@ -107,7 +123,24 @@ class WorkDetailBackLayer extends ConsumerWidget {
             ],
           ),
         ),
-        const SizedBox(height: 45),
+        // SizedBox(height: LayoutConstants.space4),
+        // Favorite playlist row (same UI as Playlist tab). Only when not empty.
+        if (showFavoriteRow) ...[
+          PlaylistRowItem(
+            playlist: Playlist.favorite(),
+            headerBuilder: (playlist, itemCount) => PlaylistTitle(
+              primaryText: playlist.name,
+              secondaryText: '',
+            ),
+            onItemTap: (tappedItem) =>
+                context.push('${Routes.works}/${tappedItem.id}'),
+          ),
+          const Divider(
+            height: 1,
+            thickness: 1,
+            color: AppColor.primaryBlack,
+          ),
+        ],
         if (!isFullScreen)
           const Column(
             children: [
