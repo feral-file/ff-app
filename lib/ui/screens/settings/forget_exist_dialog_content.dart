@@ -13,13 +13,13 @@ import 'package:roundcheckbox/roundcheckbox.dart';
 
 /// Bullet dot widget for the Forget I exist dialog list.
 Widget _dotIcon({required Color color, double size = 6}) => Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-      ),
-    );
+  width: size,
+  height: size,
+  decoration: BoxDecoration(
+    color: color,
+    shape: BoxShape.circle,
+  ),
+);
 
 /// Dialog content for Forget I exist confirmation.
 /// Copied from old ForgetExistView; uses Riverpod instead of BLoC.
@@ -43,17 +43,18 @@ class _ForgetExistDialogContentState
     final overlayNotifier = ref.read(appOverlayProvider.notifier);
     final cleanupService = ref.read(localDataCleanupServiceProvider);
 
-    final toastOverlayId =
-        overlayNotifier.showToast(message: 'Cleaning local data...');
+    final toastOverlayId = overlayNotifier.showToast(
+      message: 'Cleaning local data...',
+    );
     await WidgetsBinding.instance.endOfFrame;
 
     context.pop();
     router.go(Routes.home);
 
     try {
-      await cleanupService
-          .clearLocalData()
-          .timeout(const Duration(seconds: 20));
+      await cleanupService.clearLocalData().timeout(
+        const Duration(seconds: 20),
+      );
     } on Object catch (_) {
       // Cleanup had issues but we still navigate to onboarding
     } finally {
@@ -157,8 +158,7 @@ class _ForgetExistDialogContentState
                                     'Others may briefly see cached copies; '
                                     "they won't update and will disappear "
                                     'after refresh.',
-                                    style:
-                                        AppTypography.body(context).copyWith(
+                                    style: AppTypography.body(context).copyWith(
                                       color: AppColor.white,
                                     ),
                                   ),
@@ -182,8 +182,7 @@ class _ForgetExistDialogContentState
                                     'playlists under their own feed, that '
                                     'copy will continue under their control '
                                     '(not yours).',
-                                    style:
-                                        AppTypography.body(context).copyWith(
+                                    style: AppTypography.body(context).copyWith(
                                       color: AppColor.white,
                                     ),
                                   ),
@@ -223,7 +222,7 @@ class _ForgetExistDialogContentState
                   color: theme.colorScheme.primary,
                   size: 14,
                 ),
-                onTap: (bool? value) {
+                onTap: (value) {
                   setState(() => _isChecked = value ?? false);
                 },
               ),

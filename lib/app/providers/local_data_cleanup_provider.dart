@@ -10,10 +10,12 @@ import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_local_data_cleaner.dart';
+import 'package:app/infra/services/legacy_storage_locator.dart';
 import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 // ignore_for_file: cascade_invocations // Reason: provider wiring uses concise imperative call order for cleanup flow.
 
@@ -168,6 +170,22 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     onResetCompleted: () async {
       await forceReplaceDatabaseFromSeed();
       await ref.read(bootstrapProvider.notifier).bootstrap();
+    },
+    clearLegacySqlite: () async {
+      await LegacyStorageLocator().deleteLegacySqlite();
+    },
+    clearLegacyHive: () async {
+      try {
+        await Hive.initFlutter();
+        if (Hive.isBoxOpen('app_storage')) {
+          await Hive.box<String>('app_storage').close();
+        }
+        await Hive.deleteBoxFromDisk('app_storage');
+      } on Object {
+        // Box may not exist; ignore.
+      } finally {
+        await Hive.close();
+      }
     },
   );
 });

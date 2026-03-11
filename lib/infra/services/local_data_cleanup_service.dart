@@ -23,6 +23,8 @@ class LocalDataCleanupService {
     required void Function() pauseFeedWork,
     required void Function() pauseTokenPolling,
     Future<void> Function()? onResetCompleted,
+    Future<void> Function()? clearLegacySqlite,
+    Future<void> Function()? clearLegacyHive,
     this.enablePostDrainSweep = true,
     this.postDrainSettleDuration = const Duration(milliseconds: 200),
     Logger? logger,
@@ -41,6 +43,8 @@ class LocalDataCleanupService {
        _pauseFeedWork = pauseFeedWork,
        _pauseTokenPolling = pauseTokenPolling,
        _onResetCompleted = onResetCompleted,
+       _clearLegacySqlite = clearLegacySqlite,
+       _clearLegacyHive = clearLegacyHive,
        _log = logger ?? Logger('LocalDataCleanupService');
 
   final Future<void> Function() _stopWorkersGracefully;
@@ -63,6 +67,8 @@ class LocalDataCleanupService {
   final void Function() _pauseFeedWork;
   final void Function() _pauseTokenPolling;
   final Future<void> Function()? _onResetCompleted;
+  final Future<void> Function()? _clearLegacySqlite;
+  final Future<void> Function()? _clearLegacyHive;
 
   /// Whether to run a second close/delete pass after a short settle delay.
   final bool enablePostDrainSweep;
@@ -91,6 +97,17 @@ class LocalDataCleanupService {
     await _clearPendingAddresses();
     _log.info('clearLocalData: clearCachedImages');
     await _clearCachedImages();
+
+    final clearLegacySqlite = _clearLegacySqlite;
+    if (clearLegacySqlite != null) {
+      _log.info('clearLocalData: clearLegacySqlite');
+      await clearLegacySqlite();
+    }
+    final clearLegacyHive = _clearLegacyHive;
+    if (clearLegacyHive != null) {
+      _log.info('clearLocalData: clearLegacyHive');
+      await clearLegacyHive();
+    }
 
     if (enablePostDrainSweep) {
       // Defensive final pass: catches late async writes racing reset teardown.

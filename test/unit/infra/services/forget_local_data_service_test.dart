@@ -37,6 +37,12 @@ void main() {
       pauseTokenPolling: () {
         events.add('pause-token-polling');
       },
+      clearLegacySqlite: () async {
+        events.add('clear-legacy-sqlite');
+      },
+      clearLegacyHive: () async {
+        events.add('clear-legacy-hive');
+      },
       postDrainSettleDuration: Duration.zero,
     );
 
@@ -50,6 +56,8 @@ void main() {
       'clear-objectbox',
       'clear-pending-addresses',
       'clear-cached-images',
+      'clear-legacy-sqlite',
+      'clear-legacy-hive',
       'close-delete-db',
     ]);
   });
@@ -91,6 +99,8 @@ void main() {
       onResetCompleted: () async {
         events.add('on-reset-completed');
       },
+      clearLegacySqlite: () async {},
+      clearLegacyHive: () async {},
       postDrainSettleDuration: Duration.zero,
     );
 

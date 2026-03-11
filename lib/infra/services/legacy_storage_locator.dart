@@ -28,4 +28,14 @@ class LegacyStorageLocator {
     }
     return [path];
   }
+
+  /// Deletes the legacy SQLite file if it exists.
+  /// Prevents legacy migration from re-importing addresses after "Forget I Exist".
+  Future<void> deleteLegacySqlite() async {
+    final path = await legacySqlitePath();
+    final file = File(path);
+    if (file.existsSync()) {
+      await file.delete();
+    }
+  }
 }
