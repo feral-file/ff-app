@@ -323,20 +323,22 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                         minHeight: 44,
                       ),
                       icon: isFavorite.when(
-                        data: (isIn) => Icon(
-                          isIn ? Icons.favorite : Icons.favorite_border,
-                          size: 22,
-                          color: AppColor.white,
+                        data: (isIn) => SvgPicture.asset(
+                          isIn
+                              ? 'assets/images/select_circle_white.svg'
+                              : 'assets/images/add_circle_white.svg',
+                          width: 22,
+                          height: 22,
                         ),
-                        loading: () => const Icon(
-                          Icons.favorite_border,
-                          size: 22,
-                          color: AppColor.white,
+                        loading: () => SvgPicture.asset(
+                          'assets/images/add_circle_white.svg',
+                          width: 22,
+                          height: 22,
                         ),
-                        error: (_, _) => const Icon(
-                          Icons.favorite_border,
-                          size: 22,
-                          color: AppColor.white,
+                        error: (_, _) => SvgPicture.asset(
+                          'assets/images/add_circle_white.svg',
+                          width: 22,
+                          height: 22,
                         ),
                       ),
                     );
