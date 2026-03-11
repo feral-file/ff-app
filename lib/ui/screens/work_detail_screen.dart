@@ -468,9 +468,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                         unawaited(
                           UIHelper.showCustomerSupport(
                             context,
-                            supportEmailService:
-                                ref.read(supportEmailServiceProvider),
-                            onSendComplete: () {},
+                            supportEmailService: ref.read(
+                              supportEmailServiceProvider,
+                            ),
                           ),
                         );
                       },
