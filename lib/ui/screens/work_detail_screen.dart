@@ -279,7 +279,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 0, 8),
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
           child: Row(
             children: [
               Expanded(
@@ -307,8 +307,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
               else ...[
                 Consumer(
                   builder: (context, ref, _) {
-                    final isFavorite =
-                        ref.watch(isWorkInFavoriteProvider(item.id));
+                    final isFavorite = ref.watch(
+                      isWorkInFavoriteProvider(item.id),
+                    );
                     return IconButton(
                       padding: EdgeInsets.zero,
                       onPressed: () async {

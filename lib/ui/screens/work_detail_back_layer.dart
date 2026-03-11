@@ -140,6 +140,7 @@ class WorkDetailBackLayer extends ConsumerWidget {
             thickness: 1,
             color: AppColor.primaryBlack,
           ),
+          SizedBox(height: LayoutConstants.space1),
         ],
         if (!isFullScreen)
           const Column(
