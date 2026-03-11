@@ -24,7 +24,7 @@ class BootstrapService {
       _log.info('Starting bootstrap');
 
       await _createMyCollectionChannel();
-      await _ensureSystemPlaylists();
+      await _ensureFavoritePlaylists();
 
       _log.info('Bootstrap completed');
     } catch (e, stack) {
@@ -60,8 +60,8 @@ class BootstrapService {
   }
 
   /// Ensure Favorite playlist exists.
-  /// Every user has this system playlist.
-  Future<void> _ensureSystemPlaylists() async {
+  /// Every user has this Favorite playlist.
+  Future<void> _ensureFavoritePlaylists() async {
     final existingFavorite =
         await _databaseService.getPlaylistById(Playlist.favoriteId);
 

@@ -215,7 +215,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                         playlist: playlist,
                         headerBuilder: widget.filter == AllPlaylistsFilter.personal
                             ? (p, itemCount) {
-                                if (p.type == PlaylistType.system) {
+                                if (p.type == PlaylistType.favorite) {
                                   return PlaylistTitle(
                                     primaryText: p.name,
                                     secondaryText: '',

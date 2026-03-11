@@ -6,7 +6,7 @@ import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:uuid/uuid.dart';
 
-/// System playlist ID (Favorite is always present for every user).
+/// Favorite playlist ID (always present for every user).
 const String favoritePlaylistId = Playlist.favoriteId;
 
 /// Convenience extensions for [Playlist].

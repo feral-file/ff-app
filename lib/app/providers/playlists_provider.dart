@@ -210,8 +210,8 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
           _log.info('Curated playlists: ${result.length}');
         case PlaylistType.addressBased:
           await _loadAddressBasedPlaylists();
-        case PlaylistType.system:
-          await _loadSystemPlaylists();
+        case PlaylistType.favorite:
+          await _loadFavoritePlaylists();
       }
     } catch (e, stack) {
       if (!ref.mounted) return;
@@ -261,18 +261,20 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
     return refs.map((r) => r).toList();
   }
 
-  /// Load system playlists (Favorite) from database; no pagination.
-  Future<void> _loadSystemPlaylists() async {
+  /// Load favorite playlists from database; no pagination.
+  Future<void> _loadFavoritePlaylists() async {
     final databaseService = ref.read(databaseServiceProvider);
-    final system = await databaseService.getAllPlaylists(type: PlaylistType.system);
+    final favorites = await databaseService.getAllPlaylists(
+      type: PlaylistType.favorite,
+    );
     if (!ref.mounted) return;
     state = PlaylistsState.loaded(
-      playlists: system,
+      playlists: favorites,
       hasMore: false,
       cursor: null,
-      total: system.length,
+      total: favorites.length,
     );
-    _log.info('System playlists: ${system.length}');
+    _log.info('Favorite playlists: ${favorites.length}');
   }
 
   /// Load address-based (personal) playlists from database; no pagination.

@@ -206,8 +206,8 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
                 PlaylistSection(
                   sectionName: 'Me',
                   playlistHeaderBuilder: (playlist, itemCount) {
-                    // Favorite (system playlist): simple title.
-                    if (playlist.type == PlaylistType.system) {
+                    // Favorite playlist: simple title.
+                    if (playlist.type == PlaylistType.favorite) {
                       return PlaylistTitle(
                         primaryText: playlist.name,
                         secondaryText: '',

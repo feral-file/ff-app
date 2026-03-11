@@ -33,13 +33,13 @@ class Playlist {
     this.itemCount = 0,
   });
 
-  /// Creates the system Favorite playlist (for bootstrap).
+  /// Creates the Favorite playlist (for bootstrap).
   factory Playlist.favorite({DateTime? createdAt, DateTime? updatedAt}) {
     final now = createdAt ?? DateTime.now();
     return Playlist(
       id: favoriteId,
-      name: 'Favorite',
-      type: PlaylistType.system,
+      name: 'Favorites',
+      type: PlaylistType.favorite,
         channelId: Channel.myCollectionId,
       sortMode: PlaylistSortMode.provenance,
       createdAt: now,
@@ -47,7 +47,7 @@ class Playlist {
     );
   }
 
-  /// System playlist ID for Favorite.
+  /// Favorite playlist ID (always present for every user).
   static const String favoriteId = 'favorite';
 
   /// DP-1 playlist ID (e.g., pl_*)
@@ -223,8 +223,8 @@ enum PlaylistType {
   /// Address-based playlist (user's collection).
   addressBased(1),
 
-  /// System playlist (Favorite - identified by playlist ID).
-  system(2),
+  /// Favorite playlist (user favorites; supports multiple in future).
+  favorite(2),
   ;
 
   final int value;
