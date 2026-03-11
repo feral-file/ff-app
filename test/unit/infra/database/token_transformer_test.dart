@@ -1,3 +1,4 @@
+import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/token_transformer.dart';
@@ -30,11 +31,48 @@ void main() {
         expect(item.id, 'cid_test123');
         expect(item.kind, PlaylistItemKind.indexerToken);
         expect(item.title, 'Test Artwork');
-        expect(item.subtitle, 'Artist 1, Artist 2');
+        expect(item.artistName, 'Artist 1, Artist 2');
         expect(item.artists?.map((a) => a.name), ['Artist 1', 'Artist 2']);
         expect(item.source, 'https://example.com/animation.mp4');
         expect(item.thumbnailUrl, 'https://example.com/thumb.jpg');
-        expect(item.tokenData, isNotNull);
+        expect(item.provenance, isNotNull);
+        expect(item.provenance!.type.toString(), contains('onChain'));
+        expect(item.provenance!.contract.address, '0xCONTRACT');
+        expect(item.provenance!.contract.tokenId, '1');
+      });
+
+      test('builds provenance for Tezos FA2 token', () {
+        final token = AssetToken(
+          id: 1,
+          cid: 'tezos:mainnet:fa2:KT1ABC:42',
+          chain: 'tezos:mainnet',
+          standard: 'fa2',
+          contractAddress: 'KT1ABC',
+          tokenNumber: '42',
+        );
+
+        final item = TokenTransformer.assetTokenToPlaylistItem(token: token);
+
+        expect(item.provenance, isNotNull);
+        expect(item.provenance!.contract.chain.toString(), contains('tezos'));
+        expect(item.provenance!.contract.standard.toString(), contains('fa2'));
+        expect(item.provenance!.contract.address, 'KT1ABC');
+        expect(item.provenance!.contract.tokenId, '42');
+      });
+
+      test('returns null provenance when address or tokenId empty', () {
+        final token = AssetToken(
+          id: 1,
+          cid: 'bad_cid',
+          chain: 'eip155:1',
+          standard: 'ERC-721',
+          contractAddress: '',
+          tokenNumber: '1',
+        );
+
+        final item = TokenTransformer.assetTokenToPlaylistItem(token: token);
+
+        expect(item.provenance, isNull);
       });
 
       test('prefers enrichment animation URL for source', () {

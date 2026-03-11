@@ -11,6 +11,9 @@ on:
       message:
         description: Change logs
         required: false
+  release:
+    types:
+      - published
 jobs:
   build:
     runs-on: self-hosted
@@ -36,20 +39,34 @@ jobs:
           echo "SIGNATURE_HASH_INHOUSE=${{ secrets.SIGNATURE_HASH_INHOUSE }}" >> $GITHUB_ENV
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
 
+      - name: Resolve release version from tag
+        id: release_meta
+        run: |
+          VERSION_VALUE=""
+          if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            VERSION_VALUE="${GITHUB_REF_NAME}"
+            if [[ -z "$VERSION_VALUE" ]]; then
+              echo "Missing tag name in GITHUB_REF_NAME for release event"
+              exit 1
+            fi
+          else
+            VERSION_VALUE="${{ inputs.version }}"
+          fi
+          echo "version=$VERSION_VALUE" >> "$GITHUB_OUTPUT"
+          echo "Resolved Android release version: ${VERSION_VALUE:-<auto>}"
+
       - name: Fetch latest build number from Google Play Store
         id: fetch_build_number
         run: |
-          REQUESTED_VERSION="${{ inputs.version }}"
-          MANUAL_BUILD_NUMBER="${{ inputs.build_number }}"
+          REQUESTED_VERSION="${{ steps.release_meta.outputs.version }}"
+          MANUAL_BUILD_NUMBER="${{ github.event_name == 'workflow_dispatch' && inputs.build_number || '' }}"
           SERVICE_ACCOUNT_FILE="$(mktemp)"
           echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}' > "$SERVICE_ACCOUNT_FILE"
 
           if [ -n "$MANUAL_BUILD_NUMBER" ]; then
-            # Use manually provided build number
             BUILD_NUMBER="$MANUAL_BUILD_NUMBER"
             echo "Using manually provided build number: $BUILD_NUMBER"
           else
-            # Auto-detect from Google Play
             RESULT="$(bash scripts/fetch_latest_play_build.sh "$SERVICE_ACCOUNT_FILE" com.feralfile.app "$REQUESTED_VERSION")"
             LATEST_BUILD="$(printf '%s\n' "$RESULT" | sed -n 's/^latest_build_number=//p' | head -n 1)"
             LATEST_VERSION="$(printf '%s\n' "$RESULT" | sed -n 's/^latest_version=//p' | head -n 1)"
@@ -72,11 +89,12 @@ jobs:
             fi
 
             BUILD_NUMBER=$((LATEST_BUILD + 1))
+            echo "Latest Android version: $REQUESTED_VERSION, latest build: $LATEST_BUILD"
           fi
 
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           echo "version_name=$REQUESTED_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Latest Android version: $REQUESTED_VERSION, new build: $BUILD_NUMBER"
+          echo "Using Android version: $REQUESTED_VERSION, build: $BUILD_NUMBER"
 
           rm -f "$SERVICE_ACCOUNT_FILE"
 
@@ -140,7 +158,11 @@ jobs:
       - name: Release notes
         run: |
           mkdir whatsnew
-          echo "${{ inputs.message }}" > ./whatsnew/whatsnew-en-US
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "${{ inputs.message }}" > ./whatsnew/whatsnew-en-US
+          else
+            echo "Release ${GITHUB_REF_NAME}" > ./whatsnew/whatsnew-en-US
+          fi
 
       # Upload AAB to Google Play Internal Testing track
       - name: Upload AAB to Google Play

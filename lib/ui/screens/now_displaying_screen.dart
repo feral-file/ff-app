@@ -3,6 +3,7 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/theme/app_color.dart';
@@ -31,7 +32,8 @@ class NowDisplayingScreen extends ConsumerWidget {
     final showMoreIcon = status is NowDisplayingSuccess;
 
     return Scaffold(
-      appBar: MainAppBar(
+      appBar: MainAppBar.preferred(
+        context,
         centeredTitle: 'Now playing',
         backgroundColor: AppColor.auGreyBackground,
         actions: showMoreIcon
@@ -220,7 +222,7 @@ class _DP1NowDisplayingContent extends StatelessWidget {
         SliverToBoxAdapter(
           child: _InfoHeader(
             title: item.title ?? '',
-            subTitle: item.subtitle ?? '',
+            subTitle: item.artistName,
           ),
         ),
         SliverToBoxAdapter(

@@ -1,5 +1,7 @@
 import 'package:app/infra/config/app_config.dart';
+import 'package:app/infra/logging/structured_dio_logging_interceptor.dart';
 import 'package:dio/dio.dart';
+import 'package:logging/logging.dart';
 import 'package:sentry_dio/sentry_dio.dart';
 
 /// Interceptor that adds the relayer API key to TV Cast requests.
@@ -25,6 +27,7 @@ class TvCastApiKeyInterceptor extends Interceptor {
 /// Creates a Dio instance configured for TV Cast (relayer) API.
 /// Uses baseUrl, timeouts, and API-KEY header. Matches old repo's tvCast Dio.
 Dio createTvCastDio() {
+  final log = Logger('TvCastDio');
   final dio = Dio(
     BaseOptions(
       baseUrl: AppConfig.ff1CastApiUrl,
@@ -34,6 +37,12 @@ Dio createTvCastDio() {
   )..addSentry();
   dio.interceptors.add(
     TvCastApiKeyInterceptor(AppConfig.ff1RelayerApiKey),
+  );
+  dio.interceptors.add(
+    StructuredDioLoggingInterceptor(
+      logger: log,
+      component: 'tv_cast',
+    ),
   );
   return dio;
 }

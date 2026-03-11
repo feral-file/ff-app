@@ -15,7 +15,6 @@ class PlaylistItem extends DP1PlaylistItem {
     required super.id,
     required this.kind,
     super.title,
-    this.subtitle,
     this.artists,
     this.thumbnailUrl,
     super.duration = 0,
@@ -77,7 +76,6 @@ class PlaylistItem extends DP1PlaylistItem {
       id: json['id'] as String,
       kind: PlaylistItemKind.values[json['kind'] as int],
       title: json['title'] as String?,
-      subtitle: json['subtitle'] as String?,
       artists: artists,
       thumbnailUrl: json['thumbnailUrl'] as String?,
       duration: json['duration'] as int? ?? 0,
@@ -100,9 +98,6 @@ class PlaylistItem extends DP1PlaylistItem {
 
   /// Item kind (DP1 item or indexer token).
   final PlaylistItemKind kind;
-
-  /// Optional subtitle (artists string).
-  final String? subtitle;
 
   /// Optional list of artists (DP1 manifest).
   final List<DP1Artist>? artists;
@@ -137,7 +132,6 @@ class PlaylistItem extends DP1PlaylistItem {
           runtimeType == other.runtimeType &&
           super == other &&
           kind == other.kind &&
-          subtitle == other.subtitle &&
           listEquals(artists, other.artists) &&
           thumbnailUrl == other.thumbnailUrl &&
           _mapEquals(overrideData, other.overrideData) &&
@@ -149,7 +143,6 @@ class PlaylistItem extends DP1PlaylistItem {
   int get hashCode => Object.hash(
     super.hashCode,
     kind,
-    subtitle,
     Object.hashAll(artists ?? []),
     thumbnailUrl,
     overrideData != null ? _deepEquality.hash(overrideData) : null,
@@ -163,7 +156,6 @@ class PlaylistItem extends DP1PlaylistItem {
     String? id,
     PlaylistItemKind? kind,
     String? title,
-    String? subtitle,
     List<DP1Artist>? artists,
     String? thumbnailUrl,
     int? duration,
@@ -182,7 +174,6 @@ class PlaylistItem extends DP1PlaylistItem {
       id: id ?? this.id,
       kind: kind ?? this.kind,
       title: title ?? this.title,
-      subtitle: subtitle ?? this.subtitle,
       artists: artists ?? this.artists,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       duration: duration ?? this.duration,
@@ -204,7 +195,6 @@ class PlaylistItem extends DP1PlaylistItem {
   Map<String, dynamic> toJson() {
     final j = super.toJson();
     j['kind'] = kind.index;
-    j['subtitle'] = subtitle;
     if (artists != null) {
       j['artists'] = artists!.map((e) => e.toJson()).toList();
     }

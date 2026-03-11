@@ -9,14 +9,31 @@ class FakeIndexerClient extends IndexerClient {
 
   Map<String, dynamic>? changesPayload;
   Map<String, dynamic>? tokensPayload;
+  Map<String, dynamic>? workflowStatusPayload;
+  Map<String, dynamic>? triggerMetadataIndexingPayload;
   Map<String, dynamic>? Function(Map<String, dynamic> vars)?
-  tokensPayloadBuilder;
+      tokensPayloadBuilder;
 
   String? lastDoc;
   Map<String, dynamic> lastVars = const {};
   String? lastSubKey;
 
   final List<Map<String, dynamic>> tokenQueryVars = <Map<String, dynamic>>[];
+
+  @override
+  Future<Map<String, dynamic>?> mutate({
+    required String doc,
+    Map<String, dynamic> vars = const {},
+    String? subKey,
+  }) async {
+    lastDoc = doc;
+    lastVars = vars;
+    lastSubKey = subKey;
+    if (subKey == 'triggerMetadataIndexing') {
+      return triggerMetadataIndexingPayload;
+    }
+    return null;
+  }
 
   @override
   Future<Map<String, dynamic>?> query({
@@ -36,6 +53,9 @@ class FakeIndexerClient extends IndexerClient {
       final builder = tokensPayloadBuilder;
       if (builder != null) return builder(vars);
       return tokensPayload;
+    }
+    if (subKey == 'workflowStatus') {
+      return workflowStatusPayload;
     }
     return null;
   }
@@ -426,4 +446,46 @@ void main() {
       expect(tokens.map((t) => t.cid), equals(const ['shared', 'cid2']));
     },
   );
+
+  test('IndexerService.triggerMetadataIndexing returns workflow_id and run_id',
+      () async {
+    final client = FakeIndexerClient()
+      ..triggerMetadataIndexingPayload = const {
+        'workflow_id': 'wf-123',
+        'run_id': 'run-456',
+      };
+
+    final service = IndexerService(client: client);
+    final result = await service.triggerMetadataIndexing(['bafy-test']);
+
+    expect(result.workflowId, 'wf-123');
+    expect(result.runId, 'run-456');
+    expect(client.lastSubKey, equals('triggerMetadataIndexing'));
+    expect(client.lastDoc, contains('triggerMetadataIndexing'));
+    expect(client.lastVars['token_cids'], equals(['bafy-test']));
+  });
+
+  test('IndexerService.getWorkflowStatus returns status', () async {
+    final client = FakeIndexerClient()
+      ..workflowStatusPayload = const {
+        'workflow_id': 'wf-1',
+        'run_id': 'run-1',
+        'status': 'COMPLETED',
+      };
+
+    final service = IndexerService(client: client);
+    final result = await service.getWorkflowStatus(
+      workflowId: 'wf-1',
+      runId: 'run-1',
+    );
+
+    expect(result.workflowId, 'wf-1');
+    expect(result.runId, 'run-1');
+    expect(result.status, 'COMPLETED');
+    expect(result.isTerminal, isTrue);
+    expect(result.isSuccess, isTrue);
+    expect(client.lastSubKey, equals('workflowStatus'));
+    expect(client.lastVars['workflow_id'], equals('wf-1'));
+    expect(client.lastVars['run_id'], equals('run-1'));
+  });
 }

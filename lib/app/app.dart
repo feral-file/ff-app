@@ -15,6 +15,7 @@ import 'package:app/app/providers/works_provider.dart';
 import 'package:app/app/routing/deeplink_handler.dart';
 import 'package:app/app/routing/router_provider.dart';
 import 'package:app/app/routing/routes.dart';
+import 'package:app/app/widgets/builder_overlay_scope.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -58,15 +59,17 @@ class App extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme(),
       builder: (context, child) {
-        return _AppStartupBootstrap(
-          router: router,
-          child: NowDisplayingVisibilitySync(
-            child: Stack(
-              children: [
-                child ?? const SizedBox.shrink(),
-                AppGlobalOverlayLayer(router: router),
-                const ForceUpdateOverlay(),
-              ],
+        return BuilderOverlayScope(
+          child: _AppStartupBootstrap(
+            router: router,
+            child: NowDisplayingVisibilitySync(
+              child: Stack(
+                children: [
+                  child ?? const SizedBox.shrink(),
+                  AppGlobalOverlayLayer(router: router),
+                  const ForceUpdateOverlay(),
+                ],
+              ),
             ),
           ),
         );

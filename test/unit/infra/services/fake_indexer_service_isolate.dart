@@ -1,3 +1,4 @@
+import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart';
@@ -12,6 +13,7 @@ class FakeIndexerServiceIsolate implements IndexerServiceIsolateOperations {
   ];
   AddressIndexingJobResponse? pullStatusResult;
   TokensPage fetchTokensResult = const TokensPage(tokens: []);
+  AssetToken? rebuildMetadataAndFetchTokenResult;
 
   @override
   Future<List<AddressIndexingResult>> indexAddressesList(
@@ -44,5 +46,11 @@ class FakeIndexerServiceIsolate implements IndexerServiceIsolateOperations {
   }) async {
     callSequence.add('fetchTokens');
     return fetchTokensResult;
+  }
+
+  @override
+  Future<AssetToken?> rebuildMetadataAndFetchToken(String cid) async {
+    callSequence.add('rebuildMetadataAndFetchToken');
+    return rebuildMetadataAndFetchTokenResult;
   }
 }

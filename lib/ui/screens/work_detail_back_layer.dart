@@ -1,12 +1,13 @@
-// ignore_for_file: dead_code
 // Copied from old repo ArtworkBackLayer + ArtworkPreviewWidget + NoPreviewWidget + PreviewPlaceholder.
 // Data source: PlaylistItem + nullable mimeType; preview URL and thumbnail from item.
 // Preview rendering uses NFT rendering widgets from lib/nft_rendering/.
 
 import 'dart:math';
 
+import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/playlist_item_ext.dart';
+import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/nft_rendering/audio_rendering_widget.dart';
 import 'package:app/nft_rendering/gif_rendering_widget.dart';
@@ -16,6 +17,7 @@ import 'package:app/nft_rendering/svg_rendering_widget.dart';
 import 'package:app/nft_rendering/video_player_widget.dart';
 import 'package:app/nft_rendering/webview_rendering_widget.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/widgets/artwork_playing_controls/artwork_playing_controls.dart';
 import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/gallery_thumbnail_widgets.dart';
@@ -23,11 +25,16 @@ import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/work_detail/artwork_details_header.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 /// Back layer for work detail. Structure copied from old repo [ArtworkBackLayer];
 /// only renamed and data from [PlaylistItem].
-class WorkDetailBackLayer extends StatelessWidget {
+///
+/// When the work identified by [item.id] is currently playing on FF1, the back
+/// layer switches from the live preview to a dimmed thumbnail with an
+/// [ArtworkPlayingControls] overlay matching the old [ArtworkBackLayer] behavior.
+class WorkDetailBackLayer extends ConsumerWidget {
   const WorkDetailBackLayer({
     required this.item,
     required this.isFullScreen,
@@ -42,8 +49,21 @@ class WorkDetailBackLayer extends StatelessWidget {
   final void Function({Object? webViewController, int? time})? onLoaded;
 
   @override
-  Widget build(BuildContext context) {
-    const isPlayingOnFF1 = false;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final nowDisplaying = ref.watch(nowDisplayingProvider);
+
+    // Determine if this specific work is currently playing on FF1.
+    DP1NowDisplayingObject? playingObject;
+    if (nowDisplaying is NowDisplayingSuccess) {
+      final obj = nowDisplaying.object;
+      if (obj is DP1NowDisplayingObject &&
+          !obj.isSleeping &&
+          obj.currentItem.id == item.id) {
+        playingObject = obj;
+      }
+    }
+
+    final isPlayingOnFF1 = playingObject != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,7 +99,9 @@ class WorkDetailBackLayer extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: const SizedBox.shrink(),
+                    child: ArtworkPlayingControls(
+                      playingDevice: playingObject.connectedDevice,
+                    ),
                   ),
                 ),
             ],
@@ -87,11 +109,11 @@ class WorkDetailBackLayer extends StatelessWidget {
         ),
         const SizedBox(height: 45),
         if (!isFullScreen)
-          Column(
+          const Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: const ArtworkDetailsHeader(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: ArtworkDetailsHeader(
                   title: 'I',
                   subTitle: 'I',
                   color: Colors.transparent,
@@ -119,6 +141,7 @@ class WorkDetailThumbnailView extends StatelessWidget {
       child: (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
           ? CachedNetworkImage(
               imageUrl: thumbnailUrl,
+              width: double.infinity,
               fit: BoxFit.contain,
               placeholder: (context, url) =>
                   const GalleryThumbnailPlaceholder(),

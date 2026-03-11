@@ -254,7 +254,7 @@ class UIHelper {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Delete collection',
+                    'Delete playlist',
                     style: AppTypography.h2(context).white,
                   ),
                   const SizedBox(height: 40),

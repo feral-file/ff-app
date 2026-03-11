@@ -113,4 +113,66 @@ class AddressIndexingJobResponse {
   };
 }
 
+/// Result from triggering metadata/token indexing.
+/// Used by triggerMetadataIndexing mutation.
+class TriggerIndexingResult {
+  /// Creates a TriggerIndexingResult.
+  const TriggerIndexingResult({
+    required this.workflowId,
+    required this.runId,
+  });
+
+  final String workflowId;
+  final String runId;
+
+  factory TriggerIndexingResult.fromJson(Map<String, dynamic> json) =>
+      TriggerIndexingResult(
+        workflowId: json['workflow_id'] as String? ?? '',
+        runId: json['run_id'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'workflow_id': workflowId,
+        'run_id': runId,
+      };
+}
+
+/// Response from workflowStatus query (Temporal workflow status).
+/// Status values: COMPLETED, FAILED, CANCELED, TERMINATED, RUNNING, etc.
+class WorkflowStatusResponse {
+  /// Creates a WorkflowStatusResponse.
+  const WorkflowStatusResponse({
+    required this.workflowId,
+    required this.runId,
+    required this.status,
+  });
+
+  final String workflowId;
+  final String runId;
+  final String status;
+
+  factory WorkflowStatusResponse.fromJson(Map<String, dynamic> json) =>
+      WorkflowStatusResponse(
+        workflowId: json['workflow_id'] as String? ?? '',
+        runId: json['run_id'] as String? ?? '',
+        status: json['status'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'workflow_id': workflowId,
+        'run_id': runId,
+        'status': status,
+      };
+
+  /// True when the workflow has reached a terminal state.
+  bool get isTerminal =>
+      status.toUpperCase() == 'COMPLETED' ||
+      status.toUpperCase() == 'FAILED' ||
+      status.toUpperCase() == 'CANCELED' ||
+      status.toUpperCase() == 'TERMINATED';
+
+  /// True when the workflow completed successfully.
+  bool get isSuccess => status.toUpperCase() == 'COMPLETED';
+}
+
 // End of file.

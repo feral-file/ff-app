@@ -8,6 +8,7 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/domain/extensions/asset_token_ext.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/dp1/dp1_intent.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/converters.dart' show DatabaseConverters;
@@ -16,11 +17,11 @@ import 'package:app/ui/screens/work_detail_back_layer.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/bottom_spacing.dart';
+import 'package:app/widgets/buttons/outline_button.dart';
 import 'package:app/widgets/delayed_loading.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/ff_display_button.dart';
 import 'package:app/widgets/loading_view.dart';
-import 'package:app/widgets/buttons/outline_button.dart';
 import 'package:app/widgets/webview_controller_text_field.dart';
 import 'package:app/widgets/work_detail/artwork_details_header.dart';
 import 'package:app/widgets/work_detail/work_detail_sections.dart';
@@ -117,7 +118,8 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     return asyncData.when(
       loading: () => Scaffold(
         backgroundColor: AppColor.auGreyBackground,
-        appBar: MainAppBar(
+        appBar: MainAppBar.preferred(
+          context,
           backTitle: widget.backTitle ?? 'Work',
           backgroundColor: AppColor.auGreyBackground,
         ),
@@ -128,7 +130,8 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
       ),
       error: (error, _) => Scaffold(
         backgroundColor: AppColor.auGreyBackground,
-        appBar: MainAppBar(
+        appBar: MainAppBar.preferred(
+          context,
           backTitle: widget.backTitle ?? 'Work',
           backgroundColor: AppColor.auGreyBackground,
         ),
@@ -142,7 +145,8 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
         if (data == null) {
           return Scaffold(
             backgroundColor: AppColor.auGreyBackground,
-            appBar: MainAppBar(
+            appBar: MainAppBar.preferred(
+              context,
               backTitle: widget.backTitle ?? 'Work',
               backgroundColor: AppColor.auGreyBackground,
             ),
@@ -165,8 +169,8 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
               BackdropScaffold(
                 backgroundColor: AppColor.auGreyBackground,
                 resizeToAvoidBottomInset: false,
-                frontLayerElevation: 1,
-                appBar: MainAppBar(
+                appBar: MainAppBar.preferred(
+                  context,
                   backTitle: widget.backTitle ?? 'Work',
                   backgroundColor: AppColor.auGreyBackground,
                   actions: [
@@ -281,7 +285,6 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                 child: ArtworkDetailsHeader(
                   title: item.title ?? '',
                   subTitle: subTitle,
-                  onSubTitleTap: null,
                 ),
               ),
               if (_isInfoExpand)
@@ -388,7 +391,95 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
         ),
         onTap: () async {
           Navigator.of(context).pop();
-          ref.invalidate(workDetailStateProvider(widget.workId));
+          final cid = item.cid;
+          if (cid == null || cid.isEmpty) {
+            if (context.mounted) {
+              await UIHelper.showDialog<void>(
+                context,
+                'Rebuild metadata',
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'This work has no token to rebuild metadata for',
+                      style: AppTypography.body(context).white,
+                    ),
+                    const SizedBox(height: 24),
+                    OutlineButton(
+                      text: 'OK',
+                      onTap: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return;
+          }
+          try {
+            await ref
+                .read(workDetailStateProvider(widget.workId).notifier)
+                .rebuildMetadata(item);
+            if (context.mounted) {
+              await UIHelper.showDialog<void>(
+                context,
+                'Metadata rebuilt',
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'The work metadata has been refreshed.',
+                      style: AppTypography.body(context).white,
+                    ),
+                    const SizedBox(height: 24),
+                    OutlineButton(
+                      text: 'OK',
+                      onTap: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              );
+            }
+          } catch (e) {
+            if (context.mounted) {
+              await UIHelper.showDialog<void>(
+                context,
+                'Rebuild metadata',
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "Rebuild metadata is incomplete. Try again later "
+                      'or contact support for help.',
+                      style: AppTypography.body(context).white,
+                    ),
+                    const SizedBox(height: 24),
+                    OutlineButton(
+                      text: 'Retry later',
+                      onTap: () => Navigator.pop(context),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlineButton(
+                      text: 'Contact support',
+                      onTap: () {
+                        Navigator.pop(context);
+                        unawaited(
+                          UIHelper.showCustomerSupport(
+                            context,
+                            supportEmailService:
+                                ref.read(supportEmailServiceProvider),
+                            onSendComplete: () {},
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
         },
       ),
     ];
@@ -408,12 +499,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     return Stack(
       children: [
         Visibility(
-          visible: true,
           child: WebviewControllerTextField(
-            webViewController: null,
             focusNode: _focusNode,
             textController: _textController,
-            disableKeys: const [],
           ),
         ),
         NotificationListener<UserScrollNotification>(

@@ -76,7 +76,8 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
-      appBar: MainAppBar(
+      appBar: MainAppBar.preferred(
+        context,
         backTitle: 'Playlists',
         backgroundColor: AppColor.auGreyBackground,
         actions: [
@@ -285,6 +286,7 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
                             name: p.name,
                             createdAt: p.createdAt ?? DateTime.now(),
                           ),
+                          playlistId: p.id,
                         );
                     if (context.mounted) {
                       context.pop();

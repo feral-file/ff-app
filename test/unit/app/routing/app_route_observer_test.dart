@@ -32,10 +32,15 @@ void main() {
             ],
             observers: [
               AppRouteObserver(
-                onRouteChanged: (path, route) {
-                  capturedPath = path;
-                  capturedRoute = route;
-                },
+                onRouteChanged:
+                    ({
+                      required fromPath,
+                      required toPath,
+                      required currentRoute,
+                    }) {
+                      capturedPath = toPath;
+                      capturedRoute = currentRoute;
+                    },
               ),
             ],
           ),
@@ -76,9 +81,16 @@ void main() {
             ],
             observers: [
               AppRouteObserver(
-                onRouteChanged: (path, route) {
-                  captured.add((path: path, hasRoute: route != null));
-                },
+                onRouteChanged:
+                    ({
+                      required fromPath,
+                      required toPath,
+                      required currentRoute,
+                    }) {
+                      captured.add(
+                        (path: toPath, hasRoute: currentRoute != null),
+                      );
+                    },
               ),
             ],
           ),

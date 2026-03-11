@@ -3,6 +3,9 @@ library;
 
 import 'dart:async';
 
+import 'package:app/infra/logging/log_sanitizer.dart';
+import 'package:app/infra/logging/structured_dio_logging_interceptor.dart';
+import 'package:app/infra/logging/structured_logger.dart';
 import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
 import 'package:sentry_dio/sentry_dio.dart';
@@ -23,27 +26,36 @@ class FF1WifiRestClient {
     Logger? logger,
   }) : _castApiUrl = castApiUrl,
        _apiKey = apiKey,
-       _logger = logger ?? Logger('FF1WifiRestClient'),
-       _dio = Dio()..addSentry();
+       _dio = Dio()
+         ..addSentry()
+         ..interceptors.add(
+           StructuredDioLoggingInterceptor(
+             logger: logger ?? Logger('FF1WifiRestClient'),
+             component: 'ff1_wifi_rest',
+           ),
+         ),
+       _structuredLogger = AppStructuredLog.forLogger(
+         logger ?? Logger('FF1WifiRestClient'),
+       );
 
   final String _castApiUrl;
   final String _apiKey;
-  final Logger _logger;
   final Dio _dio;
+  final StructuredLogger _structuredLogger;
 
   /// Send a command to the device.
   ///
   /// [topicId] — device identifier on the relayer
   /// [command] — command name (e.g., 'rotate', 'pause', 'play')
   /// [params] — command-specific parameters
-  /// [timeout] — request timeout (default 10 seconds)
+  /// [timeout] — request timeout (default 6 seconds)
   ///
   /// Returns the response from the device as a map.
   Future<Map<String, dynamic>> sendCommand({
     required String topicId,
     required String command,
     required Map<String, dynamic> params,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 6),
   }) async {
     try {
       // Validate configuration
@@ -61,51 +73,91 @@ class FF1WifiRestClient {
         'request': params,
       };
 
-      _logger.fine(
-        'Sending command to device: $command '
-        '(topicId: $topicId, url: $url)',
+      _structuredLogger.info(
+        category: LogCategory.domain,
+        event: 'ff1_command_started',
+        message: 'send command $command',
+        payload: {
+          'command': command,
+          'topicId': topicId,
+          'url': url,
+          'request': LogSanitizer.sanitizeMap(params),
+        },
       );
 
-      final response = await _dio
-          .get<dynamic>(
-            url,
-            queryParameters: {'topicID': topicId},
-            data: body,
-            options: Options(
-              headers: {
-                'API-KEY': _apiKey,
-                'Content-Type': 'application/json',
-              },
-            ),
-          )
-          .timeout(timeout);
+      final response = await _dio.get<dynamic>(
+        url,
+        queryParameters: {'topicID': topicId},
+        data: body,
+        options: Options(
+          headers: {
+            'API-KEY': _apiKey,
+            'Content-Type': 'application/json',
+          },
+          connectTimeout: timeout,
+          sendTimeout: timeout,
+          receiveTimeout: timeout,
+        ),
+      );
 
       final responseData = response.data;
 
       // Handle various response formats
       if (responseData is Map<String, dynamic>) {
-        _logger.fine('Command response: $responseData');
         return responseData;
       }
 
       if (responseData is Map) {
         final result = Map<String, dynamic>.from(responseData);
-        _logger.fine('Command response: $result');
         return result;
       }
 
-      _logger.warning(
-        'Unexpected response type: ${responseData.runtimeType}',
+      _structuredLogger.warning(
+        category: LogCategory.domain,
+        event: 'ff1_command_unexpected_response',
+        message: 'unexpected response type ${responseData.runtimeType}',
+        payload: {
+          'command': command,
+          'topicId': topicId,
+        },
       );
       return {};
     } on DioException catch (e) {
-      _logger.severe('DIO error sending command: $e');
+      _structuredLogger.error(
+        event: 'ff1_command_failed',
+        message: 'command $command failed',
+        error: e,
+        stackTrace: e.stackTrace,
+        payload: {
+          'command': command,
+          'topicId': topicId,
+          'error': LogSanitizer.sanitizeError(e),
+        },
+      );
       rethrow;
     } on Exception catch (e) {
-      _logger.severe('Error sending command: $e');
+      _structuredLogger.error(
+        event: 'ff1_command_failed',
+        message: 'command $command failed',
+        error: e,
+        payload: {
+          'command': command,
+          'topicId': topicId,
+          'error': LogSanitizer.sanitizeError(e),
+        },
+      );
       rethrow;
     } catch (e) {
-      _logger.severe('Unknown error sending command: $e');
+      _structuredLogger.error(
+        event: 'ff1_command_failed',
+        message: 'command $command failed',
+        error: e,
+        payload: {
+          'command': command,
+          'topicId': topicId,
+          'error': LogSanitizer.sanitizeError(e),
+        },
+      );
       rethrow;
     }
   }
