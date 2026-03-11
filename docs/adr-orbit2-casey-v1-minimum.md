@@ -20,6 +20,13 @@ Orbit 2 minimum is the publishing/playback spine only:
 - No runtime feed-first migration required.
 - No new endorsement shelves.
 
+## Channel selection policy (Orbit 2)
+
+- Feed `/channels` remains the authoritative object source.
+- Default app snapshot ingestion remains curated-selector driven (`channels_source`).
+- Full-feed ingestion is optional/explicit (`feed_endpoint`) and not the default operational path.
+- Broad user-facing add/follow of arbitrary external channels is deferred to Orbit 3+ trust/discovery work.
+
 ## Explicit cuts
 
 - Partner-controller/delegated auth work.
