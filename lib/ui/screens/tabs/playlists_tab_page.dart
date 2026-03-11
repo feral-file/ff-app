@@ -136,9 +136,11 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     final nextMeSectionAsync = widget.isActive
         ? ref.watch(meSectionPlaylistsProvider)
         : null;
+    // When loading, use initial (empty) to avoid showing stale favorites after
+    // Forget I Exist. Do not fall back to cache during reload.
     final nextMeSectionState = nextMeSectionAsync?.when(
           data: (v) => v,
-          loading: () => null,
+          loading: () => MeSectionPlaylistsState.initial,
           error: (_, _) => null,
         ) ?? _cachedMeSectionState;
 
@@ -163,8 +165,12 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
         _cachedMeSectionState = meSectionData;
       }
     }
-    final personalPlaylists = _cachedMeSectionState.playlists;
-    final error = curatedState.error ?? _cachedMeSectionState.error;
+    // When active, use nextMeSectionState so loading shows empty (e.g. after
+    // Forget I Exist). When inactive, use cache.
+    final displayMeSectionState =
+        widget.isActive ? nextMeSectionState : _cachedMeSectionState;
+    final personalPlaylists = displayMeSectionState.playlists;
+    final error = curatedState.error ?? displayMeSectionState.error;
     final curatedPlaylists = curatedState.playlists;
     final curatedSectionPlaylists = curatedPlaylists.where((playlist) {
       final channelId = playlist.channelId;

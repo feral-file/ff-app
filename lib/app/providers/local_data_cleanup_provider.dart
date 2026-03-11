@@ -65,6 +65,8 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     r.invalidate(playlistsProvider(PlaylistType.dp1));
     r.invalidate(playlistsProvider(PlaylistType.addressBased));
     r.invalidate(meSectionPlaylistsProvider);
+    r.invalidate(isWorkInFavoriteProvider);
+    r.invalidate(favoritePlaylistServiceProvider);
     r.invalidate(worksProvider);
     r.invalidate(addressesProvider);
     r.invalidate(appDatabaseProvider);
