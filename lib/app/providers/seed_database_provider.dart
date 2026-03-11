@@ -147,6 +147,32 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       _syncInProgress = false;
     }
   }
+
+  /// Notifies that a force-replace (e.g. Forget I Exist) has started.
+  /// Call from [forceReplaceDatabaseFromSeed] so tabs show [SeedSyncLoadingIndicator].
+  void notifyForceReplaceStarted() {
+    state = const SeedDownloadState(
+      status: SeedDownloadStatus.syncing,
+      progress: 0,
+    );
+  }
+
+  /// Updates progress during force-replace (0.0–1.0).
+  void notifyForceReplaceProgress(double progress) {
+    if (state.status == SeedDownloadStatus.syncing) {
+      state = state.copyWith(progress: progress);
+    }
+  }
+
+  /// Notifies that force-replace finished. Call after seed replacement completes.
+  void notifyForceReplaceFinished({bool success = true, String? errorMessage}) {
+    state = success
+        ? const SeedDownloadState(status: SeedDownloadStatus.done)
+        : SeedDownloadState(
+            status: SeedDownloadStatus.error,
+            errorMessage: errorMessage,
+          );
+  }
 }
 
 /// Provider for [SeedDownloadNotifier].

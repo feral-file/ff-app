@@ -1181,11 +1181,14 @@ LazyDatabase _openConnection() {
     _log.info('Opening database at: ${file.path}');
 
     // Run SQLite work on a background Drift isolate.
+    // singleClientMode: true ensures the isolate shuts down when the connection
+    // is closed (e.g. during Forget I Exist), preventing accumulation of orphan
+    // isolates.
     try {
       final driftIsolate = await DriftIsolate.spawn(
         () => _makeNativeDatabase(file),
       );
-      final connection = await driftIsolate.connect();
+      final connection = await driftIsolate.connect(singleClientMode: true);
       return connection.interceptWith(
         SentryQueryInterceptor(databaseName: file.path),
       );
@@ -1200,7 +1203,7 @@ LazyDatabase _openConnection() {
       final driftIsolate = await DriftIsolate.spawn(
         () => _makeNativeDatabase(file),
       );
-      final connection = await driftIsolate.connect();
+      final connection = await driftIsolate.connect(singleClientMode: true);
       return connection.interceptWith(
         SentryQueryInterceptor(databaseName: file.path),
       );
