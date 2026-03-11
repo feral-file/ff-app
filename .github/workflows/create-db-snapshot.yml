@@ -8,11 +8,16 @@ on:
         required: false
         type: string
         default: '8'
-      feed_endpoint:
-        description: Authoritative feed endpoint origin
+      channels_source:
+        description: Curated channel source (URL or file path)
         required: false
         type: string
-        default: 'https://dp1-feed-operator-api-prod.autonomy-system.workers.dev'
+        default: 'https://feralfile-remote-configs.pages.dev/ff-app.json'
+      feed_endpoint:
+        description: Optional feed endpoint origin to ingest all channels
+        required: false
+        type: string
+        default: ''
       required_channel_ids:
         description: Comma-separated channel IDs to require in snapshot
         required: false
@@ -42,7 +47,15 @@ jobs:
           set -euo pipefail
 
           args=("--threads" "${{ inputs.threads }}")
-          args+=("--channels-feed-endpoint" "${{ inputs.feed_endpoint }}")
+
+          if [[ -n "${{ inputs.channels_source }}" ]]; then
+            args+=("--channels-source" "${{ inputs.channels_source }}")
+          elif [[ -n "${{ inputs.feed_endpoint }}" ]]; then
+            args+=("--channels-feed-endpoint" "${{ inputs.feed_endpoint }}")
+          else
+            echo "Either channels_source or feed_endpoint is required" >&2
+            exit 1
+          fi
 
           if [[ -n "${{ inputs.required_channel_ids }}" ]]; then
             IFS=',' read -ra required_ids <<< "${{ inputs.required_channel_ids }}"

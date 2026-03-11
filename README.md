@@ -115,6 +115,9 @@ Required keys (ask team for dev/staging values):
 - `INDEXER_API_KEY`
 - `FF1_RELAYER_API_KEY` (or `TV_API_KEY`)
 
+Optional tooling key:
+- `FIGMA_API_KEY` (required only if using the Figma MCP server configured in `opencode.json`)
+
 If any required key is missing, the app will show a configuration error screen on launch.
 
 Starter template: copy `.env.example` to `.env` and fill in values.
@@ -156,10 +159,11 @@ Primary flags:
 
 The snapshot workflow (`.github/workflows/create-db-snapshot.yml`) now exposes:
 
-- `feed_endpoint`
+- `channels_source` (default curated selector source)
+- `feed_endpoint` (optional, for full-feed ingestion runs)
 - `required_channel_ids` (comma-separated)
 
-This removes manual channel URL edits from the operational path and fails clearly when the canary channel is missing.
+Default operation remains curated-channel selection. The canary gate still fails clearly when required channel IDs are missing.
 
 ---
 
