@@ -1176,7 +1176,21 @@ LazyDatabase _openConnection() {
 
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'dp1_library.sqlite'));
-    await _resetDatabaseIfSchemaConflicts(file, dbFolder);
+    final wasDeletedForSchemaConflict =
+        await _resetDatabaseIfSchemaConflicts(file, dbFolder);
+
+    // Never create an empty database in the normal flow. The app only uses
+    // the seed: download to temp dir, then replace current DB file. If the
+    // file is missing (e.g. download failed on first install), refuse to
+    // open. Schema conflict recovery may have deleted the file; in that
+    // edge case we allow SQLite to create (Drift onCreate) as fallback.
+    if (!file.existsSync() && !wasDeletedForSchemaConflict) {
+      throw StateError(
+        'Seed database file is missing at ${file.path}. '
+        'The app requires the seed to be downloaded; creating an empty '
+        'database is not supported.',
+      );
+    }
 
     _log.info('Opening database at: ${file.path}');
 
@@ -1211,12 +1225,14 @@ LazyDatabase _openConnection() {
   });
 }
 
-Future<void> _resetDatabaseIfSchemaConflicts(
+/// Returns true if the database file was deleted due to schema conflict.
+/// Caller may allow SQLite to create a fresh DB in that edge case.
+Future<bool> _resetDatabaseIfSchemaConflicts(
   File dbFile,
   Directory dbFolder,
 ) async {
   if (!dbFile.existsSync()) {
-    return;
+    return false;
   }
 
   sqlite3.Database? probeDb;
@@ -1226,7 +1242,7 @@ Future<void> _resetDatabaseIfSchemaConflicts(
     final userVersion = rows.isEmpty ? 0 : (rows.first.columnAt(0) as int);
     final schemaCompatible = _isSchemaCompatibleV1(probeDb);
     if (userVersion == _schemaVersionV1 && schemaCompatible) {
-      return;
+      return false;
     }
 
     _log.warning(
@@ -1236,6 +1252,7 @@ Future<void> _resetDatabaseIfSchemaConflicts(
     );
     await _deleteDatabaseFiles(dbFile);
     await _markDatabaseResetForReindex(dbFolder);
+    return true;
   } on Object catch (e, st) {
     _log.warning(
       'Failed to read schema version. Recreating database from scratch.',
@@ -1244,6 +1261,7 @@ Future<void> _resetDatabaseIfSchemaConflicts(
     );
     await _deleteDatabaseFiles(dbFile);
     await _markDatabaseResetForReindex(dbFolder);
+    return true;
   } finally {
     probeDb?.dispose();
   }

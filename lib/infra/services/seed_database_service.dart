@@ -91,14 +91,14 @@ class _SeedDatabaseS3Location {
 
 /// Service responsible for downloading and placing the seed database.
 ///
-/// On first install the local `dp1_library.sqlite` does not exist.
-/// Calling `downloadAndPlace` fetches the seed from S3-compatible storage
-/// and writes it
-/// to the correct path, so Drift opens it on the next DB operation instead
-/// of creating an empty database.
+/// The app never creates an empty database. Flow:
+/// 1) Download seed from S3-compatible storage to a temporary file.
+/// 2) Replace the current database file with the downloaded file (delete old
+///    files if any, then rename temp to canonical path).
 ///
-/// Call `needsSeedDownload` to determine whether the database file is missing
-/// before showing the download screen.
+/// On first install the local `dp1_library.sqlite` does not exist until the
+/// seed is placed. Call `needsSeedDownload` to determine whether the database
+/// file is missing before showing the download screen.
 class SeedDatabaseService {
   /// Creates a [SeedDatabaseService] using the provided [Dio] instance.
   SeedDatabaseService({
@@ -325,6 +325,10 @@ class SeedDatabaseService {
   }
 
   /// Replaces the live SQLite database file with a downloaded temp seed file.
+  ///
+  /// Does not create any database: deletes existing DB files (if any), then
+  /// renames the temp file to the canonical path. The seed artifact is the
+  /// only source of database content.
   Future<void> replaceDatabaseFromTemporaryFile(String tempPath) async {
     final dbPath = await databasePath();
     final tempFile = File(tempPath);

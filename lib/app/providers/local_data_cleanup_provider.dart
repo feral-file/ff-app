@@ -55,10 +55,18 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     return trimmed;
   }
 
-  /// Invalidates DB-related providers so they rebind to the new DB after
-  /// seed replacement.
+  /// Invalidates DB-related and UI providers so they rebind to the new DB
+  /// after seed replacement. Called from [forceReplaceDatabaseFromSeed]'s
+  /// afterReplace once the seed file is placed.
   Future<void> rebindDatabaseProviders() async {
     final r = ref;
+    r.invalidate(channelsProvider(ChannelType.dp1));
+    r.invalidate(channelsProvider(ChannelType.localVirtual));
+    r.invalidate(playlistsProvider(PlaylistType.dp1));
+    r.invalidate(playlistsProvider(PlaylistType.addressBased));
+    r.invalidate(meSectionPlaylistsProvider);
+    r.invalidate(worksProvider);
+    r.invalidate(addressesProvider);
     r.invalidate(appDatabaseProvider);
     r.invalidate(databaseServiceProvider);
     r.invalidate(seedDownloadProvider);
@@ -69,7 +77,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
   ///
   /// Updates [seedDownloadProvider] so Home tabs show loading during download.
   Future<void> forceReplaceDatabaseFromSeed() async {
-    final _log = Logger('LocalDataCleanupProvider');
+    final log = Logger('LocalDataCleanupProvider');
     final seedNotifier = ref.read(seedDownloadProvider.notifier);
     seedNotifier.notifyForceReplaceStarted();
 
@@ -88,13 +96,18 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
               final pct = (progress * 100).round();
               if (pct >= lastLoggedPct + 1 || pct >= 100) {
                 lastLoggedPct = pct;
-                _log.info('Seed database download progress: $pct%');
+                log.info('Seed database download progress: $pct%');
               }
             },
           );
-      seedNotifier.notifyForceReplaceFinished(success: true);
+      await ref
+          .read(appStateServiceProvider)
+          .setHasCompletedSeedDownload(
+            completed: true,
+          );
+      seedNotifier.notifyForceReplaceFinished();
     } on Object catch (e, st) {
-      _log.warning('Seed database force replace failed', e, st);
+      log.warning('Seed database force replace failed', e, st);
       seedNotifier.notifyForceReplaceFinished(
         success: false,
         errorMessage: e.toString(),
@@ -113,26 +126,13 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       r.invalidate(tokensSyncCoordinatorProvider);
     },
 
-    /// Invalidate UI providers first (so they detach from stale DB), then
-    /// close DB, delete SQLite files, and invalidate DB providers.
+    /// Closes the DB and deletes SQLite files. Does NOT invalidate providers
+    /// here, so nothing triggers a DB open while the file is missing. Providers
+    /// are invalidated in [rebindDatabaseProviders] after the seed is placed.
     closeAndDeleteDatabase: () async {
-      // Reset list/item providers so UI detaches from stale rows during swap.
-      final r = ref;
-      r.invalidate(channelsProvider(ChannelType.dp1));
-      r.invalidate(channelsProvider(ChannelType.localVirtual));
-      r.invalidate(playlistsProvider(PlaylistType.dp1));
-      r.invalidate(playlistsProvider(PlaylistType.addressBased));
-      r.invalidate(meSectionPlaylistsProvider);
-      r.invalidate(worksProvider);
-      r.invalidate(addressesProvider);
-
       final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
       await ref.read(databaseServiceProvider).close();
       await seedDatabaseService.deleteDatabaseFiles();
-
-      // Force all DB-backed dependencies to bind against a new DB instance.
-      r.invalidate(appDatabaseProvider);
-      r.invalidate(databaseServiceProvider);
     },
 
     /// Clears FF1 devices, app state, tracked addresses, etc.
@@ -251,8 +251,11 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     /// Called at end of clearLocalData (Forget I Exist): replace DB from seed
     /// and bootstrap so app can start fresh on onboarding.
     onResetCompleted: () async {
-      await forceReplaceDatabaseFromSeed();
-      await ref.read(bootstrapProvider.notifier).bootstrap();
+      final future = () async {
+        await forceReplaceDatabaseFromSeed();
+        await ref.read(bootstrapProvider.notifier).bootstrap();
+      };
+      unawaited(future());
     },
 
     /// Deletes playlist_cache.sqlite (legacy). Prevents migration from
