@@ -98,6 +98,7 @@ query getTokens(
 }
 `;
 const REMOTE_CONFIG_URL = 'https://feralfile-remote-configs.pages.dev/ff-app.json';
+const DEFAULT_CHANNEL_SOURCE = REMOTE_CONFIG_URL;
 const INDEXER_API_URL = 'https://indexer-v2.feralfile.com';
 const INDEXER_BATCH_SIZE = 50;
 
@@ -116,6 +117,8 @@ async function main() {
 
   const env = process.env;
   const indexerApiUrl = INDEXER_API_URL;
+  const channelSource = ARGS.channelsSource || DEFAULT_CHANNEL_SOURCE;
+  const channelsFeedEndpoint = ARGS.channelsFeedEndpoint;
 
   const outputPath = DEFAULT_OUTPUT;
   const s3Config = resolveS3Config({
@@ -128,14 +131,21 @@ async function main() {
     fs.unlinkSync(outputPath);
   }
 
-  console.log(`[build] remote_config=${REMOTE_CONFIG_URL}`);
+  if (channelsFeedEndpoint) {
+    console.log(`[build] channels_feed_endpoint=${channelsFeedEndpoint}`);
+  } else {
+    console.log(`[build] channels_source=${channelSource}`);
+  }
   console.log(`[build] indexer=${indexerApiUrl}`);
   console.log(`[build] out=${outputPath}`);
 
-  const channels = await fetchChannelsFromRemoteConfig();
+  const channels = channelsFeedEndpoint
+    ? await fetchChannelsFromFeedEndpoint(channelsFeedEndpoint)
+    : await fetchChannelsFromSource(channelSource);
   if (channels.length === 0) {
-    throw new Error('No channels fetched from remote config.');
+    throw new Error('No channels fetched from source.');
   }
+  enforceRequiredChannels(channels, ARGS.requireChannelIds);
   console.log(`[feed] channels=${channels.length}`);
   const threads = normalizeThreads(ARGS.threads);
   console.log(`[build] threads=${threads}`);
@@ -259,6 +269,9 @@ function parseArgs(argv) {
     s3Endpoint: undefined,
     maxPlaylistsPerChannel: undefined,
     threads: Math.max(1, Math.min(8, os.cpus().length || 4)),
+    channelsSource: undefined,
+    channelsFeedEndpoint: undefined,
+    requireChannelIds: [],
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -284,6 +297,18 @@ function parseArgs(argv) {
         out.threads = Number(next);
         i += 1;
         break;
+      case '--channels-source':
+        out.channelsSource = next;
+        i += 1;
+        break;
+      case '--channels-feed-endpoint':
+        out.channelsFeedEndpoint = next;
+        i += 1;
+        break;
+      case '--require-channel-id':
+        out.requireChannelIds.push(String(next || '').trim());
+        i += 1;
+        break;
       default:
         if (arg.startsWith('-')) {
           throw new Error(`Unknown argument: ${arg}`);
@@ -292,6 +317,20 @@ function parseArgs(argv) {
     }
   }
   return out;
+}
+
+function enforceRequiredChannels(channels, requiredChannelIds = []) {
+  const required = requiredChannelIds.filter((id) => id);
+  if (required.length === 0) {
+    return;
+  }
+  const available = new Set(channels.map((channel) => channel.id));
+  const missing = required.filter((id) => !available.has(id));
+  if (missing.length > 0) {
+    throw new Error(
+      `Required channels are missing from source: ${missing.join(', ')}`
+    );
+  }
 }
 
 function findRepoRoot() {
@@ -316,11 +355,62 @@ function ensureSqliteCli() {
   }
 }
 
-async function fetchChannelsFromRemoteConfig() {
-  const payload = await fetchJson(REMOTE_CONFIG_URL);
+async function fetchChannelsFromSource(source) {
+  const payload = await loadJsonSource(source);
+  if (Array.isArray(payload?.exhibitions)) {
+    return extractChannelsFromPublishArtifact(payload);
+  }
+  return extractChannelsFromLegacyConfig(payload);
+}
+
+async function fetchChannelsFromFeedEndpoint(rawFeedEndpoint) {
+  const baseUrl = normalizeOrigin(rawFeedEndpoint);
+  const channels = await fetchFeedPages({
+    feedBaseUrl: baseUrl,
+    route: '/api/v1/channels',
+  });
+  const out = [];
+  for (const channel of channels) {
+    if (!channel?.id) {
+      continue;
+    }
+    out.push({
+      id: String(channel.id),
+      baseUrl,
+      channelUrl: `${baseUrl}/api/v1/channels/${encodeURIComponent(channel.id)}`,
+      publisherId: 1,
+      publisherTitle: 'Feral File',
+    });
+  }
+  const deduped = new Map();
+  for (const channel of out) {
+    deduped.set(`${channel.baseUrl}::${channel.id}`, channel);
+  }
+  return [...deduped.values()];
+}
+
+function normalizeOrigin(rawUrl) {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+    throw new Error('Invalid feed endpoint: expected non-empty URL');
+  }
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error(`Invalid feed endpoint URL: ${rawUrl}`);
+  }
+  if (!/^https?:$/.test(parsed.protocol)) {
+    throw new Error(
+      `Unsupported feed endpoint protocol: ${parsed.protocol} (expected http/https)`
+    );
+  }
+  return parsed.origin;
+}
+
+function extractChannelsFromLegacyConfig(payload) {
   const publishers = payload?.dp1_playlist?.publishers;
   if (!Array.isArray(publishers)) {
-    throw new Error('Invalid remote config: missing dp1_playlist.publishers');
+    throw new Error('Invalid channels source: missing dp1_playlist.publishers');
   }
 
   const channels = [];
@@ -348,6 +438,50 @@ async function fetchChannelsFromRemoteConfig() {
     deduped.set(`${channel.baseUrl}::${channel.id}`, channel);
   }
   return [...deduped.values()];
+}
+
+function extractChannelsFromPublishArtifact(payload) {
+  const exhibitions = payload.exhibitions;
+  const channels = [];
+  for (const exhibition of exhibitions) {
+    if (!exhibition || exhibition.status !== 'success') {
+      continue;
+    }
+    const parsed = parseChannelUrl(exhibition?.channel?.url);
+    if (!parsed) {
+      continue;
+    }
+    channels.push({
+      ...parsed,
+      publisherId: 1,
+      publisherTitle: 'Feral File',
+    });
+  }
+  const deduped = new Map();
+  for (const channel of channels) {
+    deduped.set(`${channel.baseUrl}::${channel.id}`, channel);
+  }
+  return [...deduped.values()];
+}
+
+async function loadJsonSource(source) {
+  if (typeof source !== 'string' || source.trim() === '') {
+    throw new Error('Invalid channels source: expected URL or file path');
+  }
+  const trimmed = source.trim();
+  if (/^https?:\/\//.test(trimmed)) {
+    return fetchJson(trimmed);
+  }
+  const filePath = path.resolve(trimmed);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Channels source file not found: ${filePath}`);
+  }
+  const content = fs.readFileSync(filePath, 'utf-8');
+  try {
+    return JSON.parse(content);
+  } catch (error) {
+    throw new Error(`Invalid JSON in channels source file ${filePath}: ${error}`);
+  }
 }
 
 function parseChannelUrl(rawChannelUrl) {
