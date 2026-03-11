@@ -28,8 +28,8 @@ void main() {
       recreateDatabaseFromSeed: () async {
         events.add('recreate-db-from-seed');
       },
-      getFavoriteHistorySnapshot: () async => const [],
-      restoreFavoriteHistory: (_) async {},
+      getFavoritePlaylistsSnapshot: () async => const [],
+      restoreFavoritePlaylists: (_) async {},
       runBootstrap: () async {},
       pauseFeedWork: () {
         events.add('pause-feed');
@@ -79,8 +79,8 @@ void main() {
       recreateDatabaseFromSeed: () async {
         events.add('recreate-db-from-seed');
       },
-      getFavoriteHistorySnapshot: () async => const [],
-      restoreFavoriteHistory: (_) async {},
+      getFavoritePlaylistsSnapshot: () async => const [],
+      restoreFavoritePlaylists: (_) async {},
       runBootstrap: () async {},
       pauseFeedWork: () {
         events.add('pause-feed');
@@ -133,12 +133,12 @@ void main() {
         recreateDatabaseFromSeed: () async {
           events.add('recreate-db-from-seed');
         },
-        getFavoriteHistorySnapshot: () async {
-          events.add('get-favorite-history-snapshot');
-          return const <FavoriteHistoryEntrySnapshot>[];
+        getFavoritePlaylistsSnapshot: () async {
+          events.add('get-favorite-playlists-snapshot');
+          return const <FavoritePlaylistSnapshot>[];
         },
-        restoreFavoriteHistory: (_) async {
-          events.add('restore-favorite-history');
+        restoreFavoritePlaylists: (_) async {
+          events.add('restore-favorite-playlists');
         },
         runBootstrap: () async {
           events.add('run-bootstrap');
@@ -159,7 +159,7 @@ void main() {
         'pause-token-polling',
         'stop-workers',
         'get-addresses',
-        'get-favorite-history-snapshot',
+        'get-favorite-playlists-snapshot',
         'recreate-db-from-seed',
         'run-bootstrap',
         'restore:0xabc',

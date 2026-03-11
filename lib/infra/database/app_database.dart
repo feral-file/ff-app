@@ -994,13 +994,6 @@ class AppDatabase extends _$AppDatabase {
     await (delete(playlistEntries)..where((t) => t.itemId.equals(itemId))).go();
   }
 
-  /// Get Favorite playlist entries for rebuild-metadata snapshot.
-  Future<List<PlaylistEntryData>> getFavoriteHistoryEntries() async {
-    return (select(playlistEntries)
-          ..where((t) => t.playlistId.equals(Playlist.favoriteId)))
-        .get();
-  }
-
   /// Delete a single playlist entry by playlist ID and item ID.
   Future<void> deletePlaylistEntry({
     required String playlistId,
@@ -1042,32 +1035,20 @@ class AppDatabase extends _$AppDatabase {
           .watchSingleOrNull()
           .map((entry) => entry != null);
 
-  /// Delete playlist entries and items for address-based playlists in one
-  /// transaction.
+  /// Delete playlist entries for address-based playlists.
   ///
-  /// Uses two raw SQL statements: delete items first (subquery reads
-  /// playlist_entries), then delete playlist_entries. [addresses] must be
-  /// pre-normalized by the caller.
+  /// Items are not deleted; orphaned items stay in the database.
+  /// [addresses] must be pre-normalized by the caller.
   Future<void> deleteItemsAndEntriesOfAddresses(List<String> addresses) async {
     if (addresses.isEmpty) return;
     final placeholders = addresses.map((_) => '?').join(',');
-    await transaction(() async {
-      await customStatement(
-        'DELETE FROM items WHERE id IN ( '
-        'SELECT pe.item_id FROM playlist_entries pe '
-        'INNER JOIN playlists p ON p.id = pe.playlist_id '
-        'WHERE p.type = 1 '
-        "AND LOWER(TRIM(COALESCE(p.owner_address, ''))) IN ($placeholders))",
-        addresses,
-      );
-      await customStatement(
-        'DELETE FROM playlist_entries WHERE playlist_id IN ( '
-        'SELECT id FROM playlists '
-        'WHERE type = 1 '
-        "AND LOWER(TRIM(COALESCE(owner_address, ''))) IN ($placeholders))",
-        addresses,
-      );
-    });
+    await customStatement(
+      'DELETE FROM playlist_entries WHERE playlist_id IN ( '
+      'SELECT id FROM playlists '
+      'WHERE type = 1 '
+      "AND LOWER(TRIM(COALESCE(owner_address, ''))) IN ($placeholders))",
+      addresses,
+    );
   }
 
   /// Force WAL checkpoint to write pending changes to main database file.

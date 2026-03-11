@@ -15,10 +15,10 @@ class LocalDataCleanupService {
     restorePersonalAddressPlaylists,
     required Future<void> Function(List<String> addresses) refetchFromBeginning,
     required Future<void> Function() recreateDatabaseFromSeed,
-    required Future<List<FavoriteHistoryEntrySnapshot>> Function()
-    getFavoriteHistorySnapshot,
-    required Future<void> Function(List<FavoriteHistoryEntrySnapshot> snapshot)
-    restoreFavoriteHistory,
+    required Future<List<FavoritePlaylistSnapshot>> Function()
+    getFavoritePlaylistsSnapshot,
+    required Future<void> Function(List<FavoritePlaylistSnapshot> snapshots)
+    restoreFavoritePlaylists,
     required Future<void> Function() runBootstrap,
     required void Function() pauseFeedWork,
     required void Function() pauseTokenPolling,
@@ -35,8 +35,8 @@ class LocalDataCleanupService {
        _restorePersonalAddressPlaylists = restorePersonalAddressPlaylists,
        _refetchFromBeginning = refetchFromBeginning,
        _recreateDatabaseFromSeed = recreateDatabaseFromSeed,
-       _getFavoriteHistorySnapshot = getFavoriteHistorySnapshot,
-       _restoreFavoriteHistory = restoreFavoriteHistory,
+       _getFavoritePlaylistsSnapshot = getFavoritePlaylistsSnapshot,
+       _restoreFavoritePlaylists = restoreFavoritePlaylists,
        _runBootstrap = runBootstrap,
        _pauseFeedWork = pauseFeedWork,
        _pauseTokenPolling = pauseTokenPolling,
@@ -55,10 +55,10 @@ class LocalDataCleanupService {
   _restorePersonalAddressPlaylists;
   final Future<void> Function(List<String> addresses) _refetchFromBeginning;
   final Future<void> Function() _recreateDatabaseFromSeed;
-  final Future<List<FavoriteHistoryEntrySnapshot>> Function()
-  _getFavoriteHistorySnapshot;
-  final Future<void> Function(List<FavoriteHistoryEntrySnapshot> snapshot)
-  _restoreFavoriteHistory;
+  final Future<List<FavoritePlaylistSnapshot>> Function()
+  _getFavoritePlaylistsSnapshot;
+  final Future<void> Function(List<FavoritePlaylistSnapshot> snapshots)
+  _restoreFavoritePlaylists;
   final Future<void> Function() _runBootstrap;
   final void Function() _pauseFeedWork;
   final void Function() _pauseTokenPolling;
@@ -120,8 +120,8 @@ class LocalDataCleanupService {
 
     _log.info('rebuildMetadata: getPersonalAddresses');
     final addresses = await _getPersonalAddresses();
-    _log.info('rebuildMetadata: getFavoriteHistorySnapshot');
-    final snapshot = await _getFavoriteHistorySnapshot();
+    _log.info('rebuildMetadata: getFavoritePlaylistsSnapshot');
+    final snapshots = await _getFavoritePlaylistsSnapshot();
     _log.info('rebuildMetadata: recreateDatabaseFromSeed');
     await _recreateDatabaseFromSeed();
 
@@ -133,9 +133,9 @@ class LocalDataCleanupService {
       await _restorePersonalAddressPlaylists(addresses);
     }
 
-    if (snapshot.isNotEmpty) {
-      _log.info('rebuildMetadata: restoreFavoriteHistory');
-      await _restoreFavoriteHistory(snapshot);
+    if (snapshots.isNotEmpty) {
+      _log.info('rebuildMetadata: restoreFavoritePlaylists');
+      await _restoreFavoritePlaylists(snapshots);
     }
 
     _log.info('rebuildMetadata: clearCachedImages');

@@ -1,15 +1,21 @@
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/infra/database/app_database.dart';
 import 'package:flutter/foundation.dart';
 
-/// Snapshot of a Favorite or History playlist entry for rebuild-metadata restore.
+/// Snapshot of a single Favorite playlist for rebuild-metadata restore.
+///
+/// Contains playlist metadata and item rows. Entries are recreated on restore.
 @immutable
-class FavoriteHistoryEntrySnapshot {
-  const FavoriteHistoryEntrySnapshot({
-    required this.playlistId,
-    required this.itemId,
-    required this.sortKeyUs,
+class FavoritePlaylistSnapshot {
+  /// Creates a [FavoritePlaylistSnapshot].
+  const FavoritePlaylistSnapshot({
+    required this.playlist,
+    required this.items,
   });
 
-  final String playlistId;
-  final String itemId;
-  final int sortKeyUs;
+  /// Playlist metadata (type = favorite).
+  final Playlist playlist;
+
+  /// Full item rows for works in this playlist.
+  final List<ItemData> items;
 }

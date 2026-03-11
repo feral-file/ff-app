@@ -130,13 +130,13 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
         );
       }
     },
-    getFavoriteHistorySnapshot: () async {
+    getFavoritePlaylistsSnapshot: () async {
       final databaseService = ref.read(databaseServiceProvider);
-      return databaseService.getFavoriteHistoryEntriesSnapshot();
+      return databaseService.getFavoritePlaylistsSnapshot();
     },
-    restoreFavoriteHistory: (snapshot) async {
+    restoreFavoritePlaylists: (snapshots) async {
       final databaseService = ref.read(databaseServiceProvider);
-      await databaseService.restoreFavoriteHistoryEntries(snapshot);
+      await databaseService.restoreFavoritePlaylistsSnapshot(snapshots);
     },
     runBootstrap: () async {
       await ref.read(bootstrapProvider.notifier).bootstrap();
