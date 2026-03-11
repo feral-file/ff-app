@@ -15,6 +15,7 @@ class NowDisplayingVisibilityState {
     required this.bottomSheetVisibility,
     required this.keyboardVisibility,
     required this.hasFF1,
+    required this.workDetailPanelExpanded,
   });
 
   const NowDisplayingVisibilityState.initial()
@@ -22,7 +23,8 @@ class NowDisplayingVisibilityState {
       nowDisplayingVisibility = true,
       bottomSheetVisibility = false,
       keyboardVisibility = false,
-      hasFF1 = false;
+      hasFF1 = false,
+      workDetailPanelExpanded = false;
 
   final bool shouldShowNowDisplaying;
   final bool nowDisplayingVisibility;
@@ -32,12 +34,16 @@ class NowDisplayingVisibilityState {
   /// Whether there is at least one paired FF1 device (active or not)
   final bool hasFF1;
 
+  /// When true, work detail info panel is expanded; hide the bar.
+  final bool workDetailPanelExpanded;
+
   bool get shouldShow {
     final shouldShow =
         shouldShowNowDisplaying &&
         nowDisplayingVisibility &&
         !bottomSheetVisibility &&
         !keyboardVisibility &&
+        !workDetailPanelExpanded &&
         hasFF1;
     if (shouldShow) {
       log.info('shouldShow: $shouldShow');
@@ -53,6 +59,7 @@ class NowDisplayingVisibilityState {
     bool? bottomSheetVisibility,
     bool? keyboardVisibility,
     bool? hasFF1,
+    bool? workDetailPanelExpanded,
   }) {
     return NowDisplayingVisibilityState(
       shouldShowNowDisplaying:
@@ -63,6 +70,8 @@ class NowDisplayingVisibilityState {
           bottomSheetVisibility ?? this.bottomSheetVisibility,
       keyboardVisibility: keyboardVisibility ?? this.keyboardVisibility,
       hasFF1: hasFF1 ?? this.hasFF1,
+      workDetailPanelExpanded:
+          workDetailPanelExpanded ?? this.workDetailPanelExpanded,
     );
   }
 }
@@ -133,5 +142,9 @@ class NowDisplayingVisibilityNotifier
 
   void setKeyboardVisibility(bool value) {
     state = state.copyWith(keyboardVisibility: value);
+  }
+
+  void setWorkDetailPanelExpanded(bool value) {
+    state = state.copyWith(workDetailPanelExpanded: value);
   }
 }
