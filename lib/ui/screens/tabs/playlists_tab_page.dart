@@ -42,6 +42,7 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
   final ScrollController _scrollController = ScrollController();
   PlaylistsState _cachedCuratedState = PlaylistsState.initial();
   MeSectionPlaylistsState _cachedMeSectionState = MeSectionPlaylistsState.initial;
+  SeedDownloadStatus? _prevSeedStatus;
 
   @override
   bool get wantKeepAlive => true;
@@ -112,6 +113,15 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     super.build(context);
 
     final seedState = ref.watch(seedDownloadProvider);
+    // Clear cache when seed sync completes (e.g. Forget I Exist) so we never
+    // show stale Favorite/Me section data from before the reset.
+    if (_prevSeedStatus == SeedDownloadStatus.syncing &&
+        seedState.status != SeedDownloadStatus.syncing) {
+      _cachedMeSectionState = MeSectionPlaylistsState.initial;
+      _cachedCuratedState = PlaylistsState.initial();
+    }
+    _prevSeedStatus = seedState.status;
+
     if (seedState.status == SeedDownloadStatus.syncing) {
       return SeedSyncLoadingIndicator(
         progress: seedState.progress,

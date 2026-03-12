@@ -5,6 +5,7 @@ import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
+import 'package:app/app/providers/playlist_details_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
@@ -67,6 +68,8 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     r.invalidate(meSectionPlaylistsProvider);
     r.invalidate(isWorkInFavoriteProvider);
     r.invalidate(favoritePlaylistServiceProvider);
+    r.invalidate(playlistsProvider(PlaylistType.favorite));
+    r.invalidate(playlistDetailsProvider);
     r.invalidate(worksProvider);
     r.invalidate(addressesProvider);
     r.invalidate(appDatabaseProvider);
