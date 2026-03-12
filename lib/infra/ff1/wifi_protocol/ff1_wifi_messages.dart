@@ -10,6 +10,7 @@ library;
 import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
 import 'package:app/domain/models/ff1/device_display_setting.dart';
+import 'package:app/domain/models/ff1/loop_mode.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:app/domain/models/models.dart';
 
@@ -185,6 +186,8 @@ class FF1PlayerStatus {
     this.error,
     this.items,
     this.sleepMode,
+    this.shuffle,
+    this.loopMode,
   }) : isPaused = isPaused ?? false;
 
   /// Deserialize from JSON.
@@ -210,6 +213,10 @@ class FF1PlayerStatus {
           ? ReplyError.fromString(json['error'] as String)
           : null,
       sleepMode: json['sleepMode'] as bool?,
+      shuffle: json['shuffle'] as bool?,
+      loopMode: json['loopMode'] != null
+          ? LoopMode.fromString(json['loopMode'] as String)
+          : null,
     );
   }
 
@@ -231,6 +238,12 @@ class FF1PlayerStatus {
   /// Whether device is in sleep mode.
   final bool? sleepMode;
 
+  /// Whether shuffle is enabled.
+  final bool? shuffle;
+
+  /// Current loop mode.
+  final LoopMode? loopMode;
+
   /// Error.
   final ReplyError? error;
 
@@ -243,6 +256,8 @@ class FF1PlayerStatus {
     'error': error?.jsonString,
     'sleepMode': sleepMode,
     'items': items?.map((item) => item.toJson()).toList(),
+    'shuffle': shuffle,
+    'loopMode': loopMode?.wireValue,
   };
 
   /// Whether device is in sleep mode or paused.
@@ -682,6 +697,40 @@ class FF1WifiToggleMuteRequest extends FF1WifiCommandRequest {
 
   @override
   Map<String, dynamic> get params => {};
+}
+
+/// Enable or disable shuffle playback on the device.
+class FF1WifiShuffleRequest extends FF1WifiCommandRequest {
+  /// Creates a shuffle request.
+  ///
+  /// [enabled] — true to enable shuffle, false to disable it.
+  const FF1WifiShuffleRequest({required this.enabled});
+
+  /// Whether shuffle is enabled.
+  final bool enabled;
+
+  @override
+  String get command => 'setShuffle';
+
+  @override
+  Map<String, dynamic> get params => {'enabled': enabled};
+}
+
+/// Set the loop (repeat) mode on the device.
+class FF1WifiSetLoopRequest extends FF1WifiCommandRequest {
+  /// Creates a set-loop request.
+  ///
+  /// [mode] — none, playlist, or one.
+  const FF1WifiSetLoopRequest({required this.mode});
+
+  /// Loop mode.
+  final LoopMode mode;
+
+  @override
+  String get command => 'setLoop';
+
+  @override
+  Map<String, dynamic> get params => {'mode': mode.wireValue};
 }
 
 /// Base class for command responses.

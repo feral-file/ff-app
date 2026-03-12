@@ -185,7 +185,7 @@ class _ControlButtonState extends State<_ControlButton> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (_isProcessing)
+            if (_isProcessing) ...[
               const SizedBox(
                 width: 14,
                 height: 14,
@@ -193,8 +193,9 @@ class _ControlButtonState extends State<_ControlButton> {
                   strokeWidth: 2,
                   color: AppColor.white,
                 ),
-              )
-            else if (widget.leading != null) ...[
+              ),
+              const SizedBox(width: 8),
+            ] else if (widget.leading != null) ...[
               widget.leading!,
               const SizedBox(width: 8),
             ],

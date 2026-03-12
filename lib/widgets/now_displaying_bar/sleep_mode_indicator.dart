@@ -78,10 +78,12 @@ class _SleepModeIndicatorState extends ConsumerState<SleepModeIndicator>
     _animationController.repeat(reverse: true);
 
     try {
-      await ref.read(canvasClientServiceV2Provider).setSleepMode(
-        device,
-        !widget.isSleeping,
-      );
+      await ref
+          .read(canvasClientServiceV2Provider)
+          .setSleepMode(
+            device,
+            !widget.isSleeping,
+          );
     } finally {
       if (!mounted) {
         return;
@@ -114,8 +116,8 @@ class _SleepModeIndicatorState extends ConsumerState<SleepModeIndicator>
         onTap: _handleTap,
         behavior: HitTestBehavior.opaque,
         child: SizedBox(
-          width: LayoutConstants.minTouchTarget,
-          height: LayoutConstants.minTouchTarget,
+          width: LayoutConstants.minTouchTarget * 0.75,
+          height: LayoutConstants.minTouchTarget * 0.75,
           child: Center(
             child: AnimatedBuilder(
               animation: _blinkAnimation,
