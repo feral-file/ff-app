@@ -3,6 +3,7 @@ import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 /// Manages its own enabled/disabled state. Sends [FF1WifiControl.setShuffle]
 /// via WiFi. On error the state is reverted (optimistic update).
 class ShuffleButton extends ConsumerStatefulWidget {
+  /// Constructor.
   const ShuffleButton({super.key});
 
   @override
@@ -56,7 +58,7 @@ class _ShuffleButtonState extends ConsumerState<ShuffleButton> {
       await ref
           .read(ff1WifiControlProvider)
           .setShuffle(topicId: topicId, enabled: next);
-    } on Exception catch (_) {
+    } on Object catch (_) {
       if (mounted) setState(() => _isEnabled = previous);
     }
   }

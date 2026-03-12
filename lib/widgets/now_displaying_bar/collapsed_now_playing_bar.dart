@@ -102,4 +102,3 @@ class CollapsedNowPlayingBar extends ConsumerWidget {
     );
   }
 }
-

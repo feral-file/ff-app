@@ -7,7 +7,8 @@ enum LoopMode {
   playlist,
 
   /// Loop the currently displayed artwork indefinitely.
-  one;
+  one
+  ;
 
   /// Wire format value sent to the device.
   String get wireValue {

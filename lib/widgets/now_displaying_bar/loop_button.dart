@@ -5,6 +5,7 @@ import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1/loop_mode.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +17,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 /// on each tap. Sends [FF1WifiControl.setLoop] via WiFi.
 /// On error the state is reverted (optimistic update).
 class LoopButton extends ConsumerStatefulWidget {
+  /// Constructor.
   const LoopButton({super.key});
 
   @override
@@ -59,7 +61,7 @@ class _LoopButtonState extends ConsumerState<LoopButton> {
       await ref
           .read(ff1WifiControlProvider)
           .setLoop(topicId: topicId, mode: next);
-    } on Exception catch (_) {
+    } on Object catch (_) {
       if (mounted) setState(() => _mode = previous);
     }
   }
