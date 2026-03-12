@@ -1,8 +1,8 @@
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
-import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/domain/models/indexer/sync_collection.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -43,8 +43,7 @@ class IntegrationAppStateService implements AppStateService {
   @override
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
-  ) =>
-      Stream.value(null);
+  ) => Stream.value(null);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -54,11 +53,11 @@ class IntegrationAppStateService implements AppStateService {
 /// getManualTokens for controlled integration tests.
 class MockIndexerServiceForSyncCollection extends IndexerService {
   MockIndexerServiceForSyncCollection({
-    required IndexerClient client,
+    required super.client,
     required this.realService,
     this.mockSyncResult,
     this.mockTokensById = const {},
-  }) : super(client: client);
+  });
 
   final IndexerService realService;
   SyncCollectionResult? mockSyncResult;
@@ -277,8 +276,11 @@ void main() {
         indexerService: indexerService,
         address: resolvedAddress,
       );
-      expect(baselineTokens.length, greaterThanOrEqualTo(3),
-          reason: 'Need at least 3 tokens for syncCollection test');
+      expect(
+        baselineTokens.length,
+        greaterThanOrEqualTo(3),
+        reason: 'Need at least 3 tokens for syncCollection test',
+      );
 
       final tokenToRelease = baselineTokens[0];
       final tokenToUpdate1 = baselineTokens[1];
@@ -308,7 +310,6 @@ void main() {
             id: 2,
             tokenId: tokenToRelease.id,
             eventType: 'metadata_updated',
-            ownerAddress: null,
             occurredAt: baseTime.add(const Duration(seconds: 2)),
           ),
           TokenEvent(
@@ -322,7 +323,6 @@ void main() {
             id: 4,
             tokenId: tokenToRelease.id,
             eventType: 'metadata_updated',
-            ownerAddress: null,
             occurredAt: baseTime.add(const Duration(seconds: 4)),
           ),
           TokenEvent(
@@ -351,7 +351,6 @@ void main() {
             id: 8,
             tokenId: tokenToUpdate1.id,
             eventType: 'metadata_updated',
-            ownerAddress: null,
             occurredAt: baseTime.add(const Duration(seconds: 12)),
           ),
           TokenEvent(
@@ -366,7 +365,6 @@ void main() {
             id: 10,
             tokenId: tokenToUpdate2.id,
             eventType: 'metadata_updated',
-            ownerAddress: null,
             occurredAt: baseTime.add(const Duration(seconds: 20)),
           ),
           TokenEvent(
@@ -380,14 +378,12 @@ void main() {
             id: 12,
             tokenId: tokenToUpdate2.id,
             eventType: 'metadata_updated',
-            ownerAddress: null,
             occurredAt: baseTime.add(const Duration(seconds: 22)),
           ),
           TokenEvent(
             id: 13,
             tokenId: tokenToUpdate2.id,
             eventType: 'metadata_updated',
-            ownerAddress: null,
             occurredAt: baseTime.add(const Duration(seconds: 23)),
           ),
         ],

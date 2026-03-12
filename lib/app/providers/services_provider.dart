@@ -136,15 +136,16 @@ final indexerServiceProvider = Provider<IndexerService>((ref) {
 });
 
 /// Provider for IndexerServiceIsolate (runs indexer API in dedicated isolate).
-final indexerServiceIsolateProvider =
-    Provider<IndexerServiceIsolateOperations>((ref) {
-  final isolate = IndexerServiceIsolate(
-    endpoint: AppConfig.indexerApiUrl,
-    apiKey: AppConfig.indexerApiKey,
-  );
-  ref.onDispose(isolate.stop);
-  return isolate;
-});
+final indexerServiceIsolateProvider = Provider<IndexerServiceIsolateOperations>(
+  (ref) {
+    final isolate = IndexerServiceIsolate(
+      endpoint: AppConfig.indexerApiUrl,
+      apiKey: AppConfig.indexerApiKey,
+    );
+    ref.onDispose(isolate.stop);
+    return isolate;
+  },
+);
 
 /// Provider for IndexerSyncService (fetch + local ingestion).
 final indexerSyncServiceProvider = Provider<IndexerSyncService>((ref) {
@@ -170,12 +171,12 @@ final personalTokensSyncServiceProvider = Provider<PersonalTokensSyncService>((
 /// Provider for syncCollection-based address token updates.
 final addressSyncCollectionServiceProvider =
     Provider<AddressSyncCollectionService>((ref) {
-  return AddressSyncCollectionService(
-    indexerService: ref.watch(indexerServiceProvider),
-    databaseService: ref.watch(databaseServiceProvider),
-    appStateService: ref.watch(appStateServiceProvider),
-  );
-});
+      return AddressSyncCollectionService(
+        indexerService: ref.watch(indexerServiceProvider),
+        databaseService: ref.watch(databaseServiceProvider),
+        appStateService: ref.watch(appStateServiceProvider),
+      );
+    });
 
 /// Provider for one-time legacy data migration service.
 final legacyDataMigrationServiceProvider = Provider<LegacyDataMigrationService>(

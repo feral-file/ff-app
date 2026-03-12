@@ -20,7 +20,7 @@ void main() {
           tokenId: 100,
           eventType: 'released',
           ownerAddress: '0xaaa',
-          occurredAt: DateTime(2024, 1, 1),
+          occurredAt: DateTime.utc(2024),
         ),
       ];
       final result = groupTokenEvents(
@@ -38,7 +38,7 @@ void main() {
           tokenId: 100,
           eventType: 'acquired',
           ownerAddress: '0xaaa',
-          occurredAt: DateTime(2024, 1, 1),
+          occurredAt: DateTime.utc(2024),
         ),
       ];
       final result = groupTokenEvents(
@@ -56,14 +56,14 @@ void main() {
           tokenId: 100,
           eventType: 'released',
           ownerAddress: '0xaaa',
-          occurredAt: DateTime(2024, 1, 1),
+          occurredAt: DateTime.utc(2024),
         ),
         TokenEvent(
           id: 2,
           tokenId: 100,
           eventType: 'acquired',
           ownerAddress: '0xaaa',
-          occurredAt: DateTime(2024, 1, 2),
+          occurredAt: DateTime.utc(2024, 1, 2),
         ),
       ];
       final result = groupTokenEvents(
@@ -80,8 +80,7 @@ void main() {
           id: 1,
           tokenId: 100,
           eventType: 'metadata_updated',
-          ownerAddress: null,
-          occurredAt: DateTime(2024, 1, 1),
+          occurredAt: DateTime.utc(2024),
         ),
       ];
       final result = groupTokenEvents(
@@ -99,21 +98,20 @@ void main() {
           tokenId: 100,
           eventType: 'released',
           ownerAddress: '0xaaa',
-          occurredAt: DateTime(2024, 1, 1),
+          occurredAt: DateTime.utc(2024),
         ),
         TokenEvent(
           id: 2,
           tokenId: 200,
           eventType: 'acquired',
           ownerAddress: '0xaaa',
-          occurredAt: DateTime(2024, 1, 1),
+          occurredAt: DateTime.utc(2024),
         ),
         TokenEvent(
           id: 3,
           tokenId: 300,
           eventType: 'metadata_updated',
-          ownerAddress: null,
-          occurredAt: DateTime(2024, 1, 1),
+          occurredAt: DateTime.utc(2024),
         ),
       ];
       final result = groupTokenEvents(

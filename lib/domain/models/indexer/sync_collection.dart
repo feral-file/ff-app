@@ -5,7 +5,7 @@
 //  that can be found in the LICENSE file.
 //
 
-// ignore_for_file: public_member_api_docs // Reason: protocol-shaped indexer models.
+// ignore_for_file: public_member_api_docs // Reason: protocol-shaped indexer models; comment_references adds invalid self-import.
 
 /// A single token event from the indexer syncCollection API.
 ///
@@ -16,17 +16,10 @@ class TokenEvent {
     required this.id,
     required this.tokenId,
     required this.eventType,
-    this.ownerAddress,
     required this.occurredAt,
+    this.ownerAddress,
     this.metadata,
   });
-
-  final int id;
-  final int tokenId;
-  final String eventType;
-  final String? ownerAddress;
-  final DateTime occurredAt;
-  final Map<String, dynamic>? metadata;
 
   factory TokenEvent.fromJson(Map<String, dynamic> json) => TokenEvent(
     id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
@@ -38,6 +31,13 @@ class TokenEvent {
         DateTime.fromMillisecondsSinceEpoch(0),
     metadata: (json['metadata'] as Map?)?.cast<String, dynamic>(),
   );
+
+  final int id;
+  final int tokenId;
+  final String eventType;
+  final String? ownerAddress;
+  final DateTime occurredAt;
+  final Map<String, dynamic>? metadata;
 }
 
 /// Checkpoint for syncCollection pagination.
@@ -49,15 +49,15 @@ class SyncCheckpoint {
     required this.eventId,
   });
 
-  final DateTime timestamp;
-  final int eventId;
-
   factory SyncCheckpoint.fromJson(Map<String, dynamic> json) => SyncCheckpoint(
     timestamp:
         DateTime.tryParse(json['timestamp'] as String? ?? '') ??
         DateTime.fromMillisecondsSinceEpoch(0),
     eventId: int.tryParse(json['event_id']?.toString() ?? '') ?? 0,
   );
+
+  final DateTime timestamp;
+  final int eventId;
 
   /// Serialize for GraphQL vars. timestamp as ISO 8601 string.
   Map<String, dynamic> toGraphQLVars() => {
@@ -70,13 +70,9 @@ class SyncCheckpoint {
 class SyncCollectionResult {
   const SyncCollectionResult({
     required this.events,
-    this.nextCheckpoint,
     required this.serverTime,
+    this.nextCheckpoint,
   });
-
-  final List<TokenEvent> events;
-  final SyncCheckpoint? nextCheckpoint;
-  final DateTime serverTime;
 
   factory SyncCollectionResult.fromJson(Map<String, dynamic> json) {
     final items =
@@ -94,10 +90,14 @@ class SyncCollectionResult {
           DateTime.fromMillisecondsSinceEpoch(0),
     );
   }
+
+  final List<TokenEvent> events;
+  final SyncCheckpoint? nextCheckpoint;
+  final DateTime serverTime;
 }
 
 /// Request for syncCollection query.
-/// [checkpoint] is required; use [SyncCheckpoint.defaultCheckpoint] when none saved.
+/// [checkpoint] is required; construct a default when none saved.
 class QuerySyncCollectionRequest {
   const QuerySyncCollectionRequest({
     required this.address,

@@ -8,7 +8,8 @@ import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/token_transformer.dart';
 import 'package:app/infra/services/indexer_service.dart';
-import 'package:app/infra/services/personal_tokens_sync_service.dart' show PersonalTokensSyncService;
+import 'package:app/infra/services/personal_tokens_sync_service.dart'
+    show PersonalTokensSyncService;
 import 'package:logging/logging.dart';
 
 /// Updates already-fetched tokens of address. Used for incremental sync
@@ -57,7 +58,6 @@ class AddressSyncCollectionService {
       final request = QuerySyncCollectionRequest(
         address: normalizedAddress,
         checkpoint: checkpoint!,
-        limit: _limit,
       );
 
       final result = await _indexerService.syncCollection(request);

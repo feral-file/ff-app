@@ -43,7 +43,7 @@ class IndexerService {
     try {
       _log.info(
         'Fetching syncCollection (address: ${request.address}, '
-        'checkpoint: ${request.checkpoint?.eventId}, limit: ${request.limit})',
+        'checkpoint: ${request.checkpoint.eventId}, limit: ${request.limit})',
       );
 
       final data = await _client.query(

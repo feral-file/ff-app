@@ -66,8 +66,9 @@ TokenEventGroupingResult groupTokenEvents({
     if (tokenEvents.isEmpty) continue;
 
     // Last transfer event (released or acquired) - ignore attribute-only events.
-    final transferEvents =
-        tokenEvents.where(_isTransferEvent).toList(growable: false);
+    final transferEvents = tokenEvents
+        .where(_isTransferEvent)
+        .toList(growable: false);
     if (transferEvents.isEmpty) {
       // No transfer events: treat as updated (e.g. metadata-only changes).
       updatedTokenIds.add(tokenId);
@@ -77,8 +78,8 @@ TokenEventGroupingResult groupTokenEvents({
     final lastTransfer = transferEvents.last;
 
     final isReleased = lastTransfer.eventType == 'released';
-    final ownerMatches = lastTransfer.ownerAddress?.toNormalizedAddress() ==
-        normalizedAddress;
+    final ownerMatches =
+        lastTransfer.ownerAddress?.toNormalizedAddress() == normalizedAddress;
 
     if (isReleased && ownerMatches) {
       removalTokenIds.add(tokenId);
