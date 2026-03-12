@@ -60,6 +60,8 @@ class AddressSyncCollectionService {
         checkpoint: checkpoint!,
       );
 
+      final now = DateTime.now().toUtc();
+
       final result = await _indexerService.syncCollection(request);
 
       if (result.events.isEmpty) {
@@ -70,6 +72,17 @@ class AddressSyncCollectionService {
           );
           checkpoint = result.nextCheckpoint;
         } else {
+          // Persist baseline checkpoint so next poll does not repeat the same
+          // historical query window. Uses current time to advance cursor; avoids
+          // unnecessary indexer load and network use on quiet addresses.
+          final baseline = SyncCheckpoint(
+            timestamp: now,
+            eventId: checkpoint.eventId,
+          );
+          await _appStateService.setAddressCheckpoint(
+            address: normalizedAddress,
+            checkpoint: baseline,
+          );
           return;
         }
         continue;
