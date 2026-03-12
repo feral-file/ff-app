@@ -42,7 +42,8 @@ class OnboardingShell extends StatelessWidget {
   /// Callback when the primary button is pressed.
   final VoidCallback? onPrimaryPressed;
 
-  /// Optional label for the secondary (left) button – e.g., "Add Address", "Setup FF1".
+  /// Optional label for the secondary (left) button.
+  /// For example: "Add Address", "Setup FF1".
   final Widget? secondaryButton;
 
   /// Optional callback for the secondary button.
@@ -63,14 +64,23 @@ class OnboardingShell extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(
-            height: 206.94,
-          ),
-          Container(
-            constraints: const BoxConstraints(
-              minHeight: 245.06,
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(
+                    height: 206.94,
+                  ),
+                  Container(
+                    constraints: const BoxConstraints(
+                      minHeight: 245.06,
+                    ),
+                    child: content,
+                  ),
+                ],
+              ),
             ),
-            child: content,
           ),
           SizedBox(height: LayoutConstants.space2),
           _buildButtonsRow(context),
@@ -89,36 +99,54 @@ class OnboardingShell extends StatelessWidget {
   }
 
   Widget _buildButtonsRow(BuildContext context) {
-    // Keep layout close to Figma: two pill-shaped buttons,
-    // left = secondary (outline), right = primary (filled).
-    return Row(
-      children: [
-        Expanded(
-          child: (primaryButton != null && onPrimaryPressed != null)
-              ? CustomPrimaryButton(
-                  padding: EdgeInsets.symmetric(
-                    vertical: LayoutConstants.space3,
-                  ),
-                  onTap: onPrimaryPressed,
-                  child: primaryButton!,
-                )
-              : const SizedBox.shrink(),
-        ),
-        SizedBox(width: LayoutConstants.space3),
-        Expanded(
-          child: (secondaryButton != null && onSecondaryPressed != null)
-              ? CustomPrimaryButton(
-                  padding: EdgeInsets.symmetric(
-                    vertical: LayoutConstants.space3,
-                  ),
-                  onTap: onSecondaryPressed,
-                  borderColor: AppColor.feralFileLightBlue,
-                  color: Colors.transparent,
-                  child: secondaryButton!,
-                )
-              : const SizedBox.shrink(),
-        ),
-      ],
+    final primary = (primaryButton != null && onPrimaryPressed != null)
+        ? CustomPrimaryButton(
+            padding: EdgeInsets.symmetric(
+              vertical: LayoutConstants.space3,
+            ),
+            onTap: onPrimaryPressed,
+            child: primaryButton!,
+          )
+        : const SizedBox.shrink();
+    final secondary = (secondaryButton != null && onSecondaryPressed != null)
+        ? CustomPrimaryButton(
+            padding: EdgeInsets.symmetric(
+              vertical: LayoutConstants.space3,
+            ),
+            onTap: onSecondaryPressed,
+            borderColor: AppColor.feralFileLightBlue,
+            color: Colors.transparent,
+            child: secondaryButton!,
+          )
+        : const SizedBox.shrink();
+
+    // Use a stacked layout on narrow widths to avoid button overflow.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 340) {
+          return Column(
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: primary,
+              ),
+              SizedBox(height: LayoutConstants.space2),
+              SizedBox(
+                width: double.infinity,
+                child: secondary,
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: primary),
+            SizedBox(width: LayoutConstants.space3),
+            Expanded(child: secondary),
+          ],
+        );
+      },
     );
   }
 }
