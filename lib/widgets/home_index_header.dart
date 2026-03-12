@@ -1,4 +1,4 @@
-import 'package:app/app/patrol/orbit2_patrol_keys.dart';
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:flutter/material.dart';
@@ -46,8 +46,8 @@ class HomeIndexHeader extends StatelessWidget {
           final isSelected = tab == selectedTab;
           return GestureDetector(
             key: switch (tab) {
-              HomeIndexHeaderTab.playlists => Orbit2PatrolKeys.playlistsTab,
-              HomeIndexHeaderTab.channels => Orbit2PatrolKeys.channelsTab,
+              HomeIndexHeaderTab.playlists => GoldPathPatrolKeys.playlistsTab,
+              HomeIndexHeaderTab.channels => GoldPathPatrolKeys.channelsTab,
               _ => null,
             },
             onTap: () => onTabChanged(tab),

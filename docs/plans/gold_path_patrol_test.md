@@ -1,8 +1,8 @@
-# Orbit 2 Gold Path Patrol UI Automation Test (Updated)
+# Gold Path Patrol UI Automation Test (Updated)
 
 ## Scope
 
-Automate the Orbit 2 Gold Path as a Patrol-based UI test:
+Automate the gold path as a Patrol-based UI test:
 
 - Steps 1–6: Fresh sync → canary present in Curated surface → open Channel/Playlist → Play on FF1 → FF1 cast initiated
 - Step 7: 4+ hour soak treated as configurable (short for CI, full for nightly) or separate run
@@ -17,13 +17,13 @@ Automate the Orbit 2 Gold Path as a Patrol-based UI test:
 
 1. In `createAppForPatrol()`, replicate `main.dart` bootstrap (ObjectBox init, `FF1BluetoothDeviceService` creation).
 2. **Before** `$.pumpWidgetAndSettle(App(...))`, inject real device info:
-   - `bluetoothDeviceService.putDevice(orbit2Device)`
-   - `bluetoothDeviceService.setActiveDevice(orbit2Device.deviceId)`
+   - `bluetoothDeviceService.putDevice(testDevice)`
+   - `bluetoothDeviceService.setActiveDevice(testDevice.deviceId)`
 3. `FF1Device` uses **real values** from env/config:
-   - `deviceId`: from `ORBIT2_FF1_DEVICE_ID` (device ID shown on FF1)
-   - `topicId`: from `ORBIT2_FF1_TOPIC_ID` (relayer topic for cast)
+   - `deviceId`: from `GOLD_PATH_FF1_DEVICE_ID` (device ID shown on FF1)
+   - `topicId`: from `GOLD_PATH_FF1_TOPIC_ID` (relayer topic for cast)
    - `remoteId`: placeholder (e.g. `00:00:00:00:00:00`) – not used for cast
-   - `name`: `Orbit2 Test FF1` or from env
+   - `name`: `Gold Path Test FF1` or from env
    - `branchName`: `release`
 
 ### Precondition
@@ -81,7 +81,7 @@ flowchart TB
 
 - **Fresh app state**: Clear app data before launch (Android: `adb shell pm clear com.feralfile.app.inhouse`) or run from clean install.
 - **App init**: Create `createAppForPatrol()` that mirrors `main.dart` bootstrap, plus **FF1 device injection** (real deviceId, topicId from env), then `$.pumpWidgetAndSettle()`.
-- **Env vars for injection**: `ORBIT2_FF1_DEVICE_ID`, `ORBIT2_FF1_TOPIC_ID` (required when running with real hardware).
+- **Env vars for injection**: `GOLD_PATH_FF1_DEVICE_ID`, `GOLD_PATH_FF1_TOPIC_ID` (required when running with real hardware).
 
 ### 3. Gold Path Steps
 
@@ -103,7 +103,7 @@ Add semantic keys for automation (see [Patrol write-your-first-test](https://pat
 
 ### 5. Canary Channel Identity
 
-- Define via env or const (e.g. `ORBIT2_CANARY_CHANNEL_ID` / `ORBIT2_CANARY_CHANNEL_TITLE`)
+- Define via env or const (e.g. `GOLD_PATH_CANARY_CHANNEL_ID` / `GOLD_PATH_CANARY_CHANNEL_TITLE`)
 - Precondition: Canary exists in seed DB as deterministic artifact
 
 ### 6. Onboarding
@@ -113,16 +113,16 @@ Add semantic keys for automation (see [Patrol write-your-first-test](https://pat
 ### 7. 4+ Hour Soak
 
 - CI: Short soak (e.g. 30–60 s)
-- Nightly: Configurable (e.g. `ORBIT2_SOAK_MINUTES=240`) or separate target
+- Nightly: Configurable (e.g. `GOLD_PATH_SOAK_MINUTES=240`) or separate target
 
 ## File Structure
 
 ```
 patrol_test/
-  common.dart              # createAppForPatrol(), injectOrbit2Device(deviceId, topicId from env)
+  common.dart              # createAppForPatrol(), injectPatrolDevice(deviceId, topicId from env)
   keys/
-    orbit2_keys.dart       # Key definitions
-  orbit2_gold_path_test.dart  # Main Patrol test
+    gold_path_keys.dart       # Key definitions
+  gold_path_test.dart  # Main Patrol test
 ```
 
 ## Out of Scope

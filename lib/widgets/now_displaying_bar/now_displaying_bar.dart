@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:app/app/patrol/orbit2_patrol_keys.dart';
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
@@ -172,7 +172,7 @@ class _NowPlayingCardContainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      key: Orbit2PatrolKeys.nowDisplayingBar,
+      key: GoldPathPatrolKeys.nowDisplayingBar,
       decoration: BoxDecoration(
         color: backgroundColor ?? PrimitivesTokens.colorsBlack,
         borderRadius: BorderRadius.circular(

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:after_layout/after_layout.dart';
-import 'package:app/app/patrol/orbit2_patrol_keys.dart';
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -152,7 +152,7 @@ class _FFDisplayButtonState extends ConsumerState<FFDisplayButton>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      key: Orbit2PatrolKeys.ffDisplayTooltipButton,
+                      key: GoldPathPatrolKeys.ffDisplayTooltipButton,
                       child: PlayButton(
                         isProcessing: _isProcessing,
                         onTap: _handlePlayTap,
@@ -220,7 +220,7 @@ class _FFDisplayButtonState extends ConsumerState<FFDisplayButton>
           return const SizedBox.shrink();
         }
         return Container(
-          key: Orbit2PatrolKeys.ffDisplayButton,
+          key: GoldPathPatrolKeys.ffDisplayButton,
           child: Container(
             key: _buttonKey,
             child: PlayButton(

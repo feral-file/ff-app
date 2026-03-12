@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:app/app/patrol/orbit2_patrol_config.dart';
-import 'package:app/app/patrol/orbit2_patrol_keys.dart';
+import 'package:app/app/patrol/gold_path_patrol_config.dart';
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/work_item_thumbnail.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,28 +13,28 @@ const _personalAddressName = 'reas.eth';
 
 void main() {
   patrolTest(
-    'orbit2 gold path patrol',
+    'gold path patrol',
     ($) async {
-      final config = Orbit2PatrolConfig.fromDartDefines();
+      final config = GoldPathPatrolConfig.fromDartDefines();
 
       await createAppForPatrol($, config: config);
       await _completeOnboardingIfNeeded($);
       await _assertPersonalPlaylistOnHomeAndPlaylistsTab($);
 
-      await $(Orbit2PatrolKeys.channelsTab).tap();
-      await $(Orbit2PatrolKeys.curatedChannelsSection).waitUntilExists(
+      await $(GoldPathPatrolKeys.channelsTab).tap();
+      await $(GoldPathPatrolKeys.curatedChannelsSection).waitUntilExists(
         timeout: const Duration(minutes: 2),
       );
 
       await _assertCanaryVisible($, config);
       await _openCanaryWork($, config);
 
-      await $(Orbit2PatrolKeys.ffDisplayButton).waitUntilVisible(
+      await $(GoldPathPatrolKeys.ffDisplayButton).waitUntilVisible(
         timeout: const Duration(minutes: 1),
       );
       await _tapPlayOnFf1($);
 
-      await $(Orbit2PatrolKeys.nowDisplayingBar).waitUntilVisible(
+      await $(GoldPathPatrolKeys.nowDisplayingBar).waitUntilVisible(
         timeout: const Duration(minutes: 2),
       );
 
@@ -85,7 +85,7 @@ Future<void> _assertPersonalPlaylistOnHomeAndPlaylistsTab(
   await $(_personalAddressName).waitUntilVisible(
     timeout: const Duration(minutes: 3),
   );
-  await $(Orbit2PatrolKeys.playlistsTab).tap();
+  await $(GoldPathPatrolKeys.playlistsTab).tap();
   await $(_personalAddressName).waitUntilVisible(
     timeout: const Duration(minutes: 3),
   );
@@ -93,13 +93,13 @@ Future<void> _assertPersonalPlaylistOnHomeAndPlaylistsTab(
 
 Future<void> _assertCanaryVisible(
   PatrolIntegrationTester $,
-  Orbit2PatrolConfig config,
+  GoldPathPatrolConfig config,
 ) async {
   if (config.canaryChannelId case final channelId?) {
-    await $(Orbit2PatrolKeys.channelRow(channelId)).waitUntilVisible(
+    await $(GoldPathPatrolKeys.channelRow(channelId)).waitUntilVisible(
       timeout: const Duration(minutes: 2),
     );
-    expect($(Orbit2PatrolKeys.channelRow(channelId)), findsOneWidget);
+    expect($(GoldPathPatrolKeys.channelRow(channelId)), findsOneWidget);
     return;
   }
 
@@ -111,10 +111,10 @@ Future<void> _assertCanaryVisible(
 
 Future<void> _openCanaryWork(
   PatrolIntegrationTester $,
-  Orbit2PatrolConfig config,
+  GoldPathPatrolConfig config,
 ) async {
   final channelFinder = config.canaryChannelId != null
-      ? $(Orbit2PatrolKeys.channelRow(config.canaryChannelId!))
+      ? $(GoldPathPatrolKeys.channelRow(config.canaryChannelId!))
       : $(
           find.ancestor(
             of: find.text(config.canaryChannelTitle, findRichText: true),
@@ -125,7 +125,7 @@ Future<void> _openCanaryWork(
   if (config.canaryChannelId != null && config.canaryWorkId != null) {
     await channelFinder
         .$(
-          Orbit2PatrolKeys.channelWork(
+          GoldPathPatrolKeys.channelWork(
             channelId: config.canaryChannelId!,
             workId: config.canaryWorkId!,
           ),
@@ -151,20 +151,21 @@ Future<void> _tapPlayOnFf1(PatrolIntegrationTester $) async {
   while (DateTime.now().isBefore(deadline)) {
     await $.pump(const Duration(milliseconds: 250));
 
-    if ($(Orbit2PatrolKeys.ffDisplayTooltipButton).exists ||
+    if ($(GoldPathPatrolKeys.ffDisplayTooltipButton).exists ||
         $(tooltipCopy).exists) {
-      await $(Orbit2PatrolKeys.ffDisplayTooltipButton).waitUntilVisible(
+      await $(GoldPathPatrolKeys.ffDisplayTooltipButton).waitUntilVisible(
         timeout: const Duration(seconds: 20),
       );
-      await $(Orbit2PatrolKeys.ffDisplayTooltipButton).tap();
+      await $(GoldPathPatrolKeys.ffDisplayTooltipButton).tap();
       return;
     }
 
-    if ($(Orbit2PatrolKeys.ffDisplayButton).exists && !$(tooltipCopy).exists) {
-      await $(Orbit2PatrolKeys.ffDisplayButton).waitUntilVisible(
+    if ($(GoldPathPatrolKeys.ffDisplayButton).exists &&
+        !$(tooltipCopy).exists) {
+      await $(GoldPathPatrolKeys.ffDisplayButton).waitUntilVisible(
         timeout: const Duration(seconds: 20),
       );
-      await $(Orbit2PatrolKeys.ffDisplayButton).tap();
+      await $(GoldPathPatrolKeys.ffDisplayButton).tap();
       return;
     }
   }

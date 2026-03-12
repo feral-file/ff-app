@@ -1,13 +1,13 @@
 import 'package:app/domain/models/ff1_device.dart';
 
-/// Strongly typed config for the Orbit 2 Patrol gold-path test.
-class Orbit2PatrolConfig {
-  /// Creates an [Orbit2PatrolConfig].
-  const Orbit2PatrolConfig({
+/// Strongly typed config for the gold-path Patrol test.
+class GoldPathPatrolConfig {
+  /// Creates an [GoldPathPatrolConfig].
+  const GoldPathPatrolConfig({
     required this.ff1DeviceId,
     required this.ff1TopicId,
     required this.canaryChannelTitle,
-    this.ff1Name = 'Orbit2 Test FF1',
+    this.ff1Name = 'Gold Path Test FF1',
     this.ff1RemoteId = '00:00:00:00:00:00',
     this.ff1BranchName = 'release',
     this.canaryChannelId,
@@ -17,7 +17,7 @@ class Orbit2PatrolConfig {
   });
 
   /// Reads the config from compile-time environment variables.
-  factory Orbit2PatrolConfig.fromEnvironment(Map<String, String> env) {
+  factory GoldPathPatrolConfig.fromEnvironment(Map<String, String> env) {
     String requiredValue(String key) {
       final value = env[key]?.trim() ?? '';
       if (value.isEmpty) {
@@ -40,10 +40,10 @@ class Orbit2PatrolConfig {
       return Duration.zero;
     }
 
-    return Orbit2PatrolConfig(
+    return GoldPathPatrolConfig(
       ff1DeviceId: requiredValue(_ff1DeviceIdKey),
       ff1TopicId: requiredValue(_ff1TopicIdKey),
-      ff1Name: env[_ff1NameKey]?.trim().nonEmptyOrNull ?? 'Orbit2 Test FF1',
+      ff1Name: env[_ff1NameKey]?.trim().nonEmptyOrNull ?? 'Gold Path Test FF1',
       ff1RemoteId:
           env[_ff1RemoteIdKey]?.trim().nonEmptyOrNull ?? '00:00:00:00:00:00',
       ff1BranchName: env[_ff1BranchNameKey]?.trim().nonEmptyOrNull ?? 'release',
@@ -56,8 +56,8 @@ class Orbit2PatrolConfig {
   }
 
   /// Reads the config from compile-time `--dart-define` values.
-  factory Orbit2PatrolConfig.fromDartDefines() {
-    return Orbit2PatrolConfig.fromEnvironment({
+  factory GoldPathPatrolConfig.fromDartDefines() {
+    return GoldPathPatrolConfig.fromEnvironment({
       _ff1DeviceIdKey: const String.fromEnvironment(_ff1DeviceIdKey),
       _ff1TopicIdKey: const String.fromEnvironment(_ff1TopicIdKey),
       _ff1NameKey: const String.fromEnvironment(_ff1NameKey),
@@ -75,22 +75,22 @@ class Orbit2PatrolConfig {
   }
 
   /// Environment variable used for the injected FF1 device ID.
-  static const String _ff1DeviceIdKey = 'ORBIT2_FF1_DEVICE_ID';
+  static const String _ff1DeviceIdKey = 'GOLD_PATH_FF1_DEVICE_ID';
 
   /// Environment variable used for the injected FF1 topic ID.
-  static const String _ff1TopicIdKey = 'ORBIT2_FF1_TOPIC_ID';
+  static const String _ff1TopicIdKey = 'GOLD_PATH_FF1_TOPIC_ID';
 
-  static const String _ff1NameKey = 'ORBIT2_FF1_NAME';
-  static const String _ff1RemoteIdKey = 'ORBIT2_FF1_REMOTE_ID';
-  static const String _ff1BranchNameKey = 'ORBIT2_FF1_BRANCH_NAME';
-  static const String _canaryChannelIdKey = 'ORBIT2_CANARY_CHANNEL_ID';
-  static const String _canaryChannelTitleKey = 'ORBIT2_CANARY_CHANNEL_TITLE';
-  static const String _canaryWorkIdKey = 'ORBIT2_CANARY_WORK_ID';
-  static const String _canaryWorkTitleKey = 'ORBIT2_CANARY_WORK_TITLE';
+  static const String _ff1NameKey = 'GOLD_PATH_FF1_NAME';
+  static const String _ff1RemoteIdKey = 'GOLD_PATH_FF1_REMOTE_ID';
+  static const String _ff1BranchNameKey = 'GOLD_PATH_FF1_BRANCH_NAME';
+  static const String _canaryChannelIdKey = 'GOLD_PATH_CANARY_CHANNEL_ID';
+  static const String _canaryChannelTitleKey = 'GOLD_PATH_CANARY_CHANNEL_TITLE';
+  static const String _canaryWorkIdKey = 'GOLD_PATH_CANARY_WORK_ID';
+  static const String _canaryWorkTitleKey = 'GOLD_PATH_CANARY_WORK_TITLE';
   static const String _soakMinutesKey =
-      'ORBIT2_SOAK_MINUTES'; // gitleaks:allow
+      'GOLD_PATH_SOAK_MINUTES'; // gitleaks:allow
   static const String _soakSecondsKey =
-      'ORBIT2_SOAK_SECONDS'; // gitleaks:allow
+      'GOLD_PATH_SOAK_SECONDS'; // gitleaks:allow
 
   /// The real device ID shown on the FF1.
   final String ff1DeviceId;

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:app/app/patrol/orbit2_patrol_keys.dart';
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/channel_preview_provider.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
@@ -126,7 +126,7 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
     final error = widget.channelData.works.isEmpty ? previewState.error : null;
 
     return Container(
-      key: Orbit2PatrolKeys.channelRow(channelId),
+      key: GoldPathPatrolKeys.channelRow(channelId),
       decoration: const BoxDecoration(
         border: Border(
           bottom: BorderSide(),
@@ -170,7 +170,7 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
             items: works,
             isLoading: isLoading && works.isEmpty,
             onItemTap: widget.onItemTap,
-            itemKeyBuilder: (item, _) => Orbit2PatrolKeys.channelWork(
+            itemKeyBuilder: (item, _) => GoldPathPatrolKeys.channelWork(
               channelId: channelId,
               workId: item.id,
             ),
