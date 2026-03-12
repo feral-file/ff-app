@@ -48,6 +48,8 @@ jobs:
       ANDROID_AVD_NAME: ${{ inputs.android_avd_name || '' }}
       GOLD_PATH_CANARY_CHANNEL_TITLE: ${{ inputs.canary_channel_title || 'Social Codes' }}
       GOLD_PATH_SOAK_MINUTES: ${{ inputs.soak_minutes || '1' }}
+      FF1_TEST_DEVICE_ID: ${{ secrets.FF1_TEST_DEVICE_ID }}
+      FF1_TEST_TOPIC_ID: ${{ secrets.FF1_TEST_TOPIC_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -81,17 +83,31 @@ jobs:
             echo -e "${{ secrets.ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
           fi
 
+          if [ -n "$FF1_TEST_DEVICE_ID" ] && ! grep -q '^FF1_TEST_DEVICE_ID=' .env; then
+            echo "FF1_TEST_DEVICE_ID=$FF1_TEST_DEVICE_ID" >> .env
+          fi
+          if [ -n "$FF1_TEST_TOPIC_ID" ] && ! grep -q '^FF1_TEST_TOPIC_ID=' .env; then
+            echo "FF1_TEST_TOPIC_ID=$FF1_TEST_TOPIC_ID" >> .env
+          fi
+
       - name: Resolve shared FF1 identifiers
         run: |
-          ff1_device_id="$(awk -F= '$1 == "FF1_TEST_DEVICE_ID" { sub(/^[^=]*=/, "", $0); print; exit }' .env)"
-          ff1_topic_id="$(awk -F= '$1 == "FF1_TEST_TOPIC_ID" { sub(/^[^=]*=/, "", $0); print; exit }' .env)"
+          ff1_device_id="$FF1_TEST_DEVICE_ID"
+          ff1_topic_id="$FF1_TEST_TOPIC_ID"
+
+          if [ -z "$ff1_device_id" ]; then
+            ff1_device_id="$(awk -F= '$1 == "FF1_TEST_DEVICE_ID" { sub(/^[^=]*=/, "", $0); print; exit }' .env)"
+          fi
+          if [ -z "$ff1_topic_id" ]; then
+            ff1_topic_id="$(awk -F= '$1 == "FF1_TEST_TOPIC_ID" { sub(/^[^=]*=/, "", $0); print; exit }' .env)"
+          fi
 
           test -n "$ff1_device_id" || {
-            echo "Missing FF1_TEST_DEVICE_ID in ENV_VARS (.env)."
+            echo "Missing FF1_TEST_DEVICE_ID. Set it in repository secrets or ENV_VARS."
             exit 1
           }
           test -n "$ff1_topic_id" || {
-            echo "Missing FF1_TEST_TOPIC_ID in ENV_VARS (.env)."
+            echo "Missing FF1_TEST_TOPIC_ID. Set it in repository secrets or ENV_VARS."
             exit 1
           }
 
