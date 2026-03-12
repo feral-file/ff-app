@@ -164,9 +164,8 @@ jobs:
           echo "ANDROID_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
 
       - name: Run gold path Patrol test
-        env:
-          PATH: ${{ env.PATH }}:$HOME/.pub-cache/bin
         run: |
+          export PATH="$PATH:$HOME/.pub-cache/bin"
           if [ "${{ matrix.platform }}" = "ios" ]; then
             patrol test \
               --target patrol_test/gold_path_test.dart \
