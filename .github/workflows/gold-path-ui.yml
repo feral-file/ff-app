@@ -1,6 +1,16 @@
 name: Gold Path UI Test
 
 on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'lib/**'
+      - 'patrol_test/**'
+      - 'test/integration/**'
+      - 'ios/**'
+      - 'android/**'
+      - '.github/workflows/gold-path-ui.yml'
+      - pubspec.yaml
   workflow_dispatch:
     inputs:
       simulator_device:
@@ -34,10 +44,10 @@ jobs:
     permissions:
       contents: read
     env:
-      SIMULATOR_DEVICE: ${{ inputs.simulator_device }}
-      ANDROID_AVD_NAME: ${{ inputs.android_avd_name }}
-      GOLD_PATH_CANARY_CHANNEL_TITLE: ${{ inputs.canary_channel_title }}
-      GOLD_PATH_SOAK_MINUTES: ${{ inputs.soak_minutes }}
+      SIMULATOR_DEVICE: ${{ inputs.simulator_device || 'iPhone 16e' }}
+      ANDROID_AVD_NAME: ${{ inputs.android_avd_name || '' }}
+      GOLD_PATH_CANARY_CHANNEL_TITLE: ${{ inputs.canary_channel_title || 'Social Codes' }}
+      GOLD_PATH_SOAK_MINUTES: ${{ inputs.soak_minutes || '1' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
