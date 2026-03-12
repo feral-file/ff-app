@@ -8,6 +8,7 @@ import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/token_transformer.dart';
 import 'package:app/infra/services/indexer_service.dart';
+import 'package:app/infra/services/personal_tokens_sync_service.dart' show PersonalTokensSyncService;
 import 'package:logging/logging.dart';
 
 /// Updates already-fetched tokens of address. Used for incremental sync
@@ -67,7 +68,7 @@ class AddressSyncCollectionService {
             address: normalizedAddress,
             checkpoint: result.nextCheckpoint!,
           );
-          checkpoint = result.nextCheckpoint!;
+          checkpoint = result.nextCheckpoint;
         } else {
           return;
         }
@@ -81,7 +82,7 @@ class AddressSyncCollectionService {
             address: normalizedAddress,
             checkpoint: result.nextCheckpoint!,
           );
-          checkpoint = result.nextCheckpoint!;
+          checkpoint = result.nextCheckpoint;
         }
         if (result.events.length < _limit) return;
         continue;
@@ -92,23 +93,36 @@ class AddressSyncCollectionService {
         address: normalizedAddress,
       );
 
-      final tokens = await _indexerService.getManualTokens(
-        tokenIds: tokenIds,
-        owners: [normalizedAddress],
-      );
+      // Removal: fetch without owners so transferred-out tokens are returned.
+      // Indexer filters by owners at query level; transferred tokens are excluded
+      // when owners filter is applied, so removalCids would stay empty.
+      var removalCids = const <String>[];
+      if (grouping.removalTokenIds.isNotEmpty) {
+        final removalTokens = await _indexerService.getManualTokens(
+          tokenIds: grouping.removalTokenIds.toList(),
+        );
+        final removalById = {for (final t in removalTokens) t.id: t};
+        removalCids = grouping.removalTokenIds
+            .map((id) => removalById[id]?.cid)
+            .whereType<String>()
+            .where((c) => c.isNotEmpty)
+            .toList();
+      }
 
-      final tokenById = {for (final t in tokens) t.id: t};
-
-      final removalCids = grouping.removalTokenIds
-          .map((id) => tokenById[id]?.cid)
-          .whereType<String>()
-          .where((c) => c.isNotEmpty)
-          .toList();
-
-      final updatedTokens = grouping.updatedTokenIds
-          .map((id) => tokenById[id])
-          .whereType<AssetToken>()
-          .toList();
+      // Updated: fetch with owners filter for server-side accuracy.
+      // Avoids false negatives when indexer returns truncated owner lists.
+      var updatedTokens = const <AssetToken>[];
+      if (grouping.updatedTokenIds.isNotEmpty) {
+        final tokens = await _indexerService.getManualTokens(
+          tokenIds: grouping.updatedTokenIds.toList(),
+          owners: [normalizedAddress],
+        );
+        final tokenById = {for (final t in tokens) t.id: t};
+        updatedTokens = grouping.updatedTokenIds
+            .map((id) => tokenById[id])
+            .whereType<AssetToken>()
+            .toList();
+      }
 
       if (removalCids.isNotEmpty) {
         await _databaseService.deleteTokensByCids(
@@ -135,7 +149,7 @@ class AddressSyncCollectionService {
           address: normalizedAddress,
           checkpoint: result.nextCheckpoint!,
         );
-        checkpoint = result.nextCheckpoint!;
+        checkpoint = result.nextCheckpoint;
       }
 
       if (result.events.length < _limit) {
