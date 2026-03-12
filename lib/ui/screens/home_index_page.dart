@@ -79,9 +79,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
       body: NestedScrollView(
         controller: _scrollController,
         floatHeaderSlivers: true,
-        physics: isScrollEnabled
-            ? null
-            : const NeverScrollableScrollPhysics(),
+        physics: isScrollEnabled ? null : const NeverScrollableScrollPhysics(),
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           final height = LayoutConstants.minTouchTarget;
 
@@ -192,7 +190,11 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
             SliverToBoxAdapter(
               child: _buildContent(),
             ),
-            const SliverToBoxAdapter(child: BottomSpacing()),
+            const SliverToBoxAdapter(
+              child: BottomSpacing(
+                checkNowDisplayingVisibility: false,
+              ),
+            ),
           ],
         ),
       ),
@@ -364,7 +366,9 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
 
   Future<void> _contactSupport() async {
     try {
-      await ref.read(supportEmailServiceProvider).composeSupportEmail(
+      await ref
+          .read(supportEmailServiceProvider)
+          .composeSupportEmail(
             recipient: 'support@feralfile.com',
           );
     } on Exception {

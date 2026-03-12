@@ -209,7 +209,6 @@ class _EnterWiFiPasswordScreenState
                       context,
                       supportEmailService:
                           ref.read(supportEmailServiceProvider),
-                      onSendComplete: () => Navigator.pop(context),
                     ),
                   );
                 },
@@ -264,7 +263,6 @@ class _EnterWiFiPasswordScreenState
                     context,
                     supportEmailService:
                         ref.read(supportEmailServiceProvider),
-                    onSendComplete: () => Navigator.pop(context),
                   ),
                 );
               },

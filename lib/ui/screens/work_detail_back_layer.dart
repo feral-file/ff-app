@@ -119,7 +119,7 @@ class WorkDetailBackLayer extends ConsumerWidget {
                   color: Colors.transparent,
                 ),
               ),
-              BottomSpacing(),
+              const BottomSpacing(checkNowDisplayingVisibility: false),
             ],
           ),
       ],

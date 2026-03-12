@@ -244,9 +244,9 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                       unawaited(
                         UIHelper.showCustomerSupport(
                           context,
-                          supportEmailService:
-                              ref.read(supportEmailServiceProvider),
-                          onSendComplete: () => Navigator.pop(context),
+                          supportEmailService: ref.read(
+                            supportEmailServiceProvider,
+                          ),
                         ),
                       );
                     }
@@ -262,9 +262,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                 unawaited(
                   UIHelper.showCustomerSupport(
                     context,
-                    supportEmailService:
-                        ref.read(supportEmailServiceProvider),
-                    onSendComplete: () => Navigator.pop(context),
+                    supportEmailService: ref.read(supportEmailServiceProvider),
                   ),
                 );
               },

@@ -68,6 +68,7 @@ class PlaylistDetailsNotifier
   static final _log = Logger('PlaylistDetailsNotifier');
   StreamSubscription<List<PlaylistItem>>? _dbSubscription;
   bool _isPlaylistLoaded = false;
+  Playlist? _loadedPlaylist;
 
   @override
   AsyncValue<PlaylistDetailsState> build() {
@@ -96,6 +97,7 @@ class PlaylistDetailsNotifier
       final playlist = await ref
           .read(databaseServiceProvider)
           .getPlaylistById(_playlistId);
+      _loadedPlaylist = playlist;
       if (!ref.mounted) return;
       final current = switch (state) {
         AsyncData(value: final v) => v,
@@ -139,7 +141,7 @@ class PlaylistDetailsNotifier
       final hasMore = fullList.length > initialItems.length;
       state = AsyncValue.data(
         PlaylistDetailsState(
-          playlist: current?.playlist,
+          playlist: current?.playlist ?? _loadedPlaylist,
           items: initialItems,
           total: fullList.length,
           hasMore: hasMore,
@@ -160,7 +162,7 @@ class PlaylistDetailsNotifier
     if (hasChanged) {
       state = AsyncValue.data(
         PlaylistDetailsState(
-          playlist: current.playlist,
+          playlist: current.playlist ?? _loadedPlaylist,
           items: newSlice,
           total: fullList.length,
           hasMore: fullList.length > loadedCount,

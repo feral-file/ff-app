@@ -1,7 +1,9 @@
 import 'package:app/app/routing/routes.dart';
 import 'package:app/app/utils/html/prepare_truncated_html.dart';
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/extensions/extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:go_router/go_router.dart';
@@ -86,7 +88,13 @@ class ChannelHeader extends StatelessWidget {
                             if (element.localName == 'p') {
                               return {
                                 'margin': '0 0 12px 0',
-                              }; // paragraph spacing
+                              };
+                            }
+                            if (element.localName == 'a') {
+                              return {
+                                'color': PrimitivesTokens.colorsGrey
+                                    .toHexString(),
+                              };
                             }
                             return null;
                           },
