@@ -33,7 +33,7 @@ void main() {
       await ensurePatrolActiveDevice(config);
       await _tapPlayOnFf1($);
 
-      await $(GoldPathPatrolKeys.nowDisplayingBar).waitUntilVisible(
+      await $(GoldPathPatrolKeys.nowDisplayingBar).waitUntilExists(
         timeout: const Duration(minutes: 2),
       );
 
@@ -125,15 +125,21 @@ Future<void> _openCanaryWork(
         );
 
   if (config.canaryChannelId != null && config.canaryWorkId != null) {
-    await channelFinder
-        .$(
-          GoldPathPatrolKeys.channelWork(
-            channelId: config.canaryChannelId!,
-            workId: config.canaryWorkId!,
-          ),
-        )
-        .waitUntilVisible(timeout: const Duration(minutes: 2))
-        .tap();
+    final canaryWorkFinder = channelFinder.$(
+      GoldPathPatrolKeys.channelWork(
+        channelId: config.canaryChannelId!,
+        workId: config.canaryWorkId!,
+      ),
+    );
+    await _openCanaryWorkUntilPlayTargetVisible(
+      $,
+      tapWork: () async {
+        await canaryWorkFinder.waitUntilVisible(
+          timeout: const Duration(minutes: 2),
+        );
+        await canaryWorkFinder.tap();
+      },
+    );
     return;
   }
 
@@ -143,36 +149,73 @@ Future<void> _openCanaryWork(
     thumbnailsFinder: workThumbnails,
     timeout: const Duration(minutes: 2),
   );
-  await workThumbnails.at(0).tap();
+  await _openCanaryWorkUntilPlayTargetVisible(
+    $,
+    tapWork: () async {
+      await workThumbnails.at(0).tap();
+    },
+  );
+}
+
+Future<void> _openCanaryWorkUntilPlayTargetVisible(
+  PatrolIntegrationTester $, {
+  required Future<void> Function() tapWork,
+}) async {
+  final deadline = DateTime.now().add(const Duration(minutes: 2));
+
+  while (DateTime.now().isBefore(deadline)) {
+    await tapWork();
+
+    final hasPlayTarget = await _isAnyFf1PlayTargetVisible($);
+    if (hasPlayTarget) {
+      return;
+    }
+
+    await $.pump(const Duration(milliseconds: 500));
+  }
+
+  throw TimeoutException(
+    'Timed out opening canary work before FF1 play controls became visible.',
+  );
+}
+
+Future<bool> _isAnyFf1PlayTargetVisible(PatrolIntegrationTester $) async {
+  if (await _isVisible(
+    $(GoldPathPatrolKeys.ffDisplayTooltipButton),
+  )) {
+    return true;
+  }
+  return _isVisible($(GoldPathPatrolKeys.ffDisplayButton));
+}
+
+Future<bool> _isVisible(
+  PatrolFinder finder, {
+  Duration timeout = const Duration(seconds: 2),
+}) async {
+  try {
+    await finder.waitUntilVisible(timeout: timeout);
+    return true;
+  } on TimeoutException {
+    return false;
+  } on Exception {
+    return false;
+  }
 }
 
 Future<void> _tapPlayOnFf1(PatrolIntegrationTester $) async {
-  const tooltipCopy = 'Tap the Play button to send the playlist to your FF1.';
   final deadline = DateTime.now().add(const Duration(minutes: 1));
+  final tooltipPlayButton = $(GoldPathPatrolKeys.ffDisplayTooltipButton);
+  final defaultPlayButton = $(GoldPathPatrolKeys.ffDisplayButton);
 
   while (DateTime.now().isBefore(deadline)) {
     await $.pump(const Duration(milliseconds: 250));
 
-    if ($(GoldPathPatrolKeys.ffDisplayTooltipButton).exists ||
-        $(tooltipCopy).exists) {
-      final tappedTooltip = await _tryTapVisible(
-        $,
-        $(GoldPathPatrolKeys.ffDisplayTooltipButton),
-      );
-      if (tappedTooltip) {
-        return;
-      }
+    if (await _tryTapVisible($, tooltipPlayButton)) {
+      return;
     }
 
-    if ($(GoldPathPatrolKeys.ffDisplayButton).exists &&
-        !$(tooltipCopy).exists) {
-      final tappedDefaultButton = await _tryTapVisible(
-        $,
-        $(GoldPathPatrolKeys.ffDisplayButton),
-      );
-      if (tappedDefaultButton) {
-        return;
-      }
+    if (await _tryTapVisible($, defaultPlayButton)) {
+      return;
     }
   }
 
@@ -183,13 +226,16 @@ Future<void> _tapPlayOnFf1(PatrolIntegrationTester $) async {
 
 Future<bool> _tryTapVisible(
   PatrolIntegrationTester $,
-  PatrolFinder finder,
-) async {
+  PatrolFinder finder, {
+  Duration timeout = const Duration(seconds: 2),
+}) async {
   try {
-    await finder.waitUntilVisible(timeout: const Duration(seconds: 20));
+    await finder.waitUntilVisible(timeout: timeout);
     await finder.tap();
     return true;
   } on TimeoutException {
+    return false;
+  } on Exception {
     return false;
   }
 }

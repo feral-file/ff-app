@@ -128,6 +128,7 @@ class _NowDisplayingBarCard extends ConsumerWidget {
         final wifiControl = ref.read(ff1WifiControlProvider);
 
         return SizedBox(
+          key: GoldPathPatrolKeys.nowDisplayingBar,
           height: expandedHeight,
           child: TwoStopDraggableSheet(
             key: nowDisplayingSheetKey,
