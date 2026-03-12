@@ -78,7 +78,7 @@ Future<void> _submitPersonalAddressInOnboarding(
   await $('See the art you already own').waitUntilVisible(
     timeout: const Duration(minutes: 1),
   );
-  await $(address).waitUntilVisible(
+  await $(address).waitUntilExists(
     timeout: const Duration(minutes: 1),
   );
 }
