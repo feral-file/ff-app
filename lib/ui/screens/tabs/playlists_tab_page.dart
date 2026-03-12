@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
@@ -11,6 +12,7 @@ import 'package:app/ui/screens/tabs/tab_reload_guard.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/playlist/playlist_header_with_collection_state.dart';
 import 'package:app/widgets/playlist/playlist_section.dart';
+import 'package:app/widgets/playlist/playlist_title.dart';
 import 'package:app/widgets/seed_sync_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,7 +41,9 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
 
   final ScrollController _scrollController = ScrollController();
   PlaylistsState _cachedCuratedState = PlaylistsState.initial();
-  PlaylistsState _cachedPersonalState = PlaylistsState.initial();
+  MeSectionPlaylistsState _cachedMeSectionState =
+      MeSectionPlaylistsState.initial;
+  SeedDownloadStatus? _prevSeedStatus;
 
   @override
   bool get wantKeepAlive => true;
@@ -102,19 +106,7 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
       ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
     }
 
-    final personalState = ref.read(
-      playlistsProvider(PlaylistType.addressBased),
-    );
-    final shouldLoadPersonal = shouldLoadTabData(
-      isLoading: personalState.isLoading,
-      hasCachedItems: personalState.playlists.isNotEmpty,
-      hasError: personalState.error != null,
-    );
-    if (shouldLoadPersonal) {
-      ref
-          .read(playlistsProvider(PlaylistType.addressBased).notifier)
-          .loadPlaylists();
-    }
+    // Me section uses meSectionPlaylistsProvider (auto-loads on watch).
   }
 
   @override
@@ -122,6 +114,15 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     super.build(context);
 
     final seedState = ref.watch(seedDownloadProvider);
+    // Clear cache when seed sync completes (e.g. Forget I Exist) so we never
+    // show stale Favorite/Me section data from before the reset.
+    if (_prevSeedStatus == SeedDownloadStatus.syncing &&
+        seedState.status != SeedDownloadStatus.syncing) {
+      _cachedMeSectionState = MeSectionPlaylistsState.initial;
+      _cachedCuratedState = PlaylistsState.initial();
+    }
+    _prevSeedStatus = seedState.status;
+
     if (seedState.status == SeedDownloadStatus.syncing) {
       return SeedSyncLoadingIndicator(
         progress: seedState.progress,
@@ -139,31 +140,52 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
       );
     }
 
-    // Watch both providers (curated = dp1, personal = addressBased).
+    // Watch curated (dp1) and Me section (Favorite, address-based).
     final nextCuratedState = widget.isActive
         ? ref.watch(playlistsProvider(PlaylistType.dp1))
         : _cachedCuratedState;
-    final nextPersonalState = widget.isActive
-        ? ref.watch(playlistsProvider(PlaylistType.addressBased))
-        : _cachedPersonalState;
-    final shouldKeepSnapshot =
-        widget.isActive &&
-        (_cachedCuratedState.playlists.isNotEmpty ||
-            _cachedPersonalState.playlists.isNotEmpty) &&
-        nextCuratedState.playlists.isEmpty &&
-        nextPersonalState.playlists.isEmpty &&
-        (nextCuratedState.isLoading || nextPersonalState.isLoading);
+    final nextMeSectionAsync = widget.isActive
+        ? ref.watch(meSectionPlaylistsProvider)
+        : null;
+    // When loading, use initial (empty) to avoid showing stale favorites after
+    // Forget I Exist. Do not fall back to cache during reload.
+    final nextMeSectionState =
+        nextMeSectionAsync?.when(
+          data: (v) => v,
+          loading: () => MeSectionPlaylistsState.initial,
+          error: (_, _) => null,
+        ) ??
+        _cachedMeSectionState;
 
-    final curatedState = shouldKeepSnapshot
+    final shouldKeepCuratedSnapshot =
+        widget.isActive &&
+        _cachedCuratedState.playlists.isNotEmpty &&
+        nextCuratedState.playlists.isEmpty &&
+        nextCuratedState.isLoading;
+
+    final curatedState = shouldKeepCuratedSnapshot
         ? _cachedCuratedState
         : nextCuratedState;
-    final personalState = shouldKeepSnapshot
-        ? _cachedPersonalState
-        : nextPersonalState;
-    if (widget.isActive && !shouldKeepSnapshot) {
-      _cachedCuratedState = nextCuratedState;
-      _cachedPersonalState = nextPersonalState;
+    if (widget.isActive) {
+      if (!shouldKeepCuratedSnapshot) {
+        _cachedCuratedState = nextCuratedState;
+      }
+      final meSectionData = nextMeSectionAsync?.when(
+        data: (v) => v,
+        loading: () => null,
+        error: (_, _) => null,
+      );
+      if (meSectionData != null) {
+        _cachedMeSectionState = meSectionData;
+      }
     }
+    // When active, use nextMeSectionState so loading shows empty (e.g. after
+    // Forget I Exist). When inactive, use cache.
+    final displayMeSectionState = widget.isActive
+        ? nextMeSectionState
+        : _cachedMeSectionState;
+    final personalPlaylists = displayMeSectionState.playlists;
+    final error = curatedState.error ?? displayMeSectionState.error;
     final curatedPlaylists = curatedState.playlists;
     final curatedSectionPlaylists = curatedPlaylists.where((playlist) {
       final channelId = playlist.channelId;
@@ -172,8 +194,6 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
       }
       return true;
     }).toList();
-    final personalPlaylists = personalState.playlists;
-    final error = curatedState.error ?? personalState.error;
 
     // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics.
     // Parent NestedScrollView handles scrolling.
@@ -194,14 +214,12 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
                 ref
                     .read(playlistsProvider(PlaylistType.dp1).notifier)
                     .loadPlaylists();
-                ref
-                    .read(playlistsProvider(PlaylistType.addressBased).notifier)
-                    .loadPlaylists();
+                ref.invalidate(meSectionPlaylistsProvider);
               },
             ),
           ),
 
-        // Personal playlists section (preview).
+        // Me section (Favorite, address-based).
         if (personalPlaylists.isNotEmpty)
           SliverToBoxAdapter(
             child: Column(
@@ -209,6 +227,14 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
                 PlaylistSection(
                   sectionName: 'Me',
                   playlistHeaderBuilder: (playlist, itemCount) {
+                    // Favorite playlist: simple title.
+                    if (playlist.type == PlaylistType.favorite) {
+                      return PlaylistTitle(
+                        primaryText: playlist.name,
+                        secondaryText: '',
+                      );
+                    }
+                    // Address playlists: collection state header.
                     final ownerAddress = playlist.ownerAddress;
                     if (ownerAddress == null || ownerAddress.isEmpty) {
                       return null;

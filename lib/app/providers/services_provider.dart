@@ -15,6 +15,7 @@ import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/canvas_client_service_v2.dart';
 import 'package:app/infra/services/device_info_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
+import 'package:app/infra/services/favorite_playlist_service.dart';
 import 'package:app/infra/services/force_update_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart';
@@ -80,6 +81,15 @@ final bootstrapServiceProvider = Provider<BootstrapService>((ref) {
   return BootstrapService(databaseService: databaseService);
 });
 
+/// Provider for FavoritePlaylistService.
+/// Manages user's Favorite playlist (starred works).
+final favoritePlaylistServiceProvider = Provider<FavoritePlaylistService>((
+  ref,
+) {
+  final databaseService = ref.watch(databaseServiceProvider);
+  return FavoritePlaylistService(databaseService: databaseService);
+});
+
 /// Provider for composing support emails from the app.
 final supportEmailServiceProvider = Provider<SupportEmailService>((ref) {
   final deviceInfoService = ref.watch(deviceInfoServiceProvider);
@@ -135,15 +145,16 @@ final indexerServiceProvider = Provider<IndexerService>((ref) {
 });
 
 /// Provider for IndexerServiceIsolate (runs indexer API in dedicated isolate).
-final indexerServiceIsolateProvider =
-    Provider<IndexerServiceIsolateOperations>((ref) {
-  final isolate = IndexerServiceIsolate(
-    endpoint: AppConfig.indexerApiUrl,
-    apiKey: AppConfig.indexerApiKey,
-  );
-  ref.onDispose(isolate.stop);
-  return isolate;
-});
+final indexerServiceIsolateProvider = Provider<IndexerServiceIsolateOperations>(
+  (ref) {
+    final isolate = IndexerServiceIsolate(
+      endpoint: AppConfig.indexerApiUrl,
+      apiKey: AppConfig.indexerApiKey,
+    );
+    ref.onDispose(isolate.stop);
+    return isolate;
+  },
+);
 
 /// Provider for IndexerSyncService (fetch + local ingestion).
 final indexerSyncServiceProvider = Provider<IndexerSyncService>((ref) {

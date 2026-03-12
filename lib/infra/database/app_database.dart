@@ -516,6 +516,13 @@ class AppDatabase extends _$AppDatabase {
     return (select(playlists)..where((t) => t.id.equals(id))).getSingleOrNull();
   }
 
+  /// Watch a single playlist by ID.
+  Stream<PlaylistData?> watchPlaylistById(String id) {
+    return (select(
+      playlists,
+    )..where((t) => t.id.equals(id))).watchSingleOrNull();
+  }
+
   /// Get all playlists.
   ///
   /// When [type] is provided, results are filtered by playlist type:
@@ -999,32 +1006,50 @@ class AppDatabase extends _$AppDatabase {
         .go();
   }
 
-  /// Delete playlist entries and items for address-based playlists in one
-  /// transaction.
+  Selectable<PlaylistEntryData> _playlistEntryQuery(
+    String playlistId,
+    String itemId,
+  ) => (select(playlistEntries)
+    ..where(
+      (t) => t.playlistId.equals(playlistId) & t.itemId.equals(itemId),
+    ));
+
+  /// Check whether a playlist entry exists.
+  Future<bool> hasPlaylistEntry({
+    required String playlistId,
+    required String itemId,
+  }) async {
+    final entry = await _playlistEntryQuery(
+      playlistId,
+      itemId,
+    ).getSingleOrNull();
+    return entry != null;
+  }
+
+  /// Watch whether a playlist entry exists.
+  /// Emits true when the entry exists, false when it does not.
+  Stream<bool> watchHasPlaylistEntry({
+    required String playlistId,
+    required String itemId,
+  }) => _playlistEntryQuery(
+    playlistId,
+    itemId,
+  ).watchSingleOrNull().map((entry) => entry != null);
+
+  /// Delete playlist entries for address-based playlists.
   ///
-  /// Uses two raw SQL statements: delete items first (subquery reads
-  /// playlist_entries), then delete playlist_entries. [addresses] must be
-  /// pre-normalized by the caller.
+  /// Items are not deleted; orphaned items stay in the database.
+  /// [addresses] must be pre-normalized by the caller.
   Future<void> deleteItemsAndEntriesOfAddresses(List<String> addresses) async {
     if (addresses.isEmpty) return;
     final placeholders = addresses.map((_) => '?').join(',');
-    await transaction(() async {
-      await customStatement(
-        'DELETE FROM items WHERE id IN ( '
-        'SELECT pe.item_id FROM playlist_entries pe '
-        'INNER JOIN playlists p ON p.id = pe.playlist_id '
-        'WHERE p.type = 1 '
-        "AND LOWER(TRIM(COALESCE(p.owner_address, ''))) IN ($placeholders))",
-        addresses,
-      );
-      await customStatement(
-        'DELETE FROM playlist_entries WHERE playlist_id IN ( '
-        'SELECT id FROM playlists '
-        'WHERE type = 1 '
-        "AND LOWER(TRIM(COALESCE(owner_address, ''))) IN ($placeholders))",
-        addresses,
-      );
-    });
+    await customStatement(
+      'DELETE FROM playlist_entries WHERE playlist_id IN ( '
+      'SELECT id FROM playlists '
+      'WHERE type = 1 '
+      "AND LOWER(TRIM(COALESCE(owner_address, ''))) IN ($placeholders))",
+      addresses,
+    );
   }
 
   /// Force WAL checkpoint to write pending changes to main database file.
@@ -1152,16 +1177,35 @@ LazyDatabase _openConnection() {
 
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'dp1_library.sqlite'));
-    await _resetDatabaseIfSchemaConflicts(file, dbFolder);
+    final wasDeletedForSchemaConflict = await _resetDatabaseIfSchemaConflicts(
+      file,
+      dbFolder,
+    );
+
+    // Never create an empty database in the normal flow. The app only uses
+    // the seed: download to temp dir, then replace current DB file. If the
+    // file is missing (e.g. download failed on first install), refuse to
+    // open. Schema conflict recovery may have deleted the file; in that
+    // edge case we allow SQLite to create (Drift onCreate) as fallback.
+    if (!file.existsSync() && !wasDeletedForSchemaConflict) {
+      throw StateError(
+        'Seed database file is missing at ${file.path}. '
+        'The app requires the seed to be downloaded; creating an empty '
+        'database is not supported.',
+      );
+    }
 
     _log.info('Opening database at: ${file.path}');
 
     // Run SQLite work on a background Drift isolate.
+    // singleClientMode: true ensures the isolate shuts down when the connection
+    // is closed (e.g. during Forget I Exist), preventing accumulation of orphan
+    // isolates.
     try {
       final driftIsolate = await DriftIsolate.spawn(
         () => _makeNativeDatabase(file),
       );
-      final connection = await driftIsolate.connect();
+      final connection = await driftIsolate.connect(singleClientMode: true);
       return connection.interceptWith(
         SentryQueryInterceptor(databaseName: file.path),
       );
@@ -1176,7 +1220,7 @@ LazyDatabase _openConnection() {
       final driftIsolate = await DriftIsolate.spawn(
         () => _makeNativeDatabase(file),
       );
-      final connection = await driftIsolate.connect();
+      final connection = await driftIsolate.connect(singleClientMode: true);
       return connection.interceptWith(
         SentryQueryInterceptor(databaseName: file.path),
       );
@@ -1184,12 +1228,14 @@ LazyDatabase _openConnection() {
   });
 }
 
-Future<void> _resetDatabaseIfSchemaConflicts(
+/// Returns true if the database file was deleted due to schema conflict.
+/// Caller may allow SQLite to create a fresh DB in that edge case.
+Future<bool> _resetDatabaseIfSchemaConflicts(
   File dbFile,
   Directory dbFolder,
 ) async {
   if (!dbFile.existsSync()) {
-    return;
+    return false;
   }
 
   sqlite3.Database? probeDb;
@@ -1199,7 +1245,7 @@ Future<void> _resetDatabaseIfSchemaConflicts(
     final userVersion = rows.isEmpty ? 0 : (rows.first.columnAt(0) as int);
     final schemaCompatible = _isSchemaCompatibleV1(probeDb);
     if (userVersion == _schemaVersionV1 && schemaCompatible) {
-      return;
+      return false;
     }
 
     _log.warning(
@@ -1209,6 +1255,7 @@ Future<void> _resetDatabaseIfSchemaConflicts(
     );
     await _deleteDatabaseFiles(dbFile);
     await _markDatabaseResetForReindex(dbFolder);
+    return true;
   } on Object catch (e, st) {
     _log.warning(
       'Failed to read schema version. Recreating database from scratch.',
@@ -1217,6 +1264,7 @@ Future<void> _resetDatabaseIfSchemaConflicts(
     );
     await _deleteDatabaseFiles(dbFile);
     await _markDatabaseResetForReindex(dbFolder);
+    return true;
   } finally {
     probeDb?.dispose();
   }

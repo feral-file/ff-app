@@ -39,7 +39,6 @@ enum AddressIndexingProcessState {
 
 /// Persistable status for per-address indexing process.
 class AddressIndexingProcessStatus {
-
   factory AddressIndexingProcessStatus.idle() => AddressIndexingProcessStatus._(
     state: AddressIndexingProcessState.idle,
     updatedAt: DateTime.now().toUtc(),
@@ -130,6 +129,7 @@ abstract class AppStateServiceBase {
     required String address,
     required AddressIndexingProcessStatus status,
   });
+
   /// Adds address to tracked list (with optional alias) and ensures
   /// [AppStateAddressEntity] exists. Call before setAddressIndexingStatus.
   Future<void> addTrackedAddress(String address, {String alias = ''});
@@ -287,6 +287,25 @@ class AppStateService extends AppStateServiceBase {
     });
   }
 
+  /// Whether user has completed at least one seed database download.
+  @override
+  Future<bool> hasCompletedSeedDownload() async {
+    return _lock.synchronized(() {
+      return _getOrCreateSingleton().hasCompletedSeedDownload;
+    });
+  }
+
+  /// Persist seed download completion. When true, subsequent syncs run in background.
+  @override
+  Future<void> setHasCompletedSeedDownload({required bool completed}) async {
+    await _lock.synchronized(() async {
+      final app = _getOrCreateSingleton()
+        ..hasCompletedSeedDownload = completed
+        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
+      _appStateBox.put(app);
+    });
+  }
+
   /// Get incremental indexer anchor for an address.
   @override
   Future<int?> getAddressAnchor(String address) async {
@@ -308,7 +327,7 @@ class AppStateService extends AppStateServiceBase {
     await _lock.synchronized(() async {
       final normalized = _normalizeAddressKey(address);
       var row = _findAddressState(normalized);
-      if (row == null) row = _createAddressState(normalized);
+      row ??= _createAddressState(normalized);
       row
         ..hasIndexerAnchor = true
         ..indexerAnchor = anchor
@@ -368,7 +387,7 @@ class AppStateService extends AppStateServiceBase {
     final normalizedAddress = _normalizeAddressKey(address);
     await _lock.synchronized(() async {
       var row = _findAddressState(normalizedAddress);
-      if (row == null) row = _createAddressState(normalizedAddress);
+      row ??= _createAddressState(normalizedAddress);
       row
         ..indexingProcessStateIndex = status.state.index
         ..indexingProcessUpdatedAtUs = status.updatedAt

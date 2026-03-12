@@ -1,9 +1,13 @@
+import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:uuid/uuid.dart';
+
+/// Favorite playlist ID (always present for every user).
+const String favoritePlaylistId = Playlist.favoriteId;
 
 /// Convenience extensions for [Playlist].
 extension PlaylistExt on Playlist {
@@ -42,7 +46,7 @@ extension PlaylistExt on Playlist {
   /// Use this to generate the playlist structure before persisting.
   static Playlist fromWalletAddress(
     WalletAddress walletAddress, {
-    String channelId = 'my_collection',
+    String channelId = Channel.myCollectionId,
     String? name,
   }) {
     final chain = walletAddress.chain;

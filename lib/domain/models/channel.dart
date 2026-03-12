@@ -130,6 +130,9 @@ class Channel {
       sortOrder: sortOrder ?? this.sortOrder,
     );
   }
+
+  /// Channel ID for "My Collection" (personal, pinned).
+  static const String myCollectionId = 'my_collection';
 }
 
 /// Channel type enumeration.

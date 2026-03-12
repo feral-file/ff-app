@@ -24,7 +24,7 @@ class BottomSpacing extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final baseHeight = bottomPadding + LayoutConstants.space20;
+    final baseHeight = bottomPadding + LayoutConstants.space4;
 
     if (!checkNowDisplayingVisibility) {
       return SizedBox(

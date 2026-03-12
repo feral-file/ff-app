@@ -1,3 +1,4 @@
+import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
@@ -31,6 +32,23 @@ class Playlist {
     this.sortMode = PlaylistSortMode.position,
     this.itemCount = 0,
   });
+
+  /// Creates the Favorite playlist (for bootstrap).
+  factory Playlist.favorite({DateTime? createdAt, DateTime? updatedAt}) {
+    final now = createdAt ?? DateTime.now();
+    return Playlist(
+      id: favoriteId,
+      name: 'Favorites',
+      type: PlaylistType.favorite,
+      channelId: Channel.myCollectionId,
+      sortMode: PlaylistSortMode.provenance,
+      createdAt: now,
+      updatedAt: updatedAt ?? now,
+    );
+  }
+
+  /// Favorite playlist ID (always present for every user).
+  static const String favoriteId = 'favorite';
 
   /// DP-1 playlist ID (e.g., pl_*)
   final String id;
@@ -203,7 +221,10 @@ enum PlaylistType {
   dp1(0),
 
   /// Address-based playlist (user's collection).
-  addressBased(1)
+  addressBased(1),
+
+  /// Favorite playlist (user favorites; supports multiple in future).
+  favorite(2),
   ;
 
   final int value;
