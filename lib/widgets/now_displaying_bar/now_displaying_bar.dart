@@ -161,10 +161,12 @@ class _NowPlayingCardContainer extends StatelessWidget {
   const _NowPlayingCardContainer({
     required this.child,
     this.backgroundColor,
+    this.hasPaddingRight = true,
   });
 
   final Widget child;
   final Color? backgroundColor;
+  final bool hasPaddingRight;
 
   @override
   Widget build(BuildContext context) {
@@ -179,7 +181,9 @@ class _NowPlayingCardContainer extends StatelessWidget {
         padding: EdgeInsets.only(
           top: LayoutConstants.nowDisplayingBarPaddingTop,
           left: LayoutConstants.nowDisplayingBarPaddingHorizontal,
-          right: LayoutConstants.nowDisplayingBarPaddingHorizontal,
+          right: hasPaddingRight
+              ? LayoutConstants.nowDisplayingBarPaddingHorizontal
+              : 0,
           bottom: LayoutConstants.nowDisplayingBarPaddingBottom,
         ),
         child: child,
@@ -224,6 +228,7 @@ class _NowPlayingSleepBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return _NowPlayingCardContainer(
+      hasPaddingRight: false,
       backgroundColor: PrimitivesTokens.colorsNowPlayingBarInactive,
       child: SizedBox(
         height: LayoutConstants.nowDisplayingBarCollapsedHeight,
