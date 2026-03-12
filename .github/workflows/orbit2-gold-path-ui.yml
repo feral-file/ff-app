@@ -1,0 +1,115 @@
+name: Orbit 2 Gold Path UI Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      simulator_device:
+        description: iOS Simulator device name
+        required: true
+        default: iPhone 16e
+        type: string
+      canary_channel_title:
+        description: Curated channel title to open
+        required: true
+        default: Social Codes
+        type: string
+      soak_minutes:
+        description: Optional soak duration in minutes
+        required: true
+        default: "1"
+        type: string
+
+jobs:
+  orbit2-gold-path-ui:
+    runs-on: [self-hosted, macOS]
+    permissions:
+      contents: read
+    env:
+      SIMULATOR_DEVICE: ${{ inputs.simulator_device }}
+      ORBIT2_CANARY_CHANNEL_TITLE: ${{ inputs.canary_channel_title }}
+      ORBIT2_SOAK_MINUTES: ${{ inputs.soak_minutes }}
+      ORBIT2_FF1_DEVICE_ID: ${{ secrets.ORBIT2_FF1_DEVICE_ID }}
+      ORBIT2_FF1_TOPIC_ID: ${{ secrets.ORBIT2_FF1_TOPIC_ID }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.2'
+
+      - name: Create env file
+        run: |
+          : > .env
+          if [ -n "${{ secrets.ENV_VARS }}" ]; then
+            echo -e "${{ secrets.ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
+          fi
+
+      - name: Validate Orbit 2 secrets
+        run: |
+          test -n "$ORBIT2_FF1_DEVICE_ID" || {
+            echo "Missing secret: ORBIT2_FF1_DEVICE_ID"
+            exit 1
+          }
+          test -n "$ORBIT2_FF1_TOPIC_ID" || {
+            echo "Missing secret: ORBIT2_FF1_TOPIC_ID"
+            exit 1
+          }
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update
+
+      - name: Install Patrol CLI
+        run: dart pub global activate patrol_cli
+
+      - name: Boot iOS simulator
+        run: |
+          xcrun simctl boot "$SIMULATOR_DEVICE" || true
+          open -a Simulator
+          xcrun simctl bootstatus "$SIMULATOR_DEVICE" -b
+
+      - name: Run Orbit 2 gold path Patrol test
+        env:
+          PATH: ${{ env.PATH }}:$HOME/.pub-cache/bin
+        run: |
+          patrol test \
+            --target patrol_test/orbit2_gold_path_test.dart \
+            --flavor development \
+            --device "$SIMULATOR_DEVICE" \
+            --bundle-id com.feralfile.app \
+            --dart-define ORBIT2_FF1_DEVICE_ID="$ORBIT2_FF1_DEVICE_ID" \
+            --dart-define ORBIT2_FF1_TOPIC_ID="$ORBIT2_FF1_TOPIC_ID" \
+            --dart-define ORBIT2_CANARY_CHANNEL_TITLE="$ORBIT2_CANARY_CHANNEL_TITLE" \
+            --dart-define ORBIT2_SOAK_MINUTES="$ORBIT2_SOAK_MINUTES" \
+            --show-flutter-logs
+
+      - name: Capture latest xcresult path
+        if: always()
+        id: xcresult
+        run: |
+          LATEST_XCRESULT="$(find build -maxdepth 1 -name 'ios_results_*.xcresult' -print | sort | tail -n 1)"
+          echo "path=$LATEST_XCRESULT" >> "$GITHUB_OUTPUT"
+          if [ -n "$LATEST_XCRESULT" ]; then
+            echo "Found xcresult at $LATEST_XCRESULT"
+          else
+            echo "No xcresult bundle found"
+          fi
+
+      - name: Upload xcresult artifact
+        if: always() && steps.xcresult.outputs.path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbit2-gold-path-ios-xcresult
+          path: ${{ steps.xcresult.outputs.path }}
+          if-no-files-found: error

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:after_layout/after_layout.dart';
+import 'package:app/app/patrol/orbit2_patrol_keys.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -21,6 +22,7 @@ import 'package:sentry/sentry.dart';
 /// Ported from old repo FFCastButton; renamed to FFDisplayButton.
 /// Uses Riverpod for state (active device + tooltip seen flag).
 class FFDisplayButton extends ConsumerStatefulWidget {
+  /// Creates an FF1 display button bound to the active device provider.
   const FFDisplayButton({
     super.key,
     this.onDeviceSelected,
@@ -29,9 +31,16 @@ class FFDisplayButton extends ConsumerStatefulWidget {
     this.onTooltipVisibilityChanged,
   });
 
+  /// Callback invoked with the active FF1 device when Play is pressed.
   final FutureOr<void> Function(FF1Device device)? onDeviceSelected;
+
+  /// Optional label override for future button variants.
   final String? text;
+
+  /// Optional hook invoked before the display callback executes.
   final VoidCallback? onTap;
+
+  /// Notifies listeners when the first-run tooltip visibility changes.
   final ValueChanged<bool>? onTooltipVisibilityChanged;
 
   @override
@@ -142,9 +151,12 @@ class _FFDisplayButtonState extends ConsumerState<FFDisplayButton>
                   crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    PlayButton(
-                      isProcessing: _isProcessing,
-                      onTap: _handlePlayTap,
+                    Container(
+                      key: Orbit2PatrolKeys.ffDisplayTooltipButton,
+                      child: PlayButton(
+                        isProcessing: _isProcessing,
+                        onTap: _handlePlayTap,
+                      ),
                     ),
                     SizedBox(height: LayoutConstants.space5),
                     PlayToFF1Tooltip(
@@ -208,12 +220,15 @@ class _FFDisplayButtonState extends ConsumerState<FFDisplayButton>
           return const SizedBox.shrink();
         }
         return Container(
-          key: _buttonKey,
-          child: PlayButton(
-            isProcessing: _isProcessing,
-            onTap: () async {
-              await _handlePlayTap();
-            },
+          key: Orbit2PatrolKeys.ffDisplayButton,
+          child: Container(
+            key: _buttonKey,
+            child: PlayButton(
+              isProcessing: _isProcessing,
+              onTap: () async {
+                await _handlePlayTap();
+              },
+            ),
           ),
         );
       },
@@ -225,8 +240,10 @@ class _FFDisplayButtonState extends ConsumerState<FFDisplayButton>
 
 /// Tooltip explaining that tapping Play sends the playlist to FF1.
 class PlayToFF1Tooltip extends StatelessWidget {
+  /// Creates the tooltip explaining the FF1 display action.
   const PlayToFF1Tooltip({required this.onDismiss, super.key});
 
+  /// Dismiss callback for the tooltip close affordance.
   final VoidCallback onDismiss;
 
   @override

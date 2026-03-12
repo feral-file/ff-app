@@ -1,27 +1,40 @@
+import 'package:app/app/patrol/orbit2_patrol_keys.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:flutter/material.dart';
 
 /// Tabs for the home index header.
 enum HomeIndexHeaderTab {
+  /// Playlist browsing surface.
   playlists('Playlists'),
+
+  /// Channel browsing surface.
   channels('Channels'),
+
+  /// Work browsing surface.
   works('Works')
   ;
 
+  /// Creates a home header tab descriptor.
   const HomeIndexHeaderTab(this.label);
+
+  /// Visible tab label in the home header.
   final String label;
 }
 
 /// Home index header - tab navigation matching the old app layout.
 class HomeIndexHeader extends StatelessWidget {
+  /// Creates the home tab header.
   const HomeIndexHeader({
     required this.selectedTab,
     required this.onTabChanged,
     super.key,
   });
 
+  /// Currently selected home tab.
   final HomeIndexHeaderTab selectedTab;
+
+  /// Callback fired when the user selects a different tab.
   final ValueChanged<HomeIndexHeaderTab> onTabChanged;
 
   @override
@@ -32,6 +45,11 @@ class HomeIndexHeader extends StatelessWidget {
         children: HomeIndexHeaderTab.values.map((tab) {
           final isSelected = tab == selectedTab;
           return GestureDetector(
+            key: switch (tab) {
+              HomeIndexHeaderTab.playlists => Orbit2PatrolKeys.playlistsTab,
+              HomeIndexHeaderTab.channels => Orbit2PatrolKeys.channelsTab,
+              _ => null,
+            },
             onTap: () => onTabChanged(tab),
             behavior: HitTestBehavior.opaque,
             child: Padding(
