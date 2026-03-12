@@ -37,6 +37,7 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
   Timer? _pollTimer;
   Timer? _syncCollectionTimer;
   bool _isStoppingForReset = false;
+  final Set<String> _syncCollectionAddressesInProgress = {};
 
   @override
   TokensSyncState build() {
@@ -75,17 +76,25 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     final service = ref.read(addressSyncCollectionServiceProvider);
     final random = Random();
     final futures = addresses.map((address) async {
-      final delayMs = 100 + random.nextInt(201);
-      await Future<void>.delayed(Duration(milliseconds: delayMs));
       if (_isStoppingForReset) return;
+      // Per-address guard: skip if this address is already syncing.
+      if (_syncCollectionAddressesInProgress.contains(address)) return;
+      _syncCollectionAddressesInProgress.add(address);
       try {
-        await service.syncAddressWithCollection(address);
-      } on Object catch (e, stack) {
-        _log.warning(
-          'syncCollection failed for $address (will retry next tick)',
-          e,
-          stack,
-        );
+        final delayMs = 100 + random.nextInt(201);
+        await Future<void>.delayed(Duration(milliseconds: delayMs));
+        if (_isStoppingForReset) return;
+        try {
+          await service.syncAddressWithCollection(address);
+        } on Object catch (e, stack) {
+          _log.warning(
+            'syncCollection failed for $address (will retry next tick)',
+            e,
+            stack,
+          );
+        }
+      } finally {
+        _syncCollectionAddressesInProgress.remove(address);
       }
     });
     await Future.wait(futures);

@@ -343,8 +343,7 @@ class AppStateService extends AppStateServiceBase {
       row
         ..hasCheckpoint = false
         ..checkpointTimestampUs = 0
-        ..checkpointEventId = 0
-        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
+        ..checkpointEventId = 0;
       _appStateAddressBox.put(row);
     });
   }
