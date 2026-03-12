@@ -28,10 +28,6 @@ jobs:
       SIMULATOR_DEVICE: ${{ inputs.simulator_device }}
       GOLD_PATH_CANARY_CHANNEL_TITLE: ${{ inputs.canary_channel_title }}
       GOLD_PATH_SOAK_MINUTES: ${{ inputs.soak_minutes }}
-      GOLD_PATH_FF1_DEVICE_ID: ${{ secrets.GOLD_PATH_FF1_DEVICE_ID }}
-      GOLD_PATH_FF1_TOPIC_ID: ${{ secrets.GOLD_PATH_FF1_TOPIC_ID }}
-      LEGACY_ORBIT_FF1_DEVICE_ID: ${{ secrets.ORBIT2_FF1_DEVICE_ID }}
-      LEGACY_ORBIT_FF1_TOPIC_ID: ${{ secrets.ORBIT2_FF1_TOPIC_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -53,56 +49,22 @@ jobs:
             echo -e "${{ secrets.ENV_VARS }}" | sed 's/\\n/\n/g' >> .env
           fi
 
-      - name: Resolve FF1 test identifiers
+      - name: Resolve shared FF1 identifiers
         run: |
-          get_env_value() {
-            local key="$1"
-            if [ -f .env ]; then
-              awk -F= -v k="$key" '$1 == k { sub(/^[^=]*=/, "", $0); print; exit }' .env
-            fi
-          }
+          ff1_device_id="$(awk -F= '$1 == "FF1_DEVICE_ID" { sub(/^[^=]*=/, "", $0); print; exit }' .env)"
+          ff1_topic_id="$(awk -F= '$1 == "FF1_TOPIC_ID" { sub(/^[^=]*=/, "", $0); print; exit }' .env)"
 
-          resolved_device_id="$GOLD_PATH_FF1_DEVICE_ID"
-          resolved_topic_id="$GOLD_PATH_FF1_TOPIC_ID"
-
-          if [ -z "$resolved_device_id" ] && [ -n "$LEGACY_ORBIT_FF1_DEVICE_ID" ]; then
-            resolved_device_id="$LEGACY_ORBIT_FF1_DEVICE_ID"
-          fi
-          if [ -z "$resolved_topic_id" ] && [ -n "$LEGACY_ORBIT_FF1_TOPIC_ID" ]; then
-            resolved_topic_id="$LEGACY_ORBIT_FF1_TOPIC_ID"
-          fi
-
-          if [ -z "$resolved_device_id" ]; then
-            for key in GOLD_PATH_FF1_DEVICE_ID FF1_DEVICE_ID INTEGRATION_FF1_DEVICE_ID ORBIT2_FF1_DEVICE_ID; do
-              value="$(get_env_value "$key")"
-              if [ -n "$value" ]; then
-                resolved_device_id="$value"
-                break
-              fi
-            done
-          fi
-
-          if [ -z "$resolved_topic_id" ]; then
-            for key in GOLD_PATH_FF1_TOPIC_ID FF1_TOPIC_ID INTEGRATION_FF1_TOPIC_ID ORBIT2_FF1_TOPIC_ID; do
-              value="$(get_env_value "$key")"
-              if [ -n "$value" ]; then
-                resolved_topic_id="$value"
-                break
-              fi
-            done
-          fi
-
-          test -n "$resolved_device_id" || {
-            echo "Missing FF1 device id. Set GOLD_PATH_FF1_DEVICE_ID secret or provide FF1_DEVICE_ID in ENV_VARS."
+          test -n "$ff1_device_id" || {
+            echo "Missing FF1_DEVICE_ID in ENV_VARS (.env)."
             exit 1
           }
-          test -n "$resolved_topic_id" || {
-            echo "Missing FF1 topic id. Set GOLD_PATH_FF1_TOPIC_ID secret or provide FF1_TOPIC_ID in ENV_VARS."
+          test -n "$ff1_topic_id" || {
+            echo "Missing FF1_TOPIC_ID in ENV_VARS (.env)."
             exit 1
           }
 
-          echo "RESOLVED_FF1_DEVICE_ID=$resolved_device_id" >> "$GITHUB_ENV"
-          echo "RESOLVED_FF1_TOPIC_ID=$resolved_topic_id" >> "$GITHUB_ENV"
+          echo "FF1_DEVICE_ID=$ff1_device_id" >> "$GITHUB_ENV"
+          echo "FF1_TOPIC_ID=$ff1_topic_id" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: flutter pub get
@@ -130,8 +92,8 @@ jobs:
             --flavor development \
             --device "$SIMULATOR_DEVICE" \
             --bundle-id com.feralfile.app \
-            --dart-define GOLD_PATH_FF1_DEVICE_ID="$RESOLVED_FF1_DEVICE_ID" \
-            --dart-define GOLD_PATH_FF1_TOPIC_ID="$RESOLVED_FF1_TOPIC_ID" \
+            --dart-define FF1_DEVICE_ID="$FF1_DEVICE_ID" \
+            --dart-define FF1_TOPIC_ID="$FF1_TOPIC_ID" \
             --dart-define GOLD_PATH_CANARY_CHANNEL_TITLE="$GOLD_PATH_CANARY_CHANNEL_TITLE" \
             --dart-define GOLD_PATH_SOAK_MINUTES="$GOLD_PATH_SOAK_MINUTES" \
             --show-flutter-logs
