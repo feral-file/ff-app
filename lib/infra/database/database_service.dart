@@ -515,7 +515,9 @@ class DatabaseService {
   /// Get Favorite playlists snapshot for rebuild-metadata restore.
   ///
   /// Returns one [FavoritePlaylistSnapshot] per favorite playlist
-  /// (playlist + items; entries are recreated on restore).
+  /// (playlist + items; entries are recreated on restore). Items order
+  /// comes from [getPlaylistItemsByProvenance]; that same order is
+  /// preserved on [restoreFavoritePlaylistsSnapshot] (no sortKeyUs stored).
   Future<List<FavoritePlaylistSnapshot>> getFavoritePlaylistsSnapshot() async {
     final playlistsData = await _db.getAllPlaylists(
       type: PlaylistType.favorite,
@@ -539,8 +541,10 @@ class DatabaseService {
 
   /// Restore Favorite playlists from snapshot after rebuild-metadata.
   ///
-  /// Upserts items, playlists, then creates entries. Entries use
-  /// generated sortKeyUs (nowUs + index).
+  /// Uses the exact order of [snapshot.items] as the restore order. Snapshots
+  /// are created by [getFavoritePlaylistsSnapshot] via [getPlaylistItemsByProvenance],
+  /// so capture order = restore order. No sortKeyUs in snapshot; we assign
+  /// sortKeys from list index so provenance ordering (DESC) matches.
   Future<void> restoreFavoritePlaylistsSnapshot(
     List<FavoritePlaylistSnapshot> snapshots,
   ) async {
@@ -560,7 +564,11 @@ class DatabaseService {
 
         if (items.isNotEmpty) {
           final nowUs = DateTime.now().microsecondsSinceEpoch;
-          final entryCompanions = items.asMap().entries.map((e) {
+          // items = newest-first from getPlaylistItemsByProvenance. Reverse to
+          // oldest-first, then assign sortKeyUs = nowUs + index so DESC sort
+          // restores original order (newest first).
+          final oldestFirst = items.reversed.toList();
+          final entryCompanions = oldestFirst.asMap().entries.map((e) {
             return DatabaseConverters.createPlaylistEntry(
               playlistId: playlist.id,
               itemId: e.value.id,
