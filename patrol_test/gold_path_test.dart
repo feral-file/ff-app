@@ -30,9 +30,7 @@ void main() {
       await _assertCanaryVisible($, config);
       await _openCanaryWork($, config);
 
-      await $(GoldPathPatrolKeys.ffDisplayButton).waitUntilVisible(
-        timeout: const Duration(minutes: 1),
-      );
+      await ensurePatrolActiveDevice(config);
       await _tapPlayOnFf1($);
 
       await $(GoldPathPatrolKeys.nowDisplayingBar).waitUntilVisible(
@@ -157,26 +155,43 @@ Future<void> _tapPlayOnFf1(PatrolIntegrationTester $) async {
 
     if ($(GoldPathPatrolKeys.ffDisplayTooltipButton).exists ||
         $(tooltipCopy).exists) {
-      await $(GoldPathPatrolKeys.ffDisplayTooltipButton).waitUntilVisible(
-        timeout: const Duration(seconds: 20),
+      final tappedTooltip = await _tryTapVisible(
+        $,
+        $(GoldPathPatrolKeys.ffDisplayTooltipButton),
       );
-      await $(GoldPathPatrolKeys.ffDisplayTooltipButton).tap();
-      return;
+      if (tappedTooltip) {
+        return;
+      }
     }
 
     if ($(GoldPathPatrolKeys.ffDisplayButton).exists &&
         !$(tooltipCopy).exists) {
-      await $(GoldPathPatrolKeys.ffDisplayButton).waitUntilVisible(
-        timeout: const Duration(seconds: 20),
+      final tappedDefaultButton = await _tryTapVisible(
+        $,
+        $(GoldPathPatrolKeys.ffDisplayButton),
       );
-      await $(GoldPathPatrolKeys.ffDisplayButton).tap();
-      return;
+      if (tappedDefaultButton) {
+        return;
+      }
     }
   }
 
   throw TimeoutException(
     'Timed out waiting for a visible FF1 play target (tooltip or default).',
   );
+}
+
+Future<bool> _tryTapVisible(
+  PatrolIntegrationTester $,
+  PatrolFinder finder,
+) async {
+  try {
+    await finder.waitUntilVisible(timeout: const Duration(seconds: 20));
+    await finder.tap();
+    return true;
+  } on TimeoutException {
+    return false;
+  }
 }
 
 Future<void> _waitForThumbnailInChannelRow(
