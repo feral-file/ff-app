@@ -4,6 +4,7 @@ import 'package:app/app/patrol/gold_path_patrol_config.dart';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/work_item_thumbnail.dart';
+import 'package:flutter/material.dart' show TextField;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 
@@ -65,10 +66,13 @@ Future<void> _submitPersonalAddressInOnboarding(
   String address,
 ) async {
   await $('Add Address').tap();
-  await $('Address or ENS / Tezos domain').waitUntilVisible(
+
+  final inputField = $(find.byType(TextField));
+  await inputField.waitUntilExists(
     timeout: const Duration(seconds: 30),
   );
-  await $('Address or ENS / Tezos domain').enterText(address);
+  await inputField.tap();
+  await inputField.enterText(address);
   await $('Submit').tap();
 
   await $('See the art you already own').waitUntilVisible(
