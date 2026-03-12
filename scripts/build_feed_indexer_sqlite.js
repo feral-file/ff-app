@@ -678,6 +678,7 @@ function mergeFeedItem(existing, feedItem) {
     id: String(feedItem.id),
     kind: 0,
     title: null,
+    subtitle: null,
     thumbnail_uri: FALLBACK_THUMBNAIL_URI,
     duration_sec: null,
     provenance_json: null,
@@ -841,6 +842,7 @@ function applyIndexerEnrichment(itemsMap, cidToItemIds, tokensByCid) {
       const enriched = tokenToItemPatch(token);
       row.kind = 1;
       row.title = enriched.title;
+      row.subtitle = enriched.subtitle;
       row.thumbnail_uri = enriched.thumbnailUri;
       row.list_artist_json = enriched.listArtistJson;
       row.token_data_json = JSON.stringify(toRestTokenJson(token));
@@ -857,11 +859,18 @@ function tokenToItemPatch(token) {
       id: artist.did || '',
       name: artist.name || '',
     }));
+  const subtitle = artists.length > 0
+    ? artists
+      .map((artist) => artist.name)
+      .filter((name) => Boolean(name))
+      .join(', ')
+    : null;
   return {
     title:
       token?.enrichment_source?.name ||
       token?.metadata?.name ||
       'Untitled',
+    subtitle,
     thumbnailUri: resolveThumbnailUrl(token),
     listArtistJson: artists.length > 0 ? JSON.stringify(artists) : null,
   };
@@ -1113,6 +1122,7 @@ CREATE TABLE IF NOT EXISTS items (
   id TEXT NOT NULL PRIMARY KEY,
   kind INTEGER NOT NULL,
   title TEXT,
+  subtitle TEXT,
   thumbnail_uri TEXT,
   duration_sec INTEGER,
   provenance_json TEXT,
@@ -1306,6 +1316,7 @@ END;`);
       'id',
       'kind',
       'title',
+      'subtitle',
       'thumbnail_uri',
       'duration_sec',
       'provenance_json',
