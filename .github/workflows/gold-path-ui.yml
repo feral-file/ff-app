@@ -8,6 +8,11 @@ on:
         required: true
         default: iPhone 16e
         type: string
+      android_avd_name:
+        description: Android AVD name (optional; first available AVD is used when empty)
+        required: false
+        default: ""
+        type: string
       canary_channel_title:
         description: Curated channel title to open
         required: true
@@ -21,11 +26,16 @@ on:
 
 jobs:
   gold-path-ui:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ios, android]
     runs-on: [self-hosted, macOS]
     permissions:
       contents: read
     env:
       SIMULATOR_DEVICE: ${{ inputs.simulator_device }}
+      ANDROID_AVD_NAME: ${{ inputs.android_avd_name }}
       GOLD_PATH_CANARY_CHANNEL_TITLE: ${{ inputs.canary_channel_title }}
       GOLD_PATH_SOAK_MINUTES: ${{ inputs.soak_minutes }}
     steps:
@@ -38,9 +48,21 @@ jobs:
           channel: stable
 
       - name: Setup Xcode
+        if: matrix.platform == 'ios'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '26.2'
+
+      - name: Set up JDK 17
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'zulu'
+
+      - name: Set up Android SDK
+        if: matrix.platform == 'android'
+        uses: android-actions/setup-android@v3
 
       - name: Create env file
         run: |
@@ -70,6 +92,7 @@ jobs:
         run: flutter pub get
 
       - name: Install CocoaPods
+        if: matrix.platform == 'ios'
         run: |
           cd ios
           pod install --repo-update
@@ -78,28 +101,71 @@ jobs:
         run: dart pub global activate patrol_cli
 
       - name: Boot iOS simulator
+        if: matrix.platform == 'ios'
         run: |
           xcrun simctl boot "$SIMULATOR_DEVICE" || true
           open -a Simulator
           xcrun simctl bootstatus "$SIMULATOR_DEVICE" -b
 
+      - name: Boot Android emulator
+        if: matrix.platform == 'android'
+        run: |
+          adb start-server
+          selected_avd="$ANDROID_AVD_NAME"
+          if [ -z "$selected_avd" ]; then
+            selected_avd="$(emulator -list-avds | head -n 1)"
+          fi
+
+          test -n "$selected_avd" || {
+            echo "No Android AVD found. Provide android_avd_name input or create an AVD on the runner."
+            exit 1
+          }
+
+          echo "Using Android AVD: $selected_avd"
+          nohup emulator -avd "$selected_avd" -no-snapshot -no-audio -no-boot-anim >/tmp/android-emulator.log 2>&1 &
+          adb wait-for-device
+          timeout 300 bash -c 'until adb shell getprop sys.boot_completed | grep -m 1 "1"; do sleep 2; done'
+          adb devices
+
+      - name: Resolve Android emulator device id
+        if: matrix.platform == 'android'
+        run: |
+          device_id="$(adb devices | awk '/^emulator-[0-9]+\s+device$/ { print $1; exit }')"
+          test -n "$device_id" || {
+            echo "No booted Android emulator device found."
+            exit 1
+          }
+          echo "ANDROID_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
+
       - name: Run gold path Patrol test
         env:
           PATH: ${{ env.PATH }}:$HOME/.pub-cache/bin
         run: |
-          patrol test \
-            --target patrol_test/gold_path_test.dart \
-            --flavor development \
-            --device "$SIMULATOR_DEVICE" \
-            --bundle-id com.feralfile.app \
-            --dart-define FF1_DEVICE_ID="$FF1_DEVICE_ID" \
-            --dart-define FF1_TOPIC_ID="$FF1_TOPIC_ID" \
-            --dart-define GOLD_PATH_CANARY_CHANNEL_TITLE="$GOLD_PATH_CANARY_CHANNEL_TITLE" \
-            --dart-define GOLD_PATH_SOAK_MINUTES="$GOLD_PATH_SOAK_MINUTES" \
-            --show-flutter-logs
+          if [ "${{ matrix.platform }}" = "ios" ]; then
+            patrol test \
+              --target patrol_test/gold_path_test.dart \
+              --flavor development \
+              --device "$SIMULATOR_DEVICE" \
+              --bundle-id com.feralfile.app \
+              --dart-define FF1_DEVICE_ID="$FF1_DEVICE_ID" \
+              --dart-define FF1_TOPIC_ID="$FF1_TOPIC_ID" \
+              --dart-define GOLD_PATH_CANARY_CHANNEL_TITLE="$GOLD_PATH_CANARY_CHANNEL_TITLE" \
+              --dart-define GOLD_PATH_SOAK_MINUTES="$GOLD_PATH_SOAK_MINUTES" \
+              --show-flutter-logs
+          else
+            patrol test \
+              --target patrol_test/gold_path_test.dart \
+              --flavor development \
+              --device "$ANDROID_DEVICE_ID" \
+              --dart-define FF1_DEVICE_ID="$FF1_DEVICE_ID" \
+              --dart-define FF1_TOPIC_ID="$FF1_TOPIC_ID" \
+              --dart-define GOLD_PATH_CANARY_CHANNEL_TITLE="$GOLD_PATH_CANARY_CHANNEL_TITLE" \
+              --dart-define GOLD_PATH_SOAK_MINUTES="$GOLD_PATH_SOAK_MINUTES" \
+              --show-flutter-logs
+          fi
 
       - name: Capture latest xcresult path
-        if: always()
+        if: always() && matrix.platform == 'ios'
         id: xcresult
         run: |
           LATEST_XCRESULT="$(find build -maxdepth 1 -name 'ios_results_*.xcresult' -print | sort | tail -n 1)"
@@ -111,7 +177,7 @@ jobs:
           fi
 
       - name: Upload xcresult artifact
-        if: always() && steps.xcresult.outputs.path != ''
+        if: always() && matrix.platform == 'ios' && steps.xcresult.outputs.path != ''
         uses: actions/upload-artifact@v4
         with:
           name: gold-path-ios-xcresult
