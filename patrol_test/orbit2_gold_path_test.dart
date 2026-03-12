@@ -145,12 +145,33 @@ Future<void> _openCanaryWork(
 }
 
 Future<void> _tapPlayOnFf1(PatrolIntegrationTester $) async {
-  if ($('Tap the Play button to send the playlist to your FF1.').exists) {
-    await $(Orbit2PatrolKeys.ffDisplayTooltipButton).tap();
-    return;
+  const tooltipCopy = 'Tap the Play button to send the playlist to your FF1.';
+  final deadline = DateTime.now().add(const Duration(minutes: 1));
+
+  while (DateTime.now().isBefore(deadline)) {
+    await $.pump(const Duration(milliseconds: 250));
+
+    if ($(Orbit2PatrolKeys.ffDisplayTooltipButton).exists ||
+        $(tooltipCopy).exists) {
+      await $(Orbit2PatrolKeys.ffDisplayTooltipButton).waitUntilVisible(
+        timeout: const Duration(seconds: 20),
+      );
+      await $(Orbit2PatrolKeys.ffDisplayTooltipButton).tap();
+      return;
+    }
+
+    if ($(Orbit2PatrolKeys.ffDisplayButton).exists && !$(tooltipCopy).exists) {
+      await $(Orbit2PatrolKeys.ffDisplayButton).waitUntilVisible(
+        timeout: const Duration(seconds: 20),
+      );
+      await $(Orbit2PatrolKeys.ffDisplayButton).tap();
+      return;
+    }
   }
 
-  await $(Orbit2PatrolKeys.ffDisplayButton).tap();
+  throw TimeoutException(
+    'Timed out waiting for a visible FF1 play target (tooltip or default).',
+  );
 }
 
 Future<void> _waitForThumbnailInChannelRow(

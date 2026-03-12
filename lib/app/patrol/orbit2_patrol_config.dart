@@ -87,8 +87,10 @@ class Orbit2PatrolConfig {
   static const String _canaryChannelTitleKey = 'ORBIT2_CANARY_CHANNEL_TITLE';
   static const String _canaryWorkIdKey = 'ORBIT2_CANARY_WORK_ID';
   static const String _canaryWorkTitleKey = 'ORBIT2_CANARY_WORK_TITLE';
-  static const String _soakMinutesKey = 'ORBIT2_SOAK_MINUTES';
-  static const String _soakSecondsKey = 'ORBIT2_SOAK_SECONDS';
+  static const String _soakMinutesKey =
+      'ORBIT2_SOAK_MINUTES'; // gitleaks:allow
+  static const String _soakSecondsKey =
+      'ORBIT2_SOAK_SECONDS'; // gitleaks:allow
 
   /// The real device ID shown on the FF1.
   final String ff1DeviceId;
