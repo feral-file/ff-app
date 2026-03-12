@@ -9,8 +9,8 @@ import 'package:app/app/providers/playlist_details_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/playlist_item_ext.dart';
-import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
+import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/nft_rendering/audio_rendering_widget.dart';
 import 'package:app/nft_rendering/gif_rendering_widget.dart';
@@ -30,9 +30,9 @@ import 'package:app/widgets/playlist/playlist_title.dart';
 import 'package:app/widgets/work_detail/artwork_details_header.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 
 /// Back layer for work detail. Structure copied from old repo [ArtworkBackLayer];
 /// only renamed and data from [PlaylistItem].
@@ -153,7 +153,7 @@ class WorkDetailBackLayer extends ConsumerWidget {
                   color: Colors.transparent,
                 ),
               ),
-              const BottomSpacing(checkNowDisplayingVisibility: false),
+              BottomSpacing(checkNowDisplayingVisibility: false),
             ],
           ),
       ],

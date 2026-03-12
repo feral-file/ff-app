@@ -38,10 +38,8 @@ final meSectionPlaylistsProvider = StreamProvider<MeSectionPlaylistsState>((
       channelId: Channel.myCollectionId,
     ),
     (favorite, addressPlaylists) {
-      final favoritePlaylists = [favorite]
-          .whereType<Playlist>()
-          .where((p) => p.itemCount > 0)
-          .toList();
+      final favoritePlaylists =
+          [favorite].whereType<Playlist>().where((p) => p.itemCount > 0).toList();
       return MeSectionPlaylistsState(
         playlists: [...favoritePlaylists, ...addressPlaylists],
         isLoading: false,
@@ -52,10 +50,11 @@ final meSectionPlaylistsProvider = StreamProvider<MeSectionPlaylistsState>((
 
 /// Provider for whether a work is in the Favorite playlist.
 /// Family by work ID.
-final StreamProviderFamily<bool, String> isWorkInFavoriteProvider = StreamProvider.family<bool, String>((
-  ref,
-  workId,
-) {
-  final favoriteService = ref.watch(favoritePlaylistServiceProvider);
-  return favoriteService.watchIsWorkInFavorite(workId);
-});
+final StreamProviderFamily<bool, String> isWorkInFavoriteProvider =
+    StreamProvider.family<bool, String>((
+      ref,
+      workId,
+    ) {
+      final favoriteService = ref.watch(favoritePlaylistServiceProvider);
+      return favoriteService.watchIsWorkInFavorite(workId);
+    });

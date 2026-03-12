@@ -256,10 +256,11 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     /// Called at end of clearLocalData (Forget I Exist): replace DB from seed
     /// and bootstrap so app can start fresh on onboarding.
     onResetCompleted: () async {
-      final future = () async {
+      Future<void> future() async {
         await forceReplaceDatabaseFromSeed();
         await ref.read(bootstrapProvider.notifier).bootstrap();
-      };
+      }
+
       unawaited(future());
     },
 

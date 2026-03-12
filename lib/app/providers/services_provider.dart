@@ -83,7 +83,9 @@ final bootstrapServiceProvider = Provider<BootstrapService>((ref) {
 
 /// Provider for FavoritePlaylistService.
 /// Manages user's Favorite playlist (starred works).
-final favoritePlaylistServiceProvider = Provider<FavoritePlaylistService>((ref) {
+final favoritePlaylistServiceProvider = Provider<FavoritePlaylistService>((
+  ref,
+) {
   final databaseService = ref.watch(databaseServiceProvider);
   return FavoritePlaylistService(databaseService: databaseService);
 });
@@ -143,15 +145,16 @@ final indexerServiceProvider = Provider<IndexerService>((ref) {
 });
 
 /// Provider for IndexerServiceIsolate (runs indexer API in dedicated isolate).
-final indexerServiceIsolateProvider =
-    Provider<IndexerServiceIsolateOperations>((ref) {
-  final isolate = IndexerServiceIsolate(
-    endpoint: AppConfig.indexerApiUrl,
-    apiKey: AppConfig.indexerApiKey,
-  );
-  ref.onDispose(isolate.stop);
-  return isolate;
-});
+final indexerServiceIsolateProvider = Provider<IndexerServiceIsolateOperations>(
+  (ref) {
+    final isolate = IndexerServiceIsolate(
+      endpoint: AppConfig.indexerApiUrl,
+      apiKey: AppConfig.indexerApiKey,
+    );
+    ref.onDispose(isolate.stop);
+    return isolate;
+  },
+);
 
 /// Provider for IndexerSyncService (fetch + local ingestion).
 final indexerSyncServiceProvider = Provider<IndexerSyncService>((ref) {

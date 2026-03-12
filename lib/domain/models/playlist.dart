@@ -40,7 +40,7 @@ class Playlist {
       id: favoriteId,
       name: 'Favorites',
       type: PlaylistType.favorite,
-        channelId: Channel.myCollectionId,
+      channelId: Channel.myCollectionId,
       sortMode: PlaylistSortMode.provenance,
       createdAt: now,
       updatedAt: updatedAt ?? now,

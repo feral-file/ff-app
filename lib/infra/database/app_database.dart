@@ -518,8 +518,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// Watch a single playlist by ID.
   Stream<PlaylistData?> watchPlaylistById(String id) {
-    return (select(playlists)..where((t) => t.id.equals(id)))
-        .watchSingleOrNull();
+    return (select(
+      playlists,
+    )..where((t) => t.id.equals(id))).watchSingleOrNull();
   }
 
   /// Get all playlists.
@@ -1008,20 +1009,20 @@ class AppDatabase extends _$AppDatabase {
   Selectable<PlaylistEntryData> _playlistEntryQuery(
     String playlistId,
     String itemId,
-  ) =>
-      (select(playlistEntries)
-            ..where(
-              (t) =>
-                  t.playlistId.equals(playlistId) & t.itemId.equals(itemId),
-            ));
+  ) => (select(playlistEntries)
+    ..where(
+      (t) => t.playlistId.equals(playlistId) & t.itemId.equals(itemId),
+    ));
 
   /// Check whether a playlist entry exists.
   Future<bool> hasPlaylistEntry({
     required String playlistId,
     required String itemId,
   }) async {
-    final entry =
-        await _playlistEntryQuery(playlistId, itemId).getSingleOrNull();
+    final entry = await _playlistEntryQuery(
+      playlistId,
+      itemId,
+    ).getSingleOrNull();
     return entry != null;
   }
 
@@ -1030,10 +1031,10 @@ class AppDatabase extends _$AppDatabase {
   Stream<bool> watchHasPlaylistEntry({
     required String playlistId,
     required String itemId,
-  }) =>
-      _playlistEntryQuery(playlistId, itemId)
-          .watchSingleOrNull()
-          .map((entry) => entry != null);
+  }) => _playlistEntryQuery(
+    playlistId,
+    itemId,
+  ).watchSingleOrNull().map((entry) => entry != null);
 
   /// Delete playlist entries for address-based playlists.
   ///
@@ -1176,8 +1177,10 @@ LazyDatabase _openConnection() {
 
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'dp1_library.sqlite'));
-    final wasDeletedForSchemaConflict =
-        await _resetDatabaseIfSchemaConflicts(file, dbFolder);
+    final wasDeletedForSchemaConflict = await _resetDatabaseIfSchemaConflicts(
+      file,
+      dbFolder,
+    );
 
     // Never create an empty database in the normal flow. The app only uses
     // the seed: download to temp dir, then replace current DB file. If the
