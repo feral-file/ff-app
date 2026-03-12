@@ -73,20 +73,20 @@ jobs:
 
       - name: Resolve shared FF1 identifiers
         run: |
-          ff1_device_id="$(awk -F= '$1 == "FF1_DEVICE_ID" { sub(/^[^=]*=/, "", $0); print; exit }' .env)"
-          ff1_topic_id="$(awk -F= '$1 == "FF1_TOPIC_ID" { sub(/^[^=]*=/, "", $0); print; exit }' .env)"
+          ff1_device_id="$(awk -F= '$1 == "FF1_TEST_DEVICE_ID" { sub(/^[^=]*=/, "", $0); print; exit }' .env)"
+          ff1_topic_id="$(awk -F= '$1 == "FF1_TEST_TOPIC_ID" { sub(/^[^=]*=/, "", $0); print; exit }' .env)"
 
           test -n "$ff1_device_id" || {
-            echo "Missing FF1_DEVICE_ID in ENV_VARS (.env)."
+            echo "Missing FF1_TEST_DEVICE_ID in ENV_VARS (.env)."
             exit 1
           }
           test -n "$ff1_topic_id" || {
-            echo "Missing FF1_TOPIC_ID in ENV_VARS (.env)."
+            echo "Missing FF1_TEST_TOPIC_ID in ENV_VARS (.env)."
             exit 1
           }
 
-          echo "FF1_DEVICE_ID=$ff1_device_id" >> "$GITHUB_ENV"
-          echo "FF1_TOPIC_ID=$ff1_topic_id" >> "$GITHUB_ENV"
+          echo "FF1_TEST_DEVICE_ID=$ff1_device_id" >> "$GITHUB_ENV"
+          echo "FF1_TEST_TOPIC_ID=$ff1_topic_id" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: flutter pub get
@@ -147,8 +147,8 @@ jobs:
               --flavor development \
               --device "$SIMULATOR_DEVICE" \
               --bundle-id com.feralfile.app \
-              --dart-define FF1_DEVICE_ID="$FF1_DEVICE_ID" \
-              --dart-define FF1_TOPIC_ID="$FF1_TOPIC_ID" \
+              --dart-define FF1_TEST_DEVICE_ID="$FF1_TEST_DEVICE_ID" \
+              --dart-define FF1_TEST_TOPIC_ID="$FF1_TEST_TOPIC_ID" \
               --dart-define GOLD_PATH_CANARY_CHANNEL_TITLE="$GOLD_PATH_CANARY_CHANNEL_TITLE" \
               --dart-define GOLD_PATH_SOAK_MINUTES="$GOLD_PATH_SOAK_MINUTES" \
               --show-flutter-logs
@@ -157,8 +157,8 @@ jobs:
               --target patrol_test/gold_path_test.dart \
               --flavor development \
               --device "$ANDROID_DEVICE_ID" \
-              --dart-define FF1_DEVICE_ID="$FF1_DEVICE_ID" \
-              --dart-define FF1_TOPIC_ID="$FF1_TOPIC_ID" \
+              --dart-define FF1_TEST_DEVICE_ID="$FF1_TEST_DEVICE_ID" \
+              --dart-define FF1_TEST_TOPIC_ID="$FF1_TEST_TOPIC_ID" \
               --dart-define GOLD_PATH_CANARY_CHANNEL_TITLE="$GOLD_PATH_CANARY_CHANNEL_TITLE" \
               --dart-define GOLD_PATH_SOAK_MINUTES="$GOLD_PATH_SOAK_MINUTES" \
               --show-flutter-logs

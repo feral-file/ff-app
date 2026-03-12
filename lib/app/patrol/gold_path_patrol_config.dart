@@ -75,10 +75,10 @@ class GoldPathPatrolConfig {
   }
 
   /// Environment variable used for the injected FF1 device ID.
-  static const String _ff1DeviceIdKey = 'FF1_DEVICE_ID';
+  static const String _ff1DeviceIdKey = 'FF1_TEST_DEVICE_ID';
 
   /// Environment variable used for the injected FF1 topic ID.
-  static const String _ff1TopicIdKey = 'FF1_TOPIC_ID';
+  static const String _ff1TopicIdKey = 'FF1_TEST_TOPIC_ID';
 
   static const String _ff1NameKey = 'GOLD_PATH_FF1_NAME';
   static const String _ff1RemoteIdKey = 'GOLD_PATH_FF1_REMOTE_ID';
