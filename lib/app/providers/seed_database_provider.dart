@@ -7,7 +7,8 @@ import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
-import 'package:app/widgets/seed_sync_loading_indicator.dart' show SeedSyncLoadingIndicator;
+import 'package:app/widgets/seed_sync_loading_indicator.dart'
+    show SeedSyncLoadingIndicator;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 

@@ -41,7 +41,8 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
 
   final ScrollController _scrollController = ScrollController();
   PlaylistsState _cachedCuratedState = PlaylistsState.initial();
-  MeSectionPlaylistsState _cachedMeSectionState = MeSectionPlaylistsState.initial;
+  MeSectionPlaylistsState _cachedMeSectionState =
+      MeSectionPlaylistsState.initial;
   SeedDownloadStatus? _prevSeedStatus;
 
   @override
@@ -148,11 +149,13 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
         : null;
     // When loading, use initial (empty) to avoid showing stale favorites after
     // Forget I Exist. Do not fall back to cache during reload.
-    final nextMeSectionState = nextMeSectionAsync?.when(
+    final nextMeSectionState =
+        nextMeSectionAsync?.when(
           data: (v) => v,
           loading: () => MeSectionPlaylistsState.initial,
           error: (_, _) => null,
-        ) ?? _cachedMeSectionState;
+        ) ??
+        _cachedMeSectionState;
 
     final shouldKeepCuratedSnapshot =
         widget.isActive &&
@@ -160,8 +163,9 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
         nextCuratedState.playlists.isEmpty &&
         nextCuratedState.isLoading;
 
-    final curatedState =
-        shouldKeepCuratedSnapshot ? _cachedCuratedState : nextCuratedState;
+    final curatedState = shouldKeepCuratedSnapshot
+        ? _cachedCuratedState
+        : nextCuratedState;
     if (widget.isActive) {
       if (!shouldKeepCuratedSnapshot) {
         _cachedCuratedState = nextCuratedState;
@@ -177,8 +181,9 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     }
     // When active, use nextMeSectionState so loading shows empty (e.g. after
     // Forget I Exist). When inactive, use cache.
-    final displayMeSectionState =
-        widget.isActive ? nextMeSectionState : _cachedMeSectionState;
+    final displayMeSectionState = widget.isActive
+        ? nextMeSectionState
+        : _cachedMeSectionState;
     final personalPlaylists = displayMeSectionState.playlists;
     final error = curatedState.error ?? displayMeSectionState.error;
     final curatedPlaylists = curatedState.playlists;

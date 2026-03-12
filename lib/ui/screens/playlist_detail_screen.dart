@@ -209,7 +209,8 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
                           data: (channel) => PlaylistDetailsHeader(
                             title: playlist.name,
                             total: state.total,
-                            subtitle: playlist.type == PlaylistType.favorite ||
+                            subtitle:
+                                playlist.type == PlaylistType.favorite ||
                                     playlist.type == PlaylistType.addressBased
                                 ? null
                                 : channel?.name,

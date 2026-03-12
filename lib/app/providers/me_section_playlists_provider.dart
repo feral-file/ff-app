@@ -38,8 +38,9 @@ final meSectionPlaylistsProvider = StreamProvider<MeSectionPlaylistsState>((
       channelId: Channel.myCollectionId,
     ),
     (favorite, addressPlaylists) {
-      final favoritePlaylists =
-          [favorite].whereType<Playlist>().where((p) => p.itemCount > 0).toList();
+      final favoritePlaylists = [
+        favorite,
+      ].whereType<Playlist>().where((p) => p.itemCount > 0).toList();
       return MeSectionPlaylistsState(
         playlists: [...favoritePlaylists, ...addressPlaylists],
         isLoading: false,

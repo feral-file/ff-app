@@ -65,9 +65,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.filter == AllPlaylistsFilter.curated) {
-        ref
-            .read(playlistsProvider(PlaylistType.dp1).notifier)
-            .loadPlaylists();
+        ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
       }
       // Personal uses meSectionPlaylistsProvider (auto-loads on watch).
     });
@@ -100,9 +98,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
 
   Future<void> _onRefresh() async {
     if (widget.filter == AllPlaylistsFilter.curated) {
-      await ref
-          .read(playlistsProvider(PlaylistType.dp1).notifier)
-          .refresh();
+      await ref.read(playlistsProvider(PlaylistType.dp1).notifier).refresh();
     } else {
       ref.invalidate(meSectionPlaylistsProvider);
     }
@@ -213,7 +209,8 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                       final playlist = playlists[index];
                       return PlaylistRowItem(
                         playlist: playlist,
-                        headerBuilder: widget.filter == AllPlaylistsFilter.personal
+                        headerBuilder:
+                            widget.filter == AllPlaylistsFilter.personal
                             ? (p, itemCount) {
                                 if (p.type == PlaylistType.favorite) {
                                   return PlaylistTitle(

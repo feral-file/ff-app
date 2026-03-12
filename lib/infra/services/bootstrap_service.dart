@@ -62,8 +62,9 @@ class BootstrapService {
   /// Ensure Favorite playlist exists.
   /// Every user has this Favorite playlist.
   Future<void> _ensureFavoritePlaylists() async {
-    final existingFavorite =
-        await _databaseService.getPlaylistById(Playlist.favoriteId);
+    final existingFavorite = await _databaseService.getPlaylistById(
+      Playlist.favoriteId,
+    );
 
     if (existingFavorite != null) {
       _log.info('Favorite playlist already exists');
@@ -71,10 +72,12 @@ class BootstrapService {
     }
 
     final now = DateTime.now();
-    await _databaseService.ingestPlaylist(Playlist.favorite(
-      createdAt: now,
-      updatedAt: now,
-    ));
+    await _databaseService.ingestPlaylist(
+      Playlist.favorite(
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
     _log.info('Created Favorite playlist');
   }
 }
