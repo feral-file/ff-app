@@ -60,16 +60,21 @@ class App extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme(),
       builder: (context, child) {
-        return BuilderOverlayScope(
-          child: _AppStartupBootstrap(
-            router: router,
-            child: NowDisplayingVisibilitySync(
-              child: Stack(
-                children: [
-                  child ?? const SizedBox.shrink(),
-                  AppGlobalOverlayLayer(router: router),
-                  const ForceUpdateOverlay(),
-                ],
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.noScaling,
+          ),
+          child: BuilderOverlayScope(
+            child: _AppStartupBootstrap(
+              router: router,
+              child: NowDisplayingVisibilitySync(
+                child: Stack(
+                  children: [
+                    child ?? const SizedBox.shrink(),
+                    AppGlobalOverlayLayer(router: router),
+                    const ForceUpdateOverlay(),
+                  ],
+                ),
               ),
             ),
           ),
