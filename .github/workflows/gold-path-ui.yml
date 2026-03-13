@@ -329,9 +329,10 @@ jobs:
       - name: Resolve Android emulator device id
         if: matrix.platform == 'android'
         run: |
-          device_id="$(adb devices | awk '/^emulator-[0-9]+\s+device$/ { print $1; exit }')"
+          device_id="$(adb devices | awk '/^emulator-[0-9]+[[:space:]]+device$/ { print $1; exit }')"
           test -n "$device_id" || {
             echo "No booted Android emulator device found."
+            adb devices
             exit 1
           }
           echo "ANDROID_DEVICE_ID=$device_id" >> "$GITHUB_ENV"
