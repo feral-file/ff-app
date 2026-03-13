@@ -257,39 +257,70 @@ jobs:
             exit 1
           fi
 
-          timeout 300 bash -c '
-            set -eu
-            while true; do
-              if ! kill -0 "'"$emulator_pid"'" 2>/dev/null; then
-                echo "Android emulator process exited while waiting for adb."
-                cat /tmp/android-emulator.log
-                exit 1
-              fi
+          python3 - <<PY
+          import pathlib
+          import subprocess
+          import time
 
-              if adb devices | awk '"'"'/^emulator-[0-9]+\s+device$/ { found=1 } END { exit(found ? 0 : 1) }'"'"'; then
-                break
-              fi
+          emulator_pid = $emulator_pid
+          deadline = time.time() + 300
+          log_path = pathlib.Path("/tmp/android-emulator.log")
 
-              sleep 2
-            done
-          '
+          def emulator_alive() -> bool:
+              return subprocess.run(
+                  ["kill", "-0", str(emulator_pid)],
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+              ).returncode == 0
 
-          timeout 300 bash -c '
-            set -eu
-            while true; do
-              if ! kill -0 "'"$emulator_pid"'" 2>/dev/null; then
-                echo "Android emulator process exited before sys.boot_completed."
-                cat /tmp/android-emulator.log
-                exit 1
-              fi
+          while True:
+              if not emulator_alive():
+                  print("Android emulator process exited while waiting for adb.")
+                  if log_path.exists():
+                      print(log_path.read_text())
+                  raise SystemExit(1)
 
-              if adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r" | grep -Fxq "1"; then
-                break
-              fi
+              devices = subprocess.run(
+                  ["adb", "devices"],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              ).stdout.splitlines()
+              if any(line.startswith("emulator-") and "\tdevice" in line for line in devices):
+                  break
 
-              sleep 2
-            done
-          '
+              if time.time() >= deadline:
+                  print("Timed out waiting for adb to detect the Android emulator.")
+                  if log_path.exists():
+                      print(log_path.read_text())
+                  raise SystemExit(1)
+
+              time.sleep(2)
+
+          while True:
+              if not emulator_alive():
+                  print("Android emulator process exited before sys.boot_completed.")
+                  if log_path.exists():
+                      print(log_path.read_text())
+                  raise SystemExit(1)
+
+              boot_completed = subprocess.run(
+                  ["adb", "shell", "getprop", "sys.boot_completed"],
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.DEVNULL,
+                  text=True,
+              ).stdout.strip()
+              if boot_completed == "1":
+                  break
+
+              if time.time() >= deadline:
+                  print("Timed out waiting for Android sys.boot_completed.")
+                  if log_path.exists():
+                      print(log_path.read_text())
+                  raise SystemExit(1)
+
+              time.sleep(2)
+          PY
 
           adb shell input keyevent 82 || true
           adb devices
