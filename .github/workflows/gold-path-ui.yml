@@ -331,7 +331,7 @@ jobs:
         run: |
           echo "adb devices output:"
           adb devices
-          device_id="$(adb devices | awk '$1 ~ /^emulator-[0-9]+$/ && $2 == \"device\" { print $1; exit }')"
+          device_id="$(adb devices | awk '$1 ~ /^emulator-[0-9]+$/ && $2 == "device" { print $1; exit }')"
           test -n "$device_id" || {
             echo "No booted Android emulator device found."
             adb devices
