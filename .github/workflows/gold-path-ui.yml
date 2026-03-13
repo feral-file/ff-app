@@ -329,7 +329,9 @@ jobs:
       - name: Resolve Android emulator device id
         if: matrix.platform == 'android'
         run: |
-          device_id="$(adb devices | awk '/^emulator-[0-9]+[[:space:]]+device$/ { print $1; exit }')"
+          echo "adb devices output:"
+          adb devices
+          device_id="$(adb devices | sed -n 's/^\(emulator-[0-9][0-9]*\)[[:space:]]\+device$/\1/p' | head -n 1)"
           test -n "$device_id" || {
             echo "No booted Android emulator device found."
             adb devices
