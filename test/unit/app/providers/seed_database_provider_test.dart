@@ -32,8 +32,8 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   /// Progress values to report via onProgress (e.g. [0.0, 0.5, 1.0]).
   List<double> progressValues = const [0.0, 0.5, 1.0];
 
-  /// When true, skips download (simulates ETag unchanged). onDownloadStarted
-  /// is not called.
+  /// When true (and forceReplace false), skips download (simulates ETag unchanged).
+  /// onDownloadStarted is not called.
   bool skipDownload = false;
 
   /// When skipDownload is false, passed to onDownloadStarted. Use false for
@@ -41,20 +41,21 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   bool hasLocalDatabase = false;
 
   @override
-  Future<bool> syncIfNeeded({
+  Future<bool> sync({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
+    bool forceReplace = false,
     void Function({
       required bool hasLocalDatabase,
-      required String localEtag,
-      required String remoteEtag,
+      String? localEtag,
+      String? remoteEtag,
     })? onDownloadStarted,
     void Function(double progress)? onProgress,
     bool failSilently = false,
   }) async {
     lastFailSilently = failSilently;
     syncCallCount++;
-    if (skipDownload) {
+    if (!forceReplace && skipDownload) {
       return false;
     }
     onDownloadStarted?.call(
@@ -67,16 +68,7 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
       onProgress?.call(p);
     }
     await afterReplace();
-    return false;
-  }
-
-  @override
-  Future<void> forceReplace({
-    required Future<void> Function() beforeReplace,
-    required Future<void> Function() afterReplace,
-    void Function(double progress)? onProgress,
-  }) {
-    throw UnimplementedError();
+    return true;
   }
 }
 

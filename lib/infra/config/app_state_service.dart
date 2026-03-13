@@ -138,6 +138,7 @@ abstract class AppStateServiceBase {
   getAllAddressIndexingStatuses();
   Future<void> trackPersonalAddress(String address);
   Future<List<String>> getTrackedPersonalAddresses();
+  Future<List<WalletAddress>> getTrackedWalletAddresses();
 }
 
 /// Single typed state service for app-level + per-address local state.
@@ -475,6 +476,13 @@ class AppStateService extends AppStateServiceBase {
           .toList();
       addresses.sort();
       return addresses;
+    });
+  }
+
+  @override
+  Future<List<WalletAddress>> getTrackedWalletAddresses() async {
+    return _lock.synchronized(() {
+      return _trackedEntitiesToWalletAddresses(_trackedAddressBox.getAll());
     });
   }
 

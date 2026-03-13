@@ -6,11 +6,9 @@ import 'package:app/domain/models/models.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_service.dart';
-import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
-import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:logging/logging.dart';
 
@@ -22,13 +20,11 @@ class AddressService {
     required IndexerSyncService indexerSyncService,
     required DomainAddressService domainAddressService,
     required PersonalTokensSyncService personalTokensSyncService,
-    required PendingAddressesStore pendingAddressesStore,
     required IndexerServiceIsolateOperations indexerServiceIsolate,
     required AppStateServiceBase appStateService,
   }) : _databaseService = databaseService,
        _domainAddressService = domainAddressService,
        _personalTokensSyncService = personalTokensSyncService,
-       _pendingAddressesStore = pendingAddressesStore,
        _indexerServiceIsolate = indexerServiceIsolate,
        _appStateService = appStateService {
     _indexerSyncService = indexerSyncService;
@@ -38,7 +34,6 @@ class AddressService {
   final DatabaseService _databaseService;
   final DomainAddressService _domainAddressService;
   final PersonalTokensSyncService _personalTokensSyncService;
-  final PendingAddressesStore _pendingAddressesStore;
   final IndexerServiceIsolateOperations _indexerServiceIsolate;
   final AppStateServiceBase _appStateService;
   late final IndexerSyncService _indexerSyncService;
@@ -130,6 +125,8 @@ class AddressService {
           );
           throw Exception('Failed to trigger indexing');
         }
+        // log the workflow id
+        _log.info('Indexing triggered for $queryAddress with workflowId: $id');
         effectiveWorkflowId = id;
       } catch (e, stack) {
         await _appStateService.setAddressIndexingStatus(
@@ -153,6 +150,9 @@ class AddressService {
         address: queryAddress,
         status: AddressIndexingProcessStatus.failed(),
       );
+      _log.warning(
+        'workflowId required when runTriggerIndex is false and runPoll is true',
+      );
       throw Exception(
         'workflowId required when runTriggerIndex is false and runPoll is true',
       );
@@ -163,6 +163,10 @@ class AddressService {
       final wfId = effectiveWorkflowId!;
       const pollInterval = Duration(seconds: 15);
       const maxAttempts = 60;
+
+      _log.info(
+        'Polling for address indexing status for $queryAddress with workflowId: $wfId',
+      );
 
       await _appStateService.setAddressIndexingStatus(
         address: queryAddress,
@@ -222,40 +226,22 @@ class AddressService {
     _log.info('IndexAndSync completed for $queryAddress');
   }
 
-  /// Resumes pending indexing flows for addresses with non-completed status.
+  /// Resumes indexing for addresses with non-completed status.
   ///
-  /// Called at app startup. For each address: await 100–500 ms random delay
-  /// to avoid doing a lot of work at the same time, then fire-and-forget
-  /// the resume. Runs sequentially per address.
-  Future<void> resumePendingIndexingFlows() async {
-    final playlists = await getAddressPlaylists();
-    final addresses = playlists
-        .map((p) => p.ownerAddress)
-        .whereType<String>()
-        .map((a) => a.toNormalizedAddress())
-        .toSet()
-        .toList(growable: false);
-
-    if (addresses.isEmpty) return;
-
-    final statuses = await _appStateService.getAllAddressIndexingStatuses();
-    final toResume = addresses
-        .where((addr) {
-          final status = statuses[addr];
-          return status != null &&
-              status.state != AddressIndexingProcessState.completed;
-        })
-        .toList(growable: false);
-
-    if (toResume.isEmpty) return;
-
-    _log.info('Resuming ${toResume.length} pending indexing flow(s)');
-
-    final random = Random();
-
+  /// Called by [ensureTrackedAddressesHavePlaylistsAndResumeProvider] after
+  /// playlists are ensured. Fetches status per address from [AppStateService];
+  /// each address is processed according to its status (idle→trigger index,
+  /// indexingTriggered→poll, etc.).
+  Future<void> resumeIndexingForAddresses(
+    List<String> toResume, {
+    Random? random,
+  }) async {
+    final rnd = random ?? Random();
+    final statuses =
+        await _appStateService.getAllAddressIndexingStatuses();
     for (final address in toResume) {
       await Future<void>.delayed(
-        Duration(milliseconds: 100 + random.nextInt(401)),
+        Duration(milliseconds: 100 + rnd.nextInt(401)),
       );
 
       final status = statuses[address];
@@ -313,9 +299,8 @@ class AddressService {
   String _addressForIndexer(String address) => address.toNormalizedAddress();
 
   /// Add an address from either a raw address or ENS/TNS domain.
-  Future<Playlist> addAddressOrDomain({
+  Future<void> addAddressOrDomain({
     required String value,
-    String channelId = Channel.myCollectionId,
   }) async {
     final resolved = await _domainAddressService.verifyAddressOrDomain(value);
     if (resolved == null) {
@@ -328,96 +313,41 @@ class AddressService {
       name: resolved.domain ?? _shortenAddress(resolved.address),
     );
 
-    return addAddress(walletAddress: walletAddress, channelId: channelId);
+    await addAddress(walletAddress: walletAddress);
   }
 
-  /// Add a wallet address and create its playlist.
+  /// Add a wallet address: validate, dup-check via getTrackedPersonalAddresses,
+  /// then write ObjectBox (addTrackedAddress, setAddressIndexingStatus).
   ///
-  /// If the `SeedDatabaseGate` is not yet open (i.e. the seed database is
-  /// still downloading on a fresh install), the address is stored in
-  /// `PendingAddressesStore` and no SQLite write is attempted.
-  /// `_AppStartupBootstrap` will migrate pending addresses into SQLite and
-  /// start the workers once the database gate opens.
-  ///
-  /// When [fromPendingMigration] is true, the address was already added via
-  /// the pending path (tracked + idle status set). Skip redundant state updates
-  /// to avoid duplicate idle logs and emissions.
-  Future<Playlist> addAddress({
+  /// If duplicate, throws Exception('Address already added').
+  /// Playlist creation and indexing are triggered by
+  /// [ensureTrackedAddressesHavePlaylistsAndResumeProvider].
+  Future<void> addAddress({
     required WalletAddress walletAddress,
-    String channelId = Channel.myCollectionId,
-    bool syncNow = true,
-    bool fromPendingMigration = false,
   }) async {
     try {
       final chain = walletAddress.chain;
       final normalizedAddress = walletAddress.address.toNormalizedAddress();
       _log.info('Adding address: $normalizedAddress on chain $chain');
 
-      if (!SeedDatabaseGate.isCompleted) {
-        // DB not ready yet: persist the address in the pending store so it
-        // survives navigation and is migrated to SQLite after the seed lands.
-        await _pendingAddressesStore.addAddress(normalizedAddress);
-        await _appStateService.addTrackedAddress(
-          normalizedAddress,
-          alias: walletAddress.name,
-        );
-        await _appStateService.setAddressIndexingStatus(
-          address: normalizedAddress,
-          status: AddressIndexingProcessStatus.idle(),
-        );
-        // Do NOT call _scheduleAddressIndexing here: the playlist does not
-        // exist in Drift yet. ingestTokensForAddress requires the playlist to
-        // exist and would skip ingestion otherwise. _migratePendingAddresses
-        // will create the playlist and call _scheduleAddressIndexing once the
-        // seed is ready.
-        if (!syncNow) {
-          await _personalTokensSyncService.trackAddress(normalizedAddress);
-        }
-        _log.info(
-          'Database not ready – address queued for post-seed migration: '
-          '$normalizedAddress',
-        );
-        return PlaylistExt.fromWalletAddress(
-          walletAddress,
-          channelId: channelId,
-        );
+      final alreadyAdded = await isAddressAlreadyAdded(
+        address: walletAddress.address,
+        chain: Chain.fromAddress(walletAddress.address),
+      );
+      if (alreadyAdded) {
+        throw Exception('Address already added');
       }
 
-      final existing = await _getAddressPlaylistByOwner(normalizedAddress);
-      if (existing != null) {
-        _log.info('Address playlist already exists: ${existing.id}');
-        if (syncNow) {
-          _scheduleAddressIndexing(normalizedAddress);
-        } else {
-          await _personalTokensSyncService.trackAddress(normalizedAddress);
-        }
-        return existing;
-      }
-
-      final playlist = PlaylistExt.fromWalletAddress(
-        walletAddress,
-        channelId: channelId,
+      await _appStateService.addTrackedAddress(
+        normalizedAddress,
+        alias: walletAddress.name,
+      );
+      await _appStateService.setAddressIndexingStatus(
+        address: normalizedAddress,
+        status: AddressIndexingProcessStatus.idle(),
       );
 
-      await _databaseService.ingestPlaylist(playlist);
-      if (!fromPendingMigration) {
-        await _appStateService.addTrackedAddress(
-          normalizedAddress,
-          alias: walletAddress.name,
-        );
-        await _appStateService.setAddressIndexingStatus(
-          address: normalizedAddress,
-          status: AddressIndexingProcessStatus.idle(),
-        );
-      }
-      if (syncNow) {
-        _scheduleAddressIndexing(normalizedAddress);
-      } else {
-        await _personalTokensSyncService.trackAddress(normalizedAddress);
-      }
-
-      _log.info('Added address playlist: ${playlist.id}');
-      return playlist;
+      _log.info('Added tracked address: $normalizedAddress');
     } catch (e, stack) {
       _log.severe('Failed to add address $walletAddress', e, stack);
       rethrow;
@@ -426,32 +356,16 @@ class AddressService {
 
   /// Returns true when the address has already been added.
   ///
-  /// This checks both:
-  /// - pending addresses (when the seed DB gate is not open yet)
-  /// - persisted address-based playlists in SQLite (normal runtime)
+  /// Uses getTrackedPersonalAddresses as single source of truth.
   Future<bool> isAddressAlreadyAdded({
     required String address,
     required Chain chain,
   }) async {
     final normalizedInput = address.normalizeForComparison(chain: chain);
-
-    if (!SeedDatabaseGate.isCompleted) {
-      final pending = await _pendingAddressesStore.getAddresses();
-      return pending.any(
-        (value) =>
-            value.normalizeForComparison(chain: chain) == normalizedInput,
-      );
-    }
-
-    final playlists = await _databaseService.getAddressPlaylists();
-    for (final playlist in playlists) {
-      final owner = playlist.ownerAddress;
-      if (owner == null) continue;
-      if (owner.normalizeForComparison(chain: chain) == normalizedInput) {
-        return true;
-      }
-    }
-    return false;
+    final tracked = await _appStateService.getTrackedPersonalAddresses();
+    return tracked.any(
+      (value) => value.normalizeForComparison(chain: chain) == normalizedInput,
+    );
   }
 
   void _scheduleAddressIndexing(String normalizedAddress) {
@@ -488,7 +402,9 @@ class AddressService {
       _log.info('Removing address: $normalizedAddress');
       await _personalTokensSyncService.untrackAddress(normalizedAddress);
 
-      final playlist = await _databaseService.getPlaylistById(resolvedPlaylistId);
+      final playlist = await _databaseService.getPlaylistById(
+        resolvedPlaylistId,
+      );
       if (playlist == null) {
         _log.warning('Address playlist not found: $resolvedPlaylistId');
         return;

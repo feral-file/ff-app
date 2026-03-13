@@ -30,44 +30,83 @@ class SeedDatabaseSyncService {
   final void Function(String etag) _saveLocalEtag;
   final Logger _log;
 
-  /// Syncs seed DB from remote when ETag differs from local ObjectBox config.
+  /// Syncs seed DB from remote.
   ///
-  /// `onDownloadStarted` is invoked only when a download will occur (ETag
-  /// changed or no local DB). Receives hasLocalDatabase, localEtag, and
-  /// remoteEtag so the caller can decide whether to emit syncing status
-  /// (e.g. only when hasLocalDatabase is false, first install).
-  Future<bool> syncIfNeeded({
+  /// When `forceReplace` is false (default), performs ETag-based conditional
+  /// sync: downloads only when ETag differs or no local DB exists.
+  ///
+  /// When `forceReplace` is true, skips ETag check and always downloads.
+  ///
+  /// `onDownloadStarted` is invoked whenever a download will occur. Receives
+  /// `hasLocalDatabase`, `localEtag`, and `remoteEtag` so the caller can
+  /// decide whether to emit syncing status (e.g. only when hasLocalDatabase is
+  /// false). Remote ETag is always fetched via HEAD before download.
+  Future<bool> sync({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
+    bool forceReplace = false,
     void Function({
       required bool hasLocalDatabase,
-      required String localEtag,
-      required String remoteEtag,
+      String? localEtag,
+      String? remoteEtag,
     })? onDownloadStarted,
     void Function(double progress)? onProgress,
     bool failSilently = false,
   }) async {
     try {
       final hasLocalDatabase = await _seedDatabaseService.hasLocalDatabase();
-      final localEtag = _loadLocalEtag();
 
-      final remoteEtag = await _seedDatabaseService.headRemoteEtag();
-      final shouldReplace =
-          !hasLocalDatabase ||
-          (remoteEtag.isNotEmpty && remoteEtag != localEtag);
+      bool shouldDownload;
+      String? localEtag;
+      String? remoteEtag;
 
-      _log.info(
-        'Seed sync pre-check: hasLocal=$hasLocalDatabase, '
-        'localEtag=${localEtag.isEmpty ? '<empty>' : localEtag}, '
-        'remoteEtag=${remoteEtag.isEmpty ? '<empty>' : remoteEtag}, '
-        'shouldReplace=$shouldReplace',
-      );
-      if (!shouldReplace) {
-        _log.fine('Seed database ETag unchanged; skipping download.');
+      try {
+        if (forceReplace) {
+          shouldDownload = true;
+          final loaded = _loadLocalEtag();
+          final headEtag = await _seedDatabaseService.headRemoteEtag();
+          localEtag = loaded.isEmpty ? null : loaded;
+          remoteEtag = headEtag.isEmpty ? null : headEtag;
+        } else {
+          final loaded = _loadLocalEtag();
+          final headEtag = await _seedDatabaseService.headRemoteEtag();
+          shouldDownload = !hasLocalDatabase ||
+              (headEtag.isNotEmpty && headEtag != loaded);
+
+          _log.info(
+            'Seed sync pre-check: hasLocal=$hasLocalDatabase, '
+            'localEtag=${loaded.isEmpty ? '<empty>' : loaded}, '
+            'remoteEtag=${headEtag.isEmpty ? '<empty>' : headEtag}, '
+            'shouldReplace=$shouldDownload',
+          );
+          if (!shouldDownload) {
+            _log.fine('Seed database ETag unchanged; skipping download.');
+            return false;
+          }
+
+          localEtag = loaded.isEmpty ? null : loaded;
+          remoteEtag = headEtag.isEmpty ? null : headEtag;
+        }
+      } on Exception catch (e, st) {
+        _log.warning(
+          'Seed sync ETag check failed; falling back to shouldDownload=forceReplace.',
+          e,
+          st,
+        );
+        shouldDownload = forceReplace;
+        localEtag = null;
+        remoteEtag = null;
+      }
+
+      if (!shouldDownload) {
         return false;
       }
 
-      _log.info('Seed DB refresh needed; downloading latest seed snapshot.');
+      _log.info(
+        forceReplace
+            ? 'Seed DB force-replace; downloading latest seed snapshot.'
+            : 'Seed DB refresh needed; downloading latest seed snapshot.',
+      );
       onDownloadStarted?.call(
         hasLocalDatabase: hasLocalDatabase,
         localEtag: localEtag,
@@ -79,14 +118,18 @@ class SeedDatabaseSyncService {
       );
       await beforeReplace();
       await _seedDatabaseService.replaceDatabaseFromTemporaryFile(tempPath);
-      if (remoteEtag.isNotEmpty) {
+
+      if (remoteEtag != null && remoteEtag.isNotEmpty) {
         _saveLocalEtag(remoteEtag);
       }
+
       await afterReplace();
       _log.info(
-        hasLocalDatabase
-            ? 'Seed database updated from remote ETag change.'
-            : 'Seed database installed.',
+        forceReplace
+            ? 'Seed database force-replaced.'
+            : hasLocalDatabase
+                ? 'Seed database updated from remote ETag change.'
+                : 'Seed database installed.',
       );
       return true;
     } on FormatException catch (e, st) {
@@ -110,31 +153,5 @@ class SeedDatabaseSyncService {
       _log.warning('Seed database sync skipped.', e, st);
       return false;
     }
-  }
-
-  /// Always downloads and replaces the local seed DB, ignoring ETag checks.
-  Future<void> forceReplace({
-    required Future<void> Function() beforeReplace,
-    required Future<void> Function() afterReplace,
-    void Function(double progress)? onProgress,
-  }) async {
-    final tempPath = await _seedDatabaseService.downloadToTemporaryFile(
-      onProgress: onProgress,
-    );
-    await beforeReplace();
-    await _seedDatabaseService.replaceDatabaseFromTemporaryFile(tempPath);
-    try {
-      final remoteEtag = await _seedDatabaseService.headRemoteEtag();
-      if (remoteEtag.isNotEmpty) {
-        _saveLocalEtag(remoteEtag);
-      }
-    } on Exception catch (e, st) {
-      _log.warning(
-        'Failed to persist seed ETag after forced replacement.',
-        e,
-        st,
-      );
-    }
-    await afterReplace();
   }
 }

@@ -1,5 +1,11 @@
+import 'dart:async';
+
 import 'package:app/app/providers/address_indexing_job_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/domain/extensions/playlist_ext.dart';
+import 'package:app/domain/models/models.dart';
+import 'package:app/domain/models/wallet_address.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart'
@@ -7,6 +13,7 @@ import 'package:app/infra/database/database_provider.dart'
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
+import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_dio.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
@@ -21,21 +28,15 @@ import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/legacy_data_migration_service.dart';
-import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:app/infra/services/remote_config_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 
 // ignore_for_file: lines_longer_than_80_chars // Reason: provider documentation lines intentionally keep fully-qualified refs.
 
-/// Provider for [PendingAddressesStore].
-///
-/// Stores wallet addresses added before the Drift DB is ready (fresh install
-/// while the seed database is still downloading).
-final pendingAddressesStoreProvider = Provider<PendingAddressesStore>((ref) {
-  return PendingAddressesStore();
-});
+final _log = Logger('ServicesProvider');
 
 /// Provider for the AddressService.
 /// Manages user wallet addresses and address-based playlists.
@@ -46,7 +47,6 @@ final addressServiceProvider = Provider<AddressService>((ref) {
   final personalTokensSyncService = ref.watch(
     personalTokensSyncServiceProvider,
   );
-  final pendingAddressesStore = ref.watch(pendingAddressesStoreProvider);
   final indexerServiceIsolate = ref.watch(indexerServiceIsolateProvider);
 
   final service = AddressService(
@@ -54,7 +54,6 @@ final addressServiceProvider = Provider<AddressService>((ref) {
     indexerSyncService: indexerSyncService,
     domainAddressService: domainAddressService,
     personalTokensSyncService: personalTokensSyncService,
-    pendingAddressesStore: pendingAddressesStore,
     indexerServiceIsolate: indexerServiceIsolate,
     appStateService: ref.watch(appStateServiceProvider),
   );
@@ -64,6 +63,100 @@ final addressServiceProvider = Provider<AddressService>((ref) {
   });
 
   return service;
+});
+
+/// Ensures tracked addresses have playlists and resumes indexing for
+/// non-completed addresses. Runs bootstrap, creates missing playlists, then
+/// delegates to [AddressService.resumeIndexingForAddresses].
+///
+/// Skips when [SeedDatabaseGate] not completed or [isSeedDatabaseReadyProvider]
+/// is false (e.g. during seed replace or Forget I Exist).
+final ensureTrackedAddressesHavePlaylistsAndResumeProvider =
+    Provider<Future<void> Function()>((ref) {
+  return () async {
+    if (!SeedDatabaseGate.isCompleted) {
+      _log.info(
+        'ensureTrackedAddressesHavePlaylistsAndResume: seed database not completed',
+      );
+      return;
+    }
+    if (!ref.read(isSeedDatabaseReadyProvider)) {
+      _log.info(
+        'ensureTrackedAddressesHavePlaylistsAndResume: database not ready',
+      );
+      return;
+    }
+    _log.info(
+      'ensureTrackedAddressesHavePlaylistsAndResume: running bootstrap',
+    );
+    await ref.read(bootstrapServiceProvider).bootstrap();
+    final appState = ref.read(appStateServiceProvider);
+    final addresses = await appState.getTrackedPersonalAddresses();
+    _log.info(
+      'ensureTrackedAddressesHavePlaylistsAndResume: tracked personal addresses: ${addresses.length}',
+    );
+    if (addresses.isEmpty) return;
+    final normalizedAddresses = addresses
+        .map((a) => a.toNormalizedAddress())
+        .toSet()
+        .toList(growable: false);
+    final databaseService = ref.read(databaseServiceProvider);
+    final playlists = await databaseService.getAddressPlaylists();
+    final now = DateTime.now().toUtc();
+    for (final address in normalizedAddresses) {
+      final normalized = address.toNormalizedAddress();
+      final hasPlaylist = playlists.any(
+        (p) => p.ownerAddress?.toNormalizedAddress() == normalized,
+      );
+      if (hasPlaylist) continue;
+      final walletAddress = WalletAddress(
+        address: address,
+        createdAt: now,
+        name: address,
+      );
+      final playlist = PlaylistExt.fromWalletAddress(walletAddress);
+      await databaseService.ingestPlaylist(playlist);
+      _log.info('Created playlist for tracked address: $address');
+    }
+    final statuses = await appState.getAllAddressIndexingStatuses();
+    final toResume = <String>[];
+    for (final addr in normalizedAddresses) {
+      final status = statuses[addr];
+      if (status == null) {
+        await appState.setAddressIndexingStatus(
+          address: addr,
+          status: AddressIndexingProcessStatus.idle(),
+        );
+        toResume.add(addr);
+      } else if (status.state != AddressIndexingProcessState.completed) {
+        toResume.add(addr);
+      }
+    }
+    if (toResume.isEmpty) return;
+    _log.info(
+      'ensureTrackedAddressesHavePlaylistsAndResume: resuming '
+      '${toResume.length} address(es)',
+    );
+    await ref.read(addressServiceProvider).resumeIndexingForAddresses(toResume);
+  };
+});
+
+/// Watches ObjectBox [TrackedAddressEntity]; on emit calls
+/// [ensureTrackedAddressesHavePlaylistsAndResumeProvider].
+/// Keep-alive at app root.
+final trackedAddressesSyncProvider = Provider<void>((ref) {
+  ref.keepAlive();
+  final ensureSync = ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider);
+  final appStateService = ref.read(appStateServiceProvider);
+  final sub = appStateService.watchTrackedAddressesAsWalletAddresses().listen((
+    addresses,
+  ) {
+    _log.info(
+      'trackedAddressesSyncProvider: list wallet addresses: ${addresses.map((a) => a.address).toList()}',
+    );
+    unawaited(ensureSync());
+  });
+  ref.onDispose(sub.cancel);
 });
 
 /// Provider for ENS/TNS address resolution and address/domain validation.

@@ -126,6 +126,7 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
 
   void _setupDatabaseWatch() {
     if (!ref.mounted) return;
+    if (!ref.read(isSeedDatabaseReadyProvider)) return;
     _updateDebounceTimer?.cancel();
     _updateDebounceTimer = null;
     unawaited(_watchSub?.cancel());

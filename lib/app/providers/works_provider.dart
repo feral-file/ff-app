@@ -169,6 +169,7 @@ class WorksNotifier extends Notifier<WorksState> {
 
   void _setupDatabaseWatch() {
     if (!ref.mounted) return;
+    if (!ref.read(isSeedDatabaseReadyProvider)) return;
     _stopWatching();
 
     final databaseService = ref.read(databaseServiceProvider);

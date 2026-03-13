@@ -4,20 +4,16 @@ import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
 import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
-import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/force_update_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
-import 'package:app/app/providers/me_section_playlists_provider.dart';
+import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
-import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
-import 'package:app/app/providers/works_provider.dart';
 import 'package:app/app/routing/deeplink_handler.dart';
 import 'package:app/app/routing/router_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/app/widgets/builder_overlay_scope.dart';
-import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/wallet_address.dart';
@@ -245,17 +241,10 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
       await _logStartupFeedState();
 
-      // After the database is open and bootstrap is done, migrate any
-      // addresses that were added during onboarding before the seed was
-      // downloaded.
-      await _migratePendingAddresses();
+      // Ensure tracked addresses have playlists and resume indexing.
       if (didReplaceSeedDatabase) {
         _refreshProvidersAfterSeedDatabaseReplace();
       }
-
-      // Resume any pending address indexing flows (e.g. after app kill).
-      final addressService = ref.read(addressServiceProvider);
-      unawaited(addressService.resumePendingIndexingFlows());
     } finally {
       if (!_bootstrapReadyCompleter.isCompleted) {
         _bootstrapReadyCompleter.complete();
@@ -351,7 +340,6 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     required bool showUpdatingToast,
     bool failSilently = true,
   }) async {
-    var personalAddresses = <String>[];
     String? toastOverlayId;
     return ref
         .read(seedDownloadProvider.notifier)
@@ -368,8 +356,6 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
                   );
               await WidgetsBinding.instance.endOfFrame;
             }
-            personalAddresses =
-                await _capturePersonalAddressesBeforeSeedReplace();
             await _disconnectForSeedDatabaseReplace();
           },
           afterReplace: () async {
@@ -378,7 +364,9 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
                 return;
               }
               await _reconnectAfterSeedDatabaseReplace();
-              await _refetchPersonalPlaylists(personalAddresses);
+              await ref.read(
+                ensureTrackedAddressesHavePlaylistsAndResumeProvider,
+              )();
             } finally {
               final overlayId = toastOverlayId;
               if (showUpdatingToast && mounted && overlayId != null) {
@@ -390,108 +378,35 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
         );
   }
 
-  Future<List<String>> _capturePersonalAddressesBeforeSeedReplace() async {
-    final playlists = await ref
-        .read(databaseServiceProvider)
-        .getAddressPlaylists();
-    return playlists
-        .map((playlist) => playlist.ownerAddress?.trim())
-        .whereType<String>()
-        .where((address) => address.isNotEmpty)
-        .map((address) => address.toUpperCase())
-        .toSet()
-        .toList(growable: false);
-  }
-
   Future<void> _disconnectForSeedDatabaseReplace() async {
     await ref
         .read(tokensSyncCoordinatorProvider.notifier)
         .stopAndDrainForReset();
 
+    ref.read(isSeedDatabaseReadyProvider.notifier).state = false;
     // Reset list/item providers so UI detaches from stale rows during swap.
     ref
-      ..invalidate(channelsProvider(ChannelType.dp1))
-      ..invalidate(channelsProvider(ChannelType.localVirtual))
-      ..invalidate(playlistsProvider(PlaylistType.dp1))
-      ..invalidate(playlistsProvider(PlaylistType.addressBased))
-      ..invalidate(meSectionPlaylistsProvider)
-      ..invalidate(worksProvider);
+        .read(localDataCleanupServiceProvider)
+        .invalidateListProvidersBeforeDbClose
+        ?.call();
 
     await ref.read(databaseServiceProvider).close();
   }
 
   Future<void> _reconnectAfterSeedDatabaseReplace() async {
     ref
-      ..invalidate(tokensSyncCoordinatorProvider)
-      ..invalidate(appDatabaseProvider)
-      ..invalidate(databaseServiceProvider);
+        .read(localDataCleanupServiceProvider)
+        .invalidateReconnectInfraProviders
+        ?.call();
+    ref.read(isSeedDatabaseReadyProvider.notifier).state = true;
   }
 
   void _refreshProvidersAfterSeedDatabaseReplace() {
     // Ensure UI providers reconnect to the fresh DB connection and rows.
     ref
-      ..invalidate(channelsProvider(ChannelType.dp1))
-      ..invalidate(channelsProvider(ChannelType.localVirtual))
-      ..invalidate(playlistsProvider(PlaylistType.dp1))
-      ..invalidate(playlistsProvider(PlaylistType.addressBased))
-      ..invalidate(meSectionPlaylistsProvider)
-      ..invalidate(worksProvider);
-  }
-
-  Future<void> _refetchPersonalPlaylists(List<String> addresses) async {
-    if (addresses.isEmpty) return;
-
-    final addressService = ref.read(addressServiceProvider);
-    for (final address in addresses) {
-      await addressService.addAddress(
-        walletAddress: WalletAddress(
-          address: address,
-          createdAt: DateTime.now(),
-          name: _shortAddress(address),
-        ),
-        syncNow: false,
-      );
-    }
-
-    await ref
-        .read(tokensSyncCoordinatorProvider.notifier)
-        .syncAddresses(addresses);
-  }
-
-  /// Reads addresses stored in `PendingAddressesStore` (written when the user
-  /// added an address during onboarding while the seed was still downloading)
-  /// and creates the corresponding SQLite playlists + starts workers.
-  Future<void> _migratePendingAddresses() async {
-    final pendingStore = ref.read(pendingAddressesStoreProvider);
-    final addresses = await pendingStore.getAddresses();
-
-    if (addresses.isEmpty) return;
-
-    _log.info(
-      'Migrating ${addresses.length} address(es) added during pre-seed '
-      'onboarding to SQLite.',
-    );
-
-    final addressService = ref.read(addressServiceProvider);
-
-    for (final address in addresses) {
-      try {
-        await addressService.addAddress(
-          walletAddress: WalletAddress(
-            address: address,
-            createdAt: DateTime.now(),
-            name: address.shortenAddress(),
-          ),
-          fromPendingMigration: true,
-        );
-        _log.info('Migrated pending address: $address');
-      } on Object catch (e, st) {
-        _log.warning('Failed to migrate pending address: $address', e, st);
-      }
-    }
-
-    await pendingStore.clear();
-    _log.info('Pending address migration complete.');
+        .read(localDataCleanupServiceProvider)
+        .invalidateListProvidersBeforeDbClose
+        ?.call();
   }
 
   Future<void> _recoverFromDatabaseResetIfNeeded() async {
@@ -549,6 +464,8 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     // Keep AppLifecycleNotifier alive so it can attach
     // the WidgetsBinding observer.
     ref.watch(appLifecycleProvider);
+    // Keep tracked addresses sync alive; watches ObjectBox TrackedAddressEntity.
+    ref.watch(trackedAddressesSyncProvider);
     return ProviderScope(
       overrides: [
         seedDownloadRetryProvider.overrideWithValue(() async {

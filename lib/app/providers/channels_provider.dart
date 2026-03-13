@@ -151,6 +151,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 
   void _setupDatabaseWatch() {
     if (!ref.mounted) return;
+    if (!ref.read(isSeedDatabaseReadyProvider)) return;
     _watchSub?.cancel();
     final databaseService = ref.read(databaseServiceProvider);
     final limit = (_pageSize > state.channels.length)

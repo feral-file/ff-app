@@ -65,7 +65,7 @@ void main() {
         saveLocalEtag: (etag) => localEtag = etag,
       );
 
-      final changed = await service.syncIfNeeded(
+      final changed = await service.sync(
         beforeReplace: () async => events.add('before'),
         afterReplace: () async => events.add('after'),
       );
@@ -91,7 +91,7 @@ void main() {
         saveLocalEtag: (etag) => localEtag = etag,
       );
 
-      final changed = await service.syncIfNeeded(
+      final changed = await service.sync(
         beforeReplace: () async => events.add('before'),
         afterReplace: () async => events.add('after'),
       );
@@ -118,7 +118,7 @@ void main() {
         saveLocalEtag: (etag) => localEtag = etag,
       );
 
-      final changed = await service.syncIfNeeded(
+      final changed = await service.sync(
         beforeReplace: () async => events.add('before'),
         afterReplace: () async => events.add('after'),
         failSilently: true,
@@ -129,6 +129,33 @@ void main() {
       expect(fakeSeedService.replaceCalls, 0);
       expect(events, isEmpty);
       expect(localEtag, 'local-v1');
+    });
+
+    test('forceReplace always downloads and replaces, skipping ETag check', () async {
+      final fakeSeedService = _FakeSeedDatabaseService(
+        hasLocal: true,
+        remoteEtag: 'same-etag',
+      );
+      var localEtag = 'same-etag';
+      final events = <String>[];
+
+      final service = SeedDatabaseSyncService(
+        seedDatabaseService: fakeSeedService,
+        loadLocalEtag: () => localEtag,
+        saveLocalEtag: (etag) => localEtag = etag,
+      );
+
+      final changed = await service.sync(
+        beforeReplace: () async => events.add('before'),
+        afterReplace: () async => events.add('after'),
+        forceReplace: true,
+      );
+
+      expect(changed, isTrue);
+      expect(fakeSeedService.downloadCalls, 1);
+      expect(fakeSeedService.replaceCalls, 1);
+      expect(events, ['before', 'after']);
+      expect(localEtag, 'same-etag'); // ETag saved after replace (from HEAD)
     });
   });
 }

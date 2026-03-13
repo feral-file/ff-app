@@ -52,7 +52,7 @@ class _ForgetExistDialogContentState
     router.go(Routes.home);
 
     try {
-      await cleanupService.clearLocalData().timeout(
+      await cleanupService.forgetIExist().timeout(
         const Duration(seconds: 20),
       );
     } on Object catch (_) {

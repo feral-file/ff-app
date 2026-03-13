@@ -151,6 +151,7 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
   /// PlaylistsBloc: watch emits entire list so we detect new data after reload.
   void _setupDatabaseWatch() {
     if (!ref.mounted) return;
+    if (!ref.read(isSeedDatabaseReadyProvider)) return;
     _watchSub?.cancel();
     final databaseService = ref.read(databaseServiceProvider);
     _watchSub = databaseService

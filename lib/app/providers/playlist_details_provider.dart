@@ -114,6 +114,7 @@ class PlaylistDetailsNotifier
   /// Watch playlist items in DB; on change reload or update total (like old Bloc).
   void _setupDatabaseListener() {
     if (!ref.mounted) return;
+    if (!ref.read(isSeedDatabaseReadyProvider)) return;
     unawaited(_dbSubscription?.cancel());
     _dbSubscription = null;
     try {

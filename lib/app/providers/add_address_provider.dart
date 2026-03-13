@@ -211,11 +211,7 @@ class AddAliasNotifier extends AsyncNotifier<void> {
   }
 
   /// Add address with alias
-  Future<void> add(
-    String address,
-    String? alias, {
-    bool syncNow = true,
-  }) async {
+  Future<void> add(String address, String? alias) async {
     state = const AsyncValue.loading();
 
     try {
@@ -232,7 +228,6 @@ class AddAliasNotifier extends AsyncNotifier<void> {
       final addressService = ref.read(addressServiceProvider);
       await addressService.addAddress(
         walletAddress: walletAddress,
-        syncNow: syncNow,
       );
 
       _log.info(

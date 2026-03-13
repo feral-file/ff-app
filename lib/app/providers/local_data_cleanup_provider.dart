@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:app/app/providers/addresses_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
+import 'package:app/app/providers/channel_detail_provider.dart';
+import 'package:app/app/providers/channel_preview_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
@@ -10,10 +12,8 @@ import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
-import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
-import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/objectbox_init.dart';
@@ -22,6 +22,7 @@ import 'package:app/infra/services/legacy_storage_locator.dart';
 import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/painting.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:logging/logging.dart';
@@ -30,10 +31,10 @@ import 'package:logging/logging.dart';
 
 /// Wires [LocalDataCleanupService] for two flows:
 ///
-/// 1. **clearLocalData** (Forget I Exist): full reset → deletes SQLite,
+/// 1. **forgetIExist** (Forget I Exist): full reset → deletes SQLite,
 ///    ObjectBox, legacy files, then replaces DB from seed and bootstraps.
-/// 2. **rebuildMetadata**: preserves addresses/favorites, replaces SQLite
-///    from seed, restores and refetches.
+/// 2. **rebuildMetadata**: preserves favorites and tracked addresses,
+///    replaces SQLite from seed, ensures tracked addresses resume indexing.
 
 /// Provider for ObjectBox local data cleanup.
 final objectBoxLocalDataCleanerProvider = Provider<ObjectBoxLocalDataCleaner>((
@@ -47,20 +48,40 @@ final objectBoxLocalDataCleanerProvider = Provider<ObjectBoxLocalDataCleaner>((
 final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
   ref,
 ) {
-  /// Normalizes address for deduplication (Ethereum: lowercase; Tezos: as-is).
-  String normalizeAddress(String address) {
-    final trimmed = address.trim();
-    if (trimmed.startsWith('0x') || trimmed.startsWith('0X')) {
-      return trimmed.toLowerCase();
-    }
-    return trimmed;
+  final r = ref;
+
+  /// Invalidates trackedAddressesSyncProvider and all list providers so no DB
+  /// work runs during close. Used by app.dart seed sync and Forget I Exist.
+  /// Update when adding DB-dependent providers.
+  void invalidateListProvidersBeforeDbClose() {
+    r.invalidate(trackedAddressesSyncProvider);
+    r.invalidate(channelDetailsProvider);
+    r.invalidate(channelPreviewProvider);
+    r.invalidate(channelsProvider(ChannelType.dp1));
+    r.invalidate(channelsProvider(ChannelType.localVirtual));
+    r.invalidate(playlistsProvider(PlaylistType.dp1));
+    r.invalidate(playlistsProvider(PlaylistType.addressBased));
+    r.invalidate(playlistsProvider(PlaylistType.favorite));
+    r.invalidate(meSectionPlaylistsProvider);
+    r.invalidate(isWorkInFavoriteProvider);
+    r.invalidate(playlistDetailsProvider);
+    r.invalidate(worksProvider);
   }
 
-  /// Invalidates DB-related and UI providers so they rebind to the new DB
-  /// after seed replacement. Called from [forceReplaceDatabaseFromSeed]'s
-  /// afterReplace once the seed file is placed.
-  Future<void> rebindDatabaseProviders() async {
-    final r = ref;
+  void invalidateListProvidersBeforeDbCloseExtended() =>
+      invalidateListProvidersBeforeDbClose();
+
+  /// Infra: tokensSyncCoordinator, appDatabase, databaseService. For reconnect.
+  void invalidateReconnectInfraProviders() {
+    r.invalidate(tokensSyncCoordinatorProvider);
+    r.invalidate(appDatabaseProvider);
+    r.invalidate(databaseServiceProvider);
+  }
+
+  /// Full rebind after seed replacement. Update when adding DB-dependent providers.
+  void invalidateProvidersForRebind() {
+    r.invalidate(channelDetailsProvider);
+    r.invalidate(channelPreviewProvider);
     r.invalidate(channelsProvider(ChannelType.dp1));
     r.invalidate(channelsProvider(ChannelType.localVirtual));
     r.invalidate(playlistsProvider(PlaylistType.dp1));
@@ -77,6 +98,14 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     r.invalidate(seedDownloadProvider);
   }
 
+  /// Invalidates DB-related and UI providers so they rebind to the new DB
+  /// after seed replacement. Called from [forceReplaceDatabaseFromSeed]'s
+  /// afterReplace once the seed file is placed.
+  Future<void> rebindDatabaseProviders() async {
+    ref.read(isSeedDatabaseReadyProvider.notifier).state = true;
+    invalidateProvidersForRebind();
+  }
+
   /// Downloads seed from S3 (or cache), replaces local dp1_library.sqlite,
   /// then rebinds providers.
   ///
@@ -90,10 +119,21 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     try {
       await ref
           .read(seedDatabaseSyncServiceProvider)
-          .forceReplace(
+          .sync(
+            forceReplace: true,
             beforeReplace: () async {
-              await ref.read(databaseServiceProvider).close();
-              await ref.read(seedDatabaseServiceProvider).deleteDatabaseFiles();
+              try {
+                ref.read(isSeedDatabaseReadyProvider.notifier).state = false;
+                invalidateListProvidersBeforeDbCloseExtended();
+                await SchedulerBinding.instance.endOfFrame;
+                await ref.read(databaseServiceProvider).close();
+                await ref
+                    .read(seedDatabaseServiceProvider)
+                    .deleteDatabaseFiles();
+              } catch (e, st) {
+                log.warning('Failed to close database', e, st);
+                ref.read(isSeedDatabaseReadyProvider.notifier).state = true;
+              }
             },
             afterReplace: rebindDatabaseProviders,
             onProgress: (progress) {
@@ -127,16 +167,18 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       await ref
           .read(tokensSyncCoordinatorProvider.notifier)
           .stopAndDrainForReset();
-      final r = ref;
       r.invalidate(tokensSyncCoordinatorProvider);
     },
 
-    /// Closes the DB and deletes SQLite files. Does NOT invalidate providers
-    /// here, so nothing triggers a DB open while the file is missing. Providers
-    /// are invalidated in [rebindDatabaseProviders] after the seed is placed.
+    /// Closes the DB and deletes SQLite files. Leaves [isSeedDatabaseReadyProvider]
+    /// false so no DB work runs until [rebindDatabaseProviders] (e.g. in
+    /// [forceReplaceDatabaseFromSeed] afterReplace for Forget I Exist).
     closeAndDeleteDatabase: () async {
-      final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+      ref.read(isSeedDatabaseReadyProvider.notifier).state = false;
+      invalidateListProvidersBeforeDbCloseExtended();
+      await SchedulerBinding.instance.endOfFrame;
       await ref.read(databaseServiceProvider).close();
+      final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
       await seedDatabaseService.deleteDatabaseFiles();
     },
 
@@ -145,9 +187,10 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       await ref.read(objectBoxLocalDataCleanerProvider).clearAll();
     },
 
-    /// Deletes pending_addresses.json (addresses queued before DB ready).
-    clearPendingAddresses: () async {
-      await ref.read(pendingAddressesStoreProvider).clear();
+    /// Clears ObjectBox except TrackedAddressEntity (light clear).
+    /// Used by rebuildMetadata to preserve user-added addresses.
+    clearObjectBoxLight: () async {
+      await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
     },
 
     /// Clears CachedNetworkImage and Flutter image cache.
@@ -155,56 +198,6 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       await CachedNetworkImageProvider.defaultCacheManager.emptyCache();
       PaintingBinding.instance.imageCache.clear();
       PaintingBinding.instance.imageCache.clearLiveImages();
-    },
-
-    /// Collects personal addresses from SQLite playlists + ObjectBox statuses
-    /// (used by rebuildMetadata to preserve them).
-    getPersonalAddresses: () async {
-      final databaseService = ref.read(databaseServiceProvider);
-      final playlists = await databaseService.getAddressPlaylists();
-      final appState = ref.read(appStateServiceProvider);
-      final statuses = await appState.getAllAddressIndexingStatuses();
-
-      final addressesFromOwners = playlists
-          .map((playlist) => playlist.ownerAddress)
-          .whereType<String>()
-          .toSet();
-
-      final addressesFromPlaylistIds = playlists
-          .map((playlist) {
-            final parts = playlist.id.split(':');
-            if (parts.length < 3 || parts.first != 'addr') {
-              return null;
-            }
-            return parts.sublist(2).join(':');
-          })
-          .whereType<String>()
-          .toSet();
-
-      final addressesFromStatuses = statuses.keys.toSet();
-
-      return <String>{
-        ...addressesFromOwners,
-        ...addressesFromPlaylistIds,
-        ...addressesFromStatuses,
-      }.map(normalizeAddress).toSet().toList();
-    },
-
-    /// Restores address-based playlists to SQLite (rebuildMetadata only).
-    restorePersonalAddressPlaylists: (addresses) async {
-      final databaseService = ref.read(databaseServiceProvider);
-      final now = DateTime.now().toUtc();
-      for (final address in addresses) {
-        await databaseService.ingestPlaylist(
-          PlaylistExt.fromWalletAddress(
-            WalletAddress(
-              address: address,
-              createdAt: now,
-              name: address,
-            ),
-          ),
-        );
-      }
     },
 
     /// Snapshot of Favorite playlists for restore (rebuildMetadata only).
@@ -224,25 +217,13 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       await ref.read(bootstrapProvider.notifier).bootstrap();
     },
 
-    /// Clears indexing anchors and re-syncs addresses from indexer
-    /// (rebuildMetadata only).
-    refetchFromBeginning: (addresses) async {
-      final normalizedAddresses = addresses
-          .map(normalizeAddress)
-          .toSet()
-          .toList();
-      final appState = ref.read(appStateServiceProvider);
-      for (final address in normalizedAddresses) {
-        await appState.clearAddressAnchor(address);
-      }
-
-      if (normalizedAddresses.isNotEmpty) {
-        final coordinator = ref.read(tokensSyncCoordinatorProvider.notifier);
-        await coordinator.syncAddresses(normalizedAddresses);
-      }
+    /// Called after runBootstrap in rebuildMetadata: ensures tracked addresses
+    /// have playlists and resumes indexing (TrackedAddressEntity source of truth).
+    onDatabaseReady: () async {
+      await ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider)();
     },
 
-    /// Replaces SQLite with seed. Used by rebuildMetadata (not clearLocalData).
+    /// Replaces SQLite with seed. Used by both forgetIExist and rebuildMetadata.
     recreateDatabaseFromSeed: () async {
       await forceReplaceDatabaseFromSeed();
     },
@@ -251,17 +232,6 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     },
     pauseTokenPolling: () {
       ref.read(tokensSyncCoordinatorProvider.notifier).pausePolling();
-    },
-
-    /// Called at end of clearLocalData (Forget I Exist): replace DB from seed
-    /// and bootstrap so app can start fresh on onboarding.
-    onResetCompleted: () async {
-      Future<void> future() async {
-        await forceReplaceDatabaseFromSeed();
-        await ref.read(bootstrapProvider.notifier).bootstrap();
-      }
-
-      unawaited(future());
     },
 
     /// Deletes playlist_cache.sqlite (legacy). Prevents migration from
@@ -285,5 +255,8 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
         await Hive.close();
       }
     },
+    invalidateListProvidersBeforeDbClose:
+        invalidateListProvidersBeforeDbCloseExtended,
+    invalidateReconnectInfraProviders: invalidateReconnectInfraProviders,
   );
 });

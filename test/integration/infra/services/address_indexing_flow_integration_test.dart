@@ -10,7 +10,6 @@ import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
-import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,6 +21,7 @@ import '../../helpers/spy_indexer_service_isolate.dart';
 void main() {
   late IntegrationTestContext context;
   late AddressService addressService;
+  late DomainAddressService domainAddressService;
   late SpyIndexerServiceIsolate spyIsolate;
   late _TestAppStateService testAppStateService;
 
@@ -46,22 +46,22 @@ void main() {
       ),
     );
 
+    domainAddressService = DomainAddressService(
+      resolverUrl: AppConfig.domainResolverUrl,
+      resolverApiKey: AppConfig.domainResolverApiKey,
+    );
     addressService = AddressService(
       databaseService: context.databaseService,
       indexerSyncService: IndexerSyncService(
         indexerService: indexerService,
         databaseService: context.databaseService,
       ),
-      domainAddressService: DomainAddressService(
-        resolverUrl: AppConfig.domainResolverUrl,
-        resolverApiKey: AppConfig.domainResolverApiKey,
-      ),
+      domainAddressService: domainAddressService,
       personalTokensSyncService: PersonalTokensSyncService(
         indexerService: indexerService,
         databaseService: context.databaseService,
         appStateService: testAppStateService,
       ),
-      pendingAddressesStore: PendingAddressesStore(),
       indexerServiceIsolate: spyIsolate,
       appStateService: testAppStateService,
     );
@@ -81,10 +81,12 @@ void main() {
       expect(AppConfig.indexerApiKey, isNotEmpty);
 
       const inputDomain = 'einstein-rosen.eth';
-      final playlist = await addressService.addAddressOrDomain(
-        value: inputDomain,
+      final resolved = await domainAddressService.verifyAddressOrDomain(
+        inputDomain,
       );
-      final resolvedAddress = playlist.ownerAddress!;
+      expect(resolved, isNotNull);
+      final resolvedAddress = resolved!.address;
+      await addressService.addAddressOrDomain(value: inputDomain);
       testAppStateService.setTargetAddress(resolvedAddress);
 
       // Poll until tokens in DB > 100 (indexing completes).

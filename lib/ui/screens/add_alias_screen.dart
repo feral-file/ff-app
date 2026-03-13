@@ -87,7 +87,7 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
           .read(
             addAliasProvider.notifier,
           )
-          .add(widget.payload.address, alias, syncNow: widget.payload.syncNow),
+          .add(widget.payload.address, alias),
     );
   }
 

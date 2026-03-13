@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
+import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -35,6 +36,7 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
   final Logger _log = Logger('TokensSyncCoordinator');
   Timer? _pollTimer;
   bool _isStoppingForReset = false;
+  Completer<void>? _currentSyncCompleter;
 
   @override
   TokensSyncState build() {
@@ -67,6 +69,7 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
 
   Future<void> syncAllTrackedAddresses() async {
     if (_isStoppingForReset) return;
+    if (!ref.read(isSeedDatabaseReadyProvider)) return;
     final appState = ref.read(appStateServiceProvider);
     final addresses = await appState.getTrackedPersonalAddresses();
     if (addresses.isEmpty) return;
@@ -74,6 +77,20 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
   }
 
   Future<void> syncAddresses(List<String> addresses) async {
+    if (_isStoppingForReset || addresses.isEmpty) return;
+    if (!ref.read(isSeedDatabaseReadyProvider)) return;
+
+    final completer = Completer<void>();
+    _currentSyncCompleter = completer;
+    try {
+      await _syncAddressesImpl(addresses);
+    } finally {
+      if (!completer.isCompleted) completer.complete();
+      if (_currentSyncCompleter == completer) _currentSyncCompleter = null;
+    }
+  }
+
+  Future<void> _syncAddressesImpl(List<String> addresses) async {
     if (_isStoppingForReset || addresses.isEmpty) return;
 
     final byKey = <String, String>{};
@@ -93,16 +110,20 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
       final service = ref.read(personalTokensSyncServiceProvider);
       await service.syncAddresses(addresses: normalized);
       final remaining = {...state.syncingAddresses}..removeAll(normalized);
-      state = state.copyWith(
-        syncingAddresses: remaining,
-        lastSyncCompleted: DateTime.now(),
-      );
+      if (ref.mounted) {
+        state = state.copyWith(
+          syncingAddresses: remaining,
+          lastSyncCompleted: DateTime.now(),
+        );
+      }
     } on Object catch (e) {
       final remaining = {...state.syncingAddresses}..removeAll(normalized);
-      state = state.copyWith(
-        syncingAddresses: remaining,
-        errorMessage: e.toString(),
-      );
+      if (ref.mounted) {
+        state = state.copyWith(
+          syncingAddresses: remaining,
+          errorMessage: e.toString(),
+        );
+      }
       rethrow;
     }
   }
@@ -120,11 +141,20 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     return;
   }
 
+  /// Stops polling and waits for any in-flight sync to complete.
+  /// Must complete before database is closed (e.g. rebuildMetadata, forgetIExist).
   Future<void> stopAndDrainForReset() async {
     _isStoppingForReset = true;
     pausePolling();
     if (ref.mounted) {
       state = const TokensSyncState();
+    }
+    // Await in-flight sync so it releases DB connections before close.
+    final completer = _currentSyncCompleter;
+    if (completer != null) {
+      _log.info('stopAndDrainForReset: waiting for in-flight sync');
+      await completer.future;
+      _log.info('stopAndDrainForReset: in-flight sync completed');
     }
   }
 }

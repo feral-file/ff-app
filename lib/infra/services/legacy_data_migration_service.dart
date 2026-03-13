@@ -132,7 +132,6 @@ class LegacyDataMigrationService {
               createdAt: DateTime.now().toUtc(),
               name: _shortAddress(address),
             ),
-            syncNow: false,
           );
         }
         imported++;
