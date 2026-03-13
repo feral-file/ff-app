@@ -48,6 +48,9 @@ jobs:
       ANDROID_AVD_NAME: ${{ inputs.android_avd_name || '' }}
       ANDROID_API_LEVEL: '35'
       ANDROID_SYSTEM_IMAGE: system-images;android-35;google_apis;arm64-v8a
+      ANDROID_USER_HOME: /tmp/android-user-home
+      ANDROID_EMULATOR_HOME: /tmp/android-emulator-home
+      ANDROID_AVD_HOME: /tmp/android-avd
       GOLD_PATH_CANARY_CHANNEL_TITLE: ${{ inputs.canary_channel_title || 'Social Codes' }}
       GOLD_PATH_SOAK_MINUTES: ${{ inputs.soak_minutes || '1' }}
       FF1_TEST_DEVICE_ID: ${{ secrets.FF1_TEST_DEVICE_ID }}
@@ -83,6 +86,9 @@ jobs:
         run: |
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_USER_HOME=$ANDROID_USER_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_EMULATOR_HOME=$ANDROID_EMULATOR_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_SDK_ROOT/emulator" >> "$GITHUB_PATH"
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
@@ -101,6 +107,7 @@ jobs:
         if: matrix.platform == 'android'
         run: |
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+          mkdir -p "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME" "$ANDROID_AVD_HOME"
 
           requested_avd="$ANDROID_AVD_NAME"
           available_avds="$(emulator -list-avds)"
@@ -137,7 +144,31 @@ jobs:
               --abi "arm64-v8a"
           fi
 
+          rm -rf "$ANDROID_AVD_HOME/$selected_avd.avd" "$ANDROID_AVD_HOME/$selected_avd.ini"
+          echo "Creating fresh Android AVD: $selected_avd"
+          printf 'no\n' | avdmanager create avd \
+            --force \
+            --name "$selected_avd" \
+            --package "$ANDROID_SYSTEM_IMAGE" \
+            --abi "arm64-v8a"
+
           echo "ANDROID_AVD_NAME=$selected_avd" >> "$GITHUB_ENV"
+
+      - name: Debug Android emulator paths
+        if: matrix.platform == 'android'
+        run: |
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "ANDROID_USER_HOME=$ANDROID_USER_HOME"
+          echo "ANDROID_EMULATOR_HOME=$ANDROID_EMULATOR_HOME"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
+          echo "Resolved emulator binary: $(command -v emulator)"
+          emulator -list-avds
+          avd_ini="$ANDROID_AVD_HOME/$ANDROID_AVD_NAME.ini"
+          if [ -f "$avd_ini" ]; then
+            echo "AVD ini:"
+            cat "$avd_ini"
+          fi
 
       - name: Create env file
         run: |
