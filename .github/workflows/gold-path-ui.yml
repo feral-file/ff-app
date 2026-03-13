@@ -102,9 +102,29 @@ jobs:
         run: |
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
 
-          selected_avd="$ANDROID_AVD_NAME"
+          requested_avd="$ANDROID_AVD_NAME"
+          available_avds="$(emulator -list-avds)"
+
+          echo "Available Android AVDs before setup:"
+          if [ -n "$available_avds" ]; then
+            printf '%s\n' "$available_avds"
+          else
+            echo "<none>"
+          fi
+
+          selected_avd="$requested_avd"
+          if [ -n "$selected_avd" ] && ! printf '%s\n' "$available_avds" | grep -Fxq "$selected_avd"; then
+            echo "Requested Android AVD '$selected_avd' was not found. Creating it."
+            printf 'no\n' | avdmanager create avd \
+              --force \
+              --name "$selected_avd" \
+              --package "$ANDROID_SYSTEM_IMAGE" \
+              --abi "arm64-v8a"
+            available_avds="$(emulator -list-avds)"
+          fi
+
           if [ -z "$selected_avd" ]; then
-            selected_avd="$(emulator -list-avds | head -n 1)"
+            selected_avd="$(printf '%s\n' "$available_avds" | head -n 1)"
           fi
 
           if [ -z "$selected_avd" ]; then
@@ -179,12 +199,14 @@ jobs:
       - name: Boot Android emulator
         if: matrix.platform == 'android'
         run: |
+          set -eu
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
 
           adb start-server
           selected_avd="$ANDROID_AVD_NAME"
 
           echo "Using Android AVD: $selected_avd"
+          rm -f /tmp/android-emulator.log
           nohup "$ANDROID_SDK_ROOT/emulator/emulator" \
             -avd "$selected_avd" \
             -no-snapshot \
@@ -193,9 +215,54 @@ jobs:
             -no-window \
             -gpu swiftshader_indirect \
             >/tmp/android-emulator.log 2>&1 &
-          adb wait-for-device
-          timeout 300 bash -c 'until adb shell getprop sys.boot_completed | grep -m 1 "1"; do sleep 2; done'
+
+          emulator_pid=$!
+          echo "Android emulator PID: $emulator_pid"
+          sleep 10
+
+          if ! kill -0 "$emulator_pid" 2>/dev/null; then
+            echo "Android emulator exited before boot completed."
+            cat /tmp/android-emulator.log
+            exit 1
+          fi
+
+          timeout 300 bash -c '
+            set -eu
+            while true; do
+              if ! kill -0 "'"$emulator_pid"'" 2>/dev/null; then
+                echo "Android emulator process exited while waiting for adb."
+                cat /tmp/android-emulator.log
+                exit 1
+              fi
+
+              if adb devices | awk '"'"'/^emulator-[0-9]+\s+device$/ { found=1 } END { exit(found ? 0 : 1) }'"'"'; then
+                break
+              fi
+
+              sleep 2
+            done
+          '
+
+          timeout 300 bash -c '
+            set -eu
+            while true; do
+              if ! kill -0 "'"$emulator_pid"'" 2>/dev/null; then
+                echo "Android emulator process exited before sys.boot_completed."
+                cat /tmp/android-emulator.log
+                exit 1
+              fi
+
+              if adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r" | grep -Fxq "1"; then
+                break
+              fi
+
+              sleep 2
+            done
+          '
+
+          adb shell input keyevent 82 || true
           adb devices
+          tail -n 50 /tmp/android-emulator.log || true
 
       - name: Resolve Android emulator device id
         if: matrix.platform == 'android'
