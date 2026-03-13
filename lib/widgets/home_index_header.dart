@@ -41,28 +41,37 @@ class HomeIndexHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: LayoutConstants.space3),
-      child: Row(
-        children: HomeIndexHeaderTab.values.map((tab) {
-          final isSelected = tab == selectedTab;
-          return GestureDetector(
-            key: switch (tab) {
-              HomeIndexHeaderTab.playlists => GoldPathPatrolKeys.playlistsTab,
-              HomeIndexHeaderTab.channels => GoldPathPatrolKeys.channelsTab,
-              _ => null,
-            },
-            onTap: () => onTabChanged(tab),
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: EdgeInsets.only(right: LayoutConstants.space3),
-              child: Text(
-                tab.label,
-                style: isSelected
-                    ? AppTypography.body(context).white
-                    : AppTypography.body(context).grey,
-              ),
-            ),
-          );
-        }).toList(),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: HomeIndexHeaderTab.values.map((tab) {
+              final isSelected = tab == selectedTab;
+              return GestureDetector(
+                key: switch (tab) {
+                  HomeIndexHeaderTab.playlists =>
+                    GoldPathPatrolKeys.playlistsTab,
+                  HomeIndexHeaderTab.channels => GoldPathPatrolKeys.channelsTab,
+                  _ => null,
+                },
+                onTap: () => onTabChanged(tab),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: EdgeInsets.only(right: LayoutConstants.space3),
+                  child: Text(
+                    tab.label,
+                    style: isSelected
+                        ? AppTypography.body(context).white
+                        : AppTypography.body(context).grey,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
       ),
     );
   }
