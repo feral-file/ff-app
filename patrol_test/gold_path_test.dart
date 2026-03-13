@@ -4,7 +4,7 @@ import 'package:app/app/patrol/gold_path_patrol_config.dart';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/work_item_thumbnail.dart';
-import 'package:flutter/material.dart' show TextField;
+import 'package:flutter/material.dart' show TextField, TextInputAction;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 
@@ -62,15 +62,8 @@ Future<void> _submitPersonalAddressInOnboarding(
   PatrolIntegrationTester $,
   String address,
 ) async {
-  await $('Add Address').tap();
-
-  final inputField = $(find.byType(TextField));
-  await inputField.waitUntilExists(
-    timeout: const Duration(seconds: 30),
-  );
-  await inputField.tap();
-  await inputField.enterText(address);
-  await $('Submit').tap();
+  await _openAddAddressFromOnboarding($);
+  await _enterAddressAndSubmit($, address);
 
   await $('See the art you already own').waitUntilVisible(
     timeout: const Duration(minutes: 1),
@@ -78,6 +71,37 @@ Future<void> _submitPersonalAddressInOnboarding(
   await $(address).waitUntilExists(
     timeout: const Duration(minutes: 1),
   );
+}
+
+Future<void> _openAddAddressFromOnboarding(PatrolIntegrationTester $) async {
+  final addAddressButton = $('Add Address');
+  await addAddressButton.waitUntilVisible(
+    timeout: const Duration(seconds: 30),
+  );
+  await addAddressButton.tap();
+}
+
+Future<void> _enterAddressAndSubmit(
+  PatrolIntegrationTester $,
+  String address,
+) async {
+  final inputFinder = find.byType(TextField);
+  final inputField = $(inputFinder);
+
+  await inputField.waitUntilExists(
+    timeout: const Duration(seconds: 30),
+  );
+
+  await $.tester.tap(inputFinder);
+  await $.pump(const Duration(milliseconds: 300));
+  await $.tester.enterText(inputFinder, address);
+  await $.pump(const Duration(milliseconds: 300));
+  await $.tester.testTextInput.receiveAction(TextInputAction.done);
+  await $.pump(const Duration(milliseconds: 500));
+
+  if (await _isVisible($('Submit'))) {
+    await $('Submit').tap();
+  }
 }
 
 Future<void> _assertPersonalPlaylistOnHomeAndPlaylistsTab(
