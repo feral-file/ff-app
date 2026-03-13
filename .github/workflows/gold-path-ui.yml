@@ -46,6 +46,8 @@ jobs:
     env:
       SIMULATOR_DEVICE: ${{ inputs.simulator_device || 'iPhone 16e' }}
       ANDROID_AVD_NAME: ${{ inputs.android_avd_name || '' }}
+      ANDROID_API_LEVEL: '35'
+      ANDROID_SYSTEM_IMAGE: system-images;android-35;google_apis;arm64-v8a
       GOLD_PATH_CANARY_CHANNEL_TITLE: ${{ inputs.canary_channel_title || 'Social Codes' }}
       GOLD_PATH_SOAK_MINUTES: ${{ inputs.soak_minutes || '1' }}
       FF1_TEST_DEVICE_ID: ${{ secrets.FF1_TEST_DEVICE_ID }}
@@ -75,6 +77,47 @@ jobs:
       - name: Set up Android SDK
         if: matrix.platform == 'android'
         uses: android-actions/setup-android@v3
+
+      - name: Configure Android SDK environment
+        if: matrix.platform == 'android'
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/emulator" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+      - name: Install Android emulator dependencies
+        if: matrix.platform == 'android'
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-$ANDROID_API_LEVEL" \
+            "emulator" \
+            "$ANDROID_SYSTEM_IMAGE"
+
+      - name: Ensure Android AVD exists
+        if: matrix.platform == 'android'
+        run: |
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+
+          selected_avd="$ANDROID_AVD_NAME"
+          if [ -z "$selected_avd" ]; then
+            selected_avd="$(emulator -list-avds | head -n 1)"
+          fi
+
+          if [ -z "$selected_avd" ]; then
+            selected_avd="ff-ci-api-$ANDROID_API_LEVEL"
+            echo "Creating Android AVD: $selected_avd"
+            printf 'no\n' | avdmanager create avd \
+              --force \
+              --name "$selected_avd" \
+              --package "$ANDROID_SYSTEM_IMAGE" \
+              --abi "arm64-v8a"
+          fi
+
+          echo "ANDROID_AVD_NAME=$selected_avd" >> "$GITHUB_ENV"
 
       - name: Create env file
         run: |
@@ -136,19 +179,20 @@ jobs:
       - name: Boot Android emulator
         if: matrix.platform == 'android'
         run: |
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+
           adb start-server
           selected_avd="$ANDROID_AVD_NAME"
-          if [ -z "$selected_avd" ]; then
-            selected_avd="$(emulator -list-avds | head -n 1)"
-          fi
-
-          test -n "$selected_avd" || {
-            echo "No Android AVD found. Provide android_avd_name input or create an AVD on the runner."
-            exit 1
-          }
 
           echo "Using Android AVD: $selected_avd"
-          nohup emulator -avd "$selected_avd" -no-snapshot -no-audio -no-boot-anim >/tmp/android-emulator.log 2>&1 &
+          nohup "$ANDROID_SDK_ROOT/emulator/emulator" \
+            -avd "$selected_avd" \
+            -no-snapshot \
+            -no-audio \
+            -no-boot-anim \
+            -no-window \
+            -gpu swiftshader_indirect \
+            >/tmp/android-emulator.log 2>&1 &
           adb wait-for-device
           timeout 300 bash -c 'until adb shell getprop sys.boot_completed | grep -m 1 "1"; do sleep 2; done'
           adb devices
