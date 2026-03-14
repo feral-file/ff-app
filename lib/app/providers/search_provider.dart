@@ -13,6 +13,7 @@ class SearchResults {
     required this.channels,
     required this.playlists,
     required this.works,
+    required this.artistMatchedWorkIds,
   });
 
   /// Matching channels.
@@ -23,6 +24,14 @@ class SearchResults {
 
   /// Matching works.
   final List<PlaylistItem> works;
+
+  /// Work ids whose artist names match the query.
+  final Set<String> artistMatchedWorkIds;
+
+  /// Matching works where artist names match the query.
+  List<PlaylistItem> get artistWorks => works
+      .where((work) => artistMatchedWorkIds.contains(work.id))
+      .toList(growable: false);
 
   /// Whether there are any results.
   bool get isEmpty => channels.isEmpty && playlists.isEmpty && works.isEmpty;
@@ -110,7 +119,7 @@ final searchInputQueryProvider =
     );
 
 /// Suggestion results provider using debounced input query.
-final searchSuggestionsProvider =
+final FutureProvider<List<SearchSuggestion>> searchSuggestionsProvider =
     FutureProvider.autoDispose<List<SearchSuggestion>>((
       ref,
     ) async {
@@ -132,9 +141,9 @@ final searchSuggestionsProvider =
       try {
         final databaseService = ref.watch(databaseServiceProvider);
         final result = await Future.wait([
-          databaseService.searchChannelsByTitle(query, limit: 4),
-          databaseService.searchPlaylistsByTitle(query, limit: 4),
-          databaseService.searchItemsByTitle(query, limit: 6),
+          databaseService.searchChannels(query, limit: 4),
+          databaseService.searchPlaylists(query, limit: 4),
+          databaseService.searchItems(query, limit: 6),
         ]);
 
         final channels = result[0] as List<Channel>;
@@ -194,28 +203,57 @@ final searchResultsProvider = FutureProvider<SearchResults>((ref) async {
       channels: [],
       playlists: [],
       works: [],
+      artistMatchedWorkIds: <String>{},
     );
   }
 
   try {
     final databaseService = ref.watch(databaseServiceProvider);
     final results = await Future.wait([
-      databaseService.searchChannelsByTitle(query),
-      databaseService.searchPlaylistsByTitle(query),
-      databaseService.searchItemsByTitle(query, limit: 40),
+      databaseService.searchChannels(query),
+      databaseService.searchPlaylists(query),
+      databaseService.searchItems(query, limit: 40),
     ]);
 
     final matchingChannels = results[0] as List<Channel>;
     final matchingPlaylists = results[1] as List<Playlist>;
     final matchingWorks = results[2] as List<PlaylistItem>;
+    final matchingArtistWorkIds = matchingWorks
+        .where((work) => _matchesArtist(work: work, query: query))
+        .map((work) => work.id)
+        .toSet();
 
     return SearchResults(
       channels: matchingChannels,
       playlists: matchingPlaylists,
       works: matchingWorks,
+      artistMatchedWorkIds: matchingArtistWorkIds,
     );
   } catch (e, stack) {
     log.severe('Search failed', e, stack);
     rethrow;
   }
 });
+
+bool _matchesArtist({
+  required PlaylistItem work,
+  required String query,
+}) {
+  final artistName = work.artistName.trim().toLowerCase();
+  if (artistName.isEmpty) {
+    return false;
+  }
+
+  final tokens = query
+      .trim()
+      .toLowerCase()
+      .split(RegExp(r'\s+'))
+      .where((token) => token.isNotEmpty)
+      .toList(growable: false);
+
+  if (tokens.isEmpty) {
+    return false;
+  }
+
+  return tokens.every(artistName.contains);
+}

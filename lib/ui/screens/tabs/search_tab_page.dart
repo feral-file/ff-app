@@ -5,6 +5,7 @@ import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -118,7 +119,12 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
     final unfilteredResults =
         resultsAsync.asData?.value ??
         _lastSuccessfulResults ??
-        const SearchResults(channels: [], playlists: [], works: []);
+        const SearchResults(
+          channels: [],
+          playlists: [],
+          works: [],
+          artistMatchedWorkIds: <String>{},
+        );
     final facetedResults = filterSearchResults(
       unfilteredResults,
       sourceFilter: _sourceFilter,
@@ -254,7 +260,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
             Expanded(
               child: ListView.separated(
                 itemCount: suggestions.length,
-                separatorBuilder: (context, _) => Divider(
+                separatorBuilder: (context, _) => const Divider(
                   color: AppColor.auGrey,
                   height: 1,
                   thickness: 1,
@@ -392,7 +398,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              'Search for channels, playlists, or works',
+              'Search for channels, playlists, works, or artists',
               style: AppTypography.body(context).white,
               textAlign: TextAlign.center,
             ),
@@ -485,9 +491,55 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
         return _buildChannelsView(context, filtered.channels);
       case SearchFilterType.playlists:
         return _buildPlaylistsView(context, filtered.playlists);
+      case SearchFilterType.artists:
+        return _buildArtistMatchesView(context, filtered.artistWorks);
       case SearchFilterType.works:
         return _buildWorksView(context, filtered.works);
     }
+  }
+
+  Widget _buildArtistMatchesView(
+    BuildContext context,
+    List<PlaylistItem> artistWorks,
+  ) {
+    if (artistWorks.isEmpty) {
+      return _buildEmptyView(context);
+    }
+
+    return ListView.separated(
+      controller: _scrollController,
+      itemCount: artistWorks.length,
+      separatorBuilder: (context, _) => const Divider(
+        color: AppColor.auGrey,
+        height: 1,
+        thickness: 1,
+      ),
+      itemBuilder: (context, index) {
+        final work = artistWorks[index];
+        return ListTile(
+          title: Text(
+            work.title ?? '',
+            style: AppTypography.body(context).white,
+          ),
+          subtitle: Text(
+            work.artistName,
+            style: AppTypography.caption(context).copyWith(
+              color: AppColor.auGrey,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+          trailing: Text(
+            'Artist match',
+            style: AppTypography.caption(context).copyWith(
+              color: AppColor.auGrey,
+            ),
+          ),
+          onTap: () {
+            unawaited(context.push('${Routes.works}/${work.id}'));
+          },
+        );
+      },
+    );
   }
 
   Widget _buildChannelsView(BuildContext context, List<Channel> channels) {

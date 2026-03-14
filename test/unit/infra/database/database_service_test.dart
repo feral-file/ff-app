@@ -1110,9 +1110,9 @@ void main() {
           ),
         );
 
-        final channels = await service.searchChannelsByTitle('moon');
-        final playlists = await service.searchPlaylistsByTitle('moon');
-        final works = await service.searchItemsByTitle('moon');
+        final channels = await service.searchChannels('moon');
+        final playlists = await service.searchPlaylists('moon');
+        final works = await service.searchItems('moon');
 
         expect(channels.map((c) => c.id), contains('ch_fts_1'));
         expect(channels.map((c) => c.id), isNot(contains('ch_fts_2')));
@@ -1147,10 +1147,64 @@ void main() {
           ),
         );
 
-        final works = await service.searchItemsByTitle('kusama');
+        final works = await service.searchItems('kusama');
 
         expect(works.map((w) => w.id), contains('wk_artist_1'));
         expect(works.map((w) => w.id), isNot(contains('wk_artist_2')));
+      });
+
+      test('searches channel metadata and playlist owner fields', () async {
+        final now = DateTime.now();
+
+        await service.ingestChannel(
+          Channel(
+            id: 'ch_meta_1',
+            name: 'Quiet Channel',
+            type: ChannelType.dp1,
+            curator: 'Casey Reas',
+            description: 'Generative experiments',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+
+        await service.ingestChannel(
+          Channel(
+            id: 'ch_meta_2',
+            name: 'Other Channel',
+            type: ChannelType.dp1,
+            curator: 'Another Curator',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+
+        await service.ingestPlaylist(
+          Playlist(
+            id: 'pl_meta_1',
+            name: 'Address Playlist',
+            type: PlaylistType.addressBased,
+            slug: 'collector-spotlight',
+            ownerAddress: '0XABC123',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+
+        final curatorChannels = await service.searchChannels('reas');
+        final summaryChannels = await service.searchChannels(
+          'generative',
+        );
+        final ownerPlaylists = await service.searchPlaylists('abc123');
+        final slugPlaylists = await service.searchPlaylists(
+          'collector',
+        );
+
+        expect(curatorChannels.map((c) => c.id), contains('ch_meta_1'));
+        expect(curatorChannels.map((c) => c.id), isNot(contains('ch_meta_2')));
+        expect(summaryChannels.map((c) => c.id), contains('ch_meta_1'));
+        expect(ownerPlaylists.map((p) => p.id), contains('pl_meta_1'));
+        expect(slugPlaylists.map((p) => p.id), contains('pl_meta_1'));
       });
     });
 

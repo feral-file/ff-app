@@ -12,6 +12,9 @@ enum SearchFilterType {
   /// Show playlist results.
   playlists,
 
+  /// Show artist-matched work results.
+  artists,
+
   /// Show work results.
   works,
 }
@@ -25,6 +28,8 @@ extension SearchFilterTypeX on SearchFilterType {
         return 'Channels';
       case SearchFilterType.playlists:
         return 'Playlists';
+      case SearchFilterType.artists:
+        return 'Artists';
       case SearchFilterType.works:
         return 'Works';
     }
