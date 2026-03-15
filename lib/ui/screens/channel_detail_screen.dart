@@ -1,7 +1,7 @@
 import 'package:app/app/providers/channel_detail_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
-import 'package:app/design/layout_constants.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/bottom_spacing.dart';
@@ -67,7 +67,7 @@ class ChannelDetailScreen extends ConsumerWidget {
                   return CustomScrollView(
                     slivers: [
                       SliverToBoxAdapter(
-                        child: SizedBox(height: LayoutConstants.space6),
+                        child: SizedBox(height: ContentRhythm.sectionSpacing),
                       ),
                       SliverToBoxAdapter(
                         child: ChannelHeader(
@@ -79,19 +79,18 @@ class ChannelDetailScreen extends ConsumerWidget {
                         ),
                       ),
                       SliverToBoxAdapter(
-                        child: SizedBox(height: LayoutConstants.space6),
+                        child: SizedBox(height: ContentRhythm.sectionSpacing),
                       ),
                       if (playlists.isEmpty)
                         SliverToBoxAdapter(
                           child: Center(
                             child: Padding(
                               padding: EdgeInsets.symmetric(
-                                horizontal:
-                                    LayoutConstants.pageHorizontalDefault,
+                                horizontal: ContentRhythm.horizontalRail,
                               ),
                               child: Text(
                                 'This channel has no playlists.',
-                                style: AppTypography.body(context).grey,
+                                style: ContentRhythm.supporting(context),
                                 textAlign: TextAlign.center,
                               ),
                             ),

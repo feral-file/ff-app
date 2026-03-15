@@ -1,8 +1,7 @@
 import 'package:app/app/routing/routes.dart';
 import 'package:app/app/utils/html/prepare_truncated_html.dart';
-import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
-import 'package:app/design/layout_constants.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
@@ -45,6 +44,11 @@ class ChannelHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final decodedTitle = decodeBasicHtmlEntities(channelTitle);
+    final decodedSummary = channelSummary == null
+        ? null
+        : decodeBasicHtmlEntities(channelSummary!);
+
     return GestureDetector(
       onTap: () {
         if (clickable) {
@@ -58,25 +62,25 @@ class ChannelHeader extends StatelessWidget {
           children: [
             Container(
               padding: EdgeInsets.symmetric(
-                horizontal: LayoutConstants.pageHorizontalDefault,
-                vertical: LayoutConstants.space4,
+                horizontal: ContentRhythm.horizontalRail,
+                vertical: ContentRhythm.sectionSpacing,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    channelTitle,
-                    style: AppTypography.body(context).white,
+                    decodedTitle,
+                    style: ContentRhythm.title(context),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (channelSummary != null && channelSummary!.isNotEmpty) ...[
-                    SizedBox(height: LayoutConstants.space5),
+                  if (decodedSummary != null && decodedSummary.isNotEmpty) ...[
+                    SizedBox(height: ContentRhythm.titleSupportGap),
                     if (renderSummaryAsHtml)
                       SelectionArea(
                         child: HtmlWidget(
-                          prepareHtmlForRender(channelSummary!),
-                          textStyle: AppTypography.body(context).grey,
+                          prepareHtmlForRender(decodedSummary),
+                          textStyle: ContentRhythm.longForm(context),
                           onTapUrl: (url) async {
                             await launchUrl(
                               Uri.parse(url),
@@ -92,7 +96,7 @@ class ChannelHeader extends StatelessWidget {
                             }
                             if (element.localName == 'a') {
                               return {
-                                'color': PrimitivesTokens.colorsGrey
+                                'color': PrimitivesTokens.colorsWhite
                                     .toHexString(),
                               };
                             }
@@ -102,12 +106,12 @@ class ChannelHeader extends StatelessWidget {
                       )
                     else
                       Text(
-                        channelSummary!,
+                        decodedSummary,
                         maxLines: maxLines,
                         overflow: maxLines != null
                             ? TextOverflow.ellipsis
                             : TextOverflow.visible,
-                        style: AppTypography.body(context).grey,
+                        style: ContentRhythm.longForm(context),
                       ),
                   ],
                 ],

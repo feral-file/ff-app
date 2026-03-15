@@ -1,4 +1,5 @@
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -60,7 +61,9 @@ class NowDisplayingDisplayItem extends StatelessWidget {
                         item.artistName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTypography.bodySmall(context).white,
+                        style: ContentRhythm.supporting(
+                          context,
+                        ).copyWith(color: Colors.white),
                       ),
                       Transform.translate(
                         offset: const Offset(
@@ -73,10 +76,16 @@ class NowDisplayingDisplayItem extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: isInExpandedView
-                              ? AppTypography.bodySmall(
+                              ? ContentRhythm.supporting(
                                   context,
-                                ).white.bold.italic
-                              : AppTypography.bodySmall(context).white,
+                                ).copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontStyle: FontStyle.italic,
+                                )
+                              : ContentRhythm.supporting(
+                                  context,
+                                ).copyWith(color: Colors.white),
                         ),
                       ),
                     ],
@@ -109,8 +118,7 @@ class _Thumbnail extends StatelessWidget {
                 imageUrl: url!,
                 fit: BoxFit.cover,
                 placeholder: (_, _) => const GalleryThumbnailPlaceholder(),
-                errorWidget: (_, _, _) =>
-                    const GalleryThumbnailErrorWidget(),
+                errorWidget: (_, _, _) => const GalleryThumbnailErrorWidget(),
               ),
       ),
     );

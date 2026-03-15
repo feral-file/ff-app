@@ -47,7 +47,7 @@ class WorkGridCard extends StatelessWidget {
                       child: SizedBox(
                         width: constraints.maxWidth,
                         height: constraints.maxHeight,
-                        child: Center(child: _buildThumbnail()),
+                        child: _buildThumbnail(constraints.maxWidth),
                       ),
                     );
                   },
@@ -76,20 +76,25 @@ class WorkGridCard extends StatelessWidget {
     );
   }
 
-  Widget _buildThumbnail() {
+  Widget _buildThumbnail(double targetWidth) {
     final url = item.thumbnailUrl;
     if (url == null || url.isEmpty) {
       return const GalleryNoThumbnailWidget();
     }
 
-    return CachedNetworkImage(
-      imageUrl: url,
-      fit: BoxFit.contain,
-      placeholder: (context, url) => const GalleryThumbnailPlaceholder(),
-      errorWidget: (context, url, error) {
-        _log.warning('Failed to load thumbnail for work ${item.id}: $error');
-        return const GalleryThumbnailErrorWidget();
-      },
+    return Align(
+      alignment: Alignment.center,
+      child: CachedNetworkImage(
+        imageUrl: url,
+        width: targetWidth,
+        fit: BoxFit.fitWidth,
+        alignment: Alignment.center,
+        placeholder: (context, url) => const GalleryThumbnailPlaceholder(),
+        errorWidget: (context, url, error) {
+          _log.warning('Failed to load thumbnail for work ${item.id}: $error');
+          return const GalleryThumbnailErrorWidget();
+        },
+      ),
     );
   }
 }

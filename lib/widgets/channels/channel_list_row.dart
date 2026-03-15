@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/channel_preview_provider.dart';
-import 'package:app/design/app_typography.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/channel_item.dart';
@@ -145,10 +145,10 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
           ),
           if (error != null)
             Padding(
-              padding: EdgeInsets.only(top: LayoutConstants.space2),
+              padding: EdgeInsets.only(top: ContentRhythm.rowVerticalPadding),
               child: Text(
                 "We couldn't load this channel's works. Tap to retry.",
-                style: AppTypography.caption(context).grey,
+                style: ContentRhythm.supporting(context),
               ),
             ),
           if (error != null)
@@ -162,7 +162,7 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
                 },
                 child: Text(
                   'Retry',
-                  style: AppTypography.body(context),
+                  style: ContentRhythm.controlLabel(context),
                 ),
               ),
             ),

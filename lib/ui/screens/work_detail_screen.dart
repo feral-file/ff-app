@@ -6,6 +6,7 @@ import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
 import 'package:app/app/utils/html/au_html_style.dart';
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/domain/extensions/asset_token_ext.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/dp1/dp1_intent.dart';
@@ -279,7 +280,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+          padding: EdgeInsets.symmetric(
+            horizontal: ContentRhythm.horizontalRail,
+          ),
           child: Row(
             children: [
               Expanded(
@@ -445,7 +448,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                   children: [
                     Text(
                       'This work has no token to rebuild metadata for',
-                      style: AppTypography.body(context).white,
+                      style: ContentRhythm.title(context),
                     ),
                     const SizedBox(height: 24),
                     OutlineButton(
@@ -472,7 +475,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                   children: [
                     Text(
                       'The work metadata has been refreshed.',
-                      style: AppTypography.body(context).white,
+                      style: ContentRhythm.title(context),
                     ),
                     const SizedBox(height: 24),
                     OutlineButton(
@@ -495,7 +498,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     Text(
                       'Rebuild metadata is incomplete. Try again later '
                       'or contact support for help.',
-                      style: AppTypography.body(context).white,
+                      style: ContentRhythm.title(context),
                     ),
                     const SizedBox(height: 24),
                     OutlineButton(
@@ -570,7 +573,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: ContentRhythm.horizontalRail,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -581,7 +586,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                             child: HtmlWidget(
                               descriptionHtml,
                               customStylesBuilder: auHtmlStyle,
-                              textStyle: AppTypography.body(context).white,
+                              textStyle: ContentRhythm.title(context),
                               onTapUrl: (url) async {
                                 await launchUrl(
                                   Uri.parse(url),

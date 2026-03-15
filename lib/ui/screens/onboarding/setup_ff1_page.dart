@@ -11,6 +11,7 @@ import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/onboarding/onboarding_shell.dart';
@@ -46,21 +47,21 @@ class OnboardingSetupFf1Page extends ConsumerWidget {
               'Add FF1 to your screens',
               style: AppTypography.h2(context).white,
             ),
-            SizedBox(height: LayoutConstants.space5),
+            SizedBox(height: ContentRhythm.titleSupportGap),
             Text(
               "When you're ready to see these playlists on a wall, plug "
               'FF1 into any HDMI display and pair it with the app. Press '
               'Play and your screen becomes a surface for digital and '
               'computational art.',
-              style: AppTypography.body(context).white,
+              style: ContentRhythm.title(context),
             ),
-            SizedBox(height: LayoutConstants.space5),
+            SizedBox(height: ContentRhythm.titleSupportGap),
             GestureDetector(
               onTap: () => onLearnMore(context),
               behavior: HitTestBehavior.opaque,
               child: Text(
                 'Learn more about the FF1 Art Computer',
-                style: AppTypography.body(context).grey.underline,
+                style: ContentRhythm.supporting(context).underline,
               ),
             ),
           ],

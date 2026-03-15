@@ -1,4 +1,5 @@
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
@@ -31,7 +32,7 @@ class PlaylistSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(
-        horizontal: LayoutConstants.pageHorizontalDefault,
+        horizontal: ContentRhythm.horizontalRail,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -51,11 +52,11 @@ class PlaylistSectionHeader extends StatelessWidget {
                     ),
                   ),
               SizedBox(
-                width: LayoutConstants.space4,
+                width: ContentRhythm.sectionIconGap,
               ),
               Text(
                 sectionName,
-                style: AppTypography.h4(context).white,
+                style: ContentRhythm.sectionTitle(context),
               ),
             ],
           ),

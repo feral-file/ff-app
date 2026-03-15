@@ -62,7 +62,10 @@ class App extends ConsumerWidget {
       builder: (context, child) {
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(
-            textScaler: TextScaler.noScaling,
+            textScaler: MediaQuery.textScalerOf(context).clamp(
+              minScaleFactor: 1,
+              maxScaleFactor: 1.15,
+            ),
           ),
           child: BuilderOverlayScope(
             child: _AppStartupBootstrap(

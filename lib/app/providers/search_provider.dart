@@ -1,3 +1,4 @@
+import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -164,11 +165,12 @@ final searchSuggestionsProvider =
         }
 
         for (final item in works) {
+          final artistName = item.artistName;
           suggestions.add(
             SearchSuggestion(
               id: item.id,
               title: item.title ?? '',
-              subtitle: 'Work',
+              subtitle: artistName.isEmpty ? 'Work' : 'Work · $artistName',
               kind: SearchResultKind.work,
             ),
           );

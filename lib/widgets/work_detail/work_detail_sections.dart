@@ -1,8 +1,8 @@
 import 'dart:collection';
 
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/domain/extensions/asset_token_ext.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -93,9 +93,7 @@ class _SectionExpandedWidgetState extends State<SectionExpandedWidget> {
                   children: [
                     Text(
                       widget.header ?? '',
-                      style:
-                          widget.headerStyle ??
-                          AppTypography.body(context).white,
+                      style: widget.headerStyle ?? ContentRhythm.title(context),
                     ),
                     const Spacer(),
                     if (_isExpanded)
@@ -175,7 +173,7 @@ class MetaDataItem extends StatelessWidget {
           flex: 2,
           child: Text(
             title,
-            style: titleStyle ?? AppTypography.body(context).grey,
+            style: titleStyle ?? ContentRhythm.supporting(context),
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
           ),
@@ -193,7 +191,7 @@ class MetaDataItem extends StatelessWidget {
                         AppTypography.body(
                           context,
                         ).copyWith(color: AppColor.feralFileHighlight)
-                  : valueStyle ?? AppTypography.body(context).white,
+                  : valueStyle ?? ContentRhythm.title(context),
             ),
           ),
         ),
@@ -240,7 +238,7 @@ class ProvenanceItem extends StatelessWidget {
           flex: 2,
           child: Text(
             title,
-            style: AppTypography.body(context).white,
+            style: ContentRhythm.supporting(context),
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
           ),
@@ -251,7 +249,7 @@ class ProvenanceItem extends StatelessWidget {
             value,
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
-            style: AppTypography.body(context).white,
+            style: ContentRhythm.title(context),
           ),
         ),
         Expanded(
@@ -277,7 +275,7 @@ class ProvenanceItem extends StatelessWidget {
                     child: Text(
                       'View',
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.body(context).copyWith(
+                      style: ContentRhythm.controlLabel(context).copyWith(
                         color: AppColor.feralFileHighlight,
                       ),
                     ),

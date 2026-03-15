@@ -7,7 +7,6 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/theme/app_color.dart';
 import 'package:app/ui/settings_dialog_helper.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
@@ -49,14 +48,14 @@ class SettingsPage extends ConsumerWidget {
             onTap: () async {
               final router = GoRouter.of(context);
               final overlayNotifier = ref.read(appOverlayProvider.notifier);
-              final cleanupService =
-                  ref.read(localDataCleanupServiceProvider);
+              final cleanupService = ref.read(localDataCleanupServiceProvider);
 
               context.pop();
               router.go(Routes.home);
 
-              final toastOverlayId = overlayNotifier
-                  .showToast(message: 'Cleaning metadata...');
+              final toastOverlayId = overlayNotifier.showToast(
+                message: 'Cleaning metadata...',
+              );
               await WidgetsBinding.instance.endOfFrame;
 
               try {
@@ -78,9 +77,31 @@ class SettingsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isDarkMode =
+        MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    final systemBackground = isDarkMode
+        ? const Color(0xFF000000)
+        : const Color(0xFFFFFFFF);
+    final systemLabel = isDarkMode
+        ? const Color(0xFFFFFFFF)
+        : const Color(0xFF000000);
+    final systemSecondary = isDarkMode
+        ? const Color(0xFF8E8E93)
+        : const Color(0xFF6D6D72);
+    final systemSeparator = isDarkMode
+        ? const Color(0xFF38383A)
+        : const Color(0xFFD1D1D6);
+
     return Scaffold(
-      backgroundColor: AppColor.auGreyBackground,
-      appBar: const SetupAppBar(title: 'Settings'),
+      backgroundColor: systemBackground,
+      appBar: SetupAppBar(
+        title: 'Settings',
+        titleStyle: AppTypography.h4(context).copyWith(color: systemLabel),
+        backgroundColor: systemBackground,
+        titleColor: systemLabel,
+        isDarkMode: isDarkMode,
+        withDivider: false,
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -88,20 +109,27 @@ class SettingsPage extends ConsumerWidget {
             // Rebuild metadata row
             _SettingRow(
               title: 'Rebuild metadata',
-              subtitle: 'Clear local cache and re-download all artwork metadata.',
+              subtitle:
+                  'Clear local cache and re-download all artwork metadata.',
+              titleColor: systemLabel,
+              subtitleColor: systemSecondary,
+              trailingColor: systemSecondary,
               onTap: () {
                 unawaited(_showRebuildMetadataDialog(context, ref));
               },
             ),
-            const Divider(
+            Divider(
               height: 1,
-              color: PrimitivesTokens.colorsBlack,
+              color: systemSeparator,
             ),
             // Forget I exist row
             _SettingRow(
               title: 'Forget I exist',
               subtitle:
                   'Erase all information about me and delete my keys from my cloud backup.',
+              titleColor: systemLabel,
+              subtitleColor: systemSecondary,
+              trailingColor: systemSecondary,
               onTap: () {
                 unawaited(
                   SettingsDialogHelper.showForgetExistDialog(context, ref),
@@ -117,6 +145,8 @@ class SettingsPage extends ConsumerWidget {
               ),
               child: _VersionSection(
                 packageInfoAsync: ref.watch(packageInfoProvider),
+                textColor: systemSecondary,
+                outlineColor: systemSeparator,
               ),
             ),
           ],
@@ -131,11 +161,17 @@ class _SettingRow extends StatelessWidget {
   const _SettingRow({
     required this.title,
     required this.subtitle,
+    required this.titleColor,
+    required this.subtitleColor,
+    required this.trailingColor,
     required this.onTap,
   });
 
   final String title;
   final String subtitle;
+  final Color titleColor;
+  final Color subtitleColor;
+  final Color trailingColor;
   final VoidCallback onTap;
 
   @override
@@ -147,22 +183,22 @@ class _SettingRow extends StatelessWidget {
       ),
       title: Text(
         title,
-        style: AppTypography.body(context).copyWith(
-          color: PrimitivesTokens.colorsWhite,
+        style: AppTypography.h4(context).copyWith(
+          color: titleColor,
         ),
       ),
       subtitle: Padding(
         padding: EdgeInsets.only(top: LayoutConstants.space1),
         child: Text(
           subtitle,
-          style: AppTypography.bodySmall(context).copyWith(
-            color: PrimitivesTokens.colorsGrey,
+          style: AppTypography.body(context).copyWith(
+            color: subtitleColor,
           ),
         ),
       ),
-      trailing: const Icon(
+      trailing: Icon(
         Icons.chevron_right,
-        color: PrimitivesTokens.colorsGrey,
+        color: trailingColor,
       ),
       onTap: onTap,
     );
@@ -171,9 +207,15 @@ class _SettingRow extends StatelessWidget {
 
 /// Version info section: EULA, Privacy Policy links, version badge, up-to-date.
 class _VersionSection extends StatelessWidget {
-  const _VersionSection({required this.packageInfoAsync});
+  const _VersionSection({
+    required this.packageInfoAsync,
+    required this.textColor,
+    required this.outlineColor,
+  });
 
   final AsyncValue<PackageInfo> packageInfoAsync;
+  final Color textColor;
+  final Color outlineColor;
 
   @override
   Widget build(BuildContext context) {
@@ -189,16 +231,16 @@ class _VersionSection extends StatelessWidget {
               child: Text(
                 'EULA',
                 style: AppTypography.body(context).copyWith(
-                  color: AppColor.disabledColor,
+                  color: textColor,
                   decoration: TextDecoration.underline,
-                  decorationColor: AppColor.disabledColor,
+                  decorationColor: textColor,
                 ),
               ),
             ),
             Text(
               ' and ',
               style: AppTypography.body(context).copyWith(
-                color: AppColor.disabledColor,
+                color: textColor,
               ),
             ),
             GestureDetector(
@@ -206,9 +248,9 @@ class _VersionSection extends StatelessWidget {
               child: Text(
                 'Privacy Policy',
                 style: AppTypography.body(context).copyWith(
-                  color: AppColor.disabledColor,
+                  color: textColor,
                   decoration: TextDecoration.underline,
-                  decorationColor: AppColor.disabledColor,
+                  decorationColor: textColor,
                 ),
               ),
             ),
@@ -220,13 +262,13 @@ class _VersionSection extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(50),
-              border: Border.all(color: AppColor.auGrey),
+              border: Border.all(color: outlineColor),
             ),
             child: Text(
               'v.${packageInfo.version}(${packageInfo.buildNumber})',
               key: const Key('version'),
               style: AppTypography.body(context).copyWith(
-                color: AppColor.disabledColor,
+                color: textColor,
               ),
             ),
           ),
@@ -234,7 +276,7 @@ class _VersionSection extends StatelessWidget {
         Text(
           'Good! You are up to date!',
           style: AppTypography.body(context).copyWith(
-            color: AppColor.disabledColor,
+            color: textColor,
           ),
         ),
       ],

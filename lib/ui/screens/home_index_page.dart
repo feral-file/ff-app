@@ -18,6 +18,7 @@ import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/home_index_header.dart';
 import 'package:app/widgets/no_pairing_device_dialog.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -202,14 +203,19 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
   }
 
   List<OptionItem> get _defaultOptions {
+    final menuForeground = CupertinoDynamicColor.resolve(
+      CupertinoColors.label,
+      context,
+    );
+
     return [
       // Scan option for debug only
       if (kDebugMode)
         OptionItem(
           title: 'Scan',
-          icon: const Icon(
+          icon: Icon(
             Icons.qr_code_scanner,
-            color: AppColor.white,
+            color: menuForeground,
           ),
           onTap: () {
             Navigator.of(context).pop();
@@ -228,7 +234,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           'assets/images/portal_setting.svg',
           width: LayoutConstants.iconSizeMedium,
           height: LayoutConstants.iconSizeMedium,
-          colorFilter: const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
+          colorFilter: ColorFilter.mode(menuForeground, BlendMode.srcIn),
         ),
         onTap: () {
           Navigator.of(context).pop();
@@ -254,7 +260,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           'assets/images/icon_account.svg',
           width: LayoutConstants.iconSizeMedium,
           height: LayoutConstants.iconSizeMedium,
-          colorFilter: const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
+          colorFilter: ColorFilter.mode(menuForeground, BlendMode.srcIn),
         ),
         onTap: () {
           Navigator.of(context).pop();
@@ -271,9 +277,9 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
                 context,
                 numberOfIssuesInfo,
                 child,
-              ) => const Icon(
+              ) => Icon(
                 Icons.help_outline,
-                color: AppColor.white,
+                color: menuForeground,
               ),
         ),
         onTap: () async {
@@ -288,7 +294,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
           'assets/images/info.svg',
           width: 22,
           height: 22,
-          colorFilter: const ColorFilter.mode(AppColor.white, BlendMode.srcIn),
+          colorFilter: ColorFilter.mode(menuForeground, BlendMode.srcIn),
         ),
         onTap: () {
           Navigator.of(context).pop();
@@ -360,6 +366,7 @@ class _HomeIndexPageState extends ConsumerState<HomeIndexPage> {
         context,
         options: _defaultOptions,
         bottomWidget: _addAddressButton(),
+        useSystemSurface: true,
       ),
     );
   }

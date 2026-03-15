@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/ui/screens/onboarding/onboarding_add_address_page.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
@@ -62,12 +63,12 @@ class IntroducePage extends StatelessWidget {
               'Explore digital art playlists',
               style: AppTypography.h2(context).white,
             ),
-            SizedBox(height: LayoutConstants.space5),
+            SizedBox(height: ContentRhythm.titleSupportGap),
             Text(
               'Browse curated playlists and channels from Feral File and '
               'invited collaborators—right on your phone. You don’t need '
               'any hardware to start exploring.',
-              style: AppTypography.body(context).white,
+              style: ContentRhythm.title(context),
             ),
           ],
         ),

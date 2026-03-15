@@ -1,4 +1,4 @@
-import 'package:app/design/app_typography.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:flutter/material.dart';
 
 /// Header for work/artwork detail: title and optional subtitle (e.g. artist).
@@ -31,9 +31,9 @@ class ArtworkDetailsHeader extends StatelessWidget {
             onTap: onSubTitleTap,
             child: Text(
               subTitle,
-              style: AppTypography.body(context).white.copyWith(
+              style: ContentRhythm.supporting(context).copyWith(
                 fontStyle: FontStyle.italic,
-                color: color,
+                color: color ?? Colors.white,
               ),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
@@ -43,9 +43,9 @@ class ArtworkDetailsHeader extends StatelessWidget {
           onTap: onTitleTap,
           child: Text(
             title,
-            style: AppTypography.body(context).white.copyWith(
+            style: ContentRhythm.title(context).copyWith(
               fontWeight: FontWeight.bold,
-              color: color,
+              color: color ?? Colors.white,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
