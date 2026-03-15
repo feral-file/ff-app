@@ -200,74 +200,110 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
       next,
     ) {
       next.whenData((state) async {
-        if (state is ConnectFF1Connected) {
-          _recordDuration(success: true);
-          if (state.isConnectedToInternet) {
-            await ref.read(
-              addFF1BluetoothDeviceProvider(state.ff1device).future,
-            );
+        try {
+          if (state is ConnectFF1Connected) {
+            _recordDuration(success: true);
+            if (state.isConnectedToInternet) {
+              await ref.read(
+                addFF1BluetoothDeviceProvider(state.ff1device).future,
+              );
 
-            if (state.portalIsSet) {
-              // Portal is set, show portal is set view
+              if (state.portalIsSet) {
+                if (context.mounted) {
+                  unawaited(
+                    ref.read(onboardingActionsProvider).completeOnboarding(),
+                  );
+                  context.popUntil(Routes.startSetupFf1);
+                  unawaited(
+                    context.push(Routes.deviceConfiguration),
+                  );
+                }
+              } else {
+                if (context.mounted) {
+                  unawaited(
+                    ref.read(onboardingActionsProvider).completeOnboarding(),
+                  );
+                  context.popUntil(Routes.startSetupFf1);
+                  unawaited(
+                    context.push(Routes.deviceConfiguration),
+                  );
+                }
+              }
             } else {
               if (context.mounted) {
-                unawaited(
-                  ref.read(onboardingActionsProvider).completeOnboarding(),
-                );
-                context.popUntil(Routes.startSetupFf1);
-                unawaited(
-                  context.push(Routes.deviceConfiguration),
+                // No internet connection, navigate to scan wifi networks page
+                context.replace(
+                  Routes.scanWifiNetworks,
+                  extra: ScanWifiNetworkPagePayload(
+                    device: state.ff1device,
+                  ),
                 );
               }
             }
-          } else {
-            // No internet connection, navigate to scan wifi networks page
-            context.replace(
-              Routes.scanWifiNetworks,
-              extra: ScanWifiNetworkPagePayload(
-                device: state.ff1device,
-              ),
-            );
-          }
-        } else if (state is ConnectFF1Error) {
-          _recordDuration(success: false);
+          } else if (state is ConnectFF1Error) {
+            _recordDuration(success: false);
 
-          if (state.exception is FF1ResponseError) {
-            final exception = state.exception as FF1ResponseError;
-            await UIHelper.showInfoDialog(
-              context,
-              exception.title,
-              exception.message,
-              closeButton: exception.shouldShowSupport ? 'Contact support' : '',
-              onClose: exception.shouldShowSupport
-                  ? () {
-                      unawaited(
-                        UIHelper.showCustomerSupport(
-                          context,
-                          supportEmailService: ref.read(
-                            supportEmailServiceProvider,
+            if (state.exception is FF1ResponseError) {
+              final exception = state.exception as FF1ResponseError;
+              await UIHelper.showInfoDialog(
+                context,
+                exception.title,
+                exception.message,
+                closeButton: exception.shouldShowSupport
+                    ? 'Contact support'
+                    : '',
+                onClose: exception.shouldShowSupport
+                    ? () {
+                        unawaited(
+                          UIHelper.showCustomerSupport(
+                            context,
+                            supportEmailService: ref.read(
+                              supportEmailServiceProvider,
+                            ),
                           ),
-                        ),
-                      );
-                    }
-                  : null,
-            );
-          } else {
-            await UIHelper.showInfoDialog(
-              context,
-              'Connect failed',
-              state.exception.toString(),
-              closeButton: 'Contact support',
-              onClose: () {
-                unawaited(
-                  UIHelper.showCustomerSupport(
-                    context,
-                    supportEmailService: ref.read(supportEmailServiceProvider),
-                  ),
-                );
-              },
-            );
+                        );
+                      }
+                    : null,
+              );
+            } else {
+              await UIHelper.showInfoDialog(
+                context,
+                'Connect failed',
+                state.exception.toString(),
+                closeButton: 'Contact support',
+                onClose: () {
+                  unawaited(
+                    UIHelper.showCustomerSupport(
+                      context,
+                      supportEmailService: ref.read(
+                        supportEmailServiceProvider,
+                      ),
+                    ),
+                  );
+                },
+              );
+            }
           }
+        } on Object catch (e, stack) {
+          _log.severe('[ConnectFF1Page] State handler failed', e, stack);
+          if (!context.mounted) {
+            return;
+          }
+
+          await UIHelper.showInfoDialog(
+            context,
+            'Connect failed',
+            e.toString(),
+            closeButton: 'Contact support',
+            onClose: () {
+              unawaited(
+                UIHelper.showCustomerSupport(
+                  context,
+                  supportEmailService: ref.read(supportEmailServiceProvider),
+                ),
+              );
+            },
+          );
         }
       });
     });

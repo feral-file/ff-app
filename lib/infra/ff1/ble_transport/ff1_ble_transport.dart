@@ -45,14 +45,26 @@ class FF1BleTransport {
   /// Command/Wi-Fi characteristic UUID used for app/device communication.
   static const String commandCharUuid = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 
+  static const List<Duration> _discoveryTimeouts = [
+    Duration(seconds: 10),
+    Duration(seconds: 15),
+    Duration(seconds: 20),
+  ];
+
+  static const Duration _discoveryStabilizationDelay = Duration(seconds: 2);
+  static const Duration _discoveryRetryDelay = Duration(seconds: 1);
+  static const Duration _waitUntilReadyRetryDelay = Duration(milliseconds: 300);
+
   // Characteristic cache (remoteId -> characteristic)
   final Map<String, BluetoothCharacteristic> _characteristics = {};
 
   // Response callbacks (replyId -> callback)
   final Map<String, void Function(FF1BleResponse)> _responseCallbacks = {};
 
-  // Connection completer (for waiting on connection + service discovery)
-  Completer<void>? _connectCompleter;
+  // Active connect attempt tracking (used to ignore stale async work).
+  int _connectAttemptSequence = 0;
+  int? _activeConnectAttemptId;
+  String? _activeConnectDeviceId;
 
   /// Start listening to flutter_blue_plus events
   void _startListening() {
@@ -73,46 +85,15 @@ class FF1BleTransport {
       );
 
       if (state == BluetoothConnectionState.connected) {
-        try {
-          // Wait for connection to stabilize
-          _structuredLog.info(
-            category: LogCategory.ble,
-            event: 'connect_established',
-            message: 'connect established for ${device.remoteId.str}',
-            entityId: device.remoteId.str,
-          );
-          await Future<void>.delayed(const Duration(seconds: 2));
-
-          // Discover characteristics
-          _structuredLog.info(
-            category: LogCategory.ble,
-            event: 'service_discovery_started',
-            message: 'service discovery started',
-            entityId: device.remoteId.str,
-          );
-          await _discoverCharacteristics(device);
-
-          // Complete connection
-          if (_connectCompleter?.isCompleted == false) {
-            _connectCompleter?.complete();
-          }
-          _connectCompleter = null;
-        } on Object catch (e, stack) {
-          _structuredLog.warning(
-            category: LogCategory.ble,
-            event: 'service_discovery_failed',
-            message: 'service discovery failed',
-            entityId: device.remoteId.str,
-            error: e,
-            stackTrace: stack,
-          );
-          if (_connectCompleter?.isCompleted == false) {
-            _connectCompleter?.completeError(e);
-          }
-          _connectCompleter = null;
-          await device.disconnect();
-        }
+        _structuredLog.info(
+          category: LogCategory.ble,
+          event: 'connect_established',
+          message: 'connect established for ${device.remoteId.str}',
+          entityId: device.remoteId.str,
+        );
       } else if (state == BluetoothConnectionState.disconnected) {
+        _characteristics.remove(device.remoteId.str);
+
         _structuredLog.warning(
           category: LogCategory.ble,
           event: 'device_disconnected',
@@ -123,11 +104,6 @@ class FF1BleTransport {
             'disconnectReason': device.disconnectReason?.toString(),
           },
         );
-        if (_connectCompleter?.isCompleted == false) {
-          _connectCompleter?.completeError(
-            FF1DisconnectedError(disconnectReason: device.disconnectReason),
-          );
-        }
       }
     });
 
@@ -162,8 +138,23 @@ class FF1BleTransport {
           'deviceId': event.device.remoteId.str,
         },
       );
-      unawaited(event.device.discoverServices());
+      unawaited(_rediscoverAfterServicesReset(event.device));
     });
+  }
+
+  Future<void> _rediscoverAfterServicesReset(BluetoothDevice device) async {
+    try {
+      await _discoverCharacteristics(device);
+    } on Object catch (e, stack) {
+      _structuredLog.warning(
+        category: LogCategory.ble,
+        event: 'services_reset_rediscovery_failed',
+        message: 'service rediscovery after reset failed',
+        entityId: device.remoteId.str,
+        error: e,
+        stackTrace: stack,
+      );
+    }
   }
 
   /// Connect to an FF1 device
@@ -304,17 +295,32 @@ class FF1BleTransport {
     BluetoothDevice device, {
     required Duration timeout,
   }) async {
+    final attemptId = ++_connectAttemptSequence;
+    _activeConnectAttemptId = attemptId;
+    _activeConnectDeviceId = device.remoteId.str;
+
     if (device.isConnected) {
+      final cached = _characteristics[device.remoteId.str];
+      if (cached != null) {
+        _structuredLog.info(
+          category: LogCategory.ble,
+          event: 'connect_skipped_already_connected',
+          message: 'device already connected',
+          entityId: device.remoteId.str,
+        );
+        return;
+      }
+
       _structuredLog.info(
         category: LogCategory.ble,
-        event: 'connect_skipped_already_connected',
-        message: 'device already connected',
+        event: 'connect_connected_missing_characteristic',
+        message: 'device connected but characteristic missing, rediscovering',
         entityId: device.remoteId.str,
       );
+
+      await _discoverCharacteristics(device, attemptId: attemptId);
       return;
     }
-
-    _connectCompleter = Completer<void>();
 
     try {
       await device.disconnect();
@@ -328,37 +334,26 @@ class FF1BleTransport {
         license: License.free,
       );
 
-      // Wait for characteristic discovery to complete
-      await _connectCompleter?.future.timeout(
+      await _discoverCharacteristics(device, attemptId: attemptId).timeout(
         timeout,
-        onTimeout: () {
-          final error = TimeoutException('Connection timeout');
-          if (_connectCompleter?.isCompleted == false) {
-            _connectCompleter?.completeError(error);
-          }
-          _connectCompleter = null;
-          throw error;
-        },
+        onTimeout: () => throw TimeoutException('Connection timeout'),
       );
-    } on Object catch (e) {
-      if (_connectCompleter?.isCompleted == false) {
-        _connectCompleter?.completeError(e);
-      }
-      _connectCompleter = null;
+    } on Object {
       rethrow;
     }
   }
 
   /// Discover GATT characteristics for an FF1 device
-  Future<void> _discoverCharacteristics(BluetoothDevice device) async {
-    const timeouts = [
-      Duration(seconds: 10),
-      Duration(seconds: 15),
-      Duration(seconds: 20),
-    ];
+  Future<void> _discoverCharacteristics(
+    BluetoothDevice device, {
+    int? attemptId,
+  }) async {
+    _characteristics.remove(device.remoteId.str);
 
-    for (var i = 0; i < timeouts.length; i++) {
+    for (var i = 0; i < _discoveryTimeouts.length; i++) {
       try {
+        _assertAttemptIsCurrent(device: device, attemptId: attemptId);
+
         _structuredLog.info(
           category: LogCategory.ble,
           event: 'service_discovery_attempt',
@@ -366,14 +361,22 @@ class FF1BleTransport {
           entityId: device.remoteId.str,
           payload: {
             'attempt': i + 1,
-            'maxAttempts': timeouts.length,
+            'maxAttempts': _discoveryTimeouts.length,
           },
         );
 
-        await Future<void>.delayed(const Duration(seconds: 2));
+        await Future<void>.delayed(_discoveryStabilizationDelay);
+        _assertAttemptIsCurrent(device: device, attemptId: attemptId);
+
+        if (device.isDisconnected) {
+          throw FF1DisconnectedError(disconnectReason: device.disconnectReason);
+        }
+
         final services = await device.discoverServices(
-          timeout: timeouts[i].inSeconds,
+          timeout: _discoveryTimeouts[i].inSeconds,
         );
+
+        _assertAttemptIsCurrent(device: device, attemptId: attemptId);
 
         _structuredLog.info(
           category: LogCategory.ble,
@@ -429,6 +432,7 @@ class FF1BleTransport {
         }
 
         await commandChar.setNotifyValue(true);
+        _assertAttemptIsCurrent(device: device, attemptId: attemptId);
 
         // Cache characteristic
         _characteristics[device.remoteId.str] = commandChar;
@@ -452,11 +456,16 @@ class FF1BleTransport {
           error: e,
           payload: {
             'attempt': i + 1,
-            'maxAttempts': timeouts.length,
+            'maxAttempts': _discoveryTimeouts.length,
           },
         );
 
-        if (i == timeouts.length - 1) {
+        if (i == _discoveryTimeouts.length - 1) {
+          rethrow;
+        }
+
+        if (e is FF1DisconnectedError ||
+            (e is FlutterBluePlusException && e.code == 6)) {
           rethrow;
         }
 
@@ -464,7 +473,7 @@ class FF1BleTransport {
           await device.clearGattCache();
         }
 
-        await Future<void>.delayed(const Duration(seconds: 1));
+        await Future<void>.delayed(_discoveryRetryDelay);
       }
     }
   }
@@ -473,6 +482,57 @@ class FF1BleTransport {
   Future<void> disconnect(BluetoothDevice blDevice) async {
     await blDevice.disconnect();
     _characteristics.remove(blDevice.remoteId.str);
+  }
+
+  void _assertAttemptIsCurrent({
+    required BluetoothDevice device,
+    required int? attemptId,
+  }) {
+    if (attemptId == null) {
+      return;
+    }
+
+    if (_activeConnectAttemptId != attemptId ||
+        _activeConnectDeviceId != device.remoteId.str) {
+      throw const FF1ConnectionCancelledError();
+    }
+  }
+
+  /// Wait until command characteristic is ready for command send.
+  Future<void> waitUntilReady({
+    required BluetoothDevice blDevice,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+
+    while (DateTime.now().isBefore(deadline)) {
+      if (blDevice.isDisconnected) {
+        throw FF1DisconnectedError(disconnectReason: blDevice.disconnectReason);
+      }
+
+      if (_characteristics.containsKey(blDevice.remoteId.str)) {
+        return;
+      }
+
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) {
+        break;
+      }
+
+      try {
+        await _discoverCharacteristics(blDevice).timeout(remaining);
+      } on FF1DisconnectedError {
+        rethrow;
+      } on TimeoutException {
+        break;
+      } on Object {
+        // Discovery can fail transiently right after connect.
+      }
+
+      await Future<void>.delayed(_waitUntilReadyRetryDelay);
+    }
+
+    throw TimeoutException('BLE characteristic readiness timeout');
   }
 
   /// Scan for FF1 devices

@@ -69,6 +69,15 @@ class ConnectFF1Error extends ConnectFF1State {
 
 /// Connect FF1 providers
 class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
+  static const List<Duration> _getInfoRetryDelays = [
+    Duration(milliseconds: 300),
+    Duration(milliseconds: 900),
+    Duration(milliseconds: 1500),
+    Duration(milliseconds: 2200),
+  ];
+
+  static const Duration _getInfoReadinessTimeout = Duration(seconds: 8);
+
   Timer? _stillConnectingTimer;
   bool _cancelRequested = false;
 
@@ -128,14 +137,13 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
       await control.connect(blDevice: blDevice);
       await _handlePostConnect(ff1DeviceInfo, blDevice);
+      _log.info('[ConnectFF1Notifier] Successfully connected to device');
     } on FF1ConnectionCancelledError catch (_) {
       _log.info('[ConnectFF1Notifier] Connection cancelled by user');
     } on Exception catch (e) {
       _log.info('[ConnectFF1Notifier] Error connecting to device: $e');
       state = AsyncValue.data(ConnectFF1Error(exception: e));
     }
-
-    _log.info('[ConnectFF1Notifier] Successfully connected to device');
 
     // Cancel timer if connection succeeded before 15 seconds
     _stillConnectingTimer?.cancel();
@@ -152,12 +160,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         '[ConnectFF1Notifier] Device info not provided, fetching via get_info',
       );
       try {
-        // Extra delay after the 1 s connection-state wait to ensure
-        // characteristics are discovered before getInfo.
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-
-        final control = ref.read(ff1ControlProvider);
-        final getInfoResponse = await control.getInfo(blDevice: blDevice);
+        final getInfoResponse = await _getInfoWithRetry(blDevice);
         ff1DeviceInfo = getInfoResponse.toFF1DeviceInfo;
 
         _log.info(
@@ -237,6 +240,35 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         isConnectedToInternet: true,
       ),
     );
+  }
+
+  Future<String> _getInfoWithRetry(BluetoothDevice blDevice) async {
+    final control = ref.read(ff1ControlProvider);
+
+    Exception? lastError;
+    for (final delay in _getInfoRetryDelays) {
+      await Future<void>.delayed(delay);
+      try {
+        await control.waitUntilReady(
+          blDevice: blDevice,
+          timeout: _getInfoReadinessTimeout,
+        );
+        return await control.getInfo(blDevice: blDevice);
+      } on Exception catch (e) {
+        lastError = e;
+        final shouldRetry = e.toString().contains(
+          'Command characteristic not found',
+        );
+        if (!shouldRetry) {
+          rethrow;
+        }
+      }
+    }
+
+    if (lastError != null) {
+      throw lastError;
+    }
+    throw Exception('Failed to get device info');
   }
 
   /// Cancel the current connection attempt

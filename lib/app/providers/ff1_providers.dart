@@ -112,6 +112,14 @@ class FF1BleControl {
     await _transport.disconnect(blDevice);
   }
 
+  /// Wait until BLE command characteristic is ready.
+  Future<void> waitUntilReady({
+    required BluetoothDevice blDevice,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    await _transport.waitUntilReady(blDevice: blDevice, timeout: timeout);
+  }
+
   /// Scan for FF1 devices
   Future<List<BluetoothDevice>> scan({
     Duration timeout = const Duration(seconds: 30),
