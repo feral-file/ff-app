@@ -60,8 +60,6 @@ class AddressSyncCollectionService {
         checkpoint: checkpoint!,
       );
 
-      final now = DateTime.now().toUtc();
-
       final result = await _indexerService.syncCollection(request);
 
       if (result.events.isEmpty) {
@@ -73,10 +71,13 @@ class AddressSyncCollectionService {
           checkpoint = result.nextCheckpoint;
         } else {
           // Persist baseline checkpoint so next poll does not repeat the same
-          // historical query window. Uses current time to advance cursor; avoids
-          // unnecessary indexer load and network use on quiet addresses.
+          // historical query window. Uses server time to keep cursor monotonic
+          // against indexer; avoids clock skew and replay on quiet addresses.
+          final serverTime = result.serverTime.microsecondsSinceEpoch > 0
+              ? result.serverTime
+              : DateTime.now().toUtc();
           final baseline = SyncCheckpoint(
-            timestamp: now,
+            timestamp: serverTime,
             eventId: checkpoint.eventId,
           );
           await _appStateService.setAddressCheckpoint(
@@ -163,6 +164,21 @@ class AddressSyncCollectionService {
           checkpoint: result.nextCheckpoint!,
         );
         checkpoint = result.nextCheckpoint;
+      } else {
+        // Backend returned terminal page with events but no next_checkpoint.
+        // Advance checkpoint to avoid replaying same page on next poll.
+        final serverTime = result.serverTime.microsecondsSinceEpoch > 0
+            ? result.serverTime
+            : DateTime.now().toUtc();
+        final fallback = SyncCheckpoint(
+          timestamp: serverTime,
+          eventId: checkpoint.eventId,
+        );
+        await _appStateService.setAddressCheckpoint(
+          address: normalizedAddress,
+          checkpoint: fallback,
+        );
+        checkpoint = fallback;
       }
 
       if (result.events.length < _limit) {

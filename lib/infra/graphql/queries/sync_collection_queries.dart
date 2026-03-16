@@ -24,6 +24,7 @@ const String syncCollectionQuery = r'''
         timestamp
         event_id
       }
+      server_time
     }
   }
 ''';

@@ -117,6 +117,8 @@ abstract class AppStateServiceBase {
   Future<void> setHasSeenOnboarding({required bool hasSeen});
   Future<bool> hasSeenPlayToFf1Tooltip();
   Future<void> setHasSeenPlayToFf1Tooltip({required bool hasSeen});
+  Future<bool> hasCompletedSeedDownload();
+  Future<void> setHasCompletedSeedDownload({required bool completed});
   Future<SyncCheckpoint?> getAddressCheckpoint(String address);
   Future<void> setAddressCheckpoint({
     required String address,
