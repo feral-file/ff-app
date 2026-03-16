@@ -66,6 +66,10 @@ class FF1BleTransport {
   int? _activeConnectAttemptId;
   String? _activeConnectDeviceId;
 
+  // Active readiness rediscovery tracking per device.
+  int _readinessAttemptSequence = 0;
+  final Map<String, int> _activeReadinessAttemptIds = {};
+
   /// Start listening to flutter_blue_plus events
   void _startListening() {
     // Connection state changes
@@ -93,6 +97,7 @@ class FF1BleTransport {
         );
       } else if (state == BluetoothConnectionState.disconnected) {
         _characteristics.remove(device.remoteId.str);
+        _activeReadinessAttemptIds.remove(device.remoteId.str);
 
         _structuredLog.warning(
           category: LogCategory.ble,
@@ -347,12 +352,17 @@ class FF1BleTransport {
   Future<void> _discoverCharacteristics(
     BluetoothDevice device, {
     int? attemptId,
+    int? readinessAttemptId,
   }) async {
     _characteristics.remove(device.remoteId.str);
 
     for (var i = 0; i < _discoveryTimeouts.length; i++) {
       try {
-        _assertAttemptIsCurrent(device: device, attemptId: attemptId);
+        _assertDiscoveryAttemptIsCurrent(
+          device: device,
+          attemptId: attemptId,
+          readinessAttemptId: readinessAttemptId,
+        );
 
         _structuredLog.info(
           category: LogCategory.ble,
@@ -366,7 +376,11 @@ class FF1BleTransport {
         );
 
         await Future<void>.delayed(_discoveryStabilizationDelay);
-        _assertAttemptIsCurrent(device: device, attemptId: attemptId);
+        _assertDiscoveryAttemptIsCurrent(
+          device: device,
+          attemptId: attemptId,
+          readinessAttemptId: readinessAttemptId,
+        );
 
         if (device.isDisconnected) {
           throw FF1DisconnectedError(disconnectReason: device.disconnectReason);
@@ -376,7 +390,11 @@ class FF1BleTransport {
           timeout: _discoveryTimeouts[i].inSeconds,
         );
 
-        _assertAttemptIsCurrent(device: device, attemptId: attemptId);
+        _assertDiscoveryAttemptIsCurrent(
+          device: device,
+          attemptId: attemptId,
+          readinessAttemptId: readinessAttemptId,
+        );
 
         _structuredLog.info(
           category: LogCategory.ble,
@@ -432,7 +450,11 @@ class FF1BleTransport {
         }
 
         await commandChar.setNotifyValue(true);
-        _assertAttemptIsCurrent(device: device, attemptId: attemptId);
+        _assertDiscoveryAttemptIsCurrent(
+          device: device,
+          attemptId: attemptId,
+          readinessAttemptId: readinessAttemptId,
+        );
 
         // Cache characteristic
         _characteristics[device.remoteId.str] = commandChar;
@@ -483,18 +505,22 @@ class FF1BleTransport {
   Future<void> disconnect(BluetoothDevice blDevice) async {
     await blDevice.disconnect();
     _characteristics.remove(blDevice.remoteId.str);
+    _activeReadinessAttemptIds.remove(blDevice.remoteId.str);
   }
 
-  void _assertAttemptIsCurrent({
+  void _assertDiscoveryAttemptIsCurrent({
     required BluetoothDevice device,
     required int? attemptId,
+    required int? readinessAttemptId,
   }) {
-    if (attemptId == null) {
-      return;
+    if (attemptId != null &&
+        (_activeConnectAttemptId != attemptId ||
+            _activeConnectDeviceId != device.remoteId.str)) {
+      throw const FF1ConnectionCancelledError();
     }
 
-    if (_activeConnectAttemptId != attemptId ||
-        _activeConnectDeviceId != device.remoteId.str) {
+    if (readinessAttemptId != null &&
+        _activeReadinessAttemptIds[device.remoteId.str] != readinessAttemptId) {
       throw const FF1ConnectionCancelledError();
     }
   }
@@ -520,12 +546,21 @@ class FF1BleTransport {
         break;
       }
 
+      final readinessAttemptId = ++_readinessAttemptSequence;
+      _activeReadinessAttemptIds[blDevice.remoteId.str] = readinessAttemptId;
+
       try {
-        await _discoverCharacteristics(blDevice).timeout(remaining);
+        await _discoverCharacteristics(
+          blDevice,
+          readinessAttemptId: readinessAttemptId,
+        ).timeout(remaining);
       } on FF1DisconnectedError {
         rethrow;
       } on TimeoutException {
-        break;
+        // Timed-out discovery may still complete in background; the next loop
+        // iteration bumps readinessAttemptId so stale work is cancelled.
+      } on FF1ConnectionCancelledError {
+        rethrow;
       } on Object {
         // Discovery can fail transiently right after connect.
       }
