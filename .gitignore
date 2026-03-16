@@ -136,3 +136,6 @@ scripts/ff_feed_indexer_seed.sqlite
 
 # Post-implementation checks report
 .post-implementation-checks-report.md
+
+# Patrol generated bundle
+patrol_test/test_bundle.dart

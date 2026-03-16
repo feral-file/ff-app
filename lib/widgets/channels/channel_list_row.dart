@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/channel_preview_provider.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
@@ -70,9 +73,13 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
         widget.channelData.works.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !widget.isActive) return;
-        ref
-            .read(channelPreviewProvider(widget.channelData.channelId).notifier)
-            .load();
+        unawaited(
+          ref
+              .read(
+                channelPreviewProvider(widget.channelData.channelId).notifier,
+              )
+              .load(),
+        );
       });
     }
   }
@@ -111,13 +118,15 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
     // we've finished loading with no items (hasMore false) or hit an error.
     // initial() has isLoading=false — show skeleton anyway to prevent bounce
     // before load() sets isLoading=true.
-    final isLoading = widget.channelData.works.isEmpty &&
+    final isLoading =
+        widget.channelData.works.isEmpty &&
         works.isEmpty &&
         (previewState.isLoading ||
             (previewState.hasMore && previewState.error == null));
     final error = widget.channelData.works.isEmpty ? previewState.error : null;
 
     return Container(
+      key: GoldPathPatrolKeys.channelRow(channelId),
       decoration: const BoxDecoration(
         border: Border(
           bottom: BorderSide(),
@@ -147,7 +156,9 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
               padding: EdgeInsets.only(top: LayoutConstants.space2),
               child: TextButton(
                 onPressed: () {
-                  ref.read(channelPreviewProvider(channelId).notifier).load();
+                  unawaited(
+                    ref.read(channelPreviewProvider(channelId).notifier).load(),
+                  );
                 },
                 child: Text(
                   'Retry',
@@ -159,12 +170,18 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
             items: works,
             isLoading: isLoading && works.isEmpty,
             onItemTap: widget.onItemTap,
+            itemKeyBuilder: (item, _) => GoldPathPatrolKeys.channelWork(
+              channelId: channelId,
+              workId: item.id,
+            ),
             isLoadingMore: isLoadingMore,
             onLoadMore: hasMore
                 ? () {
-                    ref
-                        .read(channelPreviewProvider(channelId).notifier)
-                        .loadMore();
+                    unawaited(
+                      ref
+                          .read(channelPreviewProvider(channelId).notifier)
+                          .loadMore(),
+                    );
                   }
                 : null,
           ),
