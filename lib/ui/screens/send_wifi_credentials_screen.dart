@@ -207,8 +207,9 @@ class _EnterWiFiPasswordScreenState
                   unawaited(
                     UIHelper.showCustomerSupport(
                       context,
-                      supportEmailService:
-                          ref.read(supportEmailServiceProvider),
+                      supportEmailService: ref.read(
+                        supportEmailServiceProvider,
+                      ),
                     ),
                   );
                 },
@@ -261,8 +262,7 @@ class _EnterWiFiPasswordScreenState
                 unawaited(
                   UIHelper.showCustomerSupport(
                     context,
-                    supportEmailService:
-                        ref.read(supportEmailServiceProvider),
+                    supportEmailService: ref.read(supportEmailServiceProvider),
                   ),
                 );
               },

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/connect_wifi_provider.dart';
+import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -231,13 +232,22 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
-          onTap: () {
+          onTap: () async {
             ref.read(connectWiFiProvider.notifier).selectNetwork(network);
+            final connected = await ref.read(
+              connectedBlDeviceForNameProvider(widget.payload.device.name).future,
+            );
+            final deviceToPass = connected != null
+                ? widget.payload.device.copyWith(
+                    remoteId: connected.remoteId.str,
+                  )
+                : widget.payload.device;
+            if (!context.mounted) return;
             unawaited(
               context.push(
                 Routes.enterWifiPassword,
                 extra: EnterWifiPasswordPagePayload(
-                  device: widget.payload.device,
+                  device: deviceToPass,
                   wifiAccessPoint: WifiPoint(ssid),
                 ),
               ),
@@ -354,13 +364,22 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                   // Create a WiFiNetwork for the manually entered SSID
                   final network = WiFiNetwork(ssid);
                   ref.read(connectWiFiProvider.notifier).selectNetwork(network);
-                  // Navigate to password entry screen
-
+                  final connected = await ref.read(
+                    connectedBlDeviceForNameProvider(
+                      widget.payload.device.name,
+                    ).future,
+                  );
+                  final deviceToPass = connected != null
+                      ? widget.payload.device.copyWith(
+                          remoteId: connected.remoteId.str,
+                        )
+                      : widget.payload.device;
+                  if (!context.mounted) return;
                   unawaited(
                     context.push(
                       Routes.enterWifiPassword,
                       extra: EnterWifiPasswordPagePayload(
-                        device: widget.payload.device,
+                        device: deviceToPass,
                         wifiAccessPoint: WifiPoint(ssid),
                       ),
                     ),
