@@ -1,0 +1,6 @@
+{
+  "name": "ff-app-db-autoresearch",
+  "private": true,
+  "type": "commonjs",
+  "description": "Autoresearch harness for Feral File mobile database cache experiments"
+}

@@ -1,0 +1,6 @@
+data/baseline/
+data/candidates/
+data/snapshots/
+run-logs/
+last_run_summary.json
+results.tsv

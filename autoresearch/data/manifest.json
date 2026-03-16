@@ -1,0 +1,8 @@
+{
+  "preparedAt": "2026-03-16T06:44:03.190Z",
+  "remoteConfigUrl": "https://feralfile-remote-configs.pages.dev/ff-app.json",
+  "snapshotPath": "/autoresearch/data/snapshots/ff-app.2026-03-16.json",
+  "baselineDatabasePath": "/autoresearch/data/baseline/baseline.sqlite",
+  "sourceBuilderPath": "/scripts/build_feed_indexer_sqlite.js",
+  "sourceBuilderOutput": "/scripts/ff_feed_indexer_seed.sqlite"
+}
