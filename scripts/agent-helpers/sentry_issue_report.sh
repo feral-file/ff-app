@@ -173,7 +173,7 @@ TOKEN="${SENTRY_TOKEN:-${SENTRY_AUTH_TOKEN:-}}"
 OUTPUT_PATH=""
 BASE_URL="https://sentry.io"
 MAX_FRAMES=12
-MAX_BREADCRUMBS=8
+MAX_BREADCRUMBS=10
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
