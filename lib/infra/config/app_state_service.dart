@@ -289,6 +289,25 @@ class AppStateService extends AppStateServiceBase {
     });
   }
 
+  /// Whether user has completed at least one seed database download.
+  @override
+  Future<bool> hasCompletedSeedDownload() async {
+    return _lock.synchronized(() {
+      return _getOrCreateSingleton().hasCompletedSeedDownload;
+    });
+  }
+
+  /// Persist seed download completion. When true, subsequent syncs run in background.
+  @override
+  Future<void> setHasCompletedSeedDownload({required bool completed}) async {
+    await _lock.synchronized(() async {
+      final app = _getOrCreateSingleton()
+        ..hasCompletedSeedDownload = completed
+        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
+      _appStateBox.put(app);
+    });
+  }
+
   /// Get syncCollection checkpoint for an address.
   @override
   Future<SyncCheckpoint?> getAddressCheckpoint(String address) async {

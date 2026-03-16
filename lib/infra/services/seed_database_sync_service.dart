@@ -6,11 +6,13 @@ import 'package:logging/logging.dart';
 
 /// Syncs the local seed database file using remote ETag comparison.
 ///
-/// Flow:
+/// The app never creates a database; only downloads and replaces. Flow:
 /// 1) HEAD remote seed URL and read ETag.
 /// 2) Compare against locally persisted ETag in ObjectBox config.
 /// 3) If changed (or no local DB), download to temp file.
-/// 4) Execute caller-provided disconnect/replace/rebind callbacks.
+/// 4) Run pre-replace callback (close DB, delete files).
+/// 5) Replace canonical DB file with temp (rename temp to target).
+/// 6) Run post-replace callback (rebind providers).
 class SeedDatabaseSyncService {
   /// Creates a seed database sync orchestrator.
   SeedDatabaseSyncService({
@@ -30,10 +32,10 @@ class SeedDatabaseSyncService {
 
   /// Syncs seed DB from remote when ETag differs from local ObjectBox config.
   ///
-  /// [onDownloadStarted] is invoked only when a download will occur (ETag
-  /// changed or no local DB). Receives [hasLocalDatabase], [localEtag], and
-  /// [remoteEtag] so the caller can decide whether to emit syncing status
-  /// (e.g. only when [hasLocalDatabase] is false, first install).
+  /// `onDownloadStarted` is invoked only when a download will occur (ETag
+  /// changed or no local DB). Receives hasLocalDatabase, localEtag, and
+  /// remoteEtag so the caller can decide whether to emit syncing status
+  /// (e.g. only when hasLocalDatabase is false, first install).
   Future<bool> syncIfNeeded({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,

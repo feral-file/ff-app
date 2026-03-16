@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/config/seed_database_config_store.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
+import 'package:app/widgets/seed_sync_loading_indicator.dart'
+    show SeedSyncLoadingIndicator;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -92,27 +95,32 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     _syncInProgress = true;
 
     final service = ref.read(seedDatabaseSyncServiceProvider);
+    final appStateService = ref.read(appStateServiceProvider);
 
     // Throttle state updates to every 1% to avoid flooding provider observer.
     var lastProgressBucket = -1;
+
+    // If user has completed a seed download before, subsequent syncs run in background.
+    final suppressLoading = await appStateService.hasCompletedSeedDownload();
 
     try {
       final updated = await service.syncIfNeeded(
         beforeReplace: beforeReplace,
         afterReplace: afterReplace,
-        onDownloadStarted: ({
-          required bool hasLocalDatabase,
-          required String localEtag,
-          required String remoteEtag,
-        }) {
-          // Only show syncing for first install; updates run in background.
-          if (!hasLocalDatabase) {
-            state = const SeedDownloadState(
-              status: SeedDownloadStatus.syncing,
-              progress: 0,
-            );
-          }
-        },
+        onDownloadStarted:
+            ({
+              required hasLocalDatabase,
+              required localEtag,
+              required remoteEtag,
+            }) {
+              // Only show loading when suppressLoading is false (first-time or post-reset).
+              if (!suppressLoading) {
+                state = const SeedDownloadState(
+                  status: SeedDownloadStatus.syncing,
+                  progress: 0,
+                );
+              }
+            },
         failSilently: failSilently,
         onProgress: (progress) {
           final bucket = (progress * 100).floor();
@@ -127,6 +135,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       );
 
       _log.info('Seed database sync complete');
+      if (updated) {
+        await appStateService.setHasCompletedSeedDownload(completed: true);
+      }
       state = const SeedDownloadState(status: SeedDownloadStatus.done);
       SeedDatabaseGate.complete();
       return updated;
@@ -146,6 +157,32 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     } finally {
       _syncInProgress = false;
     }
+  }
+
+  /// Notifies that a force-replace (e.g. Forget I Exist) has started.
+  /// Call from [forceReplaceDatabaseFromSeed] so tabs show [SeedSyncLoadingIndicator].
+  void notifyForceReplaceStarted() {
+    state = const SeedDownloadState(
+      status: SeedDownloadStatus.syncing,
+      progress: 0,
+    );
+  }
+
+  /// Updates progress during force-replace (0.0–1.0).
+  void notifyForceReplaceProgress(double progress) {
+    if (state.status == SeedDownloadStatus.syncing) {
+      state = state.copyWith(progress: progress);
+    }
+  }
+
+  /// Notifies that force-replace finished. Call after seed replacement completes.
+  void notifyForceReplaceFinished({bool success = true, String? errorMessage}) {
+    state = success
+        ? const SeedDownloadState(status: SeedDownloadStatus.done)
+        : SeedDownloadState(
+            status: SeedDownloadStatus.error,
+            errorMessage: errorMessage,
+          );
   }
 }
 

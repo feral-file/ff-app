@@ -7,6 +7,7 @@ import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/force_update_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
@@ -59,16 +60,21 @@ class App extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme(),
       builder: (context, child) {
-        return BuilderOverlayScope(
-          child: _AppStartupBootstrap(
-            router: router,
-            child: NowDisplayingVisibilitySync(
-              child: Stack(
-                children: [
-                  child ?? const SizedBox.shrink(),
-                  AppGlobalOverlayLayer(router: router),
-                  const ForceUpdateOverlay(),
-                ],
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.noScaling,
+          ),
+          child: BuilderOverlayScope(
+            child: _AppStartupBootstrap(
+              router: router,
+              child: NowDisplayingVisibilitySync(
+                child: Stack(
+                  children: [
+                    child ?? const SizedBox.shrink(),
+                    AppGlobalOverlayLayer(router: router),
+                    const ForceUpdateOverlay(),
+                  ],
+                ),
               ),
             ),
           ),
@@ -413,6 +419,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       ..invalidate(channelsProvider(ChannelType.localVirtual))
       ..invalidate(playlistsProvider(PlaylistType.dp1))
       ..invalidate(playlistsProvider(PlaylistType.addressBased))
+      ..invalidate(meSectionPlaylistsProvider)
       ..invalidate(worksProvider);
 
     await ref.read(databaseServiceProvider).close();
@@ -432,6 +439,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       ..invalidate(channelsProvider(ChannelType.localVirtual))
       ..invalidate(playlistsProvider(PlaylistType.dp1))
       ..invalidate(playlistsProvider(PlaylistType.addressBased))
+      ..invalidate(meSectionPlaylistsProvider)
       ..invalidate(worksProvider);
   }
 

@@ -315,7 +315,7 @@ class AddressService {
   /// Add an address from either a raw address or ENS/TNS domain.
   Future<Playlist> addAddressOrDomain({
     required String value,
-    String channelId = 'my_collection',
+    String channelId = Channel.myCollectionId,
   }) async {
     final resolved = await _domainAddressService.verifyAddressOrDomain(value);
     if (resolved == null) {
@@ -344,7 +344,7 @@ class AddressService {
   /// to avoid duplicate idle logs and emissions.
   Future<Playlist> addAddress({
     required WalletAddress walletAddress,
-    String channelId = 'my_collection',
+    String channelId = Channel.myCollectionId,
     bool syncNow = true,
     bool fromPendingMigration = false,
   }) async {

@@ -1,3 +1,4 @@
+import 'package:app/infra/database/favorite_history_snapshot.dart';
 import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -27,11 +28,20 @@ void main() {
       recreateDatabaseFromSeed: () async {
         events.add('recreate-db-from-seed');
       },
+      getFavoritePlaylistsSnapshot: () async => const [],
+      restoreFavoritePlaylists: (_) async {},
+      runBootstrap: () async {},
       pauseFeedWork: () {
         events.add('pause-feed');
       },
       pauseTokenPolling: () {
         events.add('pause-token-polling');
+      },
+      clearLegacySqlite: () async {
+        events.add('clear-legacy-sqlite');
+      },
+      clearLegacyHive: () async {
+        events.add('clear-legacy-hive');
       },
       postDrainSettleDuration: Duration.zero,
     );
@@ -46,6 +56,8 @@ void main() {
       'clear-objectbox',
       'clear-pending-addresses',
       'clear-cached-images',
+      'clear-legacy-sqlite',
+      'clear-legacy-hive',
       'close-delete-db',
     ]);
   });
@@ -75,6 +87,9 @@ void main() {
       recreateDatabaseFromSeed: () async {
         events.add('recreate-db-from-seed');
       },
+      getFavoritePlaylistsSnapshot: () async => const [],
+      restoreFavoritePlaylists: (_) async {},
+      runBootstrap: () async {},
       pauseFeedWork: () {
         events.add('pause-feed');
       },
@@ -84,6 +99,8 @@ void main() {
       onResetCompleted: () async {
         events.add('on-reset-completed');
       },
+      clearLegacySqlite: () async {},
+      clearLegacyHive: () async {},
       postDrainSettleDuration: Duration.zero,
     );
 
@@ -126,6 +143,16 @@ void main() {
         recreateDatabaseFromSeed: () async {
           events.add('recreate-db-from-seed');
         },
+        getFavoritePlaylistsSnapshot: () async {
+          events.add('get-favorite-playlists-snapshot');
+          return const <FavoritePlaylistSnapshot>[];
+        },
+        restoreFavoritePlaylists: (_) async {
+          events.add('restore-favorite-playlists');
+        },
+        runBootstrap: () async {
+          events.add('run-bootstrap');
+        },
         pauseFeedWork: () {
           events.add('pause-feed');
         },
@@ -142,7 +169,9 @@ void main() {
         'pause-token-polling',
         'stop-workers',
         'get-addresses',
+        'get-favorite-playlists-snapshot',
         'recreate-db-from-seed',
+        'run-bootstrap',
         'restore:0xabc',
         'clear-cached-images',
         'refetch:0xabc',

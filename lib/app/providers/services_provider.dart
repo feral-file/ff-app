@@ -16,6 +16,7 @@ import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/canvas_client_service_v2.dart';
 import 'package:app/infra/services/device_info_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
+import 'package:app/infra/services/favorite_playlist_service.dart';
 import 'package:app/infra/services/force_update_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart';
@@ -79,6 +80,15 @@ final domainAddressServiceProvider = Provider<DomainAddressService>((ref) {
 final bootstrapServiceProvider = Provider<BootstrapService>((ref) {
   final databaseService = ref.watch(databaseServiceProvider);
   return BootstrapService(databaseService: databaseService);
+});
+
+/// Provider for FavoritePlaylistService.
+/// Manages user's Favorite playlist (starred works).
+final favoritePlaylistServiceProvider = Provider<FavoritePlaylistService>((
+  ref,
+) {
+  final databaseService = ref.watch(databaseServiceProvider);
+  return FavoritePlaylistService(databaseService: databaseService);
 });
 
 /// Provider for composing support emails from the app.

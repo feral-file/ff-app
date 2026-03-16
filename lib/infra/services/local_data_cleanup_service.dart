@@ -1,3 +1,4 @@
+import 'package:app/infra/database/favorite_history_snapshot.dart';
 import 'package:logging/logging.dart';
 
 /// Clears local app data and stops background work for a fresh onboarding run.
@@ -14,9 +15,16 @@ class LocalDataCleanupService {
     restorePersonalAddressPlaylists,
     required Future<void> Function(List<String> addresses) refetchFromBeginning,
     required Future<void> Function() recreateDatabaseFromSeed,
+    required Future<List<FavoritePlaylistSnapshot>> Function()
+    getFavoritePlaylistsSnapshot,
+    required Future<void> Function(List<FavoritePlaylistSnapshot> snapshots)
+    restoreFavoritePlaylists,
+    required Future<void> Function() runBootstrap,
     required void Function() pauseFeedWork,
     required void Function() pauseTokenPolling,
     Future<void> Function()? onResetCompleted,
+    Future<void> Function()? clearLegacySqlite,
+    Future<void> Function()? clearLegacyHive,
     this.enablePostDrainSweep = true,
     this.postDrainSettleDuration = const Duration(milliseconds: 200),
     Logger? logger,
@@ -29,9 +37,14 @@ class LocalDataCleanupService {
        _restorePersonalAddressPlaylists = restorePersonalAddressPlaylists,
        _refetchFromBeginning = refetchFromBeginning,
        _recreateDatabaseFromSeed = recreateDatabaseFromSeed,
+       _getFavoritePlaylistsSnapshot = getFavoritePlaylistsSnapshot,
+       _restoreFavoritePlaylists = restoreFavoritePlaylists,
+       _runBootstrap = runBootstrap,
        _pauseFeedWork = pauseFeedWork,
        _pauseTokenPolling = pauseTokenPolling,
        _onResetCompleted = onResetCompleted,
+       _clearLegacySqlite = clearLegacySqlite,
+       _clearLegacyHive = clearLegacyHive,
        _log = logger ?? Logger('LocalDataCleanupService');
 
   final Future<void> Function() _stopWorkersGracefully;
@@ -46,9 +59,16 @@ class LocalDataCleanupService {
   _restorePersonalAddressPlaylists;
   final Future<void> Function(List<String> addresses) _refetchFromBeginning;
   final Future<void> Function() _recreateDatabaseFromSeed;
+  final Future<List<FavoritePlaylistSnapshot>> Function()
+  _getFavoritePlaylistsSnapshot;
+  final Future<void> Function(List<FavoritePlaylistSnapshot> snapshots)
+  _restoreFavoritePlaylists;
+  final Future<void> Function() _runBootstrap;
   final void Function() _pauseFeedWork;
   final void Function() _pauseTokenPolling;
   final Future<void> Function()? _onResetCompleted;
+  final Future<void> Function()? _clearLegacySqlite;
+  final Future<void> Function()? _clearLegacyHive;
 
   /// Whether to run a second close/delete pass after a short settle delay.
   final bool enablePostDrainSweep;
@@ -78,6 +98,17 @@ class LocalDataCleanupService {
     _log.info('clearLocalData: clearCachedImages');
     await _clearCachedImages();
 
+    final clearLegacySqlite = _clearLegacySqlite;
+    if (clearLegacySqlite != null) {
+      _log.info('clearLocalData: clearLegacySqlite');
+      await clearLegacySqlite();
+    }
+    final clearLegacyHive = _clearLegacyHive;
+    if (clearLegacyHive != null) {
+      _log.info('clearLocalData: clearLegacyHive');
+      await clearLegacyHive();
+    }
+
     if (enablePostDrainSweep) {
       // Defensive final pass: catches late async writes racing reset teardown.
       _log.info('clearLocalData: postDrainSettleDuration');
@@ -94,8 +125,8 @@ class LocalDataCleanupService {
     _log.info('Local data cleared and workers stopped');
   }
 
-  /// Rebuilds metadata by clearing SQLite, restoring personal playlists, and
-  /// re-fetching both personal and feed data from the beginning.
+  /// Rebuilds metadata by clearing SQLite, restoring personal playlists,
+  /// Favorite/History, and re-fetching data from the beginning.
   Future<void> rebuildMetadata() async {
     _log.info('rebuildMetadata: start');
     _pauseFeedWork();
@@ -106,12 +137,22 @@ class LocalDataCleanupService {
 
     _log.info('rebuildMetadata: getPersonalAddresses');
     final addresses = await _getPersonalAddresses();
+    _log.info('rebuildMetadata: getFavoritePlaylistsSnapshot');
+    final snapshots = await _getFavoritePlaylistsSnapshot();
     _log.info('rebuildMetadata: recreateDatabaseFromSeed');
     await _recreateDatabaseFromSeed();
+
+    _log.info('rebuildMetadata: runBootstrap');
+    await _runBootstrap();
 
     if (addresses.isNotEmpty) {
       _log.info('rebuildMetadata: restorePersonalAddressPlaylists');
       await _restorePersonalAddressPlaylists(addresses);
+    }
+
+    if (snapshots.isNotEmpty) {
+      _log.info('rebuildMetadata: restoreFavoritePlaylists');
+      await _restoreFavoritePlaylists(snapshots);
     }
 
     _log.info('rebuildMetadata: clearCachedImages');

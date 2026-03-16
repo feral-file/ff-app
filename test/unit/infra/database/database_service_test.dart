@@ -155,63 +155,67 @@ void main() {
         },
       );
 
-      test('deleteItemsOfAddresses removes entries and items for address', () async {
-        const address = '0xabc123';
-        final playlist = Playlist(
-          id: 'pl_addr',
-          name: 'Address Playlist',
-          type: PlaylistType.addressBased,
-          ownerAddress: address,
-          sortMode: PlaylistSortMode.provenance,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-        await service.ingestPlaylists([playlist]);
-
-        final items = [
-          PlaylistItem(
-            id: 'item_1',
-            kind: PlaylistItemKind.indexerToken,
-            title: 'Item 1',
+      test(
+        'deleteItemsOfAddresses removes entries only, keeps items in DB',
+        () async {
+          const address = '0xabc123';
+          final playlist = Playlist(
+            id: 'pl_addr',
+            name: 'Address Playlist',
+            type: PlaylistType.addressBased,
+            ownerAddress: address,
+            sortMode: PlaylistSortMode.provenance,
+            createdAt: DateTime.now(),
             updatedAt: DateTime.now(),
-          ),
-          PlaylistItem(
-            id: 'item_2',
-            kind: PlaylistItemKind.indexerToken,
-            title: 'Item 2',
-            updatedAt: DateTime.now(),
-          ),
-        ];
-        await service.ingestPlaylistItems(items);
+          );
+          await service.ingestPlaylists([playlist]);
 
-        final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
-        await db.upsertPlaylistEntries([
-          PlaylistEntriesCompanion.insert(
-            playlistId: 'pl_addr',
-            itemId: 'item_1',
-            position: const Value(0),
-            sortKeyUs: BigInt.zero,
-            updatedAtUs: nowUs,
-          ),
-          PlaylistEntriesCompanion.insert(
-            playlistId: 'pl_addr',
-            itemId: 'item_2',
-            position: const Value(1),
-            sortKeyUs: BigInt.zero,
-            updatedAtUs: nowUs,
-          ),
-        ]);
-        await db.updatePlaylistItemCount('pl_addr');
+          final items = [
+            PlaylistItem(
+              id: 'item_1',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'Item 1',
+              updatedAt: DateTime.now(),
+            ),
+            PlaylistItem(
+              id: 'item_2',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'Item 2',
+              updatedAt: DateTime.now(),
+            ),
+          ];
+          await service.ingestPlaylistItems(items);
 
-        expect(await service.getPlaylistItems('pl_addr'), hasLength(2));
+          final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+          await db.upsertPlaylistEntries([
+            PlaylistEntriesCompanion.insert(
+              playlistId: 'pl_addr',
+              itemId: 'item_1',
+              position: const Value(0),
+              sortKeyUs: BigInt.zero,
+              updatedAtUs: nowUs,
+            ),
+            PlaylistEntriesCompanion.insert(
+              playlistId: 'pl_addr',
+              itemId: 'item_2',
+              position: const Value(1),
+              sortKeyUs: BigInt.zero,
+              updatedAtUs: nowUs,
+            ),
+          ]);
+          await db.updatePlaylistItemCount('pl_addr');
 
-        await service.deleteItemsOfAddresses([address]);
+          expect(await service.getPlaylistItems('pl_addr'), hasLength(2));
 
-        expect(await service.getPlaylistItems('pl_addr'), isEmpty);
-        expect(await service.getPlaylistItemById('item_1'), isNull);
-        expect(await service.getPlaylistItemById('item_2'), isNull);
-        expect(await service.getPlaylistById('pl_addr'), isNotNull);
-      });
+          await service.deleteItemsOfAddresses([address]);
+
+          expect(await service.getPlaylistItems('pl_addr'), isEmpty);
+          // Items are kept in DB (only playlist_entries deleted)
+          expect(await service.getPlaylistItemById('item_1'), isNotNull);
+          expect(await service.getPlaylistItemById('item_2'), isNotNull);
+          expect(await service.getPlaylistById('pl_addr'), isNotNull);
+        },
+      );
 
       test('getAllPlaylists returns all playlists when type is null', () async {
         final playlists = [
@@ -366,10 +370,10 @@ void main() {
           expect(
             retrieved.map((p) => p.id),
             equals([
-              'pl_pub10',               // Publisher 10
-              'pl_pub20_a_old',         // Publisher 20, created earlier
-              'pl_pub20_a_new',         // Publisher 20, created later
-              'pl_pub20_b',             // Publisher 20, created latest
+              'pl_pub10', // Publisher 10
+              'pl_pub20_a_old', // Publisher 20, created earlier
+              'pl_pub20_a_new', // Publisher 20, created later
+              'pl_pub20_b', // Publisher 20, created latest
             ]),
           );
         },
@@ -1148,6 +1152,58 @@ void main() {
         expect(works.map((w) => w.id), contains('wk_artist_1'));
         expect(works.map((w) => w.id), isNot(contains('wk_artist_2')));
       });
+    });
+
+    group('Favorite playlist snapshot and restore', () {
+      test(
+        'getFavoritePlaylistsSnapshot returns empty when no favorites',
+        () async {
+          final snapshots = await service.getFavoritePlaylistsSnapshot();
+          expect(snapshots, isEmpty);
+        },
+      );
+
+      test(
+        'getFavoritePlaylistsSnapshot and restoreFavoritePlaylistsSnapshot',
+        () async {
+          final playlist = Playlist.favorite();
+          await service.ingestPlaylist(playlist);
+
+          final item = PlaylistItem(
+            id: 'fav_item_1',
+            kind: PlaylistItemKind.indexerToken,
+            title: 'Favorite Work',
+            updatedAt: DateTime.now(),
+          );
+          await service.ingestPlaylistItem(item);
+
+          final nowUs = DateTime.now().microsecondsSinceEpoch;
+          await db.upsertPlaylistEntries([
+            PlaylistEntriesCompanion.insert(
+              playlistId: Playlist.favoriteId,
+              itemId: 'fav_item_1',
+              sortKeyUs: BigInt.from(nowUs),
+              updatedAtUs: BigInt.from(nowUs),
+            ),
+          ]);
+          await db.updatePlaylistItemCount(Playlist.favoriteId);
+
+          final snapshots = await service.getFavoritePlaylistsSnapshot();
+          expect(snapshots, hasLength(1));
+          expect(snapshots.single.playlist.id, Playlist.favoriteId);
+          expect(snapshots.single.items, hasLength(1));
+          expect(snapshots.single.items.single.id, 'fav_item_1');
+
+          await db.deletePlaylistEntries(Playlist.favoriteId);
+          await db.updatePlaylistItemCount(Playlist.favoriteId);
+          expect(await service.getPlaylistItems(Playlist.favoriteId), isEmpty);
+
+          await service.restoreFavoritePlaylistsSnapshot(snapshots);
+          final restored = await service.getPlaylistItems(Playlist.favoriteId);
+          expect(restored, hasLength(1));
+          expect(restored.single.id, 'fav_item_1');
+        },
+      );
     });
 
     group('clearAll', () {

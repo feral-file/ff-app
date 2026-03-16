@@ -123,17 +123,19 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
             ),
             child: Stack(
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(height: LayoutConstants.space12),
-                    _HeroIllustration(),
-                    SizedBox(height: LayoutConstants.space12),
-                    _BodyCopy(
-                      deviceName: deviceName,
-                    ),
-                    const Spacer(),
-                  ],
+                SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(height: LayoutConstants.space12),
+                      _HeroIllustration(),
+                      SizedBox(height: LayoutConstants.space12),
+                      _BodyCopy(
+                        deviceName: deviceName,
+                      ),
+                      SizedBox(height: LayoutConstants.space12),
+                    ],
+                  ),
                 ),
                 Positioned(
                   bottom: LayoutConstants.space4 + bottomInset,

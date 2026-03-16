@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:after_layout/after_layout.dart';
+import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
 import 'package:app/app/utils/html/au_html_style.dart';
@@ -278,7 +279,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 0, 8),
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
           child: Row(
             children: [
               Expanded(
@@ -303,7 +304,47 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     color: AppColor.white,
                   ),
                 )
-              else
+              else ...[
+                Consumer(
+                  builder: (context, ref, _) {
+                    final isFavorite = ref.watch(
+                      isWorkInFavoriteProvider(item.id),
+                    );
+                    return IconButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () async {
+                        await ref
+                            .read(favoritePlaylistServiceProvider)
+                            .toggleFavorite(item);
+                      },
+                      constraints: const BoxConstraints(
+                        maxWidth: 44,
+                        maxHeight: 44,
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
+                      icon: isFavorite.when(
+                        data: (isIn) => SvgPicture.asset(
+                          isIn
+                              ? 'assets/images/select_circle_white.svg'
+                              : 'assets/images/add_circle_white.svg',
+                          width: 22,
+                          height: 22,
+                        ),
+                        loading: () => SvgPicture.asset(
+                          'assets/images/add_circle_white.svg',
+                          width: 22,
+                          height: 22,
+                        ),
+                        error: (_, _) => SvgPicture.asset(
+                          'assets/images/add_circle_white.svg',
+                          width: 22,
+                          height: 22,
+                        ),
+                      ),
+                    );
+                  },
+                ),
                 IconButton(
                   padding: EdgeInsets.zero,
                   onPressed: () => _showArtworkOptionsDialog(
@@ -323,6 +364,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     height: 22,
                   ),
                 ),
+              ],
             ],
           ),
         ),
@@ -451,7 +493,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      "Rebuild metadata is incomplete. Try again later "
+                      'Rebuild metadata is incomplete. Try again later '
                       'or contact support for help.',
                       style: AppTypography.body(context).white,
                     ),

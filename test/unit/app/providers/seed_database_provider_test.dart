@@ -1,8 +1,29 @@
 import 'package:app/app/providers/seed_database_provider.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// Fake [AppStateService] for seed sync tests. Tracks seed download completion
+/// so subsequent syncs run in background (suppressLoading).
+class _FakeAppStateService implements AppStateService {
+  _FakeAppStateService({bool initialHasCompletedSeedDownload = false})
+      : _hasCompletedSeedDownload = initialHasCompletedSeedDownload;
+
+  bool _hasCompletedSeedDownload;
+
+  @override
+  Future<bool> hasCompletedSeedDownload() async => _hasCompletedSeedDownload;
+
+  @override
+  Future<void> setHasCompletedSeedDownload({required bool completed}) async {
+    _hasCompletedSeedDownload = completed;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   int syncCallCount = 0;
@@ -68,6 +89,7 @@ void main() {
     final container = ProviderContainer.test(
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+        appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
       ],
     );
     addTearDown(container.dispose);
@@ -98,6 +120,7 @@ void main() {
     final container = ProviderContainer.test(
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+        appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
       ],
     );
     addTearDown(container.dispose);
@@ -129,9 +152,13 @@ void main() {
       ..hasLocalDatabase = true; // Update scenario, not first install.
     final states = <SeedDownloadState>[];
 
+    // User has completed seed download before; subsequent syncs run in background.
     final container = ProviderContainer.test(
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+        appStateServiceProvider.overrideWithValue(
+          _FakeAppStateService(initialHasCompletedSeedDownload: true),
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -160,6 +187,7 @@ void main() {
     final container = ProviderContainer.test(
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+        appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
       ],
     );
     addTearDown(container.dispose);
@@ -186,6 +214,7 @@ void main() {
     final container = ProviderContainer.test(
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+        appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
       ],
     );
     addTearDown(container.dispose);

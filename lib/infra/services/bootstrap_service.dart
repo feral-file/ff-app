@@ -1,4 +1,5 @@
 import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:logging/logging.dart';
 
@@ -16,12 +17,14 @@ class BootstrapService {
   late final Logger _log;
 
   /// Bootstrap the application.
-  /// This creates the "My Collection" virtual channel if it doesn't exist.
+  /// This creates the "My Collection" virtual channel and Favorite playlist
+  /// if they don't exist.
   Future<void> bootstrap() async {
     try {
       _log.info('Starting bootstrap');
 
       await _createMyCollectionChannel();
+      await _ensureFavoritePlaylists();
 
       _log.info('Bootstrap completed');
     } catch (e, stack) {
@@ -33,7 +36,7 @@ class BootstrapService {
   /// Create "My Collection" virtual channel.
   Future<void> _createMyCollectionChannel() async {
     final existingChannel = await _databaseService.getChannelById(
-      'my_collection',
+      Channel.myCollectionId,
     );
 
     if (existingChannel != null) {
@@ -42,7 +45,7 @@ class BootstrapService {
     }
 
     final myCollection = Channel(
-      id: 'my_collection',
+      id: Channel.myCollectionId,
       name: 'My Collection',
       type: ChannelType.localVirtual,
       description: 'Your personal collection of artworks',
@@ -54,5 +57,27 @@ class BootstrapService {
 
     await _databaseService.ingestChannel(myCollection);
     _log.info('Created My Collection channel');
+  }
+
+  /// Ensure Favorite playlist exists.
+  /// Every user has this Favorite playlist.
+  Future<void> _ensureFavoritePlaylists() async {
+    final existingFavorite = await _databaseService.getPlaylistById(
+      Playlist.favoriteId,
+    );
+
+    if (existingFavorite != null) {
+      _log.info('Favorite playlist already exists');
+      return;
+    }
+
+    final now = DateTime.now();
+    await _databaseService.ingestPlaylist(
+      Playlist.favorite(
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    _log.info('Created Favorite playlist');
   }
 }

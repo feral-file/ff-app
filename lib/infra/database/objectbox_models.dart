@@ -181,6 +181,10 @@ class AppStateEntity {
   /// One-time legacy migration completion flag.
   bool isMigrated;
 
+  /// True once the user has completed at least one seed database download.
+  /// When true, subsequent seed syncs run in background without showing loading.
+  bool hasCompletedSeedDownload;
+
   /// Last write timestamp for this singleton state.
   int updatedAtUs;
 
@@ -192,6 +196,7 @@ class AppStateEntity {
     this.hasSeenOnboarding = false,
     this.hasSeenPlayToFf1Tooltip = false,
     this.isMigrated = false,
+    this.hasCompletedSeedDownload = false,
     required this.updatedAtUs,
   });
 }
