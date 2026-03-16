@@ -569,7 +569,7 @@ class FF1WifiSendLogRequest extends FF1WifiCommandRequest {
   final String apiKey;
 
   @override
-  String get command => 'sendLog';
+  String get command => 'uploadLogs';
 
   @override
   Map<String, dynamic> get params => SendLogRequest(
