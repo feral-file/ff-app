@@ -38,6 +38,55 @@ import 'package:logging/logging.dart';
 
 final _log = Logger('ServicesProvider');
 
+/// Coordinates ensureTrackedAddresses sync triggered by ObjectBox. Tracks in-flight
+/// sync so [stopAndDrainForReset] can wait before DB is closed (Forget I Exist).
+class EnsureTrackedAddressesSyncCoordinatorNotifier extends Notifier<void> {
+  bool _isStoppingForReset = false;
+  Completer<void>? _currentSyncCompleter;
+
+  @override
+  void build() {
+    _isStoppingForReset = false;
+  }
+
+  /// Schedules ensure sync. Call from trackedAddressesSyncProvider subscription.
+  void scheduleSync() {
+    if (_isStoppingForReset) return;
+    final ensureSync =
+        ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider);
+    final completer = Completer<void>();
+    _currentSyncCompleter = completer;
+    unawaited((() async {
+      try {
+        await ensureSync();
+      } finally {
+        if (!completer.isCompleted) completer.complete();
+        if (_currentSyncCompleter == completer) _currentSyncCompleter = null;
+      }
+    })());
+  }
+
+  /// Stops and waits for in-flight ensure sync. Must complete before DB close.
+  Future<void> stopAndDrainForReset() async {
+    _isStoppingForReset = true;
+    final completer = _currentSyncCompleter;
+    if (completer != null) {
+      _log.info(
+        'EnsureTrackedAddressesSyncCoordinator: waiting for in-flight ensure sync',
+      );
+      await completer.future;
+      _log.info(
+        'EnsureTrackedAddressesSyncCoordinator: in-flight ensure sync completed',
+      );
+    }
+  }
+}
+
+final ensureTrackedAddressesSyncCoordinatorProvider =
+    NotifierProvider<EnsureTrackedAddressesSyncCoordinatorNotifier, void>(
+      EnsureTrackedAddressesSyncCoordinatorNotifier.new,
+    );
+
 /// Provider for the AddressService.
 /// Manages user wallet addresses and address-based playlists.
 final addressServiceProvider = Provider<AddressService>((ref) {
@@ -93,7 +142,8 @@ final ensureTrackedAddressesHavePlaylistsAndResumeProvider =
     final appState = ref.read(appStateServiceProvider);
     final addresses = await appState.getTrackedPersonalAddresses();
     _log.info(
-      'ensureTrackedAddressesHavePlaylistsAndResume: tracked personal addresses: ${addresses.length}',
+      'ensureTrackedAddressesHavePlaylistsAndResume: tracked personal addresses: '
+      '${addresses.length}',
     );
     if (addresses.isEmpty) return;
     final normalizedAddresses = addresses
@@ -142,19 +192,21 @@ final ensureTrackedAddressesHavePlaylistsAndResumeProvider =
 });
 
 /// Watches ObjectBox [TrackedAddressEntity]; on emit calls
-/// [ensureTrackedAddressesHavePlaylistsAndResumeProvider].
-/// Keep-alive at app root.
+/// [ensureTrackedAddressesSyncCoordinatorProvider]. Coordinator tracks in-flight
+/// sync for drain (Forget I Exist).
 final trackedAddressesSyncProvider = Provider<void>((ref) {
   ref.keepAlive();
-  final ensureSync = ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider);
+  final coordinator =
+      ref.read(ensureTrackedAddressesSyncCoordinatorProvider.notifier);
   final appStateService = ref.read(appStateServiceProvider);
   final sub = appStateService.watchTrackedAddressesAsWalletAddresses().listen((
     addresses,
   ) {
     _log.info(
-      'trackedAddressesSyncProvider: list wallet addresses: ${addresses.map((a) => a.address).toList()}',
+      'trackedAddressesSyncProvider: list wallet addresses: '
+      '${addresses.map((a) => a.address).toList()}',
     );
-    unawaited(ensureSync());
+    coordinator.scheduleSync();
   });
   ref.onDispose(sub.cancel);
 });

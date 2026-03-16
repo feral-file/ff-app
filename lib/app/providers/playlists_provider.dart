@@ -193,8 +193,9 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
   /// Load playlists for this type.
   /// dp1 (curated): Load all from database. addressBased: database, all.
   Future<void> loadPlaylists({int? size}) async {
+    if (state.isLoading) return;
+    if (!ref.read(isSeedDatabaseReadyProvider)) return;
     try {
-      if (state.isLoading) return;
       _log.info('Loading playlists (type: ${_type.name})...');
       state = state.copyWith(isLoading: true, clearError: true);
 

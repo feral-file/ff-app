@@ -96,6 +96,10 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
   }
 
   void _loadPlaylists() {
+    // Skip when seed DB is syncing (e.g. Forget I Exist); DB is closed during replace.
+    if (ref.read(seedDownloadProvider).status == SeedDownloadStatus.syncing) {
+      return;
+    }
     final curatedState = ref.read(playlistsProvider(PlaylistType.dp1));
     final shouldLoadCurated = shouldLoadTabData(
       isLoading: curatedState.isLoading,

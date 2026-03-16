@@ -71,9 +71,11 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
   void invalidateListProvidersBeforeDbCloseExtended() =>
       invalidateListProvidersBeforeDbClose();
 
-  /// Infra: tokensSyncCoordinator, appDatabase, databaseService. For reconnect.
+  /// Infra: tokensSyncCoordinator, ensureTrackedAddressesSyncCoordinator,
+  /// appDatabase, databaseService. For reconnect.
   void invalidateReconnectInfraProviders() {
     r.invalidate(tokensSyncCoordinatorProvider);
+    r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
     r.invalidate(appDatabaseProvider);
     r.invalidate(databaseServiceProvider);
   }
@@ -93,6 +95,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     r.invalidate(playlistDetailsProvider);
     r.invalidate(worksProvider);
     r.invalidate(addressesProvider);
+    r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
     r.invalidate(appDatabaseProvider);
     r.invalidate(databaseServiceProvider);
     r.invalidate(seedDownloadProvider);
@@ -162,12 +165,21 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
   }
 
   return LocalDataCleanupService(
-    /// Drains token sync workers and invalidates coordinator.
+    /// Set immediately at start of forgetIExist so no new DB work starts.
+    prepareForReset: () {
+      ref.read(isSeedDatabaseReadyProvider.notifier).state = false;
+    },
+
+    /// Drains token sync and ensureTrackedAddresses workers before DB close.
     stopWorkersGracefully: () async {
       await ref
           .read(tokensSyncCoordinatorProvider.notifier)
           .stopAndDrainForReset();
+      await ref
+          .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+          .stopAndDrainForReset();
       r.invalidate(tokensSyncCoordinatorProvider);
+      r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
     },
 
     /// Closes the DB and deletes SQLite files. Leaves [isSeedDatabaseReadyProvider]

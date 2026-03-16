@@ -50,6 +50,8 @@ void main() {
 
     await service.forgetIExist();
 
+    // forgetIExist returns after fullClear; recreate+bootstrap+onDatabaseReady
+    // run in background.
     expect(events, <String>[
       'pause-feed',
       'pause-token-polling',
@@ -61,13 +63,12 @@ void main() {
       'clear-legacy-sqlite',
       'clear-legacy-hive',
       'close-delete-db',
-      'recreate-db-from-seed',
-      'run-bootstrap',
-      'on-database-ready',
     ]);
   });
 
-  test('forgetIExist runs onDatabaseReady after seed and bootstrap', () async {
+  test(
+    'forgetIExist returns after fullClear; background tasks run fire-and-forget',
+    () async {
     final events = <String>[];
 
     final service = LocalDataCleanupService(
@@ -110,7 +111,9 @@ void main() {
 
     await service.forgetIExist();
 
-    expect(events.last, equals('on-database-ready'));
+    // forgetIExist returns after fullClear; recreate+bootstrap+onDatabaseReady
+    // run in background so last event when await returns is close-delete-db.
+    expect(events.last, equals('close-delete-db'));
   });
 
   test(
@@ -161,6 +164,7 @@ void main() {
 
       await service.rebuildMetadata();
 
+      // rebuildMetadata returns after lightClear; recreate+restore run in background.
       expect(events, <String>[
         'get-favorite-playlists-snapshot',
         'pause-feed',
@@ -169,9 +173,6 @@ void main() {
         'close-delete-db',
         'clear-objectbox-light',
         'clear-cached-images',
-        'recreate-db-from-seed',
-        'run-bootstrap',
-        'on-database-ready',
       ]);
       expect(events.where((event) => event == 'clear-objectbox'), isEmpty);
     },

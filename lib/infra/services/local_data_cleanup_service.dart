@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/infra/database/favorite_history_snapshot.dart';
 import 'package:logging/logging.dart';
 
@@ -21,6 +23,7 @@ class LocalDataCleanupService {
     Future<void> Function()? clearLegacySqlite,
     Future<void> Function()? clearLegacyHive,
     Future<void> Function()? onDatabaseReady,
+    void Function()? prepareForReset,
     this.invalidateListProvidersBeforeDbClose,
     this.invalidateReconnectInfraProviders,
     this.enablePostDrainSweep = true,
@@ -40,7 +43,10 @@ class LocalDataCleanupService {
        _clearLegacySqlite = clearLegacySqlite,
        _clearLegacyHive = clearLegacyHive,
        _onDatabaseReady = onDatabaseReady,
+       _prepareForReset = prepareForReset,
        _log = logger ?? Logger('LocalDataCleanupService');
+
+  final void Function()? _prepareForReset;
 
   /// Invalidates core list providers before DB close. For app.dart seed sync.
   final void Function()? invalidateListProvidersBeforeDbClose;
@@ -96,29 +102,52 @@ class LocalDataCleanupService {
     }
   }
 
-  /// Full reset (Forget I Exist): clears all local data, replaces DB from seed,
-  /// and bootstraps for a fresh onboarding run.
+  /// Full reset (Forget I Exist): clears all local data, then replaces DB from
+  /// seed and bootstraps in background.
+  ///
+  /// Returns as soon as [fullClear] completes. Caller may navigate to
+  /// onboarding immediately. Seed download, bootstrap, and onDatabaseReady run
+  /// fire-and-forget so UI is not blocked.
   Future<void> forgetIExist() async {
     _log.info('forgetIExist: start');
+    _prepareForReset?.call();
     await _fullClear();
-    await _recreateDatabaseFromSeed();
-    await _runBootstrap();
-    final onDatabaseReady = _onDatabaseReady;
-    if (onDatabaseReady != null) await onDatabaseReady();
-    _log.info('forgetIExist: done');
+    _log.info('forgetIExist: local data cleared; replacing seed in background');
+    unawaited(Future(() async {
+      try {
+        await _recreateDatabaseFromSeed();
+        await _runBootstrap();
+        final onDatabaseReady = _onDatabaseReady;
+        if (onDatabaseReady != null) await onDatabaseReady();
+        _log.info('forgetIExist: background seed+bootstrap done');
+      } on Object catch (e, st) {
+        _log.warning('forgetIExist: background seed replace failed', e, st);
+      }
+    }));
   }
 
   /// Rebuilds metadata by clearing SQLite, restoring Favorite playlists,
   /// and ensuring tracked addresses have playlists and resume indexing.
+  ///
+  /// Returns as soon as [lightClear] completes. Caller may dismiss UI
+  /// immediately. Seed replace, bootstrap, onDatabaseReady, and restore run
+  /// fire-and-forget so UI is not blocked.
   Future<void> rebuildMetadata() async {
     _log.info('rebuildMetadata: start');
     final snapshots = await _getFavoritePlaylistsSnapshot();
     await _lightClear();
-    await _recreateDatabaseFromSeed();
-    await _runBootstrap();
-    final onDatabaseReady = _onDatabaseReady;
-    if (onDatabaseReady != null) await onDatabaseReady();
-    if (snapshots.isNotEmpty) await _restoreFavoritePlaylists(snapshots);
-    _log.info('rebuildMetadata: done');
+    _log.info('rebuildMetadata: local data cleared; replacing seed in background');
+    unawaited(Future(() async {
+      try {
+        await _recreateDatabaseFromSeed();
+        await _runBootstrap();
+        final onDatabaseReady = _onDatabaseReady;
+        if (onDatabaseReady != null) await onDatabaseReady();
+        if (snapshots.isNotEmpty) await _restoreFavoritePlaylists(snapshots);
+        _log.info('rebuildMetadata: background seed+restore done');
+      } on Object catch (e, st) {
+        _log.warning('rebuildMetadata: background seed replace failed', e, st);
+      }
+    }));
   }
 }
