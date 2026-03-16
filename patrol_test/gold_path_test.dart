@@ -4,7 +4,8 @@ import 'package:app/app/patrol/gold_path_patrol_config.dart';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/work_item_thumbnail.dart';
-import 'package:flutter/material.dart' show TextField, TextInputAction;
+import 'package:flutter/material.dart'
+    show TextField, TextInputAction, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 
@@ -45,32 +46,45 @@ void main() {
 
 Future<void> _completeOnboardingIfNeeded(PatrolIntegrationTester $) async {
   if ($('Explore digital art playlists').exists) {
-    await _tapOnboardingAction($, label: 'Next');
+    await _tapOnboardingAction(
+      $,
+      actionKey: GoldPathPatrolKeys.onboardingIntroduceNext,
+      actionLabel: 'Next',
+    );
   }
 
   if ($('See the art you already own').exists) {
     await _submitPersonalAddressInOnboarding($, _personalAddressName);
-    await _tapOnboardingAction($, label: 'Next');
+    await _tapOnboardingAction(
+      $,
+      actionKey: GoldPathPatrolKeys.onboardingAddAddressSecondary,
+      actionLabel: 'Next/Skip for now',
+    );
   }
 
   if ($('Add FF1 to your screens').exists) {
-    await _tapOnboardingAction($, label: 'Finish');
+    await _tapOnboardingAction(
+      $,
+      actionKey: GoldPathPatrolKeys.onboardingSetupFf1Secondary,
+      actionLabel: 'Finish',
+    );
   }
 }
 
 Future<void> _tapOnboardingAction(
   PatrolIntegrationTester $, {
-  required String label,
+  required ValueKey<String> actionKey,
+  required String actionLabel,
 }) async {
-  final textFinder = find.text(label);
-  final action = $(textFinder);
+  final actionFinder = find.byKey(actionKey);
+  final action = $(actionKey);
   final deadline = DateTime.now().add(const Duration(seconds: 20));
 
   while (DateTime.now().isBefore(deadline)) {
     await action.waitUntilExists(timeout: const Duration(seconds: 2));
 
     try {
-      await $.tester.ensureVisible(textFinder.first);
+      await $.tester.ensureVisible(actionFinder.first);
       await $.pump(const Duration(milliseconds: 200));
     } on Exception {
       // Keep retrying while screen is stabilizing.
@@ -84,7 +98,7 @@ Future<void> _tapOnboardingAction(
   }
 
   throw TimeoutException(
-    'Timed out tapping onboarding action "$label" after waiting for '
+    'Timed out tapping onboarding action "$actionLabel" after waiting for '
     'a hit-testable target.',
   );
 }
@@ -105,7 +119,7 @@ Future<void> _submitPersonalAddressInOnboarding(
 }
 
 Future<void> _openAddAddressFromOnboarding(PatrolIntegrationTester $) async {
-  final addAddressButton = $('Add Address');
+  final addAddressButton = $(GoldPathPatrolKeys.onboardingAddAddressPrimary);
   await addAddressButton.waitUntilVisible(
     timeout: const Duration(seconds: 30),
   );

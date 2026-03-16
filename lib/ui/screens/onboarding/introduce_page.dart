@@ -7,6 +7,7 @@
 
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -22,7 +23,8 @@ import 'package:go_router/go_router.dart';
 /// Introductory onboarding page:
 /// "Explore digital art playlists"
 ///
-/// This widget is implemented using [OnboardingShell] to match the Figma screen:
+/// This widget is implemented using [OnboardingShell] to match the Figma
+/// screen:
 /// FF1 Art Computer → Onboarding B 4.
 ///
 
@@ -89,6 +91,7 @@ class IntroducePage extends StatelessWidget {
           ],
         ),
         onPrimaryPressed: () => onNext(context),
+        primaryButtonKey: GoldPathPatrolKeys.onboardingIntroduceNext,
       ),
     );
   }
