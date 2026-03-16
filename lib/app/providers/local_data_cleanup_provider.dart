@@ -233,7 +233,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
           .toList();
       final appState = ref.read(appStateServiceProvider);
       for (final address in normalizedAddresses) {
-        await appState.clearAddressAnchor(address);
+        await appState.clearAddressCheckpoint(address);
       }
 
       if (normalizedAddresses.isNotEmpty) {
