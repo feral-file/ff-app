@@ -575,6 +575,31 @@ function buildCandidates() {
         ]);
       },
     },
+
+    // ── DuckDB candidates ─────────────────────────────────────────────────
+    {
+      name: 'duckdb_baseline',
+      backend: 'duckdb',
+      notes:
+        'Mirror of the SQLite schema imported into DuckDB. Row-oriented JOIN queries + DuckDB FTS. '
+        + 'Establishes the DuckDB baseline before columnar/precomputed optimizations.',
+    },
+    {
+      name: 'duckdb_columnar',
+      backend: 'duckdb',
+      notes:
+        'Same schema as duckdb_baseline. The works.page1 benchmark projects only list-view columns, '
+        + 'letting DuckDB skip the token_data_json column vector entirely. '
+        + 'Quantifies the columnar-projection advantage over SQLite for wide-row tables.',
+    },
+    {
+      name: 'duckdb_precomputed',
+      backend: 'duckdb',
+      notes:
+        'DuckDB baseline + item_order_cache + playlists_list_cache. '
+        + 'Mirrors the SQLite all_caches champion approach inside DuckDB. '
+        + 'Column projection still applies for works.page1.',
+    },
   ];
 }
 
@@ -586,6 +611,24 @@ function materializeCandidate(candidate) {
       candidate.mutate(dbPath);
       return {
         backend: 'sqlite',
+        databasePath: dbPath,
+      };
+    }
+    case 'duckdb': {
+      const dbPath = path.join(candidatesDir, `${candidate.name}.duckdb`);
+      const builderScript = path.join(rootDir, 'scripts', 'duckdb_builder.js');
+      execFileSync('node', [
+        builderScript,
+        '--candidate', candidate.name,
+        '--output', dbPath,
+        '--baseline', baselinePath,
+      ], {
+        cwd: rootDir,
+        stdio: ['ignore', 'ignore', 'inherit'],
+        encoding: 'utf8',
+      });
+      return {
+        backend: 'duckdb',
         databasePath: dbPath,
       };
     }

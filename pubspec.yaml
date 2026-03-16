@@ -109,6 +109,7 @@ dependencies:
   webview_flutter: ^4.13.0
   webview_flutter_android: ^4.10.13
   webview_flutter_wkwebview: ^3.23.8
+  dart_duckdb: ^1.4.4
 dev_dependencies:
   # Code generation
   build_runner: ^2.12.2

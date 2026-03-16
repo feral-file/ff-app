@@ -2,5 +2,8 @@
   "name": "ff-app-db-autoresearch",
   "private": true,
   "type": "commonjs",
-  "description": "Autoresearch harness for Feral File mobile database cache experiments"
+  "description": "Autoresearch harness for Feral File mobile database cache experiments",
+  "dependencies": {
+    "@duckdb/node-api": "^1.5.0-r.1"
+  }
 }

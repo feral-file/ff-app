@@ -1,4 +1,6 @@
-typedef ScenarioRunner = Object? Function();
+import 'dart:async';
+
+typedef ScenarioRunner = FutureOr<Object?> Function();
 
 class BenchmarkScenario {
   BenchmarkScenario({
@@ -10,15 +12,17 @@ class BenchmarkScenario {
   final ScenarioRunner runner;
 }
 
-Map<String, Object?> summarizeBenchmark({
+Future<Map<String, Object?>> summarizeBenchmark({
   required String label,
   required String backend,
   required String databasePath,
   required List<BenchmarkScenario> scenarios,
-}) {
-  final results = scenarios
-      .map((scenario) => measureScenario(scenario.name, scenario.runner))
-      .toList(growable: false);
+}) async {
+  final results = <Map<String, Object?>>[];
+  // Run scenarios sequentially so page cache warms up naturally.
+  for (final scenario in scenarios) {
+    results.add(await measureScenario(scenario.name, scenario.runner));
+  }
 
   final avgP95Ms = _round3(
     results.fold<double>(
@@ -45,20 +49,20 @@ Map<String, Object?> summarizeBenchmark({
   };
 }
 
-Map<String, Object?> measureScenario(
+Future<Map<String, Object?>> measureScenario(
   String name,
   ScenarioRunner action, {
   int warmupRuns = 3,
   int measuredRuns = 30,
-}) {
+}) async {
   for (var index = 0; index < warmupRuns; index += 1) {
-    action();
+    await action();
   }
 
   final samples = <double>[];
   for (var index = 0; index < measuredRuns; index += 1) {
     final stopwatch = Stopwatch()..start();
-    action();
+    await action();
     stopwatch.stop();
     samples.add(stopwatch.elapsedMicroseconds / 1000);
   }

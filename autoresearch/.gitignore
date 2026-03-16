@@ -4,3 +4,4 @@ data/snapshots/
 run-logs/
 last_run_summary.json
 results.tsv
+node_modules/
