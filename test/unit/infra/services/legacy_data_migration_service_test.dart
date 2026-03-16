@@ -125,5 +125,37 @@ void main() {
       expect(migratedDevices.map((e) => e.deviceId), ['device-a', 'device-b']);
       expect(migratedFlag, isTrue);
     });
+
+    test('migrates device with empty remoteId (Keep WiFi flow from old app)',
+        () async {
+      final migratedDevices = <FF1Device>[];
+
+      final service = LegacyDataMigrationService(
+        storageLocator: _FakeLegacyStorageLocator(hasLegacyDb: true),
+        isMigratedOverride: () async => false,
+        setMigratedOverride: ({required value}) async {},
+        loadLegacyAddressesOverride: () async => [],
+        loadLegacyDevicesOverride: () async => const [
+          FF1Device(
+            name: 'FF1-KeepWifi',
+            remoteId: '',
+            deviceId: 'FF1-KeepWifi',
+            topicId: 'topic-123',
+          ),
+        ],
+        migrateDevicesOverride: (devices) async {
+          migratedDevices.addAll(devices);
+        },
+      );
+
+      final result = await service.migrateIfNeeded();
+
+      expect(result.didRun, isTrue);
+      expect(result.importedDevices, 1);
+      expect(migratedDevices.length, 1);
+      expect(migratedDevices.first.remoteId, isEmpty);
+      expect(migratedDevices.first.deviceId, 'FF1-KeepWifi');
+      expect(migratedDevices.first.topicId, 'topic-123');
+    });
   });
 }

@@ -76,7 +76,7 @@ class LegacyDataMigrationService {
     return _storageLocator.hasLegacySqliteDatabase();
   }
 
-  /// Runs one-time migration guarded by ObjectBox `isMigrated` flag.
+  /// Runs one-time migration guarded by ObjectBox `isMigratedV2` flag.
   Future<LegacyDataMigrationResult> migrateIfNeeded() async {
     if (await _isMigrated()) {
       return const LegacyDataMigrationResult(
@@ -170,7 +170,7 @@ class LegacyDataMigrationService {
     if (row == null) {
       return Future.value(false);
     }
-    return Future.value(row.isMigrated);
+    return Future.value(row.isMigratedV2);
   }
 
   Future<void> _setMigrated({required bool value}) {
@@ -185,7 +185,7 @@ class LegacyDataMigrationService {
       feedLastUpdatedAtUs: existing?.feedLastUpdatedAtUs ?? 1672531200000000,
       hasSeenOnboarding: existing?.hasSeenOnboarding ?? false,
       hasSeenPlayToFf1Tooltip: existing?.hasSeenPlayToFf1Tooltip ?? false,
-      isMigrated: value,
+      isMigratedV2: value,
       updatedAtUs: nowUs,
     )..id = existing?.id ?? 0;
     if (existing != null) {
@@ -275,19 +275,36 @@ class LegacyDataMigrationService {
       return const [];
     }
     try {
+      final allKeys = box.keys.map((k) => k.toString()).toList();
+      final ffDeviceKeys =
+          allKeys.where((k) => k.contains('.common.db.ff_device.')).toList();
+
+      final keysPreview = allKeys.length > 20
+          ? '${allKeys.take(20).join(", ")} ... and ${allKeys.length - 20} more'
+          : allKeys.join(', ');
+      _log.info(
+        'Legacy Hive FF1 migration: box opened. path=${await _storageLocator.documentsPath()}, '
+        'totalKeys=${allKeys.length}, ffDeviceKeys=${ffDeviceKeys.length}. '
+        'Keys: [$keysPreview]',
+      );
+
       final results = <FF1Device>[];
-      for (final key in box.keys) {
-        final keyString = key.toString();
-        if (!keyString.contains('.common.db.ff_device.')) {
-          continue;
-        }
+      for (final keyString in ffDeviceKeys) {
         final raw = box.get(keyString);
         if (raw == null || raw.isEmpty) {
+          _log.info(
+            'Legacy Hive FF1 migration: key="$keyString" has null/empty value, skipping.',
+          );
           continue;
         }
-        final device = _parseLegacyHiveDevice(raw);
-        if (device != null) {
-          results.add(device);
+        final parseResult = _parseLegacyHiveDeviceWithDiagnostics(raw);
+        if (parseResult.$1 != null) {
+          results.add(parseResult.$1!);
+        } else {
+          _log.info(
+            'Legacy Hive FF1 migration: key="$keyString" parse failed: ${parseResult.$2}. '
+            'Raw value (first 200 chars): ${raw.length > 200 ? "${raw.substring(0, 200)}..." : raw}',
+          );
         }
       }
 
@@ -295,8 +312,15 @@ class LegacyDataMigrationService {
       for (final device in results) {
         deduped[device.deviceId] = device;
       }
-      return deduped.values.toList(growable: false);
-    } on Object {
+      final devices = deduped.values.toList(growable: false);
+
+      _log.info(
+        'Legacy Hive FF1 migration: parsed ${devices.length} device(s) from ${ffDeviceKeys.length} ff_device key(s).',
+      );
+
+      return devices;
+    } on Object catch (e, st) {
+      _log.warning('Legacy Hive FF1 migration: _readHiveDevices failed', e, st);
       return const [];
     } finally {
       await box.close();
@@ -314,11 +338,13 @@ class LegacyDataMigrationService {
     }
   }
 
-  FF1Device? _parseLegacyHiveDevice(String jsonString) {
+  /// Parses legacy FF1 device JSON. Returns (device, null) on success,
+  /// (null, errorReason) on failure for diagnostics.
+  (FF1Device?, String?) _parseLegacyHiveDeviceWithDiagnostics(String jsonString) {
     try {
       final raw = jsonDecode(jsonString);
       if (raw is! Map<String, dynamic>) {
-        return null;
+        return (null, 'jsonDecode result is not Map (type: ${raw.runtimeType})');
       }
 
       final name = (raw['name'] as String? ?? '').trim();
@@ -328,22 +354,29 @@ class LegacyDataMigrationService {
           (raw['deviceId'] as String? ?? raw['name'] as String? ?? '').trim();
       final branchName =
           (raw['branchName'] as String? ?? 'release').trim().isEmpty
-          ? 'release'
-          : (raw['branchName'] as String? ?? 'release').trim();
+              ? 'release'
+              : (raw['branchName'] as String? ?? 'release').trim();
 
-      if (remoteId.isEmpty || deviceId.isEmpty) {
-        return null;
+      if (deviceId.isEmpty) {
+        return (null, 'deviceId is empty');
       }
+      // remoteID may be empty in "Keep WiFi" / "already connected" flow;
+      // new app resolves via scan-by-name when remoteId is empty.
 
-      return FF1Device(
-        name: name.isEmpty ? deviceId : name,
-        remoteId: remoteId,
-        topicId: topicId,
-        deviceId: deviceId,
-        branchName: branchName,
+      return (
+        FF1Device(
+          name: name.isEmpty ? deviceId : name,
+          remoteId: remoteId,
+          topicId: topicId,
+          deviceId: deviceId,
+          branchName: branchName,
+        ),
+        null,
       );
-    } on Object {
-      return null;
+    } on FormatException catch (e) {
+      return (null, 'jsonDecode FormatException: $e');
+    } on Object catch (e) {
+      return (null, 'parse error: $e');
     }
   }
 

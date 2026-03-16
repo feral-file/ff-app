@@ -9,22 +9,26 @@ Provide a lightweight, one-time migration path for users upgrading from the old 
 ## Implemented Behavior
 
 1. One-time migration guard
+
 - Migration runs only once.
-- A local ObjectBox flag is used: `isMigrated`.
- - Stored on `AppStateEntity.isMigrated` in local ObjectBox config state.
+- A local ObjectBox flag is used: `isMigratedV2`.
+ - Stored on `AppStateEntity.isMigratedV2` in local ObjectBox config state.
 
 2. Legacy onboarded detection
+
 - If a legacy SQLite DB file exists, the user is treated as onboarded.
 - App opens Home immediately (skips onboarding route).
 - Onboarding seen flag is persisted in current app state.
 
 3. Startup execution model
+
 - Migration starts in background at app startup.
 - Toast is shown during migration: `Preparing data...`
 - Seed database sync still runs in background.
 - Migration is non-blocking for initial navigation.
 
 4. Address migration (legacy SQLite -> current storage)
+
 - Uses raw `sqlite3` reads against legacy SQLite files.
 - Does not use Drift for legacy-address extraction.
 - Reads legacy SQLite directly from app documents path:
@@ -34,7 +38,9 @@ Provide a lightweight, one-time migration path for users upgrading from the old 
 - Extracted addresses are inserted through current `AddressService` with `syncNow: false` (tracked in current data flow, no forced immediate sync burst).
 
 5. FF1 device migration (legacy Hive -> ObjectBox)
-- Reads legacy Hive box `app_storage` and keys containing `.common.db.ff_device.`.
+
+- Reads legacy Hive box `app_storage` via `Hive.initFlutter()` (same as old app).
+- Matches keys containing `.common.db.ff_device.` (old app format: `{flavor}.common.db.ff_device.{deviceId}`).
 - Parses legacy FF1 device JSON payloads and maps to current `FF1Device`.
 - Stores devices into ObjectBox through `FF1BluetoothDeviceService`.
 - Sets the first migrated device as active.
