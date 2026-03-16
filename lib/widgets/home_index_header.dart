@@ -1,6 +1,5 @@
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
-import 'package:app/design/app_typography.dart';
-import 'package:app/design/layout_constants.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:flutter/material.dart';
 
 /// Tabs for the home index header.
@@ -40,7 +39,7 @@ class HomeIndexHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: LayoutConstants.space3),
+      padding: EdgeInsets.symmetric(horizontal: ContentRhythm.horizontalRail),
       child: Align(
         alignment: Alignment.centerLeft,
         child: FittedBox(
@@ -60,12 +59,13 @@ class HomeIndexHeader extends StatelessWidget {
                 onTap: () => onTabChanged(tab),
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
-                  padding: EdgeInsets.only(right: LayoutConstants.space3),
+                  padding: EdgeInsets.only(right: ContentRhythm.tabGap),
                   child: Text(
                     tab.label,
-                    style: isSelected
-                        ? AppTypography.body(context).white
-                        : AppTypography.body(context).grey,
+                    style: ContentRhythm.tabLabel(
+                      context,
+                      selected: isSelected,
+                    ),
                   ),
                 ),
               );

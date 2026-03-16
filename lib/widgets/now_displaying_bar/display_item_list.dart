@@ -1,4 +1,4 @@
-import 'package:app/design/app_typography.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/now_displaying_bar/display_item.dart';
@@ -67,12 +67,12 @@ class DisplayItemList extends StatelessWidget {
   Widget _emptyView(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(
-        horizontal: LayoutConstants.pageHorizontalDefault,
+        horizontal: ContentRhythm.horizontalRail,
         vertical: LayoutConstants.space16,
       ),
       child: Text(
         'Playlist empty',
-        style: AppTypography.body(context).white,
+        style: ContentRhythm.supporting(context).copyWith(color: Colors.white),
       ),
     );
   }

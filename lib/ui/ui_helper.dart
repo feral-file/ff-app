@@ -40,7 +40,7 @@ class UIHelper {
         crossAxisCount: 2,
         childAspectRatio: LayoutConstants.worksGridChildAspectRatio,
         crossAxisSpacing: LayoutConstants.space4,
-        mainAxisSpacing: LayoutConstants.space4,
+        mainAxisSpacing: LayoutConstants.space3,
       ),
       itemCount: works.length,
       itemBuilder: (context, index) => WorkGridCard(
@@ -55,7 +55,18 @@ class UIHelper {
     BuildContext context, {
     required List<OptionItem> options,
     Widget? bottomWidget,
+    bool useSystemSurface = false,
   }) async {
+    final resolvedBackground = useSystemSurface
+        ? CupertinoDynamicColor.resolve(
+            CupertinoColors.systemBackground,
+            context,
+          )
+        : PrimitivesTokens.colorsDarkGrey;
+    final resolvedForeground = useSystemSurface
+        ? CupertinoDynamicColor.resolve(CupertinoColors.label, context)
+        : AppColor.white;
+
     await showCupertinoModalPopup<void>(
       context: context,
       builder: (context) {
@@ -63,7 +74,9 @@ class UIHelper {
         return Material(
           type: MaterialType.transparency,
           child: DefaultTextStyle(
-            style: AppTypography.body(context).white,
+            style: AppTypography.body(
+              context,
+            ).copyWith(color: resolvedForeground),
             child: Center(
               child: ConstrainedBox(
                 constraints: BoxConstraints(
@@ -76,7 +89,7 @@ class UIHelper {
                     DecoratedBox(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(5),
-                        color: PrimitivesTokens.colorsDarkGrey,
+                        color: resolvedBackground,
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(20),
@@ -90,7 +103,10 @@ class UIHelper {
                             if (option.builder != null) {
                               return option.builder!.call(context, option);
                             }
-                            return _CenterMenuItem(option: option);
+                            return _CenterMenuItem(
+                              option: option,
+                              foregroundColor: resolvedForeground,
+                            );
                           },
                           separatorBuilder: (context, index) => const SizedBox(
                             height: 24,
@@ -105,7 +121,7 @@ class UIHelper {
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(5),
-                            color: PrimitivesTokens.colorsDarkGrey,
+                            color: resolvedBackground,
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(20),
@@ -666,9 +682,13 @@ class UIHelper {
 }
 
 class _CenterMenuItem extends StatefulWidget {
-  const _CenterMenuItem({required this.option});
+  const _CenterMenuItem({
+    required this.option,
+    required this.foregroundColor,
+  });
 
   final OptionItem option;
+  final Color foregroundColor;
 
   @override
   State<_CenterMenuItem> createState() => _CenterMenuItemState();
@@ -680,8 +700,10 @@ class _CenterMenuItemState extends State<_CenterMenuItem> {
   @override
   Widget build(BuildContext context) {
     final option = widget.option;
+    final foregroundColor = widget.foregroundColor;
     final baseTextStyle =
-        option.titleStyle ?? AppTypography.body(context).white;
+        option.titleStyle ??
+        AppTypography.body(context).copyWith(color: foregroundColor);
     final processingTextStyle =
         option.titleStyleOnPrecessing ??
         baseTextStyle.copyWith(color: AppColor.disabledColor);
@@ -719,7 +741,7 @@ class _CenterMenuItemState extends State<_CenterMenuItem> {
               width: LayoutConstants.iconSizeMedium,
               height: LayoutConstants.iconSizeMedium,
               child: IconTheme(
-                data: const IconThemeData(color: AppColor.white),
+                data: IconThemeData(color: foregroundColor),
                 child: icon,
               ),
             ),

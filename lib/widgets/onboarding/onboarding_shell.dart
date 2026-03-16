@@ -5,8 +5,7 @@
 //  that can be found in the LICENSE file.
 //
 
-import 'package:app/design/app_typography.dart';
-import 'package:app/design/build/primitives.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/buttons/custom_primary_button.dart';
@@ -57,35 +56,43 @@ class OnboardingShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: LayoutConstants.setupPageHorizontal,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 206.94),
-            Container(
-              constraints: const BoxConstraints(
-                minHeight: 245.06,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: LayoutConstants.setupPageHorizontal,
               ),
-              child: content,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    height:
+                        LayoutConstants.space20 +
+                        LayoutConstants.space20 +
+                        LayoutConstants.space12,
+                  ),
+                  content,
+                  SizedBox(
+                    height: LayoutConstants.space20 + LayoutConstants.space8,
+                  ),
+                  _buildButtonsRow(context),
+                  if (hintText != null) ...[
+                    SizedBox(height: LayoutConstants.space5),
+                    Text(
+                      hintText!,
+                      style: ContentRhythm.supporting(context),
+                    ),
+                  ],
+                  SizedBox(height: LayoutConstants.space4),
+                ],
+              ),
             ),
-            SizedBox(height: LayoutConstants.space2),
-            _buildButtonsRow(context),
-            if (hintText != null) ...[
-              SizedBox(height: LayoutConstants.space5),
-              Text(
-                hintText!,
-                style: AppTypography.body(context).copyWith(
-                  color: PrimitivesTokens.colorsGrey,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -93,16 +100,17 @@ class OnboardingShell extends StatelessWidget {
     final primary = (primaryButton != null && onPrimaryPressed != null)
         ? CustomPrimaryButton(
             padding: EdgeInsets.symmetric(
-              vertical: LayoutConstants.space3,
+              vertical: ContentRhythm.rowVerticalPadding,
             ),
             onTap: onPrimaryPressed,
             child: primaryButton!,
           )
         : const SizedBox.shrink();
+
     final secondary = (secondaryButton != null && onSecondaryPressed != null)
         ? CustomPrimaryButton(
             padding: EdgeInsets.symmetric(
-              vertical: LayoutConstants.space3,
+              vertical: ContentRhythm.rowVerticalPadding,
             ),
             onTap: onSecondaryPressed,
             borderColor: AppColor.feralFileLightBlue,
@@ -111,21 +119,14 @@ class OnboardingShell extends StatelessWidget {
           )
         : const SizedBox.shrink();
 
-    // Use a stacked layout on narrow widths to avoid button overflow.
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < 245) {
           return Column(
             children: [
-              SizedBox(
-                width: double.infinity,
-                child: primary,
-              ),
+              SizedBox(width: double.infinity, child: primary),
               SizedBox(height: LayoutConstants.space2),
-              SizedBox(
-                width: double.infinity,
-                child: secondary,
-              ),
+              SizedBox(width: double.infinity, child: secondary),
             ],
           );
         }

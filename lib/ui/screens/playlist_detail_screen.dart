@@ -3,6 +3,7 @@ import 'package:app/app/providers/playlist_details_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_intent.dart';
@@ -218,14 +219,14 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
                         ),
                 ),
                 SliverToBoxAdapter(
-                  child: SizedBox(height: LayoutConstants.space6),
+                  child: SizedBox(height: ContentRhythm.rowVerticalPadding),
                 ),
                 if (items.isEmpty)
                   SliverToBoxAdapter(
                     child: Center(
                       child: Padding(
                         padding: EdgeInsets.symmetric(
-                          horizontal: LayoutConstants.pageHorizontalDefault,
+                          horizontal: ContentRhythm.horizontalRail,
                         ),
                         child: Text(
                           'This playlist is empty.',
@@ -236,15 +237,10 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
                     ),
                   )
                 else
-                  SliverPadding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: LayoutConstants.pageHorizontalDefault,
-                    ),
-                    sliver: UIHelper.worksSliverGrid(
-                      works: items,
-                      onItemTap: (item) =>
-                          context.push('${Routes.works}/${item.id}'),
-                    ),
+                  UIHelper.worksSliverGrid(
+                    works: items,
+                    onItemTap: (item) =>
+                        context.push('${Routes.works}/${item.id}'),
                   ),
                 if (state.isLoadingMore)
                   SliverToBoxAdapter(

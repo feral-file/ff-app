@@ -1,7 +1,6 @@
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/infra/config/app_config.dart';
-import 'package:app/theme/app_color.dart';
 import 'package:app/ui/markdown_changelog_style.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -14,8 +13,10 @@ import 'package:url_launcher/url_launcher.dart';
 enum SettingsDocument {
   /// End User License Agreement.
   eula('EULA', 'ff-app-eula'),
+
   /// Privacy Policy.
-  privacy('Privacy Policy', 'ff-app-privacy');
+  privacy('Privacy Policy', 'ff-app-privacy')
+  ;
 
   const SettingsDocument(this.title, this.path);
 
@@ -40,9 +41,27 @@ class DocumentViewerPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode =
+        MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    final systemBackground = isDarkMode
+        ? const Color(0xFF000000)
+        : const Color(0xFFFFFFFF);
+    final systemLabel = isDarkMode
+        ? const Color(0xFFFFFFFF)
+        : const Color(0xFF000000);
+    final systemSecondary = isDarkMode
+        ? const Color(0xFF8E8E93)
+        : const Color(0xFF6D6D72);
+
     return Scaffold(
-      backgroundColor: AppColor.auGreyBackground,
-      appBar: SetupAppBar(title: document.title),
+      backgroundColor: systemBackground,
+      appBar: SetupAppBar(
+        title: document.title,
+        backgroundColor: systemBackground,
+        titleColor: systemLabel,
+        isDarkMode: isDarkMode,
+        withDivider: false,
+      ),
       body: FutureBuilder<http.Response>(
         future: http.get(document.markdownUri),
         builder: (context, snapshot) {
@@ -87,7 +106,7 @@ class DocumentViewerPage extends StatelessWidget {
               child: Text(
                 'We could not load this document. Check your connection, then try again.',
                 style: AppTypography.body(context).copyWith(
-                  color: AppColor.disabledColor,
+                  color: systemSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),

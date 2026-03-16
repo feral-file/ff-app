@@ -1,4 +1,5 @@
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
@@ -57,10 +58,11 @@ class PlaylistTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectivePadding = padding ??
+    final effectivePadding =
+        padding ??
         EdgeInsets.symmetric(
-          horizontal: LayoutConstants.space3,
-          vertical: showDivider ? LayoutConstants.space4 : LayoutConstants.space4,
+          horizontal: ContentRhythm.horizontalRail,
+          vertical: ContentRhythm.rowVerticalPadding,
         );
 
     final content = GestureDetector(
@@ -81,7 +83,7 @@ class PlaylistTitle extends StatelessWidget {
                       Expanded(
                         child: Text(
                           primaryText,
-                          style: AppTypography.body(context).white,
+                          style: ContentRhythm.title(context),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -90,7 +92,7 @@ class PlaylistTitle extends StatelessWidget {
                         SizedBox(width: LayoutConstants.space2),
                         Text(
                           secondaryText,
-                          style: AppTypography.body(context).italic.grey,
+                          style: ContentRhythm.supporting(context),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -105,7 +107,7 @@ class PlaylistTitle extends StatelessWidget {
                       behavior: HitTestBehavior.opaque,
                       child: Text(
                         subtitle!,
-                        style: AppTypography.body(context).grey,
+                        style: ContentRhythm.supporting(context),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -119,7 +121,7 @@ class PlaylistTitle extends StatelessWidget {
                         Expanded(
                           child: Text(
                             statusText!,
-                            style: AppTypography.bodySmall(context).grey.italic,
+                            style: ContentRhythm.status(context),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -127,16 +129,16 @@ class PlaylistTitle extends StatelessWidget {
                         if (onRetry != null) ...[
                           Text(
                             ' • ',
-                            style: AppTypography.bodySmall(context).grey.italic,
+                            style: ContentRhythm.status(context),
                           ),
                           GestureDetector(
                             onTap: onRetry,
                             behavior: HitTestBehavior.opaque,
                             child: Text(
                               'Tap to retry',
-                              style: AppTypography.bodySmall(
+                              style: ContentRhythm.status(
                                 context,
-                              ).grey.italic.underline,
+                              ).underline,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),

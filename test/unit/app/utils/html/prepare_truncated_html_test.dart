@@ -54,4 +54,27 @@ void main() {
       );
     });
   });
+
+  group('decodeBasicHtmlEntities', () {
+    test('decodes named entities', () {
+      expect(
+        decodeBasicHtmlEntities('Tom &amp; Jerry &mdash; Art'),
+        'Tom & Jerry — Art',
+      );
+    });
+
+    test('decodes numeric entities', () {
+      expect(
+        decodeBasicHtmlEntities('A: &#65;, B: &#x42;'),
+        'A: A, B: B',
+      );
+    });
+
+    test('preserves invalid code points', () {
+      expect(
+        decodeBasicHtmlEntities('Bad: &#99999999;'),
+        'Bad: &#99999999;',
+      );
+    });
+  });
 }

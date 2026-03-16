@@ -30,6 +30,7 @@ This file defines repository-level constraints for coding agents. Detailed imple
 - Specs and flow docs:
   - `docs/project_spec.md`
   - `docs/app_flows.md`
+  - `docs/ui_rhythm_contract.md`
 
 ## Non-negotiables
 - Prefer replacing or deleting flawed code paths over narrow local tweaks when solving an issue. If a broader rewrite produces a clearer design, choose it.

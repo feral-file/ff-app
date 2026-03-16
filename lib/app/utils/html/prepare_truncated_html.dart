@@ -52,3 +52,47 @@ String _convertNewlinesToBrIfNeeded(String html) {
   final normalized = html.replaceAll('\r\n', '\n');
   return normalized.replaceAll('\n', '<br/>');
 }
+
+String decodeBasicHtmlEntities(String input) {
+  const namedEntities = <String, String>{
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#39;': "'",
+    '&apos;': "'",
+    '&nbsp;': ' ',
+    '&rsquo;': "'",
+    '&lsquo;': "'",
+    '&rdquo;': '"',
+    '&ldquo;': '"',
+    '&mdash;': '—',
+    '&ndash;': '–',
+    '&hellip;': '…',
+  };
+
+  var output = input;
+  for (final entry in namedEntities.entries) {
+    output = output.replaceAll(entry.key, entry.value);
+  }
+
+  output = output.replaceAllMapped(RegExp('&#(x?[0-9A-Fa-f]+);'), (match) {
+    final raw = match.group(1);
+    if (raw == null || raw.isEmpty) {
+      return match.group(0) ?? '';
+    }
+
+    final isHex = raw.startsWith('x') || raw.startsWith('X');
+    final value = isHex
+        ? int.tryParse(raw.substring(1), radix: 16)
+        : int.tryParse(raw);
+
+    if (value == null || value < 0 || value > 0x10FFFF) {
+      return match.group(0) ?? '';
+    }
+
+    return String.fromCharCode(value);
+  });
+
+  return output;
+}
