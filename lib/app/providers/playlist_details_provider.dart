@@ -201,11 +201,13 @@ class PlaylistDetailsNotifier
         return;
       }
       final newItemsList = [...current.items, ...newItems];
+      // Preserve total from DB watcher; it must not change when loading more
+      // pages (otherwise "Up to date. X works" would jump as user scrolls).
       state = AsyncValue.data(
         PlaylistDetailsState(
           playlist: current.playlist,
           items: newItemsList,
-          total: newItemsList.length,
+          total: current.total,
           hasMore: newItems.length >= _pageSize,
           offset: current.offset + newItems.length,
         ),
