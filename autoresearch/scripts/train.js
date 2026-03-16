@@ -138,6 +138,169 @@ function parseArgs(argv) {
   return out;
 }
 
+function buildItemOrderCacheStatements() {
+  return [
+    `CREATE TABLE item_order_cache (
+      item_id TEXT PRIMARY KEY,
+      publisher_order INTEGER NOT NULL,
+      channel_created_at_order INTEGER NOT NULL,
+      playlist_created_at_order INTEGER NOT NULL
+    ) WITHOUT ROWID;`,
+    `INSERT INTO item_order_cache
+      SELECT
+        pe.item_id,
+        MIN(COALESCE(c.publisher_id, 2147483647)),
+        MIN(COALESCE(c.created_at_us, 9223372036854775807)),
+        MIN(COALESCE(p.created_at_us, 9223372036854775807))
+      FROM playlist_entries pe
+      JOIN playlists p ON p.id = pe.playlist_id
+      LEFT JOIN channels c ON c.id = p.channel_id
+      GROUP BY pe.item_id;`,
+    `CREATE INDEX idx_item_order_cache_lookup
+      ON item_order_cache(
+        publisher_order,
+        channel_created_at_order,
+        playlist_created_at_order,
+        item_id
+      );`,
+  ];
+}
+
+function buildPlaylistsPubDenormStatements() {
+  return [
+    'ALTER TABLE playlists ADD COLUMN publisher_order INTEGER NOT NULL DEFAULT 2147483647;',
+    'UPDATE playlists SET publisher_order = COALESCE((SELECT publisher_id FROM channels WHERE id = playlists.channel_id), 2147483647);',
+    'CREATE INDEX idx_playlists_type_puborder_created ON playlists(type, publisher_order ASC, created_at_us ASC, id ASC);',
+  ];
+}
+
+// A compact rowid table for items with only list-view columns, inserted in
+// item_order_cache rank order so first-page items are physically co-located.
+// Excludes token_data_json (avg 7.2KB), repro_json, override_json, display_json.
+// Must be built AFTER item_order_cache is populated.
+function buildItemsHeadStatements() {
+  return [
+    `CREATE TABLE items_head (
+      id TEXT NOT NULL PRIMARY KEY,
+      kind TEXT NOT NULL,
+      title TEXT,
+      subtitle TEXT,
+      thumbnail_uri TEXT,
+      duration_sec INTEGER,
+      provenance_json TEXT,
+      source_uri TEXT,
+      ref_uri TEXT,
+      license TEXT,
+      list_artist_json TEXT,
+      enrichment_status INTEGER,
+      updated_at_us INTEGER NOT NULL
+    );`,
+
+    // Insert in item_order_cache rank order so first-page items land on
+    // contiguous pages, improving locality for IN-list page-one fetches.
+    `INSERT INTO items_head
+      SELECT i.id, i.kind, i.title, i.subtitle, i.thumbnail_uri,
+             i.duration_sec, i.provenance_json, i.source_uri, i.ref_uri,
+             i.license, i.list_artist_json, i.enrichment_status, i.updated_at_us
+      FROM item_order_cache c
+      JOIN items i ON i.id = c.item_id
+      ORDER BY c.publisher_order, c.channel_created_at_order,
+               c.playlist_created_at_order, c.item_id;`,
+  ];
+}
+
+// A compact WITHOUT ROWID precomputed list-cache for playlists containing
+// only the columns needed for the list-view query, clustered by sort order.
+// Removes signatures_json, defaults_json, dynamic_queries_json, base_url,
+// dp_version, owner_address, owner_chain, updated_at_us — not needed for list.
+function buildPlaylistsListCacheStatements() {
+  return [
+    `CREATE TABLE playlists_list_cache (
+      type INTEGER NOT NULL,
+      publisher_order INTEGER NOT NULL DEFAULT 2147483647,
+      created_at_us INTEGER NOT NULL,
+      id TEXT NOT NULL,
+      channel_id TEXT,
+      slug TEXT,
+      title TEXT NOT NULL,
+      sort_mode INTEGER NOT NULL,
+      item_count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (type, publisher_order, created_at_us, id)
+    ) WITHOUT ROWID;`,
+
+    `INSERT INTO playlists_list_cache
+      SELECT
+        p.type,
+        COALESCE(c.publisher_id, 2147483647),
+        p.created_at_us,
+        p.id, p.channel_id, p.slug, p.title, p.sort_mode, p.item_count
+      FROM playlists p
+      LEFT JOIN channels c ON c.id = p.channel_id;`,
+  ];
+}
+
+// Converts the playlists table to a WITHOUT ROWID table clustered by the
+// primary list-query sort key (type, publisher_order, created_at_us, id).
+// This turns the playlists.dp1.all scan into a sequential B-tree traversal
+// instead of a secondary-index + random-rowid-lookup pattern.
+function buildPlaylistsClusteredStatements() {
+  return [
+    `CREATE TABLE playlists_new (
+      type INTEGER NOT NULL,
+      publisher_order INTEGER NOT NULL DEFAULT 2147483647,
+      created_at_us INTEGER NOT NULL,
+      id TEXT NOT NULL,
+      channel_id TEXT,
+      base_url TEXT,
+      dp_version TEXT,
+      slug TEXT,
+      title TEXT NOT NULL,
+      updated_at_us INTEGER NOT NULL,
+      signatures_json TEXT NOT NULL,
+      defaults_json TEXT,
+      dynamic_queries_json TEXT,
+      owner_address TEXT,
+      owner_chain TEXT,
+      sort_mode INTEGER NOT NULL,
+      item_count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (type, publisher_order, created_at_us, id)
+    ) WITHOUT ROWID;`,
+
+    `INSERT INTO playlists_new
+      SELECT
+        p.type,
+        COALESCE(c.publisher_id, 2147483647),
+        p.created_at_us,
+        p.id, p.channel_id, p.base_url, p.dp_version, p.slug, p.title,
+        p.updated_at_us, p.signatures_json, p.defaults_json,
+        p.dynamic_queries_json, p.owner_address, p.owner_chain,
+        p.sort_mode, p.item_count
+      FROM playlists p
+      LEFT JOIN channels c ON c.id = p.channel_id;`,
+
+    // Secondary index for id-based lookups (playlist.detail, JOIN from playlist_entries).
+    'CREATE UNIQUE INDEX idx_playlists_id ON playlists_new(id);',
+
+    'DROP TRIGGER IF EXISTS playlists_ai;',
+    'DROP TRIGGER IF EXISTS playlists_ad;',
+    'DROP TRIGGER IF EXISTS playlists_au;',
+
+    'DROP TABLE playlists;',
+    'ALTER TABLE playlists_new RENAME TO playlists;',
+
+    `CREATE TRIGGER playlists_ai AFTER INSERT ON playlists BEGIN
+      INSERT INTO playlists_fts(id, title) VALUES (new.id, new.title);
+    END;`,
+    `CREATE TRIGGER playlists_ad AFTER DELETE ON playlists BEGIN
+      DELETE FROM playlists_fts WHERE id = old.id;
+    END;`,
+    `CREATE TRIGGER playlists_au AFTER UPDATE ON playlists BEGIN
+      DELETE FROM playlists_fts WHERE id = old.id;
+      INSERT INTO playlists_fts(id, title) VALUES (new.id, new.title);
+    END;`,
+  ];
+}
+
 function buildCandidates() {
   return [
     {
@@ -204,6 +367,211 @@ function buildCandidates() {
           "INSERT INTO playlists_fts(playlists_fts) VALUES('optimize');",
           "INSERT INTO items_fts(items_fts) VALUES('optimize');",
           "INSERT INTO item_artists_fts(item_artists_fts) VALUES('optimize');",
+        ]);
+      },
+    },
+    {
+      name: 'item_order_cache',
+      backend: 'sqlite',
+      notes:
+        'Materialize works ordering into a compact WITHOUT ROWID cache table with a covering sort index. '
+        + 'Benchmark uses the cache for _getItemIds, eliminating the GROUP BY CTE over playlist_entries.',
+      mutate(dbPath) {
+        runSql(dbPath, [
+          ...buildItemOrderCacheStatements(),
+          'ANALYZE;',
+        ]);
+      },
+    },
+    {
+      name: 'playlists_pub_denorm',
+      backend: 'sqlite',
+      notes:
+        'Denormalize publisher_order into the playlists table to eliminate the channels JOIN in playlists.dp1.all. '
+        + 'Benchmark uses the new column with a covering index on (type, publisher_order, created_at_us, id).',
+      mutate(dbPath) {
+        runSql(dbPath, [
+          ...buildPlaylistsPubDenormStatements(),
+          'ANALYZE;',
+          'PRAGMA optimize;',
+        ]);
+      },
+    },
+    {
+      name: 'full_order_caches',
+      backend: 'sqlite',
+      notes:
+        'Combine item_order_cache and playlists publisher_order denormalization, then VACUUM. '
+        + 'Targets both remaining hotspots: playlists.dp1.all JOIN and works.ids CTE.',
+      mutate(dbPath) {
+        runSql(dbPath, [
+          ...buildItemOrderCacheStatements(),
+          ...buildPlaylistsPubDenormStatements(),
+          'ANALYZE;',
+          'PRAGMA optimize;',
+          'VACUUM;',
+        ]);
+      },
+    },
+    {
+      name: 'schema_compact',
+      backend: 'sqlite',
+      notes:
+        'Drop 100%-null columns (repro_json, override_json) from items plus VACUUM. '
+        + 'Reduces row size to improve IN-list item fetch throughput.',
+      mutate(dbPath) {
+        runSql(dbPath, [
+          'ALTER TABLE items DROP COLUMN repro_json;',
+          'ALTER TABLE items DROP COLUMN override_json;',
+          'VACUUM;',
+          'ANALYZE;',
+        ]);
+      },
+    },
+    {
+      name: 'full_optimized',
+      backend: 'sqlite',
+      notes:
+        'All optimizations combined: item_order_cache + playlists publisher_order denorm + drop null columns + VACUUM.',
+      mutate(dbPath) {
+        runSql(dbPath, [
+          ...buildItemOrderCacheStatements(),
+          ...buildPlaylistsPubDenormStatements(),
+          'ALTER TABLE items DROP COLUMN repro_json;',
+          'ALTER TABLE items DROP COLUMN override_json;',
+          'ANALYZE;',
+          'PRAGMA optimize;',
+          'VACUUM;',
+        ]);
+      },
+    },
+    {
+      name: 'full_optimized_page16k',
+      backend: 'sqlite',
+      notes:
+        'full_optimized plus 16KB page size. Larger pages reduce random I/O for the playlists.dp1.all sequential scan, '
+        + 'now that the works CTE bottleneck is eliminated.',
+      mutate(dbPath) {
+        runSql(dbPath, [
+          ...buildItemOrderCacheStatements(),
+          ...buildPlaylistsPubDenormStatements(),
+          'ALTER TABLE items DROP COLUMN repro_json;',
+          'ALTER TABLE items DROP COLUMN override_json;',
+          'ANALYZE;',
+          'PRAGMA optimize;',
+          'PRAGMA page_size = 16384;',
+          'VACUUM;',
+        ]);
+      },
+    },
+    {
+      name: 'playlists_clustered',
+      backend: 'sqlite',
+      notes:
+        'Convert playlists to a WITHOUT ROWID table clustered by (type, publisher_order, created_at_us, id). '
+        + 'Turns playlists.dp1.all into a sequential B-tree traversal with no secondary rowid lookups. '
+        + 'Combined with item_order_cache and schema_compact.',
+      mutate(dbPath) {
+        runSql(dbPath, [
+          ...buildItemOrderCacheStatements(),
+          ...buildPlaylistsClusteredStatements(),
+          'ALTER TABLE items DROP COLUMN repro_json;',
+          'ALTER TABLE items DROP COLUMN override_json;',
+          'ANALYZE;',
+          'PRAGMA optimize;',
+          'VACUUM;',
+        ]);
+      },
+    },
+    {
+      name: 'playlists_clustered_page16k',
+      backend: 'sqlite',
+      notes:
+        'playlists_clustered plus 16KB pages. The sequential clustered scan for 152KB of playlists data '
+        + 'reads ~10 pages at 16KB vs ~38 pages at 4KB, reducing I/O for playlists.dp1.all.',
+      mutate(dbPath) {
+        runSql(dbPath, [
+          ...buildItemOrderCacheStatements(),
+          ...buildPlaylistsClusteredStatements(),
+          'ALTER TABLE items DROP COLUMN repro_json;',
+          'ALTER TABLE items DROP COLUMN override_json;',
+          'PRAGMA page_size = 16384;',
+          'ANALYZE;',
+          'PRAGMA optimize;',
+          'VACUUM;',
+        ]);
+      },
+    },
+    {
+      name: 'playlists_list_cache',
+      backend: 'sqlite',
+      notes:
+        'Precompute a compact playlists_list_cache WITHOUT ROWID table (~124 bytes/row vs ~312 bytes) '
+        + 'with only list-view columns, clustered by sort order. Combined with item_order_cache.',
+      mutate(dbPath) {
+        runSql(dbPath, [
+          ...buildItemOrderCacheStatements(),
+          ...buildPlaylistsListCacheStatements(),
+          'ALTER TABLE items DROP COLUMN repro_json;',
+          'ALTER TABLE items DROP COLUMN override_json;',
+          'ANALYZE;',
+          'PRAGMA optimize;',
+          'VACUUM;',
+        ]);
+      },
+    },
+    {
+      name: 'items_head_split',
+      backend: 'sqlite',
+      notes:
+        'items_head rowid table ordered by access rank + playlists_list_cache. '
+        + 'Works.page1 fetches from items_head (~304 bytes/row), playlists.dp1.all uses compact list cache.',
+      mutate(dbPath) {
+        runSql(dbPath, [
+          ...buildItemOrderCacheStatements(),
+          ...buildPlaylistsListCacheStatements(),
+          ...buildItemsHeadStatements(),
+          'ANALYZE;',
+          'PRAGMA optimize;',
+          'VACUUM;',
+        ]);
+      },
+    },
+    {
+      name: 'items_head_clustered_playlists',
+      backend: 'sqlite',
+      notes:
+        'items_head (ordered by access rank) + playlists_clustered (WITHOUT ROWID, full columns). '
+        + 'Tests if clustered playlists outperforms the slim list cache for playlists.dp1.all.',
+      mutate(dbPath) {
+        runSql(dbPath, [
+          ...buildItemOrderCacheStatements(),
+          ...buildPlaylistsClusteredStatements(),
+          ...buildItemsHeadStatements(),
+          'ALTER TABLE items DROP COLUMN repro_json;',
+          'ALTER TABLE items DROP COLUMN override_json;',
+          'ANALYZE;',
+          'PRAGMA optimize;',
+          'VACUUM;',
+        ]);
+      },
+    },
+    {
+      name: 'all_caches',
+      backend: 'sqlite',
+      notes:
+        'items_head (ordered) + playlists_list_cache + item_order_cache + drop 100%-null item columns + VACUUM. '
+        + 'Combines all validated optimizations into a single candidate.',
+      mutate(dbPath) {
+        runSql(dbPath, [
+          ...buildItemOrderCacheStatements(),
+          ...buildPlaylistsListCacheStatements(),
+          ...buildItemsHeadStatements(),
+          'ALTER TABLE items DROP COLUMN repro_json;',
+          'ALTER TABLE items DROP COLUMN override_json;',
+          'ANALYZE;',
+          'PRAGMA optimize;',
+          'VACUUM;',
         ]);
       },
     },

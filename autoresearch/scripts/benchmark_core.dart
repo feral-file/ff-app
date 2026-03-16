@@ -48,8 +48,8 @@ Map<String, Object?> summarizeBenchmark({
 Map<String, Object?> measureScenario(
   String name,
   ScenarioRunner action, {
-  int warmupRuns = 2,
-  int measuredRuns = 10,
+  int warmupRuns = 3,
+  int measuredRuns = 30,
 }) {
   for (var index = 0; index < warmupRuns; index += 1) {
     action();

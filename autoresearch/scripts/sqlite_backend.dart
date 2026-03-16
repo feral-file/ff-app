@@ -14,6 +14,15 @@ class SqliteBenchmarkBackend {
   String get backendName => 'sqlite';
 
   List<BenchmarkScenario> buildScenarios() {
+    // Detect optional schema enhancements once, before building scenarios.
+    final hasItemOrderCache = _tableExists('item_order_cache');
+    final hasPlaylistPubOrder = _columnExists('playlists', 'publisher_order');
+    // playlists_list_cache: compact WITHOUT ROWID table with only list-view
+    // columns, clustered by (type, publisher_order, created_at_us, id).
+    final hasPlaylistListCache = _tableExists('playlists_list_cache');
+    // items_head: WITHOUT ROWID table with only list-view columns (no token_data_json).
+    final hasItemsHead = _tableExists('items_head');
+
     final channels = db.select(
       '''
       SELECT id, title
@@ -27,24 +36,44 @@ class SqliteBenchmarkBackend {
       LIMIT 20
       ''',
     );
-    final playlists = db.select(
-      '''
-      SELECT id, title, sort_mode
-      FROM playlists
-      WHERE type = 0
-      ORDER BY
-        COALESCE(
-          (
-            SELECT c.publisher_id
-            FROM channels c
-            WHERE c.id = playlists.channel_id
-          ),
-          2147483647
-        ) ASC,
-        created_at_us ASC
-      ''',
-    );
-    final works = _getItems(limit: 100, offset: 0);
+    // Prefer list cache > denormalized column > original JOIN, in order of
+    // schema capability.
+    final playlists = hasPlaylistListCache
+        ? db.select(
+            '''
+            SELECT id, title, sort_mode
+            FROM playlists_list_cache
+            WHERE type = 0
+            ORDER BY publisher_order ASC, created_at_us ASC
+            ''',
+          )
+        : hasPlaylistPubOrder
+            ? db.select(
+                '''
+                SELECT id, title, sort_mode
+                FROM playlists
+                WHERE type = 0
+                ORDER BY publisher_order ASC, created_at_us ASC
+                ''',
+              )
+            : db.select(
+                '''
+                SELECT id, title, sort_mode
+                FROM playlists
+                WHERE type = 0
+                ORDER BY
+                  COALESCE(
+                    (
+                      SELECT c.publisher_id
+                      FROM channels c
+                      WHERE c.id = playlists.channel_id
+                    ),
+                    2147483647
+                  ) ASC,
+                  created_at_us ASC
+                ''',
+              );
+    final works = _getItems(limit: 100, offset: 0, hasItemOrderCache: hasItemOrderCache, hasItemsHead: hasItemsHead);
 
     if (channels.isEmpty || playlists.isEmpty || works.isEmpty) {
       throw StateError(
@@ -105,15 +134,35 @@ class SqliteBenchmarkBackend {
       ),
       BenchmarkScenario(
         name: 'playlists.dp1.all',
-        runner: () => db.select(
-          '''
-          SELECT p.*
-          FROM playlists p
-          LEFT JOIN channels c ON c.id = p.channel_id
-          WHERE p.type = 0
-          ORDER BY COALESCE(c.publisher_id, 2147483647) ASC, p.created_at_us ASC
-          ''',
-        ),
+        // Prefer the compact list cache over the full playlists table when available.
+        // Falls back to denormalized publisher_order column, then the original JOIN.
+        runner: hasPlaylistListCache
+            ? () => db.select(
+                  '''
+                  SELECT *
+                  FROM playlists_list_cache
+                  WHERE type = 0
+                  ORDER BY publisher_order ASC, created_at_us ASC
+                  ''',
+                )
+            : hasPlaylistPubOrder
+                ? () => db.select(
+                      '''
+                      SELECT *
+                      FROM playlists
+                      WHERE type = 0
+                      ORDER BY publisher_order ASC, created_at_us ASC
+                      ''',
+                    )
+                : () => db.select(
+                      '''
+                      SELECT p.*
+                      FROM playlists p
+                      LEFT JOIN channels c ON c.id = p.channel_id
+                      WHERE p.type = 0
+                      ORDER BY COALESCE(c.publisher_id, 2147483647) ASC, p.created_at_us ASC
+                      ''',
+                    ),
       ),
       BenchmarkScenario(
         name: 'channel.detail',
@@ -159,11 +208,16 @@ class SqliteBenchmarkBackend {
       ),
       BenchmarkScenario(
         name: 'works.page1',
-        runner: () => _getItems(limit: 51, offset: 0),
+        runner: () => _getItems(
+          limit: 51,
+          offset: 0,
+          hasItemOrderCache: hasItemOrderCache,
+          hasItemsHead: hasItemsHead,
+        ),
       ),
       BenchmarkScenario(
         name: 'works.ids.page1',
-        runner: () => _getItemIds(limit: 51, offset: 0),
+        runner: () => _getItemIds(limit: 51, offset: 0, hasItemOrderCache: hasItemOrderCache),
       ),
       BenchmarkScenario(
         name: 'work.detail',
@@ -213,6 +267,22 @@ class SqliteBenchmarkBackend {
 
   void dispose() {
     db.dispose();
+  }
+
+  bool _tableExists(String tableName) {
+    final result = db.select(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+      [tableName],
+    );
+    return result.isNotEmpty;
+  }
+
+  bool _columnExists(String tableName, String columnName) {
+    final result = db.select(
+      "SELECT COUNT(*) AS c FROM pragma_table_info(?) WHERE name=?",
+      [tableName, columnName],
+    );
+    return (result.first['c'] as int) > 0;
   }
 
   ResultSet _getPlaylistItemsByPosition({
@@ -287,14 +357,19 @@ class SqliteBenchmarkBackend {
   List<Row> _getItems({
     required int limit,
     required int offset,
+    required bool hasItemOrderCache,
+    required bool hasItemsHead,
   }) {
-    final ids = _getItemIds(limit: limit, offset: offset);
+    final ids = _getItemIds(limit: limit, offset: offset, hasItemOrderCache: hasItemOrderCache);
     if (ids.isEmpty) {
       return const [];
     }
     final placeholders = List.filled(ids.length, '?').join(',');
+    // Use the slim head table when available — avoids loading token_data_json
+    // (avg 7.2KB) for every item in list-view queries.
+    final table = hasItemsHead ? 'items_head' : 'items';
     final rows = db.select(
-      'SELECT * FROM items WHERE id IN ($placeholders)',
+      'SELECT * FROM $table WHERE id IN ($placeholders)',
       ids,
     );
     final byId = <String, Row>{
@@ -306,7 +381,27 @@ class SqliteBenchmarkBackend {
   List<String> _getItemIds({
     required int limit,
     required int offset,
+    required bool hasItemOrderCache,
   }) {
+    // Use precomputed order cache when available — avoids the expensive
+    // GROUP BY CTE across playlist_entries, playlists, and channels.
+    if (hasItemOrderCache) {
+      final rows = db.select(
+        '''
+        SELECT item_id AS id
+        FROM item_order_cache
+        ORDER BY
+          publisher_order ASC,
+          channel_created_at_order ASC,
+          playlist_created_at_order ASC,
+          item_id ASC
+        LIMIT ? OFFSET ?
+        ''',
+        [limit, offset],
+      );
+      return rows.map((row) => row['id'] as String).toList(growable: false);
+    }
+
     final rows = db.select(
       '''
       WITH item_rank AS (
