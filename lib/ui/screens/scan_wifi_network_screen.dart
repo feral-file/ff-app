@@ -234,14 +234,21 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
         GestureDetector(
           onTap: () async {
             ref.read(connectWiFiProvider.notifier).selectNetwork(network);
-            final connected = await ref.read(
-              connectedBlDeviceForNameProvider(widget.payload.device.name).future,
-            );
-            final deviceToPass = connected != null
-                ? widget.payload.device.copyWith(
-                    remoteId: connected.remoteId.str,
-                  )
-                : widget.payload.device;
+            FF1Device deviceToPass;
+            if (widget.payload.device.remoteId.isEmpty) {
+              final connected = await ref.read(
+                connectedBlDeviceForNameProvider(
+                  widget.payload.device.name,
+                ).future,
+              );
+              deviceToPass = connected != null
+                  ? widget.payload.device.copyWith(
+                      remoteId: connected.remoteId.str,
+                    )
+                  : widget.payload.device;
+            } else {
+              deviceToPass = widget.payload.device;
+            }
             if (!context.mounted) return;
             unawaited(
               context.push(
@@ -364,16 +371,21 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                   // Create a WiFiNetwork for the manually entered SSID
                   final network = WiFiNetwork(ssid);
                   ref.read(connectWiFiProvider.notifier).selectNetwork(network);
-                  final connected = await ref.read(
-                    connectedBlDeviceForNameProvider(
-                      widget.payload.device.name,
-                    ).future,
-                  );
-                  final deviceToPass = connected != null
-                      ? widget.payload.device.copyWith(
-                          remoteId: connected.remoteId.str,
-                        )
-                      : widget.payload.device;
+                  FF1Device deviceToPass;
+                  if (widget.payload.device.remoteId.isEmpty) {
+                    final connected = await ref.read(
+                      connectedBlDeviceForNameProvider(
+                        widget.payload.device.name,
+                      ).future,
+                    );
+                    deviceToPass = connected != null
+                        ? widget.payload.device.copyWith(
+                            remoteId: connected.remoteId.str,
+                          )
+                        : widget.payload.device;
+                  } else {
+                    deviceToPass = widget.payload.device;
+                  }
                   if (!context.mounted) return;
                   unawaited(
                     context.push(
