@@ -30,7 +30,13 @@ This file defines repository-level constraints for coding agents. Detailed imple
 - Specs and flow docs:
   - `docs/project_spec.md`
   - `docs/app_flows.md`
+  - `docs/vision_execution_gap.md`
   - `docs/ui_rhythm_contract.md`
+
+## Spec hierarchy
+- `docs/project_spec.md` is the canonical product contract.
+- `docs/app_flows.md` is the execution-level mapping of that contract.
+- `docs/vision_execution_gap.md` tracks known gaps and refactor follow-ups.
 
 ## Non-negotiables
 - Prefer replacing or deleting flawed code paths over narrow local tweaks when solving an issue. If a broader rewrite produces a clearer design, choose it.
