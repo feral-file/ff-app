@@ -464,7 +464,8 @@ class FF1BleTransport {
           rethrow;
         }
 
-        if (e is FF1DisconnectedError ||
+        if (e is FF1ConnectionCancelledError ||
+            e is FF1DisconnectedError ||
             (e is FlutterBluePlusException && e.code == 6)) {
           rethrow;
         }

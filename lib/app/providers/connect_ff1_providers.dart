@@ -256,9 +256,10 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         return await control.getInfo(blDevice: blDevice);
       } on Exception catch (e) {
         lastError = e;
-        final shouldRetry = e.toString().contains(
-          'Command characteristic not found',
-        );
+        final shouldRetry =
+            e is TimeoutException ||
+            e.toString().contains('BLE characteristic readiness timeout') ||
+            e.toString().contains('Command characteristic not found');
         if (!shouldRetry) {
           rethrow;
         }
