@@ -90,7 +90,7 @@ class ConnectFF1Page extends ConsumerStatefulWidget {
 
 class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   DateTime? _startTime;
-  late final ConnectFF1Notifier _connectFF1Notifier;
+  late final ConnectFF1Notifier? _connectFF1Notifier;
 
   @override
   void initState() {
@@ -100,13 +100,14 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     // Start connection flow using the provider
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _connectFF1Notifier = await ref.read(connectFF1Provider.notifier);
+      if (!mounted) return;
       final fallbackDevice =
           widget.payload.device ?? BluetoothDevice.fromId('');
       final ff1DeviceInfo = widget.payload.deeplink == null
           ? null
           : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
       unawaited(
-        _connectFF1Notifier.connectBle(
+        _connectFF1Notifier?.connectBle(
           fallbackDevice,
           ff1DeviceInfo: ff1DeviceInfo,
         ),
@@ -117,7 +118,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   @override
   void dispose() {
     // Cancel connection if still in progress
-    _connectFF1Notifier.cancelConnection();
+    _connectFF1Notifier?.cancelConnection();
     super.dispose();
   }
 
@@ -147,7 +148,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     final ff1DeviceInfo = widget.payload.deeplink == null
         ? null
         : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
-    await _connectFF1Notifier.connectBle(
+    await _connectFF1Notifier?.connectBle(
       fallbackDevice,
       ff1DeviceInfo: ff1DeviceInfo,
     );
@@ -175,7 +176,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
   Future<void> _onCancel() async {
     _log.info('[ConnectFF1Page] Cancel pressed, cancelling connection');
-    _connectFF1Notifier.cancelConnection();
+    _connectFF1Notifier?.cancelConnection();
     try {
       await widget.payload.device?.disconnect();
     } on Exception catch (e) {
@@ -497,7 +498,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
       case _ConnectFF1Status.stillConnecting:
         return 'We’re still trying to reach your FF1 over Bluetooth.\nIf this takes more than 15 seconds, you can cancel and try again.';
       case _ConnectFF1Status.bluetoothOff:
-        return 'Turn on Bluetooth to connect to FF1. Once enabled, the connection will start automatically.';
+        return 'Turn on Bluetooth to connect to FF1.';
       case _ConnectFF1Status.error:
         return 'A few things to check:\n• Make sure your FF1 is powered on.\n• Keep your phone close to the device.\n• Check that Bluetooth is turned on.';
       case _ConnectFF1Status.success:
