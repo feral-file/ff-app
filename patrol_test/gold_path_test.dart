@@ -45,17 +45,48 @@ void main() {
 
 Future<void> _completeOnboardingIfNeeded(PatrolIntegrationTester $) async {
   if ($('Explore digital art playlists').exists) {
-    await $('Next').tap();
+    await _tapOnboardingAction($, label: 'Next');
   }
 
   if ($('See the art you already own').exists) {
     await _submitPersonalAddressInOnboarding($, _personalAddressName);
-    await $('Next').tap();
+    await _tapOnboardingAction($, label: 'Next');
   }
 
   if ($('Add FF1 to your screens').exists) {
-    await $('Finish').tap();
+    await _tapOnboardingAction($, label: 'Finish');
   }
+}
+
+Future<void> _tapOnboardingAction(
+  PatrolIntegrationTester $, {
+  required String label,
+}) async {
+  final textFinder = find.text(label);
+  final action = $(textFinder);
+  final deadline = DateTime.now().add(const Duration(seconds: 20));
+
+  while (DateTime.now().isBefore(deadline)) {
+    await action.waitUntilExists(timeout: const Duration(seconds: 2));
+
+    try {
+      await $.tester.ensureVisible(textFinder.first);
+      await $.pump(const Duration(milliseconds: 200));
+    } on Exception {
+      // Keep retrying while screen is stabilizing.
+    }
+
+    if (await _tryTapVisible($, action)) {
+      return;
+    }
+
+    await $.pump(const Duration(milliseconds: 300));
+  }
+
+  throw TimeoutException(
+    'Timed out tapping onboarding action "$label" after waiting for '
+    'a hit-testable target.',
+  );
 }
 
 Future<void> _submitPersonalAddressInOnboarding(
