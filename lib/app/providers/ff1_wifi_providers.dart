@@ -200,6 +200,14 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
     }
   }
 
+  /// Pause connection when app goes to background.
+  ///
+  /// Closes WebSocket but preserves [state.device] for [reconnect] on resume.
+  void pauseConnection() {
+    _control.pauseConnection();
+    state = state.copyWith(isConnected: false);
+  }
+
   /// Reconnect to device (using cached params)
   ///
   /// Does not set [isConnecting]; "Connecting" status is shown only for
@@ -346,7 +354,6 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
               'Active device changed: ${device.toJson()}, connecting...',
             );
             // Intentionally not awaiting to avoid blocking
-            // ignore: discarded_futures
             await connectionNotifier.connect(
               device: device,
               userId: 'user_id',
@@ -365,7 +372,6 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
           } else {
             logger.info('No active device, disconnecting...');
             // Intentionally not awaiting to avoid blocking
-            // ignore: discarded_futures
             connectionNotifier.disconnect();
           }
         }),

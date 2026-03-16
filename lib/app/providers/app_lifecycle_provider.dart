@@ -54,6 +54,8 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
       coordinator.pauseSyncCollectionPolling();
+      // Pause relayer WebSocket to free resources; reconnect on resume.
+      ref.read(ff1WifiConnectionProvider.notifier).pauseConnection();
     }
   }
 }

@@ -28,13 +28,24 @@ abstract class FF1WifiTransport {
   /// [device] - FF1 device with topicId
   /// [userId] - user identifier for authentication
   /// [apiKey] - API key for authentication
+  /// [forceReconnect] - when true, bypass "already connected" check; use for
+  ///   app resume when connection may be stale (Timer-based reconnect does
+  ///   not fire while app is suspended)
   ///
   /// Throws: [FF1WifiTransportError] if connection fails
   Future<void> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
+    bool forceReconnect = false,
   });
+
+  /// Pause connection when app goes to background.
+  ///
+  /// Closes the WebSocket channel but preserves connection params for
+  /// [connect] on app resume. Does not schedule Timer-based reconnect.
+  /// Default no-op for transports that do not need lifecycle pause.
+  void pauseConnection() {}
 
   /// Disconnect from device (close transport connection)
   Future<void> disconnect();

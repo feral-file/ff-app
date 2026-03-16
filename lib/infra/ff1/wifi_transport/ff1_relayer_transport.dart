@@ -75,6 +75,10 @@ class FF1RelayerTransport implements FF1WifiTransport {
   String? _userId;
   String? _apiKey;
 
+  // When true, disconnected event does not schedule Timer-based reconnect
+  // (used for app background pause; reconnect happens on app resume)
+  bool _pausedForBackground = false;
+
   @override
   bool get isConnected => _isConnected;
 
@@ -102,6 +106,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
     required FF1Device device,
     required String userId,
     required String apiKey,
+    bool forceReconnect = false,
   }) async {
     // Validate topicId
     if (device.topicId.isEmpty) {
@@ -110,8 +115,14 @@ class FF1RelayerTransport implements FF1WifiTransport {
       );
     }
 
-    // Already connected to same device
-    if (_isConnected &&
+    // Clear paused state when reconnecting (e.g. on app resume)
+    if (forceReconnect) {
+      _pausedForBackground = false;
+    }
+
+    // Already connected to same device (skip when forceReconnect - may be stale)
+    if (!forceReconnect &&
+        _isConnected &&
         _device?.topicId == device.topicId &&
         _userId == userId) {
       _log.fine('Already connected to ${device.deviceId}');
@@ -226,6 +237,28 @@ class FF1RelayerTransport implements FF1WifiTransport {
   }
 
   @override
+  void pauseConnection() {
+    if (!_isConnected && !_isConnecting) {
+      return;
+    }
+
+    _log.info('Pausing relayer connection (app background)');
+
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _pausedForBackground = true;
+
+    // Send disconnect control to isolate (closes WebSocket channel)
+    const control = _RelayerControlMessage(
+      type: _RelayerControlType.disconnect,
+    );
+    _isolateSendPort?.send(control.toJson());
+
+    _isConnected = false;
+    _connectionStateController.add(false);
+  }
+
+  @override
   void dispose() {
     unawaited(disconnect());
     unawaited(_notificationController.close());
@@ -265,7 +298,9 @@ class FF1RelayerTransport implements FF1WifiTransport {
         _isConnected = false;
         _connectionStateController.add(false);
         _log.warning('Disconnected from relayer');
-        _scheduleReconnect();
+        if (!_pausedForBackground) {
+          _scheduleReconnect();
+        }
 
       case _RelayerEventType.error:
         final errorMsg = event.data?['error'] as String? ?? 'Unknown error';
