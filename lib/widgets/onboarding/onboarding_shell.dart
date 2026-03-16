@@ -61,39 +61,30 @@ class OnboardingShell extends StatelessWidget {
       padding: EdgeInsets.symmetric(
         horizontal: LayoutConstants.setupPageHorizontal,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(
-                    height: 206.94,
-                  ),
-                  Container(
-                    constraints: const BoxConstraints(
-                      minHeight: 245.06,
-                    ),
-                    child: content,
-                  ),
-                ],
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 206.94),
+            Container(
+              constraints: const BoxConstraints(
+                minHeight: 245.06,
               ),
+              child: content,
             ),
-          ),
-          SizedBox(height: LayoutConstants.space2),
-          _buildButtonsRow(context),
-          if (hintText != null) ...[
-            SizedBox(height: LayoutConstants.space5),
-            Text(
-              hintText!,
-              style: AppTypography.body(context).copyWith(
-                color: PrimitivesTokens.colorsGrey,
+            SizedBox(height: LayoutConstants.space2),
+            _buildButtonsRow(context),
+            if (hintText != null) ...[
+              SizedBox(height: LayoutConstants.space5),
+              Text(
+                hintText!,
+                style: AppTypography.body(context).copyWith(
+                  color: PrimitivesTokens.colorsGrey,
+                ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -123,7 +114,7 @@ class OnboardingShell extends StatelessWidget {
     // Use a stacked layout on narrow widths to avoid button overflow.
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 340) {
+        if (constraints.maxWidth < 245) {
           return Column(
             children: [
               SizedBox(
