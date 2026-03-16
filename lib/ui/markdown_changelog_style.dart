@@ -14,12 +14,12 @@ MarkdownStyleSheet markdownDocsStyle(BuildContext context) {
   final textColor = isDarkMode
       ? const Color(0xFFFFFFFF)
       : const Color(0xFF000000);
-  final linkColor = const Color(0xFF007AFF);
+  const linkColor = Color(0xFF007AFF);
   final bodyText2 = AppTypography.body(
     context,
   ).black.copyWith(color: textColor);
   return MarkdownStyleSheet(
-    a: TextStyle(
+    a: const TextStyle(
       color: linkColor,
       fontWeight: FontWeight.w500,
       decoration: TextDecoration.underline,

@@ -76,7 +76,7 @@ String decodeBasicHtmlEntities(String input) {
     output = output.replaceAll(entry.key, entry.value);
   }
 
-  output = output.replaceAllMapped(RegExp(r'&#(x?[0-9A-Fa-f]+);'), (match) {
+  output = output.replaceAllMapped(RegExp('&#(x?[0-9A-Fa-f]+);'), (match) {
     final raw = match.group(1);
     if (raw == null || raw.isEmpty) {
       return match.group(0) ?? '';
@@ -87,7 +87,7 @@ String decodeBasicHtmlEntities(String input) {
         ? int.tryParse(raw.substring(1), radix: 16)
         : int.tryParse(raw);
 
-    if (value == null) {
+    if (value == null || value < 0 || value > 0x10FFFF) {
       return match.group(0) ?? '';
     }
 

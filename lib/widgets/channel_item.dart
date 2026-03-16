@@ -44,10 +44,11 @@ class ChannelHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rawSummary = channelSummary;
     final decodedTitle = decodeBasicHtmlEntities(channelTitle);
-    final decodedSummary = channelSummary == null
+    final decodedSummary = rawSummary == null
         ? null
-        : decodeBasicHtmlEntities(channelSummary!);
+        : decodeBasicHtmlEntities(rawSummary);
 
     return GestureDetector(
       onTap: () {
@@ -74,12 +75,12 @@ class ChannelHeader extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (decodedSummary != null && decodedSummary.isNotEmpty) ...[
+                  if (rawSummary != null && rawSummary.isNotEmpty) ...[
                     SizedBox(height: ContentRhythm.titleSupportGap),
                     if (renderSummaryAsHtml)
                       SelectionArea(
                         child: HtmlWidget(
-                          prepareHtmlForRender(decodedSummary),
+                          prepareHtmlForRender(rawSummary),
                           textStyle: ContentRhythm.longForm(context),
                           onTapUrl: (url) async {
                             await launchUrl(
@@ -106,7 +107,7 @@ class ChannelHeader extends StatelessWidget {
                       )
                     else
                       Text(
-                        decodedSummary,
+                        decodedSummary!,
                         maxLines: maxLines,
                         overflow: maxLines != null
                             ? TextOverflow.ellipsis
