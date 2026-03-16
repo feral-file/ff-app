@@ -121,7 +121,7 @@ class OnboardingShell extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 340) {
+        if (constraints.maxWidth < 245) {
           return Column(
             children: [
               SizedBox(width: double.infinity, child: primary),

@@ -179,6 +179,15 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         }
         _log.info('Found device via scan: ${found.remoteId}');
         blDevice = found;
+
+        // If device already has topicId, persist remoteId to DB immediately
+        if (device.topicId.isNotEmpty) {
+          final updated = device.copyWith(remoteId: found.remoteId.str);
+          await ref.read(addFF1BluetoothDeviceProvider(updated).future);
+          _log.info(
+            'Persisted resolved remoteId for device ${device.deviceId}',
+          );
+        }
       } else {
         blDevice = device.toBluetoothDevice();
       }
