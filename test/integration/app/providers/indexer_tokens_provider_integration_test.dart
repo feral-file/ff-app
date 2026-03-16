@@ -128,9 +128,11 @@ void main() {
 
   Future<void> seedAddressPlaylist(String address) async {
     final nowUs = DateTime.now().microsecondsSinceEpoch;
+    // Use INSERT OR IGNORE: first test creates playlist; second test reuses same
+    // address and playlist already exists from prior test in this file.
     await context.database.customStatement(
       '''
-      INSERT INTO playlists (
+      INSERT OR IGNORE INTO playlists (
         id, channel_id, type, base_url, dp_version, slug, title,
         created_at_us, updated_at_us, signatures_json, defaults_json,
         dynamic_queries_json, owner_address, owner_chain, sort_mode, item_count
