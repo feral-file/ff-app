@@ -29,6 +29,7 @@ void main() {
       final initialState = container.read(bootstrapProvider);
 
       expect(initialState.state, equals(BootstrapState.idle));
+      expect(initialState.phase, equals(BootstrapPhase.idle));
       expect(initialState.message, isNull);
     });
 
@@ -51,6 +52,7 @@ void main() {
       // Read the bootstrap provider
       final bootstrapState = container.read(bootstrapProvider);
       expect(bootstrapState.state, equals(BootstrapState.idle));
+      expect(bootstrapState.phase, equals(BootstrapPhase.idle));
 
       // Verify the database service is available
       expect(dbService, isNotNull);
@@ -81,6 +83,10 @@ void main() {
         finalState.state,
         anyOf([BootstrapState.success, BootstrapState.error]),
       );
+      expect(
+        finalState.phase,
+        anyOf([BootstrapPhase.completed, BootstrapPhase.failed]),
+      );
     });
 
     test('container.listen can track bootstrap state changes', () async {
@@ -96,12 +102,14 @@ void main() {
       addTearDown(container.dispose);
 
       final stateChanges = <BootstrapState>[];
+      final phaseChanges = <BootstrapPhase>[];
 
       // Listen to state changes
       container.listen<BootstrapStatus>(
         bootstrapProvider,
         (previous, next) {
           stateChanges.add(next.state);
+          phaseChanges.add(next.phase);
         },
       );
 
@@ -113,6 +121,18 @@ void main() {
       expect(
         stateChanges,
         contains(anyOf([BootstrapState.loading, BootstrapState.success])),
+      );
+      expect(
+        phaseChanges,
+        containsAllInOrder([
+          BootstrapPhase.validatingConfiguration,
+          BootstrapPhase.settingUpCollection,
+          BootstrapPhase.activatingAutoConnectWatcher,
+        ]),
+      );
+      expect(
+        phaseChanges,
+        contains(anyOf([BootstrapPhase.completed, BootstrapPhase.failed])),
       );
     });
 
@@ -148,6 +168,7 @@ void main() {
 
       final state1 = container1.read(bootstrapProvider);
       expect(state1.state, equals(BootstrapState.idle));
+      expect(state1.phase, equals(BootstrapPhase.idle));
 
       // This test is isolated from other tests
     });
