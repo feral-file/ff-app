@@ -14,6 +14,7 @@ const summaryPath = path.join(rootDir, 'last_run_summary.json');
 const manifestPath = path.join(dataDir, 'manifest.json');
 const baselinePath = path.join(baselineDir, 'baseline.sqlite');
 const benchmarkScript = path.join('autoresearch', 'scripts', 'query_benchmark.dart');
+const isarBenchDir = path.join(rootDir, 'isar_bench');
 const RESULTS_HEADER =
   'candidate\tbackend\tdb_size_mb\tsize_delta_mb\tavg_p95_ms\tmax_p95_ms\tlatency_score\tstatus\tnotes\n';
 
@@ -41,29 +42,43 @@ async function main() {
 
     const metricsPath = path.join(runLogsDir, `${candidate.name}.metrics.json`);
     const logPath = path.join(runLogsDir, `${candidate.name}.log`);
-    const rawOutput = execFileSync(
-      'dart',
-      [
-        'run',
-        benchmarkScript,
-        '--backend',
-        artifact.backend,
-        '--database',
-        artifact.databasePath,
-        '--label',
-        candidate.name,
-        '--output',
-        metricsPath,
-      ],
-      {
-        cwd: path.resolve(rootDir, '..'),
-        encoding: 'utf8',
-      },
-    );
+
+    let rawOutput;
+    if (artifact.backend === 'isar') {
+      // Isar benchmark lives in its own standalone Dart project.
+      rawOutput = execFileSync(
+        'dart',
+        ['run', 'bin/run_benchmark.dart', '--database', artifact.databasePath, '--label', candidate.name, '--output', metricsPath],
+        { cwd: isarBenchDir, encoding: 'utf8' },
+      );
+    } else {
+      rawOutput = execFileSync(
+        'dart',
+        [
+          'run',
+          benchmarkScript,
+          '--backend',
+          artifact.backend,
+          '--database',
+          artifact.databasePath,
+          '--label',
+          candidate.name,
+          '--output',
+          metricsPath,
+        ],
+        {
+          cwd: path.resolve(rootDir, '..'),
+          encoding: 'utf8',
+        },
+      );
+    }
     fs.writeFileSync(logPath, rawOutput);
 
     const metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf8'));
-    const dbSizeBytes = fs.statSync(artifact.databasePath).size;
+    // For Isar the databasePath is a directory; measure the .isar file inside.
+    const dbSizeBytes = artifact.backend === 'isar'
+      ? fs.statSync(path.join(artifact.databasePath, 'isar_bench.isar')).size
+      : fs.statSync(artifact.databasePath).size;
     const avgP95Ms = round3(metrics.avgP95Ms);
     const maxP95Ms = round3(metrics.maxP95Ms);
     const latencyScore = round3(maxP95Ms * 1000 + avgP95Ms);
@@ -600,6 +615,20 @@ function buildCandidates() {
         + 'Mirrors the SQLite all_caches champion approach inside DuckDB. '
         + 'Column projection still applies for works.page1.',
     },
+
+    // ── Isar NoSQL candidates ─────────────────────────────────────────────
+    // Schema redesign: document model with embedded sort orders, multi-entry
+    // FTS indexes, and FNV-1a hash IDs for O(1) batch key lookups.
+    // No separate cache tables — sort positions embedded at build time.
+    {
+      name: 'isar_baseline',
+      backend: 'isar',
+      notes:
+        'Isar NoSQL document store. Publisher/channel/playlist sort orders '
+        + 'embedded directly in IsarWork documents. '
+        + 'FTS via multi-entry word-split value indexes. '
+        + 'FNV-1a hash IDs enable getAll() batch fetch for works.page1.',
+    },
   ];
 }
 
@@ -630,6 +659,24 @@ function materializeCandidate(candidate) {
       return {
         backend: 'duckdb',
         databasePath: dbPath,
+      };
+    }
+    case 'isar': {
+      // Isar uses a directory (not a single file) as the database artifact.
+      const dbDir = path.join(candidatesDir, candidate.name + '_isar');
+      execFileSync('dart', [
+        'run', 'bin/build_db.dart',
+        '--candidate', candidate.name,
+        '--output', dbDir,
+        '--baseline', baselinePath,
+      ], {
+        cwd: isarBenchDir,
+        stdio: ['ignore', 'ignore', 'inherit'],
+        encoding: 'utf8',
+      });
+      return {
+        backend: 'isar',
+        databasePath: dbDir,
       };
     }
     default:
