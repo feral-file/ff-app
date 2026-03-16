@@ -14,10 +14,16 @@ class LegacyStorageLocator {
     return File(path).existsSync();
   }
 
+  /// Returns the application documents directory path.
+  Future<String> documentsPath() async {
+    final docsDir = await getApplicationDocumentsDirectory();
+    return docsDir.path;
+  }
+
   /// Returns the absolute path of legacy SQLite in documents directory.
   Future<String> legacySqlitePath() async {
-    final docsDir = await getApplicationDocumentsDirectory();
-    return p.join(docsDir.path, legacySqliteFileName);
+    final docsPath = await documentsPath();
+    return p.join(docsPath, legacySqliteFileName);
   }
 
   /// Returns legacy SQLite path when it exists, else empty list.
