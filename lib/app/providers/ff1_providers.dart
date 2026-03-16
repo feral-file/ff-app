@@ -139,6 +139,13 @@ class FF1BleControl {
     return deviceMap.values.toList();
   }
 
+  /// Current Bluetooth adapter state (synchronous snapshot).
+  BluetoothAdapterState get currentAdapterState => _transport.adapterState;
+
+  /// Stream of Bluetooth adapter state changes.
+  Stream<BluetoothAdapterState> get adapterStateStream =>
+      _transport.adapterStateStream;
+
   /// Scan for device by name
   Future<BluetoothDevice?> scanForName({
     required String name,
