@@ -1,3 +1,4 @@
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
@@ -29,7 +30,12 @@ class ChannelSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final key = sectionName == 'Curated'
+        ? GoldPathPatrolKeys.curatedChannelsSection
+        : null;
+
     return Padding(
+      key: key,
       padding: EdgeInsets.symmetric(
         horizontal: LayoutConstants.pageHorizontalDefault,
       ),

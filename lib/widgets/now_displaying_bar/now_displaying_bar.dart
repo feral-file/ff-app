@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
@@ -23,11 +24,13 @@ import 'package:go_router/go_router.dart';
 /// [router] is required so the overlay can navigate without relying on
 /// [BuildContext] (the overlay is built outside the Navigator subtree).
 class NowDisplayingBarOverlay extends ConsumerWidget {
+  /// Creates the global Now Displaying overlay.
   const NowDisplayingBarOverlay({
     required this.router,
     super.key,
   });
 
+  /// Router used to push the full-screen Now Displaying route.
   final GoRouter router;
 
   double get _collapsedHeight =>
@@ -125,6 +128,7 @@ class _NowDisplayingBarCard extends ConsumerWidget {
         final wifiControl = ref.read(ff1WifiControlProvider);
 
         return SizedBox(
+          key: GoldPathPatrolKeys.nowDisplayingBar,
           height: expandedHeight,
           child: TwoStopDraggableSheet(
             key: nowDisplayingSheetKey,
@@ -171,6 +175,7 @@ class _NowPlayingCardContainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
+      key: GoldPathPatrolKeys.nowDisplayingBar,
       decoration: BoxDecoration(
         color: backgroundColor ?? PrimitivesTokens.colorsBlack,
         borderRadius: BorderRadius.circular(

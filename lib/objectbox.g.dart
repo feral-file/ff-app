@@ -163,7 +163,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(10, 3855157679464200367),
     name: 'AppStateAddressEntity',
-    lastPropertyId: const obx_int.IdUid(15, 3445134738243097972),
+    lastPropertyId: const obx_int.IdUid(18, 4052192049678900918),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -178,18 +178,6 @@ final _entities = <obx_int.ModelEntity>[
         type: 9,
         flags: 2080,
         indexId: const obx_int.IdUid(9, 3962431394130676537),
-      ),
-      obx_int.ModelProperty(
-        id: const obx_int.IdUid(5, 7031346450320634061),
-        name: 'hasIndexerAnchor',
-        type: 1,
-        flags: 0,
-      ),
-      obx_int.ModelProperty(
-        id: const obx_int.IdUid(6, 6219212707173673109),
-        name: 'indexerAnchor',
-        type: 6,
-        flags: 0,
       ),
       obx_int.ModelProperty(
         id: const obx_int.IdUid(7, 385594094139718018),
@@ -219,6 +207,24 @@ final _entities = <obx_int.ModelEntity>[
         id: const obx_int.IdUid(13, 3764280306253148323),
         name: 'indexingProcessWorkflowId',
         type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(16, 7442441517501584529),
+        name: 'hasCheckpoint',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(17, 5159646973470099963),
+        name: 'checkpointTimestampUs',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(18, 4052192049678900918),
+        name: 'checkpointEventId',
+        type: 6,
         flags: 0,
       ),
     ],
@@ -439,6 +445,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
       1404419168567981741,
       671751466930742228,
       3462060407990166466,
+      7031346450320634061,
+      6219212707173673109,
       5874727476430855017,
     ],
     retiredRelationUids: const [],
@@ -633,16 +641,17 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final indexingProcessWorkflowIdOffset = fbb.writeString(
           object.indexingProcessWorkflowId,
         );
-        fbb.startTable(16);
+        fbb.startTable(19);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, normalizedAddressOffset);
-        fbb.addBool(4, object.hasIndexerAnchor);
-        fbb.addInt64(5, object.indexerAnchor);
         fbb.addInt64(6, object.indexingProcessStateIndex);
         fbb.addInt64(7, object.indexingProcessUpdatedAtUs);
         fbb.addOffset(8, indexingProcessErrorMessageOffset);
         fbb.addInt64(9, object.updatedAtUs);
         fbb.addOffset(12, indexingProcessWorkflowIdOffset);
+        fbb.addBool(15, object.hasCheckpoint);
+        fbb.addInt64(16, object.checkpointTimestampUs);
+        fbb.addInt64(17, object.checkpointEventId);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -652,16 +661,22 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final normalizedAddressParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGet(buffer, rootOffset, 6, '');
-        final hasIndexerAnchorParam = const fb.BoolReader().vTableGet(
+        final hasCheckpointParam = const fb.BoolReader().vTableGet(
           buffer,
           rootOffset,
-          12,
+          34,
           false,
         );
-        final indexerAnchorParam = const fb.Int64Reader().vTableGet(
+        final checkpointTimestampUsParam = const fb.Int64Reader().vTableGet(
           buffer,
           rootOffset,
-          14,
+          36,
+          0,
+        );
+        final checkpointEventIdParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          38,
           0,
         );
         final indexingProcessStateIndexParam = const fb.Int64Reader().vTableGet(
@@ -686,8 +701,9 @@ obx_int.ModelDefinition getObjectBoxModel() {
         );
         final object = AppStateAddressEntity(
           normalizedAddress: normalizedAddressParam,
-          hasIndexerAnchor: hasIndexerAnchorParam,
-          indexerAnchor: indexerAnchorParam,
+          hasCheckpoint: hasCheckpointParam,
+          checkpointTimestampUs: checkpointTimestampUsParam,
+          checkpointEventId: checkpointEventIdParam,
           indexingProcessStateIndex: indexingProcessStateIndexParam,
           indexingProcessUpdatedAtUs: indexingProcessUpdatedAtUsParam,
           indexingProcessErrorMessage: indexingProcessErrorMessageParam,
@@ -966,44 +982,50 @@ class AppStateAddressEntity_ {
         _entities[2].properties[1],
       );
 
-  /// See [AppStateAddressEntity.hasIndexerAnchor].
-  static final hasIndexerAnchor =
-      obx.QueryBooleanProperty<AppStateAddressEntity>(
-        _entities[2].properties[2],
-      );
-
-  /// See [AppStateAddressEntity.indexerAnchor].
-  static final indexerAnchor = obx.QueryIntegerProperty<AppStateAddressEntity>(
-    _entities[2].properties[3],
-  );
-
   /// See [AppStateAddressEntity.indexingProcessStateIndex].
   static final indexingProcessStateIndex =
       obx.QueryIntegerProperty<AppStateAddressEntity>(
-        _entities[2].properties[4],
+        _entities[2].properties[2],
       );
 
   /// See [AppStateAddressEntity.indexingProcessUpdatedAtUs].
   static final indexingProcessUpdatedAtUs =
       obx.QueryIntegerProperty<AppStateAddressEntity>(
-        _entities[2].properties[5],
+        _entities[2].properties[3],
       );
 
   /// See [AppStateAddressEntity.indexingProcessErrorMessage].
   static final indexingProcessErrorMessage =
       obx.QueryStringProperty<AppStateAddressEntity>(
-        _entities[2].properties[6],
+        _entities[2].properties[4],
       );
 
   /// See [AppStateAddressEntity.updatedAtUs].
   static final updatedAtUs = obx.QueryIntegerProperty<AppStateAddressEntity>(
-    _entities[2].properties[7],
+    _entities[2].properties[5],
   );
 
   /// See [AppStateAddressEntity.indexingProcessWorkflowId].
   static final indexingProcessWorkflowId =
       obx.QueryStringProperty<AppStateAddressEntity>(
+        _entities[2].properties[6],
+      );
+
+  /// See [AppStateAddressEntity.hasCheckpoint].
+  static final hasCheckpoint = obx.QueryBooleanProperty<AppStateAddressEntity>(
+    _entities[2].properties[7],
+  );
+
+  /// See [AppStateAddressEntity.checkpointTimestampUs].
+  static final checkpointTimestampUs =
+      obx.QueryIntegerProperty<AppStateAddressEntity>(
         _entities[2].properties[8],
+      );
+
+  /// See [AppStateAddressEntity.checkpointEventId].
+  static final checkpointEventId =
+      obx.QueryIntegerProperty<AppStateAddressEntity>(
+        _entities[2].properties[9],
       );
 }
 

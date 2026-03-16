@@ -22,6 +22,7 @@ class DP1Carousel extends StatefulWidget {
     this.isLoading = false,
     this.loadingDelay = const Duration(milliseconds: 500),
     this.onItemTap,
+    this.itemKeyBuilder,
     this.scrollController,
     this.isLoadingMore = false,
     this.onLoadMore,
@@ -40,6 +41,9 @@ class DP1Carousel extends StatefulWidget {
 
   /// Callback when an item is tapped.
   final void Function(PlaylistItem item)? onItemTap;
+
+  /// Optional key builder for each rendered work item.
+  final Key Function(PlaylistItem item, int index)? itemKeyBuilder;
 
   /// Optional scroll controller.
   final ScrollController? scrollController;
@@ -193,6 +197,7 @@ class _DP1CarouselState extends State<DP1Carousel> {
                       : 0,
                 ),
                 child: WorkItemThumbnail(
+                  key: widget.itemKeyBuilder?.call(displayItems[index], index),
                   item: displayItems[index],
                   onTap: widget.items.isNotEmpty
                       ? () {

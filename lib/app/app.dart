@@ -524,7 +524,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     final addressService = ref.read(addressServiceProvider);
 
     for (final address in addresses) {
-      await appState.clearAddressAnchor(address);
+      await appState.clearAddressCheckpoint(address);
 
       await appState.setAddressIndexingStatus(
         address: address,
