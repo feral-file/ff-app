@@ -1,0 +1,67 @@
+# Vision/Execution Gap Tracker
+
+## Purpose
+- Track gaps between intended product behavior and current implementation.
+- Keep vision gaps and engineering refactors visible without mixing them into
+  unrelated feature PRs.
+- Provide a lightweight queue for follow-up work after shipping urgent fixes.
+
+## How to use
+- Keep entries outcome-focused (what user/system behavior is missing or brittle).
+- Link each gap to owning flow(s) in `docs/project_spec.md` and
+  `docs/app_flows.md`.
+- Mark each item with scope and priority.
+- Move completed items to a short history section instead of deleting context.
+
+## Active gaps
+
+### 1) Onboarding action controls need stable automation anchors
+- Type: execution reliability + testability
+- Priority: medium
+- Affected flows:
+  - Onboarding (No Deeplink)
+  - Onboarding from Device Deeplink/QR
+- Current gap:
+  - Gold-path tests still rely on action labels like "Next"/"Finish" in parts
+    of the flow, which can be non-hit-testable during async UI transitions.
+- Desired state:
+  - All primary onboarding actions use dedicated Patrol keys and test helpers
+    target keys first, not text.
+
+### 2) FF1 connect/setup orchestration remains distributed across providers
+- Type: architecture simplification
+- Priority: medium
+- Affected flows:
+  - FF1 Pairing and Wi-Fi Setup
+  - Onboarding from Device Deeplink/QR
+- Current gap:
+  - Readiness, retries, and post-connect routing logic is spread across BLE
+    transport + connect providers + page-level handlers.
+- Desired state:
+  - A single connect session orchestrator owns attempt lifecycle, cancellation,
+    and routing outcomes.
+
+### 3) Seed-sync progress competes with first-run onboarding interaction timing
+- Type: flow resilience
+- Priority: medium
+- Affected flows:
+  - Cold Start Bootstrap
+  - Onboarding (No Deeplink)
+- Current gap:
+  - Heavy seed-sync activity can overlap onboarding transitions and create UI
+    timing sensitivity in end-to-end runs.
+- Desired state:
+  - Clear handshake contract between onboarding action readiness and seed-sync
+    state updates so interaction targets remain deterministic.
+
+## Refactor backlog (candidate follow-ups)
+- Introduce `GoldPathPatrolKeys` for onboarding primary/secondary actions and
+  migrate remaining label-based taps to key-based taps.
+- Extract FF1 connect lifecycle into a dedicated session object (attempt id,
+  readiness state, cancellation token, terminal outcome), then keep providers
+  thin.
+- Separate startup bootstrap into explicit phases (gate open, background sync,
+  deferred recovery) with typed status events for UI/test observability.
+
+## Completed items
+- None yet.

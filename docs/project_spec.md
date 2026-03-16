@@ -1,5 +1,14 @@
 # Project Spec
 
+## Document contract
+- This document is the canonical product contract for the mobile app.
+- It defines product intent, system boundaries, flow outcomes, and invariants.
+- When `project_spec.md` conflicts with lower-level docs, this file wins.
+- `docs/app_flows.md` must stay consistent with this contract and only expand
+  execution detail (routes, transitions, failure handling).
+- Any change to onboarding/address indexing/FF1 behavior should update this doc
+  first, then update `docs/app_flows.md` in the same change.
+
 ## 1. Purpose of the app
 - The app is the mobile controller and library browser for The Digital Art System.
 - It solves two practical problems for users:
