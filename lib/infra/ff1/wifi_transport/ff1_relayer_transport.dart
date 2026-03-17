@@ -75,6 +75,10 @@ class FF1RelayerTransport implements FF1WifiTransport {
   String? _userId;
   String? _apiKey;
 
+  // When true, disconnected event does not schedule Timer-based reconnect
+  // (used for app background pause; reconnect happens on app resume)
+  bool _pausedForBackground = false;
+
   @override
   bool get isConnected => _isConnected;
 
@@ -102,6 +106,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
     required FF1Device device,
     required String userId,
     required String apiKey,
+    bool forceReconnect = false,
   }) async {
     // Validate topicId
     if (device.topicId.isEmpty) {
@@ -110,8 +115,15 @@ class FF1RelayerTransport implements FF1WifiTransport {
       );
     }
 
-    // Already connected to same device
-    if (_isConnected &&
+    // Clear paused state on any connect. If only cleared on forceReconnect,
+    // a manual connect after app was backgrounded (before any device connected)
+    // would leave _pausedForBackground stuck true, silently disabling
+    // auto-reconnect for the rest of the session.
+    _pausedForBackground = false;
+
+    // Already connected to same device (skip when forceReconnect)
+    if (!forceReconnect &&
+        _isConnected &&
         _device?.topicId == device.topicId &&
         _userId == userId) {
       _log.fine('Already connected to ${device.deviceId}');
@@ -226,6 +238,34 @@ class FF1RelayerTransport implements FF1WifiTransport {
   }
 
   @override
+  void pauseConnection() {
+    _log.info('Pausing relayer connection (app background)');
+
+    // Always cancel reconnect timers and set pause flag, even when already
+    // disconnected. After a network drop, the transport can be !_isConnected
+    // but still have an active _reconnectTimer from _scheduleReconnect().
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _pausedForBackground = true;
+
+    // Always send disconnect when isolate exists. _connectInternal() drops
+    // _isConnecting before the isolate sends its connection event, so there
+    // is a window where both are false but WebSocket is still connecting.
+    // Without this, the WebSocket could come up in background.
+    if (_isolateSendPort != null) {
+      const control = _RelayerControlMessage(
+        type: _RelayerControlType.disconnect,
+      );
+      _isolateSendPort!.send(control.toJson());
+    }
+
+    if (_isConnected || _isConnecting) {
+      _isConnected = false;
+      _connectionStateController.add(false);
+    }
+  }
+
+  @override
   void dispose() {
     unawaited(disconnect());
     unawaited(_notificationController.close());
@@ -265,7 +305,9 @@ class FF1RelayerTransport implements FF1WifiTransport {
         _isConnected = false;
         _connectionStateController.add(false);
         _log.warning('Disconnected from relayer');
-        _scheduleReconnect();
+        if (!_pausedForBackground) {
+          _scheduleReconnect();
+        }
 
       case _RelayerEventType.error:
         final errorMsg = event.data?['error'] as String? ?? 'Unknown error';

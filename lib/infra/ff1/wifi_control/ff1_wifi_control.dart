@@ -223,7 +223,9 @@ class FF1WifiControl {
 
   /// Reconnect to device (using cached connection params)
   ///
-  /// Useful for app lifecycle changes (foreground/background)
+  /// Useful for app lifecycle changes (foreground/background).
+  /// Uses [forceReconnect] to bypass "already connected" check when connection
+  /// may be stale (e.g. app was suspended, Timer-based reconnect did not fire).
   Future<void> reconnect() async {
     if (_device == null || _userId == null || _apiKey == null) {
       _log.warning('Cannot reconnect: no cached connection params');
@@ -233,15 +235,31 @@ class FF1WifiControl {
     _log.info('Reconnecting to ${_device!.deviceId}');
 
     try {
-      await connect(
+      await _transport.connect(
         device: _device!,
         userId: _userId!,
         apiKey: _apiKey!,
+        forceReconnect: true,
       );
     } catch (e) {
       _log.warning('Reconnect failed: $e');
       rethrow;
     }
+  }
+
+  /// Pause connection when app goes to background.
+  ///
+  /// Closes WebSocket but preserves connection params for [reconnect] on resume.
+  void pauseConnection() {
+    _transport.pauseConnection();
+
+    // Clear current state but preserve _device, _userId, _apiKey for reconnect
+    _currentPlayerStatus = null;
+    _currentDeviceStatus = null;
+    _isDeviceConnected = false;
+    _connectionStatusController.add(
+      const FF1ConnectionStatus(isConnected: false),
+    );
   }
 
   /// Dispose control and clean up resources.

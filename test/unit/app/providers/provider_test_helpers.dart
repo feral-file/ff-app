@@ -236,7 +236,11 @@ class FakeWifiTransport implements FF1WifiTransport {
     required FF1Device device,
     required String userId,
     required String apiKey,
+    bool forceReconnect = false,
   }) async {}
+
+  @override
+  void pauseConnection() {}
 
   @override
   Future<void> disconnect() async {}

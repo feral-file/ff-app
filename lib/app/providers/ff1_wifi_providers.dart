@@ -188,16 +188,29 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   }
 
   /// Disconnect from device
+  ///
+  /// Always clears state when called, even when already disconnected (e.g.
+  /// after pauseConnection). When active device becomes null while app is
+  /// backgrounded, the watcher calls disconnect(); without clearing state,
+  /// reconnect() on resume would use the stale cached device.
   Future<void> disconnect() async {
-    if (!state.isConnected) {
-      return;
-    }
-
-    try {
-      await _control.disconnect();
-    } finally {
+    if (state.isConnected) {
+      try {
+        await _control.disconnect();
+      } finally {
+        state = const FF1WifiConnectionState(isConnected: false);
+      }
+    } else {
       state = const FF1WifiConnectionState(isConnected: false);
     }
+  }
+
+  /// Pause connection when app goes to background.
+  ///
+  /// Closes WebSocket but preserves [state.device] for [reconnect] on resume.
+  void pauseConnection() {
+    _control.pauseConnection();
+    state = state.copyWith(isConnected: false);
   }
 
   /// Reconnect to device (using cached params)
@@ -346,7 +359,6 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
               'Active device changed: ${device.toJson()}, connecting...',
             );
             // Intentionally not awaiting to avoid blocking
-            // ignore: discarded_futures
             await connectionNotifier.connect(
               device: device,
               userId: 'user_id',
@@ -365,7 +377,6 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
           } else {
             logger.info('No active device, disconnecting...');
             // Intentionally not awaiting to avoid blocking
-            // ignore: discarded_futures
             connectionNotifier.disconnect();
           }
         }),
