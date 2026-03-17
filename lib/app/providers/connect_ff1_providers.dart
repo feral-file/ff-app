@@ -17,6 +17,8 @@ class _ConnectAttemptSession {
   _ConnectAttemptSession();
   bool _cancelled = false;
   Timer? _stillConnectingTimer;
+  // Owned by this session so cancel() can unblock _waitForBtReady immediately.
+  Completer<void>? _btReadyCompleter;
 
   bool get isCancelled => _cancelled;
 
@@ -28,6 +30,9 @@ class _ConnectAttemptSession {
   void cancel() {
     _cancelled = true;
     _stillConnectingTimer?.cancel();
+    if (!(_btReadyCompleter?.isCompleted ?? true)) {
+      _btReadyCompleter?.completeError(const FF1ConnectionCancelledError());
+    }
   }
 }
 
@@ -101,11 +106,6 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
   _ConnectAttemptSession? _activeSession;
 
-  // Completer used while waiting for Bluetooth to turn on.
-  // Completed normally when BT becomes ready; completed with
-  // [FF1ConnectionCancelledError] when [cancelConnection] is called.
-  Completer<void>? _btReadyCompleter;
-
   @override
   Future<ConnectFF1State> build() async {
     return ConnectFF1Initial();
@@ -142,7 +142,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         _log.info('[ConnectFF1Notifier] BT adapter off, waiting for it');
         _emitIfActive(session, ConnectFF1BluetoothOff());
         try {
-          await _waitForBtReady(control);
+          await _waitForBtReady(control, session);
           _throwIfSessionInactive(session);
         } on FF1ConnectionCancelledError catch (_) {
           _log.info('[ConnectFF1Notifier] Cancelled while waiting for BT');
@@ -356,25 +356,28 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
   /// Wait until Bluetooth adapter is [BluetoothAdapterState.on].
   ///
-  /// Subscribes to [FF1BleControl.adapterStateStream] and completes when the
-  /// adapter becomes ready.  If [cancelConnection] is called while waiting,
-  /// the completer is rejected with [FF1ConnectionCancelledError] so that
-  /// [connectBle] exits cleanly.
-  Future<void> _waitForBtReady(FF1BleControl control) async {
-    _btReadyCompleter = Completer<void>();
+  /// Registers the completer on [session] so that [session.cancel()] —
+  /// triggered by [cancelConnection] or [_beginSession] — unblocks this
+  /// wait immediately via [FF1ConnectionCancelledError].
+  Future<void> _waitForBtReady(
+    FF1BleControl control,
+    _ConnectAttemptSession session,
+  ) async {
+    final completer = Completer<void>();
+    // Registers the completer on the session so session.cancel() can
+    // unblock this wait immediately (same Dart library — direct field access).
+    session._btReadyCompleter = completer;
 
     final sub = control.adapterStateStream.listen((s) {
-      if (s == BluetoothAdapterState.on &&
-          !(_btReadyCompleter?.isCompleted ?? true)) {
-        _btReadyCompleter?.complete();
+      if (s == BluetoothAdapterState.on && !completer.isCompleted) {
+        completer.complete();
       }
     });
 
     try {
-      await _btReadyCompleter!.future;
+      await completer.future;
     } finally {
       unawaited(sub.cancel());
-      _btReadyCompleter = null;
     }
   }
 
