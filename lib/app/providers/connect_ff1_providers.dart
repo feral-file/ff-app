@@ -14,7 +14,9 @@ import 'package:logging/logging.dart';
 final _log = Logger('ConnectFF1Notifier');
 
 class _ConnectAttemptSession {
-  _ConnectAttemptSession();
+  _ConnectAttemptSession(this._id);
+
+  final int _id;
   bool _cancelled = false;
   Timer? _stillConnectingTimer;
   // Owned by this session so cancel() can unblock _waitForBtReady immediately.
@@ -104,6 +106,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
   static const Duration _getInfoReadinessTimeout = Duration(seconds: 8);
 
+  int _sessionCounter = 0;
   _ConnectAttemptSession? _activeSession;
 
   @override
@@ -142,10 +145,10 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     if (blDevice.remoteId.str.isEmpty) {
       if (control.currentAdapterState != BluetoothAdapterState.on) {
         _log.info('[ConnectFF1Notifier] BT adapter off, waiting for it');
-        _emitIfActive(session, ConnectFF1BluetoothOff());
+        _setStateIfSessionActive(session, ConnectFF1BluetoothOff());
         try {
           await _waitForBtReady(control, session);
-          _throwIfSessionInactive(session);
+          _assertSessionActive(session);
         } on FF1ConnectionCancelledError catch (_) {
           _log.info('[ConnectFF1Notifier] Cancelled while waiting for BT');
           return;
@@ -153,9 +156,11 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       }
     }
 
-    // BT is ready (or not required for direct-device flow).
-    // Now it is safe to show the connecting state and start the timer.
-    _emitIfActive(session, ConnectFF1Connecting(blDevice: bluetoothDevice));
+    // Set initial connecting state
+    _setStateIfSessionActive(
+      session,
+      ConnectFF1Connecting(blDevice: bluetoothDevice),
+    );
 
     // Set up timer for "still connecting" state after 15 seconds
     session.scheduleStillConnecting(
@@ -166,7 +171,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         }
 
         if (state.value case ConnectFF1Connecting(:final blDevice)) {
-          _emitIfActive(
+          _setStateIfSessionActive(
             session,
             ConnectFF1StillConnecting(blDevice: blDevice),
           );
@@ -175,16 +180,14 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     );
 
     try {
-      _throwIfSessionInactive(session);
       if (blDevice.remoteId.str.isEmpty) {
-        _throwIfSessionInactive(session);
         _log.info(
           '[ConnectFF1Notifier] Scanning for ${ff1DeviceInfo!.name}',
         );
         final foundDevice = await control.scanForName(
           name: ff1DeviceInfo.name,
         );
-        _throwIfSessionInactive(session);
+        _assertSessionActive(session);
         if (foundDevice == null) {
           throw Exception(
             'FF1 device "${ff1DeviceInfo.name}" not found. '
@@ -198,7 +201,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         blDevice: blDevice,
         shouldContinue: () => _isSessionActive(session),
       );
-      _throwIfSessionInactive(session);
+      _assertSessionActive(session);
       await _handlePostConnect(
         ff1DeviceInfo,
         blDevice,
@@ -209,7 +212,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       _log.info('[ConnectFF1Notifier] Connection cancelled by user');
     } on Exception catch (e) {
       _log.info('[ConnectFF1Notifier] Error connecting to device: $e');
-      _emitIfActive(session, ConnectFF1Error(exception: e));
+      _setStateIfSessionActive(session, ConnectFF1Error(exception: e));
     } finally {
       _clearSession(session);
     }
@@ -220,7 +223,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     BluetoothDevice blDevice, {
     required _ConnectAttemptSession session,
   }) async {
-    _throwIfSessionInactive(session);
+    _assertSessionActive(session);
     var ff1DeviceInfo = initialFF1DeviceInfo;
     // If device info is not provided, fetch it via get_info command
     if (ff1DeviceInfo == null) {
@@ -232,7 +235,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
           blDevice,
           session: session,
         );
-        _throwIfSessionInactive(session);
+        _assertSessionActive(session);
         ff1DeviceInfo = getInfoResponse.toFF1DeviceInfo;
 
         _log.info(
@@ -248,14 +251,14 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       }
     }
 
-    _throwIfSessionInactive(session);
+    _assertSessionActive(session);
     // Check version compatibility
     final versionService = ref.read(versionServiceProvider);
     final compatibility = await versionService.checkDeviceVersionCompatibility(
       branchName: ff1DeviceInfo.branchName,
       deviceVersion: ff1DeviceInfo.version,
     );
-    _throwIfSessionInactive(session);
+    _assertSessionActive(session);
 
     if (compatibility == VersionCompatibilityResult.needUpdateApp) {
       _log.info(
@@ -271,7 +274,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     );
 
     if (!ff1DeviceInfo.isConnectedToInternet) {
-      _emitIfActive(
+      _setStateIfSessionActive(
         session,
         ConnectFF1Connected(
           ff1device: ff1Device,
@@ -288,10 +291,10 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       await ref
           .read(ff1WifiControlProvider)
           .showPairingQRCode(topicId: topicId, show: false);
-      _throwIfSessionInactive(session);
+      _assertSessionActive(session);
 
       // Show portal is set
-      _emitIfActive(
+      _setStateIfSessionActive(
         session,
         ConnectFF1Connected(
           ff1device: ff1Device,
@@ -310,7 +313,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     }
 
     ff1Device = ff1Device.copyWith(topicId: topicIdFromKeepWifi);
-    _emitIfActive(
+    _setStateIfSessionActive(
       session,
       ConnectFF1Connected(
         ff1device: ff1Device,
@@ -328,18 +331,18 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
     Exception? lastError;
     for (final delay in _getInfoRetryDelays) {
-      _throwIfSessionInactive(session);
+      _assertSessionActive(session);
       await Future<void>.delayed(delay);
-      _throwIfSessionInactive(session);
+      _assertSessionActive(session);
       try {
         await control.waitUntilReady(
           blDevice: blDevice,
           timeout: _getInfoReadinessTimeout,
         );
-        _throwIfSessionInactive(session);
+        _assertSessionActive(session);
         return await control.getInfo(blDevice: blDevice);
       } on Exception catch (e) {
-        _throwIfSessionInactive(session);
+        _assertSessionActive(session);
         lastError = e;
         final shouldRetry =
             e is TimeoutException ||
@@ -403,22 +406,25 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
   _ConnectAttemptSession _beginSession() {
     _activeSession?.cancel();
-    final session = _ConnectAttemptSession();
+    final session = _ConnectAttemptSession(++_sessionCounter);
     _activeSession = session;
     return session;
   }
 
   bool _isSessionActive(_ConnectAttemptSession session) {
-    return identical(_activeSession, session) && !session.isCancelled;
+    return _activeSession?._id == session._id && !session.isCancelled;
   }
 
-  void _throwIfSessionInactive(_ConnectAttemptSession session) {
+  void _assertSessionActive(_ConnectAttemptSession session) {
     if (!_isSessionActive(session)) {
       throw const FF1ConnectionCancelledError();
     }
   }
 
-  void _emitIfActive(_ConnectAttemptSession session, ConnectFF1State value) {
+  void _setStateIfSessionActive(
+    _ConnectAttemptSession session,
+    ConnectFF1State value,
+  ) {
     if (_isSessionActive(session)) {
       state = AsyncValue.data(value);
     }
@@ -426,7 +432,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
   void _clearSession(_ConnectAttemptSession session) {
     session.cancel();
-    if (identical(_activeSession, session)) {
+    if (_activeSession?._id == session._id) {
       _activeSession = null;
     }
   }
