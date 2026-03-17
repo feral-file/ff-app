@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/constants/deeplink_constants.dart';
 import 'package:app_links/app_links.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Source of a deeplink event.
@@ -166,27 +167,72 @@ abstract class DeeplinkLinkSource {
 
   /// Gets the link stream.
   Stream<Uri> get linkStream;
+
+  /// Releases resources. No-op by default.
+  Future<void> dispose() async {}
 }
 
 /// App links deeplink source.
+///
+/// Merges two URI streams into a single [linkStream]:
+/// 1. `app_links.uriLinkStream` — covers custom URL schemes and Android
+///    intents.
+/// 2. A native MethodChannel (`com.feralfile.app/universal_links`) — captures
+///    Universal Links delivered via iOS `scene(_:continue:)` directly from
+///    `SceneDelegate.swift`, bypassing the `app_links` initial-link buffer that
+///    causes a one-cycle navigation delay on background resume.
 class AppLinksDeeplinkSource implements DeeplinkLinkSource {
-  /// Constructor
-  AppLinksDeeplinkSource() : _appLinks = AppLinks();
+  /// Constructor — sets up the merged stream immediately.
+  AppLinksDeeplinkSource() : _appLinks = AppLinks() {
+    _controller = StreamController<Uri>.broadcast();
+
+    // Feed from app_links (custom schemes + non-iOS universal links).
+    _appLinksSubscription = _appLinks.uriLinkStream.listen(
+      _controller.add,
+      onError: _controller.addError,
+    );
+
+    // Feed from the native iOS SceneDelegate channel.
+    _nativeLinkChannel.setMethodCallHandler(_onNativeUniversalLink);
+  }
+
+  static const _nativeLinkChannel = MethodChannel(
+    'com.feralfile.app/universal_links',
+  );
 
   final AppLinks _appLinks;
+  late final StreamController<Uri> _controller;
+  StreamSubscription<Uri>? _appLinksSubscription;
 
-  @override
-  Future<Uri?> getInitialLink() {
-    return _appLinks.getInitialLink();
+  Future<void> _onNativeUniversalLink(MethodCall call) async {
+    if (call.method != 'onUniversalLink') return;
+    final urlString = call.arguments as String?;
+    if (urlString == null) return;
+    final uri = Uri.tryParse(urlString);
+    if (uri != null && !_controller.isClosed) {
+      _controller.add(uri);
+    }
   }
 
   @override
-  Stream<Uri> get linkStream => _appLinks.uriLinkStream;
+  Future<Uri?> getInitialLink() => _appLinks.getInitialLink();
+
+  @override
+  Stream<Uri> get linkStream => _controller.stream;
+
+  @override
+  Future<void> dispose() async {
+    await _appLinksSubscription?.cancel();
+    _nativeLinkChannel.setMethodCallHandler(null);
+    await _controller.close();
+  }
 }
 
 /// Riverpod-injected link source.
 final deeplinkLinkSourceProvider = Provider<DeeplinkLinkSource>((ref) {
-  return AppLinksDeeplinkSource();
+  final source = AppLinksDeeplinkSource();
+  ref.onDispose(() => unawaited(source.dispose()));
+  return source;
 });
 
 /// Provider for deeplink coordinator.
@@ -214,23 +260,12 @@ const Duration _deeplinkDedupWindow = Duration(seconds: 2);
 
 /// Coordinates deeplink ingestion and emits typed navigation actions.
 class DeeplinkHandler {
-  /// Constructor.
-  ///
-  /// [resumeLinkPollInterval] and [resumeLinkMaxPolls] control how long
-  /// [checkForResumeLink] waits for `scene(_:continue:)` to store the link
-  /// after iOS fires `sceneDidBecomeActive`. Defaults are suited for
-  /// production; tests should pass shorter values to stay fast.
+  /// Constructor
   DeeplinkHandler({
     required DeeplinkLinkSource linkSource,
-    Duration resumeLinkPollInterval = const Duration(milliseconds: 200),
-    int resumeLinkMaxPolls = 10,
-  })  : _linkSource = linkSource,
-        _resumeLinkPollInterval = resumeLinkPollInterval,
-        _resumeLinkMaxPolls = resumeLinkMaxPolls;
+  }) : _linkSource = linkSource;
 
   final DeeplinkLinkSource _linkSource;
-  final Duration _resumeLinkPollInterval;
-  final int _resumeLinkMaxPolls;
   final Map<String, bool> _handlingLinks = <String, bool>{};
   final Map<String, DateTime> _recentlyProcessedLinks = <String, DateTime>{};
   final StreamController<DeeplinkNavigationAction> _actionsController =
@@ -238,10 +273,6 @@ class DeeplinkHandler {
 
   StreamSubscription<Uri>? _linkSubscription;
   bool _isStarted = false;
-  bool _isCheckingResumeLink = false;
-  // Tracks the last initial link processed via checkForResumeLink so that
-  // manual app resumes (no new QR scan) don't re-trigger navigation.
-  String? _lastInitialLinkProcessed;
 
   /// The stream of deeplink navigation actions.
   Stream<DeeplinkNavigationAction> get actions => _actionsController.stream;
@@ -274,50 +305,18 @@ class DeeplinkHandler {
     });
   }
 
-  /// Polls [DeeplinkLinkSource.getInitialLink] on app resume to catch
-  /// Universal Links delivered after iOS fires `sceneDidBecomeActive`.
+  /// Safety-net check for [DeeplinkLinkSource.getInitialLink] on app resume.
   ///
-  /// On iOS with scene-based lifecycle, `scene(_:continue:)` is called by the
-  /// OS *after* `sceneDidBecomeActive`, which is after Flutter emits
-  /// [AppLifecycleState.resumed]. This means `getInitialLink()` returns null
-  /// the first time we check during step 3 of the resume sequence. Polling
-  /// briefly catches the link once `app_links` stores it.
-  ///
-  /// [_lastInitialLinkProcessed] prevents re-navigating on every subsequent
-  /// manual resume that has no new QR scan. A new link (different token) is
-  /// always processed.
+  /// The primary delivery path for iOS Universal Links on background resume is
+  /// the native `SceneDelegate.scene(_:continue:)` override, which forwards
+  /// the URL directly into [linkStream] via a MethodChannel. This fallback
+  /// handles edge cases where the MethodChannel fires before [linkStream]'s
+  /// subscription is active, or on non-iOS platforms. The dedup window in
+  /// [_processLink] prevents double-navigation if both paths deliver the link.
   Future<void> checkForResumeLink() async {
-    if (_isCheckingResumeLink) {
-      return;
-    }
-    _isCheckingResumeLink = true;
-
-    try {
-      // i = 0 has no delay so a link already in the buffer (e.g. on a manual
-      // reopen after a prior QR-scan resume) is processed without waiting.
-      for (var i = 0; i <= _resumeLinkMaxPolls; i++) {
-        if (i > 0) {
-          await Future<void>.delayed(_resumeLinkPollInterval);
-        }
-
-        final uri = await _linkSource.getInitialLink();
-        if (uri == null) {
-          continue;
-        }
-
-        final link = normalizeDeeplink(uri.toString());
-        // Same link as the last one we handled via this path — the user
-        // reopened the app manually without scanning a new QR code.
-        if (link == _lastInitialLinkProcessed) {
-          return;
-        }
-
-        _lastInitialLinkProcessed = link;
-        await handleDeeplink(uri.toString(), isFromAppLink: true);
-        return;
-      }
-    } finally {
-      _isCheckingResumeLink = false;
+    final link = await _linkSource.getInitialLink();
+    if (link != null) {
+      await handleDeeplink(link.toString(), isFromAppLink: true);
     }
   }
 
@@ -407,9 +406,10 @@ class DeeplinkHandler {
     );
   }
 
-  /// Disposes the handler.
+  /// Disposes the handler and its link source.
   Future<void> dispose() async {
     await _linkSubscription?.cancel();
     await _actionsController.close();
+    await _linkSource.dispose();
   }
 }
