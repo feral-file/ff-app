@@ -27,8 +27,11 @@ final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
       return Rx.combineLatest2<Channel?, List<Playlist>, ChannelDetails>(
         databaseService.watchChannelById(channelId),
         databaseService.watchPlaylists(channelIds: [channelId]),
-        (channel, playlists) =>
-            ChannelDetails(channel: channel, playlists: playlists),
+        (channel, playlists) {
+          final withWorks =
+              playlists.where((p) => p.itemCount > 0).toList();
+          return ChannelDetails(channel: channel, playlists: withWorks);
+        },
       );
     });
 
@@ -46,5 +49,7 @@ final StreamProviderFamily<List<Playlist>, String>
           .where((s) => s.isNotEmpty)
           .toList();
       if (ids.isEmpty) return Stream.value(<Playlist>[]);
-      return databaseService.watchPlaylists(channelIds: ids);
+      return databaseService
+          .watchPlaylists(channelIds: ids)
+          .map((list) => list.where((p) => p.itemCount > 0).toList());
     });
