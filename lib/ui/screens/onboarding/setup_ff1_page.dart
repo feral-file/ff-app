@@ -7,6 +7,7 @@
 
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -83,6 +84,7 @@ class OnboardingSetupFf1Page extends ConsumerWidget {
           ],
         ),
         onPrimaryPressed: () => _onSetupFf1(context, ref),
+        primaryButtonKey: GoldPathPatrolKeys.onboardingSetupFf1Primary,
         secondaryButton: Row(
           children: [
             Text(
@@ -92,6 +94,7 @@ class OnboardingSetupFf1Page extends ConsumerWidget {
           ],
         ),
         onSecondaryPressed: () async => _onFinish(context, ref),
+        secondaryButtonKey: GoldPathPatrolKeys.onboardingSetupFf1Secondary,
       ),
     );
   }

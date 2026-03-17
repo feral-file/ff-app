@@ -25,8 +25,10 @@ class OnboardingShell extends StatelessWidget {
     required this.content,
     super.key,
     this.primaryButton,
+    this.primaryButtonKey,
     this.onPrimaryPressed,
     this.secondaryButton,
+    this.secondaryButtonKey,
     this.onSecondaryPressed,
     this.showBottomProgress = true,
     this.hintText,
@@ -41,12 +43,18 @@ class OnboardingShell extends StatelessWidget {
   /// Callback when the primary button is pressed.
   final VoidCallback? onPrimaryPressed;
 
+  /// Optional semantic key for the primary button.
+  final Key? primaryButtonKey;
+
   /// Optional label for the secondary (left) button.
   /// For example: "Add Address", "Setup FF1".
   final Widget? secondaryButton;
 
   /// Optional callback for the secondary button.
   final VoidCallback? onSecondaryPressed;
+
+  /// Optional semantic key for the secondary button.
+  final Key? secondaryButtonKey;
 
   /// Whether to show the white bottom progress line.
   final bool showBottomProgress;
@@ -99,6 +107,7 @@ class OnboardingShell extends StatelessWidget {
   Widget _buildButtonsRow(BuildContext context) {
     final primary = (primaryButton != null && onPrimaryPressed != null)
         ? CustomPrimaryButton(
+            key: primaryButtonKey,
             padding: EdgeInsets.symmetric(
               vertical: ContentRhythm.rowVerticalPadding,
             ),
@@ -109,6 +118,7 @@ class OnboardingShell extends StatelessWidget {
 
     final secondary = (secondaryButton != null && onSecondaryPressed != null)
         ? CustomPrimaryButton(
+            key: secondaryButtonKey,
             padding: EdgeInsets.symmetric(
               vertical: ContentRhythm.rowVerticalPadding,
             ),

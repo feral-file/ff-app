@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/addresses_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
@@ -85,6 +86,7 @@ class OnboardingAddAddressPage extends ConsumerWidget {
           ],
         ),
         onPrimaryPressed: () => _onAddAddressPressed(context),
+        primaryButtonKey: GoldPathPatrolKeys.onboardingAddAddressPrimary,
         secondaryButton: Consumer(
           builder: (context, ref, _) {
             final addressesAsync = ref.watch(addressesProvider);
@@ -109,6 +111,7 @@ class OnboardingAddAddressPage extends ConsumerWidget {
           },
         ),
         onSecondaryPressed: () async => _onNext(context, ref),
+        secondaryButtonKey: GoldPathPatrolKeys.onboardingAddAddressSecondary,
         hintText: 'You can always add addresses later.',
       ),
     );

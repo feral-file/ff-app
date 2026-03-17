@@ -46,4 +46,28 @@ void main() {
       expect(find.text('Next'), findsOneWidget);
     },
   );
+
+  testWidgets('OnboardingShell applies provided action keys', (tester) async {
+    const primaryKey = ValueKey<String>('test.onboarding.primary');
+    const secondaryKey = ValueKey<String>('test.onboarding.secondary');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: OnboardingShell(
+            content: const SizedBox.shrink(),
+            primaryButton: const Text('Primary'),
+            primaryButtonKey: primaryKey,
+            onPrimaryPressed: () {},
+            secondaryButton: const Text('Secondary'),
+            secondaryButtonKey: secondaryKey,
+            onSecondaryPressed: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(primaryKey), findsOneWidget);
+    expect(find.byKey(secondaryKey), findsOneWidget);
+  });
 }

@@ -29,6 +29,31 @@ abstract final class GoldPathPatrolKeys {
     'gold_path.now_displaying.bar',
   );
 
+  /// Introduce onboarding action that advances to add-address step.
+  static const onboardingIntroduceNext = ValueKey<String>(
+    'gold_path.onboarding.introduce.next',
+  );
+
+  /// Add-address onboarding action that opens add-address flow.
+  static const onboardingAddAddressPrimary = ValueKey<String>(
+    'gold_path.onboarding.add_address.primary',
+  );
+
+  /// Add-address onboarding action that advances (Skip for now / Next).
+  static const onboardingAddAddressSecondary = ValueKey<String>(
+    'gold_path.onboarding.add_address.secondary',
+  );
+
+  /// Setup-FF1 onboarding action that opens FF1 setup flow.
+  static const onboardingSetupFf1Primary = ValueKey<String>(
+    'gold_path.onboarding.setup_ff1.primary',
+  );
+
+  /// Setup-FF1 onboarding action that finishes onboarding.
+  static const onboardingSetupFf1Secondary = ValueKey<String>(
+    'gold_path.onboarding.setup_ff1.secondary',
+  );
+
   /// Stable channel row key for Curated channel carousels.
   static ValueKey<String> channelRow(String channelId) {
     return ValueKey<String>('gold_path.channels.row.$channelId');
