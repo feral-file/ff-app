@@ -8,8 +8,7 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
-import 'package:app/ui/screens/all_playlists_screen.dart'
-    show AllPlaylistsScreenPayload, buildAllPlaylistsQuery;
+import 'package:app/app/routing/all_playlists_route.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/tabs/tab_reload_guard.dart';
 import 'package:app/widgets/error_view.dart';

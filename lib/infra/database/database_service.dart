@@ -108,17 +108,18 @@ class DatabaseService {
 
   /// Watch playlists as domain models.
   ///
-  /// This is the Drift equivalent of the old repo's `watchPlaylistRows(...)`.
+  /// Ordered by publisher_id ASC, created_at_us ASC (canonical order).
+  /// Use [channelIds] for single or multiple channels.
   Stream<List<Playlist>> watchPlaylists({
     PlaylistType? type,
-    String? channelId,
+    List<String>? channelIds,
     String? ownerAddress,
     int? limit,
   }) {
     return _db
         .watchPlaylists(
           type: type?.index,
-          channelId: channelId,
+          channelIds: channelIds,
           ownerAddress: ownerAddress,
           limit: limit,
         )

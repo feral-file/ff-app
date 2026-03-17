@@ -307,15 +307,11 @@ class AppDatabase extends _$AppDatabase {
     return query.watch();
   }
 
-  /// Watch playlists ordered by created time (desc, then id), optionally
-  /// filtered
-  /// by playlist [type], [channelId], and limited to [limit] rows.
-  ///
-  /// - [type] matches the `playlists.type` integer column.
-  /// - [limit] is applied after ordering.
+  /// Watch playlists ordered by publisher_id, created_at_us (canonical order).
+  /// Filter by [type], [channelIds], [ownerAddress], [limit].
   Stream<List<PlaylistData>> watchPlaylists({
     int? type,
-    String? channelId,
+    List<String>? channelIds,
     String? ownerAddress,
     int? limit,
   }) {
@@ -341,8 +337,8 @@ class AppDatabase extends _$AppDatabase {
       query.where((t) => t.type.equals(type));
     }
 
-    if (channelId != null) {
-      query.where((t) => t.channelId.equals(channelId));
+    if (channelIds != null && channelIds.isNotEmpty) {
+      query.where((t) => t.channelId.isIn(channelIds));
     }
 
     if (ownerAddress != null) {

@@ -7,7 +7,7 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/theme/app_color.dart';
-import 'package:app/ui/screens/all_playlists_screen.dart';
+import 'package:app/app/routing/all_playlists_route.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/channel_item.dart';
