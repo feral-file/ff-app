@@ -28,7 +28,7 @@ void main() {
       // Read the initial state
       final initialState = container.read(bootstrapProvider);
 
-      expect(initialState.state, equals(BootstrapState.idle));
+      expect(initialState.phase, equals(BootstrapPhase.idle));
       expect(initialState.message, isNull);
     });
 
@@ -50,7 +50,7 @@ void main() {
 
       // Read the bootstrap provider
       final bootstrapState = container.read(bootstrapProvider);
-      expect(bootstrapState.state, equals(BootstrapState.idle));
+      expect(bootstrapState.phase, equals(BootstrapPhase.idle));
 
       // Verify the database service is available
       expect(dbService, isNotNull);
@@ -75,11 +75,9 @@ void main() {
       // Read the final state
       final finalState = container.read(bootstrapProvider);
 
-      // Should be either success or error (not idle)
-      expect(finalState.state, isNot(equals(BootstrapState.idle)));
       expect(
-        finalState.state,
-        anyOf([BootstrapState.success, BootstrapState.error]),
+        finalState.phase,
+        anyOf([BootstrapPhase.completed, BootstrapPhase.failed]),
       );
     });
 
@@ -95,24 +93,32 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final stateChanges = <BootstrapState>[];
+      final phaseChanges = <BootstrapPhase>[];
 
       // Listen to state changes
       container.listen<BootstrapStatus>(
         bootstrapProvider,
         (previous, next) {
-          stateChanges.add(next.state);
+          phaseChanges.add(next.phase);
         },
       );
 
       // Trigger bootstrap
       await container.read(bootstrapProvider.notifier).bootstrap();
 
-      // Should have tracked state changes
-      expect(stateChanges, isNotEmpty);
+      // Should have tracked phase changes
+      expect(phaseChanges, isNotEmpty);
       expect(
-        stateChanges,
-        contains(anyOf([BootstrapState.loading, BootstrapState.success])),
+        phaseChanges,
+        containsAllInOrder([
+          BootstrapPhase.validatingConfiguration,
+          BootstrapPhase.settingUpCollection,
+          BootstrapPhase.activatingAutoConnectWatcher,
+        ]),
+      );
+      expect(
+        phaseChanges,
+        contains(anyOf([BootstrapPhase.completed, BootstrapPhase.failed])),
       );
     });
 
@@ -147,7 +153,7 @@ void main() {
       addTearDown(container1.dispose);
 
       final state1 = container1.read(bootstrapProvider);
-      expect(state1.state, equals(BootstrapState.idle));
+      expect(state1.phase, equals(BootstrapPhase.idle));
 
       // This test is isolated from other tests
     });
