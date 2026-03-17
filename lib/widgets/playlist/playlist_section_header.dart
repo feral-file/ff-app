@@ -1,4 +1,3 @@
-import 'package:app/design/app_typography.dart';
 import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
@@ -87,7 +86,7 @@ class PlaylistSectionHeader extends StatelessWidget {
                       SizedBox(width: LayoutConstants.space2),
                       Text(
                         'All',
-                        style: AppTypography.body(context).grey,
+                        style: ContentRhythm.controlLabel(context),
                       ),
                     ],
                   ),

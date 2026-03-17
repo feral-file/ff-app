@@ -185,18 +185,30 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
             ),
           ),
 
-        // Me section (localVirtual channels) - above Curated
-        if (personalChannels.isNotEmpty) _buildMeSection(personalChannels),
-
-        // Curated channels section
-        if (curatedChannels.isNotEmpty) ...[
+        // Me section (localVirtual channels) - above Curated.
+        // Match Playlists tab: Column with trailing space12.
+        if (personalChannels.isNotEmpty)
           SliverToBoxAdapter(
-            child: SizedBox(height: LayoutConstants.space12),
+            child: Column(
+              children: [
+                _buildChannelSectionContent('Me', personalChannels),
+                SizedBox(height: LayoutConstants.space12),
+              ],
+            ),
           ),
-          _buildCuratedChannelsSection(curatedChannels),
-        ],
 
-        // Spacing between sections
+        // Curated channels section. Same structure as Playlists tab.
+        if (curatedChannels.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Column(
+              children: [
+                _buildChannelSectionContent('Curated', curatedChannels),
+                SizedBox(height: LayoutConstants.space12),
+              ],
+            ),
+          ),
+
+        // Trailing spacing (matches Playlists tab).
         SliverToBoxAdapter(
           child: SizedBox(height: LayoutConstants.space12),
         ),
@@ -204,51 +216,12 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
     );
   }
 
-  Widget _buildCuratedChannelsSection(List<Channel> channels) {
-    // Show max 5 channels, with "View All" if more exist
-    final displayChannels = channels.take(_previewCount).toList();
-    final hasMore = channels.length > _previewCount;
-
-    // Build ChannelRowData from domain Channel. Works loaded per channel via channelPreviewProvider.
-    final channelRowData = displayChannels.map((channel) {
-      return ChannelRowData(
-        channelId: channel.id,
-        channelTitle: channel.name,
-        channelSummary: channel.description,
-        works: const <PlaylistItem>[],
-      );
-    }).toList();
-
-    return SliverList.builder(
-      itemCount: 1,
-      itemBuilder: (context, index) => ChannelSection(
-        sectionName: 'Curated',
-        channels: channelRowData,
-        isActive: widget.isActive,
-        sectionIcon: SvgPicture.asset(
-          'assets/images/D.svg',
-          width: LayoutConstants.iconSizeDefault,
-          height: LayoutConstants.iconSizeDefault,
-          colorFilter: const ColorFilter.mode(
-            AppColor.auQuickSilver,
-            BlendMode.srcIn,
-          ),
-        ),
-        hasMore: hasMore,
-        onViewAllTap: hasMore
-            ? () {
-                context.push('${Routes.allChannels}?filter=curated');
-              }
-            : null,
-        onChannelItemTap: (item) {
-          // Navigate to work detail
-          context.push('${Routes.works}/${item.id}');
-        },
-      ),
-    );
-  }
-
-  Widget _buildMeSection(List<Channel> channels) {
+  /// Builds ChannelSection content (non-sliver). Used in Column for spacing
+  /// that matches Playlists tab.
+  Widget _buildChannelSectionContent(
+    String sectionName,
+    List<Channel> channels,
+  ) {
     final displayChannels = channels.take(_previewCount).toList();
     final hasMore = channels.length > _previewCount;
 
@@ -261,31 +234,31 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
       );
     }).toList();
 
-    return SliverList.builder(
-      itemCount: 1,
-      itemBuilder: (context, index) => ChannelSection(
-        sectionName: 'Me',
-        channels: channelRowData,
-        isActive: widget.isActive,
-        sectionIcon: SvgPicture.asset(
-          'assets/images/icon_account.svg',
-          width: LayoutConstants.iconSizeDefault,
-          height: LayoutConstants.iconSizeDefault,
-          colorFilter: const ColorFilter.mode(
-            AppColor.auQuickSilver,
-            BlendMode.srcIn,
-          ),
+    final isMe = sectionName == 'Me';
+    return ChannelSection(
+      sectionName: sectionName,
+      channels: channelRowData,
+      isActive: widget.isActive,
+      sectionIcon: SvgPicture.asset(
+        isMe ? 'assets/images/icon_account.svg' : 'assets/images/D.svg',
+        width: LayoutConstants.iconSizeDefault,
+        height: LayoutConstants.iconSizeDefault,
+        colorFilter: const ColorFilter.mode(
+          AppColor.auQuickSilver,
+          BlendMode.srcIn,
         ),
-        hasMore: hasMore,
-        onViewAllTap: hasMore
-            ? () {
-                context.push('${Routes.allChannels}?filter=personal');
-              }
-            : null,
-        onChannelItemTap: (item) {
-          context.push('${Routes.works}/${item.id}');
-        },
       ),
+      hasMore: hasMore,
+      onViewAllTap: hasMore
+          ? () {
+              context.push(
+                '${Routes.allChannels}?filter=${isMe ? 'personal' : 'curated'}',
+              );
+            }
+          : null,
+      onChannelItemTap: (item) {
+        context.push('${Routes.works}/${item.id}');
+      },
     );
   }
 }
