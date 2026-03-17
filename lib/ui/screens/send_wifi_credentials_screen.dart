@@ -181,7 +181,9 @@ class _EnterWiFiPasswordScreenState
           );
 
           unawaited(
-            ref.read(addFF1BluetoothDeviceProvider(ffDevice).future),
+            ref
+                .read(ff1BluetoothDeviceActionsProvider.notifier)
+                .addDevice(ffDevice),
           );
         }
 
