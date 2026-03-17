@@ -131,7 +131,8 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     if (blDevice.remoteId.str.isEmpty) {
       _throwIfSessionInactive(session);
       if (ff1DeviceInfo == null) {
-        state = AsyncValue.data(
+        _emitIfActive(
+          session,
           ConnectFF1Error(exception: Exception('Device info is not provided')),
         );
         return;
@@ -139,9 +140,10 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
       if (control.currentAdapterState != BluetoothAdapterState.on) {
         _log.info('[ConnectFF1Notifier] BT adapter off, waiting for it');
-        state = AsyncValue.data(ConnectFF1BluetoothOff());
+        _emitIfActive(session, ConnectFF1BluetoothOff());
         try {
           await _waitForBtReady(control);
+          _throwIfSessionInactive(session);
         } on FF1ConnectionCancelledError catch (_) {
           _log.info('[ConnectFF1Notifier] Cancelled while waiting for BT');
           return;
