@@ -105,7 +105,7 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
                   PlaylistSection(
                     sectionName: 'Playlists',
                     sectionIcon: SvgPicture.asset(
-                      'assets/images/D.svg',
+                      'assets/images/list.svg',
                       width: LayoutConstants.iconSizeDefault,
                       height: LayoutConstants.iconSizeDefault,
                       colorFilter: const ColorFilter.mode(
@@ -121,7 +121,7 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
                               extra: const AllPlaylistsScreenPayload(
                                 title: 'Playlists',
                                 description: 'All playlists in this channel.',
-                                iconAsset: 'assets/images/D.svg',
+                                iconAsset: 'assets/images/list.svg',
                               ),
                             )
                         : null,
