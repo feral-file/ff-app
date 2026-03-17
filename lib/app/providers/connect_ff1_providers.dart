@@ -120,6 +120,16 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     BluetoothDevice bluetoothDevice, {
     FF1DeviceInfo? ff1DeviceInfo,
   }) async {
+    // Precondition: the BLE scan path requires device info to find the device
+    // by name. Validate before starting a session so state = is unconditional
+    // (no stale-emission concern exists yet).
+    if (bluetoothDevice.remoteId.str.isEmpty && ff1DeviceInfo == null) {
+      state = AsyncValue.data(
+        ConnectFF1Error(exception: Exception('Device info is not provided')),
+      );
+      return;
+    }
+
     final session = _beginSession();
 
     final control = ref.read(ff1ControlProvider);
@@ -128,16 +138,8 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     // For the deeplink flow (no device ID), we need to scan via BLE.
     // Check Bluetooth state BEFORE emitting any connecting state so the UI
     // never flashes "Connecting…" when BT is already off.
+    // ff1DeviceInfo is guaranteed non-null here (precondition above).
     if (blDevice.remoteId.str.isEmpty) {
-      _throwIfSessionInactive(session);
-      if (ff1DeviceInfo == null) {
-        _emitIfActive(
-          session,
-          ConnectFF1Error(exception: Exception('Device info is not provided')),
-        );
-        return;
-      }
-
       if (control.currentAdapterState != BluetoothAdapterState.on) {
         _log.info('[ConnectFF1Notifier] BT adapter off, waiting for it');
         _emitIfActive(session, ConnectFF1BluetoothOff());
@@ -151,7 +153,8 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       }
     }
 
-    // Set initial connecting state
+    // BT is ready (or not required for direct-device flow).
+    // Now it is safe to show the connecting state and start the timer.
     _emitIfActive(session, ConnectFF1Connecting(blDevice: bluetoothDevice));
 
     // Set up timer for "still connecting" state after 15 seconds
