@@ -12,6 +12,22 @@
       }
     }
   },
+  "mcp": {
+    "figma": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "figma-developer-mcp@0.4.3",
+        "--stdio"
+      ],
+      "environment": {
+        "FIGMA_API_KEY": "{env:FIGMA_API_KEY}"
+      },
+      "enabled": true,
+      "timeout": 15000
+    }
+  },
   "command": {
     "review": {
       "description": "Run a fresh-context code review using the shared review contract",
