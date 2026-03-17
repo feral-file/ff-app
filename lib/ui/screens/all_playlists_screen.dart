@@ -152,24 +152,6 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
   Widget build(BuildContext context) {
     final ids = _effectiveChannelIds();
     final isChannelScoped = ids.isNotEmpty;
-    final channelPlaylistsAsync = isChannelScoped
-        ? ref.watch(channelPlaylistsFromIdsProvider(ids.join(',')))
-        : null;
-
-    // Only watch curated/me when not channel-scoped; channel-scoped path uses
-    // channelPlaylistsFromIdsProvider only and avoids unrelated DB watches.
-    final curatedState = isChannelScoped
-        ? ref.read(playlistsProvider(PlaylistType.dp1))
-        : ref.watch(playlistsProvider(PlaylistType.dp1));
-    final meSectionAsync = isChannelScoped
-        ? ref.read(meSectionPlaylistsProvider)
-        : ref.watch(meSectionPlaylistsProvider);
-
-    final meSectionState = meSectionAsync.when(
-      data: (v) => v,
-      loading: () => null,
-      error: (_, _) => null,
-    );
 
     List<Playlist> playlists;
     bool isLoading;
@@ -178,19 +160,30 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     bool hasError;
 
     if (isChannelScoped) {
+      // Never touch playlistsProvider or meSectionPlaylistsProvider when channel-scoped.
+      // ref.read on non-autoDispose providers still initializes them and starts DB watches.
+      final channelPlaylistsAsync =
+          ref.watch(channelPlaylistsFromIdsProvider(ids.join(',')));
       final raw =
-          channelPlaylistsAsync?.when(
+          channelPlaylistsAsync.when(
             data: (v) => v,
             loading: () => <Playlist>[],
             error: (_, _) => <Playlist>[],
-          ) ??
-          <Playlist>[];
+          );
       playlists = _filterByPlaylistTypes(raw, widget.playlistTypes);
-      isLoading = channelPlaylistsAsync?.isLoading ?? true;
+      isLoading = channelPlaylistsAsync.isLoading;
       isLoadingMore = false;
       hasMore = false;
-      hasError = channelPlaylistsAsync?.hasError ?? false;
+      hasError = channelPlaylistsAsync.hasError;
     } else {
+      final curatedState = ref.watch(playlistsProvider(PlaylistType.dp1));
+      final meSectionAsync = ref.watch(meSectionPlaylistsProvider);
+      final meSectionState = meSectionAsync.when(
+        data: (v) => v,
+        loading: () => null,
+        error: (_, _) => null,
+      );
+
       final types = _effectiveChannelTypes();
       final hasDp1 = types.contains(ChannelType.dp1);
       final hasLocalVirtual = types.contains(ChannelType.localVirtual);
@@ -252,15 +245,17 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                       ref.invalidate(
                         channelPlaylistsFromIdsProvider(ids.join(',')),
                       );
-                    } else if (_effectiveChannelTypes().contains(
-                      ChannelType.localVirtual,
-                    )) {
-                      ref.invalidate(meSectionPlaylistsProvider);
-                    }
-                    if (_effectiveChannelTypes().contains(ChannelType.dp1)) {
-                      ref
-                          .read(playlistsProvider(PlaylistType.dp1).notifier)
-                          .loadPlaylists();
+                    } else {
+                      if (_effectiveChannelTypes().contains(
+                        ChannelType.localVirtual,
+                      )) {
+                        ref.invalidate(meSectionPlaylistsProvider);
+                      }
+                      if (_effectiveChannelTypes().contains(ChannelType.dp1)) {
+                        ref
+                            .read(playlistsProvider(PlaylistType.dp1).notifier)
+                            .loadPlaylists();
+                      }
                     }
                   },
                 );

@@ -102,27 +102,35 @@ typedef AllPlaylistsMetadata = ({
 /// Derives header metadata from route params so the same URL renders
 /// identical UI whether reached via push or direct/deep link.
 /// Makes the route self-describing without ephemeral navigation extras.
-AllPlaylistsMetadata deriveAllPlaylistsMetadata(AllPlaylistsQueryParams params) {
+AllPlaylistsMetadata deriveAllPlaylistsMetadata(
+  AllPlaylistsQueryParams params,
+) {
   final ids = params.channelIds;
   final types = params.channelTypes;
   final playlistTypes = params.playlistTypes;
 
-  // Channel-scoped: single channel "View all" for Playlists or Address section.
+  // Channel-scoped: single or multi-channel View all for Playlists or Address.
   if (ids != null && ids.isNotEmpty) {
+    final isSingleChannel = ids.length == 1;
     final isAddressOnly = playlistTypes != null &&
         playlistTypes.length == 1 &&
         playlistTypes.contains(PlaylistType.addressBased);
     if (isAddressOnly) {
+      const singleDesc =
+          'Content from wallet addresses you add to this channel.';
+      const multiDesc =
+          'Content from wallet addresses you add to these channels.';
       return (
         title: 'Address',
-        description:
-            'Content from wallet addresses you add to this channel.',
+        description: isSingleChannel ? singleDesc : multiDesc,
         iconAsset: 'assets/images/icon_account.svg',
       );
     }
+    const playlistsSingleDesc = 'All playlists in this channel.';
+    const playlistsMultiDesc = 'All playlists from the selected channels.';
     return (
       title: 'Playlists',
-      description: 'All playlists in this channel.',
+      description: isSingleChannel ? playlistsSingleDesc : playlistsMultiDesc,
       iconAsset: 'assets/images/list.svg',
     );
   }

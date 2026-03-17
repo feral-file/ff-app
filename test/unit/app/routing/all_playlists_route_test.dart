@@ -76,7 +76,7 @@ void main() {
       expect(m.iconAsset, 'assets/images/icon_account.svg');
     });
 
-    test('channel-scoped playlists', () {
+    test('channel-scoped playlists (single channel)', () {
       final params = (
         channelTypes: null,
         channelIds: ['ch_1'],
@@ -86,6 +86,30 @@ void main() {
       expect(m.title, 'Playlists');
       expect(m.description, 'All playlists in this channel.');
       expect(m.iconAsset, 'assets/images/list.svg');
+    });
+
+    test('channel-scoped playlists (multi-channel)', () {
+      final params = (
+        channelTypes: null,
+        channelIds: ['ch_1', 'ch_2'],
+        playlistTypes: null,
+      );
+      final m = deriveAllPlaylistsMetadata(params);
+      expect(m.title, 'Playlists');
+      expect(m.description, 'All playlists from the selected channels.');
+      expect(m.iconAsset, 'assets/images/list.svg');
+    });
+
+    test('channel-scoped address only (multi-channel)', () {
+      final params = (
+        channelTypes: null,
+        channelIds: ['ch_a', 'ch_b'],
+        playlistTypes: [PlaylistType.addressBased],
+      );
+      final m = deriveAllPlaylistsMetadata(params);
+      expect(m.title, 'Address');
+      expect(m.description, 'Content from wallet addresses you add to these channels.');
+      expect(m.iconAsset, 'assets/images/icon_account.svg');
     });
 
     test('channelTypes localVirtual only', () {
@@ -111,7 +135,7 @@ void main() {
     });
 
     test('empty params returns null metadata', () {
-      final params = (
+      const params = (
         channelTypes: null,
         channelIds: null,
         playlistTypes: null,
