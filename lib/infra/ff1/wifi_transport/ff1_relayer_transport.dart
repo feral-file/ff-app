@@ -115,12 +115,13 @@ class FF1RelayerTransport implements FF1WifiTransport {
       );
     }
 
-    // Clear paused state when reconnecting (e.g. on app resume)
-    if (forceReconnect) {
-      _pausedForBackground = false;
-    }
+    // Clear paused state on any connect. If only cleared on forceReconnect,
+    // a manual connect after app was backgrounded (before any device connected)
+    // would leave _pausedForBackground stuck true, silently disabling
+    // auto-reconnect for the rest of the session.
+    _pausedForBackground = false;
 
-    // Already connected to same device (skip when forceReconnect - may be stale)
+    // Already connected to same device (skip when forceReconnect)
     if (!forceReconnect &&
         _isConnected &&
         _device?.topicId == device.topicId &&
@@ -243,23 +244,25 @@ class FF1RelayerTransport implements FF1WifiTransport {
     // Always cancel reconnect timers and set pause flag, even when already
     // disconnected. After a network drop, the transport can be !_isConnected
     // but still have an active _reconnectTimer from _scheduleReconnect().
-    // Without this, the timer would keep firing reconnect attempts in background.
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _pausedForBackground = true;
 
-    if (!_isConnected && !_isConnecting) {
-      return;
+    // Always send disconnect when isolate exists. _connectInternal() drops
+    // _isConnecting before the isolate sends its connection event, so there
+    // is a window where both are false but WebSocket is still connecting.
+    // Without this, the WebSocket could come up in background.
+    if (_isolateSendPort != null) {
+      const control = _RelayerControlMessage(
+        type: _RelayerControlType.disconnect,
+      );
+      _isolateSendPort!.send(control.toJson());
     }
 
-    // Send disconnect control to isolate (closes WebSocket channel)
-    const control = _RelayerControlMessage(
-      type: _RelayerControlType.disconnect,
-    );
-    _isolateSendPort?.send(control.toJson());
-
-    _isConnected = false;
-    _connectionStateController.add(false);
+    if (_isConnected || _isConnecting) {
+      _isConnected = false;
+      _connectionStateController.add(false);
+    }
   }
 
   @override
