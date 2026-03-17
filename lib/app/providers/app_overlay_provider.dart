@@ -131,6 +131,62 @@ class AppOverlayNotifier extends Notifier<List<AppOverlayItem>> {
     return overlayId;
   }
 
+  /// Creates or updates a toast overlay and returns its id.
+  ///
+  /// If [overlayId] points to an existing toast, this method updates it in
+  /// place to avoid remove/re-add flicker during status transitions.
+  /// Otherwise, it creates a new toast and returns the new id.
+  String upsertToast({
+    required String message,
+    String? overlayId,
+    ToastOverlayIconPreset iconPreset = ToastOverlayIconPreset.loading,
+    bool isTapThroughable = true,
+    Duration? autoDismissAfter,
+  }) {
+    final interactionMode = isTapThroughable
+        ? OverlayInteractionMode.tapThrough
+        : OverlayInteractionMode.blocking;
+
+    if (overlayId == null) {
+      return showToast(
+        message: message,
+        iconPreset: iconPreset,
+        isTapThroughable: isTapThroughable,
+        autoDismissAfter: autoDismissAfter,
+      );
+    }
+
+    var found = false;
+    state = [
+      for (final item in state)
+        if (item.id == overlayId && item is AppToastOverlayItem)
+          () {
+            found = true;
+            return item.copyWith(
+              isDismissing: false,
+              message: message,
+              iconPreset: iconPreset,
+              interactionMode: interactionMode,
+              autoDismissAfter: autoDismissAfter,
+              clearAutoDismissAfter: autoDismissAfter == null,
+            );
+          }()
+        else
+          item,
+    ];
+
+    if (found) {
+      return overlayId;
+    }
+
+    return showToast(
+      message: message,
+      iconPreset: iconPreset,
+      isTapThroughable: isTapThroughable,
+      autoDismissAfter: autoDismissAfter,
+    );
+  }
+
   /// Starts dismiss animation for a specific overlay id.
   void dismissOverlay(String overlayId) {
     state = [
