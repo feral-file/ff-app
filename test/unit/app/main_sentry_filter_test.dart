@@ -1,15 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
-// Import main.dart to access _isSeedSyncNetworkError (will be test-only visible)
-// Note: Since _isSeedSyncNetworkError is private, we test it by importing main
-// and using reflective access or by promoting it to a testable module.
-// For now, we create a standalone test that exercises the same logic.
+// Test the Sentry filter logic by mirroring the implementation.
+// Since _isSeedSyncNetworkError is private, we replicate it in a testable
+// form with the same behavior to prevent regressions.
 
 void main() {
   group('Sentry seed sync network error filter', () {
-    /// Helper to create a fake SentryEvent with an exception and stack frames.
-    SentryEvent _createEventWithException({
+    /// Helper to create a fake SentryEvent with an exception and stack
+    /// frames.
+    SentryEvent createEventWithException({
       required String exceptionType,
       required List<String> stackFrameFileNames,
     }) {
@@ -36,7 +36,7 @@ void main() {
     test(
       'returns true for SocketException with seed_database in stack',
       () {
-        final event = _createEventWithException(
+        final event = createEventWithException(
           exceptionType: 'SocketException',
           stackFrameFileNames: [
             'some_other_file.dart',
@@ -51,7 +51,7 @@ void main() {
     test(
       'returns true for DioException with seed_database in stack',
       () {
-        final event = _createEventWithException(
+        final event = createEventWithException(
           exceptionType: 'DioException',
           stackFrameFileNames: [
             'some_other_file.dart',
@@ -66,7 +66,7 @@ void main() {
     test(
       'returns false for SocketException without seed_database in stack',
       () {
-        final event = _createEventWithException(
+        final event = createEventWithException(
           exceptionType: 'SocketException',
           stackFrameFileNames: [
             'some_other_file.dart',
@@ -81,7 +81,7 @@ void main() {
     test(
       'returns false for DioException without seed_database in stack',
       () {
-        final event = _createEventWithException(
+        final event = createEventWithException(
           exceptionType: 'DioException',
           stackFrameFileNames: [
             'some_other_file.dart',
@@ -96,7 +96,7 @@ void main() {
     test(
       'returns false for FormatException with seed_database in stack',
       () {
-        final event = _createEventWithException(
+        final event = createEventWithException(
           exceptionType: 'FormatException',
           stackFrameFileNames: [
             'seed_database_service.dart',
@@ -123,7 +123,6 @@ void main() {
             SentryException(
               type: 'SocketException',
               value: 'Test SocketException',
-              stackTrace: null,
             ),
           ],
         );
