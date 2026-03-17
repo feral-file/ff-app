@@ -12,7 +12,8 @@ import 'package:app/infra/services/release_notes_service.dart';
 import 'package:app/ui/screens/add_address_screen.dart';
 import 'package:app/ui/screens/add_alias_screen.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
-import 'package:app/ui/screens/all_playlists_screen.dart';
+import 'package:app/ui/screens/all_playlists_screen.dart'
+    show AllPlaylistsScreen, AllPlaylistsScreenPayload, parseAllPlaylistsQuery;
 import 'package:app/ui/screens/channel_detail_screen.dart';
 import 'package:app/ui/screens/device_config_screen.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
@@ -373,14 +374,21 @@ routerProvider = Provider.family<GoRouter, String>((
         path: Routes.allPlaylists,
         name: RouteNames.allPlaylists,
         pageBuilder: (context, state) {
-          final filterParam = state.uri.queryParameters['filter'];
-          final filter = filterParam == 'personal'
-              ? AllPlaylistsFilter.personal
-              : AllPlaylistsFilter.curated;
+          final params = parseAllPlaylistsQuery(state.uri.queryParameters);
+          final payload = state.extra is AllPlaylistsScreenPayload
+              ? state.extra! as AllPlaylistsScreenPayload
+              : null;
           return buildCupertinoTransitionPage(
             context,
             state,
-            AllPlaylistsScreen(filter: filter),
+            AllPlaylistsScreen(
+              channelTypes: params.channelTypes,
+              channelIds: params.channelIds,
+              playlistTypes: params.playlistTypes,
+              title: payload?.title,
+              description: payload?.description,
+              iconAsset: payload?.iconAsset,
+            ),
           );
         },
       ),

@@ -6,7 +6,10 @@ import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
+import 'package:app/ui/screens/all_playlists_screen.dart'
+    show AllPlaylistsScreenPayload, buildAllPlaylistsQuery;
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/tabs/tab_reload_guard.dart';
 import 'package:app/widgets/error_view.dart';
@@ -264,7 +267,15 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
                   hasMore: personalPlaylists.length > _previewCount,
                   onViewAllTap: personalPlaylists.length > _previewCount
                       ? () => context.push(
-                          '${Routes.allPlaylists}?filter=personal',
+                          '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelTypes: [ChannelType.localVirtual])}',
+                          extra: const AllPlaylistsScreenPayload(
+                            title: 'Me',
+                            description:
+                                "Content from wallet addresses you add. Browse "
+                                "works you own or explore any address you're "
+                                'curious about.',
+                            iconAsset: 'assets/images/icon_account.svg',
+                          ),
                         )
                       : null,
                   onPlaylistItemTap: (item) {
@@ -299,7 +310,15 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
                   hasMore: curatedSectionPlaylists.length > _previewCount,
                   onViewAllTap: curatedSectionPlaylists.length > _previewCount
                       ? () => context.push(
-                          '${Routes.allPlaylists}?filter=curated',
+                          '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelTypes: [ChannelType.dp1])}',
+                          extra: const AllPlaylistsScreenPayload(
+                            title: 'Curated',
+                            description:
+                                'Playlists assembled by Feral File and invited '
+                                'artists and curators. Early recommendations to '
+                                'help you explore digital art.',
+                            iconAsset: 'assets/images/D.svg',
+                          ),
                         )
                       : null,
                   onPlaylistItemTap: (item) {

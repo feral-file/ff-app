@@ -31,3 +31,21 @@ final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
             ChannelDetails(channel: channel, playlists: playlists),
       );
     });
+
+/// Provider for playlists across multiple channels.
+/// Key is comma-joined channel IDs (e.g. "id1,id2").
+final StreamProviderFamily<List<Playlist>, String>
+    channelPlaylistsFromIdsProvider =
+    StreamProvider.family<List<Playlist>, String>((ref, channelIdsKey) {
+      final databaseService = ref.read(databaseServiceProvider);
+      final ids = channelIdsKey.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      if (ids.isEmpty) return Stream.value(<Playlist>[]);
+      if (ids.length == 1) {
+        return databaseService.watchPlaylists(channelId: ids.single);
+      }
+      final streams = ids.map((id) => databaseService.watchPlaylists(channelId: id));
+      return Rx.combineLatest<List<Playlist>, List<Playlist>>(
+        streams,
+        (list) => list.expand((x) => x).toList(),
+      );
+    });
