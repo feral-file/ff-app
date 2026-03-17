@@ -1,20 +1,6 @@
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 
-/// Payload for the all playlists screen (title, description, icon).
-/// Pass via [GoRouterState.extra] when navigating; not in query params.
-class AllPlaylistsScreenPayload {
-  const AllPlaylistsScreenPayload({
-    this.title,
-    this.description,
-    this.iconAsset,
-  });
-
-  final String? title;
-  final String? description;
-  final String? iconAsset;
-}
-
 /// Parsed all-playlists query params (reverse of [buildAllPlaylistsQuery]).
 typedef AllPlaylistsQueryParams = ({
   List<ChannelType>? channelTypes,
@@ -22,7 +8,7 @@ typedef AllPlaylistsQueryParams = ({
   List<PlaylistType>? playlistTypes,
 });
 
-/// Parses channel types from query param (comma-separated, e.g. "dp1,localVirtual").
+/// Parses channel types from query param (e.g. "dp1,localVirtual").
 List<ChannelType>? parseChannelTypes(String? value) {
   if (value == null || value.isEmpty) return null;
   final parts = value.split(',');
@@ -34,7 +20,7 @@ List<ChannelType>? parseChannelTypes(String? value) {
   return types.isEmpty ? null : types;
 }
 
-/// Parses playlist types from query param (comma-separated, e.g. "dp1,favorite").
+/// Parses playlist types from query param (e.g. "dp1,favorite").
 List<PlaylistType>? parsePlaylistTypes(String? value) {
   if (value == null || value.isEmpty) return null;
   final parts = value.split(',');
@@ -76,11 +62,13 @@ String buildAllPlaylistsQuery({
         playlistTypes.map((t) => t.toQueryParamString()).join(',');
   }
   if (params.isEmpty) return '';
-  return '?${params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&')}';
+  final encoded =
+      params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}');
+  return '?${encoded.join('&')}';
 }
 
 /// Parses query params produced by [buildAllPlaylistsQuery].
-/// Supports both [channelIds] and legacy [channelId] (single).
+/// Supports channelIds and legacy channelId (single) query keys.
 AllPlaylistsQueryParams parseAllPlaylistsQuery(Map<String, String>? query) {
   if (query == null || query.isEmpty) {
     return (channelTypes: null, channelIds: null, playlistTypes: null);
@@ -102,4 +90,74 @@ AllPlaylistsQueryParams parseAllPlaylistsQueryFromString(String? queryString) {
   final s = queryString.startsWith('?') ? queryString : '?$queryString';
   final uri = Uri.parse('http://x/$s');
   return parseAllPlaylistsQuery(uri.queryParameters);
+}
+
+/// Metadata for the all-playlists screen header.
+typedef AllPlaylistsMetadata = ({
+  String? title,
+  String? description,
+  String? iconAsset,
+});
+
+/// Derives header metadata from route params so the same URL renders
+/// identical UI whether reached via push or direct/deep link.
+/// Makes the route self-describing without ephemeral navigation extras.
+AllPlaylistsMetadata deriveAllPlaylistsMetadata(AllPlaylistsQueryParams params) {
+  final ids = params.channelIds;
+  final types = params.channelTypes;
+  final playlistTypes = params.playlistTypes;
+
+  // Channel-scoped: single channel "View all" for Playlists or Address section.
+  if (ids != null && ids.isNotEmpty) {
+    final isAddressOnly = playlistTypes != null &&
+        playlistTypes.length == 1 &&
+        playlistTypes.contains(PlaylistType.addressBased);
+    if (isAddressOnly) {
+      return (
+        title: 'Address',
+        description:
+            'Content from wallet addresses you add to this channel.',
+        iconAsset: 'assets/images/icon_account.svg',
+      );
+    }
+    return (
+      title: 'Playlists',
+      description: 'All playlists in this channel.',
+      iconAsset: 'assets/images/list.svg',
+    );
+  }
+
+  // Type-scoped: Me, Curated, or combined.
+  if (types != null && types.isNotEmpty) {
+    final hasDp1 = types.contains(ChannelType.dp1);
+    final hasLocalVirtual = types.contains(ChannelType.localVirtual);
+    if (hasLocalVirtual && !hasDp1) {
+      return (
+        title: 'Me',
+        description:
+            'Content from wallet addresses you add. Browse '
+            "works you own or explore any address you're curious about.",
+        iconAsset: 'assets/images/icon_account.svg',
+      );
+    }
+    if (hasDp1 && !hasLocalVirtual) {
+      return (
+        title: 'Curated',
+        description:
+            'Playlists assembled by Feral File and invited '
+            'artists and curators. Early recommendations to '
+            'help you explore digital art.',
+        iconAsset: 'assets/images/D.svg',
+      );
+    }
+    if (hasDp1 && hasLocalVirtual) {
+      return (
+        title: 'All playlists',
+        description: null,
+        iconAsset: null,
+      );
+    }
+  }
+
+  return (title: null, description: null, iconAsset: null);
 }

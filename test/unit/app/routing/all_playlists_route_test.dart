@@ -62,4 +62,64 @@ void main() {
       expect(parsed.playlistTypes, [PlaylistType.addressBased]);
     });
   });
+
+  group('deriveAllPlaylistsMetadata', () {
+    test('channel-scoped address only', () {
+      final params = (
+        channelTypes: null,
+        channelIds: ['ch_1'],
+        playlistTypes: [PlaylistType.addressBased],
+      );
+      final m = deriveAllPlaylistsMetadata(params);
+      expect(m.title, 'Address');
+      expect(m.description, isNotNull);
+      expect(m.iconAsset, 'assets/images/icon_account.svg');
+    });
+
+    test('channel-scoped playlists', () {
+      final params = (
+        channelTypes: null,
+        channelIds: ['ch_1'],
+        playlistTypes: [PlaylistType.dp1, PlaylistType.favorite],
+      );
+      final m = deriveAllPlaylistsMetadata(params);
+      expect(m.title, 'Playlists');
+      expect(m.description, 'All playlists in this channel.');
+      expect(m.iconAsset, 'assets/images/list.svg');
+    });
+
+    test('channelTypes localVirtual only', () {
+      final params = (
+        channelTypes: [ChannelType.localVirtual],
+        channelIds: null,
+        playlistTypes: null,
+      );
+      final m = deriveAllPlaylistsMetadata(params);
+      expect(m.title, 'Me');
+      expect(m.iconAsset, 'assets/images/icon_account.svg');
+    });
+
+    test('channelTypes dp1 only', () {
+      final params = (
+        channelTypes: [ChannelType.dp1],
+        channelIds: null,
+        playlistTypes: null,
+      );
+      final m = deriveAllPlaylistsMetadata(params);
+      expect(m.title, 'Curated');
+      expect(m.iconAsset, 'assets/images/D.svg');
+    });
+
+    test('empty params returns null metadata', () {
+      final params = (
+        channelTypes: null,
+        channelIds: null,
+        playlistTypes: null,
+      );
+      final m = deriveAllPlaylistsMetadata(params);
+      expect(m.title, isNull);
+      expect(m.description, isNull);
+      expect(m.iconAsset, isNull);
+    });
+  });
 }

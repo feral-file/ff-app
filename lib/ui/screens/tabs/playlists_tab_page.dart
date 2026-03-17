@@ -267,14 +267,6 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
                   onViewAllTap: personalPlaylists.length > _previewCount
                       ? () => context.push(
                           '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelTypes: [ChannelType.localVirtual])}',
-                          extra: const AllPlaylistsScreenPayload(
-                            title: 'Me',
-                            description:
-                                "Content from wallet addresses you add. Browse "
-                                "works you own or explore any address you're "
-                                'curious about.',
-                            iconAsset: 'assets/images/icon_account.svg',
-                          ),
                         )
                       : null,
                   onPlaylistItemTap: (item) {
@@ -310,14 +302,6 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
                   onViewAllTap: curatedSectionPlaylists.length > _previewCount
                       ? () => context.push(
                           '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelTypes: [ChannelType.dp1])}',
-                          extra: const AllPlaylistsScreenPayload(
-                            title: 'Curated',
-                            description:
-                                'Playlists assembled by Feral File and invited '
-                                'artists and curators. Early recommendations to '
-                                'help you explore digital art.',
-                            iconAsset: 'assets/images/D.svg',
-                          ),
                         )
                       : null,
                   onPlaylistItemTap: (item) {

@@ -118,11 +118,6 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
                     onViewAllTap: nonAddress.length > _previewCount
                         ? () => context.push(
                               '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelIds: [channelId], playlistTypes: [PlaylistType.dp1, PlaylistType.favorite])}',
-                              extra: const AllPlaylistsScreenPayload(
-                                title: 'Playlists',
-                                description: 'All playlists in this channel.',
-                                iconAsset: 'assets/images/list.svg',
-                              ),
                             )
                         : null,
                     onPlaylistItemTap: (item) {
@@ -162,13 +157,6 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
                     onViewAllTap: addressPlaylists.length > _previewCount
                         ? () => context.push(
                               '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelIds: [channelId], playlistTypes: [PlaylistType.addressBased])}',
-                              extra: const AllPlaylistsScreenPayload(
-                                title: 'Address',
-                                description:
-                                    'Content from wallet addresses you add to '
-                                    'this channel.',
-                                iconAsset: 'assets/images/icon_account.svg',
-                              ),
                             )
                         : null,
                     onPlaylistItemTap: (item) {

@@ -156,8 +156,14 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
         ? ref.watch(channelPlaylistsFromIdsProvider(ids.join(',')))
         : null;
 
-    final curatedState = ref.watch(playlistsProvider(PlaylistType.dp1));
-    final meSectionAsync = ref.watch(meSectionPlaylistsProvider);
+    // Only watch curated/me when not channel-scoped; channel-scoped path uses
+    // channelPlaylistsFromIdsProvider only and avoids unrelated DB watches.
+    final curatedState = isChannelScoped
+        ? ref.read(playlistsProvider(PlaylistType.dp1))
+        : ref.watch(playlistsProvider(PlaylistType.dp1));
+    final meSectionAsync = isChannelScoped
+        ? ref.read(meSectionPlaylistsProvider)
+        : ref.watch(meSectionPlaylistsProvider);
 
     final meSectionState = meSectionAsync.when(
       data: (v) => v,

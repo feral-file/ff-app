@@ -146,7 +146,6 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
       _cachedCuratedState = nextCuratedState;
     }
     final curatedChannels = curatedState.channels;
-    final error = curatedState.error;
 
     final nextPersonalState = widget.isActive
         ? ref.watch(channelsProvider(ChannelType.localVirtual))
@@ -156,6 +155,12 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
     }
     final personalChannels = _cachedPersonalState.channels;
 
+    // Surface error when either curated or personal fails with no data.
+    // Both sections are first-class; user needs a retry path for either.
+    final hasError =
+        (curatedState.error != null && curatedChannels.isEmpty) ||
+        (_cachedPersonalState.error != null && personalChannels.isEmpty);
+
     // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics
     // Parent NestedScrollView handles scrolling
     return CustomScrollView(
@@ -164,7 +169,7 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
       physics: const NeverScrollableScrollPhysics(),
       slivers: [
         // Error state
-        if (error != null && curatedChannels.isEmpty)
+        if (hasError)
           SliverToBoxAdapter(
             child: ErrorView(
               error:

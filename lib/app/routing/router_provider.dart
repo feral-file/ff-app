@@ -13,7 +13,7 @@ import 'package:app/ui/screens/add_address_screen.dart';
 import 'package:app/ui/screens/add_alias_screen.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
 import 'package:app/app/routing/all_playlists_route.dart'
-    show AllPlaylistsScreenPayload, parseAllPlaylistsQuery;
+    show deriveAllPlaylistsMetadata, parseAllPlaylistsQuery;
 import 'package:app/ui/screens/all_playlists_screen.dart' show AllPlaylistsScreen;
 import 'package:app/ui/screens/channel_detail_screen.dart';
 import 'package:app/ui/screens/device_config_screen.dart';
@@ -376,9 +376,7 @@ routerProvider = Provider.family<GoRouter, String>((
         name: RouteNames.allPlaylists,
         pageBuilder: (context, state) {
           final params = parseAllPlaylistsQuery(state.uri.queryParameters);
-          final payload = state.extra is AllPlaylistsScreenPayload
-              ? state.extra! as AllPlaylistsScreenPayload
-              : null;
+          final metadata = deriveAllPlaylistsMetadata(params);
           return buildCupertinoTransitionPage(
             context,
             state,
@@ -386,9 +384,9 @@ routerProvider = Provider.family<GoRouter, String>((
               channelTypes: params.channelTypes,
               channelIds: params.channelIds,
               playlistTypes: params.playlistTypes,
-              title: payload?.title,
-              description: payload?.description,
-              iconAsset: payload?.iconAsset,
+              title: metadata.title,
+              description: metadata.description,
+              iconAsset: metadata.iconAsset,
             ),
           );
         },
