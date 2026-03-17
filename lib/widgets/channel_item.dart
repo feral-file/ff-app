@@ -56,69 +56,73 @@ class ChannelHeader extends StatelessWidget {
           context.push('${Routes.channels}/$channelId');
         }
       },
-      child: ColoredBox(
-        color: Colors.transparent,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: ContentRhythm.horizontalRail,
-                vertical: ContentRhythm.sectionSpacing,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    decodedTitle,
-                    style: ContentRhythm.title(context),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (rawSummary != null && rawSummary.isNotEmpty) ...[
-                    SizedBox(height: ContentRhythm.titleSupportGap),
-                    if (renderSummaryAsHtml)
-                      SelectionArea(
-                        child: HtmlWidget(
-                          prepareHtmlForRender(rawSummary),
-                          textStyle: ContentRhythm.longForm(context),
-                          onTapUrl: (url) async {
-                            await launchUrl(
-                              Uri.parse(url),
-                              mode: LaunchMode.externalApplication,
-                            );
-                            return true;
-                          },
-                          customStylesBuilder: (element) {
-                            if (element.localName == 'p') {
-                              return {
-                                'margin': '0 0 12px 0',
-                              };
-                            }
-                            if (element.localName == 'a') {
-                              return {
-                                'color': PrimitivesTokens.colorsWhite
-                                    .toHexString(),
-                              };
-                            }
-                            return null;
-                          },
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: double.infinity,
+        child: ColoredBox(
+          color: Colors.transparent,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: ContentRhythm.horizontalRail,
+                  vertical: ContentRhythm.sectionSpacing,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      decodedTitle,
+                      style: ContentRhythm.title(context),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (rawSummary != null && rawSummary.isNotEmpty) ...[
+                      SizedBox(height: ContentRhythm.titleSupportGap),
+                      if (renderSummaryAsHtml)
+                        SelectionArea(
+                          child: HtmlWidget(
+                            prepareHtmlForRender(rawSummary),
+                            textStyle: ContentRhythm.longForm(context),
+                            onTapUrl: (url) async {
+                              await launchUrl(
+                                Uri.parse(url),
+                                mode: LaunchMode.externalApplication,
+                              );
+                              return true;
+                            },
+                            customStylesBuilder: (element) {
+                              if (element.localName == 'p') {
+                                return {
+                                  'margin': '0 0 12px 0',
+                                };
+                              }
+                              if (element.localName == 'a') {
+                                return {
+                                  'color': PrimitivesTokens.colorsWhite
+                                      .toHexString(),
+                                };
+                              }
+                              return null;
+                            },
+                          ),
+                        )
+                      else
+                        Text(
+                          decodedSummary!,
+                          maxLines: maxLines,
+                          overflow: maxLines != null
+                              ? TextOverflow.ellipsis
+                              : TextOverflow.visible,
+                          style: ContentRhythm.longForm(context),
                         ),
-                      )
-                    else
-                      Text(
-                        decodedSummary!,
-                        maxLines: maxLines,
-                        overflow: maxLines != null
-                            ? TextOverflow.ellipsis
-                            : TextOverflow.visible,
-                        style: ContentRhythm.longForm(context),
-                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
