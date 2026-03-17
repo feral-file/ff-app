@@ -163,7 +163,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(10, 3855157679464200367),
     name: 'AppStateAddressEntity',
-    lastPropertyId: const obx_int.IdUid(15, 3445134738243097972),
+    lastPropertyId: const obx_int.IdUid(18, 4052192049678900918),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -178,18 +178,6 @@ final _entities = <obx_int.ModelEntity>[
         type: 9,
         flags: 2080,
         indexId: const obx_int.IdUid(9, 3962431394130676537),
-      ),
-      obx_int.ModelProperty(
-        id: const obx_int.IdUid(5, 7031346450320634061),
-        name: 'hasIndexerAnchor',
-        type: 1,
-        flags: 0,
-      ),
-      obx_int.ModelProperty(
-        id: const obx_int.IdUid(6, 6219212707173673109),
-        name: 'indexerAnchor',
-        type: 6,
-        flags: 0,
       ),
       obx_int.ModelProperty(
         id: const obx_int.IdUid(7, 385594094139718018),
@@ -221,6 +209,24 @@ final _entities = <obx_int.ModelEntity>[
         type: 9,
         flags: 0,
       ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(16, 7442441517501584529),
+        name: 'hasCheckpoint',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(17, 5159646973470099963),
+        name: 'checkpointTimestampUs',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(18, 4052192049678900918),
+        name: 'checkpointEventId',
+        type: 6,
+        flags: 0,
+      ),
     ],
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
@@ -228,7 +234,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(11, 4993529541343759207),
     name: 'AppStateEntity',
-    lastPropertyId: const obx_int.IdUid(10, 846777149020970588),
+    lastPropertyId: const obx_int.IdUid(11, 8754748133787260182),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -281,14 +287,14 @@ final _entities = <obx_int.ModelEntity>[
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(9, 5874727476430855017),
-        name: 'isMigrated',
+        id: const obx_int.IdUid(10, 846777149020970588),
+        name: 'hasCompletedSeedDownload',
         type: 1,
         flags: 0,
       ),
       obx_int.ModelProperty(
-        id: const obx_int.IdUid(10, 846777149020970588),
-        name: 'hasCompletedSeedDownload',
+        id: const obx_int.IdUid(11, 8754748133787260182),
+        name: 'isMigratedV2',
         type: 1,
         flags: 0,
       ),
@@ -439,6 +445,9 @@ obx_int.ModelDefinition getObjectBoxModel() {
       1404419168567981741,
       671751466930742228,
       3462060407990166466,
+      7031346450320634061,
+      6219212707173673109,
+      5874727476430855017,
     ],
     retiredRelationUids: const [],
     modelVersion: 5,
@@ -632,16 +641,17 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final indexingProcessWorkflowIdOffset = fbb.writeString(
           object.indexingProcessWorkflowId,
         );
-        fbb.startTable(16);
+        fbb.startTable(19);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, normalizedAddressOffset);
-        fbb.addBool(4, object.hasIndexerAnchor);
-        fbb.addInt64(5, object.indexerAnchor);
         fbb.addInt64(6, object.indexingProcessStateIndex);
         fbb.addInt64(7, object.indexingProcessUpdatedAtUs);
         fbb.addOffset(8, indexingProcessErrorMessageOffset);
         fbb.addInt64(9, object.updatedAtUs);
         fbb.addOffset(12, indexingProcessWorkflowIdOffset);
+        fbb.addBool(15, object.hasCheckpoint);
+        fbb.addInt64(16, object.checkpointTimestampUs);
+        fbb.addInt64(17, object.checkpointEventId);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -651,16 +661,22 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final normalizedAddressParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGet(buffer, rootOffset, 6, '');
-        final hasIndexerAnchorParam = const fb.BoolReader().vTableGet(
+        final hasCheckpointParam = const fb.BoolReader().vTableGet(
           buffer,
           rootOffset,
-          12,
+          34,
           false,
         );
-        final indexerAnchorParam = const fb.Int64Reader().vTableGet(
+        final checkpointTimestampUsParam = const fb.Int64Reader().vTableGet(
           buffer,
           rootOffset,
-          14,
+          36,
+          0,
+        );
+        final checkpointEventIdParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          38,
           0,
         );
         final indexingProcessStateIndexParam = const fb.Int64Reader().vTableGet(
@@ -685,8 +701,9 @@ obx_int.ModelDefinition getObjectBoxModel() {
         );
         final object = AppStateAddressEntity(
           normalizedAddress: normalizedAddressParam,
-          hasIndexerAnchor: hasIndexerAnchorParam,
-          indexerAnchor: indexerAnchorParam,
+          hasCheckpoint: hasCheckpointParam,
+          checkpointTimestampUs: checkpointTimestampUsParam,
+          checkpointEventId: checkpointEventIdParam,
           indexingProcessStateIndex: indexingProcessStateIndexParam,
           indexingProcessUpdatedAtUs: indexingProcessUpdatedAtUsParam,
           indexingProcessErrorMessage: indexingProcessErrorMessageParam,
@@ -707,7 +724,7 @@ obx_int.ModelDefinition getObjectBoxModel() {
       },
       objectToFB: (AppStateEntity object, fb.Builder fbb) {
         final scopeOffset = fbb.writeString(object.scope);
-        fbb.startTable(11);
+        fbb.startTable(12);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, scopeOffset);
         fbb.addInt64(2, object.globalLastRefreshEpochUs);
@@ -716,8 +733,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
         fbb.addBool(5, object.hasSeenOnboarding);
         fbb.addBool(6, object.hasSeenPlayToFf1Tooltip);
         fbb.addInt64(7, object.updatedAtUs);
-        fbb.addBool(8, object.isMigrated);
         fbb.addBool(9, object.hasCompletedSeedDownload);
+        fbb.addBool(10, object.isMigratedV2);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -757,10 +774,10 @@ obx_int.ModelDefinition getObjectBoxModel() {
           16,
           false,
         );
-        final isMigratedParam = const fb.BoolReader().vTableGet(
+        final isMigratedV2Param = const fb.BoolReader().vTableGet(
           buffer,
           rootOffset,
-          20,
+          24,
           false,
         );
         final hasCompletedSeedDownloadParam = const fb.BoolReader().vTableGet(
@@ -782,7 +799,7 @@ obx_int.ModelDefinition getObjectBoxModel() {
           feedLastUpdatedAtUs: feedLastUpdatedAtUsParam,
           hasSeenOnboarding: hasSeenOnboardingParam,
           hasSeenPlayToFf1Tooltip: hasSeenPlayToFf1TooltipParam,
-          isMigrated: isMigratedParam,
+          isMigratedV2: isMigratedV2Param,
           hasCompletedSeedDownload: hasCompletedSeedDownloadParam,
           updatedAtUs: updatedAtUsParam,
         )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
@@ -965,44 +982,50 @@ class AppStateAddressEntity_ {
         _entities[2].properties[1],
       );
 
-  /// See [AppStateAddressEntity.hasIndexerAnchor].
-  static final hasIndexerAnchor =
-      obx.QueryBooleanProperty<AppStateAddressEntity>(
-        _entities[2].properties[2],
-      );
-
-  /// See [AppStateAddressEntity.indexerAnchor].
-  static final indexerAnchor = obx.QueryIntegerProperty<AppStateAddressEntity>(
-    _entities[2].properties[3],
-  );
-
   /// See [AppStateAddressEntity.indexingProcessStateIndex].
   static final indexingProcessStateIndex =
       obx.QueryIntegerProperty<AppStateAddressEntity>(
-        _entities[2].properties[4],
+        _entities[2].properties[2],
       );
 
   /// See [AppStateAddressEntity.indexingProcessUpdatedAtUs].
   static final indexingProcessUpdatedAtUs =
       obx.QueryIntegerProperty<AppStateAddressEntity>(
-        _entities[2].properties[5],
+        _entities[2].properties[3],
       );
 
   /// See [AppStateAddressEntity.indexingProcessErrorMessage].
   static final indexingProcessErrorMessage =
       obx.QueryStringProperty<AppStateAddressEntity>(
-        _entities[2].properties[6],
+        _entities[2].properties[4],
       );
 
   /// See [AppStateAddressEntity.updatedAtUs].
   static final updatedAtUs = obx.QueryIntegerProperty<AppStateAddressEntity>(
-    _entities[2].properties[7],
+    _entities[2].properties[5],
   );
 
   /// See [AppStateAddressEntity.indexingProcessWorkflowId].
   static final indexingProcessWorkflowId =
       obx.QueryStringProperty<AppStateAddressEntity>(
+        _entities[2].properties[6],
+      );
+
+  /// See [AppStateAddressEntity.hasCheckpoint].
+  static final hasCheckpoint = obx.QueryBooleanProperty<AppStateAddressEntity>(
+    _entities[2].properties[7],
+  );
+
+  /// See [AppStateAddressEntity.checkpointTimestampUs].
+  static final checkpointTimestampUs =
+      obx.QueryIntegerProperty<AppStateAddressEntity>(
         _entities[2].properties[8],
+      );
+
+  /// See [AppStateAddressEntity.checkpointEventId].
+  static final checkpointEventId =
+      obx.QueryIntegerProperty<AppStateAddressEntity>(
+        _entities[2].properties[9],
       );
 }
 
@@ -1045,14 +1068,14 @@ class AppStateEntity_ {
     _entities[3].properties[7],
   );
 
-  /// See [AppStateEntity.isMigrated].
-  static final isMigrated = obx.QueryBooleanProperty<AppStateEntity>(
-    _entities[3].properties[8],
-  );
-
   /// See [AppStateEntity.hasCompletedSeedDownload].
   static final hasCompletedSeedDownload =
-      obx.QueryBooleanProperty<AppStateEntity>(_entities[3].properties[9]);
+      obx.QueryBooleanProperty<AppStateEntity>(_entities[3].properties[8]);
+
+  /// See [AppStateEntity.isMigratedV2].
+  static final isMigratedV2 = obx.QueryBooleanProperty<AppStateEntity>(
+    _entities[3].properties[9],
+  );
 }
 
 /// [TrackedAddressEntity] entity fields to define ObjectBox queries.

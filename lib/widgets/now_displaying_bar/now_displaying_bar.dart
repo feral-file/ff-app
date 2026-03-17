@@ -1,11 +1,12 @@
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/routing/routes.dart';
-import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/widgets/now_displaying_bar/collapsed_now_playing_bar.dart';
@@ -23,11 +24,13 @@ import 'package:go_router/go_router.dart';
 /// [router] is required so the overlay can navigate without relying on
 /// [BuildContext] (the overlay is built outside the Navigator subtree).
 class NowDisplayingBarOverlay extends ConsumerWidget {
+  /// Creates the global Now Displaying overlay.
   const NowDisplayingBarOverlay({
     required this.router,
     super.key,
   });
 
+  /// Router used to push the full-screen Now Displaying route.
   final GoRouter router;
 
   double get _collapsedHeight =>
@@ -49,14 +52,14 @@ class NowDisplayingBarOverlay extends ConsumerWidget {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Positioned(
-      left: LayoutConstants.pageHorizontalDefault,
-      right: LayoutConstants.pageHorizontalDefault,
+      left: ContentRhythm.horizontalRail,
+      right: ContentRhythm.horizontalRail,
       bottom:
           bottomPadding + LayoutConstants.nowDisplayingBarOverlayBottomOffset,
       child: Material(
         type: MaterialType.transparency,
         child: DefaultTextStyle(
-          style: AppTypography.body(context).white,
+          style: ContentRhythm.title(context),
           child: ConstrainedBox(
             constraints: BoxConstraints(
               maxHeight: _expandedHeight,
@@ -125,6 +128,7 @@ class _NowDisplayingBarCard extends ConsumerWidget {
         final wifiControl = ref.read(ff1WifiControlProvider);
 
         return SizedBox(
+          key: GoldPathPatrolKeys.nowDisplayingBar,
           height: expandedHeight,
           child: TwoStopDraggableSheet(
             key: nowDisplayingSheetKey,
@@ -161,14 +165,17 @@ class _NowPlayingCardContainer extends StatelessWidget {
   const _NowPlayingCardContainer({
     required this.child,
     this.backgroundColor,
+    this.hasPaddingRight = true,
   });
 
   final Widget child;
   final Color? backgroundColor;
+  final bool hasPaddingRight;
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
+      key: GoldPathPatrolKeys.nowDisplayingBar,
       decoration: BoxDecoration(
         color: backgroundColor ?? PrimitivesTokens.colorsBlack,
         borderRadius: BorderRadius.circular(
@@ -179,7 +186,9 @@ class _NowPlayingCardContainer extends StatelessWidget {
         padding: EdgeInsets.only(
           top: LayoutConstants.nowDisplayingBarPaddingTop,
           left: LayoutConstants.nowDisplayingBarPaddingHorizontal,
-          right: LayoutConstants.nowDisplayingBarPaddingHorizontal,
+          right: hasPaddingRight
+              ? LayoutConstants.nowDisplayingBarPaddingHorizontal
+              : 0,
           bottom: LayoutConstants.nowDisplayingBarPaddingBottom,
         ),
         child: child,
@@ -206,7 +215,7 @@ class _NowPlayingStatusBar extends StatelessWidget {
             text,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: AppTypography.body(context).white,
+            style: ContentRhythm.supporting(context),
           ),
         ),
       ),
@@ -224,6 +233,7 @@ class _NowPlayingSleepBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return _NowPlayingCardContainer(
+      hasPaddingRight: false,
       backgroundColor: PrimitivesTokens.colorsNowPlayingBarInactive,
       child: SizedBox(
         height: LayoutConstants.nowDisplayingBarCollapsedHeight,
@@ -238,7 +248,7 @@ class _NowPlayingSleepBar extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       'Sleeping',
-                      style: AppTypography.body(context).grey,
+                      style: ContentRhythm.supporting(context),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),

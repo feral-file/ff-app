@@ -16,6 +16,7 @@ import 'dart:ui' show Offset;
 
 import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
+import 'package:app/domain/models/ff1/loop_mode.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
@@ -723,6 +724,68 @@ class FF1WifiControl {
       return FF1CommandResponse.fromJson(response);
     } catch (e) {
       _log.severe('Failed to send setVolume command: $e');
+      rethrow;
+    }
+  }
+
+  /// Enable or disable shuffle playback on the device.
+  ///
+  /// [topicId] — device identifier on the relayer
+  /// [enabled] — true to enable shuffle, false to disable it
+  Future<FF1CommandResponse> setShuffle({
+    required String topicId,
+    required bool enabled,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending setShuffle($enabled) command to device');
+
+      final request = FF1WifiShuffleRequest(enabled: enabled);
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send setShuffle command: $e');
+      rethrow;
+    }
+  }
+
+  /// Set the loop (repeat) mode on the device.
+  ///
+  /// [topicId] — device identifier on the relayer
+  /// [mode] — none, playlist, or one
+  Future<FF1CommandResponse> setLoop({
+    required String topicId,
+    required LoopMode mode,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending setLoop(${mode.wireValue}) command to device');
+
+      final request = FF1WifiSetLoopRequest(mode: mode);
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send setLoop command: $e');
       rethrow;
     }
   }

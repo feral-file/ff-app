@@ -551,16 +551,11 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
     return CustomScrollView(
       controller: _scrollController,
       slivers: [
-        SliverPadding(
-          padding: EdgeInsets.symmetric(
-            horizontal: LayoutConstants.pageHorizontalDefault,
-          ),
-          sliver: UIHelper.worksSliverGrid(
-            works: works,
-            onItemTap: (item) {
-              unawaited(context.push('${Routes.works}/${item.id}'));
-            },
-          ),
+        UIHelper.worksSliverGrid(
+          works: works,
+          onItemTap: (item) {
+            unawaited(context.push('${Routes.works}/${item.id}'));
+          },
         ),
         SliverToBoxAdapter(
           child: SizedBox(height: LayoutConstants.space16),

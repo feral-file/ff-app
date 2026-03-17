@@ -261,6 +261,16 @@ final ff1ConnectionStatusStreamProvider = StreamProvider<FF1ConnectionStatus>(
   },
 );
 
+/// Whether the connected FF1 device supports shuffle and loop modes.
+///
+/// Returns true only when the device has sent a player status that includes
+/// [FF1PlayerStatus.shuffle] or [FF1PlayerStatus.loopMode] — these fields
+/// are absent on older firmware that does not support playback modes.
+final ff1SupportsPlaybackModesProvider = Provider<bool>((ref) {
+  final status = ref.watch(ff1CurrentPlayerStatusProvider);
+  return status != null && status.shuffle != null && status.loopMode != null;
+});
+
 /// Current player status provider (last received value)
 ///
 /// Returns the most recent player status or null if none received.

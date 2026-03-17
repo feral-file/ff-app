@@ -56,16 +56,24 @@ class App extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme(),
       builder: (context, child) {
-        return BuilderOverlayScope(
-          child: _AppStartupBootstrap(
-            router: router,
-            child: NowDisplayingVisibilitySync(
-              child: Stack(
-                children: [
-                  child ?? const SizedBox.shrink(),
-                  AppGlobalOverlayLayer(router: router),
-                  const ForceUpdateOverlay(),
-                ],
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: MediaQuery.textScalerOf(context).clamp(
+              minScaleFactor: 1,
+              maxScaleFactor: 1.15,
+            ),
+          ),
+          child: BuilderOverlayScope(
+            child: _AppStartupBootstrap(
+              router: router,
+              child: NowDisplayingVisibilitySync(
+                child: Stack(
+                  children: [
+                    child ?? const SizedBox.shrink(),
+                    AppGlobalOverlayLayer(router: router),
+                    const ForceUpdateOverlay(),
+                  ],
+                ),
               ),
             ),
           ),
@@ -147,7 +155,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     if (action.type == DeeplinkType.deviceConnect) {
       if (action.source == DeeplinkSource.scan) {
         unawaited(
-          widget.router.pushReplacement(
+          widget.router.push(
             Routes.connectFF1Page,
             extra: ConnectFF1PagePayload(
               deeplink: action.link,
@@ -437,7 +445,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     final addressService = ref.read(addressServiceProvider);
 
     for (final address in addresses) {
-      await appState.clearAddressAnchor(address);
+      await appState.clearAddressCheckpoint(address);
 
       await appState.setAddressIndexingStatus(
         address: address,

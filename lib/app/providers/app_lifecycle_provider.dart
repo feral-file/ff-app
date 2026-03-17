@@ -29,11 +29,9 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
     final initialState =
         WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     if (initialState == AppLifecycleState.resumed) {
-      unawaited(
-        ref
-            .read(tokensSyncCoordinatorProvider.notifier)
-            .syncAllTrackedAddresses(),
-      );
+      final coordinator = ref.read(tokensSyncCoordinatorProvider.notifier);
+      unawaited(coordinator.syncAllTrackedAddresses());
+      coordinator.startSyncCollectionPolling();
     }
     return initialState;
   }
@@ -42,17 +40,20 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
     this.state = state;
     _log.fine('Lifecycle changed: $state');
 
+    final coordinator = ref.read(tokensSyncCoordinatorProvider.notifier);
+
     if (state == AppLifecycleState.resumed) {
-      unawaited(
-        ref
-            .read(tokensSyncCoordinatorProvider.notifier)
-            .syncAllTrackedAddresses(),
-      );
+      unawaited(coordinator.syncAllTrackedAddresses());
+      coordinator.startSyncCollectionPolling();
       // Reconnect relayer WebSocket when app resumes; Timer-based reconnect
       // does not fire while app is suspended.
       unawaited(
         ref.read(ff1WifiConnectionProvider.notifier).reconnect(),
       );
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      coordinator.pauseSyncCollectionPolling();
     }
   }
 }

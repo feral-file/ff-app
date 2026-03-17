@@ -38,7 +38,10 @@ class PersonalTokensSyncService {
     await syncAddresses(addresses: tracked);
   }
 
-  /// Round-robin sync across addresses, 50 items per address each turn.
+  /// Fetches tokens for address. Used for initial fetch after address is indexed.
+  /// Paginates via offset until no more tokens; ingests each page into the
+  /// address playlist. This is independent of [AddressSyncCollectionService]
+  /// which updates already-fetched tokens.
   Future<void> syncAddresses({required List<String> addresses}) async {
     if (addresses.isEmpty) return;
 

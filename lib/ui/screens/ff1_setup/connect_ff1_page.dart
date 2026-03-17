@@ -13,6 +13,7 @@ import 'package:app/domain/constants/constants.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
+import 'package:app/infra/logging/structured_logger.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
 import 'package:app/ui/ui_helper.dart';
@@ -24,10 +25,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gif_view/gif_view.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 enum _ConnectFF1Status {
   connecting,
   stillConnecting,
+  bluetoothOff,
   error,
   success,
   portalIsSet,
@@ -87,24 +90,24 @@ class ConnectFF1Page extends ConsumerStatefulWidget {
 
 class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   DateTime? _startTime;
-  late final ConnectFF1Notifier _connectFF1Notifier;
+  late final ConnectFF1Notifier? _connectFF1Notifier;
 
   @override
   void initState() {
     super.initState();
     _startTime = DateTime.now();
 
-    _connectFF1Notifier = ref.read(connectFF1Provider.notifier);
-
     // Start connection flow using the provider
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _connectFF1Notifier = await ref.read(connectFF1Provider.notifier);
+      if (!mounted) return;
       final fallbackDevice =
           widget.payload.device ?? BluetoothDevice.fromId('');
       final ff1DeviceInfo = widget.payload.deeplink == null
           ? null
           : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
       unawaited(
-        _connectFF1Notifier.connectBle(
+        _connectFF1Notifier?.connectBle(
           fallbackDevice,
           ff1DeviceInfo: ff1DeviceInfo,
         ),
@@ -115,7 +118,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   @override
   void dispose() {
     // Cancel connection if still in progress
-    _connectFF1Notifier.cancelConnection();
+    _connectFF1Notifier?.cancelConnection();
     super.dispose();
   }
 
@@ -128,6 +131,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     return switch (state) {
       ConnectFF1Connecting() => _ConnectFF1Status.connecting,
       ConnectFF1StillConnecting() => _ConnectFF1Status.stillConnecting,
+      ConnectFF1BluetoothOff() => _ConnectFF1Status.bluetoothOff,
       ConnectFF1Connected() =>
         state.portalIsSet
             ? _ConnectFF1Status.portalIsSet
@@ -144,7 +148,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     final ff1DeviceInfo = widget.payload.deeplink == null
         ? null
         : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
-    await _connectFF1Notifier.connectBle(
+    await _connectFF1Notifier?.connectBle(
       fallbackDevice,
       ff1DeviceInfo: ff1DeviceInfo,
     );
@@ -172,7 +176,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
   Future<void> _onCancel() async {
     _log.info('[ConnectFF1Page] Cancel pressed, cancelling connection');
-    _connectFF1Notifier.cancelConnection();
+    _connectFF1Notifier?.cancelConnection();
     try {
       await widget.payload.device?.disconnect();
     } on Exception catch (e) {
@@ -187,6 +191,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   @override
   Widget build(BuildContext context) {
     final setupState = ref.watch(connectFF1Provider);
+    _log.info('UI state -> $setupState');
     final status = setupState.maybeWhen(
       data: _getStatusFromProviderState,
       loading: () => _ConnectFF1Status.connecting,
@@ -200,74 +205,110 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
       next,
     ) {
       next.whenData((state) async {
-        if (state is ConnectFF1Connected) {
-          _recordDuration(success: true);
-          if (state.isConnectedToInternet) {
-            await ref.read(
-              addFF1BluetoothDeviceProvider(state.ff1device).future,
-            );
+        try {
+          if (state is ConnectFF1Connected) {
+            _recordDuration(success: true);
+            if (state.isConnectedToInternet) {
+              await ref.read(
+                addFF1BluetoothDeviceProvider(state.ff1device).future,
+              );
 
-            if (state.portalIsSet) {
-              // Portal is set, show portal is set view
+              if (state.portalIsSet) {
+                if (context.mounted) {
+                  unawaited(
+                    ref.read(onboardingActionsProvider).completeOnboarding(),
+                  );
+                  context.popUntil(Routes.startSetupFf1);
+                  unawaited(
+                    context.push(Routes.deviceConfiguration),
+                  );
+                }
+              } else {
+                if (context.mounted) {
+                  unawaited(
+                    ref.read(onboardingActionsProvider).completeOnboarding(),
+                  );
+                  context.popUntil(Routes.startSetupFf1);
+                  unawaited(
+                    context.push(Routes.deviceConfiguration),
+                  );
+                }
+              }
             } else {
               if (context.mounted) {
-                unawaited(
-                  ref.read(onboardingActionsProvider).completeOnboarding(),
-                );
-                context.popUntil(Routes.startSetupFf1);
-                unawaited(
-                  context.push(Routes.deviceConfiguration),
+                // No internet connection, navigate to scan wifi networks page
+                context.replace(
+                  Routes.scanWifiNetworks,
+                  extra: ScanWifiNetworkPagePayload(
+                    device: state.ff1device,
+                  ),
                 );
               }
             }
-          } else {
-            // No internet connection, navigate to scan wifi networks page
-            context.replace(
-              Routes.scanWifiNetworks,
-              extra: ScanWifiNetworkPagePayload(
-                device: state.ff1device,
-              ),
-            );
-          }
-        } else if (state is ConnectFF1Error) {
-          _recordDuration(success: false);
+          } else if (state is ConnectFF1Error) {
+            _recordDuration(success: false);
 
-          if (state.exception is FF1ResponseError) {
-            final exception = state.exception as FF1ResponseError;
-            await UIHelper.showInfoDialog(
-              context,
-              exception.title,
-              exception.message,
-              closeButton: exception.shouldShowSupport ? 'Contact support' : '',
-              onClose: exception.shouldShowSupport
-                  ? () {
-                      unawaited(
-                        UIHelper.showCustomerSupport(
-                          context,
-                          supportEmailService: ref.read(
-                            supportEmailServiceProvider,
+            if (state.exception is FF1ResponseError) {
+              final exception = state.exception as FF1ResponseError;
+              await UIHelper.showInfoDialog(
+                context,
+                exception.title,
+                exception.message,
+                closeButton: exception.shouldShowSupport
+                    ? 'Contact support'
+                    : '',
+                onClose: exception.shouldShowSupport
+                    ? () {
+                        unawaited(
+                          UIHelper.showCustomerSupport(
+                            context,
+                            supportEmailService: ref.read(
+                              supportEmailServiceProvider,
+                            ),
                           ),
-                        ),
-                      );
-                    }
-                  : null,
-            );
-          } else {
-            await UIHelper.showInfoDialog(
-              context,
-              'Connect failed',
-              state.exception.toString(),
-              closeButton: 'Contact support',
-              onClose: () {
-                unawaited(
-                  UIHelper.showCustomerSupport(
-                    context,
-                    supportEmailService: ref.read(supportEmailServiceProvider),
-                  ),
-                );
-              },
-            );
+                        );
+                      }
+                    : null,
+              );
+            } else {
+              await UIHelper.showInfoDialog(
+                context,
+                'Connect failed',
+                state.exception.toString(),
+                closeButton: 'Contact support',
+                onClose: () {
+                  unawaited(
+                    UIHelper.showCustomerSupport(
+                      context,
+                      supportEmailService: ref.read(
+                        supportEmailServiceProvider,
+                      ),
+                    ),
+                  );
+                },
+              );
+            }
           }
+        } on Object catch (e, stack) {
+          _log.severe('[ConnectFF1Page] State handler failed', e, stack);
+          if (!context.mounted) {
+            return;
+          }
+
+          await UIHelper.showInfoDialog(
+            context,
+            'Connect failed',
+            e.toString(),
+            closeButton: 'Contact support',
+            onClose: () {
+              unawaited(
+                UIHelper.showCustomerSupport(
+                  context,
+                  supportEmailService: ref.read(supportEmailServiceProvider),
+                ),
+              );
+            },
+          );
         }
       });
     });
@@ -287,73 +328,82 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (status != _ConnectFF1Status.error) ...[
-                      if (status == _ConnectFF1Status.portalIsSet)
-                        Image.asset(
-                          'assets/images/ff_logo.png',
-                          width: 139,
-                          height: 92.67,
-                        )
-                      else
-                        GifView.asset(
-                          'assets/images/loading.gif',
-                          width: 139,
-                          height: 92.67,
-                          frameRate: 12,
-                        ),
-                      const SizedBox(height: 85),
-                    ] else ...[
-                      Icon(
-                        Icons.error,
-                        size: LayoutConstants.iconSizeLarge * 2,
-                        color: PrimitivesTokens.colorsLightBlue,
-                      ),
-                      SizedBox(
-                        height: LayoutConstants.space4,
-                      ),
-                    ],
-                    Align(
-                      alignment: status != _ConnectFF1Status.error
-                          ? Alignment.centerLeft
-                          : Alignment.center,
-                      child: Column(
-                        crossAxisAlignment: status != _ConnectFF1Status.error
-                            ? CrossAxisAlignment.start
-                            : CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            _getTitleText(status),
-                            style: AppTypography.h2(context).white,
+                child: Builder(
+                  builder: (context) {
+                    if (status == _ConnectFF1Status.bluetoothOff) {
+                      return _bluetoothNotAvailableView(context);
+                    }
+
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (status == _ConnectFF1Status.error) ...[
+                          Icon(
+                            Icons.error,
+                            size: LayoutConstants.iconSizeLarge * 2,
+                            color: PrimitivesTokens.colorsLightBlue,
                           ),
-                          SizedBox(height: LayoutConstants.space5),
-                          Text(
-                            _getBodyText(status),
-                            style: AppTypography.body(context).white,
-                          ),
-                          if (status == _ConnectFF1Status.portalIsSet) ...[
-                            SizedBox(height: LayoutConstants.space5),
-                            PrimaryButton(
-                              onTap: () {
-                                unawaited(
-                                  ref
-                                      .read(onboardingActionsProvider)
-                                      .completeOnboarding(),
-                                );
-                                unawaited(
-                                  context.push(Routes.deviceConfiguration),
-                                );
-                              },
-                              text: 'Go to Settings',
+                          SizedBox(height: LayoutConstants.space4),
+                        ] else ...[
+                          if (status == _ConnectFF1Status.portalIsSet)
+                            Image.asset(
+                              'assets/images/ff_logo.png',
+                              width: 139,
+                              height: 92.67,
+                            )
+                          else
+                            GifView.asset(
+                              'assets/images/loading.gif',
+                              width: 139,
+                              height: 92.67,
+                              frameRate: 12,
                             ),
-                          ],
+                          const SizedBox(height: 85),
                         ],
-                      ),
-                    ),
-                  ],
+                        Align(
+                          alignment: status == _ConnectFF1Status.error
+                              ? Alignment.center
+                              : Alignment.centerLeft,
+                          child: Column(
+                            crossAxisAlignment:
+                                status == _ConnectFF1Status.error
+                                ? CrossAxisAlignment.center
+                                : CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _getTitleText(status),
+                                style: AppTypography.h2(context).white,
+                              ),
+                              SizedBox(height: LayoutConstants.space5),
+                              Text(
+                                _getBodyText(status),
+                                style: AppTypography.body(context).white,
+                              ),
+                              if (status == _ConnectFF1Status.portalIsSet) ...[
+                                SizedBox(height: LayoutConstants.space5),
+                                PrimaryButton(
+                                  onTap: () {
+                                    unawaited(
+                                      ref
+                                          .read(onboardingActionsProvider)
+                                          .completeOnboarding(),
+                                    );
+                                    unawaited(
+                                      context.push(
+                                        Routes.deviceConfiguration,
+                                      ),
+                                    );
+                                  },
+                                  text: 'Go to Settings',
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
               if (status == _ConnectFF1Status.error) ...[
@@ -394,12 +444,44 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     );
   }
 
+  Widget _bluetoothNotAvailableView(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          Icons.error,
+          size: LayoutConstants.iconSizeLarge * 2,
+          color: AppColor.feralFileLightBlue,
+        ),
+        SizedBox(height: LayoutConstants.space4),
+        Text(
+          'Bluetooth is required for setup. Please turn it on to continue.',
+          style: AppTypography.h2(context).white,
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: LayoutConstants.space5),
+        PrimaryButton(
+          text: 'Open Bluetooth Settings',
+          onTap: () async {
+            AppStructuredLog.logUiAction(
+              logger: _log,
+              action: 'open_bluetooth_settings',
+            );
+            await openAppSettings();
+          },
+        ),
+      ],
+    );
+  }
+
   String _getTitleText(_ConnectFF1Status status) {
     switch (status) {
       case _ConnectFF1Status.connecting:
         return 'Connecting via Bluetooth...';
       case _ConnectFF1Status.stillConnecting:
         return 'Still connecting…';
+      case _ConnectFF1Status.bluetoothOff:
+        return 'Bluetooth is Off';
       case _ConnectFF1Status.error:
         return 'We couldn’t connect to FF1';
       case _ConnectFF1Status.success:
@@ -415,6 +497,8 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
         return 'Keep your phone near FF1 and remain on this screen.';
       case _ConnectFF1Status.stillConnecting:
         return 'We’re still trying to reach your FF1 over Bluetooth.\nIf this takes more than 15 seconds, you can cancel and try again.';
+      case _ConnectFF1Status.bluetoothOff:
+        return 'Turn on Bluetooth to connect to FF1.';
       case _ConnectFF1Status.error:
         return 'A few things to check:\n• Make sure your FF1 is powered on.\n• Keep your phone close to the device.\n• Check that Bluetooth is turned on.';
       case _ConnectFF1Status.success:

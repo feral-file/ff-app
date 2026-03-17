@@ -452,4 +452,12 @@ class FakeFF1BleTransport implements FF1BleTransport {
   Future<void> disconnect(BluetoothDevice device) async {
     // Mock: do nothing
   }
+
+  @override
+  Future<void> waitUntilReady({
+    required BluetoothDevice blDevice,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    // Mock: ready immediately
+  }
 }

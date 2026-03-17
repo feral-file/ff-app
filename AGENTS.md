@@ -30,17 +30,25 @@ This file defines repository-level constraints for coding agents. Detailed imple
 - Specs and flow docs:
   - `docs/project_spec.md`
   - `docs/app_flows.md`
+  - `docs/vision_execution_gap.md`
+  - `docs/ui_rhythm_contract.md`
+
+## Spec hierarchy
+- `docs/project_spec.md` is the canonical product contract.
+- `docs/app_flows.md` is the execution-level mapping of that contract.
+- `docs/vision_execution_gap.md` tracks known gaps and refactor follow-ups.
 
 ## Non-negotiables
-- Deletion before optimization.
+- Prefer replacing or deleting flawed code paths over narrow local tweaks when solving an issue. If a broader rewrite produces a clearer design, choose it.
+- Do not preserve legacy behavior, compatibility shims, migrations, or transitional paths unless explicitly requested.
 - Riverpod is the single flow driver for shared app state and FF1 external events.
 - No hidden singleton business-flow state.
 - No legacy support by default. If migration is required, ask first.
 - Keep FF1 layering separated: `transport` / `protocol` / `control`.
 - Prefer stateless, testable services/utilities by default; use stateful services only when lifecycle/orchestration/session behavior truly requires state.
 - Prefer dependency injection (providers/constructors) over singleton-held mutable state.
-- Preserve offline-first behavior (Drift local model remains primary read path).
-- Preserve seed-database gate/bootstrap behavior and pending-address migration semantics.
+- For non-obvious logic, add code comments that preserve intent and context for later fixes, especially around functions, flows, state transitions, and important variables.
+- Those comments should explain `why` the code exists, the constraints/invariants it must preserve, failure or edge cases, trade-offs, and when useful the pros/cons of the chosen approach versus alternatives. Do not waste comments on restating obvious syntax.
 
 ## Spec-driven workflow (required)
 Before implementing any major feature, flow change, or architectural refactor:
@@ -61,13 +69,7 @@ If work is large/architectural and no feature spec exists, do not proceed direct
 3. Write integration tests next, with `.env` provisioned, and define expected integration outputs before implementation.
 4. Run tests and ensure they all pass.
 5. Implement/compose app flow that uses the tested functions.
-6. Run post-implementation checks and fix all reported issues.
-7. Run `flutter build` to verify.
-
-## Important commands (build, lint, test)
-- Install deps: `flutter pub get`
-- Post-implementation checks (lint + test):
-  - `scripts/agent-helpers/post-implementation-checks HEAD`
+6. Run `scripts/agent-helpers/post-implementation-checks HEAD` and fix all reported issues.
 
 ## Rule references (authoritative detail)
 - `.cursor/rules/01-master-design.mdc`

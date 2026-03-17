@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/addresses_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
@@ -55,15 +57,15 @@ class OnboardingAddAddressPage extends ConsumerWidget {
               'See the art you already own',
               style: AppTypography.h2(context).white,
             ),
-            SizedBox(height: LayoutConstants.space5),
+            SizedBox(height: ContentRhythm.titleSupportGap),
             Text(
               'Add your Ethereum and Tezos addresses to pull in the works '
               'you collect. Use the app as a clear lens on your digital '
               'collection, '
               'even before you connect a device.',
-              style: AppTypography.body(context).white,
+              style: ContentRhythm.title(context),
             ),
-            SizedBox(height: LayoutConstants.space5),
+            SizedBox(height: ContentRhythm.titleSupportGap),
             const _AddressList(),
           ],
         ),
@@ -84,6 +86,7 @@ class OnboardingAddAddressPage extends ConsumerWidget {
           ],
         ),
         onPrimaryPressed: () => _onAddAddressPressed(context),
+        primaryButtonKey: GoldPathPatrolKeys.onboardingAddAddressPrimary,
         secondaryButton: Consumer(
           builder: (context, ref, _) {
             final addressesAsync = ref.watch(addressesProvider);
@@ -108,6 +111,7 @@ class OnboardingAddAddressPage extends ConsumerWidget {
           },
         ),
         onSecondaryPressed: () async => _onNext(context, ref),
+        secondaryButtonKey: GoldPathPatrolKeys.onboardingAddAddressSecondary,
         hintText: 'You can always add addresses later.',
       ),
     );
@@ -216,15 +220,20 @@ class _AddressRow extends StatelessWidget {
               ),
               child: Text(
                 address.name,
-                style: AppTypography.body(context).grey,
+                style: ContentRhythm.supporting(context),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
           ),
           GestureDetector(
             onTap: () => onDelete(address),
+            behavior: HitTestBehavior.opaque,
             child: Container(
               color: Colors.transparent,
+              constraints: BoxConstraints(
+                minHeight: LayoutConstants.minTouchTarget,
+                minWidth: LayoutConstants.minTouchTarget,
+              ),
               padding: EdgeInsets.only(
                 top: LayoutConstants.space3 - 1,
                 bottom: LayoutConstants.space3,

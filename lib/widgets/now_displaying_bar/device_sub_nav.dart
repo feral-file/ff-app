@@ -1,6 +1,7 @@
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_connection_providers.dart';
-import 'package:app/design/app_typography.dart';
+import 'package:app/design/build/primitives.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:flutter/material.dart';
@@ -86,17 +87,25 @@ class _DeviceNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseStyle = ContentRhythm.controlLabel(context).copyWith(
+      fontWeight: FontWeight.w700,
+    );
+
     return GestureDetector(
       onTap: onTap,
-      child: Text(
-        device.name,
-        style:
-            (isSelected
-                    ? AppTypography.body(context).white
-                    : AppTypography.body(context).grey)
-                .copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+      behavior: HitTestBehavior.opaque,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: LayoutConstants.minTouchTarget,
+        ),
+        child: Center(
+          child: Text(
+            device.name,
+            style: isSelected
+                ? baseStyle.copyWith(color: PrimitivesTokens.colorsWhite)
+                : baseStyle.copyWith(color: PrimitivesTokens.colorsGrey),
+          ),
+        ),
       ),
     );
   }

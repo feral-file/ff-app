@@ -1,9 +1,11 @@
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/changes/change.dart';
+import 'package:app/domain/models/indexer/sync_collection.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/graphql/queries/changes_queries.dart';
 import 'package:app/infra/graphql/queries/mutations.dart';
+import 'package:app/infra/graphql/queries/sync_collection_queries.dart';
 import 'package:app/infra/graphql/queries/token_queries.dart';
 import 'package:app/infra/graphql/queries/workflow_queries.dart';
 import 'package:logging/logging.dart';
@@ -33,6 +35,33 @@ class IndexerService {
     'eip155:1',
     'tezos:mainnet',
   ];
+
+  /// Fetch syncCollection events for an address (checkpoint-based pagination).
+  Future<SyncCollectionResult> syncCollection(
+    QuerySyncCollectionRequest request,
+  ) async {
+    try {
+      _log.info(
+        'Fetching syncCollection (address: ${request.address}, '
+        'checkpoint: ${request.checkpoint.eventId}, limit: ${request.limit})',
+      );
+
+      final data = await _client.query(
+        doc: syncCollectionQuery,
+        vars: request.toJson(),
+        subKey: 'syncCollection',
+      );
+
+      if (data == null) {
+        throw Exception('Indexer returned null syncCollection payload');
+      }
+
+      return SyncCollectionResult.fromJson(data);
+    } catch (e, stack) {
+      _log.severe('Failed to fetch syncCollection', e, stack);
+      rethrow;
+    }
+  }
 
   /// Fetch change journal entries.
   Future<ChangeList> getChanges(QueryChangesRequest request) async {

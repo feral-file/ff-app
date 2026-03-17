@@ -5,8 +5,7 @@
 //  that can be found in the LICENSE file.
 //
 
-import 'package:app/design/app_typography.dart';
-import 'package:app/design/build/primitives.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/buttons/custom_primary_button.dart';
@@ -26,8 +25,10 @@ class OnboardingShell extends StatelessWidget {
     required this.content,
     super.key,
     this.primaryButton,
+    this.primaryButtonKey,
     this.onPrimaryPressed,
     this.secondaryButton,
+    this.secondaryButtonKey,
     this.onSecondaryPressed,
     this.showBottomProgress = true,
     this.hintText,
@@ -42,11 +43,18 @@ class OnboardingShell extends StatelessWidget {
   /// Callback when the primary button is pressed.
   final VoidCallback? onPrimaryPressed;
 
-  /// Optional label for the secondary (left) button – e.g., "Add Address", "Setup FF1".
+  /// Optional semantic key for the primary button.
+  final Key? primaryButtonKey;
+
+  /// Optional label for the secondary (left) button.
+  /// For example: "Add Address", "Setup FF1".
   final Widget? secondaryButton;
 
   /// Optional callback for the secondary button.
   final VoidCallback? onSecondaryPressed;
+
+  /// Optional semantic key for the secondary button.
+  final Key? secondaryButtonKey;
 
   /// Whether to show the white bottom progress line.
   final bool showBottomProgress;
@@ -56,69 +64,91 @@ class OnboardingShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: LayoutConstants.setupPageHorizontal,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(
-            height: 206.94,
-          ),
-          Container(
-            constraints: const BoxConstraints(
-              minHeight: 245.06,
-            ),
-            child: content,
-          ),
-          SizedBox(height: LayoutConstants.space2),
-          _buildButtonsRow(context),
-          if (hintText != null) ...[
-            SizedBox(height: LayoutConstants.space5),
-            Text(
-              hintText!,
-              style: AppTypography.body(context).copyWith(
-                color: PrimitivesTokens.colorsGrey,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: LayoutConstants.setupPageHorizontal,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    height:
+                        LayoutConstants.space20 +
+                        LayoutConstants.space20 +
+                        LayoutConstants.space12,
+                  ),
+                  content,
+                  SizedBox(
+                    height: LayoutConstants.space20 + LayoutConstants.space8,
+                  ),
+                  _buildButtonsRow(context),
+                  if (hintText != null) ...[
+                    SizedBox(height: LayoutConstants.space5),
+                    Text(
+                      hintText!,
+                      style: ContentRhythm.supporting(context),
+                    ),
+                  ],
+                  SizedBox(height: LayoutConstants.space4),
+                ],
               ),
             ),
-          ],
-        ],
-      ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildButtonsRow(BuildContext context) {
-    // Keep layout close to Figma: two pill-shaped buttons,
-    // left = secondary (outline), right = primary (filled).
-    return Row(
-      children: [
-        Expanded(
-          child: (primaryButton != null && onPrimaryPressed != null)
-              ? CustomPrimaryButton(
-                  padding: EdgeInsets.symmetric(
-                    vertical: LayoutConstants.space3,
-                  ),
-                  onTap: onPrimaryPressed,
-                  child: primaryButton!,
-                )
-              : const SizedBox.shrink(),
-        ),
-        SizedBox(width: LayoutConstants.space3),
-        Expanded(
-          child: (secondaryButton != null && onSecondaryPressed != null)
-              ? CustomPrimaryButton(
-                  padding: EdgeInsets.symmetric(
-                    vertical: LayoutConstants.space3,
-                  ),
-                  onTap: onSecondaryPressed,
-                  borderColor: AppColor.feralFileLightBlue,
-                  color: Colors.transparent,
-                  child: secondaryButton!,
-                )
-              : const SizedBox.shrink(),
-        ),
-      ],
+    final primary = (primaryButton != null && onPrimaryPressed != null)
+        ? CustomPrimaryButton(
+            key: primaryButtonKey,
+            padding: EdgeInsets.symmetric(
+              vertical: ContentRhythm.rowVerticalPadding,
+            ),
+            onTap: onPrimaryPressed,
+            child: primaryButton!,
+          )
+        : const SizedBox.shrink();
+
+    final secondary = (secondaryButton != null && onSecondaryPressed != null)
+        ? CustomPrimaryButton(
+            key: secondaryButtonKey,
+            padding: EdgeInsets.symmetric(
+              vertical: ContentRhythm.rowVerticalPadding,
+            ),
+            onTap: onSecondaryPressed,
+            borderColor: AppColor.feralFileLightBlue,
+            color: Colors.transparent,
+            child: secondaryButton!,
+          )
+        : const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 245) {
+          return Column(
+            children: [
+              SizedBox(width: double.infinity, child: primary),
+              SizedBox(height: LayoutConstants.space2),
+              SizedBox(width: double.infinity, child: secondary),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: primary),
+            SizedBox(width: LayoutConstants.space3),
+            Expanded(child: secondary),
+          ],
+        );
+      },
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
 import 'package:app/infra/ff1/ble_transport/ff1_ble_transport.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -58,6 +59,14 @@ final bluetoothAdapterStateProvider = StreamProvider<BluetoothAdapterState>((
   return transport.adapterStateStream;
 });
 
+/// Returns the connected BLE device for the given device name, if currently
+/// connected. Use when we need to resolve remoteId from connected device.
+final FutureProviderFamily<BluetoothDevice?, String> connectedBlDeviceForNameProvider =
+    FutureProvider.family<BluetoothDevice?, String>((ref, name) async {
+  final connected = FlutterBluePlus.connectedDevices;
+  return connected.firstWhereOrNull((d) => d.advName == name);
+});
+
 // ============================================================================
 // FF1 Control provider (orchestration)
 // ============================================================================
@@ -103,6 +112,14 @@ class FF1BleControl {
     await _transport.disconnect(blDevice);
   }
 
+  /// Wait until BLE command characteristic is ready.
+  Future<void> waitUntilReady({
+    required BluetoothDevice blDevice,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    await _transport.waitUntilReady(blDevice: blDevice, timeout: timeout);
+  }
+
   /// Scan for FF1 devices
   Future<List<BluetoothDevice>> scan({
     Duration timeout = const Duration(seconds: 30),
@@ -121,6 +138,13 @@ class FF1BleControl {
     );
     return deviceMap.values.toList();
   }
+
+  /// Current Bluetooth adapter state (synchronous snapshot).
+  BluetoothAdapterState get currentAdapterState => _transport.adapterState;
+
+  /// Stream of Bluetooth adapter state changes.
+  Stream<BluetoothAdapterState> get adapterStateStream =>
+      _transport.adapterStateStream;
 
   /// Scan for device by name
   Future<BluetoothDevice?> scanForName({

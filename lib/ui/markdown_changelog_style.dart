@@ -6,20 +6,25 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 /// Markdown style for EULA and Privacy Policy docs.
 /// Copied from old Feral File app [markDownLightStyle] (github_doc.dart).
-/// Adapted for ff-app dark theme (white text on auGreyBackground).
+/// Adapted for current app theme surface and text colors.
 MarkdownStyleSheet markdownDocsStyle(BuildContext context) {
   final theme = Theme.of(context);
-  const textColor = AppColor.white;
-  final bodyText2 =
-      AppTypography.body(context).black.copyWith(color: textColor);
+  final isDarkMode =
+      MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+  final textColor = isDarkMode
+      ? const Color(0xFFFFFFFF)
+      : const Color(0xFF000000);
+  const linkColor = Color(0xFF007AFF);
+  final bodyText2 = AppTypography.body(
+    context,
+  ).black.copyWith(color: textColor);
   return MarkdownStyleSheet(
-    a: TextStyle(
-      color: Colors.transparent,
+    a: const TextStyle(
+      color: linkColor,
       fontWeight: FontWeight.w500,
-      shadows: [Shadow(color: textColor, offset: const Offset(0, -1))],
       decoration: TextDecoration.underline,
       decorationStyle: TextDecorationStyle.solid,
-      decorationColor: textColor,
+      decorationColor: linkColor,
       decorationThickness: 1,
     ),
     p: bodyText2,

@@ -1,6 +1,7 @@
 // ignore_for_file: public_member_api_docs // Reason: provider orchestration state.
 
 import 'dart:async';
+import 'dart:math';
 
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -35,7 +36,9 @@ class TokensSyncState {
 class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
   final Logger _log = Logger('TokensSyncCoordinator');
   Timer? _pollTimer;
+  Timer? _syncCollectionTimer;
   bool _isStoppingForReset = false;
+  final Set<String> _syncCollectionAddressesInProgress = {};
   Completer<void>? _currentSyncCompleter;
 
   @override
@@ -43,8 +46,60 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     _isStoppingForReset = false;
     ref.onDispose(() {
       _pollTimer?.cancel();
+      _syncCollectionTimer?.cancel();
     });
     return const TokensSyncState();
+  }
+
+  /// Start syncCollection timer (2 min). Runs for addresses with completed indexing.
+  /// Silent failures; no UI errors. Retries on next tick.
+  void startSyncCollectionPolling({
+    Duration interval = const Duration(minutes: 5),
+  }) {
+    _syncCollectionTimer?.cancel();
+    _syncCollectionTimer = Timer.periodic(interval, (_) {
+      unawaited(_runSyncCollectionForCompletedAddresses());
+    });
+    _log.info('Started syncCollection polling at interval=$interval');
+    unawaited(_runSyncCollectionForCompletedAddresses());
+  }
+
+  void pauseSyncCollectionPolling() {
+    _syncCollectionTimer?.cancel();
+    _syncCollectionTimer = null;
+  }
+
+  Future<void> _runSyncCollectionForCompletedAddresses() async {
+    if (_isStoppingForReset) return;
+    final appState = ref.read(appStateServiceProvider);
+    final addresses = await appState.getAddressesWithCompletedIndexing();
+    if (addresses.isEmpty) return;
+
+    final service = ref.read(addressSyncCollectionServiceProvider);
+    final random = Random();
+    final futures = addresses.map((address) async {
+      if (_isStoppingForReset) return;
+      // Per-address guard: skip if this address is already syncing.
+      if (_syncCollectionAddressesInProgress.contains(address)) return;
+      _syncCollectionAddressesInProgress.add(address);
+      try {
+        final delayMs = 100 + random.nextInt(201);
+        await Future<void>.delayed(Duration(milliseconds: delayMs));
+        if (_isStoppingForReset) return;
+        try {
+          await service.syncAddressWithCollection(address);
+        } on Object catch (e, stack) {
+          _log.warning(
+            'syncCollection failed for $address (will retry next tick)',
+            e,
+            stack,
+          );
+        }
+      } finally {
+        _syncCollectionAddressesInProgress.remove(address);
+      }
+    });
+    await Future.wait(futures);
   }
 
   void startPolling({Duration interval = const Duration(minutes: 5)}) {
@@ -146,6 +201,7 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
   Future<void> stopAndDrainForReset() async {
     _isStoppingForReset = true;
     pausePolling();
+    pauseSyncCollectionPolling();
     if (ref.mounted) {
       state = const TokensSyncState();
     }

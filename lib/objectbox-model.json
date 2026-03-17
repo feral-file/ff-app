@@ -125,7 +125,7 @@
     },
     {
       "id": "10:3855157679464200367",
-      "lastPropertyId": "15:3445134738243097972",
+      "lastPropertyId": "18:4052192049678900918",
       "name": "AppStateAddressEntity",
       "properties": [
         {
@@ -140,16 +140,6 @@
           "indexId": "9:3962431394130676537",
           "type": 9,
           "flags": 2080
-        },
-        {
-          "id": "5:7031346450320634061",
-          "name": "hasIndexerAnchor",
-          "type": 1
-        },
-        {
-          "id": "6:6219212707173673109",
-          "name": "indexerAnchor",
-          "type": 6
         },
         {
           "id": "7:385594094139718018",
@@ -175,13 +165,28 @@
           "id": "13:3764280306253148323",
           "name": "indexingProcessWorkflowId",
           "type": 9
+        },
+        {
+          "id": "16:7442441517501584529",
+          "name": "hasCheckpoint",
+          "type": 1
+        },
+        {
+          "id": "17:5159646973470099963",
+          "name": "checkpointTimestampUs",
+          "type": 6
+        },
+        {
+          "id": "18:4052192049678900918",
+          "name": "checkpointEventId",
+          "type": 6
         }
       ],
       "relations": []
     },
     {
       "id": "11:4993529541343759207",
-      "lastPropertyId": "10:846777149020970588",
+      "lastPropertyId": "11:8754748133787260182",
       "name": "AppStateEntity",
       "properties": [
         {
@@ -228,13 +233,13 @@
           "type": 6
         },
         {
-          "id": "9:5874727476430855017",
-          "name": "isMigrated",
+          "id": "10:846777149020970588",
+          "name": "hasCompletedSeedDownload",
           "type": 1
         },
         {
-          "id": "10:846777149020970588",
-          "name": "hasCompletedSeedDownload",
+          "id": "11:8754748133787260182",
+          "name": "isMigratedV2",
           "type": 1
         }
       ],
@@ -336,7 +341,10 @@
     8877341932018307913,
     1404419168567981741,
     671751466930742228,
-    3462060407990166466
+    3462060407990166466,
+    7031346450320634061,
+    6219212707173673109,
+    5874727476430855017
   ],
   "retiredRelationUids": [],
   "version": 1

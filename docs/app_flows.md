@@ -1,5 +1,13 @@
 # App Flows
 
+## Document contract
+- This document is the execution-level companion to `docs/project_spec.md`.
+- It describes how the product contract is implemented through routes,
+  providers, services, and screen transitions.
+- It must not redefine domain vocabulary or product invariants.
+- If this file diverges from `docs/project_spec.md`, treat it as outdated and
+  update it to match the spec.
+
 ## Flow: Cold Start Bootstrap
 - goal: start app into a usable state with local data and providers initialized
 - start point: app process launch (`main()`)

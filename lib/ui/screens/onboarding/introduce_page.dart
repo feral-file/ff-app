@@ -7,9 +7,11 @@
 
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/ui/screens/onboarding/onboarding_add_address_page.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
@@ -21,7 +23,8 @@ import 'package:go_router/go_router.dart';
 /// Introductory onboarding page:
 /// "Explore digital art playlists"
 ///
-/// This widget is implemented using [OnboardingShell] to match the Figma screen:
+/// This widget is implemented using [OnboardingShell] to match the Figma
+/// screen:
 /// FF1 Art Computer → Onboarding B 4.
 ///
 
@@ -62,12 +65,12 @@ class IntroducePage extends StatelessWidget {
               'Explore digital art playlists',
               style: AppTypography.h2(context).white,
             ),
-            SizedBox(height: LayoutConstants.space5),
+            SizedBox(height: ContentRhythm.titleSupportGap),
             Text(
               'Browse curated playlists and channels from Feral File and '
               'invited collaborators—right on your phone. You don’t need '
               'any hardware to start exploring.',
-              style: AppTypography.body(context).white,
+              style: ContentRhythm.title(context),
             ),
           ],
         ),
@@ -88,6 +91,7 @@ class IntroducePage extends StatelessWidget {
           ],
         ),
         onPrimaryPressed: () => onNext(context),
+        primaryButtonKey: GoldPathPatrolKeys.onboardingIntroduceNext,
       ),
     );
   }

@@ -1,4 +1,5 @@
-import 'package:app/design/app_typography.dart';
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
@@ -29,9 +30,14 @@ class ChannelSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final key = sectionName == 'Curated'
+        ? GoldPathPatrolKeys.curatedChannelsSection
+        : null;
+
     return Padding(
+      key: key,
       padding: EdgeInsets.symmetric(
-        horizontal: LayoutConstants.pageHorizontalDefault,
+        horizontal: ContentRhythm.horizontalRail,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -43,7 +49,7 @@ class ChannelSectionHeader extends StatelessWidget {
               if (sectionIcon != null) ...[
                 sectionIcon!,
                 SizedBox(
-                  width: LayoutConstants.space4,
+                  width: ContentRhythm.sectionIconGap,
                 ),
               ] else ...[
                 SvgPicture.asset(
@@ -55,11 +61,11 @@ class ChannelSectionHeader extends StatelessWidget {
                     BlendMode.srcIn,
                   ),
                 ),
-                SizedBox(width: LayoutConstants.space4),
+                SizedBox(width: ContentRhythm.sectionIconGap),
               ],
               Text(
                 sectionName,
-                style: AppTypography.h4(context).white,
+                style: ContentRhythm.sectionTitle(context),
               ),
             ],
           ),
@@ -89,7 +95,7 @@ class ChannelSectionHeader extends StatelessWidget {
                     SizedBox(width: LayoutConstants.space2),
                     Text(
                       'All',
-                      style: AppTypography.body(context).grey,
+                      style: ContentRhythm.controlLabel(context),
                     ),
                   ],
                 ),

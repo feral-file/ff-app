@@ -125,8 +125,18 @@ dev_dependencies:
 
   # Platform interfaces
   path_provider_platform_interface: any
+  patrol: ^4.3.0
 dependency_overrides:
   path_provider_foundation: 2.6.0
+
+patrol:
+  app_name: Feral File
+  android:
+    package_name: com.feralfile.app.inhouse
+  ios:
+    bundle_id: com.feralfile.app
+  test_directory: patrol_test
+  flavor: development
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

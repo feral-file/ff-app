@@ -178,8 +178,9 @@ class AppStateEntity {
   /// One-time tooltip completion flag for Play-to-FF1 affordance.
   bool hasSeenPlayToFf1Tooltip;
 
-  /// One-time legacy migration completion flag.
-  bool isMigrated;
+  /// One-time legacy migration completion flag (v2).
+  /// Renamed from isMigrated to reset guard for users who got devices=0.
+  bool isMigratedV2;
 
   /// True once the user has completed at least one seed database download.
   /// When true, subsequent seed syncs run in background without showing loading.
@@ -195,7 +196,7 @@ class AppStateEntity {
     this.feedLastUpdatedAtUs = 1672531200000000,
     this.hasSeenOnboarding = false,
     this.hasSeenPlayToFf1Tooltip = false,
-    this.isMigrated = false,
+    this.isMigratedV2 = false,
     this.hasCompletedSeedDownload = false,
     required this.updatedAtUs,
   });
@@ -241,11 +242,14 @@ class AppStateAddressEntity {
   @Unique()
   String normalizedAddress;
 
-  /// Whether [indexerAnchor] is set.
-  bool hasIndexerAnchor;
+  /// Whether [checkpointTimestampUs] and [checkpointEventId] are set.
+  bool hasCheckpoint;
 
-  /// Incremental indexer anchor cursor per address.
-  int indexerAnchor;
+  /// SyncCollection checkpoint timestamp (microseconds UTC).
+  int checkpointTimestampUs;
+
+  /// SyncCollection checkpoint event ID.
+  int checkpointEventId;
 
   /// Indexing process state enum ordinal.
   int indexingProcessStateIndex;
@@ -264,8 +268,9 @@ class AppStateAddressEntity {
 
   AppStateAddressEntity({
     required this.normalizedAddress,
-    this.hasIndexerAnchor = false,
-    this.indexerAnchor = 0,
+    this.hasCheckpoint = false,
+    this.checkpointTimestampUs = 0,
+    this.checkpointEventId = 0,
     this.indexingProcessStateIndex = 0,
     this.indexingProcessUpdatedAtUs = 0,
     this.indexingProcessErrorMessage = '',
