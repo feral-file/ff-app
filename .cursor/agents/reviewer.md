@@ -1,7 +1,7 @@
 ---
 name: reviewer
+model: premium
 description: Read-only code reviewer. Use after implementation for a fresh-context review. Follows prompts/code-review.md (priority, posture, hindsight, tests/docs, output shape); does not edit unless asked.
-model: inherit
 readonly: true
 ---
 

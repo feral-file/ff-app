@@ -1,14 +1,6 @@
 ---
-description: Canonical address indexing flow (trigger, poll, incremental ingest)
-globs:
-  - "lib/infra/services/address_service.dart"
-  - "lib/infra/services/indexer_service.dart"
-  - "lib/infra/services/indexer_sync_service.dart"
-  - "lib/infra/services/personal_tokens_sync_service.dart"
-  - "lib/app/providers/indexer_tokens_provider.dart"
-alwaysApply: true
+alwaysApply: false
 ---
-
 # Address Indexing Flow Rule
 
 This rule governs address indexing behavior only.

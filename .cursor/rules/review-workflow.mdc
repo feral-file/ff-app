@@ -1,8 +1,6 @@
 ---
-description: After implementation, run a review loop with the reviewer subagent until Verdict: accept; only then commit, push, or create PR.
-alwaysApply: false
+alwaysApply: true
 ---
-
 # Review workflow rule
 
 When implementation is complete (tests and post-implementation checks pass), run a **review loop** until the reviewer qualifies the change. Do not commit, push, or create a PR before **Verdict: accept**.
