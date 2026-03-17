@@ -140,6 +140,11 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       return;
     }
     unawaited(_syncSeedDatabaseOnResume());
+    // On iOS with scene-based lifecycle, Universal Links opened while the app
+    // is suspended are stored back into app_links' native initial-link buffer
+    // (via scene(_:continue:)) instead of being emitted to uriLinkStream.
+    // Re-reading getInitialLink() here ensures those links are not dropped.
+    unawaited(ref.read(deeplinkHandlerProvider).checkForResumeLink());
   }
 
   void _startDeeplinkHandling() {

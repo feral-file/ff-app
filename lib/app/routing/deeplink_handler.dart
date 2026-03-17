@@ -259,6 +259,22 @@ class DeeplinkHandler {
     });
   }
 
+  /// Re-reads [DeeplinkLinkSource.getInitialLink] on app resume.
+  ///
+  /// On iOS with scene-based lifecycle, when a suspended app is brought to
+  /// foreground via a Universal Link, the OS calls `scene(_:continue:)` and
+  /// `app_links` stores that link in the same native buffer used for cold
+  /// start, rather than emitting it to [linkStream]. Calling this on every
+  /// [AppLifecycleState.resumed] event ensures that link is not silently
+  /// dropped. The dedup window prevents re-processing a link that was already
+  /// handled.
+  Future<void> checkForResumeLink() async {
+    final link = await _linkSource.getInitialLink();
+    if (link != null) {
+      await handleDeeplink(link.toString(), isFromAppLink: true);
+    }
+  }
+
   /// Handles deeplink with sample-compatible options.
   Future<DeeplinkNavigationAction?> handleDeeplink(
     String? rawLink, {

@@ -6,12 +6,17 @@ import 'package:flutter_test/flutter_test.dart';
 class _FakeDeeplinkLinkSource implements DeeplinkLinkSource {
   _FakeDeeplinkLinkSource({
     Stream<Uri>? linkStream,
-  }) : _linkStream = linkStream ?? const Stream<Uri>.empty();
+    Uri? initialLink,
+  })  : _linkStream = linkStream ?? const Stream<Uri>.empty(),
+        _initialLink = initialLink;
 
   final Stream<Uri> _linkStream;
+  Uri? _initialLink;
+
+  void setInitialLink(Uri? link) => _initialLink = link;
 
   @override
-  Future<Uri?> getInitialLink() async => null;
+  Future<Uri?> getInitialLink() async => _initialLink;
 
   @override
   Stream<Uri> get linkStream => _linkStream;
@@ -245,6 +250,82 @@ void main() {
 
       expect(actions.length, 1);
       expect(actions.first.location, '/playlists/dup-test-id');
+    });
+
+    group('checkForResumeLink', () {
+      test('emits action when getInitialLink returns a new link', () async {
+        final source = _FakeDeeplinkLinkSource();
+        final handler = DeeplinkHandler(linkSource: source);
+        addTearDown(handler.dispose);
+
+        final actions = <DeeplinkNavigationAction>[];
+        handler.actions.listen(actions.add);
+
+        source.setInitialLink(
+          Uri.parse('https://link.feralfile.com/device_connect?token=abc'),
+        );
+        await handler.checkForResumeLink();
+
+        expect(actions.length, 1);
+        expect(actions.first.type, DeeplinkType.deviceConnect);
+        expect(actions.first.source, DeeplinkSource.appLink);
+      });
+
+      test('deduplicates link already processed during start()', () async {
+        const link = 'https://link.feralfile.com/device_connect?token=same';
+        final source = _FakeDeeplinkLinkSource(
+          initialLink: Uri.parse(link),
+        );
+        final handler = DeeplinkHandler(linkSource: source);
+        addTearDown(handler.dispose);
+
+        final actions = <DeeplinkNavigationAction>[];
+        handler.actions.listen(actions.add);
+
+        // Simulates cold start: start() reads getInitialLink() and processes it.
+        await handler.start();
+        expect(actions.length, 1);
+
+        // Simulates app resume: getInitialLink() still returns the same link
+        // (native buffer not yet cleared). Dedup window must suppress it.
+        await handler.checkForResumeLink();
+        expect(actions.length, 1);
+      });
+
+      test('does nothing when getInitialLink returns null', () async {
+        final handler = DeeplinkHandler(
+          linkSource: _FakeDeeplinkLinkSource(),
+        );
+        addTearDown(handler.dispose);
+
+        final actions = <DeeplinkNavigationAction>[];
+        handler.actions.listen(actions.add);
+
+        await handler.checkForResumeLink();
+        expect(actions, isEmpty);
+      });
+
+      test('processes distinct link on second resume', () async {
+        final source = _FakeDeeplinkLinkSource();
+        final handler = DeeplinkHandler(linkSource: source);
+        addTearDown(handler.dispose);
+
+        final actions = <DeeplinkNavigationAction>[];
+        handler.actions.listen(actions.add);
+
+        source.setInitialLink(
+          Uri.parse('https://link.feralfile.com/device_connect?token=first'),
+        );
+        await handler.checkForResumeLink();
+        expect(actions.length, 1);
+
+        // A different QR code is scanned → new link on second resume.
+        source.setInitialLink(
+          Uri.parse('https://link.feralfile.com/device_connect?token=second'),
+        );
+        await handler.checkForResumeLink();
+        expect(actions.length, 2);
+      });
     });
   });
 }
