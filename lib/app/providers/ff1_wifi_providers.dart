@@ -188,14 +188,19 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   }
 
   /// Disconnect from device
+  ///
+  /// Always clears state when called, even when already disconnected (e.g.
+  /// after pauseConnection). When active device becomes null while app is
+  /// backgrounded, the watcher calls disconnect(); without clearing state,
+  /// reconnect() on resume would use the stale cached device.
   Future<void> disconnect() async {
-    if (!state.isConnected) {
-      return;
-    }
-
-    try {
-      await _control.disconnect();
-    } finally {
+    if (state.isConnected) {
+      try {
+        await _control.disconnect();
+      } finally {
+        state = const FF1WifiConnectionState(isConnected: false);
+      }
+    } else {
       state = const FF1WifiConnectionState(isConnected: false);
     }
   }
