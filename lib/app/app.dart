@@ -382,6 +382,9 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     await ref
         .read(tokensSyncCoordinatorProvider.notifier)
         .stopAndDrainForReset();
+    await ref
+        .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+        .stopAndDrainForReset();
 
     ref.read(isSeedDatabaseReadyProvider.notifier).state = false;
     // Reset list/item providers so UI detaches from stale rows during swap.
