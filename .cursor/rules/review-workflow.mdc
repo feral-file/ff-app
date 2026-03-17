@@ -1,0 +1,15 @@
+---
+description: After implementation, run a review loop with the reviewer subagent until Verdict: accept; only then commit, push, or create PR.
+alwaysApply: false
+---
+
+# Review workflow rule
+
+When implementation is complete (tests and post-implementation checks pass), run a **review loop** until the reviewer qualifies the change. Do not commit, push, or create a PR before **Verdict: accept**.
+
+1. **Handoff** — Produce a compact handoff: goal, files changed, key decisions, checks run, known tradeoffs.
+2. **Review** — Invoke the **reviewer** subagent (e.g. `/reviewer`) with fresh context. Give it the handoff, the diff (`git diff --stat`, `git diff`), and any test/lint output. The reviewer follows `prompts/code-review.md` and ends with **Verdict: accept** or **Verdict: revise**.
+3. **If Verdict: revise** — Address the reviewer's findings, re-run tests and post-implementation checks, update the handoff, and invoke the reviewer again. Repeat until **Verdict: accept**.
+4. **After Verdict: accept** — Commit (Conventional Commits), push, and create a PR only if the user requested it.
+
+The master agent and reviewer work in this loop until the change is qualified.
