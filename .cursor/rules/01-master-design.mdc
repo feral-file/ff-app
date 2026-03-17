@@ -14,9 +14,11 @@ Use this rule for structural decisions and layering boundaries.
 - Riverpod is the single shared flow driver for app/business state and external FF1 events.
 - Offline-first behavior is required: local persistence remains the primary read path.
 - FF1 integration must preserve the `transport -> protocol -> control` separation.
-- Deletion-first: remove legacy/duplicate paths before adding new ones.
-- No migration/legacy compatibility layers unless explicitly requested.
+- Prefer replacing or deleting flawed code paths over narrow local tweaks when solving an issue. If a broader rewrite produces a clearer design, choose it.
+- Do not preserve legacy behavior, compatibility shims, migrations, or transitional paths unless explicitly requested.
 - Prefer stateless, testable services/utilities by default; introduce stateful services only when lifecycle/orchestration/session needs require state.
+- For non-obvious logic, add code comments that preserve intent and context for later fixes, especially around functions, flows, state transitions, and important variables.
+- Those comments should explain `why` the code exists, the constraints/invariants it must preserve, failure or edge cases, trade-offs, and when useful the pros/cons of the chosen approach versus alternatives. Do not restate obvious syntax.
 
 ## 2) Layer boundaries
 - `ui/`: rendering and interaction only.

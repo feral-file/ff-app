@@ -39,6 +39,7 @@ If modifying a major flow or important screen, explicitly document:
 - Do not invent new flows that contradict `docs/project_spec.md` or `docs/app_flows.md`.
 - If documentation and implementation conflict, prefer implemented behavior for current-state planning and note the mismatch in docs/spec updates.
 - Do not start large changes without first producing/updating a feature spec.
+- If the current design is flawed, prefer replacing the affected flow/module over layering transitional compatibility fixes onto it unless explicitly requested.
 
 ## Verification expectations
 After implementation, run verification using
