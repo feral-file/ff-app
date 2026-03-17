@@ -33,7 +33,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    Finder optionFinder = find.text(optionLabel);
+    var optionFinder = find.text(optionLabel);
     final optionCount = optionFinder.evaluate().length;
 
     if (optionCount > 1) {
@@ -276,7 +276,7 @@ void main() {
                   id: 'pl_older',
                   name: 'Older Playlist',
                   type: PlaylistType.dp1,
-                  updatedAt: DateTime(2020, 1, 1),
+                  updatedAt: DateTime(2020),
                 ),
               ],
               works: baseResults.works,

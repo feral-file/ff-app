@@ -92,13 +92,16 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
         : _cachedPreviewState;
 
     // When the autoDispose provider is recreated after a tab switch it returns
-    // initial() — isLoading: false, works: [] — before the DB watch delivers
-    // data. Keep showing cached works during that gap to avoid a height
-    // collapse that makes the list jumpy.
+    // initial() — isLoading: false, works: [], hasMore: true — before the DB
+    // watch delivers data. Keep showing cached works during that gap to avoid
+    // a height collapse that makes the list jumpy. Do NOT keep cached when
+    // nextPreviewState has hasMore: false (loaded and legitimately empty, e.g.
+    // after removing an address); that would show stale works.
     final shouldKeepCached =
         widget.isActive &&
         _cachedPreviewState.works.isNotEmpty &&
         nextPreviewState.works.isEmpty &&
+        nextPreviewState.hasMore &&
         nextPreviewState.error == null;
 
     final previewState = shouldKeepCached

@@ -36,8 +36,11 @@ class ChannelsTabPage extends ConsumerStatefulWidget {
 /// State for ChannelsTabPage.
 class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
     with AutomaticKeepAliveClientMixin {
+  static const int _previewCount = 5;
+
   final ScrollController _scrollController = ScrollController();
   ChannelsState _cachedCuratedState = ChannelsState.initial();
+  ChannelsState _cachedPersonalState = ChannelsState.initial();
 
   @override
   bool get wantKeepAlive => true;
@@ -143,7 +146,20 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
       _cachedCuratedState = nextCuratedState;
     }
     final curatedChannels = curatedState.channels;
-    final error = curatedState.error;
+
+    final nextPersonalState = widget.isActive
+        ? ref.watch(channelsProvider(ChannelType.localVirtual))
+        : _cachedPersonalState;
+    if (widget.isActive) {
+      _cachedPersonalState = nextPersonalState;
+    }
+    final personalChannels = _cachedPersonalState.channels;
+
+    // Surface error when either curated or personal fails with no data.
+    // Both sections are first-class; user needs a retry path for either.
+    final hasError =
+        (curatedState.error != null && curatedChannels.isEmpty) ||
+        (_cachedPersonalState.error != null && personalChannels.isEmpty);
 
     // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics
     // Parent NestedScrollView handles scrolling
@@ -153,7 +169,7 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
       physics: const NeverScrollableScrollPhysics(),
       slivers: [
         // Error state
-        if (error != null && curatedChannels.isEmpty)
+        if (hasError)
           SliverToBoxAdapter(
             child: ErrorView(
               error:
@@ -169,11 +185,30 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
             ),
           ),
 
-        // Curated channels section
-        if (curatedChannels.isNotEmpty)
-          _buildCuratedChannelsSection(curatedChannels),
+        // Me section (localVirtual channels) - above Curated.
+        // Match Playlists tab: Column with trailing space12.
+        if (personalChannels.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Column(
+              children: [
+                _buildChannelSectionContent('Me', personalChannels),
+                SizedBox(height: LayoutConstants.space12),
+              ],
+            ),
+          ),
 
-        // Spacing between sections
+        // Curated channels section. Same structure as Playlists tab.
+        if (curatedChannels.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Column(
+              children: [
+                _buildChannelSectionContent('Curated', curatedChannels),
+                SizedBox(height: LayoutConstants.space12),
+              ],
+            ),
+          ),
+
+        // Trailing spacing (matches Playlists tab).
         SliverToBoxAdapter(
           child: SizedBox(height: LayoutConstants.space12),
         ),
@@ -181,12 +216,15 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
     );
   }
 
-  Widget _buildCuratedChannelsSection(List<Channel> channels) {
-    // Show max 5 channels, with "View All" if more exist
-    final displayChannels = channels.take(5).toList();
-    final hasMore = channels.length > 5;
+  /// Builds ChannelSection content (non-sliver). Used in Column for spacing
+  /// that matches Playlists tab.
+  Widget _buildChannelSectionContent(
+    String sectionName,
+    List<Channel> channels,
+  ) {
+    final displayChannels = channels.take(_previewCount).toList();
+    final hasMore = channels.length > _previewCount;
 
-    // Build ChannelRowData from domain Channel. Works loaded per channel via channelPreviewProvider.
     final channelRowData = displayChannels.map((channel) {
       return ChannelRowData(
         channelId: channel.id,
@@ -196,32 +234,31 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
       );
     }).toList();
 
-    return SliverList.builder(
-      itemCount: 1,
-      itemBuilder: (context, index) => ChannelSection(
-        sectionName: 'Curated',
-        channels: channelRowData,
-        isActive: widget.isActive,
-        sectionIcon: SvgPicture.asset(
-          'assets/images/D.svg',
-          width: LayoutConstants.iconSizeDefault,
-          height: LayoutConstants.iconSizeDefault,
-          colorFilter: const ColorFilter.mode(
-            AppColor.auQuickSilver,
-            BlendMode.srcIn,
-          ),
+    final isMe = sectionName == 'Me';
+    return ChannelSection(
+      sectionName: sectionName,
+      channels: channelRowData,
+      isActive: widget.isActive,
+      sectionIcon: SvgPicture.asset(
+        isMe ? 'assets/images/icon_account.svg' : 'assets/images/D.svg',
+        width: LayoutConstants.iconSizeDefault,
+        height: LayoutConstants.iconSizeDefault,
+        colorFilter: const ColorFilter.mode(
+          AppColor.auQuickSilver,
+          BlendMode.srcIn,
         ),
-        hasMore: hasMore,
-        onViewAllTap: hasMore
-            ? () {
-                context.push('${Routes.allChannels}?filter=curated');
-              }
-            : null,
-        onChannelItemTap: (item) {
-          // Navigate to work detail
-          context.push('${Routes.works}/${item.id}');
-        },
       ),
+      hasMore: hasMore,
+      onViewAllTap: hasMore
+          ? () {
+              context.push(
+                '${Routes.allChannels}?filter=${isMe ? 'personal' : 'curated'}',
+              );
+            }
+          : null,
+      onChannelItemTap: (item) {
+        context.push('${Routes.works}/${item.id}');
+      },
     );
   }
 }

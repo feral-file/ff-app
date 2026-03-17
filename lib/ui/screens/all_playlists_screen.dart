@@ -1,12 +1,15 @@
+import 'package:app/app/providers/channel_detail_provider.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
+import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/load_more_indicator.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -19,37 +22,40 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
-/// Filter for the "All playlists" screen.
-enum AllPlaylistsFilter {
-  /// Show curated (DP-1) playlists.
-  curated,
-
-  /// Show personal (address-based) playlists.
-  personal,
-}
-
-/// Maps UI filter to domain PlaylistType (curated only; personal uses me section).
-PlaylistType _filterToType(AllPlaylistsFilter filter) {
-  switch (filter) {
-    case AllPlaylistsFilter.curated:
-      return PlaylistType.dp1;
-    case AllPlaylistsFilter.personal:
-      return PlaylistType.addressBased;
-  }
-}
-
 /// All playlists screen.
 ///
 /// Mirrors the old app’s "View all" pages while using Riverpod state.
 class AllPlaylistsScreen extends ConsumerStatefulWidget {
   /// Creates an [AllPlaylistsScreen].
   const AllPlaylistsScreen({
-    required this.filter,
+    this.channelTypes,
+    this.channelIds,
+    this.playlistTypes,
+    this.title,
+    this.description,
+    this.iconAsset,
     super.key,
   });
 
-  /// Which playlists to show.
-  final AllPlaylistsFilter filter;
+  /// Channel types to show playlists for (dp1 = curated, localVirtual = personal).
+  /// When null or empty, defaults to [ChannelType.dp1].
+  final List<ChannelType>? channelTypes;
+
+  /// Optional channel IDs to filter playlists. When null or empty, ignored.
+  final List<String>? channelIds;
+
+  /// Optional playlist types to filter. When null or empty, shows all.
+  final List<PlaylistType>? playlistTypes;
+
+  /// Optional section title. When null, the section header is not shown.
+  final String? title;
+
+  /// Optional section description. When null, not shown.
+  final String? description;
+
+  /// Optional icon asset path. When null, title is shown without icon.
+  /// Never shown without title.
+  final String? iconAsset;
 
   @override
   ConsumerState<AllPlaylistsScreen> createState() => _AllPlaylistsScreenState();
@@ -64,10 +70,11 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.filter == AllPlaylistsFilter.curated) {
+      final types = _effectiveChannelTypes();
+      if (_effectiveChannelIds().isEmpty && types.contains(ChannelType.dp1)) {
         ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
       }
-      // Personal uses meSectionPlaylistsProvider (auto-loads on watch).
+      // Personal and channel-scoped use stream providers (auto-load on watch).
     });
   }
 
@@ -79,8 +86,21 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     super.dispose();
   }
 
+  List<ChannelType> _effectiveChannelTypes() {
+    final types = widget.channelTypes;
+    if (types == null || types.isEmpty) return [ChannelType.dp1];
+    return types;
+  }
+
+  List<String> _effectiveChannelIds() {
+    final ids = widget.channelIds;
+    if (ids == null || ids.isEmpty) return [];
+    return ids;
+  }
+
   void _onScroll() {
-    if (widget.filter != AllPlaylistsFilter.curated) return;
+    if (_effectiveChannelIds().isNotEmpty) return;
+    if (!_effectiveChannelTypes().contains(ChannelType.dp1)) return;
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
       ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadMore();
@@ -97,46 +117,107 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
   }
 
   Future<void> _onRefresh() async {
-    if (widget.filter == AllPlaylistsFilter.curated) {
+    final types = _effectiveChannelTypes();
+    final ids = _effectiveChannelIds();
+    if (ids.isNotEmpty) {
+      ref.invalidate(channelPlaylistsFromIdsProvider(ids.join(',')));
+    }
+    if (ids.isEmpty && types.contains(ChannelType.dp1)) {
       await ref.read(playlistsProvider(PlaylistType.dp1).notifier).refresh();
-    } else {
+    }
+    if (types.contains(ChannelType.localVirtual)) {
       ref.invalidate(meSectionPlaylistsProvider);
     }
   }
 
+  List<Playlist> _filterByPlaylistTypes(
+    List<Playlist> raw,
+    List<PlaylistType>? types,
+  ) {
+    if (types == null || types.isEmpty) return raw;
+    return raw.where((p) => types.contains(p.type)).toList();
+  }
+
+  bool _shouldShowAddressHeaders() {
+    if (_effectiveChannelIds().isNotEmpty) {
+      final types = widget.playlistTypes;
+      return types == null ||
+          types.isEmpty ||
+          types.contains(PlaylistType.addressBased);
+    }
+    return _effectiveChannelTypes().contains(ChannelType.localVirtual);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isPersonal = widget.filter == AllPlaylistsFilter.personal;
-    final curatedState = ref.watch(playlistsProvider(PlaylistType.dp1));
-    final meSectionAsync = ref.watch(meSectionPlaylistsProvider);
+    final ids = _effectiveChannelIds();
+    final isChannelScoped = ids.isNotEmpty;
 
-    final meSectionState = meSectionAsync.when(
-      data: (v) => v,
-      loading: () => null,
-      error: (_, _) => null,
-    );
-    final playlists = isPersonal
-        ? (meSectionState?.playlists ?? [])
-        : curatedState.playlists;
-    final isLoading = isPersonal
-        ? (meSectionAsync.isLoading || (meSectionState?.isLoading == true))
-        : curatedState.isLoading;
-    final isLoadingMore = !isPersonal && curatedState.isLoadingMore;
-    final hasMore = !isPersonal && curatedState.hasMore;
+    List<Playlist> playlists;
+    bool isLoading;
+    bool isLoadingMore;
+    bool hasMore;
+    bool hasError;
 
-    final title = widget.filter == AllPlaylistsFilter.curated
-        ? 'Curated'
-        : 'Me';
-    // Descriptions from Feral File app (old repo) for consistency.
-    final description = widget.filter == AllPlaylistsFilter.curated
-        ? 'Playlists assembled by Feral File and a small group of invited '
-              'artists and curators. These are early recommendations to help you '
-              'explore digital art as we build toward deeper, global curation.'
-        : 'Playlists built from the wallet addresses you add. Use it to browse '
-              "the works you own or to explore any address you're curious about.";
-    final iconAsset = widget.filter == AllPlaylistsFilter.curated
-        ? 'assets/images/D.svg'
-        : 'assets/images/icon_account.svg';
+    if (isChannelScoped) {
+      // Never touch playlistsProvider or meSectionPlaylistsProvider when channel-scoped.
+      // ref.read on non-autoDispose providers still initializes them and starts DB watches.
+      final channelPlaylistsAsync =
+          ref.watch(channelPlaylistsFromIdsProvider(ids.join(',')));
+      final raw =
+          channelPlaylistsAsync.when(
+            data: (v) => v,
+            loading: () => <Playlist>[],
+            error: (_, _) => <Playlist>[],
+          );
+      playlists = _filterByPlaylistTypes(raw, widget.playlistTypes);
+      isLoading = channelPlaylistsAsync.isLoading;
+      isLoadingMore = false;
+      hasMore = false;
+      hasError = channelPlaylistsAsync.hasError;
+    } else {
+      final curatedState = ref.watch(playlistsProvider(PlaylistType.dp1));
+      final meSectionAsync = ref.watch(meSectionPlaylistsProvider);
+      final meSectionState = meSectionAsync.when(
+        data: (v) => v,
+        loading: () => null,
+        error: (_, _) => null,
+      );
+
+      final types = _effectiveChannelTypes();
+      final hasDp1 = types.contains(ChannelType.dp1);
+      final hasLocalVirtual = types.contains(ChannelType.localVirtual);
+      List<Playlist> raw;
+      if (hasDp1 && hasLocalVirtual) {
+        final curated = curatedState.playlists;
+        final personal = meSectionState?.playlists ?? [];
+        raw = [...curated, ...personal];
+        isLoading =
+            curatedState.isLoading ||
+            (meSectionAsync.isLoading || (meSectionState?.isLoading == true));
+        isLoadingMore = curatedState.isLoadingMore;
+        hasMore = curatedState.hasMore;
+        hasError = curatedState.error != null || meSectionAsync.hasError;
+      } else if (hasLocalVirtual) {
+        raw = meSectionState?.playlists ?? [];
+        isLoading =
+            meSectionAsync.isLoading || (meSectionState?.isLoading == true);
+        isLoadingMore = false;
+        hasMore = false;
+        hasError = meSectionAsync.hasError;
+      } else {
+        raw = curatedState.playlists;
+        isLoading = curatedState.isLoading;
+        isLoadingMore = curatedState.isLoadingMore;
+        hasMore = curatedState.hasMore;
+        hasError = curatedState.error != null;
+      }
+      playlists = _filterByPlaylistTypes(raw, widget.playlistTypes);
+    }
+
+    final title = widget.title;
+    final description = widget.description;
+    final iconAsset = widget.iconAsset;
 
     return Scaffold(
       backgroundColor: AppColor.auGreyBackground,
@@ -155,20 +236,26 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                 return const LoadingView();
               }
 
-              if ((isPersonal
-                      ? meSectionAsync.hasError
-                      : curatedState.error != null) &&
-                  playlists.isEmpty) {
+              if (hasError && playlists.isEmpty) {
                 return ErrorView(
                   error:
                       'We couldn’t load playlists. Check your connection, then Retry.',
                   onRetry: () {
-                    if (isPersonal) {
-                      ref.invalidate(meSectionPlaylistsProvider);
+                    if (isChannelScoped) {
+                      ref.invalidate(
+                        channelPlaylistsFromIdsProvider(ids.join(',')),
+                      );
                     } else {
-                      ref
-                          .read(playlistsProvider(PlaylistType.dp1).notifier)
-                          .loadPlaylists();
+                      if (_effectiveChannelTypes().contains(
+                        ChannelType.localVirtual,
+                      )) {
+                        ref.invalidate(meSectionPlaylistsProvider);
+                      }
+                      if (_effectiveChannelTypes().contains(ChannelType.dp1)) {
+                        ref
+                            .read(playlistsProvider(PlaylistType.dp1).notifier)
+                            .loadPlaylists();
+                      }
                     }
                   },
                 );
@@ -187,21 +274,24 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                 controller: _scrollController,
                 slivers: [
                   const SliverToBoxAdapter(child: SizedBox(height: 21)),
-                  SliverToBoxAdapter(
-                    child: SectionDetailsHeader(
-                      icon: SvgPicture.asset(
-                        iconAsset,
-                        width: LayoutConstants.iconSizeDefault,
-                        height: LayoutConstants.iconSizeDefault,
-                        colorFilter: const ColorFilter.mode(
-                          AppColor.white,
-                          BlendMode.srcIn,
-                        ),
+                  if (title != null)
+                    SliverToBoxAdapter(
+                      child: SectionDetailsHeader(
+                        icon: iconAsset != null
+                            ? SvgPicture.asset(
+                                iconAsset,
+                                width: LayoutConstants.iconSizeDefault,
+                                height: LayoutConstants.iconSizeDefault,
+                                colorFilter: const ColorFilter.mode(
+                                  AppColor.white,
+                                  BlendMode.srcIn,
+                                ),
+                              )
+                            : null,
+                        title: title,
+                        description: description,
                       ),
-                      title: title,
-                      description: description,
                     ),
-                  ),
                   const SliverToBoxAdapter(child: SizedBox(height: 50)),
                   SliverList.builder(
                     itemCount: playlists.length,
@@ -209,8 +299,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                       final playlist = playlists[index];
                       return PlaylistRowItem(
                         playlist: playlist,
-                        headerBuilder:
-                            widget.filter == AllPlaylistsFilter.personal
+                        headerBuilder: _shouldShowAddressHeaders()
                             ? (p, itemCount) {
                                 if (p.type == PlaylistType.favorite) {
                                   return PlaylistTitle(
@@ -245,6 +334,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                     SliverToBoxAdapter(
                       child: LoadMoreIndicator(isLoadingMore: isLoadingMore),
                     ),
+                  const SliverToBoxAdapter(child: BottomSpacing()),
                 ],
               );
             },

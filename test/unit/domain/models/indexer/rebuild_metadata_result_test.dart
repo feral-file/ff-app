@@ -9,7 +9,7 @@ void main() {
         'chain': 'eip155:1',
         'standard': 'erc721',
       };
-      final done = RebuildMetadataDone(token: tokenMap);
+      const done = RebuildMetadataDone(token: tokenMap);
       final json = done.toJson();
       expect(json['kind'], RebuildMetadataDone.kind);
       expect(json['token'], tokenMap);

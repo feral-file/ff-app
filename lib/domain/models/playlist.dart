@@ -230,6 +230,32 @@ enum PlaylistType {
   final int value;
 
   const PlaylistType(this.value);
+
+  /// Serializes to string for query params / persistence.
+  String toQueryParamString() {
+    switch (this) {
+      case PlaylistType.dp1:
+        return 'dp1';
+      case PlaylistType.addressBased:
+        return 'addressBased';
+      case PlaylistType.favorite:
+        return 'favorite';
+    }
+  }
+
+  /// Parses from string (e.g. query param). Returns null if invalid.
+  static PlaylistType? fromString(String value) {
+    switch (value.trim()) {
+      case 'dp1':
+        return PlaylistType.dp1;
+      case 'addressBased':
+        return PlaylistType.addressBased;
+      case 'favorite':
+        return PlaylistType.favorite;
+      default:
+        return null;
+    }
+  }
 }
 
 /// Playlist role for UI chrome (not a separate domain object).

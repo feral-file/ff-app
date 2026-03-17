@@ -35,7 +35,7 @@ final meSectionPlaylistsProvider = StreamProvider<MeSectionPlaylistsState>((
     databaseService.watchPlaylistById(Playlist.favoriteId),
     databaseService.watchPlaylists(
       type: PlaylistType.addressBased,
-      channelId: Channel.myCollectionId,
+      channelIds: [Channel.myCollectionId],
     ),
     (favorite, addressPlaylists) {
       final favoritePlaylists = [

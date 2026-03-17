@@ -307,15 +307,11 @@ class AppDatabase extends _$AppDatabase {
     return query.watch();
   }
 
-  /// Watch playlists ordered by created time (desc, then id), optionally
-  /// filtered
-  /// by playlist [type], [channelId], and limited to [limit] rows.
-  ///
-  /// - [type] matches the `playlists.type` integer column.
-  /// - [limit] is applied after ordering.
+  /// Watch playlists ordered by publisher_id, created_at_us (canonical order).
+  /// Filter by [type], [channelIds], [ownerAddress], [limit].
   Stream<List<PlaylistData>> watchPlaylists({
     int? type,
-    String? channelId,
+    List<String>? channelIds,
     String? ownerAddress,
     int? limit,
   }) {
@@ -341,8 +337,8 @@ class AppDatabase extends _$AppDatabase {
       query.where((t) => t.type.equals(type));
     }
 
-    if (channelId != null) {
-      query.where((t) => t.channelId.equals(channelId));
+    if (channelIds != null && channelIds.isNotEmpty) {
+      query.where((t) => t.channelId.isIn(channelIds));
     }
 
     if (ownerAddress != null) {
@@ -438,7 +434,45 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
+  /// Watch channels by type, filtered to those with at least one playlist
+  /// entry. Emits when [channels], [playlists], or [playlist_entries] change.
+  /// Use this instead of [watchChannels] when the UI must react to
+  /// add/remove address or favorite changes.
+  Stream<List<ChannelData>> watchChannelsByType(
+    int type, {
+    int? limit,
+    int offset = 0,
+  }) {
+    final variables = <Variable>[Variable.withInt(type)];
+    final limitClause = limit != null ? ' LIMIT ? OFFSET ?' : '';
+    if (limit != null) {
+      variables.add(Variable.withInt(limit));
+      variables.add(Variable.withInt(offset));
+    }
+    return customSelect(
+      '''
+      SELECT c.* FROM channels c
+      WHERE c.type = ?
+        AND EXISTS (
+          SELECT 1 FROM playlists p
+          INNER JOIN playlist_entries pe ON p.id = pe.playlist_id
+          WHERE p.channel_id = c.id
+        )
+      ORDER BY COALESCE(c.publisher_id, 2147483647),
+        c.sort_order ASC NULLS LAST,
+        c.id ASC
+      $limitClause
+      ''',
+      variables: variables,
+      readsFrom: {channels, playlists, playlistEntries},
+    ).watch().map(
+          (rows) =>
+              rows.map((row) => channels.map(row.data)).toList(),
+        );
+  }
+
   /// Get channels by type with optional pagination.
+  /// Only returns channels that have at least one item (playlist entry).
   /// Order matches [watchChannels] (sort_order asc, id asc) for consistent
   /// paging.
   Future<List<ChannelData>> getChannelsByType(
@@ -446,25 +480,30 @@ class AppDatabase extends _$AppDatabase {
     int? limit,
     int offset = 0,
   }) async {
-    const publisherOrderExpr = CustomExpression<int>(
-      'COALESCE(channels.publisher_id, 2147483647)',
-    );
-    final query = select(channels)
-      ..where((t) => t.type.equals(type))
-      ..orderBy([
-        (t) => OrderingTerm.asc(publisherOrderExpr),
-        (t) => OrderingTerm(
-          expression: t.sortOrder,
-          nulls: NullsOrder.last,
-        ),
-        (t) => OrderingTerm.asc(t.id),
-      ]);
-
+    final variables = <Variable>[Variable.withInt(type)];
+    final limitClause = limit != null ? ' LIMIT ? OFFSET ?' : '';
     if (limit != null) {
-      query.limit(limit, offset: offset);
+      variables.add(Variable.withInt(limit));
+      variables.add(Variable.withInt(offset));
     }
-
-    return query.get();
+    final rows = await customSelect(
+      '''
+      SELECT c.* FROM channels c
+      WHERE c.type = ?
+        AND EXISTS (
+          SELECT 1 FROM playlists p
+          INNER JOIN playlist_entries pe ON p.id = pe.playlist_id
+          WHERE p.channel_id = c.id
+        )
+      ORDER BY COALESCE(c.publisher_id, 2147483647),
+        c.sort_order ASC NULLS LAST,
+        c.id ASC
+      $limitClause
+      ''',
+      variables: variables,
+      readsFrom: {channels, playlists, playlistEntries},
+    ).get();
+    return rows.map((row) => channels.map(row.data)).toList();
   }
 
   /// Get channel by ID.

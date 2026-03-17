@@ -147,4 +147,26 @@ enum ChannelType {
   final int value;
 
   const ChannelType(this.value);
+
+  /// Serializes to string for query params / persistence.
+  String toQueryParamString() {
+    switch (this) {
+      case ChannelType.dp1:
+        return 'dp1';
+      case ChannelType.localVirtual:
+        return 'localVirtual';
+    }
+  }
+
+  /// Parses from string (e.g. query param). Returns null if invalid.
+  static ChannelType? fromString(String value) {
+    switch (value.trim()) {
+      case 'dp1':
+        return ChannelType.dp1;
+      case 'localVirtual':
+        return ChannelType.localVirtual;
+      default:
+        return null;
+    }
+  }
 }

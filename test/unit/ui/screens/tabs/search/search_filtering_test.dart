@@ -115,7 +115,7 @@ void main() {
       id: 'ch_a',
       name: 'Gamma',
       type: ChannelType.dp1,
-      createdAt: DateTime(2024, 1, 1),
+      createdAt: DateTime(2024),
       updatedAt: DateTime(2024, 1, 2),
     );
 
@@ -124,15 +124,13 @@ void main() {
       name: 'Alpha',
       type: ChannelType.dp1,
       createdAt: DateTime(2024, 1, 3),
-      updatedAt: null,
     );
 
     final playlistA = Playlist(
       id: 'pl_a',
       name: 'Zeta',
       type: PlaylistType.dp1,
-      createdAt: DateTime(2024, 1, 1),
-      updatedAt: null,
+      createdAt: DateTime(2024),
     );
 
     final playlistB = Playlist(
@@ -189,7 +187,7 @@ void main() {
   });
 
   group('filterSearchResults', () {
-    final now = DateTime(2024, 2, 1);
+    final now = DateTime(2024, 2);
 
     final base = SearchResults(
       channels: [
@@ -204,7 +202,7 @@ void main() {
           id: 'ch_local',
           name: 'Personal Channel',
           type: ChannelType.localVirtual,
-          createdAt: DateTime(2023, 11, 1),
+          createdAt: DateTime(2023, 11),
         ),
       ],
       playlists: [
@@ -212,14 +210,14 @@ void main() {
           id: 'pl_dp1',
           name: 'DP1 Playlist',
           type: PlaylistType.dp1,
-          createdAt: DateTime(2023, 12, 1),
+          createdAt: DateTime(2023, 12),
           updatedAt: DateTime(2024, 1, 5),
         ),
         Playlist(
           id: 'pl_personal',
           name: 'Personal Playlist',
           type: PlaylistType.addressBased,
-          createdAt: DateTime(2023, 11, 1),
+          createdAt: DateTime(2023, 11),
         ),
       ],
       works: [
@@ -233,7 +231,7 @@ void main() {
           id: 'wk_dp2',
           kind: PlaylistItemKind.indexerToken,
           title: 'Work Two',
-          updatedAt: DateTime(2023, 10, 1),
+          updatedAt: DateTime(2023, 10),
         ),
       ],
     );
@@ -242,7 +240,6 @@ void main() {
       final filtered = filterSearchResults(
         base,
         sourceFilter: SearchSourceFilter.dp1,
-        dateFilter: SearchDateFilter.all,
       );
 
       expect(filtered.channels.map((c) => c.id), ['ch_dp1']);
@@ -254,7 +251,6 @@ void main() {
       final filtered = filterSearchResults(
         base,
         sourceFilter: SearchSourceFilter.personal,
-        dateFilter: SearchDateFilter.all,
       );
 
       expect(filtered.channels.map((c) => c.id), ['ch_local']);
@@ -275,7 +271,7 @@ void main() {
             id: 'ch_old',
             name: 'Old',
             type: ChannelType.dp1,
-            updatedAt: DateTime(2022, 12, 1),
+            updatedAt: DateTime(2022, 12),
           ),
         ],
         playlists: [
@@ -303,7 +299,7 @@ void main() {
             id: 'wk_very_old',
             kind: PlaylistItemKind.dp1Item,
             title: 'Very Old',
-            updatedAt: DateTime(2022, 11, 1),
+            updatedAt: DateTime(2022, 11),
           ),
         ],
       );
@@ -330,7 +326,7 @@ void main() {
     });
 
     test('applies source and date filters together', () {
-      final reference = DateTime(2024, 2, 1);
+      final reference = DateTime(2024, 2);
 
       final mixed = SearchResults(
         channels: [
@@ -350,7 +346,7 @@ void main() {
             id: 'ch_old_dp1',
             name: 'Old DP1',
             type: ChannelType.dp1,
-            updatedAt: DateTime(2023, 1, 1),
+            updatedAt: DateTime(2023),
           ),
         ],
         playlists: [
@@ -370,7 +366,7 @@ void main() {
             id: 'pl_old_dp1',
             name: 'Old DP1',
             type: PlaylistType.dp1,
-            updatedAt: DateTime(2023, 1, 1),
+            updatedAt: DateTime(2023),
           ),
         ],
         works: [

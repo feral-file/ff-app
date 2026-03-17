@@ -106,19 +106,36 @@ class DatabaseService {
         );
   }
 
+  /// Watch channels by type, filtered to those with at least one playlist
+  /// entry. Emits when channels, playlists, or playlist_entries change.
+  /// Use for Me section so it reacts to address remove / unfavorite.
+  Stream<List<Channel>> watchChannelsByType(
+    ChannelType type, {
+    int? limit,
+    int offset = 0,
+  }) {
+    return _db
+        .watchChannelsByType(type.index, limit: limit, offset: offset)
+        .debounceTime(const Duration(milliseconds: 300))
+        .map(
+          (rows) => rows.map(DatabaseConverters.channelDataToDomain).toList(),
+        );
+  }
+
   /// Watch playlists as domain models.
   ///
-  /// This is the Drift equivalent of the old repo's `watchPlaylistRows(...)`.
+  /// Ordered by publisher_id ASC, created_at_us ASC (canonical order).
+  /// Use [channelIds] for single or multiple channels.
   Stream<List<Playlist>> watchPlaylists({
     PlaylistType? type,
-    String? channelId,
+    List<String>? channelIds,
     String? ownerAddress,
     int? limit,
   }) {
     return _db
         .watchPlaylists(
           type: type?.index,
-          channelId: channelId,
+          channelIds: channelIds,
           ownerAddress: ownerAddress,
           limit: limit,
         )

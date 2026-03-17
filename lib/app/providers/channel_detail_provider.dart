@@ -26,8 +26,30 @@ final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
 
       return Rx.combineLatest2<Channel?, List<Playlist>, ChannelDetails>(
         databaseService.watchChannelById(channelId),
-        databaseService.watchPlaylists(channelId: channelId),
-        (channel, playlists) =>
-            ChannelDetails(channel: channel, playlists: playlists),
+        databaseService.watchPlaylists(channelIds: [channelId]),
+        (channel, playlists) {
+          final withWorks =
+              playlists.where((p) => p.itemCount > 0).toList();
+          return ChannelDetails(channel: channel, playlists: withWorks);
+        },
       );
+    });
+
+/// Provider for playlists across multiple channels.
+/// Key is comma-joined channel IDs (e.g. "id1,id2").
+/// Uses a single DB query with channelIds so order matches canonical
+/// publisher_id, created_at_us semantics.
+final StreamProviderFamily<List<Playlist>, String>
+    channelPlaylistsFromIdsProvider =
+    StreamProvider.family<List<Playlist>, String>((ref, channelIdsKey) {
+      final databaseService = ref.read(databaseServiceProvider);
+      final ids = channelIdsKey
+          .split(',')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      if (ids.isEmpty) return Stream.value(<Playlist>[]);
+      return databaseService
+          .watchPlaylists(channelIds: ids)
+          .map((list) => list.where((p) => p.itemCount > 0).toList());
     });
