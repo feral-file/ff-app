@@ -13,6 +13,38 @@ final StructuredLogger _startupLog = AppStructuredLog.forLogger(
   context: {'layer': 'startup'},
 );
 
+/// Checks if a Sentry event is a transient seed sync network error.
+///
+/// Seed database sync uses failSilently=true on app resume to gracefully
+/// handle transient connectivity issues. SocketException and DioException
+/// errors are expected and handled, but sentry_dio still captures them as
+/// error events. This filter prevents them from cluttering the dashboard.
+bool _isSeedSyncNetworkError(SentryEvent event) {
+  final exceptions = event.exceptions;
+  if (exceptions == null || exceptions.isEmpty) return false;
+
+  final exception = exceptions.first;
+
+  // Check exception type: filter SocketException and DioException.
+  final exceptionType = exception.type;
+  if (exceptionType != 'SocketException' && exceptionType != 'DioException') {
+    return false;
+  }
+
+  // Check if this event is from seed_database component (stack trace).
+  final stackTrace = exception.stackTrace;
+  if (stackTrace == null) return false;
+
+  final frames = stackTrace.frames;
+  if (frames.isEmpty) return false;
+
+  return frames.any(
+    (frame) =>
+        (frame.fileName?.contains('seed_database') ?? false) ||
+        (frame.function?.contains('seed_database') ?? false),
+  );
+}
+
 Future<void> main() async {
   // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,7 +62,17 @@ Future<void> main() async {
           ..tracesSampleRate = 0.1
           ..addIntegration(LoggingIntegration())
           ..beforeSend = (event, hint) {
-            return kDebugMode ? null : event;
+            // In debug mode, suppress all events for cleaner logs.
+            if (kDebugMode) return null;
+
+            // Filter out transient seed sync network errors.
+            // These are expected network issues, not bugs. Keep FormatException
+            // and other persistence failures visible for debugging.
+            if (_isSeedSyncNetworkError(event)) {
+              return null;
+            }
+
+            return event;
           }
           ..beforeSendTransaction = (transaction, hint) {
             return kDebugMode ? null : transaction;
