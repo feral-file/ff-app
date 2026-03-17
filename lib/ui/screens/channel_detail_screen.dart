@@ -1,5 +1,6 @@
 import 'package:app/app/providers/channel_detail_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/routing/all_playlists_route.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/content_rhythm.dart';
@@ -7,7 +8,6 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/theme/app_color.dart';
-import 'package:app/app/routing/all_playlists_route.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/bottom_spacing.dart';
 import 'package:app/widgets/channel_item.dart';
@@ -58,10 +58,12 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
     List<Playlist> playlists,
   ) {
     final channelId = channel.id;
-    final nonAddress =
-        playlists.where((p) => p.type != PlaylistType.addressBased).toList();
-    final addressPlaylists =
-        playlists.where((p) => p.type == PlaylistType.addressBased).toList();
+    final nonAddress = playlists
+        .where((p) => p.type != PlaylistType.addressBased)
+        .toList();
+    final addressPlaylists = playlists
+        .where((p) => p.type == PlaylistType.addressBased)
+        .toList();
 
     final allEmpty = nonAddress.isEmpty && addressPlaylists.isEmpty;
 
@@ -117,8 +119,8 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
                     hasMore: nonAddress.length > _previewCount,
                     onViewAllTap: nonAddress.length > _previewCount
                         ? () => context.push(
-                              '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelIds: [channelId], playlistTypes: [PlaylistType.dp1, PlaylistType.favorite])}',
-                            )
+                            '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelIds: [channelId], playlistTypes: [PlaylistType.dp1, PlaylistType.favorite])}',
+                          )
                         : null,
                     onPlaylistItemTap: (item) {
                       context.push('${Routes.works}/${item.id}');
@@ -156,8 +158,8 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
                     hasMore: addressPlaylists.length > _previewCount,
                     onViewAllTap: addressPlaylists.length > _previewCount
                         ? () => context.push(
-                              '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelIds: [channelId], playlistTypes: [PlaylistType.addressBased])}',
-                            )
+                            '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelIds: [channelId], playlistTypes: [PlaylistType.addressBased])}',
+                          )
                         : null,
                     onPlaylistItemTap: (item) {
                       context.push('${Routes.works}/${item.id}');
@@ -281,8 +283,7 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
                     );
                   }
 
-                  final isMeChannel =
-                      channel.type == ChannelType.localVirtual;
+                  final isMeChannel = channel.type == ChannelType.localVirtual;
                   if (isMeChannel) {
                     return _buildMeChannelContent(
                       context,

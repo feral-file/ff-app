@@ -3,7 +3,6 @@ import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
 import 'package:app/app/providers/current_route_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -22,7 +21,7 @@ void main() {
     test('returns false for children of hidden routes', () {
       expect(
         shouldShowNowDisplayingForRoute(
-          AppRouteState(
+          const AppRouteState(
             path: '${Routes.settings}/nested',
             currentRoute: null,
           ),
@@ -31,7 +30,7 @@ void main() {
       );
       expect(
         shouldShowNowDisplayingForRoute(
-          AppRouteState(
+          const AppRouteState(
             path: '${Routes.onboarding}/nested',
             currentRoute: null,
           ),
@@ -43,19 +42,19 @@ void main() {
     test('returns true for home and DP-1 browsing routes', () {
       expect(
         shouldShowNowDisplayingForRoute(
-          AppRouteState(path: Routes.home, currentRoute: null),
+          const AppRouteState(path: Routes.home, currentRoute: null),
         ),
         isTrue,
       );
       expect(
         shouldShowNowDisplayingForRoute(
-          AppRouteState(path: Routes.channels, currentRoute: null),
+          const AppRouteState(path: Routes.channels, currentRoute: null),
         ),
         isTrue,
       );
       expect(
         shouldShowNowDisplayingForRoute(
-          AppRouteState(
+          const AppRouteState(
             path: '${Routes.playlists}/abc',
             currentRoute: null,
           ),
@@ -64,7 +63,7 @@ void main() {
       );
       expect(
         shouldShowNowDisplayingForRoute(
-          AppRouteState(
+          const AppRouteState(
             path: '${Routes.works}/xyz',
             currentRoute: null,
           ),

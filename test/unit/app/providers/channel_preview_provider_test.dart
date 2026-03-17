@@ -90,7 +90,7 @@ void main() {
       // Keep the provider alive to receive the watch stream emissions.
       final listener = container.listen(
         channelPreviewProvider('ch_1'),
-        (_, __) {},
+        (_, _) {},
       );
       addTearDown(listener.close);
 

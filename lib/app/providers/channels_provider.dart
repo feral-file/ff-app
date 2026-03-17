@@ -153,12 +153,20 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
     if (!ref.mounted) return;
     _watchSub?.cancel();
     final databaseService = ref.read(databaseServiceProvider);
-    final limit = (_pageSize > state.channels.length)
-        ? _pageSize
-        : state.channels.length;
-    _watchSub = databaseService
-        .watchChannels(type: _type, limit: limit)
-        .listen(_onChannelsChanged, onError: _onWatchError);
+    // Use watchChannelsByType so we react to playlist_entries changes
+    // (remove address, unfavorite). watchChannels only watches channels table.
+    if (_type == ChannelType.localVirtual) {
+      _watchSub = databaseService
+          .watchChannelsByType(ChannelType.localVirtual)
+          .listen(_onChannelsChanged, onError: _onWatchError);
+    } else {
+      final listenSize = (_pageSize > state.channels.length)
+          ? _pageSize
+          : state.channels.length;
+      _watchSub = databaseService
+          .watchChannelsByType(ChannelType.dp1, limit: listenSize)
+          .listen(_onChannelsChanged, onError: _onWatchError);
+    }
   }
 
   void _onWatchError(Object error, StackTrace stack) {
@@ -174,6 +182,17 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 
   void _onChannelsChanged(List<Channel> next) {
     if (!ref.mounted) return;
+    if (_type == ChannelType.localVirtual) {
+      // Stream already returns filtered channels (with items). Use directly.
+      state = ChannelsState.loaded(
+        channels: next,
+        hasMore: false,
+        cursor: null,
+        total: next.length,
+      );
+      return;
+    }
+    // dp1: use emission as trigger to refresh (pagination).
     if (state.channels.isEmpty && !state.isLoading) {
       unawaited(refresh());
       return;

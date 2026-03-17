@@ -56,7 +56,7 @@ void main() {
   });
 
   group('SeedDatabaseService retryable download errors', () {
-    DioException _dioException({
+    DioException dioException({
       required DioExceptionType type,
       int? statusCode,
     }) {
@@ -77,19 +77,19 @@ void main() {
     test('retries on timeout and connectivity failures', () {
       expect(
         SeedDatabaseService.isRetryableDownloadError(
-          _dioException(type: DioExceptionType.connectionTimeout),
+          dioException(type: DioExceptionType.connectionTimeout),
         ),
         isTrue,
       );
       expect(
         SeedDatabaseService.isRetryableDownloadError(
-          _dioException(type: DioExceptionType.connectionError),
+          dioException(type: DioExceptionType.connectionError),
         ),
         isTrue,
       );
       expect(
         SeedDatabaseService.isRetryableDownloadError(
-          _dioException(type: DioExceptionType.receiveTimeout),
+          dioException(type: DioExceptionType.receiveTimeout),
         ),
         isTrue,
       );
@@ -98,13 +98,13 @@ void main() {
     test('retries on retry-friendly HTTP status codes', () {
       expect(
         SeedDatabaseService.isRetryableDownloadError(
-          _dioException(type: DioExceptionType.badResponse, statusCode: 429),
+          dioException(type: DioExceptionType.badResponse, statusCode: 429),
         ),
         isTrue,
       );
       expect(
         SeedDatabaseService.isRetryableDownloadError(
-          _dioException(type: DioExceptionType.badResponse, statusCode: 504),
+          dioException(type: DioExceptionType.badResponse, statusCode: 504),
         ),
         isTrue,
       );
@@ -113,13 +113,13 @@ void main() {
     test('does not retry on non-retryable HTTP status codes', () {
       expect(
         SeedDatabaseService.isRetryableDownloadError(
-          _dioException(type: DioExceptionType.badResponse, statusCode: 400),
+          dioException(type: DioExceptionType.badResponse, statusCode: 400),
         ),
         isFalse,
       );
       expect(
         SeedDatabaseService.isRetryableDownloadError(
-          _dioException(type: DioExceptionType.badResponse, statusCode: 404),
+          dioException(type: DioExceptionType.badResponse, statusCode: 404),
         ),
         isFalse,
       );
@@ -128,7 +128,7 @@ void main() {
     test('does not retry cancellations', () {
       expect(
         SeedDatabaseService.isRetryableDownloadError(
-          _dioException(type: DioExceptionType.cancel),
+          dioException(type: DioExceptionType.cancel),
         ),
         isFalse,
       );

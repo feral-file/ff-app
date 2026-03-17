@@ -4,11 +4,11 @@ import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/routing/all_playlists_route.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
-import 'package:app/app/routing/all_playlists_route.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/tabs/tab_reload_guard.dart';
 import 'package:app/widgets/error_view.dart';
@@ -186,16 +186,17 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     final displayMeSectionState = widget.isActive
         ? nextMeSectionState
         : _cachedMeSectionState;
-    final personalPlaylists = displayMeSectionState.playlists;
+    final personalPlaylists = displayMeSectionState.playlists
+        .where((p) => p.itemCount > 0)
+        .toList();
     final error = curatedState.error ?? displayMeSectionState.error;
     final curatedPlaylists = curatedState.playlists;
-    final curatedSectionPlaylists = curatedPlaylists.where((playlist) {
-      final channelId = playlist.channelId;
-      if (channelId == null || channelId.isEmpty) {
-        return false;
-      }
-      return true;
-    }).toList();
+    final curatedSectionPlaylists = curatedPlaylists
+        .where((p) =>
+            p.channelId != null &&
+            p.channelId!.isNotEmpty &&
+            p.itemCount > 0)
+        .toList();
 
     // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics.
     // Parent NestedScrollView handles scrolling.

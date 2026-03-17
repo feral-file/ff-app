@@ -106,6 +106,22 @@ class DatabaseService {
         );
   }
 
+  /// Watch channels by type, filtered to those with at least one playlist
+  /// entry. Emits when channels, playlists, or playlist_entries change.
+  /// Use for Me section so it reacts to address remove / unfavorite.
+  Stream<List<Channel>> watchChannelsByType(
+    ChannelType type, {
+    int? limit,
+    int offset = 0,
+  }) {
+    return _db
+        .watchChannelsByType(type.index, limit: limit, offset: offset)
+        .debounceTime(const Duration(milliseconds: 300))
+        .map(
+          (rows) => rows.map(DatabaseConverters.channelDataToDomain).toList(),
+        );
+  }
+
   /// Watch playlists as domain models.
   ///
   /// Ordered by publisher_id ASC, created_at_us ASC (canonical order).
