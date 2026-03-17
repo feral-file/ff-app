@@ -214,12 +214,23 @@ const Duration _deeplinkDedupWindow = Duration(seconds: 2);
 
 /// Coordinates deeplink ingestion and emits typed navigation actions.
 class DeeplinkHandler {
-  /// Constructor
+  /// Constructor.
+  ///
+  /// [resumeLinkPollInterval] and [resumeLinkMaxPolls] control how long
+  /// [checkForResumeLink] waits for `scene(_:continue:)` to store the link
+  /// after iOS fires `sceneDidBecomeActive`. Defaults are suited for
+  /// production; tests should pass shorter values to stay fast.
   DeeplinkHandler({
     required DeeplinkLinkSource linkSource,
-  }) : _linkSource = linkSource;
+    Duration resumeLinkPollInterval = const Duration(milliseconds: 200),
+    int resumeLinkMaxPolls = 10,
+  })  : _linkSource = linkSource,
+        _resumeLinkPollInterval = resumeLinkPollInterval,
+        _resumeLinkMaxPolls = resumeLinkMaxPolls;
 
   final DeeplinkLinkSource _linkSource;
+  final Duration _resumeLinkPollInterval;
+  final int _resumeLinkMaxPolls;
   final Map<String, bool> _handlingLinks = <String, bool>{};
   final Map<String, DateTime> _recentlyProcessedLinks = <String, DateTime>{};
   final StreamController<DeeplinkNavigationAction> _actionsController =
@@ -227,6 +238,10 @@ class DeeplinkHandler {
 
   StreamSubscription<Uri>? _linkSubscription;
   bool _isStarted = false;
+  bool _isCheckingResumeLink = false;
+  // Tracks the last initial link processed via checkForResumeLink so that
+  // manual app resumes (no new QR scan) don't re-trigger navigation.
+  String? _lastInitialLinkProcessed;
 
   /// The stream of deeplink navigation actions.
   Stream<DeeplinkNavigationAction> get actions => _actionsController.stream;
@@ -259,19 +274,50 @@ class DeeplinkHandler {
     });
   }
 
-  /// Re-reads [DeeplinkLinkSource.getInitialLink] on app resume.
+  /// Polls [DeeplinkLinkSource.getInitialLink] on app resume to catch
+  /// Universal Links delivered after iOS fires `sceneDidBecomeActive`.
   ///
-  /// On iOS with scene-based lifecycle, when a suspended app is brought to
-  /// foreground via a Universal Link, the OS calls `scene(_:continue:)` and
-  /// `app_links` stores that link in the same native buffer used for cold
-  /// start, rather than emitting it to [linkStream]. Calling this on every
-  /// [AppLifecycleState.resumed] event ensures that link is not silently
-  /// dropped. The dedup window prevents re-processing a link that was already
-  /// handled.
+  /// On iOS with scene-based lifecycle, `scene(_:continue:)` is called by the
+  /// OS *after* `sceneDidBecomeActive`, which is after Flutter emits
+  /// [AppLifecycleState.resumed]. This means `getInitialLink()` returns null
+  /// the first time we check during step 3 of the resume sequence. Polling
+  /// briefly catches the link once `app_links` stores it.
+  ///
+  /// [_lastInitialLinkProcessed] prevents re-navigating on every subsequent
+  /// manual resume that has no new QR scan. A new link (different token) is
+  /// always processed.
   Future<void> checkForResumeLink() async {
-    final link = await _linkSource.getInitialLink();
-    if (link != null) {
-      await handleDeeplink(link.toString(), isFromAppLink: true);
+    if (_isCheckingResumeLink) {
+      return;
+    }
+    _isCheckingResumeLink = true;
+
+    try {
+      // i = 0 has no delay so a link already in the buffer (e.g. on a manual
+      // reopen after a prior QR-scan resume) is processed without waiting.
+      for (var i = 0; i <= _resumeLinkMaxPolls; i++) {
+        if (i > 0) {
+          await Future<void>.delayed(_resumeLinkPollInterval);
+        }
+
+        final uri = await _linkSource.getInitialLink();
+        if (uri == null) {
+          continue;
+        }
+
+        final link = normalizeDeeplink(uri.toString());
+        // Same link as the last one we handled via this path — the user
+        // reopened the app manually without scanning a new QR code.
+        if (link == _lastInitialLinkProcessed) {
+          return;
+        }
+
+        _lastInitialLinkProcessed = link;
+        await handleDeeplink(uri.toString(), isFromAppLink: true);
+        return;
+      }
+    } finally {
+      _isCheckingResumeLink = false;
     }
   }
 
