@@ -33,11 +33,9 @@ class SwitchDeviceButton extends ConsumerWidget {
                 }
 
                 // Set as active device
-                await ref.read(
-                  setActiveFF1BluetoothDeviceProvider(
-                    device.deviceId,
-                  ).future,
-                );
+                await ref
+                    .read(ff1BluetoothDeviceActionsProvider.notifier)
+                    .setActiveDevice(device.deviceId);
               },
               itemBuilder: (context) {
                 return devices.map((device) {
