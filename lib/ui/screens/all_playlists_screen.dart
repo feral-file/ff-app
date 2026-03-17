@@ -188,10 +188,11 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
       final types = _effectiveChannelTypes();
       final hasDp1 = types.contains(ChannelType.dp1);
       final hasLocalVirtual = types.contains(ChannelType.localVirtual);
+      List<Playlist> raw;
       if (hasDp1 && hasLocalVirtual) {
         final curated = curatedState.playlists;
         final personal = meSectionState?.playlists ?? [];
-        playlists = [...curated, ...personal];
+        raw = [...curated, ...personal];
         isLoading =
             curatedState.isLoading ||
             (meSectionAsync.isLoading || (meSectionState?.isLoading == true));
@@ -199,19 +200,20 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
         hasMore = curatedState.hasMore;
         hasError = curatedState.error != null || meSectionAsync.hasError;
       } else if (hasLocalVirtual) {
-        playlists = meSectionState?.playlists ?? [];
+        raw = meSectionState?.playlists ?? [];
         isLoading =
             meSectionAsync.isLoading || (meSectionState?.isLoading == true);
         isLoadingMore = false;
         hasMore = false;
         hasError = meSectionAsync.hasError;
       } else {
-        playlists = curatedState.playlists;
+        raw = curatedState.playlists;
         isLoading = curatedState.isLoading;
         isLoadingMore = curatedState.isLoadingMore;
         hasMore = curatedState.hasMore;
         hasError = curatedState.error != null;
       }
+      playlists = _filterByPlaylistTypes(raw, widget.playlistTypes);
     }
 
     final title = widget.title;
