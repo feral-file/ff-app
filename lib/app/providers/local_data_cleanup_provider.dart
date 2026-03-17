@@ -171,9 +171,19 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     },
 
     /// Called when forgetIExist/rebuildMetadata background seed replace fails.
-    /// Retries seed replace so the app can recover instead of staying not-ready.
+    /// Retries seed replace. On retry failure, restores DB-ready so the app
+    /// can recover (e.g. show retry UI) instead of staying not-ready forever.
     onResetFailed: () {
-      unawaited(forceReplaceDatabaseFromSeed());
+      unawaited((() async {
+        try {
+          await forceReplaceDatabaseFromSeed();
+        } on Object catch (_) {
+          // Retry failed; restore readiness so app can recover.
+          ref.read(isSeedDatabaseReadyProvider.notifier).state = true;
+          r.invalidate(appDatabaseProvider);
+          r.invalidate(databaseServiceProvider);
+        }
+      })());
     },
 
     /// Drains token sync and ensureTrackedAddresses workers before DB close.

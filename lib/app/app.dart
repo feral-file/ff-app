@@ -250,6 +250,9 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       await _logStartupFeedState();
 
       // Ensure tracked addresses have playlists and resume indexing.
+      // Always run after bootstrap so interrupted indexing resumes even when
+      // ETag unchanged (didReplaceSeedDatabase == false).
+      await ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider)();
       if (didReplaceSeedDatabase) {
         _refreshProvidersAfterSeedDatabaseReplace();
       }

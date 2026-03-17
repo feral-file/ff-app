@@ -39,11 +39,12 @@ import 'package:logging/logging.dart';
 
 final _log = Logger('ServicesProvider');
 
-/// Coordinates ensureTrackedAddresses sync triggered by ObjectBox. Tracks in-flight
-/// sync so [stopAndDrainForReset] can wait before DB is closed (Forget I Exist).
+/// Coordinates ensureTrackedAddresses sync triggered by ObjectBox. Tracks all
+/// in-flight sync so [stopAndDrainForReset] can wait before DB is closed
+/// (Forget I Exist).
 class EnsureTrackedAddressesSyncCoordinatorNotifier extends Notifier<void> {
   bool _isStoppingForReset = false;
-  Completer<void>? _currentSyncCompleter;
+  final Set<Completer<void>> _inFlightCompleters = {};
 
   @override
   void build() {
@@ -56,26 +57,27 @@ class EnsureTrackedAddressesSyncCoordinatorNotifier extends Notifier<void> {
     final ensureSync =
         ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider);
     final completer = Completer<void>();
-    _currentSyncCompleter = completer;
+    _inFlightCompleters.add(completer);
     unawaited((() async {
       try {
         await ensureSync();
       } finally {
+        _inFlightCompleters.remove(completer);
         if (!completer.isCompleted) completer.complete();
-        if (_currentSyncCompleter == completer) _currentSyncCompleter = null;
       }
     })());
   }
 
-  /// Stops and waits for in-flight ensure sync. Must complete before DB close.
+  /// Stops and waits for all in-flight ensure sync. Must complete before DB close.
   Future<void> stopAndDrainForReset() async {
     _isStoppingForReset = true;
-    final completer = _currentSyncCompleter;
-    if (completer != null) {
+    final completers = Set<Completer<void>>.from(_inFlightCompleters);
+    if (completers.isNotEmpty) {
       _log.info(
-        'EnsureTrackedAddressesSyncCoordinator: waiting for in-flight ensure sync',
+        'EnsureTrackedAddressesSyncCoordinator: waiting for '
+        '${completers.length} in-flight ensure sync(s)',
       );
-      await completer.future;
+      await Future.wait(completers.map((c) => c.future));
       _log.info(
         'EnsureTrackedAddressesSyncCoordinator: in-flight ensure sync completed',
       );
