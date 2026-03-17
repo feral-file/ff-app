@@ -238,15 +238,19 @@ class FF1RelayerTransport implements FF1WifiTransport {
 
   @override
   void pauseConnection() {
-    if (!_isConnected && !_isConnecting) {
-      return;
-    }
-
     _log.info('Pausing relayer connection (app background)');
 
+    // Always cancel reconnect timers and set pause flag, even when already
+    // disconnected. After a network drop, the transport can be !_isConnected
+    // but still have an active _reconnectTimer from _scheduleReconnect().
+    // Without this, the timer would keep firing reconnect attempts in background.
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _pausedForBackground = true;
+
+    if (!_isConnected && !_isConnecting) {
+      return;
+    }
 
     // Send disconnect control to isolate (closes WebSocket channel)
     const control = _RelayerControlMessage(
