@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:app/app/providers/address_indexing_job_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
-import 'package:app/domain/models/models.dart';
-import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -143,33 +141,27 @@ final ensureTrackedAddressesHavePlaylistsAndResumeProvider =
     );
     await ref.read(bootstrapServiceProvider).bootstrap();
     final appState = ref.read(appStateServiceProvider);
-    final addresses = await appState.getTrackedPersonalAddresses();
+    final walletAddresses = await appState.getTrackedWalletAddresses();
     _log.info(
-      'ensureTrackedAddressesHavePlaylistsAndResume: tracked personal addresses: '
-      '${addresses.length}',
+      'ensureTrackedAddressesHavePlaylistsAndResume: tracked wallet addresses: '
+      '${walletAddresses.length}',
     );
-    if (addresses.isEmpty) return;
-    final normalizedAddresses = addresses
-        .map((a) => a.toNormalizedAddress())
+    if (walletAddresses.isEmpty) return;
+    final normalizedAddresses = walletAddresses
+        .map((wa) => wa.address.toNormalizedAddress())
         .toSet()
         .toList(growable: false);
     final databaseService = ref.read(databaseServiceProvider);
     final playlists = await databaseService.getAddressPlaylists();
-    final now = DateTime.now().toUtc();
-    for (final address in normalizedAddresses) {
-      final normalized = address.toNormalizedAddress();
+    for (final wa in walletAddresses) {
+      final normalized = wa.address.toNormalizedAddress();
       final hasPlaylist = playlists.any(
         (p) => p.ownerAddress?.toNormalizedAddress() == normalized,
       );
       if (hasPlaylist) continue;
-      final walletAddress = WalletAddress(
-        address: address,
-        createdAt: now,
-        name: address,
-      );
-      final playlist = PlaylistExt.fromWalletAddress(walletAddress);
+      final playlist = PlaylistExt.fromWalletAddress(wa);
       await databaseService.ingestPlaylist(playlist);
-      _log.info('Created playlist for tracked address: $address');
+      _log.info('Created playlist for tracked address: $normalized (name: ${wa.name})');
     }
     final statuses = await appState.getAllAddressIndexingStatuses();
     final toResume = <String>[];
