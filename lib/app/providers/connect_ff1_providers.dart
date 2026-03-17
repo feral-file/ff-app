@@ -156,7 +156,8 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       }
     }
 
-    // Set initial connecting state
+    // BT is ready (or not required for direct-device flow).
+    // Now it is safe to show the connecting state and start the timer.
     _setStateIfSessionActive(
       session,
       ConnectFF1Connecting(blDevice: bluetoothDevice),
