@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -53,6 +55,7 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
     })? onDownloadStarted,
     void Function(double progress)? onProgress,
     bool failSilently = false,
+    bool Function()? isSessionActive,
   }) async {
     lastFailSilently = failSilently;
     syncCallCount++;
@@ -259,4 +262,100 @@ void main() {
 
     expect(onReadyCalled, isFalse, reason: 'no invalidation when DB unchanged');
   });
+
+  test('overridden session does not update state or callbacks on completion', () async {
+    final completer = Completer<void>();
+    final fakeSyncService = _FakeSeedDatabaseSyncService();
+    final slowFake = _SlowFakeSeedDatabaseSyncService(
+      delegate: fakeSyncService,
+      beforeComplete: completer.future,
+    );
+    var onReadyCallCount = 0;
+    final actions = SeedDatabaseReadyActions(
+      onNotReady: _noOpFuture,
+      onReady: () async {
+        onReadyCallCount++;
+      },
+    );
+
+    final container = ProviderContainer.test(
+      overrides: [
+        seedDatabaseSyncServiceProvider.overrideWithValue(slowFake),
+        appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(seedDownloadProvider.notifier);
+    final sync1Future = notifier.sync();
+
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    final sync2Future = notifier.sync();
+    completer.complete();
+    await sync1Future;
+    await sync2Future;
+
+    expect(
+      onReadyCallCount,
+      1,
+      reason: 'only the active (second) session must call onReady',
+    );
+    expect(
+      fakeSyncService.syncCallCount,
+      2,
+      reason: 'both syncs must run',
+    );
+    expect(
+      container.read(seedDownloadProvider).status,
+      SeedDownloadStatus.done,
+      reason: 'final state from active session',
+    );
+  });
+}
+
+/// Wraps a sync service: delegates until onDownloadStarted, then awaits
+/// [beforeComplete] before continuing. Allows override to happen after
+/// syncing state is set but before completion.
+class _SlowFakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
+  _SlowFakeSeedDatabaseSyncService({
+    required this.delegate,
+    required Future<void> beforeComplete,
+  }) : _beforeComplete = beforeComplete;
+
+  final SeedDatabaseSyncService delegate;
+  final Future<void> _beforeComplete;
+
+  @override
+  Future<bool> sync({
+    required Future<void> Function() beforeReplace,
+    required Future<void> Function() afterReplace,
+    bool forceReplace = false,
+    void Function({
+      required bool hasLocalDatabase,
+      String? localEtag,
+      String? remoteEtag,
+    })? onDownloadStarted,
+    void Function(double progress)? onProgress,
+    bool failSilently = false,
+    bool Function()? isSessionActive,
+  }) async {
+    onDownloadStarted?.call(
+      hasLocalDatabase: delegate is _FakeSeedDatabaseSyncService
+          ? (delegate as _FakeSeedDatabaseSyncService).hasLocalDatabase
+          : false,
+      localEtag: 'local',
+      remoteEtag: 'remote',
+    );
+    await _beforeComplete;
+    return delegate.sync(
+      beforeReplace: beforeReplace,
+      afterReplace: afterReplace,
+      forceReplace: forceReplace,
+      onDownloadStarted: null,
+      onProgress: onProgress,
+      failSilently: failSilently,
+      isSessionActive: isSessionActive,
+    );
+  }
 }

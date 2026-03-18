@@ -91,7 +91,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
 
     var lastLoggedPct = -1;
     try {
-      await seedNotifier.sync(
+      final success = await seedNotifier.sync(
         forceReplace: true,
         showLoadingInUI: false,
         completeSeedDatabaseGate: false,
@@ -105,6 +105,15 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
           }
         },
       );
+      if (!success) {
+        seedNotifier.notifyForceReplaceFinished(
+          success: false,
+          errorMessage: 'Sync skipped (session overridden or failed)',
+        );
+        throw StateError(
+          'Seed database replace was skipped. Retry will be attempted.',
+        );
+      }
       await ref
           .read(appStateServiceProvider)
           .setHasCompletedSeedDownload(
@@ -132,16 +141,20 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     /// rebuildMetadata). On retry failure, restores DB-ready so the
     /// app can recover (e.g. show retry UI) instead of staying not-ready forever.
     onResetFailed: (retry) {
-      unawaited((() async {
-        try {
-          await retry();
-        } on Object catch (_) {
-          // Retry failed; restore readiness so app can recover.
-          ref.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(true);
-          r.invalidate(appDatabaseProvider);
-          r.invalidate(databaseServiceProvider);
-        }
-      })());
+      unawaited(
+        (() async {
+          try {
+            await retry();
+          } on Object catch (_) {
+            // Retry failed; restore readiness so app can recover.
+            ref
+                .read(isSeedDatabaseReadyProvider.notifier)
+                .setStateDirectly(true);
+            r.invalidate(appDatabaseProvider);
+            r.invalidate(databaseServiceProvider);
+          }
+        })(),
+      );
     },
 
     /// Drains token sync and ensureTrackedAddresses workers before DB close.
@@ -235,8 +248,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
         await Hive.close();
       }
     },
-    invalidateListProvidersBeforeDbClose:
-        invalidateDatabaseConsumerProviders,
+    invalidateListProvidersBeforeDbClose: invalidateDatabaseConsumerProviders,
     invalidateReconnectInfraProviders: invalidateDatabaseConnectionProviders,
     invalidateProvidersForRebind: invalidateDatabaseConsumerProviders,
   );

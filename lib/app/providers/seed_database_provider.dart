@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/local_data_cleanup_provider.dart';
+import 'package:uuid/uuid.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/config/seed_database_config_store.dart';
@@ -63,22 +64,54 @@ class SeedDownloadState {
   }
 }
 
+/// Session for a single sync run. A newer sync overrides the previous by
+/// replacing [_activeSession]; callbacks check [isActive] before updating.
+class _SyncSession {
+  _SyncSession(this.id);
+
+  final String id;
+  bool completed = false;
+}
+
 /// Orchestrates the one-time background seed-database download.
 ///
 /// The notifier is kicked off early at app startup (see `App` widget), where
 /// it can perform an ETag-based refresh. On completion (success/failure/skip)
 /// it opens `SeedDatabaseGate` so Drift can proceed.
+///
+/// Uses a session model: a newer sync request overrides the current one by
+/// replacing [_activeSession]. When overridden, the running sync must not
+/// update state, callbacks, or UI on completion.
 class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
-  bool _syncInProgress = false;
+  _SyncSession? _activeSession;
+  static const _uuid = Uuid();
 
   @override
   SeedDownloadState build() {
     return const SeedDownloadState(status: SeedDownloadStatus.idle);
   }
 
+  bool _isSessionActive(_SyncSession session) {
+    return _activeSession?.id == session.id && !session.completed;
+  }
+
+  _SyncSession _beginSession() {
+    final session = _SyncSession(_uuid.v4());
+    _activeSession = session;
+    return session;
+  }
+
+  void _clearSession(_SyncSession session) {
+    session.completed = true;
+    if (_activeSession?.id == session.id) {
+      _activeSession = null;
+    }
+  }
+
   /// Syncs seed DB from remote. Uses [setNotReady]/[setReady] for beforeReplace/afterReplace.
   ///
-  /// No-ops if a sync is already in progress.
+  /// Always starts a new session; a newer session overrides the previous. Inactive
+  /// sessions must not update state, provider, or UI on completion.
   ///
   /// Emits [SeedDownloadStatus.syncing] only when [showLoadingInUI] and a download
   /// starts for first install (!hasLocalDatabase). For updates, status stays idle.
@@ -88,11 +121,11 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     bool completeSeedDatabaseGate = true,
     bool failSilently = true,
     void Function(double progress)? onProgress,
+    /// Called when a download will actually occur (after ETag check).
+    /// Use to show UI (e.g. toast) only when download starts, not on ETag-unchanged skip.
+    void Function()? onDownloadStarted,
   }) async {
-    if (_syncInProgress) {
-      return false;
-    }
-    _syncInProgress = true;
+    final session = _beginSession();
 
     final service = ref.read(seedDatabaseSyncServiceProvider);
     final appStateService = ref.read(appStateServiceProvider);
@@ -109,18 +142,22 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         afterReplace: () async {
           ref.read(localDataCleanupServiceProvider).performReconnectInfraInvalidation();
         },
+        isSessionActive: () => _isSessionActive(session),
         onDownloadStarted:
             ({
               required hasLocalDatabase,
               localEtag,
               remoteEtag,
             }) {
+              if (!_isSessionActive(session)) return;
               if (showLoadingInUI && !suppressLoading) {
                 notifyForceReplaceStarted();
               }
+              onDownloadStarted?.call();
             },
         failSilently: failSilently,
         onProgress: (progress) {
+          if (!_isSessionActive(session)) return;
           final bucket = (progress * 100).floor();
           if (bucket > lastProgressBucket) {
             lastProgressBucket = bucket;
@@ -134,6 +171,10 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       );
 
       _log.info('Seed database sync complete');
+      if (!_isSessionActive(session)) {
+        if (completeSeedDatabaseGate) SeedDatabaseGate.complete();
+        return false;
+      }
       if (updated) {
         await appStateService.setHasCompletedSeedDownload(completed: true);
         await seedReadyNotifier.setReady();
@@ -149,13 +190,13 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         e,
         st,
       );
-      notifyForceReplaceFinished(success: false, errorMessage: e.toString());
-      if (completeSeedDatabaseGate) {
-        SeedDatabaseGate.complete();
+      if (_isSessionActive(session)) {
+        notifyForceReplaceFinished(success: false, errorMessage: e.toString());
       }
+      if (completeSeedDatabaseGate) SeedDatabaseGate.complete();
       return false;
     } finally {
-      _syncInProgress = false;
+      _clearSession(session);
     }
   }
 

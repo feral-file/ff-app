@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
+import 'package:synchronized/synchronized.dart';
 
 /// Syncs the local seed database file using remote ETag comparison.
 ///
@@ -30,6 +31,10 @@ class SeedDatabaseSyncService {
   final void Function(String etag) _saveLocalEtag;
   final Logger _log;
 
+  /// Serializes the replace phase so concurrent syncs do not race on
+  /// beforeReplace/replace/afterReplace (close DB, delete, rename).
+  final _replaceLock = Lock();
+
   /// Syncs seed DB from remote.
   ///
   /// When `forceReplace` is false (default), performs ETag-based conditional
@@ -41,6 +46,10 @@ class SeedDatabaseSyncService {
   /// `hasLocalDatabase`, `localEtag`, and `remoteEtag` so the caller can
   /// decide whether to emit syncing status (e.g. only when hasLocalDatabase is
   /// false). Remote ETag is always fetched via HEAD before download.
+  ///
+  /// `isSessionActive` when provided is checked before each replace-phase step
+  /// (beforeReplace, replace, afterReplace). If it returns false, the step and
+  /// remaining steps are skipped and the method returns false.
   Future<bool> sync({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
@@ -53,6 +62,7 @@ class SeedDatabaseSyncService {
     onDownloadStarted,
     void Function(double progress)? onProgress,
     bool failSilently = false,
+    bool Function()? isSessionActive,
   }) async {
     try {
       final hasLocalDatabase = await _seedDatabaseService.hasLocalDatabase();
@@ -117,14 +127,23 @@ class SeedDatabaseSyncService {
       final tempPath = await _seedDatabaseService.downloadToTemporaryFile(
         onProgress: onProgress,
       );
-      await beforeReplace();
-      await _seedDatabaseService.replaceDatabaseFromTemporaryFile(tempPath);
 
-      if (remoteEtag != null && remoteEtag.isNotEmpty) {
-        _saveLocalEtag(remoteEtag);
-      }
+      final result = await _replaceLock.synchronized(() async {
+        if (isSessionActive != null && !isSessionActive()) return false;
+        await beforeReplace();
 
-      await afterReplace();
+        if (isSessionActive != null && !isSessionActive()) return false;
+        await _seedDatabaseService.replaceDatabaseFromTemporaryFile(tempPath);
+
+        if (remoteEtag != null && remoteEtag.isNotEmpty) {
+          _saveLocalEtag(remoteEtag);
+        }
+
+        if (isSessionActive != null && !isSessionActive()) return false;
+        await afterReplace();
+        return true;
+      });
+      if (!result) return false;
       _log.info(
         forceReplace
             ? 'Seed database force-replaced.'

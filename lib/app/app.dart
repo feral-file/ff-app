@@ -400,15 +400,16 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     bool failSilently = true,
   }) async {
     String? toastOverlayId;
-    if (showUpdatingToast && mounted) {
-      toastOverlayId = ref
-          .read(appOverlayProvider.notifier)
-          .showToast(message: 'Updating art library...');
-      await WidgetsBinding.instance.endOfFrame;
-    }
     try {
       return await ref.read(seedDownloadProvider.notifier).sync(
         failSilently: failSilently,
+        onDownloadStarted: () {
+          if (showUpdatingToast && mounted) {
+            toastOverlayId = ref
+                .read(appOverlayProvider.notifier)
+                .showToast(message: 'Updating art library...');
+          }
+        },
       );
     } finally {
       final overlayId = toastOverlayId;
