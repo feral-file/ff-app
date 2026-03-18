@@ -98,6 +98,7 @@ dependencies:
 
   # Device and platform integrations
   device_info_plus: 12.3.0
+  shake: ^3.0.0
   flutter_blue_plus: ^2.2.1
   flutter_dotenv: ^5.2.1
   flutter_email_sender: 8.0.0
