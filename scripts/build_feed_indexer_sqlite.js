@@ -51,6 +51,7 @@ query getTokens(
       updated_at
       display {
         name
+        image_url
         artists {
           name
           did
@@ -66,7 +67,7 @@ query getTokens(
       media_assets {
         source_url
         mime_type
-        variant_urls
+        variants(keys: [xs, l, xl, xxl, dash, hls])
       }
     }
     offset
@@ -322,11 +323,11 @@ async function fetchChannelsFromSource(source) {
   if (Array.isArray(payload?.exhibitions)) {
     return extractChannelsFromPublishArtifact(payload);
   }
-  if (Array.isArray(payload) && payload.length > 0 && payload[0]?.channel_urls) {
+  if (Array.isArray(payload)) {
     return extractChannelsFromRegistry(payload);
   }
   throw new Error(
-    'Invalid channels source format: expected registry format (array with channel_urls) or publish artifact format (exhibitions array)'
+    'Invalid channels source format: expected registry format (array) or publish artifact format (object with exhibitions array)'
   );
 }
 
@@ -840,51 +841,42 @@ function tokenToItemPatch(token) {
 }
 
 function resolveThumbnailUrl(token) {
+  const imageUrl = token?.display?.image_url;
   const mediaAssets = Array.isArray(token?.media_assets)
     ? token.media_assets
     : [];
-  
-  // Try to find a variant URL from media assets
-  const variant = firstVariantUrl(mediaAssets);
-  if (variant) {
-    // Apply Cloudflare Images optimization if applicable
-    if (variant.startsWith('https://imagedelivery.net/5BJzhBHeVhlhbn58hvcXAQ/')) {
-      const parts = variant.split('/');
-      if (parts.length > 2) {
-        parts[parts.length - 1] = 'xs';
-        return parts.join('/');
+
+  // Find media asset matching the image_url
+  if (imageUrl) {
+    for (const asset of mediaAssets) {
+      if (asset?.source_url === imageUrl) {
+        // Verify it's an image by checking mime_type
+        const mimeType = asset?.mime_type;
+        if (mimeType && typeof mimeType === 'string' && mimeType.startsWith('image/')) {
+          // Check for xs variant first
+          const variants = asset?.variants;
+          if (variants && typeof variants === 'object' && variants.xs) {
+            return String(variants.xs);
+          }
+          // Fall back to source_url
+          return imageUrl;
+        }
+        // If mime_type is not an image, fall back to source_url
+        return imageUrl;
       }
     }
-    return variant;
+    // If no matching asset found, return the image_url directly
+    return imageUrl;
   }
 
-  // Fallback to source_url from first media asset
-  for (const media of mediaAssets) {
-    if (media?.source_url) {
-      return media.source_url;
+  // Final fallback to any media asset source_url
+  for (const asset of mediaAssets) {
+    if (asset?.source_url) {
+      return asset.source_url;
     }
   }
 
   return FALLBACK_THUMBNAIL_URI;
-}
-
-function firstVariantUrl(mediaAssets) {
-  if (!Array.isArray(mediaAssets)) {
-    return null;
-  }
-  for (const media of mediaAssets) {
-    const variants = media?.variant_urls;
-    if (variants && typeof variants === 'object') {
-      if (variants.xs) {
-        return String(variants.xs);
-      }
-      const first = Object.values(variants).find((value) => Boolean(value));
-      if (first) {
-        return String(first);
-      }
-    }
-  }
-  return null;
 }
 
 function toRestTokenJson(token) {
