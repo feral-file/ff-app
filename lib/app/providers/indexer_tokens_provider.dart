@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -152,7 +153,7 @@ class TokensSyncCoordinatorNotifier extends Notifier<TokensSyncState> {
     for (final address in addresses) {
       final trimmed = address.trim();
       if (trimmed.isEmpty) continue;
-      byKey.putIfAbsent(trimmed.toUpperCase(), () => trimmed);
+      byKey.putIfAbsent(trimmed.toNormalizedAddress(), trimmed.toNormalizedAddress);
     }
     final normalized = byKey.values.toList(growable: false);
     if (normalized.isEmpty) return;

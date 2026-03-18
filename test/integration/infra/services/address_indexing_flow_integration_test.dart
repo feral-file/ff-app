@@ -112,7 +112,7 @@ void main() {
         final playlists =
             await context.databaseService.getAddressPlaylists();
         final match = playlists.where(
-          (p) => p.ownerAddress?.toUpperCase() == resolvedAddress.toUpperCase(),
+          (p) => p.ownerAddress?.toNormalizedAddress() == resolvedAddress.toNormalizedAddress(),
         ).toList();
         if (match.isNotEmpty) {
           tokenCount = match.first.itemCount;
@@ -131,7 +131,7 @@ void main() {
       final playlists =
           await context.databaseService.getAddressPlaylists();
       final playlistForAddress = playlists.where(
-        (p) => p.ownerAddress?.toUpperCase() == resolvedAddress.toUpperCase(),
+        (p) => p.ownerAddress?.toNormalizedAddress() == resolvedAddress.toNormalizedAddress(),
       ).firstOrNull;
       expect(
         playlistForAddress?.name,

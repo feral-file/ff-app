@@ -1,5 +1,6 @@
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -16,7 +17,7 @@ class _TestAppStateService implements AppStateService {
 
   @override
   Future<void> trackPersonalAddress(String address) async {
-    tracked.add(address.toUpperCase());
+    tracked.add(address.toNormalizedAddress());
   }
 
   @override
@@ -73,7 +74,7 @@ Future<void> _seedAddressPlaylist(AppDatabase database, String address) async {
       'Address $address',
       nowUs,
       nowUs,
-      address.toUpperCase(),
+      address.toNormalizedAddress(),
     ],
   );
 }
