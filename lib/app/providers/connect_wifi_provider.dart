@@ -183,7 +183,9 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         // If device already has topicId, persist remoteId to DB immediately
         if (device.topicId.isNotEmpty) {
           final updated = device.copyWith(remoteId: found.remoteId.str);
-          await ref.read(addFF1BluetoothDeviceProvider(updated).future);
+          await ref
+              .read(ff1BluetoothDeviceActionsProvider.notifier)
+              .addDevice(updated);
           _log.info(
             'Persisted resolved remoteId for device ${device.deviceId}',
           );
@@ -311,7 +313,9 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
       );
 
       final updatedDevice = device.copyWith(topicId: topicId);
-      await ref.read(addFF1BluetoothDeviceProvider(updatedDevice).future);
+      await ref
+          .read(ff1BluetoothDeviceActionsProvider.notifier)
+          .addDevice(updatedDevice);
 
       state = state.copyWith(
         status: WiFiConnectionStatus.success,

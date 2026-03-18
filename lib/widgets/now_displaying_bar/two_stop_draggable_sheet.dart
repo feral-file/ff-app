@@ -46,6 +46,7 @@ class _TwoStopDraggableSheetState extends State<TwoStopDraggableSheet> {
   @override
   void initState() {
     super.initState();
+    isNowDisplayingBarExpanded.value = false;
     _controller.addListener(_snapSheet);
   }
 
