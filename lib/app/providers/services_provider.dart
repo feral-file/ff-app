@@ -37,11 +37,14 @@ import 'package:logging/logging.dart';
 
 final _log = Logger('ServicesProvider');
 
-/// Coordinates ensureTrackedAddresses sync triggered by ObjectBox. Tracks all
-/// in-flight sync so [stopAndDrainForReset] can wait before DB is closed
-/// (Forget I Exist).
+/// Coordinates ensureTrackedAddresses sync triggered by ObjectBox. Serializes
+/// work with a single-flight worker and dirty flag so multiple back-to-back
+/// emissions coalesce into one resume pass per address. Tracks in-flight sync
+/// so [stopAndDrainForReset] can wait before DB is closed (Forget I Exist).
 class EnsureTrackedAddressesSyncCoordinatorNotifier extends Notifier<void> {
   bool _isStoppingForReset = false;
+  bool _isRunning = false;
+  bool _dirty = false;
   final Set<Completer<void>> _inFlightCompleters = {};
 
   @override
@@ -50,25 +53,37 @@ class EnsureTrackedAddressesSyncCoordinatorNotifier extends Notifier<void> {
   }
 
   /// Schedules ensure sync. Call from trackedAddressesSyncProvider subscription.
+  /// Multiple emissions coalesce: only one run at a time; if emit arrives while
+  /// running, sets dirty and runs again after current pass completes.
   void scheduleSync() {
     if (_isStoppingForReset) return;
+    _dirty = true;
+    if (_isRunning) return;
+    _isRunning = true;
+    unawaited(_runWorker());
+  }
+
+  Future<void> _runWorker() async {
     final ensureSync =
         ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider);
-    final completer = Completer<void>();
-    _inFlightCompleters.add(completer);
-    unawaited((() async {
+    while (_dirty && !_isStoppingForReset) {
+      _dirty = false;
+      final completer = Completer<void>();
+      _inFlightCompleters.add(completer);
       try {
         await ensureSync();
       } finally {
         _inFlightCompleters.remove(completer);
         if (!completer.isCompleted) completer.complete();
       }
-    })());
+    }
+    _isRunning = false;
   }
 
   /// Stops and waits for all in-flight ensure sync. Must complete before DB close.
   Future<void> stopAndDrainForReset() async {
     _isStoppingForReset = true;
+    _dirty = false;
     final completers = Set<Completer<void>>.from(_inFlightCompleters);
     if (completers.isNotEmpty) {
       _log.info(

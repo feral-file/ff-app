@@ -23,7 +23,7 @@ class LocalDataCleanupService {
     Future<void> Function()? clearLegacySqlite,
     Future<void> Function()? clearLegacyHive,
     Future<void> Function()? onDatabaseReady,
-    void Function()? onResetFailed,
+    void Function(Future<void> Function() retry)? onResetFailed,
     void Function()? prepareForReset,
     this.invalidateListProvidersBeforeDbClose,
     this.invalidateReconnectInfraProviders,
@@ -48,7 +48,7 @@ class LocalDataCleanupService {
        _prepareForReset = prepareForReset,
        _log = logger ?? Logger('LocalDataCleanupService');
 
-  final void Function()? _onResetFailed;
+  final void Function(Future<void> Function() retry)? _onResetFailed;
   final void Function()? _prepareForReset;
 
   /// Invalidates core list providers before DB close. For app.dart seed sync.
@@ -117,15 +117,18 @@ class LocalDataCleanupService {
     await _fullClear();
     _log.info('forgetIExist: local data cleared; replacing seed in background');
     unawaited(Future(() async {
-      try {
+      Future<void> fullRetry() async {
         await _recreateDatabaseFromSeed();
         await _runBootstrap();
         final onDatabaseReady = _onDatabaseReady;
         if (onDatabaseReady != null) await onDatabaseReady();
+      }
+      try {
+        await fullRetry();
         _log.info('forgetIExist: background seed+bootstrap done');
       } on Object catch (e, st) {
         _log.warning('forgetIExist: background seed replace failed', e, st);
-        _onResetFailed?.call();
+        _onResetFailed?.call(fullRetry);
       }
     }));
   }
@@ -142,16 +145,19 @@ class LocalDataCleanupService {
     await _lightClear();
     _log.info('rebuildMetadata: local data cleared; replacing seed in background');
     unawaited(Future(() async {
-      try {
+      Future<void> fullRetry() async {
         await _recreateDatabaseFromSeed();
         await _runBootstrap();
         final onDatabaseReady = _onDatabaseReady;
         if (onDatabaseReady != null) await onDatabaseReady();
         if (snapshots.isNotEmpty) await _restoreFavoritePlaylists(snapshots);
+      }
+      try {
+        await fullRetry();
         _log.info('rebuildMetadata: background seed+restore done');
       } on Object catch (e, st) {
         _log.warning('rebuildMetadata: background seed replace failed', e, st);
-        _onResetFailed?.call();
+        _onResetFailed?.call(fullRetry);
       }
     }));
   }

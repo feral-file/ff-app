@@ -125,18 +125,15 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
           .sync(
             forceReplace: true,
             beforeReplace: () async {
-              try {
-                ref.read(isSeedDatabaseReadyProvider.notifier).state = false;
-                invalidateListProvidersBeforeDbCloseExtended();
-                await SchedulerBinding.instance.endOfFrame;
-                await ref.read(databaseServiceProvider).close();
-                await ref
-                    .read(seedDatabaseServiceProvider)
-                    .deleteDatabaseFiles();
-              } catch (e, st) {
-                log.warning('Failed to close database', e, st);
-                ref.read(isSeedDatabaseReadyProvider.notifier).state = true;
-              }
+              ref.read(isSeedDatabaseReadyProvider.notifier).state = false;
+              invalidateListProvidersBeforeDbCloseExtended();
+              await SchedulerBinding.instance.endOfFrame;
+              await ref.read(databaseServiceProvider).close();
+              await ref
+                  .read(seedDatabaseServiceProvider)
+                  .deleteDatabaseFiles();
+              // Do not catch: a failed teardown must abort the replace so
+              // providers cannot reopen the DB during the swap.
             },
             afterReplace: rebindDatabaseProviders,
             onProgress: (progress) {
@@ -171,12 +168,13 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     },
 
     /// Called when forgetIExist/rebuildMetadata background seed replace fails.
-    /// Retries seed replace. On retry failure, restores DB-ready so the app
-    /// can recover (e.g. show retry UI) instead of staying not-ready forever.
-    onResetFailed: () {
+    /// Invokes [retry] (full sequence: replace + bootstrap + onDatabaseReady +
+    /// restore for rebuildMetadata). On retry failure, restores DB-ready so the
+    /// app can recover (e.g. show retry UI) instead of staying not-ready forever.
+    onResetFailed: (retry) {
       unawaited((() async {
         try {
-          await forceReplaceDatabaseFromSeed();
+          await retry();
         } on Object catch (_) {
           // Retry failed; restore readiness so app can recover.
           ref.read(isSeedDatabaseReadyProvider.notifier).state = true;
