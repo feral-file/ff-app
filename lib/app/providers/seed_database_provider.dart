@@ -136,8 +136,8 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       _log.info('Seed database sync complete');
       if (updated) {
         await appStateService.setHasCompletedSeedDownload(completed: true);
+        await seedReadyNotifier.setReady();
       }
-      await seedReadyNotifier.setReady();
       notifyForceReplaceFinished();
       if (completeSeedDatabaseGate) {
         SeedDatabaseGate.complete();

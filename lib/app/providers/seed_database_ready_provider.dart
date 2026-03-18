@@ -74,12 +74,15 @@ class SeedDatabaseReadyNotifier extends Notifier<bool> {
     state = value;
   }
 
-  /// Runs onNotReady, then sets state = false.
+  /// Sets state = false first, then runs onNotReady.
+  /// Ready-state flip before teardown prevents DB consumers from scheduling
+  /// work during invalidation/close (avoids close/reset race).
   /// No-op if [SeedDatabaseGate] not completed (first install).
   Future<void> setNotReady() async {
+    if (!SeedDatabaseGate.isCompleted) return;
     final actions = ref.read(seedDatabaseReadyActionsProvider);
-    await actions.onNotReady();
     state = false;
+    await actions.onNotReady();
   }
 
   /// Sets state = true, then runs onReady.

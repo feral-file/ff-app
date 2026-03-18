@@ -212,7 +212,31 @@ void main() {
     expect(fakeSyncService.lastFailSilently, isFalse);
   });
 
-  test('setReady is called and runs onReady after sync', () async {
+  test('setReady is called and runs onReady only when DB was replaced', () async {
+    final fakeSyncService = _FakeSeedDatabaseSyncService();
+    var onReadyCalled = false;
+    final actions = SeedDatabaseReadyActions(
+      onNotReady: _noOpFuture,
+      onReady: () async {
+        onReadyCalled = true;
+      },
+    );
+
+    final container = ProviderContainer.test(
+      overrides: [
+        seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+        appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(seedDownloadProvider.notifier).sync();
+
+    expect(onReadyCalled, isTrue, reason: 'setReady runs onReady when DB replaced');
+  });
+
+  test('setReady is not called when sync skips download (ETag unchanged)', () async {
     final fakeSyncService = _FakeSeedDatabaseSyncService()..skipDownload = true;
     var onReadyCalled = false;
     final actions = SeedDatabaseReadyActions(
@@ -233,6 +257,6 @@ void main() {
 
     await container.read(seedDownloadProvider.notifier).sync();
 
-    expect(onReadyCalled, isTrue, reason: 'setReady runs onReady after sync');
+    expect(onReadyCalled, isFalse, reason: 'no invalidation when DB unchanged');
   });
 }
