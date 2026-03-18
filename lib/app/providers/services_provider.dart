@@ -64,6 +64,24 @@ class EnsureTrackedAddressesSyncCoordinatorNotifier extends Notifier<void> {
     unawaited(_runWorker());
   }
 
+  /// Runs ensure sync and waits for completion.
+  ///
+  /// Use when caller needs to await (e.g. bootstrap after startup). Tracks
+  /// in-flight so [stopAndDrainForReset] can wait before DB close.
+  Future<void> runSyncAndWait() async {
+    if (_isStoppingForReset) return;
+    final ensureSync =
+        ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider);
+    final completer = Completer<void>();
+    _inFlightCompleters.add(completer);
+    try {
+      await ensureSync();
+    } finally {
+      _inFlightCompleters.remove(completer);
+      if (!completer.isCompleted) completer.complete();
+    }
+  }
+
   Future<void> _runWorker() async {
     final ensureSync =
         ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider);

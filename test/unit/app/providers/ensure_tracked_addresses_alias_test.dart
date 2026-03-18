@@ -9,10 +9,6 @@ import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
-import 'package:app/infra/services/indexer_service.dart';
-import 'package:app/infra/services/indexer_service_isolate.dart';
-import 'package:app/infra/services/indexer_sync_service.dart';
-import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -122,9 +118,9 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final ensureFn =
-          container.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider);
-      await ensureFn();
+      await container
+          .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+          .runSyncAndWait();
 
       final playlists = await databaseService.getAddressPlaylists();
       final playlist = playlists.where(

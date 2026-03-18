@@ -297,6 +297,16 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       await bootstrap.bootstrap();
 
       await _logStartupFeedState();
+
+      // Ensure tracked addresses have playlists and resume indexing.
+      // Always run after bootstrap so interrupted indexing resumes even when
+      // ETag unchanged. trackedAddressesSyncProvider emits once on subscription
+      // and ensureTrackedAddresses... exits early until SeedDatabaseGate is
+      // completed; without this call, users with existing tracked addresses
+      // can restart and never resume interrupted indexing.
+      await ref
+          .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+          .runSyncAndWait();
     } finally {
       if (!_bootstrapReadyCompleter.isCompleted) {
         _bootstrapReadyCompleter.complete();
