@@ -33,26 +33,9 @@ BootstrapToastPresentation? bootstrapToastForStatus(BootstrapStatus status) {
   if (status.phase == BootstrapPhase.failed) {
     final iconPreset = status.phase.toastIconPreset;
     return BootstrapToastPresentation(
-      message: status.message ?? 'Startup failed. Some data may be outdated.',
+      message: status.message ?? status.phase.displayMessage,
       iconPreset: iconPreset,
       autoDismissAfter: const Duration(seconds: 5),
-    );
-  }
-
-  if (status.phase == BootstrapPhase.idle) {
-    final iconPreset = status.phase.toastIconPreset;
-    return BootstrapToastPresentation(
-      message: status.message ?? status.phase.displayMessage,
-      iconPreset: iconPreset,
-    );
-  }
-
-  if (status.phase == BootstrapPhase.completed) {
-    final iconPreset = status.phase.toastIconPreset;
-    return BootstrapToastPresentation(
-      message: status.message ?? status.phase.displayMessage,
-      iconPreset: iconPreset,
-      autoDismissAfter: const Duration(seconds: 3),
     );
   }
 

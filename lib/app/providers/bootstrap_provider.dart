@@ -48,7 +48,7 @@ extension BootstrapPhaseX on BootstrapPhase {
       BootstrapPhase.activatingAutoConnectWatcher =>
         'Activating device auto-connect...',
       BootstrapPhase.idle => 'Initializing app...',
-      BootstrapPhase.failed => 'Initializing app...',
+      BootstrapPhase.failed => 'Startup failed. Some data may be outdated.',
       BootstrapPhase.completed => 'Ready',
     };
   }

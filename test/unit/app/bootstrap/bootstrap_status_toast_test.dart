@@ -31,30 +31,20 @@ void main() {
       expect(toast.message, 'Startup failed. Some data may be outdated.');
     });
 
-    test('maps completed phase to informational auto-dismiss toast', () {
+    test('returns null for completed phase', () {
       const status = BootstrapStatus(
         phase: BootstrapPhase.completed,
       );
 
-      final toast = bootstrapToastForStatus(status);
-
-      expect(toast, isNotNull);
-      expect(toast!.iconPreset, ToastOverlayIconPreset.information);
-      expect(toast.message, 'Ready');
-      expect(toast.autoDismissAfter, const Duration(seconds: 3));
+      expect(bootstrapToastForStatus(status), isNull);
     });
 
-    test('maps idle phase to loading toast', () {
+    test('returns null for idle phase', () {
       const status = BootstrapStatus(
         phase: BootstrapPhase.idle,
       );
 
-      final toast = bootstrapToastForStatus(status);
-
-      expect(toast, isNotNull);
-      expect(toast!.iconPreset, ToastOverlayIconPreset.loading);
-      expect(toast.message, 'Initializing app...');
-      expect(toast.autoDismissAfter, isNull);
+      expect(bootstrapToastForStatus(status), isNull);
     });
   });
 }
