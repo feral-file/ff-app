@@ -20,35 +20,41 @@ class BootstrapToastPresentation {
   final Duration? autoDismissAfter;
 }
 
-/// Returns toast presentation for a bootstrap status, or null when no toast
-/// should be shown.
+/// Returns toast presentation for a bootstrap status.
 BootstrapToastPresentation? bootstrapToastForStatus(BootstrapStatus status) {
   if (status.phase.isInProgress) {
+    final iconPreset = status.phase.toastIconPreset;
     return BootstrapToastPresentation(
-      message: status.message ?? _bootstrapPhaseMessage(status.phase),
-      iconPreset: ToastOverlayIconPreset.loading,
+      message: status.message ?? status.phase.displayMessage,
+      iconPreset: iconPreset,
     );
   }
 
   if (status.phase == BootstrapPhase.failed) {
+    final iconPreset = status.phase.toastIconPreset;
     return BootstrapToastPresentation(
       message: status.message ?? 'Startup failed. Some data may be outdated.',
-      iconPreset: ToastOverlayIconPreset.information,
+      iconPreset: iconPreset,
       autoDismissAfter: const Duration(seconds: 5),
     );
   }
 
-  return null;
-}
+  if (status.phase == BootstrapPhase.idle) {
+    final iconPreset = status.phase.toastIconPreset;
+    return BootstrapToastPresentation(
+      message: status.message ?? status.phase.displayMessage,
+      iconPreset: iconPreset,
+    );
+  }
 
-String _bootstrapPhaseMessage(BootstrapPhase phase) {
-  return switch (phase) {
-    BootstrapPhase.validatingConfiguration => 'Validating configuration...',
-    BootstrapPhase.settingUpCollection => 'Setting up collection...',
-    BootstrapPhase.activatingAutoConnectWatcher =>
-      'Activating device auto-connect...',
-    BootstrapPhase.idle ||
-    BootstrapPhase.completed ||
-    BootstrapPhase.failed => 'Initializing app...',
-  };
+  if (status.phase == BootstrapPhase.completed) {
+    final iconPreset = status.phase.toastIconPreset;
+    return BootstrapToastPresentation(
+      message: status.message ?? status.phase.displayMessage,
+      iconPreset: iconPreset,
+      autoDismissAfter: const Duration(seconds: 3),
+    );
+  }
+
+  return null;
 }
