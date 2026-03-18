@@ -13,16 +13,10 @@ class _FakeDeeplinkLinkSource implements DeeplinkLinkSource {
   final Stream<Uri> _linkStream;
   Uri? _initialLink;
 
-  /// Optional override: when set, called instead of returning [_initialLink].
-  Uri? Function()? onGetInitialLink;
-
   void setInitialLink(Uri? link) => _initialLink = link;
 
   @override
-  Future<Uri?> getInitialLink() async {
-    final override = onGetInitialLink;
-    return override != null ? override() : _initialLink;
-  }
+  Future<Uri?> getInitialLink() async => _initialLink;
 
   @override
   Stream<Uri> get linkStream => _linkStream;
@@ -259,26 +253,17 @@ void main() {
     });
 
     group('checkForResumeLink', () {
-      // Use zero poll interval so tests don't wait real time.
-      DeeplinkHandler _makeHandler(_FakeDeeplinkLinkSource source) =>
-          DeeplinkHandler(
-            linkSource: source,
-            resumeLinkPollInterval: Duration.zero,
-            resumeLinkMaxPolls: 5,
-          );
-
-      test('emits action when link is immediately available', () async {
-        final source = _FakeDeeplinkLinkSource(
-          initialLink: Uri.parse(
-            'https://link.feralfile.com/device_connect?token=abc',
-          ),
-        );
-        final handler = _makeHandler(source);
+      test('emits action when getInitialLink returns a new link', () async {
+        final source = _FakeDeeplinkLinkSource();
+        final handler = DeeplinkHandler(linkSource: source);
         addTearDown(handler.dispose);
 
         final actions = <DeeplinkNavigationAction>[];
         handler.actions.listen(actions.add);
 
+        source.setInitialLink(
+          Uri.parse('https://link.feralfile.com/device_connect?token=abc'),
+        );
         await handler.checkForResumeLink();
 
         expect(actions.length, 1);
@@ -286,36 +271,31 @@ void main() {
         expect(actions.first.source, DeeplinkSource.appLink);
       });
 
-      test('emits action when link appears after initial null polls', () async {
-        // Simulates scene(_:continue:) arriving after sceneDidBecomeActive.
-        final source = _FakeDeeplinkLinkSource();
-        final handler = _makeHandler(source);
+      test('deduplicates link already processed during start()', () async {
+        const link = 'https://link.feralfile.com/device_connect?token=same';
+        final source = _FakeDeeplinkLinkSource(
+          initialLink: Uri.parse(link),
+        );
+        final handler = DeeplinkHandler(linkSource: source);
         addTearDown(handler.dispose);
 
         final actions = <DeeplinkNavigationAction>[];
         handler.actions.listen(actions.add);
 
-        var pollCount = 0;
-        source.onGetInitialLink = () {
-          pollCount++;
-          // Return the link only on the third poll to simulate async delivery.
-          if (pollCount >= 3) {
-            return Uri.parse(
-              'https://link.feralfile.com/device_connect?token=delayed',
-            );
-          }
-          return null;
-        };
-
-        await handler.checkForResumeLink();
-
+        // Simulates cold start: start() reads getInitialLink() and processes it.
+        await handler.start();
         expect(actions.length, 1);
-        expect(actions.first.type, DeeplinkType.deviceConnect);
-        expect(pollCount, 3);
+
+        // Simulates app resume: getInitialLink() still returns the same link
+        // (native buffer not yet cleared). Dedup window must suppress it.
+        await handler.checkForResumeLink();
+        expect(actions.length, 1);
       });
 
-      test('does nothing when getInitialLink always returns null', () async {
-        final handler = _makeHandler(_FakeDeeplinkLinkSource());
+      test('does nothing when getInitialLink returns null', () async {
+        final handler = DeeplinkHandler(
+          linkSource: _FakeDeeplinkLinkSource(),
+        );
         addTearDown(handler.dispose);
 
         final actions = <DeeplinkNavigationAction>[];
@@ -325,69 +305,26 @@ void main() {
         expect(actions, isEmpty);
       });
 
-      test(
-          'skips same link on second resume (manual reopen, no new QR scan)',
-          () async {
-        const link = 'https://link.feralfile.com/device_connect?token=abc';
-        final source = _FakeDeeplinkLinkSource(
-          initialLink: Uri.parse(link),
-        );
-        final handler = _makeHandler(source);
+      test('processes distinct link on second resume', () async {
+        final source = _FakeDeeplinkLinkSource();
+        final handler = DeeplinkHandler(linkSource: source);
         addTearDown(handler.dispose);
 
         final actions = <DeeplinkNavigationAction>[];
         handler.actions.listen(actions.add);
 
-        // First resume via QR scan.
-        await handler.checkForResumeLink();
-        expect(actions.length, 1);
-
-        // Second resume (manual, same link in native buffer) must not navigate.
-        await handler.checkForResumeLink();
-        expect(actions.length, 1);
-      });
-
-      test('processes distinct link on second resume (new QR scan)', () async {
-        final source = _FakeDeeplinkLinkSource(
-          initialLink: Uri.parse(
-            'https://link.feralfile.com/device_connect?token=first',
-          ),
+        source.setInitialLink(
+          Uri.parse('https://link.feralfile.com/device_connect?token=first'),
         );
-        final handler = _makeHandler(source);
-        addTearDown(handler.dispose);
-
-        final actions = <DeeplinkNavigationAction>[];
-        handler.actions.listen(actions.add);
-
         await handler.checkForResumeLink();
         expect(actions.length, 1);
 
-        // User scans a different QR code → new token in native buffer.
+        // A different QR code is scanned → new link on second resume.
         source.setInitialLink(
           Uri.parse('https://link.feralfile.com/device_connect?token=second'),
         );
         await handler.checkForResumeLink();
         expect(actions.length, 2);
-      });
-
-      test('cold-start link processed by start() does not re-navigate on resume',
-          () async {
-        const link = 'https://link.feralfile.com/device_connect?token=same';
-        final source = _FakeDeeplinkLinkSource(initialLink: Uri.parse(link));
-        final handler = _makeHandler(source);
-        addTearDown(handler.dispose);
-
-        final actions = <DeeplinkNavigationAction>[];
-        handler.actions.listen(actions.add);
-
-        // Simulates cold start.
-        await handler.start();
-        expect(actions.length, 1);
-
-        // Simulates resume shortly after cold start with same link in buffer.
-        // The dedup window in _processLink suppresses it.
-        await handler.checkForResumeLink();
-        expect(actions.length, 1);
       });
     });
   });
