@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:app/app/providers/connect_wifi_provider.dart';
-import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
@@ -176,15 +175,6 @@ class _EnterWiFiPasswordScreenState
                 ),
           );
 
-          final ffDevice = widget.payload.device.copyWith(
-            topicId: next.topicId,
-          );
-
-          unawaited(
-            ref
-                .read(ff1BluetoothDeviceActionsProvider.notifier)
-                .addDevice(ffDevice),
-          );
         }
 
         unawaited(
