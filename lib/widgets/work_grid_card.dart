@@ -86,6 +86,8 @@ class WorkGridCard extends StatelessWidget {
       alignment: Alignment.center,
       child: CachedNetworkImage(
         imageUrl: url,
+        memCacheWidth: (targetWidth * 2).round(),
+        memCacheHeight: (targetWidth * 2).round(),
         width: targetWidth,
         fit: BoxFit.fitWidth,
         alignment: Alignment.center,
