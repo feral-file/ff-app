@@ -7,13 +7,13 @@ class _FakeDeeplinkLinkSource implements DeeplinkLinkSource {
   _FakeDeeplinkLinkSource({
     Stream<Uri>? linkStream,
     Uri? initialLink,
-  })  : _linkStream = linkStream ?? const Stream<Uri>.empty(),
-        _initialLink = initialLink;
+  }) : _linkStream = linkStream ?? const Stream<Uri>.empty(),
+       _initialLink = initialLink;
 
   final Stream<Uri> _linkStream;
   Uri? _initialLink;
 
-  void setInitialLink(Uri? link) => _initialLink = link;
+  set initialLink(Uri? link) => _initialLink = link;
 
   @override
   Future<Uri?> getInitialLink() async => _initialLink;
@@ -261,9 +261,8 @@ void main() {
         final actions = <DeeplinkNavigationAction>[];
         handler.actions.listen(actions.add);
 
-        source.setInitialLink(
-          Uri.parse('https://link.feralfile.com/device_connect?token=abc'),
-        );
+        source.initialLink =
+            Uri.parse('https://link.feralfile.com/device_connect?token=abc');
         await handler.checkForResumeLink();
 
         expect(actions.length, 1);
@@ -282,12 +281,14 @@ void main() {
         final actions = <DeeplinkNavigationAction>[];
         handler.actions.listen(actions.add);
 
-        // Simulates cold start: start() reads getInitialLink() and processes it.
+        // Simulates cold start: start() reads getInitialLink() and
+        // records it as the last processed initial link.
         await handler.start();
         expect(actions.length, 1);
 
-        // Simulates app resume: getInitialLink() still returns the same link
-        // (native buffer not yet cleared). Dedup window must suppress it.
+        // Simulates app resume: getInitialLink() still returns the same
+        // link (native buffer not yet cleared). Persistent tracking must
+        // suppress it without relying on a time window.
         await handler.checkForResumeLink();
         expect(actions.length, 1);
       });
@@ -313,16 +314,14 @@ void main() {
         final actions = <DeeplinkNavigationAction>[];
         handler.actions.listen(actions.add);
 
-        source.setInitialLink(
-          Uri.parse('https://link.feralfile.com/device_connect?token=first'),
-        );
+        source.initialLink =
+            Uri.parse('https://link.feralfile.com/device_connect?token=first');
         await handler.checkForResumeLink();
         expect(actions.length, 1);
 
         // A different QR code is scanned → new link on second resume.
-        source.setInitialLink(
-          Uri.parse('https://link.feralfile.com/device_connect?token=second'),
-        );
+        source.initialLink =
+            Uri.parse('https://link.feralfile.com/device_connect?token=second');
         await handler.checkForResumeLink();
         expect(actions.length, 2);
       });
