@@ -15,7 +15,7 @@
   - load env config, initialize logging and optional Sentry
   - determine initial route from onboarding state + legacy DB detection
   - initialize ObjectBox services and provider overrides
-  - run app bootstrap sequence (force-update check, seed sync, legacy migration, bootstrap service, pending address migration, indexing resume)
+  - run app bootstrap sequence (force-update check, seed sync, legacy migration, bootstrap service, ensureTrackedAddressesHavePlaylistsAndResume)
 - success state: user lands on `/` or onboarding route with DB/services ready
 - failure/edge states:
   - invalid env config shows blocking configuration error screen
@@ -34,10 +34,10 @@
   - user can open FF1 setup or finish onboarding directly
 - success state: onboarding completion flag persisted, user routed to `/`
 - failure/edge states:
-  - if seed DB not yet ready, addresses are queued and migrated later
   - address validation failures are inline and non-fatal
 - key screens involved: Introduce, Onboarding Add Address, Onboarding Setup FF1
-- key modules/services involved: `onboarding_provider`, `add_address_provider`, `address_service`, `pending_addresses_store`
+- key modules/services involved: `onboarding_provider`, `add_address_provider`, `address_service`, `trackedAddressesSyncProvider`
+- notes: TrackedAddressEntity (ObjectBox) is the single source of truth for user-added addresses; `trackedAddressesSyncProvider` watches it and ensures playlists exist + indexing resumes
 
 ## Flow: Onboarding from Device Deeplink/QR
 - goal: continue onboarding while preserving FF1 connect intent

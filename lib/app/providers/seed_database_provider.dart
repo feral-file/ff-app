@@ -104,21 +104,18 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     final suppressLoading = await appStateService.hasCompletedSeedDownload();
 
     try {
-      final updated = await service.syncIfNeeded(
+      final updated = await service.sync(
         beforeReplace: beforeReplace,
         afterReplace: afterReplace,
         onDownloadStarted:
             ({
               required hasLocalDatabase,
-              required localEtag,
-              required remoteEtag,
+              localEtag,
+              remoteEtag,
             }) {
               // Only show loading when suppressLoading is false (first-time or post-reset).
               if (!suppressLoading) {
-                state = const SeedDownloadState(
-                  status: SeedDownloadStatus.syncing,
-                  progress: 0,
-                );
+                notifyForceReplaceStarted();
               }
             },
         failSilently: failSilently,
@@ -129,7 +126,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
             _log.info(
               'Seed database sync download: ${(progress * 100).round()}%',
             );
-            state = state.copyWith(progress: progress);
+            notifyForceReplaceProgress(progress);
           }
         },
       );
@@ -138,7 +135,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       if (updated) {
         await appStateService.setHasCompletedSeedDownload(completed: true);
       }
-      state = const SeedDownloadState(status: SeedDownloadStatus.done);
+      notifyForceReplaceFinished();
       SeedDatabaseGate.complete();
       return updated;
     } on Exception catch (e, st) {
@@ -147,10 +144,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         e,
         st,
       );
-      state = SeedDownloadState(
-        status: SeedDownloadStatus.error,
-        errorMessage: e.toString(),
-      );
+      notifyForceReplaceFinished(success: false, errorMessage: e.toString());
       // Open the gate even on failure so the Drift DB is not blocked forever.
       SeedDatabaseGate.complete();
       return false;

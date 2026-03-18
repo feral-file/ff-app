@@ -79,7 +79,6 @@ void main() {
             payload: AddAliasScreenPayload(
               address: '0xabc',
               domain: 'ff.example',
-              syncNow: false,
             ),
           ),
         ),
@@ -92,7 +91,6 @@ void main() {
     expect(calls, hasLength(1));
     expect(calls.single.address, '0xabc');
     expect(calls.single.alias, 'ff.example');
-    expect(calls.single.syncNow, isFalse);
   });
 
   testWidgets('AddAliasScreen Submit calls addAlias with trimmed input', (
@@ -128,7 +126,6 @@ void main() {
     expect(calls, hasLength(1));
     expect(calls.single.address, '0xabc');
     expect(calls.single.alias, 'Alice');
-    expect(calls.single.syncNow, isTrue);
   });
 }
 
@@ -136,12 +133,10 @@ class _AddAliasCall {
   const _AddAliasCall({
     required this.address,
     required this.alias,
-    required this.syncNow,
   });
 
   final String address;
   final String? alias;
-  final bool syncNow;
 }
 
 class _RecordingAddAliasNotifier extends AddAliasNotifier {
@@ -150,12 +145,8 @@ class _RecordingAddAliasNotifier extends AddAliasNotifier {
   final List<_AddAliasCall> calls;
 
   @override
-  Future<void> add(
-    String address,
-    String? alias, {
-    bool syncNow = true,
-  }) async {
-    calls.add(_AddAliasCall(address: address, alias: alias, syncNow: syncNow));
+  Future<void> add(String address, String? alias) async {
+    calls.add(_AddAliasCall(address: address, alias: alias));
     state = const AsyncValue.loading();
   }
 }

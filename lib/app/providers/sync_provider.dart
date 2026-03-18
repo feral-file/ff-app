@@ -75,6 +75,7 @@ class IncrementalSyncNotifier extends Notifier<IncrementalSyncState> {
   /// Run a sync pass immediately.
   Future<void> syncNow() async {
     if (!state.isRunning) return;
+    if (!ref.read(isSeedDatabaseReadyProvider)) return;
 
     try {
       final databaseService = ref.read(databaseServiceProvider);

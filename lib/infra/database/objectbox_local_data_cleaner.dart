@@ -8,6 +8,15 @@ class ObjectBoxLocalDataCleaner {
 
   final Store _store;
 
+  /// Removes all ObjectBox entities except [TrackedAddressEntity].
+  /// Used by rebuildMetadata to preserve user-added addresses.
+  Future<void> lightClear() async {
+    _store.runInTransaction(TxMode.write, () {
+      _store.box<RemoteAppConfigEntity>().removeAll();
+      _store.box<AppStateAddressEntity>().removeAll();
+    });
+  }
+
   /// Removes all rows from every local ObjectBox entity used by the app.
   ///
   /// Includes [TrackedAddressEntity] (user-added addresses) which was previously

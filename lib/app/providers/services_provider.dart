@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:app/app/providers/address_indexing_job_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/domain/extensions/playlist_ext.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_provider.dart'
@@ -7,6 +11,7 @@ import 'package:app/infra/database/database_provider.dart'
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
+import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_api.dart';
 import 'package:app/infra/ff1/tv_cast/tv_cast_dio.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
@@ -22,21 +27,81 @@ import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
 import 'package:app/infra/services/legacy_data_migration_service.dart';
-import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:app/infra/services/remote_config_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 
 // ignore_for_file: lines_longer_than_80_chars // Reason: provider documentation lines intentionally keep fully-qualified refs.
 
-/// Provider for [PendingAddressesStore].
-///
-/// Stores wallet addresses added before the Drift DB is ready (fresh install
-/// while the seed database is still downloading).
-final pendingAddressesStoreProvider = Provider<PendingAddressesStore>((ref) {
-  return PendingAddressesStore();
-});
+final _log = Logger('ServicesProvider');
+
+/// Coordinates ensureTrackedAddresses sync triggered by ObjectBox. Serializes
+/// work with a single-flight worker and dirty flag so multiple back-to-back
+/// emissions coalesce into one resume pass per address. Tracks in-flight sync
+/// so [stopAndDrainForReset] can wait before DB is closed (Forget I Exist).
+class EnsureTrackedAddressesSyncCoordinatorNotifier extends Notifier<void> {
+  bool _isStoppingForReset = false;
+  bool _isRunning = false;
+  bool _dirty = false;
+  final Set<Completer<void>> _inFlightCompleters = {};
+
+  @override
+  void build() {
+    _isStoppingForReset = false;
+  }
+
+  /// Schedules ensure sync. Call from trackedAddressesSyncProvider subscription.
+  /// Multiple emissions coalesce: only one run at a time; if emit arrives while
+  /// running, sets dirty and runs again after current pass completes.
+  void scheduleSync() {
+    if (_isStoppingForReset) return;
+    _dirty = true;
+    if (_isRunning) return;
+    _isRunning = true;
+    unawaited(_runWorker());
+  }
+
+  Future<void> _runWorker() async {
+    final ensureSync =
+        ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider);
+    while (_dirty && !_isStoppingForReset) {
+      _dirty = false;
+      final completer = Completer<void>();
+      _inFlightCompleters.add(completer);
+      try {
+        await ensureSync();
+      } finally {
+        _inFlightCompleters.remove(completer);
+        if (!completer.isCompleted) completer.complete();
+      }
+    }
+    _isRunning = false;
+  }
+
+  /// Stops and waits for all in-flight ensure sync. Must complete before DB close.
+  Future<void> stopAndDrainForReset() async {
+    _isStoppingForReset = true;
+    _dirty = false;
+    final completers = Set<Completer<void>>.from(_inFlightCompleters);
+    if (completers.isNotEmpty) {
+      _log.info(
+        'EnsureTrackedAddressesSyncCoordinator: waiting for '
+        '${completers.length} in-flight ensure sync(s)',
+      );
+      await Future.wait(completers.map((c) => c.future));
+      _log.info(
+        'EnsureTrackedAddressesSyncCoordinator: in-flight ensure sync completed',
+      );
+    }
+  }
+}
+
+final ensureTrackedAddressesSyncCoordinatorProvider =
+    NotifierProvider<EnsureTrackedAddressesSyncCoordinatorNotifier, void>(
+      EnsureTrackedAddressesSyncCoordinatorNotifier.new,
+    );
 
 /// Provider for the AddressService.
 /// Manages user wallet addresses and address-based playlists.
@@ -47,7 +112,6 @@ final addressServiceProvider = Provider<AddressService>((ref) {
   final personalTokensSyncService = ref.watch(
     personalTokensSyncServiceProvider,
   );
-  final pendingAddressesStore = ref.watch(pendingAddressesStoreProvider);
   final indexerServiceIsolate = ref.watch(indexerServiceIsolateProvider);
 
   final service = AddressService(
@@ -55,7 +119,6 @@ final addressServiceProvider = Provider<AddressService>((ref) {
     indexerSyncService: indexerSyncService,
     domainAddressService: domainAddressService,
     personalTokensSyncService: personalTokensSyncService,
-    pendingAddressesStore: pendingAddressesStore,
     indexerServiceIsolate: indexerServiceIsolate,
     appStateService: ref.watch(appStateServiceProvider),
   );
@@ -65,6 +128,97 @@ final addressServiceProvider = Provider<AddressService>((ref) {
   });
 
   return service;
+});
+
+/// Ensures tracked addresses have playlists and resumes indexing for
+/// non-completed addresses. Runs bootstrap, creates missing playlists, then
+/// delegates to [AddressService.resumeIndexingForAddresses].
+///
+/// Skips when [SeedDatabaseGate] not completed or [isSeedDatabaseReadyProvider]
+/// is false (e.g. during seed replace or Forget I Exist).
+final ensureTrackedAddressesHavePlaylistsAndResumeProvider =
+    Provider<Future<void> Function()>((ref) {
+  return () async {
+    if (!SeedDatabaseGate.isCompleted) {
+      _log.info(
+        'ensureTrackedAddressesHavePlaylistsAndResume: seed database not completed',
+      );
+      return;
+    }
+    if (!ref.read(isSeedDatabaseReadyProvider)) {
+      _log.info(
+        'ensureTrackedAddressesHavePlaylistsAndResume: database not ready',
+      );
+      return;
+    }
+    _log.info(
+      'ensureTrackedAddressesHavePlaylistsAndResume: running bootstrap',
+    );
+    await ref.read(bootstrapServiceProvider).bootstrap();
+    final appState = ref.read(appStateServiceProvider);
+    final walletAddresses = await appState.getTrackedWalletAddresses();
+    _log.info(
+      'ensureTrackedAddressesHavePlaylistsAndResume: tracked wallet addresses: '
+      '${walletAddresses.length}',
+    );
+    if (walletAddresses.isEmpty) return;
+    final normalizedAddresses = walletAddresses
+        .map((wa) => wa.address.toNormalizedAddress())
+        .toSet()
+        .toList(growable: false);
+    final databaseService = ref.read(databaseServiceProvider);
+    final playlists = await databaseService.getAddressPlaylists();
+    for (final wa in walletAddresses) {
+      final normalized = wa.address.toNormalizedAddress();
+      final hasPlaylist = playlists.any(
+        (p) => p.ownerAddress?.toNormalizedAddress() == normalized,
+      );
+      if (hasPlaylist) continue;
+      final playlist = PlaylistExt.fromWalletAddress(wa);
+      await databaseService.ingestPlaylist(playlist);
+      _log.info('Created playlist for tracked address: $normalized (name: ${wa.name})');
+    }
+    final statuses = await appState.getAllAddressIndexingStatuses();
+    final toResume = <String>[];
+    for (final addr in normalizedAddresses) {
+      final status = statuses[addr];
+      if (status == null) {
+        await appState.setAddressIndexingStatus(
+          address: addr,
+          status: AddressIndexingProcessStatus.idle(),
+        );
+        toResume.add(addr);
+      } else if (status.state != AddressIndexingProcessState.completed) {
+        toResume.add(addr);
+      }
+    }
+    if (toResume.isEmpty) return;
+    _log.info(
+      'ensureTrackedAddressesHavePlaylistsAndResume: resuming '
+      '${toResume.length} address(es)',
+    );
+    await ref.read(addressServiceProvider).resumeIndexingForAddresses(toResume);
+  };
+});
+
+/// Watches ObjectBox [TrackedAddressEntity]; on emit calls
+/// [ensureTrackedAddressesSyncCoordinatorProvider]. Coordinator tracks in-flight
+/// sync for drain (Forget I Exist).
+final trackedAddressesSyncProvider = Provider<void>((ref) {
+  ref.keepAlive();
+  final coordinator =
+      ref.read(ensureTrackedAddressesSyncCoordinatorProvider.notifier);
+  final appStateService = ref.read(appStateServiceProvider);
+  final sub = appStateService.watchTrackedAddressesAsWalletAddresses().listen((
+    addresses,
+  ) {
+    _log.info(
+      'trackedAddressesSyncProvider: list wallet addresses: '
+      '${addresses.map((a) => a.address).toList()}',
+    );
+    coordinator.scheduleSync();
+  });
+  ref.onDispose(sub.cancel);
 });
 
 /// Provider for ENS/TNS address resolution and address/domain validation.

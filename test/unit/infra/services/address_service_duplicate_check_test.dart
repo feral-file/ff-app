@@ -8,7 +8,6 @@ import 'package:app/infra/services/address_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
-import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -16,28 +15,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_indexer_service_isolate.dart';
 
-class _FakePendingAddressesStore extends PendingAddressesStore {
-  _FakePendingAddressesStore({List<String>? initial}) : _stored = [...?initial];
-
-  final List<String> _stored;
-
-  @override
-  Future<List<String>> getAddresses() async => List.unmodifiable(_stored);
-
-  void addRaw(String address) => _stored.add(address);
-}
-
-class _FakePersonalTokensSyncService implements PersonalTokensSyncService {
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
 class _FakeAppStateService implements AppStateServiceBase {
+  _FakeAppStateService({List<String> initialTracked = const []})
+      : _tracked = List.from(initialTracked);
+
+  final List<String> _tracked;
+
   @override
-  Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
-    String address,
-  ) =>
-      Stream.value(null);
+  Future<List<String>> getTrackedPersonalAddresses() async =>
+      List.unmodifiable(_tracked);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -51,11 +37,10 @@ void main() {
   group('AddressService.isAddressAlreadyAdded', () {
     tearDown(SeedDatabaseGate.resetForTesting);
 
-    test('checks PendingAddressesStore when seed gate is not open', () async {
-      final pending = _FakePendingAddressesStore(
-        initial: <String>[
-          '0x99fc8AD516FBCC9bA3123D56e63A35d05AA9EFB8',
-        ],
+    test('checks getTrackedPersonalAddresses when address is in ObjectBox',
+        () async {
+      final fakeAppState = _FakeAppStateService(
+        initialTracked: <String>['0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8'],
       );
 
       final database = AppDatabase.forTesting(NativeDatabase.memory());
@@ -74,10 +59,15 @@ void main() {
           resolverUrl: '',
           resolverApiKey: '',
         ),
-        personalTokensSyncService: _FakePersonalTokensSyncService(),
-        pendingAddressesStore: pending,
+        personalTokensSyncService: PersonalTokensSyncService(
+          indexerService: IndexerService(
+            client: IndexerClient(endpoint: 'https://example.invalid'),
+          ),
+          databaseService: databaseService,
+          appStateService: fakeAppState,
+        ),
         indexerServiceIsolate: FakeIndexerServiceIsolate(),
-        appStateService: _FakeAppStateService(),
+        appStateService: fakeAppState,
       );
 
       expect(
@@ -89,23 +79,15 @@ void main() {
       );
     });
 
-    test('checks SQLite when seed gate is open', () async {
+    test('returns false when address is not in getTrackedPersonalAddresses',
+        () async {
       SeedDatabaseGate.complete();
+
+      final fakeAppState = _FakeAppStateService(initialTracked: <String>[]);
 
       final database = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(database.close);
       final databaseService = DatabaseService(database);
-
-      await databaseService.ingestPlaylist(
-        const Playlist(
-          id: 'addr:ETH:0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8',
-          name: 'Existing',
-          type: PlaylistType.addressBased,
-          channelId: Channel.myCollectionId,
-          ownerAddress: '0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8',
-          ownerChain: 'eth',
-        ),
-      );
 
       final addressService = AddressService(
         databaseService: databaseService,
@@ -119,10 +101,15 @@ void main() {
           resolverUrl: '',
           resolverApiKey: '',
         ),
-        personalTokensSyncService: _FakePersonalTokensSyncService(),
-        pendingAddressesStore: _FakePendingAddressesStore(),
+        personalTokensSyncService: PersonalTokensSyncService(
+          indexerService: IndexerService(
+            client: IndexerClient(endpoint: 'https://example.invalid'),
+          ),
+          databaseService: databaseService,
+          appStateService: fakeAppState,
+        ),
         indexerServiceIsolate: FakeIndexerServiceIsolate(),
-        appStateService: _FakeAppStateService(),
+        appStateService: fakeAppState,
       );
 
       expect(
@@ -130,27 +117,19 @@ void main() {
           address: '0x99fc8AD516FBCC9bA3123D56e63A35d05AA9EFB8',
           chain: Chain.ethereum,
         ),
-        isTrue,
+        isFalse,
       );
     });
 
     test('treats Tezos addresses as case-sensitive', () async {
       SeedDatabaseGate.complete();
 
+      final fakeAppState =
+          _FakeAppStateService(initialTracked: <String>['tz1ABC']);
+
       final database = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(database.close);
       final databaseService = DatabaseService(database);
-
-      await databaseService.ingestPlaylist(
-        const Playlist(
-          id: 'addr:TEZ:tz1ABC',
-          name: 'Existing',
-          type: PlaylistType.addressBased,
-          channelId: Channel.myCollectionId,
-          ownerAddress: 'tz1ABC',
-          ownerChain: 'tez',
-        ),
-      );
 
       final addressService = AddressService(
         databaseService: databaseService,
@@ -164,10 +143,15 @@ void main() {
           resolverUrl: '',
           resolverApiKey: '',
         ),
-        personalTokensSyncService: _FakePersonalTokensSyncService(),
-        pendingAddressesStore: _FakePendingAddressesStore(),
+        personalTokensSyncService: PersonalTokensSyncService(
+          indexerService: IndexerService(
+            client: IndexerClient(endpoint: 'https://example.invalid'),
+          ),
+          databaseService: databaseService,
+          appStateService: fakeAppState,
+        ),
         indexerServiceIsolate: FakeIndexerServiceIsolate(),
-        appStateService: _FakeAppStateService(),
+        appStateService: fakeAppState,
       );
 
       expect(

@@ -29,6 +29,9 @@ class MeSectionPlaylistsState {
 final meSectionPlaylistsProvider = StreamProvider<MeSectionPlaylistsState>((
   ref,
 ) {
+  if (!ref.watch(isSeedDatabaseReadyProvider)) {
+    return Stream.value(MeSectionPlaylistsState.initial);
+  }
   final databaseService = ref.read(databaseServiceProvider);
 
   return Rx.combineLatest2<Playlist?, List<Playlist>, MeSectionPlaylistsState>(
@@ -56,6 +59,9 @@ final StreamProviderFamily<bool, String> isWorkInFavoriteProvider =
       ref,
       workId,
     ) {
+      if (!ref.watch(isSeedDatabaseReadyProvider)) {
+        return Stream.value(false);
+      }
       final favoriteService = ref.watch(favoritePlaylistServiceProvider);
       return favoriteService.watchIsWorkInFavorite(workId);
     });

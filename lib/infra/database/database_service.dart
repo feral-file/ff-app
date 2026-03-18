@@ -1094,6 +1094,15 @@ class DatabaseService {
         );
         return;
       }
+      if (_isDatabaseUnavailableError(e)) {
+        _log.warning(
+          'Database unavailable during token ingest for $address '
+          '(Forget I Exist / seed replace); dropping batch.',
+          e,
+          stack,
+        );
+        return;
+      }
       _log.severe('Failed to ingest tokens for address $address', e, stack);
       rethrow;
     }
@@ -1976,6 +1985,20 @@ class DatabaseService {
 
 bool _isDatabaseLockedError(Object error) {
   return error.toString().contains('database is locked');
+}
+
+/// Returns true when the DB is unavailable during reset (e.g. Forget I Exist).
+bool _isDatabaseUnavailableError(Object error) {
+  final msg = error.toString().toLowerCase();
+  return msg.contains('database has been closed') ||
+      msg.contains('database is closed') ||
+      msg.contains('channel was closed') ||
+      msg.contains('connection was closed') ||
+      msg.contains('couldnotrollbackexception') ||
+      msg.contains('unable to open database file') ||
+      msg.contains('no such table') ||
+      msg.contains('bad state: this database is no longer open') ||
+      msg.contains('bad state: no element');
 }
 
 bool _isOperationCancelled(Object error) {

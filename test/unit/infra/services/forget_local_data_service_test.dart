@@ -3,7 +3,7 @@ import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('clearLocalData executes stop and cleanup sequence in order', () async {
+  test('forgetIExist executes fullClear then recreate and bootstrap', () async {
     final events = <String>[];
 
     final service = LocalDataCleanupService(
@@ -16,21 +16,20 @@ void main() {
       clearObjectBoxData: () async {
         events.add('clear-objectbox');
       },
-      clearPendingAddresses: () async {
-        events.add('clear-pending-addresses');
+      clearObjectBoxLight: () async {
+        events.add('clear-objectbox-light');
       },
       clearCachedImages: () async {
         events.add('clear-cached-images');
       },
-      getPersonalAddresses: () async => const <String>[],
-      restorePersonalAddressPlaylists: (_) async {},
-      refetchFromBeginning: (_) async {},
       recreateDatabaseFromSeed: () async {
         events.add('recreate-db-from-seed');
       },
       getFavoritePlaylistsSnapshot: () async => const [],
       restoreFavoritePlaylists: (_) async {},
-      runBootstrap: () async {},
+      runBootstrap: () async {
+        events.add('run-bootstrap');
+      },
       pauseFeedWork: () {
         events.add('pause-feed');
       },
@@ -43,26 +42,33 @@ void main() {
       clearLegacyHive: () async {
         events.add('clear-legacy-hive');
       },
+      onDatabaseReady: () async {
+        events.add('on-database-ready');
+      },
       postDrainSettleDuration: Duration.zero,
     );
 
-    await service.clearLocalData();
+    await service.forgetIExist();
 
+    // forgetIExist returns after fullClear; recreate+bootstrap+onDatabaseReady
+    // run in background.
     expect(events, <String>[
       'pause-feed',
       'pause-token-polling',
       'stop-workers',
       'close-delete-db',
-      'clear-objectbox',
-      'clear-pending-addresses',
+      'clear-objectbox-light',
       'clear-cached-images',
+      'clear-objectbox',
       'clear-legacy-sqlite',
       'clear-legacy-hive',
       'close-delete-db',
     ]);
   });
 
-  test('clearLocalData runs post-reset callback after cleanup', () async {
+  test(
+    'forgetIExist returns after fullClear; background tasks run fire-and-forget',
+    () async {
     final events = <String>[];
 
     final service = LocalDataCleanupService(
@@ -75,42 +81,43 @@ void main() {
       clearObjectBoxData: () async {
         events.add('clear-objectbox');
       },
-      clearPendingAddresses: () async {
-        events.add('clear-pending-addresses');
+      clearObjectBoxLight: () async {
+        events.add('clear-objectbox-light');
       },
       clearCachedImages: () async {
         events.add('clear-cached-images');
       },
-      getPersonalAddresses: () async => const <String>[],
-      restorePersonalAddressPlaylists: (_) async {},
-      refetchFromBeginning: (_) async {},
       recreateDatabaseFromSeed: () async {
         events.add('recreate-db-from-seed');
       },
       getFavoritePlaylistsSnapshot: () async => const [],
       restoreFavoritePlaylists: (_) async {},
-      runBootstrap: () async {},
+      runBootstrap: () async {
+        events.add('run-bootstrap');
+      },
       pauseFeedWork: () {
         events.add('pause-feed');
       },
       pauseTokenPolling: () {
         events.add('pause-token-polling');
       },
-      onResetCompleted: () async {
-        events.add('on-reset-completed');
+      onDatabaseReady: () async {
+        events.add('on-database-ready');
       },
       clearLegacySqlite: () async {},
       clearLegacyHive: () async {},
       postDrainSettleDuration: Duration.zero,
     );
 
-    await service.clearLocalData();
+    await service.forgetIExist();
 
-    expect(events.last, equals('on-reset-completed'));
+    // forgetIExist returns after fullClear; recreate+bootstrap+onDatabaseReady
+    // run in background so last event when await returns is close-delete-db.
+    expect(events.last, equals('close-delete-db'));
   });
 
   test(
-    'rebuildMetadata clears sqlite and refetches while keeping addresses',
+    'rebuildMetadata uses lightClear, runs onDatabaseReady, restores favorites',
     () async {
       final events = <String>[];
 
@@ -124,21 +131,11 @@ void main() {
         clearObjectBoxData: () async {
           events.add('clear-objectbox');
         },
-        clearPendingAddresses: () async {
-          events.add('clear-pending-addresses');
+        clearObjectBoxLight: () async {
+          events.add('clear-objectbox-light');
         },
         clearCachedImages: () async {
           events.add('clear-cached-images');
-        },
-        getPersonalAddresses: () async {
-          events.add('get-addresses');
-          return <String>['0xabc'];
-        },
-        restorePersonalAddressPlaylists: (addresses) async {
-          events.add('restore:${addresses.join(",")}');
-        },
-        refetchFromBeginning: (addresses) async {
-          events.add('refetch:${addresses.join(",")}');
         },
         recreateDatabaseFromSeed: () async {
           events.add('recreate-db-from-seed');
@@ -153,6 +150,9 @@ void main() {
         runBootstrap: () async {
           events.add('run-bootstrap');
         },
+        onDatabaseReady: () async {
+          events.add('on-database-ready');
+        },
         pauseFeedWork: () {
           events.add('pause-feed');
         },
@@ -164,17 +164,15 @@ void main() {
 
       await service.rebuildMetadata();
 
+      // rebuildMetadata returns after lightClear; recreate+restore run in background.
       expect(events, <String>[
+        'get-favorite-playlists-snapshot',
         'pause-feed',
         'pause-token-polling',
         'stop-workers',
-        'get-addresses',
-        'get-favorite-playlists-snapshot',
-        'recreate-db-from-seed',
-        'run-bootstrap',
-        'restore:0xabc',
+        'close-delete-db',
+        'clear-objectbox-light',
         'clear-cached-images',
-        'refetch:0xabc',
       ]);
       expect(events.where((event) => event == 'clear-objectbox'), isEmpty);
     },

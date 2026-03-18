@@ -9,7 +9,6 @@ import 'package:app/infra/services/address_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
-import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -21,9 +20,11 @@ import 'fake_indexer_service_isolate.dart';
 class _FakeAppStateServiceForResume implements AppStateServiceBase {
   _FakeAppStateServiceForResume({
     this.statuses = const {},
+    this.trackedAddresses = const [],
   });
 
   final Map<String, AddressIndexingProcessStatus> statuses;
+  final List<String> trackedAddresses;
   final List<String> setStatusCalls = <String>[];
 
   @override
@@ -52,7 +53,7 @@ class _FakeAppStateServiceForResume implements AppStateServiceBase {
   Future<void> trackPersonalAddress(String address) async {}
 
   @override
-  Future<List<String>> getTrackedPersonalAddresses() async => [];
+  Future<List<String>> getTrackedPersonalAddresses() async => trackedAddresses;
 
   @override
   Future<void> clearAddressState(String address) async {}
@@ -87,8 +88,13 @@ void main() {
 
     AddressService createAddressService({
       Map<String, AddressIndexingProcessStatus>? statuses,
+      List<String>? trackedAddresses,
     }) {
-      fakeAppState = _FakeAppStateServiceForResume(statuses: statuses ?? {});
+      final s = statuses ?? {};
+      fakeAppState = _FakeAppStateServiceForResume(
+        statuses: s,
+        trackedAddresses: trackedAddresses ?? s.keys.toList(),
+      );
       return AddressService(
         databaseService: databaseService,
         indexerSyncService: IndexerSyncService(
@@ -108,7 +114,6 @@ void main() {
           databaseService: databaseService,
           appStateService: fakeAppState,
         ),
-        pendingAddressesStore: PendingAddressesStore(),
         indexerServiceIsolate: fakeIndexer,
         appStateService: fakeAppState,
       );
@@ -197,7 +202,7 @@ void main() {
       expect(fakeAppState.setStatusCalls, contains('0xabc:completed'));
     });
 
-    test('resumePendingIndexingFlows skips completed', () async {
+    test('resumeIndexingForAddresses skips completed', () async {
       const address = '0xabc';
       final playlist = PlaylistExt.fromWalletAddress(
         WalletAddress(
@@ -208,18 +213,18 @@ void main() {
       );
       await databaseService.ingestPlaylist(playlist);
 
-      final service = createAddressService(
-        statuses: {
-          address: AddressIndexingProcessStatus.completed(),
-        },
-      );
+      final statuses = <String, AddressIndexingProcessStatus>{
+        '0xabc': AddressIndexingProcessStatus.completed(),
+      };
+      final toResume = <String>[];
+      final service = createAddressService(statuses: statuses);
 
-      await service.resumePendingIndexingFlows();
+      await service.resumeIndexingForAddresses(toResume);
 
       expect(fakeIndexer.callSequence, isEmpty);
     });
 
-    test('resumePendingIndexingFlows routes idle to restart', () async {
+    test('resumeIndexingForAddresses routes idle to restart', () async {
       const address = '0xabc';
       final playlist = PlaylistExt.fromWalletAddress(
         WalletAddress(
@@ -239,13 +244,13 @@ void main() {
         totalTokensViewable: 0,
       );
 
-      final service = createAddressService(
-        statuses: {
-          address: AddressIndexingProcessStatus.idle(),
-        },
-      );
+      final statuses = {
+        address: AddressIndexingProcessStatus.idle(),
+      };
+      final toResume = [address];
+      final service = createAddressService(statuses: statuses);
 
-      await service.resumePendingIndexingFlows();
+      await service.resumeIndexingForAddresses(toResume);
 
       // Wait for delay + unawaited indexAndSyncAddress to run.
       await Future<void>.delayed(const Duration(milliseconds: 600));
@@ -254,7 +259,46 @@ void main() {
     });
 
     test(
-      'resumePendingIndexingFlows routes indexingTriggered+workflowId to poll',
+      'resumeIndexingForAddresses with empty toResume does nothing',
+      () async {
+        const address = '0xabc';
+        final playlist = PlaylistExt.fromWalletAddress(
+          WalletAddress(
+            address: address,
+            createdAt: DateTime.now(),
+            name: 'Test',
+          ),
+        );
+        await databaseService.ingestPlaylist(playlist);
+
+        fakeIndexer.fetchTokensResult = const TokensPage(tokens: []);
+        fakeIndexer.pullStatusResult = const AddressIndexingJobResponse(
+          workflowId: 'wf-1',
+          address: address,
+          status: IndexingJobStatus.completed,
+          totalTokensIndexed: 0,
+          totalTokensViewable: 0,
+        );
+
+        final statuses = <String, AddressIndexingProcessStatus>{};
+        final toResume = <String>[];
+        final service = createAddressService(
+          statuses: statuses,
+          trackedAddresses: [address],
+        );
+
+        await service.resumeIndexingForAddresses(toResume);
+
+        expect(fakeAppState.setStatusCalls, isEmpty);
+
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+
+        expect(fakeIndexer.callSequence, isEmpty);
+      },
+    );
+
+    test(
+      'resumeIndexingForAddresses routes indexingTriggered+workflowId to poll',
       () async {
         const address = '0xabc';
         final playlist = PlaylistExt.fromWalletAddress(
@@ -275,15 +319,15 @@ void main() {
         );
         fakeIndexer.fetchTokensResult = const TokensPage(tokens: []);
 
-        final service = createAddressService(
-          statuses: {
-            address: AddressIndexingProcessStatus.indexingTriggered(
-              workflowId: 'wf-1',
-            ),
-          },
-        );
+        final statuses = {
+          address: AddressIndexingProcessStatus.indexingTriggered(
+            workflowId: 'wf-1',
+          ),
+        };
+        final toResume = [address];
+        final service = createAddressService(statuses: statuses);
 
-        await service.resumePendingIndexingFlows();
+        await service.resumeIndexingForAddresses(toResume);
 
         await Future<void>.delayed(const Duration(milliseconds: 600));
 
@@ -292,7 +336,7 @@ void main() {
       },
     );
 
-    test('resumePendingIndexingFlows routes syncingTokens to fetch only',
+    test('resumeIndexingForAddresses routes syncingTokens to fetch only',
         () async {
       const address = '0xabc';
       final playlist = PlaylistExt.fromWalletAddress(
@@ -306,13 +350,13 @@ void main() {
 
       fakeIndexer.fetchTokensResult = const TokensPage(tokens: []);
 
-      final service = createAddressService(
-        statuses: {
-          address: AddressIndexingProcessStatus.syncingTokens(),
-        },
-      );
+      final statuses = {
+        address: AddressIndexingProcessStatus.syncingTokens(),
+      };
+      final toResume = [address];
+      final service = createAddressService(statuses: statuses);
 
-      await service.resumePendingIndexingFlows();
+      await service.resumeIndexingForAddresses(toResume);
 
       await Future<void>.delayed(const Duration(milliseconds: 600));
 

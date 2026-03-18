@@ -22,6 +22,11 @@ class ChannelDetails {
 /// Watches the database so the UI updates when channel or playlists change.
 final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
     StreamProvider.family<ChannelDetails, String>((ref, channelId) {
+      if (!ref.watch(isSeedDatabaseReadyProvider)) {
+        return Stream.value(
+          const ChannelDetails(channel: null, playlists: []),
+        );
+      }
       final databaseService = ref.read(databaseServiceProvider);
 
       return Rx.combineLatest2<Channel?, List<Playlist>, ChannelDetails>(

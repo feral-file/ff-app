@@ -1,8 +1,12 @@
 import 'dart:async';
 
+import 'package:app/domain/extensions/playlist_ext.dart';
+import 'package:app/domain/extensions/string_ext.dart';
+import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
+import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/address_service.dart';
@@ -10,7 +14,6 @@ import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
-import 'package:app/infra/services/pending_addresses_store.dart';
 import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,6 +25,7 @@ import '../../helpers/spy_indexer_service_isolate.dart';
 void main() {
   late IntegrationTestContext context;
   late AddressService addressService;
+  late DomainAddressService domainAddressService;
   late SpyIndexerServiceIsolate spyIsolate;
   late _TestAppStateService testAppStateService;
 
@@ -46,22 +50,22 @@ void main() {
       ),
     );
 
+    domainAddressService = DomainAddressService(
+      resolverUrl: AppConfig.domainResolverUrl,
+      resolverApiKey: AppConfig.domainResolverApiKey,
+    );
     addressService = AddressService(
       databaseService: context.databaseService,
       indexerSyncService: IndexerSyncService(
         indexerService: indexerService,
         databaseService: context.databaseService,
       ),
-      domainAddressService: DomainAddressService(
-        resolverUrl: AppConfig.domainResolverUrl,
-        resolverApiKey: AppConfig.domainResolverApiKey,
-      ),
+      domainAddressService: domainAddressService,
       personalTokensSyncService: PersonalTokensSyncService(
         indexerService: indexerService,
         databaseService: context.databaseService,
         appStateService: testAppStateService,
       ),
-      pendingAddressesStore: PendingAddressesStore(),
       indexerServiceIsolate: spyIsolate,
       appStateService: testAppStateService,
     );
@@ -81,11 +85,22 @@ void main() {
       expect(AppConfig.indexerApiKey, isNotEmpty);
 
       const inputDomain = 'einstein-rosen.eth';
-      final playlist = await addressService.addAddressOrDomain(
-        value: inputDomain,
+      final resolved = await domainAddressService.verifyAddressOrDomain(
+        inputDomain,
       );
-      final resolvedAddress = playlist.ownerAddress!;
+      expect(resolved, isNotNull);
+      final resolvedAddress = resolved!.address;
+      await addressService.addAddressOrDomain(value: inputDomain);
       testAppStateService.setTargetAddress(resolvedAddress);
+
+      // Provider-driven flow: ensure playlists exist and resume indexing.
+      // AddressService.addAddress only writes tracked state; playlist creation
+      // and indexing are triggered by ensureTrackedAddressesHavePlaylistsAndResume.
+      await _ensurePlaylistsAndResumeIndexing(
+        appState: testAppStateService,
+        databaseService: context.databaseService,
+        addressService: addressService,
+      );
 
       // Poll until tokens in DB > 100 (indexing completes).
       const pollInterval = Duration(seconds: 5);
@@ -110,6 +125,18 @@ void main() {
         tokenCount,
         greaterThan(100),
         reason: 'Expected >100 tokens ingested for $inputDomain.',
+      );
+
+      // Alias preservation: playlist created from domain should keep user-facing name.
+      final playlists =
+          await context.databaseService.getAddressPlaylists();
+      final playlistForAddress = playlists.where(
+        (p) => p.ownerAddress?.toUpperCase() == resolvedAddress.toUpperCase(),
+      ).firstOrNull;
+      expect(
+        playlistForAddress?.name,
+        inputDomain,
+        reason: 'Playlist name should preserve domain/alias.',
       );
 
       // Wait for background indexing to fully complete before test exits.
@@ -139,12 +166,40 @@ void main() {
   );
 }
 
+/// Runs the ensure-playlists-and-resume logic, mirroring
+/// [ensureTrackedAddressesHavePlaylistsAndResumeProvider].
+/// Used when testing without Riverpod (e.g. integration test).
+Future<void> _ensurePlaylistsAndResumeIndexing({
+  required AppStateServiceBase appState,
+  required DatabaseService databaseService,
+  required AddressService addressService,
+}) async {
+  final walletAddresses = await appState.getTrackedWalletAddresses();
+  if (walletAddresses.isEmpty) return;
+  final playlists = await databaseService.getAddressPlaylists();
+  for (final wa in walletAddresses) {
+    final normalized = wa.address.toNormalizedAddress();
+    final hasPlaylist = playlists.any(
+      (p) => p.ownerAddress?.toNormalizedAddress() == normalized,
+    );
+    if (hasPlaylist) continue;
+    final playlist = PlaylistExt.fromWalletAddress(wa);
+    await databaseService.ingestPlaylist(playlist);
+  }
+  final normalizedAddresses = walletAddresses
+      .map((wa) => wa.address.toNormalizedAddress())
+      .toSet()
+      .toList();
+  await addressService.resumeIndexingForAddresses(normalizedAddresses);
+}
+
 /// App state service that completes a future when indexing reaches [completed]
 /// for the target address. Used to wait for background indexing before tearDown.
 class _TestAppStateService implements AppStateServiceBase {
   _TestAppStateService();
 
   final List<String> _tracked = <String>[];
+  final Map<String, String> _addressToAlias = {};
   String? _targetAddressNormalized;
   Completer<void>? _completer;
 
@@ -168,18 +223,28 @@ class _TestAppStateService implements AppStateServiceBase {
 
   @override
   Future<void> addTrackedAddress(String address, {String alias = ''}) async {
-    if (!_tracked.contains(address)) _tracked.add(address);
+    final normalized = address.toNormalizedAddress();
+    if (!_tracked.contains(normalized)) {
+      _tracked.add(normalized);
+    }
+    _addressToAlias[normalized] = alias.trim().isNotEmpty
+        ? alias
+        : normalized.shortenAddress();
   }
+
+  final Map<String, AddressIndexingProcessStatus> _addressStatuses = {};
 
   @override
   Future<void> setAddressIndexingStatus({
     required String address,
     required AddressIndexingProcessStatus status,
   }) async {
+    final normalized = address.toNormalizedAddress();
+    _addressStatuses[normalized] = status;
     if (_targetAddressNormalized == null || _completer == null || _completer!.isCompleted) {
       return;
     }
-    if (address.toNormalizedAddress() != _targetAddressNormalized) return;
+    if (normalized != _targetAddressNormalized) return;
     // Complete on terminal states so we never hang (completed or failed).
     if (status.state == AddressIndexingProcessState.completed ||
         status.state == AddressIndexingProcessState.failed ||
@@ -189,13 +254,34 @@ class _TestAppStateService implements AppStateServiceBase {
   }
 
   @override
+  Future<Map<String, AddressIndexingProcessStatus>> getAllAddressIndexingStatuses() async =>
+      Map.unmodifiable(_addressStatuses);
+
+  @override
   Future<void> trackPersonalAddress(String address) async {
-    if (!_tracked.contains(address)) _tracked.add(address);
+    final normalized = address.toNormalizedAddress();
+    if (!_tracked.contains(normalized)) {
+      _tracked.add(normalized);
+      _addressToAlias[normalized] = normalized.shortenAddress();
+    }
   }
 
   @override
   Future<List<String>> getTrackedPersonalAddresses() async =>
       List.unmodifiable(_tracked);
+
+  @override
+  Future<List<WalletAddress>> getTrackedWalletAddresses() async {
+    final now = DateTime.now().toUtc();
+    return _tracked.map((addr) {
+      final name = _addressToAlias[addr] ?? addr.shortenAddress();
+      return WalletAddress(
+        address: addr,
+        name: name,
+        createdAt: now,
+      );
+    }).toList();
+  }
 
   @override
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
