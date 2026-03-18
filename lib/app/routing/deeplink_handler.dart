@@ -232,13 +232,6 @@ class DeeplinkHandler {
   StreamSubscription<Uri>? _linkSubscription;
   bool _isStarted = false;
 
-  // Tracks the last URI returned by getInitialLink() that we have already
-  // dispatched. On iOS the native initial-link buffer may keep returning the
-  // same URI across multiple app-resume cycles; comparing against this field
-  // lets us suppress re-processing without relying on a time window (which
-  // would fail for resumes longer than _deeplinkDedupWindow).
-  String? _lastProcessedInitialLink;
-
   /// The stream of deeplink navigation actions.
   Stream<DeeplinkNavigationAction> get actions => _actionsController.stream;
 
@@ -255,7 +248,6 @@ class DeeplinkHandler {
     final initialLink = await _linkSource.getInitialLink();
     if (initialLink != null) {
       _log.info('initialLink: $initialLink');
-      _lastProcessedInitialLink = initialLink.toString();
       await handleDeeplink(
         initialLink.toString(),
         isFromAppLink: true,
@@ -280,25 +272,13 @@ class DeeplinkHandler {
   /// `app_links` stores that link in the same native buffer used for cold
   /// start, rather than emitting it to [linkStream]. Calling this on every
   /// [AppLifecycleState.resumed] event ensures that link is not silently
-  /// dropped.
-  ///
-  /// We compare against [_lastProcessedInitialLink] rather than the time-based
-  /// dedup window: the native buffer can keep returning the same URI across
-  /// many resume cycles (seconds to minutes apart), so a fixed-duration window
-  /// would re-trigger navigation on later resumes.
+  /// dropped. The dedup window prevents re-processing a link that was already
+  /// handled.
   Future<void> checkForResumeLink() async {
     final link = await _linkSource.getInitialLink();
-    if (link == null) {
-      return;
+    if (link != null) {
+      await handleDeeplink(link.toString(), isFromAppLink: true);
     }
-    final linkStr = link.toString();
-    if (linkStr == _lastProcessedInitialLink) {
-      // Same URI still in native buffer; already dispatched on a prior
-      // cold-start or resume. Skip to avoid re-triggering navigation.
-      return;
-    }
-    _lastProcessedInitialLink = linkStr;
-    await handleDeeplink(linkStr, isFromAppLink: true);
   }
 
   /// Handles deeplink with sample-compatible options.
@@ -309,12 +289,7 @@ class DeeplinkHandler {
     bool isFromAppLink = false,
   }) async {
     final source = isFromAppLink ? DeeplinkSource.appLink : DeeplinkSource.scan;
-    // Log scheme/host/path only; query parameters may contain pairing tokens.
-    final sanitized = rawLink != null
-        ? (Uri.tryParse(rawLink)?.replace(queryParameters: {}).toString() ??
-            rawLink)
-        : null;
-    _log.info('handleDeeplink link: $sanitized, source: $source');
+    _log.info('handleDeeplink rawLink: $rawLink, source: $source');
     return _processLink(
       rawLink,
       source: source,
