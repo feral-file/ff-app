@@ -1,3 +1,4 @@
+import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
@@ -25,17 +26,43 @@ enum BootstrapPhase {
   failed,
 }
 
-/// Convenience predicates for startup phase status checks.
+/// Convenience predicates and presentation helpers for startup phase status.
 extension BootstrapPhaseX on BootstrapPhase {
   /// True while bootstrap is actively running startup work.
   bool get isInProgress {
     return switch (this) {
+      BootstrapPhase.validatingConfiguration => true,
+      BootstrapPhase.settingUpCollection => true,
+      BootstrapPhase.activatingAutoConnectWatcher => true,
+      BootstrapPhase.idle => false,
+      BootstrapPhase.completed => false,
+      BootstrapPhase.failed => false,
+    };
+  }
+
+  /// User-facing message for this phase when shown in a toast.
+  String get displayMessage {
+    return switch (this) {
+      BootstrapPhase.validatingConfiguration => 'Validating configuration...',
+      BootstrapPhase.settingUpCollection => 'Setting up collection...',
+      BootstrapPhase.activatingAutoConnectWatcher =>
+        'Activating device auto-connect...',
+      BootstrapPhase.idle => 'Initializing app...',
+      BootstrapPhase.failed => 'Startup failed. Some data may be outdated.',
+      BootstrapPhase.completed => 'Ready',
+    };
+  }
+
+  /// Icon preset for toast overlay when this phase shows a toast.
+  ToastOverlayIconPreset get toastIconPreset {
+    return switch (this) {
       BootstrapPhase.validatingConfiguration ||
       BootstrapPhase.settingUpCollection ||
-      BootstrapPhase.activatingAutoConnectWatcher => true,
-      BootstrapPhase.idle ||
-      BootstrapPhase.completed ||
-      BootstrapPhase.failed => false,
+      BootstrapPhase.activatingAutoConnectWatcher =>
+        ToastOverlayIconPreset.loading,
+      BootstrapPhase.failed ||
+      BootstrapPhase.completed => ToastOverlayIconPreset.information,
+      BootstrapPhase.idle => ToastOverlayIconPreset.loading,
     };
   }
 }

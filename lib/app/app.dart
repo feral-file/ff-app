@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/bootstrap/bootstrap_status_toast.dart';
 import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
 import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
@@ -106,6 +107,8 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   final Completer<void> _bootstrapReadyCompleter = Completer<void>();
   ProviderSubscription<AsyncValue<DeeplinkNavigationAction>>?
   _deeplinkActionsSubscription;
+  ProviderSubscription<BootstrapStatus>? _bootstrapStatusSubscription;
+  String? _bootstrapToastOverlayId;
 
   static final _log = Logger('AppStartupBootstrap');
 
@@ -119,6 +122,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       }
       _started = true;
       _startDeeplinkHandling();
+      _startBootstrapStatusHandling();
       unawaited(_bootstrapAtAppStart());
     });
   }
@@ -127,6 +131,8 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _deeplinkActionsSubscription?.close();
+    _bootstrapStatusSubscription?.close();
+    _dismissBootstrapStatusToast(immediate: true);
     super.dispose();
   }
 
@@ -149,6 +155,51 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     unawaited(
       ref.read(deeplinkHandlerProvider).start(),
     );
+  }
+
+  void _startBootstrapStatusHandling() {
+    _bootstrapStatusSubscription ??= ref.listenManual<BootstrapStatus>(
+      bootstrapProvider,
+      (previous, next) {
+        _handleBootstrapStatusChanged(next);
+      },
+      fireImmediately: true,
+    );
+  }
+
+  void _handleBootstrapStatusChanged(BootstrapStatus status) {
+    if (!mounted) {
+      return;
+    }
+
+    final toast = bootstrapToastForStatus(status);
+    if (toast != null) {
+      _bootstrapToastOverlayId = ref
+          .read(appOverlayProvider.notifier)
+          .upsertToast(
+            overlayId: _bootstrapToastOverlayId,
+            message: toast.message,
+            iconPreset: toast.iconPreset,
+            autoDismissAfter: toast.autoDismissAfter,
+          );
+      return;
+    }
+
+    _dismissBootstrapStatusToast();
+  }
+
+  void _dismissBootstrapStatusToast({bool immediate = false}) {
+    final overlayId = _bootstrapToastOverlayId;
+    if (!mounted || overlayId == null) {
+      _bootstrapToastOverlayId = null;
+      return;
+    }
+    if (immediate) {
+      ref.read(appOverlayProvider.notifier).removeOverlay(overlayId);
+    } else {
+      ref.read(appOverlayProvider.notifier).dismissOverlay(overlayId);
+    }
+    _bootstrapToastOverlayId = null;
   }
 
   void _handleDeeplinkNavigation(DeeplinkNavigationAction action) {

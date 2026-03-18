@@ -65,5 +65,71 @@ void main() {
         expect(container.read(appOverlayProvider), isEmpty);
       },
     );
+
+    test('upsertToast updates an existing toast without adding a new one', () {
+      final container = ProviderContainer.test();
+      addTearDown(container.dispose);
+
+      final notifier = container.read(appOverlayProvider.notifier);
+      final overlayId = notifier.showToast(message: 'Initializing app...');
+
+      final updatedId = notifier.upsertToast(
+        overlayId: overlayId,
+        message: 'Setting up collection...',
+        iconPreset: ToastOverlayIconPreset.information,
+        autoDismissAfter: const Duration(seconds: 4),
+      );
+
+      final overlays = container.read(appOverlayProvider);
+      expect(updatedId, equals(overlayId));
+      expect(overlays, hasLength(1));
+
+      final toast = overlays.single as AppToastOverlayItem;
+      expect(toast.message, 'Setting up collection...');
+      expect(toast.iconPreset, ToastOverlayIconPreset.information);
+      expect(toast.autoDismissAfter, const Duration(seconds: 4));
+    });
+
+    test('upsertToast creates a new toast when id is unknown', () {
+      final container = ProviderContainer.test();
+      addTearDown(container.dispose);
+
+      final notifier = container.read(appOverlayProvider.notifier);
+      final overlayId = notifier.upsertToast(
+        overlayId: 'missing-toast-id',
+        message: 'Recovering startup...',
+      );
+
+      final overlays = container.read(appOverlayProvider);
+      expect(overlayId, isNot('missing-toast-id'));
+      expect(overlays, hasLength(1));
+      expect(
+        (overlays.single as AppToastOverlayItem).message,
+        'Recovering startup...',
+      );
+    });
+
+    test(
+      'upsertToast clears prior auto-dismiss when updated without timeout',
+      () {
+        final container = ProviderContainer.test();
+        addTearDown(container.dispose);
+
+        final notifier = container.read(appOverlayProvider.notifier);
+        final overlayId = notifier.showToast(
+          message: 'Startup failed',
+          autoDismissAfter: const Duration(seconds: 3),
+        );
+
+        notifier.upsertToast(
+          overlayId: overlayId,
+          message: 'Initializing app...',
+        );
+
+        final toast =
+            container.read(appOverlayProvider).single as AppToastOverlayItem;
+        expect(toast.autoDismissAfter, isNull);
+      },
+    );
   });
 }
