@@ -51,7 +51,9 @@ final seedDatabaseReadyActionsProvider = Provider<SeedDatabaseReadyActions>((
 
   Future<void> onReady() async {
     cleanupService.invalidateProvidersForRebind?.call();
-    ref.read(ensureTrackedAddressesSyncCoordinatorProvider.notifier).scheduleSync();
+    // trackedAddressesSyncProvider is invalidated above; when it rebuilds,
+    // its watch emits and calls scheduleSync. No need to call scheduleSync
+    // here—that would cause ensureTrackedAddresses to run twice.
   }
 
   return SeedDatabaseReadyActions(
