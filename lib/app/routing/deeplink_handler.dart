@@ -4,6 +4,7 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/constants/deeplink_constants.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 
 /// Source of a deeplink event.
 enum DeeplinkSource {
@@ -99,7 +100,8 @@ String? resolveAppLocationFromDeeplink(String rawLink) {
     return null;
   }
 
-  final canonicalLocation = _normalizePlaylistsLocation(location) ??
+  final canonicalLocation =
+      _normalizePlaylistsLocation(location) ??
       _normalizeChannelsLocation(location) ??
       _normalizeWorksLocation(location);
   return canonicalLocation;
@@ -212,6 +214,8 @@ final deeplinkActionsProvider = StreamProvider<DeeplinkNavigationAction>((ref) {
 /// can fire twice (e.g. Android onNewIntent with redirects).
 const Duration _deeplinkDedupWindow = Duration(seconds: 2);
 
+final _log = Logger('DeeplinkHandler');
+
 /// Coordinates deeplink ingestion and emits typed navigation actions.
 class DeeplinkHandler {
   /// Constructor
@@ -243,6 +247,7 @@ class DeeplinkHandler {
 
     final initialLink = await _linkSource.getInitialLink();
     if (initialLink != null) {
+      _log.info('initialLink: $initialLink');
       await handleDeeplink(
         initialLink.toString(),
         isFromAppLink: true,
@@ -250,6 +255,7 @@ class DeeplinkHandler {
     }
 
     _linkSubscription = _linkSource.linkStream.listen((uri) {
+      _log.info('linkStream uri: $uri');
       unawaited(
         handleDeeplink(
           uri.toString(),
@@ -283,6 +289,7 @@ class DeeplinkHandler {
     bool isFromAppLink = false,
   }) async {
     final source = isFromAppLink ? DeeplinkSource.appLink : DeeplinkSource.scan;
+    _log.info('handleDeeplink rawLink: $rawLink, source: $source');
     return _processLink(
       rawLink,
       source: source,
