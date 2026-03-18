@@ -49,19 +49,11 @@ query getTokens(
       token_number
       current_owner
       updated_at
-      metadata {
+      display {
         name
-        description
-        image_url
-        animation_url
-        mime_type
         artists {
           name
           did
-        }
-        publisher {
-          name
-          url
         }
       }
       owner_provenances {
@@ -71,23 +63,7 @@ query getTokens(
           last_tx_index
         }
       }
-      enrichment_source {
-        name
-        description
-        image_url
-        animation_url
-        mime_type
-        artists {
-          name
-          did
-        }
-      }
-      metadata_media_assets {
-        source_url
-        mime_type
-        variant_urls
-      }
-      enrichment_source_media_assets {
+      media_assets {
         source_url
         mime_type
         variant_urls
@@ -333,20 +309,6 @@ function enforceRequiredChannels(channels, requiredChannelIds = []) {
   }
 }
 
-function findRepoRoot() {
-  let current = process.cwd();
-  while (true) {
-    if (fs.existsSync(path.join(current, 'pubspec.yaml'))) {
-      return current;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return process.cwd();
-    }
-    current = parent;
-  }
-}
-
 function ensureSqliteCli() {
   try {
     execFileSync('sqlite3', ['-version'], {stdio: 'ignore'});
@@ -360,7 +322,12 @@ async function fetchChannelsFromSource(source) {
   if (Array.isArray(payload?.exhibitions)) {
     return extractChannelsFromPublishArtifact(payload);
   }
-  return extractChannelsFromLegacyConfig(payload);
+  if (Array.isArray(payload) && payload.length > 0 && payload[0]?.channel_urls) {
+    return extractChannelsFromRegistry(payload);
+  }
+  throw new Error(
+    'Invalid channels source format: expected registry format (array with channel_urls) or publish artifact format (exhibitions array)'
+  );
 }
 
 async function fetchChannelsFromFeedEndpoint(rawFeedEndpoint) {
@@ -407,10 +374,9 @@ function normalizeOrigin(rawUrl) {
   return parsed.origin;
 }
 
-function extractChannelsFromLegacyConfig(payload) {
-  const publishers = payload?.dp1_playlist?.publishers;
+function extractChannelsFromRegistry(publishers) {
   if (!Array.isArray(publishers)) {
-    throw new Error('Invalid channels source: missing dp1_playlist.publishers');
+    throw new Error('Invalid registry format: expected array of publishers');
   }
 
   const channels = [];
@@ -853,7 +819,7 @@ function applyIndexerEnrichment(itemsMap, cidToItemIds, tokensByCid) {
 }
 
 function tokenToItemPatch(token) {
-  const artists = (token?.enrichment_source?.artists || token?.metadata?.artists || [])
+  const artists = (token?.display?.artists || [])
     .filter((artist) => artist && (artist.name || artist.did))
     .map((artist) => ({
       id: artist.did || '',
@@ -866,10 +832,7 @@ function tokenToItemPatch(token) {
       .join(', ')
     : null;
   return {
-    title:
-      token?.enrichment_source?.name ||
-      token?.metadata?.name ||
-      'Untitled',
+    title: token?.display?.name || 'Untitled',
     subtitle,
     thumbnailUri: resolveThumbnailUrl(token),
     listArtistJson: artists.length > 0 ? JSON.stringify(artists) : null,
@@ -877,73 +840,32 @@ function tokenToItemPatch(token) {
 }
 
 function resolveThumbnailUrl(token) {
-  let thumbnailUrl =
-    token?.enrichment_source?.image_url ||
-    token?.metadata?.image_url ||
-    null;
-
-  if (thumbnailUrl) {
-    const metadataAssets = findMediaAssetsBySource(
-      token?.metadata_media_assets,
-      thumbnailUrl,
-    );
-    const enrichmentAssets = findMediaAssetsBySource(
-      token?.enrichment_source_media_assets,
-      thumbnailUrl,
-    );
-    const variant =
-      firstVariantUrl(enrichmentAssets) ||
-      firstVariantUrl(metadataAssets) ||
-      null;
-    if (variant) {
-      thumbnailUrl = variant;
-    }
-    if (
-      thumbnailUrl.startsWith('https://imagedelivery.net/5BJzhBHeVhlhbn58hvcXAQ/')
-    ) {
-      const parts = thumbnailUrl.split('/');
+  const mediaAssets = Array.isArray(token?.media_assets)
+    ? token.media_assets
+    : [];
+  
+  // Try to find a variant URL from media assets
+  const variant = firstVariantUrl(mediaAssets);
+  if (variant) {
+    // Apply Cloudflare Images optimization if applicable
+    if (variant.startsWith('https://imagedelivery.net/5BJzhBHeVhlhbn58hvcXAQ/')) {
+      const parts = variant.split('/');
       if (parts.length > 2) {
         parts[parts.length - 1] = 'xs';
-        thumbnailUrl = parts.join('/');
+        return parts.join('/');
       }
     }
-    return thumbnailUrl;
+    return variant;
   }
 
-  const preview =
-    token?.enrichment_source?.animation_url ||
-    token?.metadata?.animation_url ||
-    null;
-  if (preview) {
-    return preview;
-  }
-
-  const mediaAssets = [
-    ...(Array.isArray(token?.enrichment_source_media_assets)
-      ? token.enrichment_source_media_assets
-      : []),
-    ...(Array.isArray(token?.metadata_media_assets)
-      ? token.metadata_media_assets
-      : []),
-  ];
+  // Fallback to source_url from first media asset
   for (const media of mediaAssets) {
-    const variant = firstVariantUrl([media]);
-    if (variant) {
-      return variant;
-    }
     if (media?.source_url) {
       return media.source_url;
     }
   }
 
   return FALLBACK_THUMBNAIL_URI;
-}
-
-function findMediaAssetsBySource(mediaAssets, sourceUrl) {
-  if (!Array.isArray(mediaAssets) || !sourceUrl) {
-    return [];
-  }
-  return mediaAssets.filter((asset) => asset?.source_url === sourceUrl);
 }
 
 function firstVariantUrl(mediaAssets) {
@@ -973,16 +895,13 @@ function toRestTokenJson(token) {
     standard: token?.standard || '',
     contract_address: token?.contract_address || '',
     token_number: token?.token_number != null ? String(token.token_number) : '',
-    metadata: token?.metadata || null,
+    display: token?.display || null,
     owners: token?.owners || null,
     provenance_events: token?.provenance_events || null,
     owner_provenances: token?.owner_provenances || null,
-    enrichment_source: token?.enrichment_source || null,
-    metadata_media_assets: token?.metadata_media_assets || null,
-    enrichment_source_media_assets: token?.enrichment_source_media_assets || null,
+    media_assets: token?.media_assets || null,
     current_owner: token?.current_owner || null,
     updated_at: token?.updated_at || null,
-    current_wner: token?.current_owner || null,
   };
 }
 
