@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/config/seed_database_config_store.dart';
 import 'package:app/infra/database/objectbox_init.dart';
@@ -74,20 +75,18 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     return const SeedDownloadState(status: SeedDownloadStatus.idle);
   }
 
-  /// Syncs seed DB at app start using remote ETag comparison.
+  /// Syncs seed DB from remote. Uses [setNotReady]/[setReady] for beforeReplace/afterReplace.
   ///
   /// No-ops if a sync is already in progress.
   ///
-  /// Emits [SeedDownloadStatus.syncing] only when a download starts for a
-  /// first install (!hasLocalDatabase). For updates (existing DB), status
-  /// stays idle. If ETag is unchanged, status stays idle until done.
-  ///
-  /// This method may be called again after startup (for example, when the app
-  /// resumes from background) to check for a newer remote snapshot.
-  Future<bool> syncAtAppStart({
-    required Future<void> Function() beforeReplace,
-    required Future<void> Function() afterReplace,
+  /// Emits [SeedDownloadStatus.syncing] only when [showLoadingInUI] and a download
+  /// starts for first install (!hasLocalDatabase). For updates, status stays idle.
+  Future<bool> sync({
+    bool forceReplace = false,
+    bool showLoadingInUI = true,
+    bool completeSeedDatabaseGate = true,
     bool failSilently = true,
+    void Function(double progress)? onProgress,
   }) async {
     if (_syncInProgress) {
       return false;
@@ -96,25 +95,24 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
 
     final service = ref.read(seedDatabaseSyncServiceProvider);
     final appStateService = ref.read(appStateServiceProvider);
+    final seedReadyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
 
-    // Throttle state updates to every 1% to avoid flooding provider observer.
     var lastProgressBucket = -1;
 
-    // If user has completed a seed download before, subsequent syncs run in background.
     final suppressLoading = await appStateService.hasCompletedSeedDownload();
 
     try {
       final updated = await service.sync(
-        beforeReplace: beforeReplace,
-        afterReplace: afterReplace,
+        forceReplace: forceReplace,
+        beforeReplace: seedReadyNotifier.setNotReady,
+        afterReplace: seedReadyNotifier.setReady,
         onDownloadStarted:
             ({
               required hasLocalDatabase,
               localEtag,
               remoteEtag,
             }) {
-              // Only show loading when suppressLoading is false (first-time or post-reset).
-              if (!suppressLoading) {
+              if (showLoadingInUI && !suppressLoading) {
                 notifyForceReplaceStarted();
               }
             },
@@ -128,15 +126,22 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
             );
             notifyForceReplaceProgress(progress);
           }
+          onProgress?.call(progress);
         },
       );
 
       _log.info('Seed database sync complete');
       if (updated) {
         await appStateService.setHasCompletedSeedDownload(completed: true);
+      } else {
+        // No download (ETag unchanged): set ready so rebindAfterSeedReplace runs
+        // (ensureTrackedAddresses) automatically.
+        await seedReadyNotifier.setReady();
       }
       notifyForceReplaceFinished();
-      SeedDatabaseGate.complete();
+      if (completeSeedDatabaseGate) {
+        SeedDatabaseGate.complete();
+      }
       return updated;
     } on Exception catch (e, st) {
       _log.severe(
@@ -145,8 +150,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         st,
       );
       notifyForceReplaceFinished(success: false, errorMessage: e.toString());
-      // Open the gate even on failure so the Drift DB is not blocked forever.
-      SeedDatabaseGate.complete();
+      if (completeSeedDatabaseGate) {
+        SeedDatabaseGate.complete();
+      }
       return false;
     } finally {
       _syncInProgress = false;

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/providers/address_indexing_job_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_config.dart';

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/database_error_utils.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/foundation.dart';

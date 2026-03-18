@@ -3,9 +3,9 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 

@@ -1,4 +1,5 @@
 import 'package:app/app/providers/seed_database_provider.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
@@ -72,6 +73,13 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   }
 }
 
+const _noOpActions = SeedDatabaseReadyActions(
+  prepareForSeedReplace: _noOpFuture,
+  rebindAfterSeedReplace: _noOpFuture,
+);
+
+Future<void> _noOpFuture() async {}
+
 void main() {
   setUp(SeedDatabaseGate.resetForTesting);
 
@@ -82,20 +90,15 @@ void main() {
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
       ],
     );
     addTearDown(container.dispose);
 
     final notifier = container.read(seedDownloadProvider.notifier);
 
-    await notifier.syncAtAppStart(
-      beforeReplace: () async {},
-      afterReplace: () async {},
-    );
-    await notifier.syncAtAppStart(
-      beforeReplace: () async {},
-      afterReplace: () async {},
-    );
+    await notifier.sync();
+    await notifier.sync();
 
     expect(fakeSyncService.syncCallCount, 2);
     expect(
@@ -113,6 +116,7 @@ void main() {
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
       ],
     );
     addTearDown(container.dispose);
@@ -120,10 +124,7 @@ void main() {
     container.listen(seedDownloadProvider, (prev, next) => states.add(next));
 
     final notifier = container.read(seedDownloadProvider.notifier);
-    await notifier.syncAtAppStart(
-      beforeReplace: () async {},
-      afterReplace: () async {},
-    );
+    await notifier.sync();
 
     expect(
       container.read(seedDownloadProvider).status,
@@ -151,18 +152,14 @@ void main() {
         appStateServiceProvider.overrideWithValue(
           _FakeAppStateService(initialHasCompletedSeedDownload: true),
         ),
+        seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
       ],
     );
     addTearDown(container.dispose);
 
     container.listen(seedDownloadProvider, (prev, next) => states.add(next));
 
-    await container
-        .read(seedDownloadProvider.notifier)
-        .syncAtAppStart(
-          beforeReplace: () async {},
-          afterReplace: () async {},
-        );
+    await container.read(seedDownloadProvider.notifier).sync();
 
     expect(container.read(seedDownloadProvider).status, SeedDownloadStatus.done);
 
@@ -180,18 +177,14 @@ void main() {
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
       ],
     );
     addTearDown(container.dispose);
 
     container.listen(seedDownloadProvider, (prev, next) => states.add(next));
 
-    await container
-        .read(seedDownloadProvider.notifier)
-        .syncAtAppStart(
-          beforeReplace: () async {},
-          afterReplace: () async {},
-        );
+    await container.read(seedDownloadProvider.notifier).sync();
 
     expect(container.read(seedDownloadProvider).status, SeedDownloadStatus.done);
 
@@ -207,17 +200,14 @@ void main() {
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
       ],
     );
     addTearDown(container.dispose);
 
-    await container
-        .read(seedDownloadProvider.notifier)
-        .syncAtAppStart(
-          beforeReplace: () async {},
-          afterReplace: () async {},
-          failSilently: false,
-        );
+    await container.read(seedDownloadProvider.notifier).sync(
+      failSilently: false,
+    );
 
     expect(fakeSyncService.lastFailSilently, isFalse);
   });

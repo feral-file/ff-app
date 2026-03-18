@@ -49,7 +49,8 @@ class SeedDatabaseSyncService {
       required bool hasLocalDatabase,
       String? localEtag,
       String? remoteEtag,
-    })? onDownloadStarted,
+    })?
+    onDownloadStarted,
     void Function(double progress)? onProgress,
     bool failSilently = false,
   }) async {
@@ -70,8 +71,8 @@ class SeedDatabaseSyncService {
         } else {
           final loaded = _loadLocalEtag();
           final headEtag = await _seedDatabaseService.headRemoteEtag();
-          shouldDownload = !hasLocalDatabase ||
-              (headEtag.isNotEmpty && headEtag != loaded);
+          shouldDownload =
+              !hasLocalDatabase || (headEtag.isNotEmpty && headEtag != loaded);
 
           _log.info(
             'Seed sync pre-check: hasLocal=$hasLocalDatabase, '
@@ -128,8 +129,8 @@ class SeedDatabaseSyncService {
         forceReplace
             ? 'Seed database force-replaced.'
             : hasLocalDatabase
-                ? 'Seed database updated from remote ETag change.'
-                : 'Seed database installed.',
+            ? 'Seed database updated from remote ETag change.'
+            : 'Seed database installed.',
       );
       return true;
     } on FormatException catch (e, st) {
