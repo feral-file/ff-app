@@ -74,8 +74,8 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
 }
 
 const _noOpActions = SeedDatabaseReadyActions(
-  prepareForSeedReplace: _noOpFuture,
-  rebindAfterSeedReplace: _noOpFuture,
+  onNotReady: _noOpFuture,
+  onReady: _noOpFuture,
 );
 
 Future<void> _noOpFuture() async {}
@@ -210,5 +210,29 @@ void main() {
     );
 
     expect(fakeSyncService.lastFailSilently, isFalse);
+  });
+
+  test('setReady is called and runs onReady after sync', () async {
+    final fakeSyncService = _FakeSeedDatabaseSyncService()..skipDownload = true;
+    var onReadyCalled = false;
+    final actions = SeedDatabaseReadyActions(
+      onNotReady: _noOpFuture,
+      onReady: () async {
+        onReadyCalled = true;
+      },
+    );
+
+    final container = ProviderContainer.test(
+      overrides: [
+        seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+        appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(seedDownloadProvider.notifier).sync();
+
+    expect(onReadyCalled, isTrue, reason: 'setReady runs onReady after sync');
   });
 }

@@ -51,10 +51,9 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
 ) {
   final r = ref;
 
-  /// Invalidates trackedAddressesSyncProvider and all list providers so no DB
-  /// work runs during close. Used by app.dart seed sync and Forget I Exist.
-  /// Update when adding DB-dependent providers.
-  void invalidateListProvidersBeforeDbClose() {
+  /// Invalidates providers that read, watch, or listen to the database
+  /// (channels, playlists, works, addresses, etc.) so they stop DB subscriptions.
+  void invalidateDatabaseConsumerProviders() {
     r.invalidate(trackedAddressesSyncProvider);
     r.invalidate(channelDetailsProvider);
     r.invalidate(channelPreviewProvider);
@@ -67,40 +66,17 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     r.invalidate(isWorkInFavoriteProvider);
     r.invalidate(playlistDetailsProvider);
     r.invalidate(worksProvider);
-  }
-
-  void invalidateListProvidersBeforeDbCloseExtended() =>
-      invalidateListProvidersBeforeDbClose();
-
-  /// Infra: tokensSyncCoordinator, ensureTrackedAddressesSyncCoordinator,
-  /// appDatabase, databaseService. For reconnect.
-  void invalidateReconnectInfraProviders() {
-    r.invalidate(tokensSyncCoordinatorProvider);
-    r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
-    r.invalidate(appDatabaseProvider);
-    r.invalidate(databaseServiceProvider);
-  }
-
-  /// Full rebind after seed replacement. Update when adding DB-dependent providers.
-  void invalidateProvidersForRebind() {
-    r.invalidate(channelDetailsProvider);
-    r.invalidate(channelPreviewProvider);
-    r.invalidate(channelsProvider(ChannelType.dp1));
-    r.invalidate(channelsProvider(ChannelType.localVirtual));
-    r.invalidate(playlistsProvider(PlaylistType.dp1));
-    r.invalidate(playlistsProvider(PlaylistType.addressBased));
-    r.invalidate(meSectionPlaylistsProvider);
-    r.invalidate(isWorkInFavoriteProvider);
     r.invalidate(favoritePlaylistServiceProvider);
-    r.invalidate(playlistsProvider(PlaylistType.favorite));
-    r.invalidate(playlistDetailsProvider);
-    r.invalidate(worksProvider);
     r.invalidate(addressesProvider);
+  }
+
+  /// Invalidates providers that hold the database connection
+  /// (appDatabase, databaseService, sync coordinators) so they reconnect.
+  void invalidateDatabaseConnectionProviders() {
     r.invalidate(tokensSyncCoordinatorProvider);
     r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
     r.invalidate(appDatabaseProvider);
     r.invalidate(databaseServiceProvider);
-    r.invalidate(seedDownloadProvider);
   }
 
   /// Downloads seed from S3 (or cache), replaces local dp1_library.sqlite,
@@ -185,7 +161,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     /// [forceReplaceDatabaseFromSeed] afterReplace for Forget I Exist).
     closeAndDeleteDatabase: () async {
       ref.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(false);
-      invalidateListProvidersBeforeDbCloseExtended();
+      invalidateDatabaseConsumerProviders();
       await SchedulerBinding.instance.endOfFrame;
       await ref.read(databaseServiceProvider).close();
       final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
@@ -260,8 +236,8 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       }
     },
     invalidateListProvidersBeforeDbClose:
-        invalidateListProvidersBeforeDbCloseExtended,
-    invalidateReconnectInfraProviders: invalidateReconnectInfraProviders,
-    invalidateProvidersForRebind: invalidateProvidersForRebind,
+        invalidateDatabaseConsumerProviders,
+    invalidateReconnectInfraProviders: invalidateDatabaseConnectionProviders,
+    invalidateProvidersForRebind: invalidateDatabaseConsumerProviders,
   );
 });

@@ -8,21 +8,20 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Actions triggered when [isSeedDatabaseReadyProvider] changes.
-/// Used by [SeedDatabaseReadyNotifier] for beforeReplace/afterReplace logic.
 class SeedDatabaseReadyActions {
   /// Creates [SeedDatabaseReadyActions].
   const SeedDatabaseReadyActions({
-    required this.prepareForSeedReplace,
-    required this.rebindAfterSeedReplace,
+    required this.onNotReady,
+    required this.onReady,
   });
 
-  /// Runs before seed replace: stop workers, invalidate, close DB, delete files.
-  /// Does NOT set [isSeedDatabaseReadyProvider]; caller does that.
-  final Future<void> Function() prepareForSeedReplace;
+  /// Runs when transitioning to not-ready: stop workers, invalidate, close DB,
+  /// delete files. Does NOT set [isSeedDatabaseReadyProvider]; caller does that.
+  final Future<void> Function() onNotReady;
 
-  /// Runs after seed replace: invalidate providers, ensure tracked addresses.
-  /// Caller sets [isSeedDatabaseReadyProvider] = true before calling.
-  final Future<void> Function() rebindAfterSeedReplace;
+  /// Runs when transitioning to ready. Infra invalidation when DB is replaced
+  /// is handled in [afterReplace] in the sync flow.
+  final Future<void> Function() onReady;
 }
 
 /// Provides [SeedDatabaseReadyActions] for [SeedDatabaseReadyNotifier].
@@ -32,7 +31,7 @@ final seedDatabaseReadyActionsProvider = Provider<SeedDatabaseReadyActions>((
 ) {
   final cleanupService = ref.read(localDataCleanupServiceProvider);
 
-  Future<void> prepareForSeedReplace() async {
+  Future<void> onNotReady() async {
     if (!SeedDatabaseGate.isCompleted) return;
 
     await ref
@@ -50,14 +49,14 @@ final seedDatabaseReadyActionsProvider = Provider<SeedDatabaseReadyActions>((
     await ref.read(seedDatabaseServiceProvider).deleteDatabaseFiles();
   }
 
-  Future<void> rebindAfterSeedReplace() async {
+  Future<void> onReady() async {
     cleanupService.invalidateProvidersForRebind?.call();
     ref.read(ensureTrackedAddressesSyncCoordinatorProvider.notifier).scheduleSync();
   }
 
   return SeedDatabaseReadyActions(
-    prepareForSeedReplace: prepareForSeedReplace,
-    rebindAfterSeedReplace: rebindAfterSeedReplace,
+    onNotReady: onNotReady,
+    onReady: onReady,
   );
 });
 
@@ -68,24 +67,24 @@ class SeedDatabaseReadyNotifier extends Notifier<bool> {
   bool build() => true;
 
   /// Direct state setter for flows that manage their own teardown (e.g. forgetIExist).
-  /// Does NOT run prepareForSeedReplace/rebindAfterSeedReplace.
+  /// Does NOT run onNotReady/onReady.
   void setStateDirectly(bool value) {
     state = value;
   }
 
-  /// Runs beforeReplace logic, then sets state = false.
+  /// Runs onNotReady, then sets state = false.
   /// No-op if [SeedDatabaseGate] not completed (first install).
   Future<void> setNotReady() async {
     final actions = ref.read(seedDatabaseReadyActionsProvider);
-    await actions.prepareForSeedReplace();
+    await actions.onNotReady();
     state = false;
   }
 
-  /// Sets state = true, then runs afterReplace logic.
+  /// Sets state = true, then runs onReady.
   Future<void> setReady() async {
     state = true;
     final actions = ref.read(seedDatabaseReadyActionsProvider);
-    await actions.rebindAfterSeedReplace();
+    await actions.onReady();
   }
 }
 

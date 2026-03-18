@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/config/seed_database_config_store.dart';
@@ -105,7 +106,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       final updated = await service.sync(
         forceReplace: forceReplace,
         beforeReplace: seedReadyNotifier.setNotReady,
-        afterReplace: seedReadyNotifier.setReady,
+        afterReplace: () async {
+          ref.read(localDataCleanupServiceProvider).performReconnectInfraInvalidation();
+        },
         onDownloadStarted:
             ({
               required hasLocalDatabase,
@@ -133,11 +136,8 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       _log.info('Seed database sync complete');
       if (updated) {
         await appStateService.setHasCompletedSeedDownload(completed: true);
-      } else {
-        // No download (ETag unchanged): set ready so rebindAfterSeedReplace runs
-        // (ensureTrackedAddresses) automatically.
-        await seedReadyNotifier.setReady();
       }
+      await seedReadyNotifier.setReady();
       notifyForceReplaceFinished();
       if (completeSeedDatabaseGate) {
         SeedDatabaseGate.complete();

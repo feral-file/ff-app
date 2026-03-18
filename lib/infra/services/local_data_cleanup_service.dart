@@ -50,14 +50,18 @@ class LocalDataCleanupService {
   final void Function(Future<void> Function() retry)? _onResetFailed;
   final void Function()? _prepareForReset;
 
-  /// Invalidates core list providers before DB close. For app.dart seed sync.
+  /// Invalidates providers that read/watch the database so they stop subscriptions.
   final void Function()? invalidateListProvidersBeforeDbClose;
 
-  /// Invalidates infra providers after DB replace. For app.dart reconnect.
+  /// Invalidates providers that hold the database connection so they reconnect.
   final void Function()? invalidateReconnectInfraProviders;
 
-  /// Full rebind after seed replacement. For [SeedDatabaseReadyNotifier.setReady].
+  /// Invalidates data providers so they refresh from the database.
   final void Function()? invalidateProvidersForRebind;
+
+  void performReconnectInfraInvalidation() {
+    invalidateReconnectInfraProviders?.call();
+  }
 
   final Future<void> Function() _stopWorkersGracefully;
   final Future<void> Function() _closeAndDeleteDatabase;
