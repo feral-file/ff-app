@@ -1,5 +1,3 @@
-import 'dart:async';
-import 'package:app/domain/utils/debounce_util.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
 
@@ -99,86 +97,6 @@ class CustomPrimaryButton extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Custom primary async button.
-class CustomPrimaryAsyncButton extends StatefulWidget {
-  /// Creates a CustomPrimaryAsyncButton.
-  const CustomPrimaryAsyncButton({
-    required this.child,
-    super.key,
-    this.onTap,
-    this.color,
-    this.enabled = true,
-    this.processingText,
-    this.borderColor,
-    this.padding = const EdgeInsets.symmetric(vertical: 2),
-  });
-
-  /// On tap callback.
-  final FutureOr<void> Function()? onTap;
-
-  /// Child.
-  final Widget child;
-
-  /// Color.
-  final Color? color;
-
-  /// Whether the button is enabled.
-  final bool enabled;
-
-  /// Processing text.
-  final String? processingText;
-
-  /// Border color.
-  final Color? borderColor;
-
-  /// Padding.
-  final EdgeInsetsGeometry padding;
-
-  @override
-  State<CustomPrimaryAsyncButton> createState() =>
-      _CustomPrimaryAsyncButtonState();
-}
-
-class _CustomPrimaryAsyncButtonState extends State<CustomPrimaryAsyncButton> {
-  bool _isProcessing = false;
-  late final String randomKey;
-
-  @override
-  void initState() {
-    super.initState();
-    randomKey = DateTime.now().millisecondsSinceEpoch.toString();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPrimaryButton(
-      onTap: () async {
-        withDebounce(
-          key: randomKey,
-          () async {
-            setState(() {
-              _isProcessing = true;
-            });
-            await Future<void>.sync(() => widget.onTap?.call());
-            if (!mounted) {
-              return;
-            }
-            setState(() {
-              _isProcessing = false;
-            });
-          },
-        );
-      },
-      color: widget.color,
-      borderColor: widget.borderColor,
-      enabled: widget.enabled && !_isProcessing,
-      isProcessing: _isProcessing,
-      padding: widget.padding,
-      child: widget.child,
     );
   }
 }

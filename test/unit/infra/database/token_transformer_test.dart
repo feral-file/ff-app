@@ -290,37 +290,5 @@ void main() {
         expect(id, 'cid_test');
       });
     });
-
-    group('reconstructPlaylistItemFromTokenData', () {
-      test('reconstructs playlist item from valid token data', () {
-        final tokenData = AssetToken(
-          id: 1,
-          cid: 'cid_test123',
-          chain: 'eip155:1',
-          standard: 'ERC-721',
-          contractAddress: '0xCONTRACT',
-          tokenNumber: '1',
-          display: TokenMetadata(name: 'Test Artwork'),
-        ).toRestJson();
-
-        final item = TokenTransformer.reconstructPlaylistItemFromTokenData(
-          tokenData,
-        );
-
-        expect(item, isNotNull);
-        expect(item!.id, 'cid_test123');
-        expect(item.title, 'Test Artwork');
-      });
-
-      test('returns null for invalid token data', () {
-        final tokenData = <String, dynamic>{};
-
-        final item = TokenTransformer.reconstructPlaylistItemFromTokenData(
-          tokenData,
-        );
-
-        expect(item, isNull);
-      });
-    });
   });
 }

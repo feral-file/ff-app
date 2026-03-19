@@ -46,65 +46,9 @@ class DatabaseService {
   /// Enrichment status: enrichment failed and should be skipped for now.
   static const int enrichmentStatusFailed = 2;
 
-  // ── Raw write payload helpers ──────────────────────────────────────────────
-
-  /// Ingests raw token JSON for [address].
-  Future<void> ingestTokensForAddressFromRaw({
-    required String address,
-    required List<Object?> rawTokensJson,
-  }) async {
-    final tokens = rawTokensJson
-        .cast<Map<Object?, Object?>>()
-        .map((e) => AssetToken.fromRest(Map<String, dynamic>.from(e)))
-        .toList(growable: false);
-    await ingestTokensForAddress(address: address, tokens: tokens);
-  }
-
-  /// Writes enrichment results from a serialized payload.
-  ///
-  /// Each [rawEnrichments] element is a map with `itemId` and `tokenJson`.
-  Future<void> enrichBatchFromRaw({
-    required List<Object?> rawEnrichments,
-    required List<String> failedItemIds,
-  }) async {
-    final enrichments = rawEnrichments
-        .cast<Map<Object?, Object?>>()
-        .map((e) {
-          final m = Map<String, dynamic>.from(e);
-          return (
-            m['itemId'] as String,
-            AssetToken.fromRest(
-              Map<String, dynamic>.from(m['tokenJson'] as Map),
-            ),
-          );
-        })
-        .toList(growable: false);
-    if (enrichments.isNotEmpty) {
-      await enrichPlaylistItemsWithTokensBatch(enrichments: enrichments);
-    }
-    if (failedItemIds.isNotEmpty) {
-      await markPlaylistItemsEnrichmentFailed(failedItemIds);
-    }
-  }
-
   // ===========================================================================
   // Watch operations (reactive streams)
   // ===========================================================================
-
-  /// Watch channels as domain models.
-  ///
-  /// This is the Drift equivalent of the old repo's `watchChannelRows(...)`.
-  Stream<List<Channel>> watchChannels({
-    ChannelType? type,
-    int? limit,
-  }) {
-    return _db
-        .watchChannels(type: type?.index, limit: limit)
-        .debounceTime(const Duration(milliseconds: 300))
-        .map(
-          (rows) => rows.map(DatabaseConverters.channelDataToDomain).toList(),
-        );
-  }
 
   /// Watch channels by type, filtered to those with at least one playlist
   /// entry. Emits when channels, playlists, or playlist_entries change.
@@ -173,71 +117,6 @@ class DatabaseService {
           (rows) =>
               rows.map(DatabaseConverters.itemDataToDomainPreview).toList(),
         );
-  }
-
-  /// Watch all playlist items batched by playlistId.
-  ///
-  /// Emits a map of `{playlistId: items}` whenever any item changes in any
-  /// playlist. Prefer [watchPlaylistItems] for a single playlist to avoid
-  /// subscribing to every playlist.
-  ///
-  /// Returns a map where each key is a playlistId and the value is the ordered
-  /// list of items for that playlist (sorted by position or provenance based on
-  /// each playlist's sortMode).
-  Stream<Map<String, List<PlaylistItem>>> watchAllPlaylistItems() async* {
-    // Get all playlists (including their sortMode)
-    final allPlaylists = await getAllPlaylists();
-
-    if (allPlaylists.isEmpty) {
-      yield <String, List<PlaylistItem>>{};
-      return;
-    }
-
-    // Build a map of streams for each playlist
-    final playlistStreams = <String, Stream<List<ItemData>>>{};
-    for (final playlist in allPlaylists) {
-      final stream = playlist.sortMode == PlaylistSortMode.position
-          ? _db.watchPlaylistItemsByPosition(playlist.id)
-          : _db.watchPlaylistItemsByProvenance(playlist.id);
-      playlistStreams[playlist.id] = stream;
-    }
-
-    // Use a controller to manually merge all streams
-    final controller = StreamController<Map<String, List<PlaylistItem>>>();
-    final cache = <String, List<PlaylistItem>>{};
-
-    // Subscribe to all playlist streams
-    final subscriptions = <StreamSubscription<List<ItemData>>>[];
-
-    try {
-      for (final entry in playlistStreams.entries) {
-        final sub = entry.value.listen(
-          (itemsData) {
-            cache[entry.key] = itemsData
-                .map(DatabaseConverters.itemDataToDomainPreview)
-                .toList();
-            if (!controller.isClosed) {
-              controller.add(Map.from(cache));
-            }
-          },
-          onError: (Object err) {
-            if (!controller.isClosed) {
-              controller.addError(err);
-            }
-          },
-        );
-        subscriptions.add(sub);
-      }
-
-      // Emit the stream
-      yield* controller.stream;
-    } finally {
-      // Clean up subscriptions
-      for (final sub in subscriptions) {
-        await sub.cancel();
-      }
-      await controller.close();
-    }
   }
 
   /// Watch playlist items for a channel (domain models).
@@ -771,20 +650,6 @@ class DatabaseService {
     }
   }
 
-  /// Get all items from the database.
-  ///
-  /// Skips heavy JSON fields (provenance, reproduction, override, display, tokenData)
-  /// to optimize list UI queries.
-  Future<List<PlaylistItem>> getAllItems() async {
-    try {
-      final data = await _db.getAllItems();
-      return data.map(DatabaseConverters.itemDataToDomainPreview).toList();
-    } catch (e, stack) {
-      _log.severe('Failed to get all items', e, stack);
-      rethrow;
-    }
-  }
-
   /// Full-text search channels by title.
   Future<List<Channel>> searchChannelsByTitle(
     String query, {
@@ -848,26 +713,13 @@ class DatabaseService {
     }
   }
 
-  /// Debounce duration for [watchAllItems] stream (reduces emissions on rapid DB changes).
+  /// Debounce duration for items revision signal (reduces emissions on rapid DB changes).
   static const Duration watchAllItemsDebounce = Duration(milliseconds: 300);
-
-  /// Watch all items; emits when the items table changes.
-  /// Debounced by [watchAllItemsDebounce]. Uses same preview converter as [getAllItems].
-  Stream<List<PlaylistItem>> watchAllItems() {
-    return _db
-        .watchAllItems()
-        .map(
-          (rows) =>
-              rows.map(DatabaseConverters.itemDataToDomainPreview).toList(),
-        )
-        .debounceTime(watchAllItemsDebounce);
-  }
 
   /// Watch only a lightweight "items changed" signal.
   ///
   /// Emits item count values and re-emits when the items table changes.
-  /// Consumers that only need invalidation notifications should prefer this
-  /// over [watchAllItems] to avoid materializing all rows.
+  /// Use this when only invalidation notifications are needed (avoids materializing all rows).
   Stream<int> watchItemsRevisionSignal() {
     return _db.watchItemsRevisionSignal().debounceTime(watchAllItemsDebounce);
   }
@@ -990,21 +842,6 @@ class DatabaseService {
     }
   }
 
-  /// Get cached token items by their item IDs (CIDs).
-  ///
-  /// This is useful for looking up existing cached items before deciding to
-  /// refetch from the network.
-  Future<List<PlaylistItem>> getTokensByCids(List<String> cids) async {
-    if (cids.isEmpty) return [];
-    try {
-      final data = await _db.getItemsByIds(cids);
-      return data.map(DatabaseConverters.itemDataToDomain).toList();
-    } catch (e, stack) {
-      _log.severe('Failed to get tokens by cids', e, stack);
-      rethrow;
-    }
-  }
-
   // ========== Token Ingestion Operations ==========
 
   /// Ingest tokens from indexer for a specific address.
@@ -1108,81 +945,6 @@ class DatabaseService {
     }
   }
 
-  /// Ingest DP1 playlist with bare items (no enrichment).
-  ///
-  /// Inserts playlist and playlist items/entries immediately without fetching
-  /// indexer tokens. Items will have null thumbnailUrl/artists until enriched
-  /// separately by the enrichment service.
-  ///
-  /// Wraps all writes in a single transaction.
-  Future<void> ingestDP1PlaylistBare({
-    required DP1Playlist playlist,
-    required String baseUrl,
-    required String? channelId,
-  }) async {
-    try {
-      final domainPlaylist = DatabaseConverters.dp1PlaylistToDomain(
-        playlist,
-        baseUrl: baseUrl,
-        channelId: channelId,
-      );
-
-      if (playlist.items.isEmpty) {
-        // Single playlist write if no items
-        await ingestPlaylist(domainPlaylist);
-        _log.info('No items for DP1 playlist ${playlist.id}');
-        return;
-      }
-
-      final playlistItems = <PlaylistItem>[];
-      final entries = <PlaylistEntriesCompanion>[];
-
-      for (var i = 0; i < playlist.items.length; i++) {
-        final item = playlist.items[i];
-        // Convert without token enrichment (thumbnail/artists will be null)
-        final playlistItem = DatabaseConverters.dp1PlaylistItemToPlaylistItem(
-          item,
-        );
-        playlistItems.add(playlistItem);
-        entries.add(
-          DatabaseConverters.createPlaylistEntry(
-            playlistId: domainPlaylist.id,
-            itemId: playlistItem.id,
-            position: i,
-            sortKeyUs: 0,
-          ),
-        );
-      }
-
-      // Wrap all writes in a single transaction to reduce lock churn.
-      await _db.transaction(() async {
-        final playlistCompanion = DatabaseConverters.playlistToCompanion(
-          domainPlaylist,
-        );
-        await _db.upsertPlaylist(playlistCompanion);
-
-        final itemCompanions = playlistItems
-            .map(DatabaseConverters.playlistItemToCompanion)
-            .toList();
-        await _db.upsertItems(itemCompanions);
-
-        await _db.upsertPlaylistEntries(entries);
-        await _db.updatePlaylistItemCount(domainPlaylist.id);
-      });
-
-      _log.info(
-        'Ingested bare DP1 playlist ${playlist.id} with ${playlistItems.length} items',
-      );
-    } catch (e, stack) {
-      _log.severe(
-        'Failed to ingest bare DP1 playlist ${playlist.id}',
-        e,
-        stack,
-      );
-      rethrow;
-    }
-  }
-
   /// Ingest DP1 playlist (wire model) into the database.
   ///
   /// Items are the main source of truth. When [tokens] is provided, each item
@@ -1267,113 +1029,6 @@ class DatabaseService {
     }
   }
 
-  /// Get playlists from multiple baseUrls with pagination (domain only).
-  /// Order: by baseUrls order, then by createdAt ASC within each baseUrl.
-  Future<List<(Playlist, List<PlaylistItem>, String)>>
-  getPlaylistRowsByBaseUrls({
-    required List<String> baseUrls,
-    PlaylistType? type,
-    int? offset,
-    int? limit,
-  }) async {
-    if (baseUrls.isEmpty) return [];
-
-    final rows = await _db.getPlaylistsByBaseUrlsOrdered(
-      baseUrls: baseUrls,
-      type: type?.value,
-      offset: offset,
-      limit: limit,
-    );
-
-    final result = <(Playlist, List<PlaylistItem>, String)>[];
-    for (final row in rows) {
-      final itemsData = row.sortMode == 1
-          ? await _db.getPlaylistItemsByProvenance(row.id)
-          : await _db.getPlaylistItemsByPosition(row.id);
-      final playlist = DatabaseConverters.playlistDataToDomain(row);
-      final items = itemsData.map(DatabaseConverters.itemDataToDomain).toList();
-      result.add((playlist, items, row.baseUrl ?? ''));
-    }
-    return result;
-  }
-
-  /// Get channel by playlist ID (domain only).
-  ///
-  /// Returns a tuple of (channel, playlists list for UI, baseUrl).
-  /// The playlists list uses light projection to skip heavy JSON fields.
-  Future<(Channel, List<Playlist>, String)?> getChannelByPlaylistId(
-    String playlistId,
-  ) async {
-    final playlistData = await _db.getPlaylistById(playlistId);
-    if (playlistData == null || playlistData.channelId == null) return null;
-
-    final baseUrl = playlistData.baseUrl ?? '';
-    final channelId = playlistData.channelId!;
-
-    final channelData = await _db.getChannelById(channelId);
-    if (channelData == null) return null;
-
-    final channelPlaylistsData = await _db.getPlaylistsByChannel(channelId);
-    final channel = DatabaseConverters.channelDataToDomain(channelData);
-    final playlists = channelPlaylistsData
-        .map(DatabaseConverters.playlistDataToDomainPreview)
-        .toList();
-    return (channel, playlists, baseUrl);
-  }
-
-  /// Get playlists with items by channel/kind/baseUrl (domain only).
-  Future<List<(Playlist, List<PlaylistItem>)>> getPlaylistRowsWithItems({
-    String? channelId,
-    PlaylistType? type,
-    String? baseUrl,
-  }) async {
-    List<PlaylistData> rows;
-    if (channelId != null) {
-      rows = await _db.getPlaylistsByChannel(channelId);
-    } else {
-      rows = await _db.getAllPlaylists(type: type);
-    }
-
-    if (baseUrl != null) {
-      rows = rows.where((p) => p.baseUrl == baseUrl).toList();
-    }
-
-    final result = <(Playlist, List<PlaylistItem>)>[];
-    for (final row in rows) {
-      final itemsData = row.sortMode == 1
-          ? await _db.getPlaylistItemsByProvenance(row.id)
-          : await _db.getPlaylistItemsByPosition(row.id);
-      final playlist = DatabaseConverters.playlistDataToDomain(row);
-      final items = itemsData.map(DatabaseConverters.itemDataToDomain).toList();
-      result.add((playlist, items));
-    }
-    return result;
-  }
-
-  /// Delete all playlists of given kind and baseUrl.
-  /// Matches old repo's deleteAllPlaylists(kind, baseUrl).
-  Future<void> deleteAllPlaylistsByKindAndBaseUrl({
-    required PlaylistType type,
-    required String baseUrl,
-  }) async {
-    await _db.deletePlaylistsByTypeAndBaseUrl(
-      type: type,
-      baseUrl: baseUrl,
-    );
-  }
-
-  /// Delete all channels of given kind and baseUrl.
-  /// Matches old repo's deleteAllChannels(kind, baseUrl).
-  Future<void> deleteAllChannelsByKindAndBaseUrl({
-    required ChannelType type,
-    required String baseUrl,
-  }) async {
-    await _db.deleteChannelsByTypeAndBaseUrl(
-      type: type.value,
-      baseUrl: baseUrl,
-    );
-  }
-
   /// Clear all data from the database (for testing/reset).
   ///
   /// Uses a single batch so all deletes run in one transaction and the DB lock
@@ -1407,34 +1062,6 @@ class DatabaseService {
   /// Useful after batch ingestion operations to ensure durability.
   Future<void> checkpoint() async {
     await _db.checkpoint();
-  }
-
-  /// Ingest DP1 channels (wire model) as domain [Channel] rows.
-  ///
-  /// DP1 feed services should only deal with DP1 wire models; conversion and
-  /// persistence belong to the database layer.
-  Future<void> ingestDP1ChannelsWire({
-    required String baseUrl,
-    required List<DP1Channel> channels,
-    int? publisherId,
-  }) async {
-    final domainChannels = channels.map((dp1) {
-      return Channel(
-        id: dp1.id,
-        name: dp1.title,
-        type: ChannelType.dp1,
-        description: dp1.summary,
-        baseUrl: baseUrl,
-        slug: dp1.slug,
-        publisherId: publisherId,
-        curator: dp1.curator,
-        coverImageUrl: dp1.coverImage,
-        createdAt: dp1.created,
-        updatedAt: dp1.created,
-      );
-    }).toList();
-
-    await ingestChannels(domainChannels);
   }
 
   /// Ingest one DP1 channel and all its playlists/items in a single transaction.
@@ -1589,38 +1216,6 @@ class DatabaseService {
     throw StateError('Unreachable database retry state');
   }
 
-  /// Ingest a DP1 playlist wire model into the database.
-  ///
-  /// When [fetchTokens] is provided and playlist items have CIDs, tokens are
-  /// fetched and used to enrich items (thumbnail, artists). Otherwise no
-  /// enrichment. Delegates to [ingestDP1Playlist].
-  /// [channelId] must be set when ingesting in channel context so
-  /// getPlaylistItemsByChannel returns items (playlists.channel_id in DB).
-  Future<void> ingestDP1PlaylistWire({
-    required String baseUrl,
-    required DP1Playlist playlist,
-    String? channelId,
-    Future<List<AssetToken>?> Function(List<String> cids)? fetchTokens,
-  }) async {
-    List<AssetToken>? tokens;
-    if (fetchTokens != null) {
-      final cids = extractDP1ItemCids(playlist.items);
-      if (cids.isNotEmpty) {
-        try {
-          tokens = await fetchTokens(cids);
-        } on Exception catch (e) {
-          _log.warning('Failed to fetch enrichment tokens: $e');
-        }
-      }
-    }
-    await ingestDP1Playlist(
-      playlist: playlist,
-      baseUrl: baseUrl,
-      channelId: channelId,
-      tokens: tokens,
-    );
-  }
-
   /// Extract CIDs from DP1 playlist items.
   ///
   /// DP1 items do not always contain a `cid` field directly; we compute it from
@@ -1636,35 +1231,6 @@ class DatabaseService {
   // ===========================================================================
   // Enrichment queries (SQLite as single source of truth)
   // ===========================================================================
-
-  /// Returns true if any playlist entry still has an unenriched item.
-  ///
-  /// Failed items are excluded because they are intentionally not retried.
-  Future<bool> hasUnenrichedItemsRemain() async {
-    try {
-      final query = _db.customSelect(
-        '''
-        SELECT 1
-        FROM playlist_entries pe
-        JOIN items i ON pe.item_id = i.id
-        WHERE i.thumbnail_uri IS NULL
-          AND i.list_artist_json IS NULL
-          AND i.enrichment_status != ?1
-        LIMIT 1
-        ''',
-        variables: [Variable.withInt(enrichmentStatusFailed)],
-      );
-      final rows = await query.get();
-      return rows.isNotEmpty;
-    } catch (e, stack) {
-      if (_isOperationCancelled(e)) {
-        _log.fine('Unenriched-items probe cancelled');
-        return false;
-      }
-      _log.severe('Failed probing unenriched items', e, stack);
-      rethrow;
-    }
-  }
 
   /// Load high-priority bare items from database.
   ///
@@ -1825,7 +1391,6 @@ class DatabaseService {
       final companion = _buildEnrichmentCompanion(
         itemId: itemId,
         enrichedItem: enrichedItem,
-        tokenJson: jsonEncode(token.toRestJson()),
         nowUs: BigInt.from(DateTime.now().microsecondsSinceEpoch),
       );
       await _db.upsertItem(companion);
@@ -1886,14 +1451,13 @@ class DatabaseService {
     }
   }
 
-  /// Build [ItemsCompanion] for enrichment from [PlaylistItem] and token JSON.
+  /// Build [ItemsCompanion] for enrichment from [PlaylistItem].
   ///
   /// Persists provenance, sourceUri, refUri, durationSec, license, repro,
-  /// display, thumbnail, artists, and tokenData to preserve DP-1 compatibility.
+  /// display, thumbnail, and artists to preserve DP-1 compatibility.
   static ItemsCompanion _buildEnrichmentCompanion({
     required String itemId,
     required PlaylistItem enrichedItem,
-    required String tokenJson,
     required BigInt nowUs,
   }) {
     return ItemsCompanion(
@@ -1930,7 +1494,6 @@ class DatabaseService {
               ),
             )
           : const Value(null),
-      tokenDataJson: Value(tokenJson),
       enrichmentStatus: const Value(enrichmentStatusEnriched),
       updatedAtUs: Value(nowUs),
     );
@@ -1951,7 +1514,6 @@ class DatabaseService {
           return _buildEnrichmentCompanion(
             itemId: itemId,
             enrichedItem: enrichedItem,
-            tokenJson: jsonEncode(token.toRestJson()),
             nowUs: nowUs,
           );
         })

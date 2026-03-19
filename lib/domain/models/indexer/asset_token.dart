@@ -102,6 +102,7 @@ class AssetToken {
   final String tokenNumber;
   final String? currentOwner;
   final DateTime? updatedAt;
+
   /// Unified display data from indexer.
   final TokenMetadata? display;
   final PaginatedOwners? owners;
@@ -109,6 +110,7 @@ class AssetToken {
   final PaginatedOwnerProvenances? ownerProvenances;
   final List<MediaAsset>? metadataMediaAssets;
   final List<MediaAsset>? enrichmentSourceMediaAssets;
+
   /// Unified media assets from indexer (replaces deprecated metadata_media_assets + enrichment_source_media_assets).
   final List<MediaAsset>? mediaAssets;
 
@@ -120,7 +122,7 @@ class AssetToken {
         ...?enrichmentSourceMediaAssets,
       ];
 
-  factory AssetToken.fromGraphQL(Map<String, dynamic> json) => AssetToken(
+  factory AssetToken.fromJson(Map<String, dynamic> json) => AssetToken(
     id: int.parse(json['id'].toString()),
     cid: json['token_cid'] as String? ?? json['cid'] as String,
     chain: json['chain'] as String,
@@ -165,53 +167,7 @@ class AssetToken {
         .toList(),
   );
 
-
-  factory AssetToken.fromRest(Map<String, dynamic> json) => AssetToken(
-    id: int.parse(json['id'].toString()),
-    cid: json['token_cid'] as String? ?? json['cid'] as String,
-    chain: json['chain'] as String,
-    standard: json['standard'] as String? ?? '',
-    contractAddress: json['contract_address'] as String,
-    tokenNumber: json['token_number'].toString(),
-    currentOwner: json['current_owner'] as String?,
-    updatedAt: (json['updated_at'] != null)
-        ? DateTime.tryParse(json['updated_at'] as String)
-        : null,
-    display: json['display'] != null
-        ? TokenMetadata.fromJson(
-            Map<String, dynamic>.from(json['display'] as Map),
-          )
-        : null,
-    owners: json['owners'] != null
-        ? PaginatedOwners.fromJson(
-            Map<String, dynamic>.from(json['owners'] as Map),
-          )
-        : null,
-    provenanceEvents: json['provenance_events'] != null
-        ? PaginatedProvenanceEvents.fromJson(
-            Map<String, dynamic>.from(json['provenance_events'] as Map),
-          )
-        : null,
-    ownerProvenances: json['owner_provenances'] != null
-        ? PaginatedOwnerProvenances.fromJson(
-            Map<String, dynamic>.from(json['owner_provenances'] as Map),
-          )
-        : null,
-    metadataMediaAssets: (json['metadata_media_assets'] as List?)
-        ?.map((e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)))
-        .toList(),
-    enrichmentSourceMediaAssets:
-        (json['enrichment_source_media_assets'] as List?)
-            ?.map(
-              (e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)),
-            )
-            .toList(),
-    mediaAssets: (json['media_assets'] as List?)
-        ?.map((e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)))
-        .toList(),
-  );
-
-  Map<String, dynamic> toRestJson() => {
+  Map<String, dynamic> toJson() => {
     'id': id,
     'cid': cid,
     'chain': chain,
@@ -301,11 +257,11 @@ class AssetToken {
           : null,
       mediaAssets: displayData['media_assets'] != null
           ? (displayData['media_assets'] as List)
-              .map(
-                (e) =>
-                    MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)),
-              )
-              .toList()
+                .map(
+                  (e) =>
+                      MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)),
+                )
+                .toList()
           : null,
     );
   }
@@ -697,8 +653,7 @@ class MediaAsset {
     sourceUrl: json['source_url'] as String,
     mimeType: json['mime_type'] as String?,
     variantUrls: Map<String, dynamic>.from(
-      (json['variants'] ?? json['variant_urls'] ?? <String, dynamic>{})
-          as Map,
+      (json['variants'] ?? json['variant_urls'] ?? <String, dynamic>{}) as Map,
     ),
   );
 

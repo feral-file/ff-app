@@ -112,27 +112,6 @@ class DP1Playlist {
   }
 }
 
-/// Extension for removing duplicate playlists based on unique identifiers
-extension DP1PlaylistListExtension on List<DP1Playlist> {
-  /// Remove duplicate playlists based on unique identifiers
-  List<DP1Playlist> removeDuplicates() {
-    final seenIds = <String>{};
-    final uniquePlaylists = <DP1Playlist>[];
-
-    for (final playlist in this) {
-      // DP1Playlist has id field as String (required)
-      final uniqueId = playlist.id;
-
-      if (!seenIds.contains(uniqueId)) {
-        seenIds.add(uniqueId);
-        uniquePlaylists.add(playlist);
-      }
-    }
-
-    return uniquePlaylists;
-  }
-}
-
 class DynamicQuery {
   DynamicQuery({
     required this.endpoint,
