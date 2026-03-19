@@ -88,8 +88,6 @@ class AssetToken {
     this.owners,
     this.provenanceEvents,
     this.ownerProvenances,
-    this.metadataMediaAssets,
-    this.enrichmentSourceMediaAssets,
     this.mediaAssets,
     this.display,
   });
@@ -108,19 +106,12 @@ class AssetToken {
   final PaginatedOwners? owners;
   final PaginatedProvenanceEvents? provenanceEvents;
   final PaginatedOwnerProvenances? ownerProvenances;
-  final List<MediaAsset>? metadataMediaAssets;
-  final List<MediaAsset>? enrichmentSourceMediaAssets;
 
-  /// Unified media assets from indexer (replaces deprecated metadata_media_assets + enrichment_source_media_assets).
+  /// Unified media assets from indexer.
   final List<MediaAsset>? mediaAssets;
 
-  /// All media assets: unified media_assets when present, else merged metadata + enrichment_source.
-  List<MediaAsset> get allMediaAssets =>
-      mediaAssets ??
-      [
-        ...?metadataMediaAssets,
-        ...?enrichmentSourceMediaAssets,
-      ];
+  /// All media assets.
+  List<MediaAsset> get allMediaAssets => mediaAssets ?? [];
 
   factory AssetToken.fromJson(Map<String, dynamic> json) => AssetToken(
     id: int.parse(json['id'].toString()),
@@ -153,15 +144,6 @@ class AssetToken {
             Map<String, dynamic>.from(json['owner_provenances'] as Map),
           )
         : null,
-    metadataMediaAssets: (json['metadata_media_assets'] as List?)
-        ?.map((e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)))
-        .toList(),
-    enrichmentSourceMediaAssets:
-        (json['enrichment_source_media_assets'] as List?)
-            ?.map(
-              (e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)),
-            )
-            .toList(),
     mediaAssets: (json['media_assets'] as List?)
         ?.map((e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList(),
@@ -178,12 +160,7 @@ class AssetToken {
     'owners': owners?.toJson(),
     'provenance_events': provenanceEvents?.toJson(),
     'owner_provenances': ownerProvenances?.toJson(),
-    'metadata_media_assets': metadataMediaAssets
-        ?.map((e) => e.toJson())
-        .toList(),
-    'enrichment_source_media_assets': enrichmentSourceMediaAssets
-        ?.map((e) => e.toJson())
-        .toList(),
+    'media_assets': mediaAssets?.map((e) => e.toJson()).toList(),
     'current_owner': currentOwner,
     'updated_at': updatedAt?.toIso8601String(),
     'current_wner': currentOwner,
@@ -237,24 +214,6 @@ class AssetToken {
             )
           : null,
 
-      metadataMediaAssets: displayData['metadata_media_assets'] != null
-          ? (displayData['metadata_media_assets'] as List)
-                .map(
-                  (e) =>
-                      MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)),
-                )
-                .toList()
-          : null,
-
-      enrichmentSourceMediaAssets:
-          displayData['enrichment_source_media_assets'] != null
-          ? (displayData['enrichment_source_media_assets'] as List)
-                .map(
-                  (e) =>
-                      MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)),
-                )
-                .toList()
-          : null,
       mediaAssets: displayData['media_assets'] != null
           ? (displayData['media_assets'] as List)
                 .map(
@@ -279,8 +238,6 @@ class AssetToken {
     PaginatedOwners? owners,
     PaginatedProvenanceEvents? provenanceEvents,
     PaginatedOwnerProvenances? ownerProvenances,
-    List<MediaAsset>? metadataMediaAssets,
-    List<MediaAsset>? enrichmentSourceMediaAssets,
     List<MediaAsset>? mediaAssets,
   }) {
     return AssetToken(
@@ -296,9 +253,6 @@ class AssetToken {
       owners: owners ?? this.owners,
       provenanceEvents: provenanceEvents ?? this.provenanceEvents,
       ownerProvenances: ownerProvenances ?? this.ownerProvenances,
-      metadataMediaAssets: metadataMediaAssets ?? this.metadataMediaAssets,
-      enrichmentSourceMediaAssets:
-          enrichmentSourceMediaAssets ?? this.enrichmentSourceMediaAssets,
       mediaAssets: mediaAssets ?? this.mediaAssets,
     );
   }
