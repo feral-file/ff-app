@@ -126,8 +126,3 @@ class _SvgImageState extends State<SvgImage> {
     );
   }
 }
-
-class SvgNotSupported {
-  SvgNotSupported(this.svgData);
-  final String svgData;
-}

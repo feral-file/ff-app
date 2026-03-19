@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:app/domain/extensions/asset_token_ext.dart';
 import 'package:app/domain/models/channel.dart';
-import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_manifest.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
@@ -346,13 +345,6 @@ class DatabaseConverters {
     );
   }
 
-  /// Convert ItemData to DP1PlaylistItem (wire model).
-  /// Matches old repo's DP1ItemExtension.fromItemRow / DP1 playlist item shape.
-  static DP1PlaylistItem itemDataToDP1PlaylistItem(ItemData data) {
-    final playlistItem = itemDataToDomain(data);
-    return playlistItemToDP1PlaylistItem(playlistItem);
-  }
-
   /// Convert PlaylistItem (domain) to DP1PlaylistItem (wire).
   /// PlaylistItem extends DP1PlaylistItem so the item is returned as-is.
   static DP1PlaylistItem playlistItemToDP1PlaylistItem(PlaylistItem item) {
@@ -383,17 +375,6 @@ class DatabaseConverters {
           : '',
       dynamicQueries: playlist.dynamicQueries ?? const [],
     );
-  }
-
-  /// Convert PlaylistData + items to DP1Playlist (wire model).
-  /// Matches old repo's _addressPlaylistRowToModel for DP1 playlists.
-  static DP1Playlist playlistDataAndItemsToDP1Playlist(
-    PlaylistData data,
-    List<ItemData> items,
-  ) {
-    final playlistItems = items.map(itemDataToDomain).toList();
-    final playlist = playlistDataToDomain(data);
-    return playlistAndItemsToDP1Playlist(playlist, playlistItems);
   }
 
   /// Convert DP1Playlist (wire) to Playlist domain model.
@@ -468,31 +449,4 @@ class DatabaseConverters {
   /// Returns [s] if non-null and non-empty; otherwise null.
   static String? _nonEmptyString(String? s) =>
       (s != null && s.isNotEmpty) ? s : null;
-
-  /// Convert ChannelData + playlist full URLs to DP1Channel (wire model).
-  /// Matches old repo's Channel in ChannelReference.
-  static DP1Channel channelDataToDP1Channel(
-    ChannelData data,
-    List<String> playlistUrls,
-  ) {
-    final channel = channelDataToDomain(data);
-    return channelToDP1Channel(channel, playlistUrls);
-  }
-
-  /// Convert Channel (domain) to DP1Channel (wire).
-  static DP1Channel channelToDP1Channel(
-    Channel channel,
-    List<String> playlistUrls,
-  ) {
-    return DP1Channel(
-      id: channel.id,
-      slug: channel.slug ?? '',
-      title: channel.name,
-      curator: channel.curator,
-      summary: channel.description,
-      playlists: playlistUrls,
-      created: channel.createdAt ?? DateTime.now(),
-      coverImage: channel.coverImageUrl,
-    );
-  }
 }

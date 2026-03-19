@@ -59,10 +59,6 @@ class LoadingWidget extends StatelessWidget {
   /// Default GIF size matching old repo (52).
   static const double _loadingGifSize = 52;
 
-  /// Minimum height needed for the default content (GIF + spacing + text).
-  /// Used to avoid overflow when parent has tight height (e.g. carousel row 65px).
-  static const double _minContentHeight = 66;
-
   @override
   Widget build(BuildContext context) {
     return Container(

@@ -82,16 +82,6 @@ AllPlaylistsQueryParams parseAllPlaylistsQuery(Map<String, String>? query) {
   );
 }
 
-/// Parses all-playlists query from a query string (e.g. "?channelTypes=dp1").
-AllPlaylistsQueryParams parseAllPlaylistsQueryFromString(String? queryString) {
-  if (queryString == null || queryString.isEmpty) {
-    return (channelTypes: null, channelIds: null, playlistTypes: null);
-  }
-  final s = queryString.startsWith('?') ? queryString : '?$queryString';
-  final uri = Uri.parse('http://x/$s');
-  return parseAllPlaylistsQuery(uri.queryParameters);
-}
-
 /// Metadata for the all-playlists screen header.
 typedef AllPlaylistsMetadata = ({
   String? title,

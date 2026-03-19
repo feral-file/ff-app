@@ -143,8 +143,6 @@ extension AssetTokenExtension on AssetToken {
     return null;
   }
 
-  String get displayKey => cid.hashCode.toString();
-
   List<Artist> get getArtists {
     return enrichmentSource?.artists ?? metadata?.artists ?? [];
   }
