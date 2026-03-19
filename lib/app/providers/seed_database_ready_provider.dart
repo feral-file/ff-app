@@ -1,6 +1,5 @@
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/local_data_cleanup_provider.dart';
-import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
@@ -15,12 +14,15 @@ class SeedDatabaseReadyActions {
     required this.onReady,
   });
 
-  /// Runs when transitioning to not-ready: stop workers, invalidate, close DB,
-  /// delete files. Does NOT set [isSeedDatabaseReadyProvider]; caller does that.
+  /// Callback for [beforeReplace]: prepares for replace (e.g. drain workers,
+  /// close DB). Does NOT perform replace or delete files.
+  /// [replaceDatabaseFromTemporaryFile] does delete+rename. Does NOT set
+  /// [isSeedDatabaseReadyProvider]; caller does that.
   final Future<void> Function() onNotReady;
 
-  /// Runs when transitioning to ready. Infra invalidation when DB is replaced
-  /// is handled in [afterReplace] in the sync flow.
+  /// Callback for [setReady]: rebinds when DB becomes ready (e.g. invalidate
+  /// providers). Called after sync completes, not as the sync's afterReplace.
+  /// Does NOT perform replace.
   final Future<void> Function() onReady;
 }
 
@@ -46,7 +48,8 @@ final seedDatabaseReadyActionsProvider = Provider<SeedDatabaseReadyActions>((
     cleanupService.invalidateListProvidersBeforeDbClose?.call();
     await SchedulerBinding.instance.endOfFrame;
     await ref.read(databaseServiceProvider).close();
-    await ref.read(seedDatabaseServiceProvider).deleteDatabaseFiles();
+    // Do NOT delete files here. replaceDatabaseFromTemporaryFile deletes and
+    // renames atomically. If replace fails, old DB remains (project_spec).
   }
 
   Future<void> onReady() async {
@@ -63,7 +66,8 @@ final seedDatabaseReadyActionsProvider = Provider<SeedDatabaseReadyActions>((
 });
 
 /// Notifier that manages seed database ready state.
-/// When state changes via [setNotReady]/[setReady], triggers beforeReplace/afterReplace logic.
+/// [setNotReady] is passed as beforeReplace to sync; [setReady] is called after
+/// sync completes when DB was replaced.
 class SeedDatabaseReadyNotifier extends Notifier<bool> {
   @override
   bool build() => true;
@@ -101,5 +105,5 @@ class SeedDatabaseReadyNotifier extends Notifier<bool> {
 /// triggers automatically on value change.
 final isSeedDatabaseReadyProvider =
     NotifierProvider<SeedDatabaseReadyNotifier, bool>(
-  SeedDatabaseReadyNotifier.new,
-);
+      SeedDatabaseReadyNotifier.new,
+    );

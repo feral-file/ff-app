@@ -12,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// so subsequent syncs run in background (suppressLoading).
 class _FakeAppStateService implements AppStateService {
   _FakeAppStateService({bool initialHasCompletedSeedDownload = false})
-      : _hasCompletedSeedDownload = initialHasCompletedSeedDownload;
+    : _hasCompletedSeedDownload = initialHasCompletedSeedDownload;
 
   bool _hasCompletedSeedDownload;
 
@@ -52,7 +52,8 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
       required bool hasLocalDatabase,
       String? localEtag,
       String? remoteEtag,
-    })? onDownloadStarted,
+    })?
+    onDownloadStarted,
     void Function(double progress)? onProgress,
     bool failSilently = false,
     bool Function()? isSessionActive,
@@ -164,7 +165,10 @@ void main() {
 
     await container.read(seedDownloadProvider.notifier).sync();
 
-    expect(container.read(seedDownloadProvider).status, SeedDownloadStatus.done);
+    expect(
+      container.read(seedDownloadProvider).status,
+      SeedDownloadStatus.done,
+    );
 
     final syncingStates = states.where(
       (s) => s.status == SeedDownloadStatus.syncing,
@@ -189,7 +193,10 @@ void main() {
 
     await container.read(seedDownloadProvider.notifier).sync();
 
-    expect(container.read(seedDownloadProvider).status, SeedDownloadStatus.done);
+    expect(
+      container.read(seedDownloadProvider).status,
+      SeedDownloadStatus.done,
+    );
 
     final syncingStates = states.where(
       (s) => s.status == SeedDownloadStatus.syncing,
@@ -208,110 +215,130 @@ void main() {
     );
     addTearDown(container.dispose);
 
-    await container.read(seedDownloadProvider.notifier).sync(
-      failSilently: false,
-    );
+    await container
+        .read(seedDownloadProvider.notifier)
+        .sync(
+          failSilently: false,
+        );
 
     expect(fakeSyncService.lastFailSilently, isFalse);
   });
 
-  test('setReady is called and runs onReady only when DB was replaced', () async {
-    final fakeSyncService = _FakeSeedDatabaseSyncService();
-    var onReadyCalled = false;
-    final actions = SeedDatabaseReadyActions(
-      onNotReady: _noOpFuture,
-      onReady: () async {
-        onReadyCalled = true;
-      },
-    );
+  test(
+    'setReady is called and runs onReady only when DB was replaced',
+    () async {
+      final fakeSyncService = _FakeSeedDatabaseSyncService();
+      var onReadyCalled = false;
+      final actions = SeedDatabaseReadyActions(
+        onNotReady: _noOpFuture,
+        onReady: () async {
+          onReadyCalled = true;
+        },
+      );
 
-    final container = ProviderContainer.test(
-      overrides: [
-        seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
-        appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
-        seedDatabaseReadyActionsProvider.overrideWithValue(actions),
-      ],
-    );
-    addTearDown(container.dispose);
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    await container.read(seedDownloadProvider.notifier).sync();
+      await container.read(seedDownloadProvider.notifier).sync();
 
-    expect(onReadyCalled, isTrue, reason: 'setReady runs onReady when DB replaced');
-  });
+      expect(
+        onReadyCalled,
+        isTrue,
+        reason: 'setReady runs onReady when DB replaced',
+      );
+    },
+  );
 
-  test('setReady is not called when sync skips download (ETag unchanged)', () async {
-    final fakeSyncService = _FakeSeedDatabaseSyncService()..skipDownload = true;
-    var onReadyCalled = false;
-    final actions = SeedDatabaseReadyActions(
-      onNotReady: _noOpFuture,
-      onReady: () async {
-        onReadyCalled = true;
-      },
-    );
+  test(
+    'setReady is not called when sync skips download (ETag unchanged)',
+    () async {
+      final fakeSyncService = _FakeSeedDatabaseSyncService()
+        ..skipDownload = true;
+      var onReadyCalled = false;
+      final actions = SeedDatabaseReadyActions(
+        onNotReady: _noOpFuture,
+        onReady: () async {
+          onReadyCalled = true;
+        },
+      );
 
-    final container = ProviderContainer.test(
-      overrides: [
-        seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
-        appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
-        seedDatabaseReadyActionsProvider.overrideWithValue(actions),
-      ],
-    );
-    addTearDown(container.dispose);
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    await container.read(seedDownloadProvider.notifier).sync();
+      await container.read(seedDownloadProvider.notifier).sync();
 
-    expect(onReadyCalled, isFalse, reason: 'no invalidation when DB unchanged');
-  });
+      expect(
+        onReadyCalled,
+        isFalse,
+        reason: 'no invalidation when DB unchanged',
+      );
+    },
+  );
 
-  test('overridden session does not update state or callbacks on completion', () async {
-    final completer = Completer<void>();
-    final fakeSyncService = _FakeSeedDatabaseSyncService();
-    final slowFake = _SlowFakeSeedDatabaseSyncService(
-      delegate: fakeSyncService,
-      beforeComplete: completer.future,
-    );
-    var onReadyCallCount = 0;
-    final actions = SeedDatabaseReadyActions(
-      onNotReady: _noOpFuture,
-      onReady: () async {
-        onReadyCallCount++;
-      },
-    );
+  test(
+    'overridden session does not update state or callbacks on completion',
+    () async {
+      final completer = Completer<void>();
+      final fakeSyncService = _FakeSeedDatabaseSyncService();
+      final slowFake = _SlowFakeSeedDatabaseSyncService(
+        delegate: fakeSyncService,
+        beforeComplete: completer.future,
+      );
+      var onReadyCallCount = 0;
+      final actions = SeedDatabaseReadyActions(
+        onNotReady: _noOpFuture,
+        onReady: () async {
+          onReadyCallCount++;
+        },
+      );
 
-    final container = ProviderContainer.test(
-      overrides: [
-        seedDatabaseSyncServiceProvider.overrideWithValue(slowFake),
-        appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
-        seedDatabaseReadyActionsProvider.overrideWithValue(actions),
-      ],
-    );
-    addTearDown(container.dispose);
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(slowFake),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    final notifier = container.read(seedDownloadProvider.notifier);
-    final sync1Future = notifier.sync();
+      final notifier = container.read(seedDownloadProvider.notifier);
+      final sync1Future = notifier.sync();
 
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-    final sync2Future = notifier.sync();
-    completer.complete();
-    await sync1Future;
-    await sync2Future;
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final sync2Future = notifier.sync();
+      completer.complete();
+      await sync1Future;
+      await sync2Future;
 
-    expect(
-      onReadyCallCount,
-      1,
-      reason: 'only the active (second) session must call onReady',
-    );
-    expect(
-      fakeSyncService.syncCallCount,
-      2,
-      reason: 'both syncs must run',
-    );
-    expect(
-      container.read(seedDownloadProvider).status,
-      SeedDownloadStatus.done,
-      reason: 'final state from active session',
-    );
-  });
+      expect(
+        onReadyCallCount,
+        1,
+        reason: 'only the active (second) session must call onReady',
+      );
+      expect(
+        fakeSyncService.syncCallCount,
+        2,
+        reason: 'both syncs must run',
+      );
+      expect(
+        container.read(seedDownloadProvider).status,
+        SeedDownloadStatus.done,
+        reason: 'final state from active session',
+      );
+    },
+  );
 }
 
 /// Wraps a sync service: delegates until onDownloadStarted, then awaits
@@ -335,7 +362,8 @@ class _SlowFakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
       required bool hasLocalDatabase,
       String? localEtag,
       String? remoteEtag,
-    })? onDownloadStarted,
+    })?
+    onDownloadStarted,
     void Function(double progress)? onProgress,
     bool failSilently = false,
     bool Function()? isSessionActive,

@@ -108,7 +108,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     }
   }
 
-  /// Syncs seed DB from remote. Uses [setNotReady]/[setReady] for beforeReplace/afterReplace.
+  /// Syncs seed DB from remote. Passes [setNotReady] as beforeReplace; passes
+  /// [performReconnectInfraInvalidation] as afterReplace. Calls [setReady] after
+  /// sync when updated. The actual replace is in [replaceDatabaseFromTemporaryFile].
   ///
   /// Always starts a new session; a newer session overrides the previous. Inactive
   /// sessions must not update state, provider, or UI on completion.
@@ -121,6 +123,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     bool completeSeedDatabaseGate = true,
     bool failSilently = true,
     void Function(double progress)? onProgress,
+
     /// Called when a download will actually occur (after ETag check).
     /// Use to show UI (e.g. toast) only when download starts, not on ETag-unchanged skip.
     void Function()? onDownloadStarted,
@@ -140,7 +143,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         forceReplace: forceReplace,
         beforeReplace: seedReadyNotifier.setNotReady,
         afterReplace: () async {
-          ref.read(localDataCleanupServiceProvider).performReconnectInfraInvalidation();
+          ref
+              .read(localDataCleanupServiceProvider)
+              .performReconnectInfraInvalidation();
         },
         isSessionActive: () => _isSessionActive(session),
         onDownloadStarted:
