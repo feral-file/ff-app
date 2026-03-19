@@ -438,6 +438,8 @@ class AppDatabase extends _$AppDatabase {
   /// entry. Emits when [channels], [playlists], or [playlist_entries] change.
   /// Use this instead of [watchChannels] when the UI must react to
   /// add/remove address or favorite changes.
+  /// For localVirtual (type=1): also include channels with address playlists
+  /// (even empty) so My Collection always shows when user has added addresses.
   Stream<List<ChannelData>> watchChannelsByType(
     int type, {
     int? limit,
@@ -449,15 +451,34 @@ class AppDatabase extends _$AppDatabase {
       variables.add(Variable.withInt(limit));
       variables.add(Variable.withInt(offset));
     }
-    return customSelect(
-      '''
-      SELECT c.* FROM channels c
-      WHERE c.type = ?
+    // localVirtual (1): show channel if it has playlists with items OR
+    // address-based playlists. dp1 (0): only playlists with items.
+    const addressBasedType = 1;
+    final existsClause = type == addressBasedType
+        ? '''
+        AND (
+          EXISTS (
+            SELECT 1 FROM playlists p
+            INNER JOIN playlist_entries pe ON p.id = pe.playlist_id
+            WHERE p.channel_id = c.id
+          )
+          OR EXISTS (
+            SELECT 1 FROM playlists p
+            WHERE p.channel_id = c.id AND p.type = $addressBasedType
+          )
+        )
+        '''
+        : '''
         AND EXISTS (
           SELECT 1 FROM playlists p
           INNER JOIN playlist_entries pe ON p.id = pe.playlist_id
           WHERE p.channel_id = c.id
         )
+        ''';
+    return customSelect(
+      '''
+      SELECT c.* FROM channels c
+      WHERE c.type = ?$existsClause
       ORDER BY COALESCE(c.publisher_id, 2147483647),
         c.sort_order ASC NULLS LAST,
         c.id ASC
@@ -473,8 +494,8 @@ class AppDatabase extends _$AppDatabase {
 
   /// Get channels by type with optional pagination.
   /// Only returns channels that have at least one item (playlist entry).
-  /// Order matches [watchChannels] (sort_order asc, id asc) for consistent
-  /// paging.
+  /// For localVirtual (type=1): also include channels with address playlists
+  /// (even empty). Order matches [watchChannels] for consistent paging.
   Future<List<ChannelData>> getChannelsByType(
     int type, {
     int? limit,
@@ -486,15 +507,32 @@ class AppDatabase extends _$AppDatabase {
       variables.add(Variable.withInt(limit));
       variables.add(Variable.withInt(offset));
     }
-    final rows = await customSelect(
-      '''
-      SELECT c.* FROM channels c
-      WHERE c.type = ?
+    const addressBasedType = 1;
+    final existsClause = type == addressBasedType
+        ? '''
+        AND (
+          EXISTS (
+            SELECT 1 FROM playlists p
+            INNER JOIN playlist_entries pe ON p.id = pe.playlist_id
+            WHERE p.channel_id = c.id
+          )
+          OR EXISTS (
+            SELECT 1 FROM playlists p
+            WHERE p.channel_id = c.id AND p.type = $addressBasedType
+          )
+        )
+        '''
+        : '''
         AND EXISTS (
           SELECT 1 FROM playlists p
           INNER JOIN playlist_entries pe ON p.id = pe.playlist_id
           WHERE p.channel_id = c.id
         )
+        ''';
+    final rows = await customSelect(
+      '''
+      SELECT c.* FROM channels c
+      WHERE c.type = ?$existsClause
       ORDER BY COALESCE(c.publisher_id, 2147483647),
         c.sort_order ASC NULLS LAST,
         c.id ASC

@@ -7,6 +7,7 @@ import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/all_playlists_route.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/theme/app_color.dart';
@@ -191,7 +192,7 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
         ? nextMeSectionState
         : _cachedMeSectionState;
     final personalPlaylists = displayMeSectionState.playlists
-        .where((p) => p.itemCount > 0)
+        .where((p) => p.itemCount > 0 || p.isAddressPlaylist)
         .toList();
     final error = curatedState.error ?? displayMeSectionState.error;
     final curatedPlaylists = curatedState.playlists;
