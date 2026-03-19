@@ -50,9 +50,6 @@ class IndexerServiceIsolate implements IndexerServiceIsolateOperations {
   /// Whether the isolate is running.
   bool get isRunning => _isolate != null;
 
-  /// Resolves when the isolate handshake is complete.
-  Future<void> get ready => _ready.future;
-
   /// Starts the isolate. Must be called before any other method.
   Future<void> start() async {
     if (_isolate != null) return;
@@ -159,7 +156,7 @@ class IndexerServiceIsolate implements IndexerServiceIsolateOperations {
     final tokens = items
         .whereType<Map<Object?, Object?>>()
         .map(
-          (e) => AssetToken.fromRest(Map<String, dynamic>.from(e as Map)),
+          (e) => AssetToken.fromJson(Map<String, dynamic>.from(e as Map)),
         )
         .toList(growable: false);
     final nextOffset = result['nextOffset'] as int?;
@@ -188,7 +185,7 @@ class IndexerServiceIsolate implements IndexerServiceIsolateOperations {
   ) async {
     if (_sendPort == null) {
       throw StateError(
-        'IndexerServiceIsolate not ready. Call start() and await ready.',
+        'IndexerServiceIsolate not ready. Call start() first.',
       );
     }
 
@@ -306,7 +303,7 @@ void _isolateEntry(List<Object?> args) {
               offset: map?['offset'] as int?,
             );
             return {
-              'items': page.tokens.map((t) => t.toRestJson()).toList(),
+              'items': page.tokens.map((t) => t.toJson()).toList(),
               'nextOffset': page.nextOffset,
             };
 
@@ -368,11 +365,11 @@ Future<Map<String, dynamic>> _rebuildMetadataAndFetchToken(
             error: 'Token not found after metadata rebuild',
           ).toJson();
         }
-        return RebuildMetadataDone(token: token.toRestJson()).toJson();
+        return RebuildMetadataDone(token: token.toJson()).toJson();
       }
       await Future<void>.delayed(pollInterval);
     }
-    return RebuildMetadataFailed(
+    return const RebuildMetadataFailed(
       error: 'Metadata rebuild timed out after $maxPollCount polls',
     ).toJson();
   } on Object catch (e) {

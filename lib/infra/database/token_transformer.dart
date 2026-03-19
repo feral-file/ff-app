@@ -190,7 +190,7 @@ class TokenTransformer {
     String? ownerAddress,
   }) {
     try {
-      final token = AssetToken.fromRest(tokenData);
+      final token = AssetToken.fromJson(tokenData);
       return assetTokenToPlaylistItem(token: token, ownerAddress: ownerAddress);
     } on Object {
       // If reconstruction fails, return null

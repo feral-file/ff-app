@@ -22,10 +22,6 @@ abstract class RebuildMetadataResult {
 class RebuildMetadataDone extends RebuildMetadataResult {
   const RebuildMetadataDone({required this.token});
 
-  static const String kind = 'RebuildMetadataDone';
-
-  final Map<String, dynamic> token;
-
   factory RebuildMetadataDone.fromJson(Map<String, dynamic> json) {
     final token = json['token'] as Map<String, dynamic>?;
     if (token == null) {
@@ -34,27 +30,31 @@ class RebuildMetadataDone extends RebuildMetadataResult {
     return RebuildMetadataDone(token: token);
   }
 
+  static const String kind = 'RebuildMetadataDone';
+
+  final Map<String, dynamic> token;
+
   Map<String, dynamic> toJson() => {
         'kind': kind,
         'token': token,
       };
 
   /// Parsed token as [AssetToken].
-  AssetToken get assetToken => AssetToken.fromRest(token);
+  AssetToken get assetToken => AssetToken.fromJson(token);
 }
 
 /// Failure: metadata rebuild failed with error message.
 class RebuildMetadataFailed extends RebuildMetadataResult {
   const RebuildMetadataFailed({required this.error});
 
-  static const String kind = 'RebuildMetadataFailed';
-
-  final String error;
-
   factory RebuildMetadataFailed.fromJson(Map<String, dynamic> json) =>
       RebuildMetadataFailed(
         error: json['error'] as String? ?? 'Metadata rebuild failed',
       );
+
+  static const String kind = 'RebuildMetadataFailed';
+
+  final String error;
 
   Map<String, dynamic> toJson() => {
         'kind': kind,

@@ -306,7 +306,7 @@ void main() {
           contractAddress: '0xCONTRACT',
           tokenNumber: '1',
           metadata: TokenMetadata(name: 'Test Artwork'),
-        ).toRestJson();
+        ).toJson();
 
         final item = TokenTransformer.reconstructPlaylistItemFromTokenData(
           tokenData,
