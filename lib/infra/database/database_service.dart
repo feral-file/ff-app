@@ -1391,7 +1391,6 @@ class DatabaseService {
       final companion = _buildEnrichmentCompanion(
         itemId: itemId,
         enrichedItem: enrichedItem,
-        tokenJson: jsonEncode(token.toJson()),
         nowUs: BigInt.from(DateTime.now().microsecondsSinceEpoch),
       );
       await _db.upsertItem(companion);
@@ -1452,14 +1451,13 @@ class DatabaseService {
     }
   }
 
-  /// Build [ItemsCompanion] for enrichment from [PlaylistItem] and token JSON.
+  /// Build [ItemsCompanion] for enrichment from [PlaylistItem].
   ///
   /// Persists provenance, sourceUri, refUri, durationSec, license, repro,
-  /// display, thumbnail, artists, and tokenData to preserve DP-1 compatibility.
+  /// display, thumbnail, and artists to preserve DP-1 compatibility.
   static ItemsCompanion _buildEnrichmentCompanion({
     required String itemId,
     required PlaylistItem enrichedItem,
-    required String tokenJson,
     required BigInt nowUs,
   }) {
     return ItemsCompanion(
@@ -1496,7 +1494,6 @@ class DatabaseService {
               ),
             )
           : const Value(null),
-      tokenDataJson: Value(tokenJson),
       enrichmentStatus: const Value(enrichmentStatusEnriched),
       updatedAtUs: Value(nowUs),
     );
@@ -1517,7 +1514,6 @@ class DatabaseService {
           return _buildEnrichmentCompanion(
             itemId: itemId,
             enrichedItem: enrichedItem,
-            tokenJson: jsonEncode(token.toJson()),
             nowUs: nowUs,
           );
         })

@@ -179,7 +179,7 @@ class DatabaseConverters {
 
   /// Convert ItemData to PlaylistItem domain model (full deserialization).
   ///
-  /// Performs JSON parsing for provenance, reproduction, override, display, tokenData, and artists.
+  /// Performs JSON parsing for provenance, reproduction, override, display, and artists.
   /// Use [itemDataToDomainPreview] for list UI to skip expensive JSON work.
   static PlaylistItem itemDataToDomain(ItemData data) {
     DP1Provenance? provenance;
@@ -221,15 +221,6 @@ class DatabaseConverters {
       }
     }
 
-    Map<String, dynamic>? tokenData;
-    if (data.tokenDataJson != null && data.tokenDataJson!.isNotEmpty) {
-      try {
-        tokenData = jsonDecode(data.tokenDataJson!) as Map<String, dynamic>;
-      } catch (_) {
-        // Ignore parsing errors
-      }
-    }
-
     List<DP1Artist>? artists;
     if (data.listArtistJson != null && data.listArtistJson!.isNotEmpty) {
       try {
@@ -257,7 +248,6 @@ class DatabaseConverters {
       repro: reproduction,
       overrideData: override,
       display: display,
-      tokenData: tokenData,
       artists: artists,
       updatedAt: DateTime.fromMicrosecondsSinceEpoch(data.updatedAtUs.toInt()),
     );
@@ -265,7 +255,7 @@ class DatabaseConverters {
 
   /// Convert ItemData to PlaylistItem (light projection for list UI).
   ///
-  /// Skips JSON deserialization of provenance, reproduction, override, display, and tokenData.
+  /// Skips JSON deserialization of provenance, reproduction, override, and display.
   /// Keeps artists and basic fields for display, avoiding heavy JSON parsing.
   /// Use for list queries where only title, thumbnail, and basic metadata are needed.
   static PlaylistItem itemDataToDomainPreview(ItemData data) {
@@ -315,10 +305,6 @@ class DatabaseConverters {
         ? jsonEncode(item.display!.toJson())
         : null;
 
-    final tokenDataJson = item.tokenData != null
-        ? jsonEncode(item.tokenData)
-        : null;
-
     final listArtistJson = item.artists != null && item.artists!.isNotEmpty
         ? jsonEncode(item.artists!.map((e) => e.toJson()).toList())
         : null;
@@ -340,7 +326,6 @@ class DatabaseConverters {
       reproJson: Value(reproJson),
       overrideJson: Value(overrideJson),
       displayJson: Value(displayJson),
-      tokenDataJson: Value(tokenDataJson),
       listArtistJson: Value(listArtistJson),
     );
   }

@@ -688,7 +688,6 @@ function mergeFeedItem(existing, feedItem) {
     repro_json: null,
     override_json: null,
     display_json: null,
-    token_data_json: null,
     list_artist_json: null,
     enrichment_status: 0,
     updated_at_us: NOW_US,
@@ -845,7 +844,6 @@ function applyIndexerEnrichment(itemsMap, cidToItemIds, tokensByCid) {
       row.subtitle = enriched.subtitle;
       row.thumbnail_uri = enriched.thumbnailUri;
       row.list_artist_json = enriched.listArtistJson;
-      row.token_data_json = JSON.stringify(toRestTokenJson(token));
       row.enrichment_status = 1;
       row.updated_at_us = NOW_US;
     }
@@ -963,27 +961,6 @@ function firstVariantUrl(mediaAssets) {
     }
   }
   return null;
-}
-
-function toRestTokenJson(token) {
-  return {
-    id: asInt(token?.id),
-    cid: token?.token_cid || token?.cid || '',
-    chain: token?.chain || '',
-    standard: token?.standard || '',
-    contract_address: token?.contract_address || '',
-    token_number: token?.token_number != null ? String(token.token_number) : '',
-    metadata: token?.metadata || null,
-    owners: token?.owners || null,
-    provenance_events: token?.provenance_events || null,
-    owner_provenances: token?.owner_provenances || null,
-    enrichment_source: token?.enrichment_source || null,
-    metadata_media_assets: token?.metadata_media_assets || null,
-    enrichment_source_media_assets: token?.enrichment_source_media_assets || null,
-    current_owner: token?.current_owner || null,
-    updated_at: token?.updated_at || null,
-    current_wner: token?.current_owner || null,
-  };
 }
 
 function countEnriched(itemsMap) {
@@ -1132,7 +1109,6 @@ CREATE TABLE IF NOT EXISTS items (
   repro_json TEXT,
   override_json TEXT,
   display_json TEXT,
-  token_data_json TEXT,
   list_artist_json TEXT,
   enrichment_status INTEGER NOT NULL DEFAULT 0,
   updated_at_us INTEGER NOT NULL
@@ -1326,7 +1302,6 @@ END;`);
       'repro_json',
       'override_json',
       'display_json',
-      'token_data_json',
       'list_artist_json',
       'enrichment_status',
       'updated_at_us',
