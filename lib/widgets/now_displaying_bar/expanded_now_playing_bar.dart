@@ -96,7 +96,6 @@ class _ExpandedNowPlayingBarState extends ConsumerState<ExpandedNowPlayingBar> {
     // LayoutConstants.nowDisplayingDisplayItemThumbHeight +
     // LayoutConstants.nowPlayingBarBottomDisplayItemListGap;
     final position = _scrollController.position;
-    final viewportHeight = position.viewportDimension;
     final maxExtent = position.maxScrollExtent;
 
     // Center the selected item in the viewport when possible.

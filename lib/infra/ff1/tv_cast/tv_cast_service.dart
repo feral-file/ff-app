@@ -293,7 +293,7 @@ class TvCastServiceImpl extends BaseTvCastService {
   }) async {
     try {
       final resultFuture = _api.request(
-        topicId: _device.topicId ?? '',
+        topicId: _device.topicId,
         body: body,
       );
       final result = await resultFuture

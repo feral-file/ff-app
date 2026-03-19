@@ -1,5 +1,3 @@
-import 'package:app/domain/models/channel.dart';
-
 // ignore_for_file: public_member_api_docs, always_put_required_named_parameters_first // Reason: copied from the legacy mobile app; keep DP-1 channel wire model stable.
 
 class DP1Channel {
@@ -49,42 +47,5 @@ class DP1Channel {
       'created': created.toIso8601String(),
       'coverImage': coverImage,
     };
-  }
-}
-
-/// Extension for removing duplicate channels based on unique identifiers
-extension DP1ChannelListExtension on List<DP1Channel> {
-  /// Remove duplicate channels based on unique identifiers
-  List<DP1Channel> removeDuplicates() {
-    final seenIds = <String>{};
-    final uniqueChannels = <DP1Channel>[];
-
-    for (final channel in this) {
-      // DP1Channel has id field as String (required)
-      final uniqueId = channel.id;
-
-      if (!seenIds.contains(uniqueId)) {
-        seenIds.add(uniqueId);
-        uniqueChannels.add(channel);
-      }
-    }
-
-    return uniqueChannels;
-  }
-}
-
-extension DP1ChannelExt on DP1Channel {
-  Channel toDomainChannel({String? baseUrl}) {
-    return Channel(
-      id: id,
-      name: title,
-      type: ChannelType.dp1,
-      description: summary,
-      baseUrl: baseUrl,
-      slug: slug,
-      curator: curator,
-      coverImageUrl: coverImage,
-      createdAt: created,
-    );
   }
 }

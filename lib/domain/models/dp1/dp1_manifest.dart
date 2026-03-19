@@ -596,52 +596,10 @@ class DP1LocalizedContent {
 /// Extension methods for DP1Manifest - provides convenient helper methods
 /// These methods make it easier to work with DP1 manifests in common scenarios
 extension DP1ManifestExtension on DP1Manifest {
-  /// Check if manifest has metadata block
-  bool get hasMetadata => metadata != null;
-
-  /// Check if manifest has controls block
-  bool get hasControls => controls != null;
-
-  /// Check if manifest has internationalization block
-  bool get hasI18n => i18n != null;
-
   /// Get localized content for a specific locale
   /// Returns null if the locale is not available
   DP1LocalizedContent? getLocalizedContent(String locale) {
     return i18n?.locales?[locale];
-  }
-
-  /// Get Artists
-  /// Returns a list of artist
-  List<String> get artistNames {
-    if (metadata?.artists == null) return [];
-    return metadata!.artists!.map((artist) => artist.name).toList();
-  }
-
-  /// Get thumbnail by size preference
-  /// Returns the best available thumbnail for the requested size
-  DP1Thumbnail? getThumbnail(String size) {
-    switch (size.toLowerCase()) {
-      case 'small':
-        return metadata?.thumbnails?.small;
-      case 'large':
-        return metadata?.thumbnails?.large;
-      case 'xlarge':
-        return metadata?.thumbnails?.xlarge;
-      case 'default':
-        return metadata?.thumbnails?.defaultThumbnail;
-      default:
-        // Return default thumbnail as fallback
-        return metadata?.thumbnails?.defaultThumbnail;
-    }
-  }
-
-  /// Get the best available thumbnail (prefers default, then large, then small)
-  DP1Thumbnail? getBestThumbnail() {
-    return metadata?.thumbnails?.defaultThumbnail ??
-        metadata?.thumbnails?.large ??
-        metadata?.thumbnails?.small ??
-        metadata?.thumbnails?.xlarge;
   }
 
   /// Check if the manifest supports a specific orientation

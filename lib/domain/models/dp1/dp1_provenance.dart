@@ -38,12 +38,6 @@ class DP1Provenance {
   int get hashCode => Object.hash(type, contract);
 }
 
-String getContractAddress(String address) {
-  // Old repo normalized EVM addresses via eth_utils.
-  // Keep domain pure here; return the input as-is.
-  return address;
-}
-
 class DP1Contract {
   DP1Contract({
     required this.chain,

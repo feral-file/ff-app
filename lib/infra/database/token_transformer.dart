@@ -183,21 +183,6 @@ class TokenTransformer {
     return '${tokenId}_${ownerAddress.toNormalizedAddress()}';
   }
 
-  /// Reconstruct PlaylistItem from token data JSON.
-  /// Used when reading from database.
-  static PlaylistItem? reconstructPlaylistItemFromTokenData(
-    Map<String, dynamic> tokenData, {
-    String? ownerAddress,
-  }) {
-    try {
-      final token = AssetToken.fromRest(tokenData);
-      return assetTokenToPlaylistItem(token: token, ownerAddress: ownerAddress);
-    } on Object {
-      // If reconstruction fails, return null
-      return null;
-    }
-  }
-
   static String? _resolveThumbnailUrl(AssetToken token) {
     final gallery = token.getGalleryThumbnailUrl();
     if (gallery != null && gallery.isNotEmpty) {
