@@ -23,6 +23,11 @@ on:
         required: false
         type: string
         default: ''
+      dryrun:
+        description: Dry run mode (skip S3 upload, artifact only)
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   snapshot:
@@ -65,6 +70,10 @@ jobs:
                 args+=("--require-channel-id" "$trimmed")
               fi
             done
+          fi
+
+          if [[ "${{ inputs.dryrun }}" == "true" ]]; then
+            args+=("--dryrun")
           fi
 
           node scripts/build_feed_indexer_sqlite.js "${args[@]}"
