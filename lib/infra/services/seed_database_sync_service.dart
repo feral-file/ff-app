@@ -135,18 +135,19 @@ class SeedDatabaseSyncService {
         onProgress: onProgress,
       );
 
+      // After beforeReplace, must finish replace+afterReplace (reconnect path).
+      // Early return would leave DB closed; if newer session fails, nothing
+      // restores readiness. Only check isSessionActive before beforeReplace.
       final result = await _replaceLock.synchronized(() async {
         if (isSessionActive != null && !isSessionActive()) return false;
         await beforeReplace();
 
-        if (isSessionActive != null && !isSessionActive()) return false;
         await _seedDatabaseService.replaceDatabaseFromTemporaryFile(tempPath);
 
         if (remoteEtag != null && remoteEtag.isNotEmpty) {
           _saveLocalEtag(remoteEtag);
         }
 
-        if (isSessionActive != null && !isSessionActive()) return false;
         await afterReplace();
         return true;
       });

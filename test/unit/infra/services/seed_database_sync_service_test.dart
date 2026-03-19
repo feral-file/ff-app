@@ -196,5 +196,70 @@ void main() {
         expect(localEtag, 'local-v1');
       },
     );
+
+    test(
+      'when isSessionActive flips false before beforeReplace, bails early '
+      'without running teardown',
+      () async {
+        final fakeSeedService = _FakeSeedDatabaseService(
+          hasLocal: true,
+          remoteEtag: 'remote-v2',
+        );
+        var localEtag = 'local-v1';
+        final events = <String>[];
+
+        final service = SeedDatabaseSyncService(
+          seedDatabaseService: fakeSeedService,
+          loadLocalEtag: () => localEtag,
+          saveLocalEtag: (etag) => localEtag = etag,
+        );
+
+        final changed = await service.sync(
+          beforeReplace: () async => events.add('before'),
+          afterReplace: () async => events.add('after'),
+          isSessionActive: () => false,
+        );
+
+        expect(changed, isFalse);
+        expect(fakeSeedService.replaceCalls, 0);
+        expect(events, isEmpty);
+      },
+    );
+
+    test(
+      'when isSessionActive flips false after beforeReplace, completes replace '
+      '+ afterReplace to preserve reconnect path (Codex P1)',
+      () async {
+        final fakeSeedService = _FakeSeedDatabaseService(
+          hasLocal: true,
+          remoteEtag: 'remote-v2',
+        );
+        var localEtag = 'local-v1';
+        final events = <String>[];
+
+        final service = SeedDatabaseSyncService(
+          seedDatabaseService: fakeSeedService,
+          loadLocalEtag: () => localEtag,
+          saveLocalEtag: (etag) => localEtag = etag,
+        );
+
+        var callCount = 0;
+        final changed = await service.sync(
+          beforeReplace: () async {
+            events.add('before');
+          },
+          afterReplace: () async => events.add('after'),
+          isSessionActive: () {
+            callCount++;
+            return callCount <= 1;
+          },
+        );
+
+        expect(changed, isTrue);
+        expect(fakeSeedService.replaceCalls, 1);
+        expect(events, ['before', 'after']);
+        expect(localEtag, 'remote-v2');
+      },
+    );
   });
 }
