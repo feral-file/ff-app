@@ -3,6 +3,7 @@ import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/domain/models/wallet_address.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:uuid/uuid.dart';
 
@@ -35,10 +36,7 @@ extension PlaylistExt on Playlist {
   // Get the playlist id for an address-based playlist
   static String addressPlaylistId(String ownerAddress) {
     final chain = Chain.fromAddress(ownerAddress).toString();
-    final normalizedAddress = _normalizeAddressForPlaylist(
-      ownerAddress,
-      chain,
-    );
+    final normalizedAddress = ownerAddress.toNormalizedAddress();
     return 'addr:$chain:$normalizedAddress';
   }
 
@@ -50,10 +48,7 @@ extension PlaylistExt on Playlist {
     String? name,
   }) {
     final chain = walletAddress.chain;
-    final normalizedAddress = _normalizeAddressForPlaylist(
-      walletAddress.address,
-      chain,
-    );
+    final normalizedAddress = walletAddress.address.toNormalizedAddress();
     final now = DateTime.now();
 
     final dynamicQueries = [
@@ -79,18 +74,4 @@ extension PlaylistExt on Playlist {
       dynamicQueries: dynamicQueries,
     );
   }
-}
-
-/// Normalizes address for address-based playlist ID (Ethereum lowercase).
-String _normalizeAddressForPlaylist(String address, String chain) {
-  final trimmed = address.trim();
-  final chainLower = chain.toLowerCase();
-  if (chainLower == 'eth' ||
-      chainLower == 'ethereum' ||
-      (trimmed.startsWith('0x') || trimmed.startsWith('0X'))) {
-    return trimmed.startsWith('0X')
-        ? '0x${trimmed.substring(2)}'
-        : trimmed.toLowerCase();
-  }
-  return trimmed;
 }
