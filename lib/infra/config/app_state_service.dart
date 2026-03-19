@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/indexer/sync_collection.dart';
 import 'package:app/domain/models/wallet_address.dart';
@@ -119,6 +121,19 @@ abstract class AppStateServiceBase {
   Future<void> setHasSeenPlayToFf1Tooltip({required bool hasSeen});
   Future<bool> hasCompletedSeedDownload();
   Future<void> setHasCompletedSeedDownload({required bool completed});
+
+  /// Returns the firmware version the user last dismissed for [deviceId].
+  ///
+  /// Returns an empty string when no version has been dismissed yet.
+  String getDismissedUpdateVersion(String deviceId);
+
+  /// Persists [version] as the dismissed firmware update version for
+  /// [deviceId]. The update prompt will not reappear for this device until
+  /// the device reports a different [latestVersion].
+  Future<void> setDismissedUpdateVersion({
+    required String deviceId,
+    required String version,
+  });
   Future<SyncCheckpoint?> getAddressCheckpoint(String address);
   Future<void> setAddressCheckpoint({
     required String address,
@@ -309,6 +324,38 @@ class AppStateService extends AppStateServiceBase {
         ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
       _appStateBox.put(app);
     });
+  }
+
+  @override
+  String getDismissedUpdateVersion(String deviceId) {
+    final map = _decodeDismissedVersions(_getOrCreateSingleton());
+    return map[deviceId] ?? '';
+  }
+
+  @override
+  Future<void> setDismissedUpdateVersion({
+    required String deviceId,
+    required String version,
+  }) async {
+    await _lock.synchronized(() async {
+      final app = _getOrCreateSingleton();
+      final map = _decodeDismissedVersions(app);
+      map[deviceId] = version;
+      app
+        ..dismissedUpdateVersionsJson = jsonEncode(map)
+        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
+      _appStateBox.put(app);
+    });
+  }
+
+  Map<String, String> _decodeDismissedVersions(AppStateEntity entity) {
+    try {
+      final decoded = jsonDecode(entity.dismissedUpdateVersionsJson);
+      if (decoded is Map) {
+        return decoded.map((k, v) => MapEntry(k.toString(), v.toString()));
+      }
+    } catch (_) {}
+    return {};
   }
 
   /// Get syncCollection checkpoint for an address.

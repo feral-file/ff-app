@@ -547,21 +547,21 @@ class UIHelper {
   static Future<dynamic> showCenterDialog(
     BuildContext context, {
     required Widget content,
+    bool isDismissible = true,
   }) async {
     final theme = Theme.of(context);
     return showCupertinoModalPopup<void>(
       context: context,
+      barrierDismissible: false,
       builder: (context) => Scaffold(
         backgroundColor: Colors.transparent,
         body: Stack(
           children: [
             GestureDetector(
+              onTap: isDismissible ? () => Navigator.pop(context) : null,
               child: Container(
-                color: AppColor.primaryBlack.withOpacity(0.5),
+                color: AppColor.primaryBlack.withValues(alpha: 0.5),
               ),
-              onTap: () {
-                Navigator.pop(context);
-              },
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),

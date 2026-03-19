@@ -931,6 +931,39 @@ transport reconnected — waiting for device connection notification''',
     }
   }
 
+  /// Trigger firmware update to the latest available version.
+  ///
+  /// Instructs the device to fetch and install the latest firmware. The device
+  /// reboots automatically on completion. Only succeeds when the device has an
+  /// active internet connection and a newer version is available.
+  ///
+  /// [topicId] — device topic ID
+  Future<FF1CommandResponse> updateToLatestVersion({
+    required String topicId,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending updateToLatestVersion command to device');
+
+      const request = FF1WifiUpdateToLatestVersionRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send updateToLatestVersion command: $e');
+      rethrow;
+    }
+  }
+
   /// Factory reset device.
   ///
   /// [topicId] — device topic ID

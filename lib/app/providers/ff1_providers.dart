@@ -238,6 +238,22 @@ class FF1BleControl implements Ff1BleConnectPort {
     }
   }
 
+  /// Update to latest version
+  Future<void> updateToLatestVersion({
+    required BluetoothDevice blDevice,
+  }) async {
+    final response = await _transport.sendCommand(
+      blDevice: blDevice,
+      command: FF1BleCommand.updateToLatestVersion,
+      request: const UpdateToLatestVersionRequest(),
+      timeout: const Duration(seconds: 30),
+    );
+
+    if (response.isError) {
+      throw FF1ResponseError.fromCode(response.errorCode);
+    }
+  }
+
   /// Send device logs to support
   Future<void> sendLog({
     required BluetoothDevice blDevice,

@@ -716,6 +716,21 @@ class FF1WifiShuffleRequest extends FF1WifiCommandRequest {
   Map<String, dynamic> get params => {'enabled': enabled};
 }
 
+/// Trigger firmware update to the latest available version.
+///
+/// The device will fetch and install the latest firmware. The device will
+/// reboot automatically when the update is complete.
+class FF1WifiUpdateToLatestVersionRequest extends FF1WifiCommandRequest {
+  /// Creates an update to latest version request.
+  const FF1WifiUpdateToLatestVersionRequest();
+
+  @override
+  String get command => 'updateToLatestVersion';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
 /// Set the loop (repeat) mode on the device.
 class FF1WifiSetLoopRequest extends FF1WifiCommandRequest {
   /// Creates a set-loop request.

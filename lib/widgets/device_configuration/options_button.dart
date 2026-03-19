@@ -77,6 +77,9 @@ class OptionsButton extends ConsumerWidget {
     final control = ref.read(ff1WifiControlProvider);
     final topicId = device.topicId;
 
+    // Read version info so the update dialog can display current/latest.
+    final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
+
     final options = [
       if (isDeviceConnected)
         OptionItem(
@@ -104,6 +107,20 @@ class OptionsButton extends ConsumerWidget {
               topicId,
             );
           },
+        ),
+      // Update FF1 firmware — only shown when connected so the command can
+      // reach the device; internet connectivity check is enforced by the device.
+      if (isDeviceConnected)
+        OptionItem(
+          title: 'Update FF1',
+          icon: const Icon(Icons.system_update_alt),
+          onTap: () => _onUpdateFirmwareSelected(
+            context,
+            ref,
+            control,
+            device,
+            deviceStatus,
+          ),
         ),
       OptionItem(
         title: 'Send Log',
@@ -269,14 +286,14 @@ class OptionsButton extends ConsumerWidget {
         children: [
           Text(
             'Factory Reset',
-            style: AppTypography.body(context).bold.white,
+            style: AppTypography.h2(context).bold.white,
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: LayoutConstants.space4),
           Text(
             'Are you sure you want to reset the device to factory settings? This will erase all data and cannot be undone.',
             style: AppTypography.body(context).white,
           ),
-          const SizedBox(height: 36),
+          SizedBox(height: LayoutConstants.space10),
           Row(
             children: [
               Expanded(
@@ -290,7 +307,7 @@ class OptionsButton extends ConsumerWidget {
                   },
                 ),
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: LayoutConstants.space4),
               Expanded(
                 child: PrimaryAsyncButton(
                   text: 'Reset',
@@ -314,7 +331,7 @@ class OptionsButton extends ConsumerWidget {
                               '[Factory Reset] WiFi returned unsuccessful response, fallback to BLE',
                             );
                           }
-                        } catch (e) {
+                        } on Exception catch (e) {
                           _log.warning(
                             '[Factory Reset] WiFi error: $e, falling back to BLE',
                           );
@@ -332,7 +349,7 @@ class OptionsButton extends ConsumerWidget {
                       if (context.mounted) {
                         Navigator.pop(context, success);
                       }
-                    } catch (e) {
+                    } on Exception catch (e) {
                       _log.warning('[Factory Reset] Failed: $e');
                       if (context.mounted) {
                         Navigator.pop(context, e);
@@ -368,6 +385,145 @@ class OptionsButton extends ConsumerWidget {
           context,
           'Factory Reset Failed',
           'Something went wrong while trying to restore the device to factory settings. $result',
+        );
+      }
+    }
+  }
+
+  Future<void> _onUpdateFirmwareSelected(
+    BuildContext context,
+    WidgetRef ref,
+    FF1WifiControl control,
+    FF1Device device,
+    FF1DeviceStatus? deviceStatus,
+  ) async {
+    final topicId = device.topicId;
+    // Build version detail line for the dialog only when version info is known.
+    final installed = deviceStatus?.installedVersion;
+    final latest = deviceStatus?.latestVersion;
+    final hasVersionInfo = installed != null && latest != null;
+    final isUpToDate = hasVersionInfo && installed == latest;
+
+    final result = await UIHelper.showCenterDialog(
+      context,
+      isDismissible: false,
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Update FF1',
+            style: AppTypography.h2(context).bold.white,
+          ),
+          SizedBox(height: LayoutConstants.space4),
+          if (isUpToDate)
+            Text(
+              'Your FF1 is already on the latest version ($installed).',
+              style: AppTypography.body(context).white,
+            )
+          else ...[
+            Text(
+              '''
+Update your FF1 to the latest version. Keep the device connected and powered on during the update. It will restart automatically when the update is complete.''',
+              style: AppTypography.body(context).white,
+            ),
+          ],
+          SizedBox(height: LayoutConstants.space10),
+          Row(
+            children: [
+              Expanded(
+                child: PrimaryAsyncButton(
+                  text: 'Cancel',
+                  textColor: AppColor.white,
+                  color: Colors.transparent,
+                  borderColor: AppColor.white,
+                  onTap: () {
+                    Navigator.pop(context, false);
+                  },
+                ),
+              ),
+              if (!isUpToDate) ...[
+                SizedBox(width: LayoutConstants.space4),
+                Expanded(
+                  child: PrimaryAsyncButton(
+                    text: 'Update',
+                    textColor: AppColor.white,
+                    color: Colors.transparent,
+                    borderColor: AppColor.white,
+                    onTap: () async {
+                      try {
+                        var success = false;
+
+                        if (topicId.isNotEmpty) {
+                          try {
+                            _log.info(
+                              '[Update Firmware] Attempting via WiFi',
+                            );
+                            final response = await control
+                                .updateToLatestVersion(
+                                  topicId: topicId,
+                                );
+                            success = _isCommandSuccessful(response);
+                            if (!success) {
+                              _log.warning(
+                                '[Update Firmware] WiFi returned unsuccessful response, falling back to BLE',
+                              );
+                            }
+                          } on Exception catch (e) {
+                            _log.warning(
+                              '[Update Firmware] WiFi error: $e, falling back to BLE',
+                            );
+                          }
+                        }
+
+                        if (!success) {
+                          _log.info(
+                            '[Update Firmware] Attempting via Bluetooth',
+                          );
+                          await ref
+                              .read(ff1ControlProvider)
+                              .updateToLatestVersion(
+                                blDevice: device.toBluetoothDevice(),
+                              );
+                          success = true;
+                        }
+
+                        if (context.mounted) {
+                          Navigator.pop(context, success);
+                        }
+                      } on Exception catch (e) {
+                        _log.warning('[Update Firmware] Failed: $e');
+                        if (context.mounted) {
+                          Navigator.pop(context, e);
+                        }
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (result is bool && result) {
+      if (context.mounted) {
+        await UIHelper.showInfoDialog(
+          context,
+          'Update Started',
+          'The FF1 is now downloading and installing the latest firmware. It will restart automatically when the update is complete.',
+          closeButton: 'OK',
+          onClose: () {
+            context.pop();
+          },
+        );
+      }
+    } else if (result is Exception || result is Error) {
+      if (context.mounted) {
+        await UIHelper.showInfoDialog(
+          context,
+          'Update Failed',
+          'Something went wrong while trying to start the update. $result',
         );
       }
     }

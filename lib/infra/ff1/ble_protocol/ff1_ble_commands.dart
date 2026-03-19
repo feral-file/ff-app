@@ -14,6 +14,7 @@ enum FF1BleCommand {
   keepWifi('keep_wifi'),
   getInfo('get_info'),
   factoryReset('factory_reset'),
+  updateToLatestVersion('update_to_latest_version'),
   sendLog('send_log'),
   setTimezone('set_time')
   ;
@@ -77,6 +78,14 @@ class GetInfoRequest extends FF1BleRequest {
 /// Factory reset device
 class FactoryResetRequest extends FF1BleRequest {
   const FactoryResetRequest();
+
+  @override
+  List<String> toParams() => [];
+}
+
+/// Update to latest version
+class UpdateToLatestVersionRequest extends FF1BleRequest {
+  const UpdateToLatestVersionRequest();
 
   @override
   List<String> toParams() => [];
@@ -168,6 +177,11 @@ class GetInfoResponse extends FF1BleCommandResponse {
 /// Factory reset response
 class FactoryResetResponse extends FF1BleCommandResponse {
   const FactoryResetResponse();
+}
+
+/// Update to latest version response
+class UpdateToLatestVersionResponse extends FF1BleCommandResponse {
+  const UpdateToLatestVersionResponse();
 }
 
 /// Send log response
