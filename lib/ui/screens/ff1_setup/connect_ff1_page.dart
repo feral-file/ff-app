@@ -209,9 +209,9 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           if (state is ConnectFF1Connected) {
             _recordDuration(success: true);
             if (state.isConnectedToInternet) {
-              await ref.read(
-                addFF1BluetoothDeviceProvider(state.ff1device).future,
-              );
+              await ref
+                  .read(ff1BluetoothDeviceActionsProvider.notifier)
+                  .addDevice(state.ff1device);
 
               if (state.portalIsSet) {
                 if (context.mounted) {

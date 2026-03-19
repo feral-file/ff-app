@@ -49,19 +49,12 @@ query getTokens(
       token_number
       current_owner
       updated_at
-      metadata {
+      display {
         name
-        description
         image_url
-        animation_url
-        mime_type
         artists {
           name
           did
-        }
-        publisher {
-          name
-          url
         }
       }
       owner_provenances {
@@ -71,33 +64,18 @@ query getTokens(
           last_tx_index
         }
       }
-      enrichment_source {
-        name
-        description
-        image_url
-        animation_url
-        mime_type
-        artists {
-          name
-          did
-        }
-      }
-      metadata_media_assets {
+      media_assets {
         source_url
         mime_type
-        variant_urls
-      }
-      enrichment_source_media_assets {
-        source_url
-        mime_type
-        variant_urls
+        variants(keys: [xs, l, xl, xxl, dash, hls])
       }
     }
     offset
   }
 }
 `;
-const REMOTE_CONFIG_URL = 'https://feralfile-remote-configs.pages.dev/ff-app.json';
+const REMOTE_CONFIG_URL =
+  'https://dp1-feed-operator-api-prod.autonomy-system.workers.dev/api/v1/registry/channels';
 const DEFAULT_CHANNEL_SOURCE = REMOTE_CONFIG_URL;
 const INDEXER_API_URL = 'https://indexer-v2.feralfile.com';
 const INDEXER_BATCH_SIZE = 50;
@@ -333,20 +311,6 @@ function enforceRequiredChannels(channels, requiredChannelIds = []) {
   }
 }
 
-function findRepoRoot() {
-  let current = process.cwd();
-  while (true) {
-    if (fs.existsSync(path.join(current, 'pubspec.yaml'))) {
-      return current;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return process.cwd();
-    }
-    current = parent;
-  }
-}
-
 function ensureSqliteCli() {
   try {
     execFileSync('sqlite3', ['-version'], {stdio: 'ignore'});
@@ -360,7 +324,12 @@ async function fetchChannelsFromSource(source) {
   if (Array.isArray(payload?.exhibitions)) {
     return extractChannelsFromPublishArtifact(payload);
   }
-  return extractChannelsFromLegacyConfig(payload);
+  if (Array.isArray(payload)) {
+    return extractChannelsFromRegistry(payload);
+  }
+  throw new Error(
+    'Invalid channels source format: expected registry format (array) or publish artifact format (object with exhibitions array)'
+  );
 }
 
 async function fetchChannelsFromFeedEndpoint(rawFeedEndpoint) {
@@ -407,10 +376,9 @@ function normalizeOrigin(rawUrl) {
   return parsed.origin;
 }
 
-function extractChannelsFromLegacyConfig(payload) {
-  const publishers = payload?.dp1_playlist?.publishers;
+function extractChannelsFromRegistry(publishers) {
   if (!Array.isArray(publishers)) {
-    throw new Error('Invalid channels source: missing dp1_playlist.publishers');
+    throw new Error('Invalid registry format: expected array of publishers');
   }
 
   const channels = [];
@@ -688,6 +656,7 @@ function mergeFeedItem(existing, feedItem) {
     repro_json: null,
     override_json: null,
     display_json: null,
+    token_data_json: null,
     list_artist_json: null,
     enrichment_status: 0,
     updated_at_us: NOW_US,
@@ -844,6 +813,7 @@ function applyIndexerEnrichment(itemsMap, cidToItemIds, tokensByCid) {
       row.subtitle = enriched.subtitle;
       row.thumbnail_uri = enriched.thumbnailUri;
       row.list_artist_json = enriched.listArtistJson;
+      row.token_data_json = JSON.stringify(toRestTokenJson(token));
       row.enrichment_status = 1;
       row.updated_at_us = NOW_US;
     }
@@ -851,7 +821,7 @@ function applyIndexerEnrichment(itemsMap, cidToItemIds, tokensByCid) {
 }
 
 function tokenToItemPatch(token) {
-  const artists = (token?.enrichment_source?.artists || token?.metadata?.artists || [])
+  const artists = (token?.display?.artists || [])
     .filter((artist) => artist && (artist.name || artist.did))
     .map((artist) => ({
       id: artist.did || '',
@@ -864,10 +834,7 @@ function tokenToItemPatch(token) {
       .join(', ')
     : null;
   return {
-    title:
-      token?.enrichment_source?.name ||
-      token?.metadata?.name ||
-      'Untitled',
+    title: token?.display?.name || 'Untitled',
     subtitle,
     thumbnailUri: resolveThumbnailUrl(token),
     listArtistJson: artists.length > 0 ? JSON.stringify(artists) : null,
@@ -875,92 +842,60 @@ function tokenToItemPatch(token) {
 }
 
 function resolveThumbnailUrl(token) {
-  let thumbnailUrl =
-    token?.enrichment_source?.image_url ||
-    token?.metadata?.image_url ||
-    null;
+  const imageUrl = token?.display?.image_url;
+  const mediaAssets = Array.isArray(token?.media_assets)
+    ? token.media_assets
+    : [];
 
-  if (thumbnailUrl) {
-    const metadataAssets = findMediaAssetsBySource(
-      token?.metadata_media_assets,
-      thumbnailUrl,
-    );
-    const enrichmentAssets = findMediaAssetsBySource(
-      token?.enrichment_source_media_assets,
-      thumbnailUrl,
-    );
-    const variant =
-      firstVariantUrl(enrichmentAssets) ||
-      firstVariantUrl(metadataAssets) ||
-      null;
-    if (variant) {
-      thumbnailUrl = variant;
-    }
-    if (
-      thumbnailUrl.startsWith('https://imagedelivery.net/5BJzhBHeVhlhbn58hvcXAQ/')
-    ) {
-      const parts = thumbnailUrl.split('/');
-      if (parts.length > 2) {
-        parts[parts.length - 1] = 'xs';
-        thumbnailUrl = parts.join('/');
+  // Find media asset matching the image_url
+  if (imageUrl) {
+    for (const asset of mediaAssets) {
+      if (asset?.source_url === imageUrl) {
+        // Verify it's an image by checking mime_type
+        const mimeType = asset?.mime_type;
+        if (mimeType && typeof mimeType === 'string' && mimeType.startsWith('image/')) {
+          // Check for xs variant first
+          const variants = asset?.variants;
+          if (variants && typeof variants === 'object' && variants.xs) {
+            return String(variants.xs);
+          }
+          // Fall back to source_url
+          return imageUrl;
+        }
+        // If mime_type is not an image, fall back to source_url
+        return imageUrl;
       }
     }
-    return thumbnailUrl;
+    // If no matching asset found, return the image_url directly
+    return imageUrl;
   }
 
-  const preview =
-    token?.enrichment_source?.animation_url ||
-    token?.metadata?.animation_url ||
-    null;
-  if (preview) {
-    return preview;
-  }
-
-  const mediaAssets = [
-    ...(Array.isArray(token?.enrichment_source_media_assets)
-      ? token.enrichment_source_media_assets
-      : []),
-    ...(Array.isArray(token?.metadata_media_assets)
-      ? token.metadata_media_assets
-      : []),
-  ];
-  for (const media of mediaAssets) {
-    const variant = firstVariantUrl([media]);
-    if (variant) {
-      return variant;
-    }
-    if (media?.source_url) {
-      return media.source_url;
+  // Final fallback to any media asset source_url
+  for (const asset of mediaAssets) {
+    if (asset?.source_url) {
+      return asset.source_url;
     }
   }
 
   return FALLBACK_THUMBNAIL_URI;
 }
 
-function findMediaAssetsBySource(mediaAssets, sourceUrl) {
-  if (!Array.isArray(mediaAssets) || !sourceUrl) {
-    return [];
-  }
-  return mediaAssets.filter((asset) => asset?.source_url === sourceUrl);
-}
-
-function firstVariantUrl(mediaAssets) {
-  if (!Array.isArray(mediaAssets)) {
-    return null;
-  }
-  for (const media of mediaAssets) {
-    const variants = media?.variant_urls;
-    if (variants && typeof variants === 'object') {
-      if (variants.xs) {
-        return String(variants.xs);
-      }
-      const first = Object.values(variants).find((value) => Boolean(value));
-      if (first) {
-        return String(first);
-      }
-    }
-  }
-  return null;
+function toRestTokenJson(token) {
+  return {
+    id: asInt(token?.id),
+    cid: token?.token_cid || token?.cid || '',
+    chain: token?.chain || '',
+    standard: token?.standard || '',
+    contract_address: token?.contract_address || '',
+    token_number: token?.token_number != null ? String(token.token_number) : '',
+    display: token?.display || null,
+    owners: token?.owners || null,
+    provenance_events: token?.provenance_events || null,
+    owner_provenances: token?.owner_provenances || null,
+    media_assets: token?.media_assets || null,
+    current_owner: token?.current_owner || null,
+    updated_at: token?.updated_at || null,
+  };
 }
 
 function countEnriched(itemsMap) {
@@ -1109,6 +1044,7 @@ CREATE TABLE IF NOT EXISTS items (
   repro_json TEXT,
   override_json TEXT,
   display_json TEXT,
+  token_data_json TEXT,
   list_artist_json TEXT,
   enrichment_status INTEGER NOT NULL DEFAULT 0,
   updated_at_us INTEGER NOT NULL
@@ -1302,6 +1238,7 @@ END;`);
       'repro_json',
       'override_json',
       'display_json',
+      'token_data_json',
       'list_artist_json',
       'enrichment_status',
       'updated_at_us',

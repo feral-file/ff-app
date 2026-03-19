@@ -8,9 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Device sub-nav for switching between paired FF1 devices.
-///
-/// Matches old repo DeviceSubNav structure.
-/// Uses connectedFF1DevicesProvider and setActiveFF1BluetoothDeviceProvider.
 class DeviceSubNav extends ConsumerWidget {
   const DeviceSubNav({super.key});
 
@@ -50,11 +47,11 @@ class DeviceSubNav extends ConsumerWidget {
                             if (selectedDevice?.deviceId == device.deviceId) {
                               return;
                             }
-                            await ref.read(
-                              setActiveFF1BluetoothDeviceProvider(
-                                device.deviceId,
-                              ).future,
-                            );
+                            await ref
+                                .read(
+                                  ff1BluetoothDeviceActionsProvider.notifier,
+                                )
+                                .setActiveDevice(device.deviceId);
                           },
                         ),
                       ],

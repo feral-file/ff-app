@@ -95,32 +95,27 @@ routerProvider = Provider.family<GoRouter, String>((
             },
       ),
     ],
-    // Deep links like device_connect are handled by DeeplinkHandler via
-    // app_links, not by GoRouter route matching. When Flutter's
-    // RouteInformationProvider also forwards the same URL to GoRouter
-    // (e.g. on a cold-start from a universal link), we redirect to the
-    // initial location so GoRouter doesn't throw and DeeplinkHandler
-    // still processes the link correctly.
-    redirect: (context, state) {
+    // Catch-all for routing exceptions (unmatched routes, missing parameters,
+    // navigation errors). For unknown routes, redirect to initialLocation.
+    // /device_connect deep links are silently ignored because they are handled
+    // externally by the deep-link handler before GoRouter sees them.
+    onException: (context, state, router) {
       final path = state.uri.path;
       if (path.startsWith('/device_connect')) {
-        return initialLocation;
+        _log.info('Ignore onException for deeplink: $path');
+        return;
       }
-      return null;
-    },
-    // Safety net: redirect to initialLocation for any URL that doesn't
-    // match a registered route (e.g. future deep link schemes not yet
-    // known to GoRouter).
-    onException: (context, state, router) {
+
       _routeLog.warning(
         category: LogCategory.route,
         event: 'route_not_found',
-        message: 'unknown route ${state.uri.path}; redirecting',
+        message: 'unknown route $path; redirecting',
         payload: {
-          'fromRoute': state.uri.path,
+          'fromRoute': path,
           'toRoute': initialLocation,
         },
       );
+
       router.go(initialLocation);
     },
     routes: [

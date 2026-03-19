@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -84,7 +85,7 @@ class IncrementalSyncNotifier extends Notifier<IncrementalSyncState> {
       final addresses = playlists
           .map((p) => p.ownerAddress)
           .whereType<String>()
-          .map((a) => a.toUpperCase())
+          .map((a) => a.toNormalizedAddress())
           .toList();
 
       if (addresses.isEmpty) {
