@@ -15,10 +15,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
+      - name: Use host Flutter/Android SDK
+        run: |
+          export FLUTTER_ROOT=/Users/ffci/flutter
+          export PATH="$FLUTTER_ROOT/bin:$PATH"
+          export ANDROID_SDK_ROOT=/Users/ffci/.android/sdk
+          export PATH="$ANDROID_SDK_ROOT/platform-tools:$PATH"
 
       - name: Provision .env for integration tests
         run: |
