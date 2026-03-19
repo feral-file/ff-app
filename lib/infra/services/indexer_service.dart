@@ -210,7 +210,7 @@ class IndexerService {
         const [];
 
     final tokens = items
-        .map((e) => AssetToken.fromGraphQL(Map<String, dynamic>.from(e)))
+        .map((e) => AssetToken.fromJson(Map<String, dynamic>.from(e)))
         .toList(growable: false);
     final nextOffset = _parseOffset(data?['offset']);
 
@@ -286,7 +286,7 @@ class IndexerService {
         const [];
 
     return items
-        .map((e) => AssetToken.fromGraphQL(Map<String, dynamic>.from(e)))
+        .map((e) => AssetToken.fromJson(Map<String, dynamic>.from(e)))
         .toList();
   }
 

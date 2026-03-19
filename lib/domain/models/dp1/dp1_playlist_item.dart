@@ -1,7 +1,7 @@
 import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:collection/collection.dart';
 
-// ignore_for_file: public_member_api_docs, sort_constructors_first, lines_longer_than_80_chars, avoid_equals_and_hash_code_on_mutable_classes // Reason: copied from the legacy mobile app; keep DP-1 playlist-item wire model stable.
+// ignore_for_file: public_member_api_docs, sort_constructors_first, avoid_equals_and_hash_code_on_mutable_classes // Reason: copied from the legacy mobile app; keep DP-1 playlist-item wire model stable.
 
 class DP1PlaylistItem {
   const DP1PlaylistItem({
@@ -387,30 +387,4 @@ enum ArtworkDisplayLicense {
 
 extension DP1PlaylistItemExt on DP1PlaylistItem {
   String? get cid => provenance?.cid;
-}
-
-/// Extension for removing duplicate items based on unique identifiers
-extension DP1PlaylistItemListExtension on List<DP1PlaylistItem> {
-  /// Remove duplicate items based on unique identifiers
-  List<DP1PlaylistItem> removeDuplicates() {
-    final seenIds = <String>{};
-    final uniqueItems = <DP1PlaylistItem>[];
-
-    for (final item in this) {
-      // DP1Item doesn't have id field, use provenance contract info as unique identifier
-      final contract = item.provenance?.contract;
-      if (contract == null) {
-        continue;
-      }
-      final uniqueId =
-          '${contract.chain.value}-${contract.address ?? ''}-${contract.tokenId ?? ''}-${contract.seriesId ?? ''}';
-
-      if (!seenIds.contains(uniqueId)) {
-        seenIds.add(uniqueId);
-        uniqueItems.add(item);
-      }
-    }
-
-    return uniqueItems;
-  }
 }

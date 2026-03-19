@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:app/domain/extensions/asset_token_ext.dart';
 import 'package:app/domain/models/channel.dart';
-import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_manifest.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
@@ -179,7 +178,7 @@ class DatabaseConverters {
 
   /// Convert ItemData to PlaylistItem domain model (full deserialization).
   ///
-  /// Performs JSON parsing for provenance, reproduction, override, display, tokenData, and artists.
+  /// Performs JSON parsing for provenance, reproduction, override, display, and artists.
   /// Use [itemDataToDomainPreview] for list UI to skip expensive JSON work.
   static PlaylistItem itemDataToDomain(ItemData data) {
     DP1Provenance? provenance;
@@ -221,15 +220,6 @@ class DatabaseConverters {
       }
     }
 
-    Map<String, dynamic>? tokenData;
-    if (data.tokenDataJson != null && data.tokenDataJson!.isNotEmpty) {
-      try {
-        tokenData = jsonDecode(data.tokenDataJson!) as Map<String, dynamic>;
-      } catch (_) {
-        // Ignore parsing errors
-      }
-    }
-
     List<DP1Artist>? artists;
     if (data.listArtistJson != null && data.listArtistJson!.isNotEmpty) {
       try {
@@ -257,7 +247,6 @@ class DatabaseConverters {
       repro: reproduction,
       overrideData: override,
       display: display,
-      tokenData: tokenData,
       artists: artists,
       updatedAt: DateTime.fromMicrosecondsSinceEpoch(data.updatedAtUs.toInt()),
     );
@@ -265,7 +254,7 @@ class DatabaseConverters {
 
   /// Convert ItemData to PlaylistItem (light projection for list UI).
   ///
-  /// Skips JSON deserialization of provenance, reproduction, override, display, and tokenData.
+  /// Skips JSON deserialization of provenance, reproduction, override, and display.
   /// Keeps artists and basic fields for display, avoiding heavy JSON parsing.
   /// Use for list queries where only title, thumbnail, and basic metadata are needed.
   static PlaylistItem itemDataToDomainPreview(ItemData data) {
@@ -315,10 +304,6 @@ class DatabaseConverters {
         ? jsonEncode(item.display!.toJson())
         : null;
 
-    final tokenDataJson = item.tokenData != null
-        ? jsonEncode(item.tokenData)
-        : null;
-
     final listArtistJson = item.artists != null && item.artists!.isNotEmpty
         ? jsonEncode(item.artists!.map((e) => e.toJson()).toList())
         : null;
@@ -340,7 +325,6 @@ class DatabaseConverters {
       reproJson: Value(reproJson),
       overrideJson: Value(overrideJson),
       displayJson: Value(displayJson),
-      tokenDataJson: Value(tokenDataJson),
       listArtistJson: Value(listArtistJson),
     );
   }
@@ -359,13 +343,6 @@ class DatabaseConverters {
       updatedAtUs: BigInt.from(DateTime.now().microsecondsSinceEpoch),
       position: Value(position),
     );
-  }
-
-  /// Convert ItemData to DP1PlaylistItem (wire model).
-  /// Matches old repo's DP1ItemExtension.fromItemRow / DP1 playlist item shape.
-  static DP1PlaylistItem itemDataToDP1PlaylistItem(ItemData data) {
-    final playlistItem = itemDataToDomain(data);
-    return playlistItemToDP1PlaylistItem(playlistItem);
   }
 
   /// Convert PlaylistItem (domain) to DP1PlaylistItem (wire).
@@ -398,17 +375,6 @@ class DatabaseConverters {
           : '',
       dynamicQueries: playlist.dynamicQueries ?? const [],
     );
-  }
-
-  /// Convert PlaylistData + items to DP1Playlist (wire model).
-  /// Matches old repo's _addressPlaylistRowToModel for DP1 playlists.
-  static DP1Playlist playlistDataAndItemsToDP1Playlist(
-    PlaylistData data,
-    List<ItemData> items,
-  ) {
-    final playlistItems = items.map(itemDataToDomain).toList();
-    final playlist = playlistDataToDomain(data);
-    return playlistAndItemsToDP1Playlist(playlist, playlistItems);
   }
 
   /// Convert DP1Playlist (wire) to Playlist domain model.
@@ -483,31 +449,4 @@ class DatabaseConverters {
   /// Returns [s] if non-null and non-empty; otherwise null.
   static String? _nonEmptyString(String? s) =>
       (s != null && s.isNotEmpty) ? s : null;
-
-  /// Convert ChannelData + playlist full URLs to DP1Channel (wire model).
-  /// Matches old repo's Channel in ChannelReference.
-  static DP1Channel channelDataToDP1Channel(
-    ChannelData data,
-    List<String> playlistUrls,
-  ) {
-    final channel = channelDataToDomain(data);
-    return channelToDP1Channel(channel, playlistUrls);
-  }
-
-  /// Convert Channel (domain) to DP1Channel (wire).
-  static DP1Channel channelToDP1Channel(
-    Channel channel,
-    List<String> playlistUrls,
-  ) {
-    return DP1Channel(
-      id: channel.id,
-      slug: channel.slug ?? '',
-      title: channel.name,
-      curator: channel.curator,
-      summary: channel.description,
-      playlists: playlistUrls,
-      created: channel.createdAt ?? DateTime.now(),
-      coverImage: channel.coverImageUrl,
-    );
-  }
 }

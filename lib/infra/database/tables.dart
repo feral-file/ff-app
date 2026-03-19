@@ -164,10 +164,6 @@ class Items extends Table {
   /// Display configuration as JSON.
   TextColumn get displayJson => text().nullable()();
 
-  // Token data
-  /// Complete token JSON for reconstruction (indexer tokens).
-  TextColumn get tokenDataJson => text().nullable()();
-
   /// List of artists as JSON (List<DP1Artist>).
   TextColumn get listArtistJson => text().nullable()();
 

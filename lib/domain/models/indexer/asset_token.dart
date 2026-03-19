@@ -110,7 +110,8 @@ class AssetToken {
   final List<MediaAsset>? metadataMediaAssets;
   final List<MediaAsset>? enrichmentSourceMediaAssets;
 
-  factory AssetToken.fromGraphQL(Map<String, dynamic> json) => AssetToken(
+  /// Parses AssetToken from JSON (REST or GraphQL).
+  factory AssetToken.fromJson(Map<String, dynamic> json) => AssetToken(
     id: int.parse(json['id'].toString()),
     cid: json['token_cid'] as String? ?? json['cid'] as String,
     chain: json['chain'] as String,
@@ -157,54 +158,7 @@ class AssetToken {
             .toList(),
   );
 
-  factory AssetToken.fromRest(Map<String, dynamic> json) => AssetToken(
-    id: int.parse(json['id'].toString()),
-    cid: json['token_cid'] as String? ?? json['cid'] as String,
-    chain: json['chain'] as String,
-    standard: json['standard'] as String? ?? '',
-    contractAddress: json['contract_address'] as String,
-    tokenNumber: json['token_number'].toString(),
-    currentOwner: json['current_owner'] as String?,
-    updatedAt: (json['updated_at'] != null)
-        ? DateTime.tryParse(json['updated_at'] as String)
-        : null,
-    metadata: json['metadata'] != null
-        ? TokenMetadata.fromJson(
-            Map<String, dynamic>.from(json['metadata'] as Map),
-          )
-        : null,
-    owners: json['owners'] != null
-        ? PaginatedOwners.fromJson(
-            Map<String, dynamic>.from(json['owners'] as Map),
-          )
-        : null,
-    provenanceEvents: json['provenance_events'] != null
-        ? PaginatedProvenanceEvents.fromJson(
-            Map<String, dynamic>.from(json['provenance_events'] as Map),
-          )
-        : null,
-    ownerProvenances: json['owner_provenances'] != null
-        ? PaginatedOwnerProvenances.fromJson(
-            Map<String, dynamic>.from(json['owner_provenances'] as Map),
-          )
-        : null,
-    enrichmentSource: json['enrichment_source'] != null
-        ? EnrichmentSource.fromJson(
-            Map<String, dynamic>.from(json['enrichment_source'] as Map),
-          )
-        : null,
-    metadataMediaAssets: (json['metadata_media_assets'] as List?)
-        ?.map((e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)))
-        .toList(),
-    enrichmentSourceMediaAssets:
-        (json['enrichment_source_media_assets'] as List?)
-            ?.map(
-              (e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)),
-            )
-            .toList(),
-  );
-
-  Map<String, dynamic> toRestJson() => {
+  Map<String, dynamic> toJson() => {
     'id': id,
     'cid': cid,
     'chain': chain,

@@ -489,20 +489,6 @@ class AddressService {
     return playlists.map((p) => p.ownerAddress).whereType<String>().toList();
   }
 
-  Future<Playlist?> _getAddressPlaylistByOwner(String normalizedAddress) async {
-    final playlists = await _databaseService.getAddressPlaylists();
-    for (final playlist in playlists) {
-      final owner = playlist.ownerAddress;
-      if (owner == null) {
-        continue;
-      }
-      if (_addressesEqual(owner, normalizedAddress)) {
-        return playlist;
-      }
-    }
-    return null;
-  }
-
   bool _addressesEqual(String left, String right) =>
       left.toNormalizedAddress() == right.toNormalizedAddress();
 

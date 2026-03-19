@@ -1,5 +1,6 @@
 // ignore_for_file: public_member_api_docs // Reason: small service API is self-descriptive and covered by provider usage.
 
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/indexer_service.dart';
@@ -107,7 +108,7 @@ class PersonalTokensSyncService {
     );
   }
 
-  String _addressKey(String address) => address.trim().toUpperCase();
+  String _addressKey(String address) => address.toNormalizedAddress();
 
   String _addressForIndexer(String address) {
     final trimmed = address.trim();

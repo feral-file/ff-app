@@ -16,8 +16,15 @@ class FavoritePlaylistService {
   late final Logger _log;
 
   /// Add a work to the Favorite playlist.
+  ///
+  /// Skips ingest when the item already exists in the database. This avoids
+  /// triggering the work-detail watch stream and thus prevents the work
+  /// detail screen from rebuilding when adding to favorite from that screen.
   Future<void> addWorkToFavorite(PlaylistItem item) async {
-    await _db.ingestPlaylistItem(item);
+    final existing = await _db.getPlaylistItemById(item.id);
+    if (existing == null) {
+      await _db.ingestPlaylistItem(item);
+    }
     final sortKeyUs = DateTime.now().microsecondsSinceEpoch;
     await _db.addPlaylistEntry(
       playlistId: favoritePlaylistId,

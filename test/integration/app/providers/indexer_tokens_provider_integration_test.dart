@@ -143,7 +143,7 @@ void main() {
         'Address $address',
         nowUs,
         nowUs,
-        address.toUpperCase(),
+        address.toNormalizedAddress(),
       ],
     );
   }
@@ -192,7 +192,7 @@ void main() {
       final db = sqlite3.open(context.databaseFile.path);
       addTearDown(db.dispose);
 
-      final ownerAddress = resolvedAddress.toUpperCase();
+      final ownerAddress = resolvedAddress.toNormalizedAddress();
       final tokenCountRows = db.select(
         '''
         SELECT COUNT(*) AS token_count
@@ -408,7 +408,7 @@ void main() {
       final db = sqlite3.open(context.databaseFile.path);
       addTearDown(db.dispose);
 
-      final ownerAddress = resolvedAddress.toUpperCase();
+      final ownerAddress = resolvedAddress.toNormalizedAddress();
       final releasedCid = tokenToRelease.cid;
       final releasedStillInPlaylist = db.select(
         '''

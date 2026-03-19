@@ -212,12 +212,15 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
           ),
         );
       } else {
-        unawaited(
-          widget.router.pushReplacement(
-            Routes.startSetupFf1,
-            extra: StartSetupFf1PagePayload(deeplink: action.link),
-          ),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          unawaited(
+            widget.router.pushReplacement(
+              Routes.startSetupFf1,
+              extra: StartSetupFf1PagePayload(deeplink: action.link),
+            ),
+          );
+        });
       }
       return;
     }

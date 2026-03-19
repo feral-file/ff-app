@@ -767,28 +767,6 @@ class SetSleepModeReply extends ReplyWithOK {
       SetSleepModeReply(ok: json['ok'] as bool);
 }
 
-extension OrientationExtension on Orientation {
-  String get name {
-    switch (this) {
-      case Orientation.portrait:
-        return 'portrait';
-      case Orientation.landscape:
-        return 'landscape';
-    }
-  }
-
-  static Orientation fromString(String orientation) {
-    switch (orientation) {
-      case 'portrait':
-        return Orientation.portrait;
-      case 'landscape':
-        return Orientation.landscape;
-      default:
-        throw ArgumentError('Unknown orientation: $orientation');
-    }
-  }
-}
-
 class GetDeviceStatusRequest implements FF1Request {
   GetDeviceStatusRequest();
 
