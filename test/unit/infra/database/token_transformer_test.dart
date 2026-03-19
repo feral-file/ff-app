@@ -15,7 +15,7 @@ void main() {
           standard: 'ERC-721',
           contractAddress: '0xCONTRACT',
           tokenNumber: '1',
-          metadata: TokenMetadata(
+          display: TokenMetadata(
             name: 'Test Artwork',
             imageUrl: 'https://example.com/thumb.jpg',
             animationUrl: 'https://example.com/animation.mp4',
@@ -75,7 +75,7 @@ void main() {
         expect(item.provenance, isNull);
       });
 
-      test('prefers enrichment animation URL for source', () {
+      test('uses display animation URL for source', () {
         final token = AssetToken(
           id: 1,
           cid: 'cid_test123',
@@ -83,21 +83,16 @@ void main() {
           standard: 'ERC-721',
           contractAddress: '0xCONTRACT',
           tokenNumber: '1',
-          enrichmentSource: EnrichmentSource(
-            name: 'Enriched Name',
-            animationUrl: 'https://example.com/enrichment-animation.mp4',
-            imageUrl: 'https://example.com/enrichment-image.jpg',
-          ),
-          metadata: TokenMetadata(
-            name: 'Metadata Name',
-            animationUrl: 'https://example.com/metadata-animation.mp4',
-            imageUrl: 'https://example.com/metadata-image.jpg',
+          display: TokenMetadata(
+            name: 'Display Name',
+            animationUrl: 'https://example.com/display-animation.mp4',
+            imageUrl: 'https://example.com/display-image.jpg',
           ),
         );
 
         final item = TokenTransformer.assetTokenToPlaylistItem(token: token);
 
-        expect(item.source, 'https://example.com/enrichment-animation.mp4');
+        expect(item.source, 'https://example.com/display-animation.mp4');
       });
 
       test('handles missing title', () {

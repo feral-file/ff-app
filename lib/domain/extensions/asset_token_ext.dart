@@ -17,21 +17,11 @@ class _RenderingType {
 }
 
 extension AssetTokenExtension on AssetToken {
-  String? get displayTitle {
-    final title = enrichmentSource?.name ?? metadata?.name;
-    if (title == null) {
-      return null;
-    }
-    return title;
-  }
+  String? get displayTitle => display?.name;
 
-  String get displayDescription {
-    return enrichmentSource?.description ?? metadata?.description ?? '';
-  }
+  String get displayDescription => display?.description ?? '';
 
-  String? get _mimeType {
-    return enrichmentSource?.mimeType ?? metadata?.mimeType;
-  }
+  String? get _mimeType => display?.mimeType;
 
   String get getMimeType {
     switch (_mimeType) {
@@ -95,28 +85,17 @@ extension AssetTokenExtension on AssetToken {
   }) {
     String? thumbnailUrl;
 
-    thumbnailUrl = enrichmentSource?.imageUrl ?? metadata?.imageUrl;
+    thumbnailUrl = display?.imageUrl;
 
     if (size != null) {
-      final metadataVariantUrls = metadataMediaAssets
-          ?.firstWhereOrNull(
-            (mediaAsset) => mediaAsset.sourceUrl == thumbnailUrl,
-          )
-          ?.variantUrls;
-
-      final enrichmentSourceVariantUrls = enrichmentSourceMediaAssets
-          ?.firstWhereOrNull(
+      final variantUrls = allMediaAssets
+          .firstWhereOrNull(
             (mediaAsset) => mediaAsset.sourceUrl == thumbnailUrl,
           )
           ?.variantUrls;
 
       final mediaThumbnailUrl =
-          (enrichmentSourceVariantUrls?[size] ??
-                  enrichmentSourceVariantUrls?.values.firstOrNull)
-              as String? ??
-          (metadataVariantUrls?[size] ??
-                  metadataVariantUrls?.values.firstOrNull)
-              as String?;
+          (variantUrls?[size] ?? variantUrls?.values.firstOrNull) as String?;
 
       if (mediaThumbnailUrl != null && mediaThumbnailUrl.isNotEmpty) {
         thumbnailUrl = mediaThumbnailUrl;
@@ -143,9 +122,10 @@ extension AssetTokenExtension on AssetToken {
     return null;
   }
 
-  List<Artist> get getArtists {
-    return enrichmentSource?.artists ?? metadata?.artists ?? [];
-  }
+  List<Artist> get getArtists => display?.artists ?? [];
+
+  /// Publisher for display.
+  Publisher? get displayPublisher => display?.publisher;
 
   String get secondaryMarketURL {
     switch (chain) {
@@ -177,8 +157,7 @@ extension AssetTokenExtension on AssetToken {
   }
 
   String? getPreviewUrl() {
-    final animationUrl =
-        enrichmentSource?.animationUrl ?? metadata?.animationUrl;
+    final animationUrl = display?.animationUrl;
     if (animationUrl?.isNotEmpty ?? false) {
       return animationUrl;
     }

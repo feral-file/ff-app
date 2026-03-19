@@ -99,10 +99,12 @@ async function main() {
   const channelsFeedEndpoint = ARGS.channelsFeedEndpoint;
 
   const outputPath = DEFAULT_OUTPUT;
-  const s3Config = resolveS3Config({
-    args: ARGS,
-    env,
-  });
+  const s3Config = ARGS.dryrun
+    ? null
+    : resolveS3Config({
+      args: ARGS,
+      env,
+    });
   fs.mkdirSync(path.dirname(outputPath), {recursive: true});
   removeSqliteSidecars(outputPath);
   if (fs.existsSync(outputPath)) {
@@ -230,7 +232,9 @@ async function main() {
   execSqlite(outputPath, sql);
   validateOutputDatabase(outputPath);
   finalizeDatabaseFile(outputPath);
-  if (s3Config) {
+  if (ARGS.dryrun) {
+    console.log('[dryrun] skipping S3 upload');
+  } else if (s3Config) {
     const uploadResult = await uploadToS3({
       filePath: outputPath,
       config: s3Config,
@@ -250,6 +254,7 @@ function parseArgs(argv) {
     channelsSource: undefined,
     channelsFeedEndpoint: undefined,
     requireChannelIds: [],
+    dryrun: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -286,6 +291,9 @@ function parseArgs(argv) {
       case '--require-channel-id':
         out.requireChannelIds.push(String(next || '').trim());
         i += 1;
+        break;
+      case '--dryrun':
+        out.dryrun = true;
         break;
       default:
         if (arg.startsWith('-')) {

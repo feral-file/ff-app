@@ -130,6 +130,50 @@ void main() {
     expect(details.playlists.map((p) => p.id), contains('pl_1'));
   });
 
+  test('channelDetailsProvider includes empty address playlists', () async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+    final dbService = DatabaseService(db);
+    final container = ProviderContainer.test(
+      overrides: [
+        databaseServiceProvider.overrideWith((ref) => dbService),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final completer = Completer<ChannelDetails>();
+    final sub = container.listen<AsyncValue<ChannelDetails>>(
+      channelDetailsProvider('ch_me'),
+      (_, next) {
+        next.whenData((value) {
+          if (value.channel?.id == 'ch_me' && !completer.isCompleted) {
+            completer.complete(value);
+          }
+        });
+      },
+      fireImmediately: true,
+    );
+    addTearDown(sub.close);
+
+    await dbService.ingestChannel(const Channel(
+      id: 'ch_me',
+      name: 'Me',
+      type: ChannelType.localVirtual,
+    ));
+    await dbService.ingestPlaylist(const Playlist(
+      id: 'pl_empty_addr',
+      name: 'Empty address',
+      type: PlaylistType.addressBased,
+      channelId: 'ch_me',
+    ));
+
+    final details = await completer.future;
+    expect(details.channel?.id, 'ch_me');
+    expect(details.playlists.length, 1);
+    expect(details.playlists.single.id, 'pl_empty_addr');
+    expect(details.playlists.single.itemCount, 0);
+  });
+
   test('channelPlaylistsFromIdsProvider filters out playlists without works',
       () async {
     final db = AppDatabase.forTesting(NativeDatabase.memory());
@@ -144,14 +188,13 @@ void main() {
       publisherId: 10,
     ));
 
-    await dbService.ingestPlaylist(Playlist(
+    await dbService.ingestPlaylist(const Playlist(
       id: 'favorite',
       name: 'Favorites',
       type: PlaylistType.favorite,
       channelId: 'ch_me',
-      itemCount: 0,
     ));
-    await dbService.ingestPlaylist(Playlist(
+    await dbService.ingestPlaylist(const Playlist(
       id: 'pl_with_works',
       name: 'With works',
       type: PlaylistType.addressBased,
@@ -181,5 +224,50 @@ void main() {
     final playlists = await completer.future;
     expect(playlists.length, 1);
     expect(playlists.single.id, 'pl_with_works');
+  });
+
+  test('channelPlaylistsFromIdsProvider includes empty address playlists', () async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+    final dbService = DatabaseService(db);
+
+    await dbService.ingestPublisher(id: 10, name: 'Pub');
+    await dbService.ingestChannel(const Channel(
+      id: 'ch_me',
+      name: 'Me',
+      type: ChannelType.localVirtual,
+      publisherId: 10,
+    ));
+
+    await dbService.ingestPlaylist(const Playlist(
+      id: 'pl_empty_addr',
+      name: 'Empty address',
+      type: PlaylistType.addressBased,
+      channelId: 'ch_me',
+    ));
+
+    final container = ProviderContainer.test(
+      overrides: [
+        databaseServiceProvider.overrideWith((ref) => dbService),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final completer = Completer<List<Playlist>>();
+    final sub = container.listen<AsyncValue<List<Playlist>>>(
+      channelPlaylistsFromIdsProvider('ch_me'),
+      (_, next) {
+        next.whenData((value) {
+          if (!completer.isCompleted) completer.complete(value);
+        });
+      },
+      fireImmediately: true,
+    );
+    addTearDown(sub.close);
+
+    final playlists = await completer.future;
+    expect(playlists.length, 1);
+    expect(playlists.single.id, 'pl_empty_addr');
+    expect(playlists.single.itemCount, 0);
   });
 }

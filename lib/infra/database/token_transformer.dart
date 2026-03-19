@@ -21,7 +21,7 @@ class TokenTransformer {
     String? ownerAddress,
   }) {
     final title = token.displayTitle ?? 'Untitled';
-    final artists = token.enrichmentSource?.artists ?? token.metadata?.artists;
+    final artists = token.display?.artists;
     final dp1Artists = artists
         ?.map((a) => DP1Artist(name: a.name, id: a.did))
         .toList();
@@ -194,10 +194,7 @@ class TokenTransformer {
       return preview;
     }
 
-    final mediaAssets = <MediaAsset>[
-      ...?token.enrichmentSourceMediaAssets,
-      ...?token.metadataMediaAssets,
-    ];
+    final mediaAssets = token.allMediaAssets;
     for (final mediaAsset in mediaAssets) {
       final firstVariant = mediaAsset.variantUrls.values
           .map((value) => value.toString())

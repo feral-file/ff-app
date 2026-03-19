@@ -42,7 +42,7 @@ void main() {
         token_number
         current_owner
         updated_at
-        metadata {
+        display {
           name
           description
           image_url
@@ -64,26 +64,10 @@ void main() {
             last_tx_index
           }
         }
-        enrichment_source {
-          name
-          description
-          image_url
-          animation_url
-          mime_type
-          artists {
-            name
-            did
-          }
-        }
-        metadata_media_assets {
+        media_assets {
           source_url
           mime_type
-          variant_urls
-        }
-        enrichment_source_media_assets {
-          source_url
-          mime_type
-          variant_urls
+          variants(keys: [xs, s, m, l, xl, xxl, hls, dash, preview])
         }
       }
       offset
@@ -116,7 +100,7 @@ void main() {
       token_number
       current_owner
       updated_at
-      metadata {
+      display {
         name
         description
         image_url
@@ -147,26 +131,10 @@ void main() {
           chain
         }
       }
-      enrichment_source {
-        name
-        description
-        image_url
-        animation_url
-        mime_type
-        artists {
-          name
-          did
-        }
-      }
-      metadata_media_assets {
+      media_assets {
         source_url
         mime_type
-        variant_urls
-      }
-      enrichment_source_media_assets {
-        source_url
-        mime_type
-        variant_urls
+        variants(keys: [xs, s, m, l, xl, xxl, hls, dash, preview])
       }
     }
   }

@@ -183,7 +183,7 @@ void main() {
               contractAddress: '0x28b51BA8B990c48CB22cB6EF0ad5415fdBA5210C',
               tokenNumber:
                   '59708377447550061117940200307772073115750811538487998108113477949081946656826',
-              metadata: TokenMetadata(
+              display: TokenMetadata(
                 name: 'Token 1',
                 artists: [Artist(did: 'did:example:1', name: 'Artist 1')],
               ),
@@ -233,7 +233,7 @@ void main() {
           standard: 'erc721',
           contractAddress: address,
           tokenNumber: tokenId,
-          metadata: TokenMetadata(name: 'Token $i'),
+          display: TokenMetadata(name: 'Token $i'),
         );
       }
 

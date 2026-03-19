@@ -41,7 +41,7 @@ void main() {
         standard: 'ERC-721',
         contractAddress: '0xabc',
         tokenNumber: '1',
-        metadata: TokenMetadata(
+        display: TokenMetadata(
           name: 'Token $cid',
           imageUrl: 'https://example.com/$cid.jpg',
         ),

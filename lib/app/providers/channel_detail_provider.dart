@@ -1,4 +1,5 @@
 import 'package:app/app/providers/seed_database_ready_provider.dart';
+import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/database_provider.dart';
@@ -34,8 +35,9 @@ final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
         databaseService.watchChannelById(channelId),
         databaseService.watchPlaylists(channelIds: [channelId]),
         (channel, playlists) {
-          final withWorks =
-              playlists.where((p) => p.itemCount > 0).toList();
+          final withWorks = playlists
+              .where((p) => p.itemCount > 0 || p.isAddressPlaylist)
+              .toList();
           return ChannelDetails(channel: channel, playlists: withWorks);
         },
       );
@@ -46,16 +48,21 @@ final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
 /// Uses a single DB query with channelIds so order matches canonical
 /// publisher_id, created_at_us semantics.
 final StreamProviderFamily<List<Playlist>, String>
-    channelPlaylistsFromIdsProvider =
-    StreamProvider.family<List<Playlist>, String>((ref, channelIdsKey) {
-      final databaseService = ref.read(databaseServiceProvider);
-      final ids = channelIdsKey
-          .split(',')
-          .map((s) => s.trim())
-          .where((s) => s.isNotEmpty)
-          .toList();
-      if (ids.isEmpty) return Stream.value(<Playlist>[]);
-      return databaseService
-          .watchPlaylists(channelIds: ids)
-          .map((list) => list.where((p) => p.itemCount > 0).toList());
-    });
+channelPlaylistsFromIdsProvider = StreamProvider.family<List<Playlist>, String>(
+  (ref, channelIdsKey) {
+    final databaseService = ref.read(databaseServiceProvider);
+    final ids = channelIdsKey
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (ids.isEmpty) return Stream.value(<Playlist>[]);
+    return databaseService
+        .watchPlaylists(channelIds: ids)
+        .map(
+          (list) => list
+              .where((p) => p.itemCount > 0 || p.isAddressPlaylist)
+              .toList(),
+        );
+  },
+);
