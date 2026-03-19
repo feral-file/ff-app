@@ -85,13 +85,13 @@ class AssetToken {
     required this.tokenNumber,
     this.currentOwner,
     this.updatedAt,
-    this.metadata,
     this.owners,
     this.provenanceEvents,
     this.ownerProvenances,
-    this.enrichmentSource,
     this.metadataMediaAssets,
     this.enrichmentSourceMediaAssets,
+    this.mediaAssets,
+    this.display,
   });
 
   final int id;
@@ -102,13 +102,23 @@ class AssetToken {
   final String tokenNumber;
   final String? currentOwner;
   final DateTime? updatedAt;
-  final TokenMetadata? metadata;
+  /// Unified display data from indexer.
+  final TokenMetadata? display;
   final PaginatedOwners? owners;
   final PaginatedProvenanceEvents? provenanceEvents;
   final PaginatedOwnerProvenances? ownerProvenances;
-  final EnrichmentSource? enrichmentSource;
   final List<MediaAsset>? metadataMediaAssets;
   final List<MediaAsset>? enrichmentSourceMediaAssets;
+  /// Unified media assets from indexer (replaces deprecated metadata_media_assets + enrichment_source_media_assets).
+  final List<MediaAsset>? mediaAssets;
+
+  /// All media assets: unified media_assets when present, else merged metadata + enrichment_source.
+  List<MediaAsset> get allMediaAssets =>
+      mediaAssets ??
+      [
+        ...?metadataMediaAssets,
+        ...?enrichmentSourceMediaAssets,
+      ];
 
   factory AssetToken.fromGraphQL(Map<String, dynamic> json) => AssetToken(
     id: int.parse(json['id'].toString()),
@@ -121,9 +131,9 @@ class AssetToken {
     updatedAt: (json['updated_at'] != null)
         ? DateTime.tryParse(json['updated_at'] as String)
         : null,
-    metadata: json['metadata'] != null
+    display: json['display'] != null
         ? TokenMetadata.fromJson(
-            Map<String, dynamic>.from(json['metadata'] as Map),
+            Map<String, dynamic>.from(json['display'] as Map),
           )
         : null,
     owners: json['owners'] != null
@@ -141,11 +151,6 @@ class AssetToken {
             Map<String, dynamic>.from(json['owner_provenances'] as Map),
           )
         : null,
-    enrichmentSource: json['enrichment_source'] != null
-        ? EnrichmentSource.fromJson(
-            Map<String, dynamic>.from(json['enrichment_source'] as Map),
-          )
-        : null,
     metadataMediaAssets: (json['metadata_media_assets'] as List?)
         ?.map((e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList(),
@@ -155,7 +160,11 @@ class AssetToken {
               (e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)),
             )
             .toList(),
+    mediaAssets: (json['media_assets'] as List?)
+        ?.map((e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList(),
   );
+
 
   factory AssetToken.fromRest(Map<String, dynamic> json) => AssetToken(
     id: int.parse(json['id'].toString()),
@@ -168,9 +177,9 @@ class AssetToken {
     updatedAt: (json['updated_at'] != null)
         ? DateTime.tryParse(json['updated_at'] as String)
         : null,
-    metadata: json['metadata'] != null
+    display: json['display'] != null
         ? TokenMetadata.fromJson(
-            Map<String, dynamic>.from(json['metadata'] as Map),
+            Map<String, dynamic>.from(json['display'] as Map),
           )
         : null,
     owners: json['owners'] != null
@@ -188,11 +197,6 @@ class AssetToken {
             Map<String, dynamic>.from(json['owner_provenances'] as Map),
           )
         : null,
-    enrichmentSource: json['enrichment_source'] != null
-        ? EnrichmentSource.fromJson(
-            Map<String, dynamic>.from(json['enrichment_source'] as Map),
-          )
-        : null,
     metadataMediaAssets: (json['metadata_media_assets'] as List?)
         ?.map((e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList(),
@@ -202,6 +206,9 @@ class AssetToken {
               (e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)),
             )
             .toList(),
+    mediaAssets: (json['media_assets'] as List?)
+        ?.map((e) => MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList(),
   );
 
   Map<String, dynamic> toRestJson() => {
@@ -211,11 +218,10 @@ class AssetToken {
     'standard': standard,
     'contract_address': contractAddress,
     'token_number': tokenNumber,
-    'metadata': metadata?.toJson(),
+    'display': display?.toJson(),
     'owners': owners?.toJson(),
     'provenance_events': provenanceEvents?.toJson(),
     'owner_provenances': ownerProvenances?.toJson(),
-    'enrichment_source': enrichmentSource?.toJson(),
     'metadata_media_assets': metadataMediaAssets
         ?.map((e) => e.toJson())
         .toList(),
@@ -247,9 +253,9 @@ class AssetToken {
           : null,
 
       // Nested complex objects from display_data
-      metadata: displayData['metadata'] != null
+      display: displayData['display'] != null
           ? TokenMetadata.fromJson(
-              Map<String, dynamic>.from(displayData['metadata'] as Map),
+              Map<String, dynamic>.from(displayData['display'] as Map),
             )
           : null,
 
@@ -275,14 +281,6 @@ class AssetToken {
             )
           : null,
 
-      enrichmentSource: displayData['enrichment_source'] != null
-          ? EnrichmentSource.fromJson(
-              Map<String, dynamic>.from(
-                displayData['enrichment_source'] as Map,
-              ),
-            )
-          : null,
-
       metadataMediaAssets: displayData['metadata_media_assets'] != null
           ? (displayData['metadata_media_assets'] as List)
                 .map(
@@ -301,6 +299,14 @@ class AssetToken {
                 )
                 .toList()
           : null,
+      mediaAssets: displayData['media_assets'] != null
+          ? (displayData['media_assets'] as List)
+              .map(
+                (e) =>
+                    MediaAsset.fromJson(Map<String, dynamic>.from(e as Map)),
+              )
+              .toList()
+          : null,
     );
   }
 
@@ -313,13 +319,13 @@ class AssetToken {
     String? tokenNumber,
     String? currentOwner,
     DateTime? updatedAt,
-    TokenMetadata? metadata,
+    TokenMetadata? display,
     PaginatedOwners? owners,
     PaginatedProvenanceEvents? provenanceEvents,
     PaginatedOwnerProvenances? ownerProvenances,
-    EnrichmentSource? enrichmentSource,
     List<MediaAsset>? metadataMediaAssets,
     List<MediaAsset>? enrichmentSourceMediaAssets,
+    List<MediaAsset>? mediaAssets,
   }) {
     return AssetToken(
       id: id ?? this.id,
@@ -330,14 +336,14 @@ class AssetToken {
       tokenNumber: tokenNumber ?? this.tokenNumber,
       currentOwner: currentOwner ?? this.currentOwner,
       updatedAt: updatedAt ?? this.updatedAt,
-      metadata: metadata ?? this.metadata,
+      display: display ?? this.display,
       owners: owners ?? this.owners,
       provenanceEvents: provenanceEvents ?? this.provenanceEvents,
       ownerProvenances: ownerProvenances ?? this.ownerProvenances,
-      enrichmentSource: enrichmentSource ?? this.enrichmentSource,
       metadataMediaAssets: metadataMediaAssets ?? this.metadataMediaAssets,
       enrichmentSourceMediaAssets:
           enrichmentSourceMediaAssets ?? this.enrichmentSourceMediaAssets,
+      mediaAssets: mediaAssets ?? this.mediaAssets,
     );
   }
 }
@@ -676,63 +682,6 @@ class PaginatedOwnerProvenances {
   }
 }
 
-class EnrichmentSource {
-  EnrichmentSource({
-    this.name,
-    this.description,
-    this.imageUrl,
-    this.animationUrl,
-    this.mimeType,
-    this.artists,
-  });
-
-  final String? name;
-  final String? description;
-  final String? imageUrl;
-  final String? animationUrl;
-  final String? mimeType;
-  final List<Artist>? artists;
-
-  factory EnrichmentSource.fromJson(Map<String, dynamic> json) =>
-      EnrichmentSource(
-        name: json['name'] as String?,
-        description: json['description'] as String?,
-        imageUrl: json['image_url'] as String?,
-        animationUrl: json['animation_url'] as String?,
-        mimeType: json['mime_type'] as String?,
-        artists: (json['artists'] as List?)
-            ?.map((e) => Artist.fromJson(Map<String, dynamic>.from(e as Map)))
-            .toList(),
-      );
-
-  Map<String, dynamic> toJson() => {
-    if (name != null) 'name': name,
-    if (description != null) 'description': description,
-    if (imageUrl != null) 'image_url': imageUrl,
-    if (animationUrl != null) 'animation_url': animationUrl,
-    if (mimeType != null) 'mime_type': mimeType,
-    if (artists != null) 'artists': artists!.map((a) => a.toJson()).toList(),
-  };
-
-  EnrichmentSource copyWith({
-    String? name,
-    String? description,
-    String? imageUrl,
-    String? animationUrl,
-    String? mimeType,
-    List<Artist>? artists,
-  }) {
-    return EnrichmentSource(
-      name: name ?? this.name,
-      description: description ?? this.description,
-      imageUrl: imageUrl ?? this.imageUrl,
-      animationUrl: animationUrl ?? this.animationUrl,
-      mimeType: mimeType ?? this.mimeType,
-      artists: artists ?? this.artists,
-    );
-  }
-}
-
 class MediaAsset {
   MediaAsset({
     required this.sourceUrl,
@@ -747,7 +696,10 @@ class MediaAsset {
   factory MediaAsset.fromJson(Map<String, dynamic> json) => MediaAsset(
     sourceUrl: json['source_url'] as String,
     mimeType: json['mime_type'] as String?,
-    variantUrls: Map<String, dynamic>.from(json['variant_urls'] as Map),
+    variantUrls: Map<String, dynamic>.from(
+      (json['variants'] ?? json['variant_urls'] ?? <String, dynamic>{})
+          as Map,
+    ),
   );
 
   Map<String, dynamic> toJson() => {
