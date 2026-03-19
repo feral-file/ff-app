@@ -99,10 +99,12 @@ async function main() {
   const channelsFeedEndpoint = ARGS.channelsFeedEndpoint;
 
   const outputPath = DEFAULT_OUTPUT;
-  const s3Config = resolveS3Config({
-    args: ARGS,
-    env,
-  });
+  const s3Config = ARGS.dryrun
+    ? null
+    : resolveS3Config({
+      args: ARGS,
+      env,
+    });
   fs.mkdirSync(path.dirname(outputPath), {recursive: true});
   removeSqliteSidecars(outputPath);
   if (fs.existsSync(outputPath)) {
