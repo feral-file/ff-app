@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:app/app/providers/local_data_cleanup_provider.dart';
-import 'package:uuid/uuid.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/config/seed_database_config_store.dart';
@@ -14,6 +13,7 @@ import 'package:app/widgets/seed_sync_loading_indicator.dart'
     show SeedSyncLoadingIndicator;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:uuid/uuid.dart';
 
 final _log = Logger('SeedDownloadNotifier');
 
@@ -177,7 +177,8 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
 
       _log.info('Seed database sync complete');
       if (!_isSessionActive(session)) {
-        if (completeSeedDatabaseGate) SeedDatabaseGate.complete();
+        // Gate completion owned only by active session; overridden session must
+        // not open it before the active sync finishes download/replace.
         return false;
       }
       if (updated) {
@@ -197,8 +198,8 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       );
       if (_isSessionActive(session)) {
         notifyForceReplaceFinished(success: false, errorMessage: e.toString());
+        if (completeSeedDatabaseGate) SeedDatabaseGate.complete();
       }
-      if (completeSeedDatabaseGate) SeedDatabaseGate.complete();
       return false;
     } finally {
       _clearSession(session);

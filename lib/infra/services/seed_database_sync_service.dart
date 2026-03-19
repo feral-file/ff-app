@@ -150,7 +150,14 @@ class SeedDatabaseSyncService {
         await afterReplace();
         return true;
       });
-      if (!result) return false;
+      if (!result) {
+        try {
+          await File(tempPath).delete();
+        } on Object catch (_) {
+          // Ignore; temp dir may be cleaned by OS
+        }
+        return false;
+      }
       _log.info(
         forceReplace
             ? 'Seed database force-replaced.'
