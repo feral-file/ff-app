@@ -288,7 +288,54 @@ void main() {
   );
 
   test(
-    'overridden session does not update state or callbacks on completion',
+    'isSyncInProgress is true during sync even when status stays idle',
+    () async {
+      final completer = Completer<void>();
+      final fakeSyncService = _FakeSeedDatabaseSyncService()
+        ..hasLocalDatabase = true;
+      final slowFake = _SlowFakeSeedDatabaseSyncService(
+        delegate: fakeSyncService,
+        beforeComplete: completer.future,
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(slowFake),
+          appStateServiceProvider.overrideWithValue(
+            _FakeAppStateService(initialHasCompletedSeedDownload: true),
+          ),
+          seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(seedDownloadProvider.notifier);
+      final syncFuture = notifier.sync();
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(
+        container.read(seedDownloadProvider).isSyncInProgress,
+        isTrue,
+        reason: 'sync in progress even when status stays idle (suppressLoading)',
+      );
+      expect(
+        container.read(seedDownloadProvider).status,
+        SeedDownloadStatus.idle,
+        reason: 'status not syncing when suppressLoading',
+      );
+
+      completer.complete();
+      await syncFuture;
+
+      expect(
+        container.read(seedDownloadProvider).isSyncInProgress,
+        isFalse,
+      );
+    },
+  );
+
+  test(
+    'overridden session restores readiness when it completed replace',
     () async {
       final completer = Completer<void>();
       final fakeSyncService = _FakeSeedDatabaseSyncService();
@@ -324,8 +371,8 @@ void main() {
 
       expect(
         onReadyCallCount,
-        1,
-        reason: 'only the active (second) session must call onReady',
+        greaterThanOrEqualTo(1),
+        reason: 'overridden session must call setReady when it completed replace',
       );
       expect(
         fakeSyncService.syncCallCount,

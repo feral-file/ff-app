@@ -383,13 +383,15 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     if (_isResumeSeedSyncInProgress) {
       return;
     }
-    // Skip if a seed download is already in progress (e.g. from rebuildMetadata
-    // or Forget I Exist). Resuming would otherwise start a second concurrent
-    // download.
+    // Skip if a seed sync is already in progress (e.g. from rebuildMetadata,
+    // Forget I Exist, or startup). Use isSyncInProgress, not status: when
+    // hasCompletedSeedDownload is true, startup sync runs without setting
+    // status to syncing, so status would stay idle and resume would start
+    // a second concurrent sync.
     final seedState = ref.read(seedDownloadProvider);
-    if (seedState.status == SeedDownloadStatus.syncing) {
+    if (seedState.isSyncInProgress) {
       _log.info(
-        'Seed sync on resume skipped: download already in progress',
+        'Seed sync on resume skipped: sync already in progress',
       );
       return;
     }

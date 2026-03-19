@@ -39,6 +39,7 @@ class SeedDownloadState {
     required this.status,
     this.errorMessage,
     this.progress,
+    this.isSyncInProgress = false,
   });
 
   /// Current download status.
@@ -50,16 +51,23 @@ class SeedDownloadState {
   /// Download progress 0.0–1.0 when [status] is [SeedDownloadStatus.syncing].
   final double? progress;
 
+  /// True while any sync() call is running, regardless of UI status.
+  /// Use for guards (e.g. skip resume) when [status] may stay idle due to
+  /// suppressed loading (hasCompletedSeedDownload).
+  final bool isSyncInProgress;
+
   /// Returns a copy with the given fields replaced.
   SeedDownloadState copyWith({
     SeedDownloadStatus? status,
     String? errorMessage,
     double? progress,
+    bool? isSyncInProgress,
   }) {
     return SeedDownloadState(
       status: status ?? this.status,
       errorMessage: errorMessage ?? this.errorMessage,
       progress: progress ?? this.progress,
+      isSyncInProgress: isSyncInProgress ?? this.isSyncInProgress,
     );
   }
 }
@@ -85,6 +93,7 @@ class _SyncSession {
 class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   _SyncSession? _activeSession;
   static const _uuid = Uuid();
+  int _syncInProgressCount = 0;
 
   @override
   SeedDownloadState build() {
@@ -129,6 +138,8 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     void Function()? onDownloadStarted,
   }) async {
     final session = _beginSession();
+    _syncInProgressCount++;
+    state = state.copyWith(isSyncInProgress: true);
 
     final service = ref.read(seedDatabaseSyncServiceProvider);
     final appStateService = ref.read(appStateServiceProvider);
@@ -177,8 +188,12 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
 
       _log.info('Seed database sync complete');
       if (!_isSessionActive(session)) {
-        // Gate completion owned only by active session; overridden session must
-        // not open it before the active sync finishes download/replace.
+        // Overridden session must not update state, UI, or gate. But if it
+        // completed replace+afterReplace (updated==true), we must restore
+        // readiness: no other path will, and DB consumers stay gated otherwise.
+        if (updated) {
+          await seedReadyNotifier.setReady();
+        }
         return false;
       }
       if (updated) {
@@ -202,6 +217,8 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       }
       return false;
     } finally {
+      _syncInProgressCount--;
+      state = state.copyWith(isSyncInProgress: _syncInProgressCount > 0);
       _clearSession(session);
     }
   }
@@ -209,7 +226,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   /// Notifies that a force-replace (e.g. Forget I Exist) has started.
   /// Call from [forceReplaceDatabaseFromSeed] so tabs show [SeedSyncLoadingIndicator].
   void notifyForceReplaceStarted() {
-    state = const SeedDownloadState(
+    state = state.copyWith(
       status: SeedDownloadStatus.syncing,
       progress: 0,
     );
@@ -224,12 +241,11 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
 
   /// Notifies that force-replace finished. Call after seed replacement completes.
   void notifyForceReplaceFinished({bool success = true, String? errorMessage}) {
-    state = success
-        ? const SeedDownloadState(status: SeedDownloadStatus.done)
-        : SeedDownloadState(
-            status: SeedDownloadStatus.error,
-            errorMessage: errorMessage,
-          );
+    state = SeedDownloadState(
+      status: success ? SeedDownloadStatus.done : SeedDownloadStatus.error,
+      errorMessage: errorMessage,
+      isSyncInProgress: state.isSyncInProgress,
+    );
   }
 }
 
