@@ -37,7 +37,7 @@ const String getTokens = r'''
         token_number
         current_owner
         updated_at
-        metadata {
+        display {
           name
           description
           image_url
@@ -59,26 +59,10 @@ const String getTokens = r'''
             last_tx_index
           }
         }
-        enrichment_source {
-          name
-          description
-          image_url
-          animation_url
-          mime_type
-          artists {
-            name
-            did
-          }
-        }
-        metadata_media_assets {
+        media_assets {
           source_url
           mime_type
-          variant_urls
-        }
-        enrichment_source_media_assets {
-          source_url
-          mime_type
-          variant_urls
+          variants(keys: [xs, s, m, l, xl, xxl, hls, dash, preview])
         }
       }
       offset
@@ -111,7 +95,7 @@ const String getTokenByCidQuery = r'''
       token_number
       current_owner
       updated_at
-      metadata {
+      display {
         name
         description
         image_url
@@ -142,26 +126,10 @@ const String getTokenByCidQuery = r'''
           chain
         }
       }
-      enrichment_source {
-        name
-        description
-        image_url
-        animation_url
-        mime_type
-        artists {
-          name
-          did
-        }
-      }
-      metadata_media_assets {
+      media_assets {
         source_url
         mime_type
-        variant_urls
-      }
-      enrichment_source_media_assets {
-        source_url
-        mime_type
-        variant_urls
+        variants(keys: [xs, s, m, l, xl, xxl, hls, dash, preview])
       }
     }
   }

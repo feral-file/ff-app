@@ -315,7 +315,7 @@ Widget buildWorkDetailMetadataSection(
       ? token.getArtists.map((a) => a.name).join(', ')
       : artistStringFromPlaylistItem(item);
   final title = token?.displayTitle ?? item.title;
-  final publisherName = token?.metadata?.publisher?.name;
+  final publisherName = token?.displayPublisher?.name;
 
   return SectionExpandedWidget(
     header: 'Metadata',
@@ -333,7 +333,7 @@ Widget buildWorkDetailMetadataSection(
           MetaDataItem(
             title: 'Token',
             value: publisherName,
-            tapLink: token?.metadata?.publisher?.url,
+            tapLink: token?.displayPublisher?.url,
             forceSafariVC: true,
           ),
           _artworkDataDivider,

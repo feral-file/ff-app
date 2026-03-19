@@ -93,7 +93,7 @@ class _FakeIndexerService extends IndexerService {
             standard: 'erc721',
             contractAddress: '0xabc',
             tokenNumber: '1',
-            metadata: TokenMetadata(
+            display: TokenMetadata(
               name: 'Work $cid',
               imageUrl: 'https://images.example/$cid.png',
             ),
