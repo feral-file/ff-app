@@ -350,6 +350,13 @@ class AppDatabase extends _$AppDatabase {
     return query.watch();
   }
 
+  /// Emits publisher id → display title when the publishers table changes.
+  Stream<Map<int, String>> watchPublisherTitles() {
+    return select(publishers).watch().map(
+          (rows) => {for (final r in rows) r.id: r.title},
+        );
+  }
+
   /// Watch playlists ordered by publisher_id, created_at_us (canonical order).
   /// Filter by [type], [channelIds], [ownerAddress], [limit].
   Stream<List<PlaylistData>> watchPlaylists({

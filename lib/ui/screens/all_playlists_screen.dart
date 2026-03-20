@@ -1,12 +1,16 @@
 import 'package:app/app/providers/channel_detail_provider.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
+import 'package:app/app/providers/publisher_section_providers.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/utils/playlist_publisher_sections.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/bottom_spacing.dart';
@@ -146,6 +150,103 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
           types.contains(PlaylistType.addressBased);
     }
     return _effectiveChannelTypes().contains(ChannelType.localVirtual);
+  }
+
+  Widget _playlistRowItem(BuildContext context, Playlist playlist) {
+    return PlaylistRowItem(
+      playlist: playlist,
+      headerBuilder: _shouldShowAddressHeaders()
+          ? (p, itemCount) {
+              if (p.type == PlaylistType.favorite) {
+                return PlaylistTitle(
+                  primaryText: p.name,
+                  secondaryText: '',
+                );
+              }
+              final ownerAddress = p.ownerAddress;
+              if (ownerAddress == null || ownerAddress.isEmpty) {
+                return null;
+              }
+              final creator = _creatorForAddressPlaylist(p);
+              return PlaylistHeaderWithCollectionState(
+                primaryText: p.name,
+                secondaryText: creator,
+                total: itemCount,
+                ownerAddress: ownerAddress,
+                onRetry: () => ref
+                    .read(addressServiceProvider)
+                    .indexAndSyncAddress(ownerAddress),
+              );
+            }
+          : null,
+      onItemTap: (item) {
+        context.push('${Routes.works}/${item.id}');
+      },
+    );
+  }
+
+  List<Widget> _playlistSlivers({
+    required BuildContext context,
+    required List<Playlist> playlists,
+    required bool isChannelScoped,
+  }) {
+    final seedReady = ref.watch(isSeedDatabaseReadyProvider);
+    final publisherAsync = ref.watch(publisherTitlesMapProvider);
+    final channelAsync = ref.watch(allChannelsByIdMapProvider);
+    final lookupsReady = publisherAsync.hasValue && channelAsync.hasValue;
+    final publisherMap = publisherAsync.value ?? const <int, String>{};
+    final channelMap = channelAsync.value ?? const <String, Channel>{};
+
+    final sections = groupPlaylistsByPublisherSections(
+      playlists: playlists,
+      channelById: channelMap,
+      publisherIdToName: publisherMap,
+    );
+    final usePublisherSections = shouldUsePublisherGroupedLayout(
+      isChannelScoped: isChannelScoped,
+      seedDatabaseReady: seedReady,
+      channelAndPublisherLookupsReady: lookupsReady,
+      sectionCount: sections.length,
+    );
+
+    if (!usePublisherSections) {
+      return [
+        SliverList.builder(
+          itemCount: playlists.length,
+          itemBuilder: (context, index) {
+            return _playlistRowItem(context, playlists[index]);
+          },
+        ),
+      ];
+    }
+
+    return [
+      for (var i = 0; i < sections.length; i++) ...[
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: ContentRhythm.horizontalRail,
+              right: ContentRhythm.horizontalRail,
+              bottom: LayoutConstants.space3,
+              top: i == 0 ? 0 : LayoutConstants.space4,
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                sections[i].title,
+                style: AppTypography.h3(context).white,
+              ),
+            ),
+          ),
+        ),
+        SliverList.builder(
+          itemCount: sections[i].playlists.length,
+          itemBuilder: (context, index) {
+            return _playlistRowItem(context, sections[i].playlists[index]);
+          },
+        ),
+      ],
+    ];
   }
 
   @override
@@ -293,42 +394,10 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
                       ),
                     ),
                   const SliverToBoxAdapter(child: SizedBox(height: 50)),
-                  SliverList.builder(
-                    itemCount: playlists.length,
-                    itemBuilder: (context, index) {
-                      final playlist = playlists[index];
-                      return PlaylistRowItem(
-                        playlist: playlist,
-                        headerBuilder: _shouldShowAddressHeaders()
-                            ? (p, itemCount) {
-                                if (p.type == PlaylistType.favorite) {
-                                  return PlaylistTitle(
-                                    primaryText: p.name,
-                                    secondaryText: '',
-                                  );
-                                }
-                                final ownerAddress = p.ownerAddress;
-                                if (ownerAddress == null ||
-                                    ownerAddress.isEmpty) {
-                                  return null;
-                                }
-                                final creator = _creatorForAddressPlaylist(p);
-                                return PlaylistHeaderWithCollectionState(
-                                  primaryText: p.name,
-                                  secondaryText: creator,
-                                  total: itemCount,
-                                  ownerAddress: ownerAddress,
-                                  onRetry: () => ref
-                                      .read(addressServiceProvider)
-                                      .indexAndSyncAddress(ownerAddress),
-                                );
-                              }
-                            : null,
-                        onItemTap: (item) {
-                          context.push('${Routes.works}/${item.id}');
-                        },
-                      );
-                    },
+                  ..._playlistSlivers(
+                    context: context,
+                    playlists: playlists,
+                    isChannelScoped: isChannelScoped,
                   ),
                   if (hasMore || isLoadingMore)
                     SliverToBoxAdapter(
