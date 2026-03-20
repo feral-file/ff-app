@@ -44,6 +44,8 @@
 - Important edge cases:
   - missing required env keys: app blocks and shows configuration error screen
   - seed sync failure: app continues using existing/local DB and opens seed gate
+  - when onboarding is incomplete, startup seed-sync UX stays background-only
+    (no startup update toast/loading indicator), while sync/gate behavior still runs
   - legacy data exists: onboarding is marked seen and migration runs in background
 
 ### Flow: Onboarding and first-use setup
