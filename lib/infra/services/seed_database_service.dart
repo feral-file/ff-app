@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -9,7 +10,6 @@ import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:sentry_dio/sentry_dio.dart';
 
 class _SeedDatabaseS3Location {
   const _SeedDatabaseS3Location({
@@ -107,7 +107,8 @@ class SeedDatabaseService {
     Future<Directory> Function()? temporaryDirectoryProvider,
     int maxDownloadAttempts = 3,
   }) : _dio = (dio ?? Dio())
-         ..addSentry()
+         // Intentionally no sentry_dio: seed sync failures are expected offline
+         // / infra cases; StructuredDioLoggingInterceptor covers observability.
          ..interceptors.add(
            StructuredDioLoggingInterceptor(
              logger: _log,
@@ -120,6 +121,14 @@ class SeedDatabaseService {
            temporaryDirectoryProvider ?? getTemporaryDirectory;
 
   static final _log = Logger('SeedDatabaseService');
+
+  /// Per-attempt ceiling for time without receiving body bytes (Dio).
+  /// Large seeds can take longer wall-clock; stalls are handled separately via
+  /// [_stallWithoutProgress].
+  static const Duration _receiveTimeoutPerAttempt = Duration(minutes: 10);
+
+  /// If no bytes arrive for this long, cancel the request and retry (or fail).
+  static const Duration _stallWithoutProgress = Duration(seconds: 120);
 
   final Dio _dio;
   final DateTime Function() _nowUtc;
@@ -257,11 +266,34 @@ class SeedDatabaseService {
         requestHeaders[HttpHeaders.rangeHeader] = 'bytes=$resumeFrom-';
       }
 
+      final cancelToken = CancelToken();
+      Timer? stallTimer;
+
+      void disarmStallTimer() {
+        stallTimer?.cancel();
+        stallTimer = null;
+      }
+
+      void armStallTimer() {
+        disarmStallTimer();
+        stallTimer = Timer(_stallWithoutProgress, () {
+          if (!cancelToken.isCancelled) {
+            cancelToken.cancel(
+              'seed_download_stall: no progress for '
+              '${_stallWithoutProgress.inSeconds}s',
+            );
+          }
+        });
+      }
+
       try {
+        armStallTimer();
         await _dio.download(
           uri.toString(),
           tempPath,
+          cancelToken: cancelToken,
           onReceiveProgress: (received, total) {
+            armStallTimer();
             if (onProgress == null || total <= 0) {
               return;
             }
@@ -271,8 +303,7 @@ class SeedDatabaseService {
           },
           options: Options(
             headers: requestHeaders,
-            // 10-minute timeout for a ~300 MB file on slow connections.
-            receiveTimeout: const Duration(minutes: 120),
+            receiveTimeout: _receiveTimeoutPerAttempt,
             sendTimeout: const Duration(seconds: 30),
           ),
           fileAccessMode: resumeFrom > 0
@@ -288,12 +319,15 @@ class SeedDatabaseService {
         }
 
         final delayMs = 500 * (1 << (attempt - 1));
+        // Do not attach the exception: LoggingIntegration sends warnings with
+        // errors to Sentry.
         _log.warning(
           'Seed download attempt $attempt/$_maxDownloadAttempts failed; '
-          'retrying in ${delayMs}ms',
-          e,
+          'retrying in ${delayMs}ms (${e.type}: ${e.message})',
         );
         await Future<void>.delayed(Duration(milliseconds: delayMs));
+      } finally {
+        disarmStallTimer();
       }
     }
 
@@ -319,6 +353,12 @@ class SeedDatabaseService {
           statusCode == 425 ||
           statusCode == 429 ||
           statusCode >= 500;
+    }
+
+    // Stall watchdog: cancelToken.cancel(...) — treat like a transient drop.
+    if (exception.type == DioExceptionType.cancel) {
+      final msg = exception.message ?? '';
+      return msg.contains('seed_download_stall');
     }
 
     return false;

@@ -7,8 +7,6 @@ import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
-import 'package:app/widgets/seed_sync_loading_indicator.dart'
-    show SeedSyncLoadingIndicator;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -100,7 +98,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     // Throttle state updates to every 1% to avoid flooding provider observer.
     var lastProgressBucket = -1;
 
-    // If user has completed a seed download before, subsequent syncs run in background.
+    // If user completed a seed download before, later syncs run in background.
     final suppressLoading = await appStateService.hasCompletedSeedDownload();
 
     try {
@@ -113,7 +111,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
               localEtag,
               remoteEtag,
             }) {
-              // Only show loading when suppressLoading is false (first-time or post-reset).
+              // Show loading only when first-time or post-reset.
               if (!suppressLoading) {
                 notifyForceReplaceStarted();
               }
@@ -135,9 +133,27 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       if (updated) {
         await appStateService.setHasCompletedSeedDownload(completed: true);
       }
-      notifyForceReplaceFinished();
-      SeedDatabaseGate.complete();
-      return updated;
+
+      final seedOnDisk = await ref
+          .read(seedDatabaseServiceProvider)
+          .hasLocalDatabase();
+      if (seedOnDisk) {
+        notifyForceReplaceFinished();
+        SeedDatabaseGate.complete();
+        return updated;
+      }
+
+      // First install / post-reset with no dp1_library.sqlite: keep gate
+      // closed until a successful download (retry when online).
+      const msg =
+          'Seed database file is missing after sync; waiting for a successful '
+          'download before opening the library database.';
+      _log.warning(msg);
+      notifyForceReplaceFinished(
+        success: false,
+        errorMessage: msg,
+      );
+      return false;
     } on Exception catch (e, st) {
       _log.severe(
         'Seed database sync failed; app continues with existing database.',
@@ -145,8 +161,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         st,
       );
       notifyForceReplaceFinished(success: false, errorMessage: e.toString());
-      // Open the gate even on failure so the Drift DB is not blocked forever.
-      SeedDatabaseGate.complete();
+      if (await ref.read(seedDatabaseServiceProvider).hasLocalDatabase()) {
+        SeedDatabaseGate.complete();
+      }
       return false;
     } finally {
       _syncInProgress = false;
@@ -154,7 +171,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   }
 
   /// Notifies that a force-replace (e.g. Forget I Exist) has started.
-  /// Call from [forceReplaceDatabaseFromSeed] so tabs show [SeedSyncLoadingIndicator].
+  /// Call from the local-data cleanup force-replace flow for tab loading UI.
   void notifyForceReplaceStarted() {
     state = const SeedDownloadState(
       status: SeedDownloadStatus.syncing,
@@ -169,7 +186,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     }
   }
 
-  /// Notifies that force-replace finished. Call after seed replacement completes.
+  /// Notifies that force-replace finished. Call after replacement completes.
   void notifyForceReplaceFinished({bool success = true, String? errorMessage}) {
     state = success
         ? const SeedDownloadState(status: SeedDownloadStatus.done)

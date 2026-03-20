@@ -7,6 +7,7 @@ import 'package:app/app/providers/channel_preview_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
+import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/playlist_details_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
@@ -71,6 +72,12 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
   void invalidateListProvidersBeforeDbCloseExtended() =>
       invalidateListProvidersBeforeDbClose();
 
+  /// Now-displaying / FF1 cache reads DB; invalidate before close during seed swap.
+  void invalidateNowDisplayingProviders() {
+    r.invalidate(nowDisplayingCachedPlaylistItemsProvider);
+    r.invalidate(nowDisplayingProvider);
+  }
+
   /// Infra: tokensSyncCoordinator, ensureTrackedAddressesSyncCoordinator,
   /// appDatabase, databaseService. For reconnect.
   void invalidateReconnectInfraProviders() {
@@ -80,7 +87,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     r.invalidate(databaseServiceProvider);
   }
 
-  /// Full rebind after seed replacement. Update when adding DB-dependent providers.
+  /// Full rebind after seed replacement. Extend when adding DB providers.
   void invalidateProvidersForRebind() {
     r.invalidate(channelDetailsProvider);
     r.invalidate(channelPreviewProvider);
@@ -126,12 +133,19 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
             forceReplace: true,
             beforeReplace: () async {
               ref.read(isSeedDatabaseReadyProvider.notifier).state = false;
+              await ref
+                  .read(tokensSyncCoordinatorProvider.notifier)
+                  .stopAndDrainForReset();
+              await ref
+                  .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+                  .stopAndDrainForReset();
+              ref.invalidate(tokensSyncCoordinatorProvider);
+              ref.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
               invalidateListProvidersBeforeDbCloseExtended();
+              invalidateNowDisplayingProviders();
               await SchedulerBinding.instance.endOfFrame;
               await ref.read(databaseServiceProvider).close();
-              await ref
-                  .read(seedDatabaseServiceProvider)
-                  .deleteDatabaseFiles();
+              await ref.read(seedDatabaseServiceProvider).deleteDatabaseFiles();
               // Do not catch: a failed teardown must abort the replace so
               // providers cannot reopen the DB during the swap.
             },
@@ -167,21 +181,22 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       ref.read(isSeedDatabaseReadyProvider.notifier).state = false;
     },
 
-    /// Called when forgetIExist/rebuildMetadata background seed replace fails.
-    /// Invokes [retry] (full sequence: replace + bootstrap + onDatabaseReady +
-    /// restore for rebuildMetadata). On retry failure, restores DB-ready so the
-    /// app can recover (e.g. show retry UI) instead of staying not-ready forever.
+    /// When forgetIExist / rebuildMetadata seed replace fails in background.
+    /// Invokes retry (replace, bootstrap, onDatabaseReady, restore). If retry
+    /// fails, restores DB-ready so the app can show recovery UI.
     onResetFailed: (retry) {
-      unawaited((() async {
-        try {
-          await retry();
-        } on Object catch (_) {
-          // Retry failed; restore readiness so app can recover.
-          ref.read(isSeedDatabaseReadyProvider.notifier).state = true;
-          r.invalidate(appDatabaseProvider);
-          r.invalidate(databaseServiceProvider);
-        }
-      })());
+      unawaited(
+        (() async {
+          try {
+            await retry();
+          } on Object catch (_) {
+            // Retry failed; restore readiness so app can recover.
+            ref.read(isSeedDatabaseReadyProvider.notifier).state = true;
+            r.invalidate(appDatabaseProvider);
+            r.invalidate(databaseServiceProvider);
+          }
+        })(),
+      );
     },
 
     /// Drains token sync and ensureTrackedAddresses workers before DB close.
@@ -196,9 +211,8 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
     },
 
-    /// Closes the DB and deletes SQLite files. Leaves [isSeedDatabaseReadyProvider]
-    /// false so no DB work runs until [rebindDatabaseProviders] (e.g. in
-    /// [forceReplaceDatabaseFromSeed] afterReplace for Forget I Exist).
+    /// Closes the DB and deletes SQLite files. Leaves isSeedDatabaseReady false
+    /// until rebind after replace (Forget I Exist flow).
     closeAndDeleteDatabase: () async {
       ref.read(isSeedDatabaseReadyProvider.notifier).state = false;
       invalidateListProvidersBeforeDbCloseExtended();
@@ -243,13 +257,13 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       await ref.read(bootstrapProvider.notifier).bootstrap();
     },
 
-    /// Called after runBootstrap in rebuildMetadata: ensures tracked addresses
-    /// have playlists and resumes indexing (TrackedAddressEntity source of truth).
+    /// After runBootstrap in rebuildMetadata: tracked addresses get playlists
+    /// and indexing resumes (TrackedAddressEntity is source of truth).
     onDatabaseReady: () async {
       await ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider)();
     },
 
-    /// Replaces SQLite with seed. Used by both forgetIExist and rebuildMetadata.
+    /// Replaces SQLite with seed (forgetIExist and rebuildMetadata).
     recreateDatabaseFromSeed: () async {
       await forceReplaceDatabaseFromSeed();
     },

@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:app/app/bootstrap/app_bootstrap.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/logging/app_logger.dart';
 import 'package:app/infra/logging/structured_logger.dart';
+import 'package:app/infra/services/seed_database_service.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
@@ -30,7 +34,11 @@ Future<void> main() async {
           ..tracesSampleRate = 0.1
           ..addIntegration(LoggingIntegration())
           ..beforeSend = (event, hint) {
-            return kDebugMode ? null : event;
+            if (kDebugMode) return null;
+            if (_dropExpectedSeedOrConnectivityNoise(event)) {
+              return null;
+            }
+            return event;
           }
           ..beforeSendTransaction = (transaction, hint) {
             return kDebugMode ? null : transaction;
@@ -42,6 +50,26 @@ Future<void> main() async {
   }
 
   await _bootstrapApp();
+}
+
+/// Drops Sentry events for handled seed-download failures and common offline
+/// DNS noise (issues #167, #177, #211).
+bool _dropExpectedSeedOrConnectivityNoise(SentryEvent event) {
+  return _dropThrowableChain(event.throwable);
+}
+
+bool _dropThrowableChain(Object? t) {
+  if (t == null) return false;
+  if (t is SeedDownloadException) return true;
+  if (t is SocketException) {
+    final m = t.message.toLowerCase();
+    return m.contains('failed host lookup') ||
+        m.contains('no address associated');
+  }
+  if (t is DioException) {
+    return _dropThrowableChain(t.error);
+  }
+  return false;
 }
 
 Future<void> _bootstrapApp() async {
