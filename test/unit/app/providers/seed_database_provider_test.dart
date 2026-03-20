@@ -85,6 +85,52 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   }
 }
 
+/// Sync 1 runs [beforeReplace], then waits on [blockAfterBeforeReplace] so sync
+/// 2 can interleave; the first session's snapshot must still restore later.
+class _OverlappingSeedSyncRaceFake implements SeedDatabaseSyncService {
+  _OverlappingSeedSyncRaceFake({
+    required Completer<void> blockAfterBeforeReplace,
+    required this.hasLocalDatabaseForStarted,
+  }) : _block = blockAfterBeforeReplace;
+
+  final Completer<void> _block;
+  final bool hasLocalDatabaseForStarted;
+  int syncCallCount = 0;
+
+  @override
+  Future<bool> sync({
+    required Future<void> Function() beforeReplace,
+    required Future<void> Function() afterReplace,
+    bool forceReplace = false,
+    void Function({
+      required bool hasLocalDatabase,
+      String? localEtag,
+      String? remoteEtag,
+    })?
+    onDownloadStarted,
+    void Function(double progress)? onProgress,
+    bool failSilently = false,
+    bool Function()? isSessionActive,
+  }) async {
+    syncCallCount++;
+    if (syncCallCount == 1) {
+      onDownloadStarted?.call(
+        hasLocalDatabase: hasLocalDatabaseForStarted,
+        localEtag: 'local',
+        remoteEtag: 'remote',
+      );
+      await beforeReplace();
+      await _block.future;
+      await afterReplace();
+      return true;
+    }
+    return false;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 const _noOpActions = SeedDatabaseReadyActions(
   onNotReady: _noOpFuture,
   onReady: _noOpFuture,
@@ -397,6 +443,43 @@ void main() {
         container.read(seedDownloadProvider).isSyncInProgress,
         isFalse,
       );
+    },
+  );
+
+  test(
+    'overlapping sync does not drop first session favorite snapshot',
+    () async {
+      final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(memDb.close);
+      final spy = _SpyDatabaseService(memDb)..snapshotReturnsEmpty = false;
+      final block = Completer<void>();
+      final raceFake = _OverlappingSeedSyncRaceFake(
+        blockAfterBeforeReplace: block,
+        hasLocalDatabaseForStarted: true,
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(raceFake),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+          appDatabaseProvider.overrideWithValue(memDb),
+          rawDatabaseServiceProvider.overrideWithValue(spy),
+          _fakeSeedDbSvc(hasLocal: true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(seedDownloadProvider.notifier);
+      final sync1 = notifier.sync();
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await notifier.sync();
+      block.complete();
+      await sync1;
+
+      expect(raceFake.syncCallCount, 2);
+      expect(spy.snapshotCalls, 1);
+      expect(spy.restoreCalls, 1);
     },
   );
 

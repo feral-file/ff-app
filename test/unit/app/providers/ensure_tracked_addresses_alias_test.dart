@@ -37,8 +37,7 @@ class _FakeAppStateForAliasTest implements AppStateService {
 
   @override
   Future<Map<String, AddressIndexingProcessStatus>>
-      getAllAddressIndexingStatuses() async =>
-      Map.fromEntries(statuses.entries);
+  getAllAddressIndexingStatuses() async => Map.fromEntries(statuses.entries);
 
   @override
   Future<void> setAddressIndexingStatus({
@@ -58,8 +57,7 @@ class _FakeAppStateForAliasTest implements AppStateService {
   @override
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
-  ) =>
-      Stream.value(statuses[address]);
+  ) => Stream.value(statuses[address]);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
@@ -111,9 +109,11 @@ void main() {
             DomainAddressService(resolverUrl: '', resolverApiKey: ''),
           ),
           indexerServiceIsolateProvider.overrideWithValue(fakeIndexer),
-          bootstrapServiceProvider.overrideWith((ref) => BootstrapService(
-                databaseService: ref.read(databaseServiceProvider),
-              )),
+          bootstrapServiceProvider.overrideWith(
+            (ref) => BootstrapService(
+              databaseService: ref.read(databaseServiceProvider),
+            ),
+          ),
         ],
       );
       addTearDown(container.dispose);
@@ -123,9 +123,11 @@ void main() {
           .runSyncAndWait();
 
       final playlists = await databaseService.getAddressPlaylists();
-      final playlist = playlists.where(
-        (p) => p.ownerAddress?.toLowerCase() == address.toLowerCase(),
-      ).firstOrNull;
+      final playlist = playlists
+          .where(
+            (p) => p.ownerAddress?.toLowerCase() == address.toLowerCase(),
+          )
+          .firstOrNull;
 
       expect(playlist, isNotNull);
       expect(playlist!.name, alias);
