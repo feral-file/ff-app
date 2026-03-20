@@ -190,10 +190,28 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     required List<Playlist> playlists,
     required bool isChannelScoped,
   }) {
+    // Channel-scoped routes never use publisher sections; avoid subscribing to
+    // full-table publisher/channel lookup streams (see PR review).
+    if (isChannelScoped) {
+      return [
+        SliverList.builder(
+          itemCount: playlists.length,
+          itemBuilder: (context, index) {
+            return _playlistRowItem(context, playlists[index]);
+          },
+        ),
+      ];
+    }
+
     final seedReady = ref.watch(isSeedDatabaseReadyProvider);
     final publisherAsync = ref.watch(publisherTitlesMapProvider);
     final channelAsync = ref.watch(allChannelsByIdMapProvider);
-    final lookupsReady = publisherAsync.hasValue && channelAsync.hasValue;
+    // hasValue alone stays true while reloading with stale data; require
+    // settled AsyncData (not loading).
+    final lookupsReady = publisherAsync.hasValue &&
+        channelAsync.hasValue &&
+        !publisherAsync.isLoading &&
+        !channelAsync.isLoading;
     final publisherMap = publisherAsync.value ?? const <int, String>{};
     final channelMap = channelAsync.value ?? const <String, Channel>{};
 
