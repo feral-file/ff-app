@@ -290,8 +290,11 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       }
       return updated;
     } on Exception catch (e, st) {
+      // Only clear this session's in-flight capture. Do not clear
+      // [_pendingFavoriteSnapshots]: a superseded session may have enqueued
+      // favorites before a newer sync fails; draining in [finally] must still
+      // be able to restore them.
       session.favoritesSnapshotBeforeReplace = null;
-      _pendingFavoriteSnapshots = null;
       _log.severe(
         'Seed database sync failed; app continues with existing database.',
         e,
