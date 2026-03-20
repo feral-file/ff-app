@@ -122,6 +122,57 @@ void main() {
       );
     });
 
+    test('bootstrapWithoutDp1Library skips DB bootstrap and sets pending flag',
+        () async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final dbService = DatabaseService(db);
+      final mockBootstrapService = _MockBootstrapService();
+
+      final container = ProviderContainer.test(
+        overrides: [
+          databaseServiceProvider.overrideWith((ref) => dbService),
+          bootstrapServiceProvider.overrideWith((ref) => mockBootstrapService),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(bootstrapProvider.notifier);
+      await notifier.bootstrapWithoutDp1Library();
+
+      expect(mockBootstrapService.bootstrapCallCount, 0);
+      expect(notifier.pendingDp1BootstrapAfterSeed, isTrue);
+      expect(
+        container.read(bootstrapProvider).phase,
+        BootstrapPhase.completed,
+      );
+    });
+
+    test('full bootstrap after bootstrapWithoutDp1Library clears pending flag',
+        () async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final dbService = DatabaseService(db);
+      final mockBootstrapService = _MockBootstrapService();
+
+      final container = ProviderContainer.test(
+        overrides: [
+          databaseServiceProvider.overrideWith((ref) => dbService),
+          bootstrapServiceProvider.overrideWith((ref) => mockBootstrapService),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(bootstrapProvider.notifier);
+      await notifier.bootstrapWithoutDp1Library();
+      expect(notifier.pendingDp1BootstrapAfterSeed, isTrue);
+
+      await notifier.bootstrap();
+
+      expect(notifier.pendingDp1BootstrapAfterSeed, isFalse);
+      expect(mockBootstrapService.bootstrapCallCount, 1);
+    });
+
     test('demonstrates mocking BootstrapService', () async {
       final db = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(db.close);
@@ -212,9 +263,11 @@ void main() {
 
 /// Mock BootstrapService for testing.
 class _MockBootstrapService implements BootstrapService {
+  int bootstrapCallCount = 0;
+
   @override
   Future<void> bootstrap() async {
-    // Mock implementation
+    bootstrapCallCount++;
     return;
   }
 
