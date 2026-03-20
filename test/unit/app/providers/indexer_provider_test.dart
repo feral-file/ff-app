@@ -1,6 +1,6 @@
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/database/app_database.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
 import 'package:drift/native.dart';

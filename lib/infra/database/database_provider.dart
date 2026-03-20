@@ -13,10 +13,10 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
   return db;
 });
 
-/// Provider for the database service.
-/// This is the main entry point for all database operations.
-/// Override dependencies in tests using provider overrides.
-final databaseServiceProvider = Provider<DatabaseService>((ref) {
+/// Raw database service (no readiness gate).
+/// Used by [databaseServiceProvider] in app layer when ready.
+/// Override in tests with a fake/mock.
+final rawDatabaseServiceProvider = Provider<DatabaseService>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return DatabaseService(db);
 });

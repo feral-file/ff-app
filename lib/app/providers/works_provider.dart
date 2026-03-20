@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/providers/channel_preview_provider.dart'
     show ChannelPreviewNotifier, ChannelPreviewState;
 import 'package:app/app/providers/database_error_utils.dart';
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/playlist_details_provider.dart'
     show PlaylistDetailsNotifier;
 import 'package:app/app/providers/seed_database_ready_provider.dart';
@@ -11,7 +12,6 @@ import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart' show IndexerServiceIsolate;
 import 'package:app/util/content_type_resolver.dart';
 import 'package:flutter/foundation.dart';

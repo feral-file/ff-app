@@ -1,8 +1,9 @@
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
+import 'package:app/infra/services/local_data_cleanup_service.dart' show LocalDataCleanupService;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -47,13 +48,14 @@ final seedDatabaseReadyActionsProvider = Provider<SeedDatabaseReadyActions>((
 
     cleanupService.invalidateListProvidersBeforeDbClose?.call();
     await SchedulerBinding.instance.endOfFrame;
-    await ref.read(databaseServiceProvider).close();
+    await ref.read(appDatabaseProvider).close();
     // Do NOT delete files here. replaceDatabaseFromTemporaryFile deletes and
     // renames atomically. If replace fails, old DB remains (project_spec).
   }
 
   Future<void> onReady() async {
     cleanupService.invalidateProvidersForRebind?.call();
+    cleanupService.invalidateReconnectInfraProviders?.call();
     // trackedAddressesSyncProvider is invalidated above; when it rebuilds,
     // its watch emits and calls scheduleSync. No need to call scheduleSync
     // here—that would cause ensureTrackedAddresses to run twice.

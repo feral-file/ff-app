@@ -1,8 +1,7 @@
-import 'package:app/app/providers/seed_database_ready_provider.dart';
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:riverpod/src/providers/stream_provider.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -22,13 +21,10 @@ class ChannelDetails {
 
 /// Provider for channel details state.
 /// Watches the database so the UI updates when channel or playlists change.
+/// Readiness is enforced at [databaseServiceProvider]; when not ready it
+/// returns empty data, so no per-provider gate is needed.
 final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
     StreamProvider.family<ChannelDetails, String>((ref, channelId) {
-      if (!ref.watch(isSeedDatabaseReadyProvider)) {
-        return Stream.value(
-          const ChannelDetails(channel: null, playlists: []),
-        );
-      }
       final databaseService = ref.read(databaseServiceProvider);
 
       return Rx.combineLatest2<Channel?, List<Playlist>, ChannelDetails>(

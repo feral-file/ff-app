@@ -2,21 +2,12 @@ import 'dart:async';
 
 import 'package:app/app/providers/addresses_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
-import 'package:app/app/providers/channel_detail_provider.dart';
-import 'package:app/app/providers/channel_preview_provider.dart';
-import 'package:app/app/providers/channels_provider.dart';
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
-import 'package:app/app/providers/me_section_playlists_provider.dart';
-import 'package:app/app/providers/playlist_details_provider.dart';
-import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
-import 'package:app/app/providers/works_provider.dart';
-import 'package:app/domain/models/channel.dart';
-import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/config/app_state_service.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_local_data_cleaner.dart';
 import 'package:app/infra/services/legacy_storage_locator.dart';
@@ -51,22 +42,12 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
 ) {
   final r = ref;
 
-  /// Invalidates providers that read, watch, or listen to the database
-  /// (channels, playlists, works, addresses, etc.) so they stop DB subscriptions.
+  /// Invalidates [databaseServiceProvider]; Riverpod cascades to all DB consumers.
+  /// Also invalidates [trackedAddressesSyncProvider] and [addressesProvider]
+  /// (ObjectBox-backed, not DB-dependent).
   void invalidateDatabaseConsumerProviders() {
+    r.invalidate(databaseServiceProvider);
     r.invalidate(trackedAddressesSyncProvider);
-    r.invalidate(channelDetailsProvider);
-    r.invalidate(channelPreviewProvider);
-    r.invalidate(channelsProvider(ChannelType.dp1));
-    r.invalidate(channelsProvider(ChannelType.localVirtual));
-    r.invalidate(playlistsProvider(PlaylistType.dp1));
-    r.invalidate(playlistsProvider(PlaylistType.addressBased));
-    r.invalidate(playlistsProvider(PlaylistType.favorite));
-    r.invalidate(meSectionPlaylistsProvider);
-    r.invalidate(isWorkInFavoriteProvider);
-    r.invalidate(playlistDetailsProvider);
-    r.invalidate(worksProvider);
-    r.invalidate(favoritePlaylistServiceProvider);
     r.invalidate(addressesProvider);
   }
 
@@ -176,7 +157,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       ref.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(false);
       invalidateDatabaseConsumerProviders();
       await SchedulerBinding.instance.endOfFrame;
-      await ref.read(databaseServiceProvider).close();
+      await ref.read(appDatabaseProvider).close();
       final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
       await seedDatabaseService.deleteDatabaseFiles();
     },

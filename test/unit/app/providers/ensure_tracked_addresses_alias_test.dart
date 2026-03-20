@@ -1,9 +1,9 @@
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';

@@ -1,4 +1,5 @@
 import 'package:app/app/providers/channels_provider.dart';
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/playlist_details_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -10,7 +11,6 @@ import 'package:app/domain/models/dp1/dp1_intent.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/database/converters.dart' show DatabaseConverters;
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';

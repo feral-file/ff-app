@@ -1,8 +1,8 @@
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -110,7 +110,7 @@ final searchInputQueryProvider =
     );
 
 /// Suggestion results provider using debounced input query.
-final searchSuggestionsProvider =
+final FutureProvider<List<SearchSuggestion>> searchSuggestionsProvider =
     FutureProvider.autoDispose<List<SearchSuggestion>>((
       ref,
     ) async {
