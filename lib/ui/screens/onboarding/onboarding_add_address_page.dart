@@ -69,49 +69,53 @@ class OnboardingAddAddressPage extends ConsumerWidget {
             const _AddressList(),
           ],
         ),
-        primaryButton: Row(
-          children: [
-            SvgPicture.asset(
-              'assets/images/add_blue.svg',
-              colorFilter: const ColorFilter.mode(
-                PrimitivesTokens.colorsBlack,
-                BlendMode.srcIn,
+        primaryAction: OnboardingShellAction(
+          key: GoldPathPatrolKeys.onboardingAddAddressPrimary,
+          onPressed: () => _onAddAddressPressed(context),
+          child: Row(
+            children: [
+              SvgPicture.asset(
+                'assets/images/add_blue.svg',
+                colorFilter: const ColorFilter.mode(
+                  PrimitivesTokens.colorsBlack,
+                  BlendMode.srcIn,
+                ),
               ),
-            ),
-            SizedBox(width: LayoutConstants.space2),
-            Text(
-              'Add Address',
-              style: AppTypography.body(context).black,
-            ),
-          ],
+              SizedBox(width: LayoutConstants.space2),
+              Text(
+                'Add Address',
+                style: AppTypography.body(context).black,
+              ),
+            ],
+          ),
         ),
-        onPrimaryPressed: () => _onAddAddressPressed(context),
-        primaryButtonKey: GoldPathPatrolKeys.onboardingAddAddressPrimary,
-        secondaryButton: Consumer(
-          builder: (context, ref, _) {
-            final addressesAsync = ref.watch(addressesProvider);
-            final addresses = addressesAsync.value ?? [];
+        secondaryAction: OnboardingShellAction(
+          key: GoldPathPatrolKeys.onboardingAddAddressSecondary,
+          onPressed: () => _onNext(context, ref),
+          child: Consumer(
+            builder: (context, ref, _) {
+              final addressesAsync = ref.watch(addressesProvider);
+              final addresses = addressesAsync.value ?? [];
 
-            return Row(
-              children: [
-                Text(
-                  addresses.isEmpty ? 'Skip for now' : 'Next',
-                  style: AppTypography.body(context).lightBlue,
-                ),
-                SizedBox(width: LayoutConstants.space2),
-                SvgPicture.asset(
-                  'assets/images/arrow_right.svg',
-                  colorFilter: const ColorFilter.mode(
-                    PrimitivesTokens.colorsLightBlue,
-                    BlendMode.srcIn,
+              return Row(
+                children: [
+                  Text(
+                    addresses.isEmpty ? 'Skip for now' : 'Next',
+                    style: AppTypography.body(context).lightBlue,
                   ),
-                ),
-              ],
-            );
-          },
+                  SizedBox(width: LayoutConstants.space2),
+                  SvgPicture.asset(
+                    'assets/images/arrow_right.svg',
+                    colorFilter: const ColorFilter.mode(
+                      PrimitivesTokens.colorsLightBlue,
+                      BlendMode.srcIn,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
-        onSecondaryPressed: () async => _onNext(context, ref),
-        secondaryButtonKey: GoldPathPatrolKeys.onboardingAddAddressSecondary,
         hintText: 'You can always add addresses later.',
       ),
     );

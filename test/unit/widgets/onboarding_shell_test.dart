@@ -13,10 +13,10 @@ void main() {
       });
 
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: Scaffold(
             body: OnboardingShell(
-              content: const Column(
+              content: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('See the art you already own'),
@@ -30,10 +30,14 @@ void main() {
                   SizedBox(height: 40, child: Text('reas.eth')),
                 ],
               ),
-              primaryButton: const Text('Add Address'),
-              onPrimaryPressed: () {},
-              secondaryButton: const Text('Next'),
-              onSecondaryPressed: () {},
+              primaryAction: OnboardingShellAction(
+                child: Text('Add Address'),
+                onPressed: _noop,
+              ),
+              secondaryAction: OnboardingShellAction(
+                child: Text('Next'),
+                onPressed: _noop,
+              ),
               hintText: 'You can always add addresses later.',
             ),
           ),
@@ -52,16 +56,20 @@ void main() {
     const secondaryKey = ValueKey<String>('test.onboarding.secondary');
 
     await tester.pumpWidget(
-      MaterialApp(
+      const MaterialApp(
         home: Scaffold(
           body: OnboardingShell(
-            content: const SizedBox.shrink(),
-            primaryButton: const Text('Primary'),
-            primaryButtonKey: primaryKey,
-            onPrimaryPressed: () {},
-            secondaryButton: const Text('Secondary'),
-            secondaryButtonKey: secondaryKey,
-            onSecondaryPressed: () {},
+            content: SizedBox.shrink(),
+            primaryAction: OnboardingShellAction(
+              key: primaryKey,
+              child: Text('Primary'),
+              onPressed: _noop,
+            ),
+            secondaryAction: OnboardingShellAction(
+              key: secondaryKey,
+              child: Text('Secondary'),
+              onPressed: _noop,
+            ),
           ),
         ),
       ),
@@ -71,3 +79,5 @@ void main() {
     expect(find.byKey(secondaryKey), findsOneWidget);
   });
 }
+
+void _noop() {}
