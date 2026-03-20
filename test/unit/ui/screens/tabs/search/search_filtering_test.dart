@@ -9,7 +9,12 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('availableTypesFromResults', () {
     test('returns empty when results are empty', () {
-      const results = SearchResults(channels: [], playlists: [], works: []);
+      const results = SearchResults(
+        channels: [],
+        playlists: [],
+        works: [],
+        artistMatchedWorkIds: <String>{},
+      );
       expect(availableTypesFromResults(results), isEmpty);
     });
 
@@ -22,8 +27,10 @@ void main() {
           Channel(id: 'ch_1', name: 'C', type: ChannelType.dp1),
         ],
         works: [
+          PlaylistItem(id: 'wk_artist_1', kind: PlaylistItemKind.dp1Item),
           PlaylistItem(id: 'wk_1', kind: PlaylistItemKind.dp1Item),
         ],
+        artistMatchedWorkIds: {'wk_artist_1'},
       );
 
       expect(
@@ -31,6 +38,7 @@ void main() {
         [
           SearchFilterType.playlists,
           SearchFilterType.channels,
+          SearchFilterType.artists,
           SearchFilterType.works,
         ],
       );
@@ -84,14 +92,17 @@ void main() {
         Channel(id: 'ch_1', name: 'C', type: ChannelType.dp1),
       ],
       works: [
+        PlaylistItem(id: 'wk_artist_1', kind: PlaylistItemKind.dp1Item),
         PlaylistItem(id: 'wk_1', kind: PlaylistItemKind.dp1Item),
       ],
+      artistMatchedWorkIds: {'wk_artist_1'},
     );
 
     test('keeps only channels for channels type', () {
       final filtered = filterResultsByType(base, SearchFilterType.channels);
       expect(filtered.channels, isNotEmpty);
       expect(filtered.playlists, isEmpty);
+      expect(filtered.artistWorks, isEmpty);
       expect(filtered.works, isEmpty);
     });
 
@@ -99,13 +110,23 @@ void main() {
       final filtered = filterResultsByType(base, SearchFilterType.playlists);
       expect(filtered.channels, isEmpty);
       expect(filtered.playlists, isNotEmpty);
+      expect(filtered.artistWorks, isEmpty);
       expect(filtered.works, isEmpty);
+    });
+
+    test('keeps only artist-matched works for artists type', () {
+      final filtered = filterResultsByType(base, SearchFilterType.artists);
+      expect(filtered.channels, isEmpty);
+      expect(filtered.playlists, isEmpty);
+      expect(filtered.artistWorks, isNotEmpty);
+      expect(filtered.works, isNotEmpty);
     });
 
     test('keeps only works for works type', () {
       final filtered = filterResultsByType(base, SearchFilterType.works);
       expect(filtered.channels, isEmpty);
       expect(filtered.playlists, isEmpty);
+      expect(filtered.artistWorks, isEmpty);
       expect(filtered.works, isNotEmpty);
     });
   });
@@ -159,6 +180,7 @@ void main() {
       channels: [channelA, channelB],
       playlists: [playlistA, playlistB],
       works: [workA, workB],
+      artistMatchedWorkIds: const <String>{},
     );
 
     test('keeps relevance order unchanged', () {
@@ -234,6 +256,7 @@ void main() {
           updatedAt: DateTime(2023, 10),
         ),
       ],
+      artistMatchedWorkIds: {'wk_dp1'},
     );
 
     test('filters to only DP1 source for channels and playlists', () {
@@ -302,6 +325,7 @@ void main() {
             updatedAt: DateTime(2022, 11),
           ),
         ],
+        artistMatchedWorkIds: {'wk_recent'},
       );
 
       final lastWeek = filterSearchResults(
@@ -383,6 +407,7 @@ void main() {
             updatedAt: DateTime(2024, 1, 30),
           ),
         ],
+        artistMatchedWorkIds: {'wk_recent_dp1'},
       );
 
       final filtered = filterSearchResults(

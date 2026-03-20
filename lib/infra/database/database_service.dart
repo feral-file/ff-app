@@ -650,8 +650,22 @@ class DatabaseService {
     }
   }
 
-  /// Full-text search channels by title.
-  Future<List<Channel>> searchChannelsByTitle(
+  /// Get all items from the database.
+  ///
+  /// Skips heavy JSON fields (provenance, reproduction, override, display, tokenData)
+  /// to optimize list UI queries.
+  Future<List<PlaylistItem>> getAllItems() async {
+    try {
+      final data = await _db.getAllItems();
+      return data.map(DatabaseConverters.itemDataToDomainPreview).toList();
+    } catch (e, stack) {
+      _log.severe('Failed to get all items', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Search channels using title-first FTS with metadata fallback.
+  Future<List<Channel>> searchChannels(
     String query, {
     int limit = 20,
   }) async {
@@ -659,13 +673,13 @@ class DatabaseService {
       final data = await _db.searchChannelsByTitleFts(query, limit: limit);
       return data.map(DatabaseConverters.channelDataToDomain).toList();
     } catch (e, stack) {
-      _log.severe('Failed to search channels by title', e, stack);
+      _log.severe('Failed to search channels', e, stack);
       rethrow;
     }
   }
 
-  /// Full-text search playlists by title.
-  Future<List<Playlist>> searchPlaylistsByTitle(
+  /// Search playlists using title-first FTS with metadata fallback.
+  Future<List<Playlist>> searchPlaylists(
     String query, {
     int limit = 20,
   }) async {
@@ -673,13 +687,13 @@ class DatabaseService {
       final data = await _db.searchPlaylistsByTitleFts(query, limit: limit);
       return data.map(DatabaseConverters.playlistDataToDomainPreview).toList();
     } catch (e, stack) {
-      _log.severe('Failed to search playlists by title', e, stack);
+      _log.severe('Failed to search playlists', e, stack);
       rethrow;
     }
   }
 
-  /// Full-text search items by title.
-  Future<List<PlaylistItem>> searchItemsByTitle(
+  /// Search works/items using title and artist FTS.
+  Future<List<PlaylistItem>> searchItems(
     String query, {
     int limit = 20,
   }) async {
@@ -687,9 +701,55 @@ class DatabaseService {
       final data = await _db.searchItemsByTitleFts(query, limit: limit);
       return data.map(DatabaseConverters.itemDataToDomainPreview).toList();
     } catch (e, stack) {
-      _log.severe('Failed to search items by title', e, stack);
+      _log.severe('Failed to search items', e, stack);
       rethrow;
     }
+  }
+
+  /// Search item IDs that match artist names only.
+  Future<Set<String>> searchArtistMatchedItemIds(
+    String query, {
+    Set<String>? candidateIds,
+    int limit = 40,
+  }) async {
+    try {
+      final ids = await _db.searchItemIdsByArtistFts(
+        query,
+        candidateIds: candidateIds?.toList(growable: false),
+        limit: limit,
+      );
+      return ids.toSet();
+    } catch (e, stack) {
+      _log.severe('Failed to search artist-matched item ids', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Backward-compatible wrapper for [searchChannels].
+  @Deprecated('Use searchChannels instead')
+  Future<List<Channel>> searchChannelsByTitle(
+    String query, {
+    int limit = 20,
+  }) {
+    return searchChannels(query, limit: limit);
+  }
+
+  /// Backward-compatible wrapper for [searchPlaylists].
+  @Deprecated('Use searchPlaylists instead')
+  Future<List<Playlist>> searchPlaylistsByTitle(
+    String query, {
+    int limit = 20,
+  }) {
+    return searchPlaylists(query, limit: limit);
+  }
+
+  /// Backward-compatible wrapper for [searchItems].
+  @Deprecated('Use searchItems instead')
+  Future<List<PlaylistItem>> searchItemsByTitle(
+    String query, {
+    int limit = 20,
+  }) {
+    return searchItems(query, limit: limit);
   }
 
   /// Get items with optional [limit] and [offset] for paging.

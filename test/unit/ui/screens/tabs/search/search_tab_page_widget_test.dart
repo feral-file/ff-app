@@ -75,6 +75,7 @@ void main() {
           title: 'Work A',
         ),
       ],
+      artistMatchedWorkIds: {'wk_1'},
     );
 
     await tester.pumpWidget(
@@ -87,6 +88,7 @@ void main() {
                 channels: [],
                 playlists: [],
                 works: [],
+                artistMatchedWorkIds: <String>{},
               );
             }
             return fakeResults;
@@ -100,7 +102,7 @@ void main() {
 
     // Initial view (query empty)
     expect(
-      find.text('Search for channels, playlists, or works'),
+      find.text('Search for channels, playlists, works, or artists'),
       findsOneWidget,
     );
 
@@ -135,7 +137,12 @@ void main() {
       ProviderScope(
         overrides: [
           searchResultsProvider.overrideWith((ref) async {
-            return const SearchResults(channels: [], playlists: [], works: []);
+            return const SearchResults(
+              channels: [],
+              playlists: [],
+              works: [],
+              artistMatchedWorkIds: <String>{},
+            );
           }),
           searchSuggestionsProvider.overrideWith((ref) async {
             return const [
@@ -193,6 +200,7 @@ void main() {
           title: 'DP1 Work',
         ),
       ],
+      artistMatchedWorkIds: {'wk_dp1'},
     );
 
     await tester.pumpWidget(
@@ -205,6 +213,7 @@ void main() {
                 channels: [],
                 playlists: [],
                 works: [],
+                artistMatchedWorkIds: <String>{},
               );
             }
             return fakeResults;
@@ -249,7 +258,12 @@ void main() {
   ) async {
     final now = DateTime.now();
 
-    const baseResults = SearchResults(playlists: [], works: [], channels: []);
+    const baseResults = SearchResults(
+      playlists: [],
+      works: [],
+      channels: [],
+      artistMatchedWorkIds: <String>{},
+    );
 
     await tester.pumpWidget(
       ProviderScope(
@@ -261,6 +275,7 @@ void main() {
                 channels: [],
                 playlists: [],
                 works: [],
+                artistMatchedWorkIds: <String>{},
               );
             }
             return SearchResults(
@@ -279,6 +294,7 @@ void main() {
                   updatedAt: DateTime(2020),
                 ),
               ],
+              artistMatchedWorkIds: baseResults.artistMatchedWorkIds,
               works: baseResults.works,
             );
           }),
@@ -324,7 +340,12 @@ void main() {
     final recentDate = now.subtract(const Duration(days: 1));
     final oldDate = now.subtract(const Duration(days: 400));
 
-    const baseResults = SearchResults(channels: [], works: [], playlists: []);
+    const baseResults = SearchResults(
+      channels: [],
+      works: [],
+      playlists: [],
+      artistMatchedWorkIds: <String>{},
+    );
 
     await tester.pumpWidget(
       ProviderScope(
@@ -336,11 +357,13 @@ void main() {
                 channels: [],
                 playlists: [],
                 works: [],
+                artistMatchedWorkIds: <String>{},
               );
             }
             return SearchResults(
               channels: baseResults.channels,
               works: baseResults.works,
+              artistMatchedWorkIds: baseResults.artistMatchedWorkIds,
               playlists: [
                 Playlist(
                   id: 'pl_dp1_recent',

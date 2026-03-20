@@ -16,6 +16,9 @@ List<SearchFilterType> availableTypesFromResults(SearchResults results) {
   if (results.channels.isNotEmpty) {
     available.add(SearchFilterType.channels);
   }
+  if (results.artistWorks.isNotEmpty) {
+    available.add(SearchFilterType.artists);
+  }
   if (results.works.isNotEmpty) {
     available.add(SearchFilterType.works);
   }
@@ -50,18 +53,29 @@ SearchResults filterResultsByType(
         channels: results.channels,
         playlists: const [],
         works: const [],
+        artistMatchedWorkIds: const <String>{},
       );
     case SearchFilterType.playlists:
       return SearchResults(
         channels: const [],
         playlists: results.playlists,
         works: const [],
+        artistMatchedWorkIds: const <String>{},
+      );
+    case SearchFilterType.artists:
+      final artistWorks = results.artistWorks;
+      return SearchResults(
+        channels: const [],
+        playlists: const [],
+        works: artistWorks,
+        artistMatchedWorkIds: artistWorks.map((work) => work.id).toSet(),
       );
     case SearchFilterType.works:
       return SearchResults(
         channels: const [],
         playlists: const [],
         works: results.works,
+        artistMatchedWorkIds: const <String>{},
       );
   }
 }
@@ -91,6 +105,7 @@ SearchResults sortSearchResults(SearchResults results, SearchSortOrder order) {
         channels: sortedChannels,
         playlists: sortedPlaylists,
         works: sortedWorks,
+        artistMatchedWorkIds: results.artistMatchedWorkIds,
       );
     case SearchSortOrder.recent:
       sortedChannels.sort(
@@ -111,6 +126,7 @@ SearchResults sortSearchResults(SearchResults results, SearchSortOrder order) {
         channels: sortedChannels,
         playlists: sortedPlaylists,
         works: sortedWorks,
+        artistMatchedWorkIds: results.artistMatchedWorkIds,
       );
   }
 }
@@ -157,7 +173,7 @@ SearchResults filterSearchResults(
     }
   }
 
-  bool isRecent({DateTime? date, required SearchDateFilter filter}) {
+  bool isRecent({required SearchDateFilter filter, DateTime? date}) {
     if (filter == SearchDateFilter.all) {
       return true;
     }
@@ -222,9 +238,15 @@ SearchResults filterSearchResults(
       })
       .toList(growable: false);
 
+  final filteredWorkIds = works.map((work) => work.id).toSet();
+  final artistMatchedWorkIds = results.artistMatchedWorkIds
+      .where(filteredWorkIds.contains)
+      .toSet();
+
   return SearchResults(
     channels: channels,
     playlists: playlists,
     works: works,
+    artistMatchedWorkIds: artistMatchedWorkIds,
   );
 }
