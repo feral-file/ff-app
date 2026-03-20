@@ -88,9 +88,13 @@ class OptionsButton extends ConsumerWidget {
             Icons.power_settings_new,
             size: 24,
           ),
-          onTap: () {
-            _onPowerOffSelected(context, control, topicId);
-          },
+          onTap: () => unawaited(
+            _onPowerOffSelected(
+              context,
+              control,
+              topicId,
+            ),
+          ),
         ),
       // reboot
       if (isDeviceConnected)
@@ -100,13 +104,13 @@ class OptionsButton extends ConsumerWidget {
             Icons.restart_alt,
             size: 24,
           ),
-          onTap: () {
+          onTap: () => unawaited(
             _onRebootSelected(
               context,
               control,
               topicId,
-            );
-          },
+            ),
+          ),
         ),
       // Update FF1 firmware — only shown when connected so the command can
       // reach the device; internet connectivity check is enforced by the device.
@@ -114,25 +118,38 @@ class OptionsButton extends ConsumerWidget {
         OptionItem(
           title: 'Update FF1',
           icon: const Icon(Icons.system_update_alt),
-          onTap: () => _onUpdateFirmwareSelected(
-            context,
-            ref,
-            control,
-            device,
-            deviceStatus,
+          onTap: () => unawaited(
+            _onUpdateFirmwareSelected(
+              context,
+              ref,
+              control,
+              device,
+              deviceStatus,
+            ),
           ),
         ),
       OptionItem(
         title: 'Send Log',
         icon: const Icon(Icons.help),
-        onTap: () async {
-          await _onSendLogSelected(context, ref, device);
-        },
+        onTap: () => unawaited(
+          _onSendLogSelected(
+            context,
+            ref,
+            device,
+          ),
+        ),
       ),
       OptionItem(
         title: 'Factory Reset',
         icon: const Icon(Icons.factory),
-        onTap: () => _onFactoryResetSelected(context, ref, control, device),
+        onTap: () => unawaited(
+          _onFactoryResetSelected(
+            context,
+            ref,
+            control,
+            device,
+          ),
+        ),
       ),
       OptionItem(
         title: 'FF1 Guide',
@@ -158,80 +175,150 @@ class OptionsButton extends ConsumerWidget {
     );
   }
 
-  void _onPowerOffSelected(
+  Future<void> _onPowerOffSelected(
     BuildContext context,
     FF1WifiControl control,
     String topicId,
-  ) {
-    unawaited(
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: AppColor.primaryBlack,
-          title: Text(
+  ) async {
+    final result = await UIHelper.showCenterDialog(
+      context,
+      isDismissible: false,
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
             'Power Off',
-            style: AppTypography.body(context).bold.white,
+            style: AppTypography.h2(context).bold.white,
           ),
-          content: Text(
+          SizedBox(height: LayoutConstants.space4),
+          Text(
             'Are you sure you want to power off the device?',
             style: AppTypography.body(context).white,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cancel', style: AppTypography.body(context).white),
-            ),
-            TextButton(
-              onPressed: () async {
-                await control.shutdown(topicId: topicId);
-                if (context.mounted) {
-                  context.pop();
-                }
-              },
-              child: Text('OK', style: AppTypography.body(context).white),
-            ),
-          ],
-        ),
+          SizedBox(height: LayoutConstants.space10),
+          Row(
+            children: [
+              Expanded(
+                child: PrimaryAsyncButton(
+                  text: 'Cancel',
+                  textColor: AppColor.white,
+                  color: Colors.transparent,
+                  borderColor: AppColor.white,
+                  onTap: () {
+                    Navigator.pop(context, false);
+                  },
+                ),
+              ),
+              SizedBox(width: LayoutConstants.space4),
+              Expanded(
+                child: PrimaryAsyncButton(
+                  text: 'Power Off',
+                  textColor: AppColor.white,
+                  color: Colors.transparent,
+                  borderColor: AppColor.white,
+                  onTap: () async {
+                    try {
+                      await control.shutdown(topicId: topicId);
+                      if (context.mounted) {
+                        Navigator.pop(context, true);
+                      }
+                    } on Exception catch (e) {
+                      _log.warning('[Power Off] Failed: $e');
+                      if (context.mounted) {
+                        Navigator.pop(context, e);
+                      }
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
+
+    if (result is Exception || result is Error) {
+      if (context.mounted) {
+        await UIHelper.showInfoDialog(
+          context,
+          'Power Off Failed',
+          'Something went wrong while trying to power off the device. $result',
+        );
+      }
+    }
   }
 
-  void _onRebootSelected(
+  Future<void> _onRebootSelected(
     BuildContext context,
     FF1WifiControl control,
     String topicId,
-  ) {
-    unawaited(
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: AppColor.primaryBlack,
-          title: Text(
+  ) async {
+    final result = await UIHelper.showCenterDialog(
+      context,
+      isDismissible: false,
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
             'Restart',
-            style: AppTypography.body(context).bold.white,
+            style: AppTypography.h2(context).bold.white,
           ),
-          content: Text(
+          SizedBox(height: LayoutConstants.space4),
+          Text(
             'Are you sure you want to restart the device?',
             style: AppTypography.body(context).white,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cancel', style: AppTypography.body(context).white),
-            ),
-            TextButton(
-              onPressed: () async {
-                await control.reboot(topicId: topicId);
-                if (context.mounted) {
-                  context.pop();
-                }
-              },
-              child: Text('OK', style: AppTypography.body(context).white),
-            ),
-          ],
-        ),
+          SizedBox(height: LayoutConstants.space10),
+          Row(
+            children: [
+              Expanded(
+                child: PrimaryAsyncButton(
+                  text: 'Cancel',
+                  textColor: AppColor.white,
+                  color: Colors.transparent,
+                  borderColor: AppColor.white,
+                  onTap: () {
+                    Navigator.pop(context, false);
+                  },
+                ),
+              ),
+              SizedBox(width: LayoutConstants.space4),
+              Expanded(
+                child: PrimaryAsyncButton(
+                  text: 'Restart',
+                  textColor: AppColor.white,
+                  color: Colors.transparent,
+                  borderColor: AppColor.white,
+                  onTap: () async {
+                    try {
+                      await control.reboot(topicId: topicId);
+                      if (context.mounted) {
+                        Navigator.pop(context, true);
+                      }
+                    } on Exception catch (e) {
+                      _log.warning('[Restart] Failed: $e');
+                      if (context.mounted) {
+                        Navigator.pop(context, e);
+                      }
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
+
+    if (result is Exception || result is Error) {
+      if (context.mounted) {
+        await UIHelper.showInfoDialog(
+          context,
+          'Restart Failed',
+          'Something went wrong while trying to restart the device. $result',
+        );
+      }
+    }
   }
 
   Future<void> _onSendLogSelected(
