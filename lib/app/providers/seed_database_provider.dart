@@ -102,6 +102,12 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   static const _uuid = Uuid();
   int _syncInProgressCount = 0;
 
+  /// Snapshots from sessions that completed a replace while no longer active
+  /// (superseded by a newer [sync]). Restore runs with the winning session or
+  /// when no sync remains in flight ([finally] drain), never before another
+  /// session's replace can overwrite the DB.
+  List<FavoritePlaylistSnapshot>? _pendingFavoriteSnapshots;
+
   @override
   SeedDownloadState build() {
     return const SeedDownloadState(status: SeedDownloadStatus.idle);
@@ -124,8 +130,26 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     }
   }
 
-  /// Runs bootstrap (My Collection + Favorite shell), then restores favorites
-  /// from this [session]'s pre-replace snapshot.
+  /// Moves this [session]'s snapshot into [_pendingFavoriteSnapshots] for a
+  /// later restore (superseded session must not restore before the final replace).
+  void _appendSessionSnapshotToPendingFavorites(_SyncSession session) {
+    final s = session.favoritesSnapshotBeforeReplace;
+    session.favoritesSnapshotBeforeReplace = null;
+    if (s == null || s.isEmpty) return;
+    _pendingFavoriteSnapshots = [...?_pendingFavoriteSnapshots, ...s];
+  }
+
+  Future<void> _bootstrapAndRestoreFavoriteSnapshots(
+    List<FavoritePlaylistSnapshot> snapshots,
+  ) async {
+    if (snapshots.isEmpty) return;
+    final db = ref.read(rawDatabaseServiceProvider);
+    await BootstrapService(databaseService: db).bootstrap();
+    await db.restoreFavoritePlaylistsSnapshot(snapshots);
+  }
+
+  /// Restores favorites from [session] plus any [_pendingFavoriteSnapshots],
+  /// then clears both. Used only when this [session] is still the active one.
   ///
   /// Uses `rawDatabaseServiceProvider` from `database_provider.dart` so this
   /// notifier does not import `database_service_provider` (that would create
@@ -133,13 +157,25 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   Future<void> _restorePreservedFavoritesAfterSuccessfulSeedReplace(
     _SyncSession session,
   ) async {
-    final snapshots = session.favoritesSnapshotBeforeReplace;
+    final fromSession = session.favoritesSnapshotBeforeReplace;
     session.favoritesSnapshotBeforeReplace = null;
-    if (snapshots == null || snapshots.isEmpty) return;
+    final combined = <FavoritePlaylistSnapshot>[
+      ...?_pendingFavoriteSnapshots,
+      ...?fromSession,
+    ];
+    _pendingFavoriteSnapshots = null;
+    if (combined.isEmpty) return;
+    await _bootstrapAndRestoreFavoriteSnapshots(combined);
+  }
 
-    final db = ref.read(rawDatabaseServiceProvider);
-    await BootstrapService(databaseService: db).bootstrap();
-    await db.restoreFavoritePlaylistsSnapshot(snapshots);
+  /// When no [sync] is in flight, restores snapshots left in [_pendingFavoriteSnapshots]
+  /// (e.g. only overridden sessions ran a replace).
+  Future<void> _drainPendingFavoriteRestoreIfIdle() async {
+    if (_syncInProgressCount != 0) return;
+    final snapshots = _pendingFavoriteSnapshots;
+    _pendingFavoriteSnapshots = null;
+    if (snapshots == null || snapshots.isEmpty) return;
+    await _bootstrapAndRestoreFavoriteSnapshots(snapshots);
   }
 
   /// Syncs seed DB from remote. Passes [setNotReady] as beforeReplace; passes
@@ -234,9 +270,12 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         // Overridden session must not update state, UI, or gate. But if it
         // completed replace+afterReplace (updated==true), we must restore
         // readiness: no other path will, and DB consumers stay gated otherwise.
+        // Do not restore favorites here: a newer session may still replace the DB;
+        // defer snapshot to pending and restore with the winning session or in
+        // [finally] when no sync remains in flight.
         if (updated) {
           await seedReadyNotifier.setReady();
-          await _restorePreservedFavoritesAfterSuccessfulSeedReplace(session);
+          _appendSessionSnapshotToPendingFavorites(session);
         }
         return false;
       }
@@ -252,6 +291,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       return updated;
     } on Exception catch (e, st) {
       session.favoritesSnapshotBeforeReplace = null;
+      _pendingFavoriteSnapshots = null;
       _log.severe(
         'Seed database sync failed; app continues with existing database.',
         e,
@@ -266,6 +306,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       _syncInProgressCount--;
       state = state.copyWith(isSyncInProgress: _syncInProgressCount > 0);
       _clearSession(session);
+      if (_syncInProgressCount == 0) {
+        await _drainPendingFavoriteRestoreIfIdle();
+      }
     }
   }
 
