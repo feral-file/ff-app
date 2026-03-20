@@ -73,6 +73,8 @@ class PlaylistDetailsNotifier
 
   @override
   AsyncValue<PlaylistDetailsState> build() {
+    ref.watch(databaseServiceProvider);
+
     ref.onDispose(() {
       _log.info(
         'Disposing PlaylistDetailsNotifier, cancelling DB subscription for '

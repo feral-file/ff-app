@@ -138,6 +138,8 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
 
   @override
   PlaylistsState build() {
+    ref.watch(databaseServiceProvider);
+
     ref.onDispose(() async {
       _log.info('Disposing PlaylistsNotifier, cancelling subscription');
       await _watchSub?.cancel();

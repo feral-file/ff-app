@@ -18,8 +18,10 @@ export 'package:app/infra/database/database_provider.dart'
 /// backed by an empty in-memory DB so no new subscriptions attach to the real
 /// DB. When ready, delegates to [rawDatabaseServiceProvider].
 ///
-/// Invalidation of this provider cascades to all DB consumers, eliminating
-/// the need for a manual invalidation list.
+/// Consumers that attach long-lived DB streams must also [ref.watch] this
+/// provider (not only [ref.read]) so invalidation tears down subscriptions.
+/// [LocalDataCleanupService] still uses an explicit invalidation list because
+/// [ref.read] does not register a dependency.
 final databaseServiceProvider = Provider<DatabaseService>((ref) {
   final isReady = ref.watch(isSeedDatabaseReadyProvider);
   if (!isReady) {

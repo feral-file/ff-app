@@ -130,6 +130,8 @@ class WorksNotifier extends Notifier<WorksState> {
 
   @override
   WorksState build() {
+    ref.watch(databaseServiceProvider);
+
     ref.onDispose(() {
       _log.info('Disposing WorksNotifier, cancelling listeners');
       _stopWatching();
@@ -524,6 +526,8 @@ class WorkDetailNotifier extends Notifier<AsyncValue<WorkDetailData?>> {
 
   @override
   AsyncValue<WorkDetailData?> build() {
+    ref.watch(databaseServiceProvider);
+
     ref.onDispose(() {
       _log.info(
         'Disposing WorkDetailNotifier, cancelling DB subscription for $_itemId',

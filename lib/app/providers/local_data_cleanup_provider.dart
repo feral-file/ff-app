@@ -2,11 +2,20 @@ import 'dart:async';
 
 import 'package:app/app/providers/addresses_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
+import 'package:app/app/providers/channel_detail_provider.dart';
+import 'package:app/app/providers/channel_preview_provider.dart';
+import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/app/providers/me_section_playlists_provider.dart';
+import 'package:app/app/providers/playlist_details_provider.dart';
+import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/providers/works_provider.dart';
+import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_local_data_cleaner.dart';
@@ -42,13 +51,30 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
 ) {
   final r = ref;
 
-  /// Invalidates [databaseServiceProvider]; Riverpod cascades to all DB consumers.
-  /// Also invalidates [trackedAddressesSyncProvider] and [addressesProvider]
-  /// (ObjectBox-backed, not DB-dependent).
+  /// Invalidates DB-facing providers before close/rebind.
+  ///
+  /// [databaseServiceProvider] invalidation alone is not enough: long-lived
+  /// stream/notifier providers that used [ref.read] would not rebuild (Riverpod
+  /// only tracks [ref.watch] dependencies). This explicit list plus
+  /// [databaseServiceProvider] keeps reset deterministic.
   void invalidateDatabaseConsumerProviders() {
     r.invalidate(databaseServiceProvider);
     r.invalidate(trackedAddressesSyncProvider);
     r.invalidate(addressesProvider);
+    r.invalidate(channelDetailsProvider);
+    r.invalidate(channelPlaylistsFromIdsProvider);
+    r.invalidate(channelPreviewProvider);
+    r.invalidate(channelsProvider(ChannelType.dp1));
+    r.invalidate(channelsProvider(ChannelType.localVirtual));
+    r.invalidate(playlistsProvider(PlaylistType.dp1));
+    r.invalidate(playlistsProvider(PlaylistType.addressBased));
+    r.invalidate(playlistsProvider(PlaylistType.favorite));
+    r.invalidate(meSectionPlaylistsProvider);
+    r.invalidate(isWorkInFavoriteProvider);
+    r.invalidate(playlistDetailsProvider);
+    r.invalidate(worksProvider);
+    r.invalidate(workDetailStateProvider);
+    r.invalidate(favoritePlaylistServiceProvider);
   }
 
   /// Invalidates providers that hold the database connection

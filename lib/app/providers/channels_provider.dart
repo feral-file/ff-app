@@ -136,6 +136,8 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 
   @override
   ChannelsState build() {
+    ref.watch(databaseServiceProvider);
+
     ref.onDispose(() async {
       _log.info('Disposing ChannelsNotifier, cancelling subscription');
       await _watchSub?.cancel();

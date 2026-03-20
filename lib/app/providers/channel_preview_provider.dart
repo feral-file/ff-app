@@ -112,6 +112,8 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
 
   @override
   ChannelPreviewState build() {
+    ref.watch(databaseServiceProvider);
+
     _log = Logger('ChannelPreviewNotifier($_channelId)');
     ref.onDispose(() {
       _log.info('Disposing ChannelPreviewNotifier, cancelling subscription');

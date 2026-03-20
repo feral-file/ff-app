@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/providers/channel_detail_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/app_database.dart';
@@ -9,6 +10,37 @@ import 'package:app/infra/database/database_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// [isSeedDatabaseReadyProvider] override so [databaseServiceProvider] uses the
+/// test [DatabaseService] (not the empty in-memory stub).
+class _AlwaysReadySeedNotifier extends SeedDatabaseReadyNotifier {
+  @override
+  bool build() => true;
+}
+
+/// Counts [watchChannelById] calls to prove StreamProvider rebuild re-attaches.
+class _CountingDatabaseService extends DatabaseService {
+  _CountingDatabaseService(super.db);
+
+  int watchChannelByIdCallCount = 0;
+
+  @override
+  Stream<Channel?> watchChannelById(String id) {
+    watchChannelByIdCallCount++;
+    return super.watchChannelById(id);
+  }
+}
+
+class _RebindTickNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() => state++;
+}
+
+final _rebindTickProvider = NotifierProvider<_RebindTickNotifier, int>(
+  _RebindTickNotifier.new,
+);
 
 void main() {
   test('channelPlaylistsFromIdsProvider preserves publisher_id, created_at order',
@@ -270,4 +302,67 @@ void main() {
     expect(playlists.single.id, 'pl_empty_addr');
     expect(playlists.single.itemCount, 0);
   });
+
+  test(
+    'channelDetailsProvider re-subscribes when databaseServiceProvider '
+    'returns a new instance (watch dependency)',
+    () async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+
+      await DatabaseService(db).ingestPublisher(id: 1, name: 'Pub');
+      await DatabaseService(db).ingestChannel(const Channel(
+        id: 'c1',
+        name: 'Channel One',
+        type: ChannelType.dp1,
+        publisherId: 1,
+      ));
+
+      var databaseServiceBuildCount = 0;
+      final container = ProviderContainer(
+        overrides: [
+          isSeedDatabaseReadyProvider.overrideWith(_AlwaysReadySeedNotifier.new),
+          databaseServiceProvider.overrideWith((ref) {
+            ref.watch(_rebindTickProvider);
+            databaseServiceBuildCount++;
+            return _CountingDatabaseService(db);
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final sub = container.listen<AsyncValue<ChannelDetails>>(
+        channelDetailsProvider('c1'),
+        (_, __) {},
+        fireImmediately: true,
+      );
+      addTearDown(sub.close);
+
+      await Future<void>.delayed(Duration.zero);
+      expect(databaseServiceBuildCount, greaterThanOrEqualTo(1));
+
+      final firstCounting =
+          container.read(databaseServiceProvider) as _CountingDatabaseService;
+      expect(firstCounting.watchChannelByIdCallCount, greaterThanOrEqualTo(1));
+
+      container.read(_rebindTickProvider.notifier).bump();
+
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      expect(databaseServiceBuildCount, greaterThanOrEqualTo(2));
+
+      final secondCounting =
+          container.read(databaseServiceProvider) as _CountingDatabaseService;
+      expect(
+        secondCounting.watchChannelByIdCallCount,
+        greaterThanOrEqualTo(1),
+        reason: 'new DatabaseService instance should attach a fresh watch',
+      );
+      expect(
+        identical(firstCounting, secondCounting),
+        isFalse,
+        reason: 'rebind must use a new service instance so dependents update',
+      );
+    },
+  );
 }

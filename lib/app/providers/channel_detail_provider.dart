@@ -22,10 +22,11 @@ class ChannelDetails {
 /// Provider for channel details state.
 /// Watches the database so the UI updates when channel or playlists change.
 /// Readiness is enforced at [databaseServiceProvider]; when not ready it
-/// returns empty data, so no per-provider gate is needed.
+/// returns empty data. [ref.watch] on [databaseServiceProvider] is required so
+/// invalidation/rebind tears down Drift subscriptions (read alone would not).
 final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
     StreamProvider.family<ChannelDetails, String>((ref, channelId) {
-      final databaseService = ref.read(databaseServiceProvider);
+      final databaseService = ref.watch(databaseServiceProvider);
 
       return Rx.combineLatest2<Channel?, List<Playlist>, ChannelDetails>(
         databaseService.watchChannelById(channelId),
@@ -46,7 +47,7 @@ final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
 final StreamProviderFamily<List<Playlist>, String>
 channelPlaylistsFromIdsProvider = StreamProvider.family<List<Playlist>, String>(
   (ref, channelIdsKey) {
-    final databaseService = ref.read(databaseServiceProvider);
+    final databaseService = ref.watch(databaseServiceProvider);
     final ids = channelIdsKey
         .split(',')
         .map((s) => s.trim())

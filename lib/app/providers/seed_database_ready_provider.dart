@@ -91,11 +91,15 @@ class SeedDatabaseReadyNotifier extends Notifier<bool> {
     await actions.onNotReady();
   }
 
-  /// Sets state = true, then runs onReady.
+  /// Runs [onReady] (invalidate / rebind) first, then sets state = true.
+  ///
+  /// Ordering avoids a window where [isSeedDatabaseReadyProvider] is true while
+  /// consumers still see a stale or closed DB before [appDatabaseProvider]
+  /// invalidation completes.
   Future<void> setReady() async {
-    state = true;
     final actions = ref.read(seedDatabaseReadyActionsProvider);
     await actions.onReady();
+    state = true;
   }
 }
 
