@@ -11,6 +11,33 @@ import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/buttons/custom_primary_button.dart';
 import 'package:flutter/material.dart';
 
+/// Describes one onboarding action button.
+class OnboardingShellAction {
+  /// Creates an onboarding action button model.
+  const OnboardingShellAction({
+    required this.child,
+    required this.onPressed,
+    this.key,
+    this.borderColor,
+    this.backgroundColor,
+  });
+
+  /// Button content widget.
+  final Widget child;
+
+  /// Callback for button press.
+  final VoidCallback onPressed;
+
+  /// Optional semantic key for automation.
+  final Key? key;
+
+  /// Optional border color override.
+  final Color? borderColor;
+
+  /// Optional background color override.
+  final Color? backgroundColor;
+}
+
 /// Generic shell widget for new onboarding screens.
 ///
 /// This widget encapsulates the common layout from the FF1 Art Computer
@@ -24,12 +51,8 @@ class OnboardingShell extends StatelessWidget {
   const OnboardingShell({
     required this.content,
     super.key,
-    this.primaryButton,
-    this.primaryButtonKey,
-    this.onPrimaryPressed,
-    this.secondaryButton,
-    this.secondaryButtonKey,
-    this.onSecondaryPressed,
+    this.primaryAction,
+    this.secondaryAction,
     this.showBottomProgress = true,
     this.hintText,
   });
@@ -37,24 +60,11 @@ class OnboardingShell extends StatelessWidget {
   /// Main content of the onboarding step (usually title + body + illustration).
   final Widget content;
 
-  /// Label for the primary (right) button – e.g., "Next", "Finish".
-  final Widget? primaryButton;
+  /// Primary (left) onboarding action.
+  final OnboardingShellAction? primaryAction;
 
-  /// Callback when the primary button is pressed.
-  final VoidCallback? onPrimaryPressed;
-
-  /// Optional semantic key for the primary button.
-  final Key? primaryButtonKey;
-
-  /// Optional label for the secondary (left) button.
-  /// For example: "Add Address", "Setup FF1".
-  final Widget? secondaryButton;
-
-  /// Optional callback for the secondary button.
-  final VoidCallback? onSecondaryPressed;
-
-  /// Optional semantic key for the secondary button.
-  final Key? secondaryButtonKey;
+  /// Secondary (right) onboarding action.
+  final OnboardingShellAction? secondaryAction;
 
   /// Whether to show the white bottom progress line.
   final bool showBottomProgress;
@@ -105,27 +115,30 @@ class OnboardingShell extends StatelessWidget {
   }
 
   Widget _buildButtonsRow(BuildContext context) {
-    final primary = (primaryButton != null && onPrimaryPressed != null)
+    final primary = (primaryAction != null)
         ? CustomPrimaryButton(
-            key: primaryButtonKey,
+            key: primaryAction!.key,
             padding: EdgeInsets.symmetric(
               vertical: ContentRhythm.rowVerticalPadding,
             ),
-            onTap: onPrimaryPressed,
-            child: primaryButton!,
+            onTap: primaryAction!.onPressed,
+            borderColor: primaryAction!.borderColor,
+            color: primaryAction!.backgroundColor,
+            child: primaryAction!.child,
           )
         : const SizedBox.shrink();
 
-    final secondary = (secondaryButton != null && onSecondaryPressed != null)
+    final secondary = (secondaryAction != null)
         ? CustomPrimaryButton(
-            key: secondaryButtonKey,
+            key: secondaryAction!.key,
             padding: EdgeInsets.symmetric(
               vertical: ContentRhythm.rowVerticalPadding,
             ),
-            onTap: onSecondaryPressed,
-            borderColor: AppColor.feralFileLightBlue,
-            color: Colors.transparent,
-            child: secondaryButton!,
+            onTap: secondaryAction!.onPressed,
+            borderColor:
+                secondaryAction!.borderColor ?? AppColor.feralFileLightBlue,
+            color: secondaryAction!.backgroundColor ?? Colors.transparent,
+            child: secondaryAction!.child,
           )
         : const SizedBox.shrink();
 

@@ -74,24 +74,26 @@ class IntroducePage extends StatelessWidget {
             ),
           ],
         ),
-        primaryButton: Row(
-          children: [
-            Text(
-              'Next',
-              style: AppTypography.body(context).black,
-            ),
-            SizedBox(width: LayoutConstants.space2),
-            SvgPicture.asset(
-              'assets/images/arrow_right.svg',
-              colorFilter: const ColorFilter.mode(
-                PrimitivesTokens.colorsBlack,
-                BlendMode.srcIn,
+        primaryAction: OnboardingShellAction(
+          key: GoldPathPatrolKeys.onboardingIntroduceNext,
+          onPressed: () => onNext(context),
+          child: Row(
+            children: [
+              Text(
+                'Next',
+                style: AppTypography.body(context).black,
               ),
-            ),
-          ],
+              SizedBox(width: LayoutConstants.space2),
+              SvgPicture.asset(
+                'assets/images/arrow_right.svg',
+                colorFilter: const ColorFilter.mode(
+                  PrimitivesTokens.colorsBlack,
+                  BlendMode.srcIn,
+                ),
+              ),
+            ],
+          ),
         ),
-        onPrimaryPressed: () => onNext(context),
-        primaryButtonKey: GoldPathPatrolKeys.onboardingIntroduceNext,
       ),
     );
   }

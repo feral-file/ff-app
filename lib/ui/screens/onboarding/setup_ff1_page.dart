@@ -67,34 +67,38 @@ class OnboardingSetupFf1Page extends ConsumerWidget {
             ),
           ],
         ),
-        primaryButton: Row(
-          children: [
-            SvgPicture.asset(
-              'assets/images/ff1.svg',
-              colorFilter: const ColorFilter.mode(
-                PrimitivesTokens.colorsBlack,
-                BlendMode.srcIn,
+        primaryAction: OnboardingShellAction(
+          key: GoldPathPatrolKeys.onboardingSetupFf1Primary,
+          onPressed: () => _onSetupFf1(context, ref),
+          child: Row(
+            children: [
+              SvgPicture.asset(
+                'assets/images/ff1.svg',
+                colorFilter: const ColorFilter.mode(
+                  PrimitivesTokens.colorsBlack,
+                  BlendMode.srcIn,
+                ),
               ),
-            ),
-            SizedBox(width: LayoutConstants.space2),
-            Text(
-              'Setup FF1',
-              style: AppTypography.body(context).black,
-            ),
-          ],
+              SizedBox(width: LayoutConstants.space2),
+              Text(
+                'Setup FF1',
+                style: AppTypography.body(context).black,
+              ),
+            ],
+          ),
         ),
-        onPrimaryPressed: () => _onSetupFf1(context, ref),
-        primaryButtonKey: GoldPathPatrolKeys.onboardingSetupFf1Primary,
-        secondaryButton: Row(
-          children: [
-            Text(
-              'Finish',
-              style: AppTypography.body(context).lightBlue,
-            ),
-          ],
+        secondaryAction: OnboardingShellAction(
+          key: GoldPathPatrolKeys.onboardingSetupFf1Secondary,
+          onPressed: () => _onFinish(context, ref),
+          child: Row(
+            children: [
+              Text(
+                'Finish',
+                style: AppTypography.body(context).lightBlue,
+              ),
+            ],
+          ),
         ),
-        onSecondaryPressed: () async => _onFinish(context, ref),
-        secondaryButtonKey: GoldPathPatrolKeys.onboardingSetupFf1Secondary,
       ),
     );
   }
