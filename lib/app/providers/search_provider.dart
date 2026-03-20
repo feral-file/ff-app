@@ -209,19 +209,22 @@ final searchResultsProvider = FutureProvider<SearchResults>((ref) async {
 
   try {
     final databaseService = ref.watch(databaseServiceProvider);
-    final results = await Future.wait([
+    final baseResults = await Future.wait([
       databaseService.searchChannels(query),
       databaseService.searchPlaylists(query),
       databaseService.searchItems(query, limit: 40),
     ]);
 
-    final matchingChannels = results[0] as List<Channel>;
-    final matchingPlaylists = results[1] as List<Playlist>;
-    final matchingWorks = results[2] as List<PlaylistItem>;
-    final matchingArtistWorkIds = matchingWorks
-        .where((work) => _matchesArtist(work: work, query: query))
-        .map((work) => work.id)
-        .toSet();
+    final matchingChannels = baseResults[0] as List<Channel>;
+    final matchingPlaylists = baseResults[1] as List<Playlist>;
+    final matchingWorks = baseResults[2] as List<PlaylistItem>;
+    final matchingWorkIds = matchingWorks.map((work) => work.id).toSet();
+    final matchingArtistWorkIds = await databaseService
+        .searchArtistMatchedItemIds(
+          query,
+          candidateIds: matchingWorkIds,
+          limit: matchingWorkIds.length,
+        );
 
     return SearchResults(
       channels: matchingChannels,
@@ -234,26 +237,3 @@ final searchResultsProvider = FutureProvider<SearchResults>((ref) async {
     rethrow;
   }
 });
-
-bool _matchesArtist({
-  required PlaylistItem work,
-  required String query,
-}) {
-  final artistName = work.artistName.trim().toLowerCase();
-  if (artistName.isEmpty) {
-    return false;
-  }
-
-  final tokens = query
-      .trim()
-      .toLowerCase()
-      .split(RegExp(r'\s+'))
-      .where((token) => token.isNotEmpty)
-      .toList(growable: false);
-
-  if (tokens.isEmpty) {
-    return false;
-  }
-
-  return tokens.every(artistName.contains);
-}

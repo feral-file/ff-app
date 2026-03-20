@@ -1147,10 +1147,26 @@ void main() {
           ),
         );
 
+        await service.ingestPlaylistItem(
+          PlaylistItem(
+            id: 'wk_artist_3',
+            kind: PlaylistItemKind.dp1Item,
+            title: 'Diacritic Work',
+            artists: const [
+              DP1Artist(name: 'Björk', id: 'artist_3'),
+            ],
+            updatedAt: now,
+          ),
+        );
+
         final works = await service.searchItems('kusama');
+        final diacriticWorks = await service.searchItems('bjork');
+        final diacriticInputWorks = await service.searchItems('björk');
 
         expect(works.map((w) => w.id), contains('wk_artist_1'));
         expect(works.map((w) => w.id), isNot(contains('wk_artist_2')));
+        expect(diacriticWorks.map((w) => w.id), contains('wk_artist_3'));
+        expect(diacriticInputWorks.map((w) => w.id), contains('wk_artist_3'));
       });
 
       test('searches channel metadata and playlist owner fields', () async {
@@ -1192,20 +1208,90 @@ void main() {
         );
 
         final curatorChannels = await service.searchChannels('reas');
+        final punctuatedCuratorChannels = await service.searchChannels(
+          'casey, reas',
+        );
+        final mismatchedCuratorChannels = await service.searchChannels(
+          'casey zzz',
+        );
         final summaryChannels = await service.searchChannels(
           'generative',
         );
         final ownerPlaylists = await service.searchPlaylists('abc123');
+        final spacedOwnerPlaylists = await service.searchPlaylists('abc 123');
         final slugPlaylists = await service.searchPlaylists(
           'collector',
+        );
+        final tokenizedSlugPlaylists = await service.searchPlaylists(
+          'collector spotlight',
         );
 
         expect(curatorChannels.map((c) => c.id), contains('ch_meta_1'));
         expect(curatorChannels.map((c) => c.id), isNot(contains('ch_meta_2')));
+        expect(
+          punctuatedCuratorChannels.map((c) => c.id),
+          contains('ch_meta_1'),
+        );
+        expect(
+          mismatchedCuratorChannels.map((c) => c.id),
+          isNot(contains('ch_meta_1')),
+        );
         expect(summaryChannels.map((c) => c.id), contains('ch_meta_1'));
         expect(ownerPlaylists.map((p) => p.id), contains('pl_meta_1'));
+        expect(spacedOwnerPlaylists.map((p) => p.id), contains('pl_meta_1'));
         expect(slugPlaylists.map((p) => p.id), contains('pl_meta_1'));
+        expect(tokenizedSlugPlaylists.map((p) => p.id), contains('pl_meta_1'));
       });
+
+      test(
+        'searches artist-matched item ids with punctuation and diacritics',
+        () async {
+          final now = DateTime.now();
+
+          await service.ingestPlaylistItem(
+            PlaylistItem(
+              id: 'wk_artist_ids_1',
+              kind: PlaylistItemKind.dp1Item,
+              title: 'Dots',
+              artists: const [
+                DP1Artist(name: 'Yayoi Kusama', id: 'artist_ids_1'),
+              ],
+              updatedAt: now,
+            ),
+          );
+
+          await service.ingestPlaylistItem(
+            PlaylistItem(
+              id: 'wk_artist_ids_2',
+              kind: PlaylistItemKind.dp1Item,
+              title: 'Vespertine',
+              artists: const [
+                DP1Artist(name: 'Björk', id: 'artist_ids_2'),
+              ],
+              updatedAt: now,
+            ),
+          );
+
+          final punctuationIds = await service.searchArtistMatchedItemIds(
+            'kusama,',
+          );
+          final diacriticIds = await service.searchArtistMatchedItemIds(
+            'bjork',
+          );
+          final diacriticInputIds = await service.searchArtistMatchedItemIds(
+            'björk',
+          );
+          final candidateOnlyIds = await service.searchArtistMatchedItemIds(
+            'kusama',
+            candidateIds: {'wk_artist_ids_2', 'wk_artist_ids_1'},
+          );
+
+          expect(punctuationIds, contains('wk_artist_ids_1'));
+          expect(diacriticIds, contains('wk_artist_ids_2'));
+          expect(diacriticInputIds, contains('wk_artist_ids_2'));
+          expect(candidateOnlyIds, {'wk_artist_ids_1'});
+        },
+      );
     });
 
     group('Favorite playlist snapshot and restore', () {

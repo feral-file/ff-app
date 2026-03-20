@@ -706,6 +706,25 @@ class DatabaseService {
     }
   }
 
+  /// Search item IDs that match artist names only.
+  Future<Set<String>> searchArtistMatchedItemIds(
+    String query, {
+    Set<String>? candidateIds,
+    int limit = 40,
+  }) async {
+    try {
+      final ids = await _db.searchItemIdsByArtistFts(
+        query,
+        candidateIds: candidateIds?.toList(growable: false),
+        limit: limit,
+      );
+      return ids.toSet();
+    } catch (e, stack) {
+      _log.severe('Failed to search artist-matched item ids', e, stack);
+      rethrow;
+    }
+  }
+
   /// Backward-compatible wrapper for [searchChannels].
   @Deprecated('Use searchChannels instead')
   Future<List<Channel>> searchChannelsByTitle(

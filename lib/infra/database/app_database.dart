@@ -22,6 +22,19 @@ const _schemaVersionV1 = 3;
 const _dbResetReindexMarkerFile = 'db_reset_requires_reindex.flag';
 const _ftsMetadataFallbackRank = 500.0;
 
+extension _SearchQueryTokens on String {
+  List<String> get searchTokens {
+    final tokenSanitizer = RegExp(r'[^\p{L}\p{N}_]', unicode: true);
+    return trim()
+        .split(RegExp(r'\s+'))
+        .map(
+          (token) => token.toLowerCase().replaceAll(tokenSanitizer, ''),
+        )
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+  }
+}
+
 /// Main application database using Drift.
 /// Implements offline-first storage for DP-1 entities and relationships.
 @DriftDatabase(
@@ -259,26 +272,47 @@ class AppDatabase extends _$AppDatabase {
   }
 
   String _buildFtsMatchQuery(String rawQuery) {
-    final tokens = rawQuery
-        .trim()
-        .split(RegExp(r'\s+'))
-        .map((token) => token.replaceAll(RegExp('[^A-Za-z0-9_]'), ''))
-        .where((token) => token.isNotEmpty)
-        .toList(growable: false);
+    final tokens = rawQuery.searchTokens;
     if (tokens.isEmpty) {
       return '';
     }
     return tokens.map((token) => '"$token"*').join(' ');
   }
 
-  String? _buildLikeContainsQuery(String rawQuery) {
-    final normalized = rawQuery.trim().toLowerCase();
-    if (normalized.isEmpty) {
-      return null;
-    }
-    return '%$normalized%';
+  List<Variable<String>> _buildContainsVariables({
+    required List<String> tokens,
+    required int columnsPerToken,
+  }) {
+    return tokens
+        .expand(
+          (token) => List.generate(
+            columnsPerToken,
+            (_) => Variable.withString('%$token%'),
+          ),
+        )
+        .toList(growable: false);
   }
 
+  String _columnContainsTokenExpression(
+    String columnExpression,
+  ) {
+    return '$columnExpression LIKE ?';
+  }
+
+  String _buildFieldSetContainsWhereClause({
+    required List<String> columnExpressions,
+    required int tokenCount,
+  }) {
+    return List.generate(
+      tokenCount,
+      (_) {
+        final perToken = columnExpressions
+            .map(_columnContainsTokenExpression)
+            .join(' OR ');
+        return '($perToken)';
+      },
+    ).join(' AND ');
+  }
   // ===========================================================================
   // Watch queries (reactive streams)
   // ===========================================================================
@@ -496,9 +530,8 @@ class AppDatabase extends _$AppDatabase {
       variables: variables,
       readsFrom: {channels, playlists, playlistEntries},
     ).watch().map(
-          (rows) =>
-              rows.map((row) => channels.map(row.data)).toList(),
-        );
+      (rows) => rows.map((row) => channels.map(row.data)).toList(),
+    );
   }
 
   /// Get channels by type with optional pagination.
@@ -874,10 +907,23 @@ class AppDatabase extends _$AppDatabase {
     int limit = 20,
   }) async {
     final matchQuery = _buildFtsMatchQuery(query);
-    final likeQuery = _buildLikeContainsQuery(query);
-    if (matchQuery.isEmpty || likeQuery == null) {
+    final metadataTokens = query.searchTokens;
+    if (matchQuery.isEmpty || metadataTokens.isEmpty) {
       return const [];
     }
+
+    final metadataWhereClause = _buildFieldSetContainsWhereClause(
+      columnExpressions: const [
+        "lower(COALESCE(c.curator, ''))",
+        "lower(COALESCE(c.summary, ''))",
+      ],
+      tokenCount: metadataTokens.length,
+    );
+
+    final metadataVariables = _buildContainsVariables(
+      tokens: metadataTokens,
+      columnsPerToken: 2,
+    );
 
     final rows = await customSelect(
       '''
@@ -888,8 +934,7 @@ class AppDatabase extends _$AppDatabase {
         UNION ALL
         SELECT c.id AS channel_id, $_ftsMetadataFallbackRank AS rank
         FROM channels c
-        WHERE lower(COALESCE(c.curator, '')) LIKE ?
-           OR lower(COALESCE(c.summary, '')) LIKE ?
+        WHERE $metadataWhereClause
       ),
       ranked_channels AS (
         SELECT channel_id, MIN(rank) AS rank
@@ -904,8 +949,7 @@ class AppDatabase extends _$AppDatabase {
       ''',
       variables: [
         Variable.withString(matchQuery),
-        Variable.withString(likeQuery),
-        Variable.withString(likeQuery),
+        ...metadataVariables,
         Variable.withInt(limit),
       ],
       readsFrom: {channels},
@@ -920,10 +964,23 @@ class AppDatabase extends _$AppDatabase {
     int limit = 20,
   }) async {
     final matchQuery = _buildFtsMatchQuery(query);
-    final likeQuery = _buildLikeContainsQuery(query);
-    if (matchQuery.isEmpty || likeQuery == null) {
+    final metadataTokens = query.searchTokens;
+    if (matchQuery.isEmpty || metadataTokens.isEmpty) {
       return const [];
     }
+
+    final metadataWhereClause = _buildFieldSetContainsWhereClause(
+      columnExpressions: const [
+        "lower(COALESCE(p.slug, ''))",
+        "lower(COALESCE(p.owner_address, ''))",
+      ],
+      tokenCount: metadataTokens.length,
+    );
+
+    final metadataVariables = _buildContainsVariables(
+      tokens: metadataTokens,
+      columnsPerToken: 2,
+    );
 
     final rows = await customSelect(
       '''
@@ -934,8 +991,7 @@ class AppDatabase extends _$AppDatabase {
         UNION ALL
         SELECT p.id AS playlist_id, $_ftsMetadataFallbackRank AS rank
         FROM playlists p
-        WHERE lower(COALESCE(p.slug, '')) LIKE ?
-           OR lower(COALESCE(p.owner_address, '')) LIKE ?
+        WHERE $metadataWhereClause
       ),
       ranked_playlists AS (
         SELECT playlist_id, MIN(rank) AS rank
@@ -950,8 +1006,7 @@ class AppDatabase extends _$AppDatabase {
       ''',
       variables: [
         Variable.withString(matchQuery),
-        Variable.withString(likeQuery),
-        Variable.withString(likeQuery),
+        ...metadataVariables,
         Variable.withInt(limit),
       ],
       readsFrom: {playlists},
@@ -1001,6 +1056,51 @@ class AppDatabase extends _$AppDatabase {
     ).get();
 
     return rows.map((row) => items.map(row.data)).toList();
+  }
+
+  /// Full-text search item IDs by artist names only.
+  Future<List<String>> searchItemIdsByArtistFts(
+    String query, {
+    List<String>? candidateIds,
+    int limit = 40,
+  }) async {
+    final matchQuery = _buildFtsMatchQuery(query);
+    if (matchQuery.isEmpty) {
+      return const [];
+    }
+
+    if (candidateIds != null && candidateIds.isEmpty) {
+      return const [];
+    }
+
+    final inClause = candidateIds == null
+        ? ''
+        : 'AND f.id IN (${List.filled(candidateIds.length, '?').join(', ')})';
+
+    final variables = <Variable<Object>>[
+      Variable.withString(matchQuery),
+      ...?candidateIds?.map(Variable.withString),
+      Variable.withInt(limit),
+    ];
+
+    final rows = await customSelect(
+      '''
+      SELECT DISTINCT i.id AS id
+      FROM item_artists_fts f
+      INNER JOIN items i ON i.id = f.id
+      WHERE item_artists_fts MATCH ?
+      $inClause
+      ORDER BY i.updated_at_us DESC, i.id ASC
+      LIMIT ?
+      ''',
+      variables: variables,
+      readsFrom: {items},
+    ).get();
+
+    return rows
+        .map((row) => row.read<String>('id'))
+        .whereType<String>()
+        .toList(growable: false);
   }
 
   /// Get items with optional [limit] and [offset] for paging.

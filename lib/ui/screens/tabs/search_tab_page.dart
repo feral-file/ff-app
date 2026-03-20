@@ -523,16 +523,11 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
           ),
           subtitle: Text(
             work.artistName,
-            style: AppTypography.caption(context).copyWith(
-              color: AppColor.auGrey,
-              fontStyle: FontStyle.italic,
-            ),
+            style: AppTypography.caption(context).grey.italic,
           ),
           trailing: Text(
             'Artist match',
-            style: AppTypography.caption(context).copyWith(
-              color: AppColor.auGrey,
-            ),
+            style: AppTypography.caption(context).grey,
           ),
           onTap: () {
             unawaited(context.push('${Routes.works}/${work.id}'));
