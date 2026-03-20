@@ -4,9 +4,12 @@ import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/config/seed_database_config_store.dart';
+import 'package:app/infra/database/database_provider.dart';
+import 'package:app/infra/database/favorite_history_snapshot.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
+import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
 import 'package:app/widgets/seed_sync_loading_indicator.dart'
@@ -95,6 +98,11 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   static const _uuid = Uuid();
   int _syncInProgressCount = 0;
 
+  /// Favorite playlists captured before an in-place seed file replace (ETag
+  /// update). The new seed SQLite artifact does not include user favorites;
+  /// they are restored after reconnect when the new DB is ready again.
+  List<FavoritePlaylistSnapshot>? _favoritesSnapshotBeforeSeedReplace;
+
   @override
   SeedDownloadState build() {
     return const SeedDownloadState(status: SeedDownloadStatus.idle);
@@ -115,6 +123,22 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     if (_activeSession?.id == session.id) {
       _activeSession = null;
     }
+  }
+
+  /// Runs bootstrap (My Collection + Favorite shell), then restores favorites
+  /// from the pre-replace snapshot.
+  ///
+  /// Uses `rawDatabaseServiceProvider` from `database_provider.dart` so this
+  /// notifier does not import `database_service_provider` (that would create
+  /// a provider cycle: seed ready → cleanup → seed download notifier).
+  Future<void> _restorePreservedFavoritesAfterSuccessfulSeedReplace() async {
+    final snapshots = _favoritesSnapshotBeforeSeedReplace;
+    _favoritesSnapshotBeforeSeedReplace = null;
+    if (snapshots == null || snapshots.isEmpty) return;
+
+    final db = ref.read(rawDatabaseServiceProvider);
+    await BootstrapService(databaseService: db).bootstrap();
+    await db.restoreFavoritePlaylistsSnapshot(snapshots);
   }
 
   /// Syncs seed DB from remote. Passes [setNotReady] as beforeReplace; passes
@@ -149,10 +173,30 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
 
     final suppressLoading = await appStateService.hasCompletedSeedDownload();
 
+    _favoritesSnapshotBeforeSeedReplace = null;
+
     try {
       final updated = await service.sync(
         forceReplace: forceReplace,
-        beforeReplace: seedReadyNotifier.setNotReady,
+        beforeReplace: () async {
+          final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+          if (await seedDatabaseService.hasLocalDatabase()) {
+            try {
+              _favoritesSnapshotBeforeSeedReplace = await ref
+                  .read(rawDatabaseServiceProvider)
+                  .getFavoritePlaylistsSnapshot();
+            } on Object catch (e, st) {
+              _log.warning(
+                'Could not snapshot Favorite playlists before seed replace; '
+                'favorites may be lost for this session.',
+                e,
+                st,
+              );
+              _favoritesSnapshotBeforeSeedReplace = null;
+            }
+          }
+          await seedReadyNotifier.setNotReady();
+        },
         afterReplace: () async {
           ref
               .read(localDataCleanupServiceProvider)
@@ -193,12 +237,14 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         // readiness: no other path will, and DB consumers stay gated otherwise.
         if (updated) {
           await seedReadyNotifier.setReady();
+          await _restorePreservedFavoritesAfterSuccessfulSeedReplace();
         }
         return false;
       }
       if (updated) {
         await appStateService.setHasCompletedSeedDownload(completed: true);
         await seedReadyNotifier.setReady();
+        await _restorePreservedFavoritesAfterSuccessfulSeedReplace();
       }
       notifyForceReplaceFinished();
       if (completeSeedDatabaseGate) {
@@ -206,6 +252,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       }
       return updated;
     } on Exception catch (e, st) {
+      _favoritesSnapshotBeforeSeedReplace = null;
       _log.severe(
         'Seed database sync failed; app continues with existing database.',
         e,

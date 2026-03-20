@@ -2,11 +2,19 @@ import 'dart:async';
 
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
+import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/config/app_state_service.dart';
+import 'package:app/infra/database/app_database.dart';
+import 'package:app/infra/database/database_provider.dart';
+import 'package:app/infra/database/database_service.dart';
+import 'package:app/infra/database/favorite_history_snapshot.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
+import 'package:app/infra/services/seed_database_service.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
+import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 /// Fake [AppStateService] for seed sync tests. Tracks seed download completion
 /// so subsequent syncs run in background (suppressLoading).
@@ -84,7 +92,55 @@ const _noOpActions = SeedDatabaseReadyActions(
 
 Future<void> _noOpFuture() async {}
 
+class _SpyDatabaseService extends DatabaseService {
+  _SpyDatabaseService(super.db);
+
+  int snapshotCalls = 0;
+  int restoreCalls = 0;
+
+  /// When true, snapshot returns an empty list (restore is skipped). Use when
+  /// the test cannot survive provider invalidation closing the test [AppDatabase].
+  bool snapshotReturnsEmpty = false;
+
+  @override
+  Future<List<FavoritePlaylistSnapshot>> getFavoritePlaylistsSnapshot() async {
+    snapshotCalls++;
+    if (snapshotReturnsEmpty) return [];
+    final now = DateTime.now();
+    return [
+      FavoritePlaylistSnapshot(
+        playlist: Playlist.favorite(createdAt: now, updatedAt: now),
+        items: const [],
+      ),
+    ];
+  }
+
+  @override
+  Future<void> restoreFavoritePlaylistsSnapshot(
+    List<FavoritePlaylistSnapshot> snapshots,
+  ) async {
+    restoreCalls++;
+  }
+}
+
+class _FakeSeedDatabaseService extends SeedDatabaseService {
+  _FakeSeedDatabaseService({required this.hasLocal}) : super();
+
+  final bool hasLocal;
+
+  @override
+  Future<bool> hasLocalDatabase() async => hasLocal;
+}
+
+/// Avoids real SeedDatabaseService.hasLocalDatabase (path_provider) in tests.
+Override _fakeSeedDbSvc({required bool hasLocal}) {
+  return seedDatabaseServiceProvider.overrideWithValue(
+    _FakeSeedDatabaseService(hasLocal: hasLocal),
+  );
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUp(SeedDatabaseGate.resetForTesting);
 
   test('seed sync can run again after the first completed run', () async {
@@ -95,6 +151,7 @@ void main() {
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
         seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+        _fakeSeedDbSvc(hasLocal: false),
       ],
     );
     addTearDown(container.dispose);
@@ -121,6 +178,7 @@ void main() {
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
         seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+        _fakeSeedDbSvc(hasLocal: false),
       ],
     );
     addTearDown(container.dispose);
@@ -157,6 +215,9 @@ void main() {
           _FakeAppStateService(initialHasCompletedSeedDownload: true),
         ),
         seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+        // Snapshot uses [seedDatabaseServiceProvider], not the sync fake's
+        // hasLocalDatabase (UI only). Avoid real AppDatabase I/O in this test.
+        _fakeSeedDbSvc(hasLocal: false),
       ],
     );
     addTearDown(container.dispose);
@@ -185,6 +246,7 @@ void main() {
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
         seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+        _fakeSeedDbSvc(hasLocal: false),
       ],
     );
     addTearDown(container.dispose);
@@ -211,6 +273,7 @@ void main() {
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
         seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+        _fakeSeedDbSvc(hasLocal: false),
       ],
     );
     addTearDown(container.dispose);
@@ -241,6 +304,7 @@ void main() {
           seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
           appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
           seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+          _fakeSeedDbSvc(hasLocal: false),
         ],
       );
       addTearDown(container.dispose);
@@ -273,6 +337,7 @@ void main() {
           seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
           appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
           seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+          _fakeSeedDbSvc(hasLocal: false),
         ],
       );
       addTearDown(container.dispose);
@@ -305,6 +370,7 @@ void main() {
             _FakeAppStateService(initialHasCompletedSeedDownload: true),
           ),
           seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+          _fakeSeedDbSvc(hasLocal: false),
         ],
       );
       addTearDown(container.dispose);
@@ -335,6 +401,65 @@ void main() {
   );
 
   test(
+    'ETag seed replace snapshots Favorite when local seed file exists',
+    () async {
+      final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(memDb.close);
+      final spy = _SpyDatabaseService(memDb)..snapshotReturnsEmpty = true;
+      final fakeSyncService = _FakeSeedDatabaseSyncService()
+        ..hasLocalDatabase = true;
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+          appDatabaseProvider.overrideWithValue(memDb),
+          rawDatabaseServiceProvider.overrideWithValue(spy),
+          seedDatabaseServiceProvider.overrideWithValue(
+            _FakeSeedDatabaseService(hasLocal: true),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(seedDownloadProvider.notifier).sync();
+
+      expect(spy.snapshotCalls, 1);
+      expect(spy.restoreCalls, 0);
+    },
+  );
+
+  test(
+    'first install seed replace skips favorite snapshot when no local DB file',
+    () async {
+      final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(memDb.close);
+      final spy = _SpyDatabaseService(memDb);
+      final fakeSyncService = _FakeSeedDatabaseSyncService();
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+          appDatabaseProvider.overrideWithValue(memDb),
+          rawDatabaseServiceProvider.overrideWithValue(spy),
+          seedDatabaseServiceProvider.overrideWithValue(
+            _FakeSeedDatabaseService(hasLocal: false),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(seedDownloadProvider.notifier).sync();
+
+      expect(spy.snapshotCalls, 0);
+      expect(spy.restoreCalls, 0);
+    },
+  );
+
+  test(
     'overridden session restores readiness when it completed replace',
     () async {
       final completer = Completer<void>();
@@ -356,6 +481,7 @@ void main() {
           seedDatabaseSyncServiceProvider.overrideWithValue(slowFake),
           appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
           seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+          _fakeSeedDbSvc(hasLocal: false),
         ],
       );
       addTearDown(container.dispose);
