@@ -175,6 +175,8 @@ class WorkDetailThumbnailView extends StatelessWidget {
       child: (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
           ? CachedNetworkImage(
               imageUrl: thumbnailUrl,
+              memCacheWidth: 800,
+              memCacheHeight: 1000,
               width: double.infinity,
               fit: BoxFit.contain,
               placeholder: (context, url) =>

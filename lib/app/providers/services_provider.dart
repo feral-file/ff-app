@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:app/app/providers/address_indexing_job_provider.dart';
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
-import 'package:app/infra/database/database_provider.dart'
-    hide ff1BluetoothDeviceServiceProvider;
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
@@ -61,6 +61,24 @@ class EnsureTrackedAddressesSyncCoordinatorNotifier extends Notifier<void> {
     if (_isRunning) return;
     _isRunning = true;
     unawaited(_runWorker());
+  }
+
+  /// Runs ensure sync and waits for completion.
+  ///
+  /// Use when caller needs to await (e.g. bootstrap after startup). Tracks
+  /// in-flight so [stopAndDrainForReset] can wait before DB close.
+  Future<void> runSyncAndWait() async {
+    if (_isStoppingForReset) return;
+    final ensureSync =
+        ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider);
+    final completer = Completer<void>();
+    _inFlightCompleters.add(completer);
+    try {
+      await ensureSync();
+    } finally {
+      _inFlightCompleters.remove(completer);
+      if (!completer.isCompleted) completer.complete();
+    }
   }
 
   Future<void> _runWorker() async {

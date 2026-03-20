@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/now_displaying/now_displaying_enrichment.dart';
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/services_provider.dart';
@@ -8,7 +9,6 @@ import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

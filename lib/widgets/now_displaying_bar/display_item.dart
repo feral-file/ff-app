@@ -116,6 +116,12 @@ class _Thumbnail extends StatelessWidget {
             ? const GalleryNoThumbnailWidget()
             : CachedNetworkImage(
                 imageUrl: url!,
+                memCacheWidth: (LayoutConstants.nowDisplayingDisplayItemThumbWidth *
+                        2)
+                    .round(),
+                memCacheHeight: (LayoutConstants.nowDisplayingDisplayItemThumbHeight *
+                        2)
+                    .round(),
                 fit: BoxFit.cover,
                 placeholder: (_, _) => const GalleryThumbnailPlaceholder(),
                 errorWidget: (_, _, _) => const GalleryThumbnailErrorWidget(),

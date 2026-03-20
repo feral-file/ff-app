@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:app/app/providers/seed_database_provider.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
@@ -9,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// so subsequent syncs run in background (suppressLoading).
 class _FakeAppStateService implements AppStateService {
   _FakeAppStateService({bool initialHasCompletedSeedDownload = false})
-      : _hasCompletedSeedDownload = initialHasCompletedSeedDownload;
+    : _hasCompletedSeedDownload = initialHasCompletedSeedDownload;
 
   bool _hasCompletedSeedDownload;
 
@@ -49,9 +52,11 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
       required bool hasLocalDatabase,
       String? localEtag,
       String? remoteEtag,
-    })? onDownloadStarted,
+    })?
+    onDownloadStarted,
     void Function(double progress)? onProgress,
     bool failSilently = false,
+    bool Function()? isSessionActive,
   }) async {
     lastFailSilently = failSilently;
     syncCallCount++;
@@ -72,6 +77,13 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   }
 }
 
+const _noOpActions = SeedDatabaseReadyActions(
+  onNotReady: _noOpFuture,
+  onReady: _noOpFuture,
+);
+
+Future<void> _noOpFuture() async {}
+
 void main() {
   setUp(SeedDatabaseGate.resetForTesting);
 
@@ -82,20 +94,15 @@ void main() {
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
       ],
     );
     addTearDown(container.dispose);
 
     final notifier = container.read(seedDownloadProvider.notifier);
 
-    await notifier.syncAtAppStart(
-      beforeReplace: () async {},
-      afterReplace: () async {},
-    );
-    await notifier.syncAtAppStart(
-      beforeReplace: () async {},
-      afterReplace: () async {},
-    );
+    await notifier.sync();
+    await notifier.sync();
 
     expect(fakeSyncService.syncCallCount, 2);
     expect(
@@ -113,6 +120,7 @@ void main() {
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
       ],
     );
     addTearDown(container.dispose);
@@ -120,10 +128,7 @@ void main() {
     container.listen(seedDownloadProvider, (prev, next) => states.add(next));
 
     final notifier = container.read(seedDownloadProvider.notifier);
-    await notifier.syncAtAppStart(
-      beforeReplace: () async {},
-      afterReplace: () async {},
-    );
+    await notifier.sync();
 
     expect(
       container.read(seedDownloadProvider).status,
@@ -151,20 +156,19 @@ void main() {
         appStateServiceProvider.overrideWithValue(
           _FakeAppStateService(initialHasCompletedSeedDownload: true),
         ),
+        seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
       ],
     );
     addTearDown(container.dispose);
 
     container.listen(seedDownloadProvider, (prev, next) => states.add(next));
 
-    await container
-        .read(seedDownloadProvider.notifier)
-        .syncAtAppStart(
-          beforeReplace: () async {},
-          afterReplace: () async {},
-        );
+    await container.read(seedDownloadProvider.notifier).sync();
 
-    expect(container.read(seedDownloadProvider).status, SeedDownloadStatus.done);
+    expect(
+      container.read(seedDownloadProvider).status,
+      SeedDownloadStatus.done,
+    );
 
     final syncingStates = states.where(
       (s) => s.status == SeedDownloadStatus.syncing,
@@ -180,20 +184,19 @@ void main() {
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
       ],
     );
     addTearDown(container.dispose);
 
     container.listen(seedDownloadProvider, (prev, next) => states.add(next));
 
-    await container
-        .read(seedDownloadProvider.notifier)
-        .syncAtAppStart(
-          beforeReplace: () async {},
-          afterReplace: () async {},
-        );
+    await container.read(seedDownloadProvider.notifier).sync();
 
-    expect(container.read(seedDownloadProvider).status, SeedDownloadStatus.done);
+    expect(
+      container.read(seedDownloadProvider).status,
+      SeedDownloadStatus.done,
+    );
 
     final syncingStates = states.where(
       (s) => s.status == SeedDownloadStatus.syncing,
@@ -207,18 +210,227 @@ void main() {
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
       ],
     );
     addTearDown(container.dispose);
 
     await container
         .read(seedDownloadProvider.notifier)
-        .syncAtAppStart(
-          beforeReplace: () async {},
-          afterReplace: () async {},
+        .sync(
           failSilently: false,
         );
 
     expect(fakeSyncService.lastFailSilently, isFalse);
   });
+
+  test(
+    'setReady is called and runs onReady only when DB was replaced',
+    () async {
+      final fakeSyncService = _FakeSeedDatabaseSyncService();
+      var onReadyCalled = false;
+      final actions = SeedDatabaseReadyActions(
+        onNotReady: _noOpFuture,
+        onReady: () async {
+          onReadyCalled = true;
+        },
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(seedDownloadProvider.notifier).sync();
+
+      expect(
+        onReadyCalled,
+        isTrue,
+        reason: 'setReady runs onReady when DB replaced',
+      );
+    },
+  );
+
+  test(
+    'setReady is not called when sync skips download (ETag unchanged)',
+    () async {
+      final fakeSyncService = _FakeSeedDatabaseSyncService()
+        ..skipDownload = true;
+      var onReadyCalled = false;
+      final actions = SeedDatabaseReadyActions(
+        onNotReady: _noOpFuture,
+        onReady: () async {
+          onReadyCalled = true;
+        },
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(seedDownloadProvider.notifier).sync();
+
+      expect(
+        onReadyCalled,
+        isFalse,
+        reason: 'no invalidation when DB unchanged',
+      );
+    },
+  );
+
+  test(
+    'isSyncInProgress is true during sync even when status stays idle',
+    () async {
+      final completer = Completer<void>();
+      final fakeSyncService = _FakeSeedDatabaseSyncService()
+        ..hasLocalDatabase = true;
+      final slowFake = _SlowFakeSeedDatabaseSyncService(
+        delegate: fakeSyncService,
+        beforeComplete: completer.future,
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(slowFake),
+          appStateServiceProvider.overrideWithValue(
+            _FakeAppStateService(initialHasCompletedSeedDownload: true),
+          ),
+          seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(seedDownloadProvider.notifier);
+      final syncFuture = notifier.sync();
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(
+        container.read(seedDownloadProvider).isSyncInProgress,
+        isTrue,
+        reason: 'sync in progress even when status stays idle (suppressLoading)',
+      );
+      expect(
+        container.read(seedDownloadProvider).status,
+        SeedDownloadStatus.idle,
+        reason: 'status not syncing when suppressLoading',
+      );
+
+      completer.complete();
+      await syncFuture;
+
+      expect(
+        container.read(seedDownloadProvider).isSyncInProgress,
+        isFalse,
+      );
+    },
+  );
+
+  test(
+    'overridden session restores readiness when it completed replace',
+    () async {
+      final completer = Completer<void>();
+      final fakeSyncService = _FakeSeedDatabaseSyncService();
+      final slowFake = _SlowFakeSeedDatabaseSyncService(
+        delegate: fakeSyncService,
+        beforeComplete: completer.future,
+      );
+      var onReadyCallCount = 0;
+      final actions = SeedDatabaseReadyActions(
+        onNotReady: _noOpFuture,
+        onReady: () async {
+          onReadyCallCount++;
+        },
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(slowFake),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(seedDownloadProvider.notifier);
+      final sync1Future = notifier.sync();
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final sync2Future = notifier.sync();
+      completer.complete();
+      await sync1Future;
+      await sync2Future;
+
+      expect(
+        onReadyCallCount,
+        greaterThanOrEqualTo(1),
+        reason: 'overridden session must call setReady when it completed replace',
+      );
+      expect(
+        fakeSyncService.syncCallCount,
+        2,
+        reason: 'both syncs must run',
+      );
+      expect(
+        container.read(seedDownloadProvider).status,
+        SeedDownloadStatus.done,
+        reason: 'final state from active session',
+      );
+    },
+  );
+}
+
+/// Wraps a sync service: delegates until onDownloadStarted, then awaits
+/// [beforeComplete] before continuing. Allows override to happen after
+/// syncing state is set but before completion.
+class _SlowFakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
+  _SlowFakeSeedDatabaseSyncService({
+    required this.delegate,
+    required Future<void> beforeComplete,
+  }) : _beforeComplete = beforeComplete;
+
+  final SeedDatabaseSyncService delegate;
+  final Future<void> _beforeComplete;
+
+  @override
+  Future<bool> sync({
+    required Future<void> Function() beforeReplace,
+    required Future<void> Function() afterReplace,
+    bool forceReplace = false,
+    void Function({
+      required bool hasLocalDatabase,
+      String? localEtag,
+      String? remoteEtag,
+    })?
+    onDownloadStarted,
+    void Function(double progress)? onProgress,
+    bool failSilently = false,
+    bool Function()? isSessionActive,
+  }) async {
+    onDownloadStarted?.call(
+      hasLocalDatabase: delegate is _FakeSeedDatabaseSyncService
+          ? (delegate as _FakeSeedDatabaseSyncService).hasLocalDatabase
+          : false,
+      localEtag: 'local',
+      remoteEtag: 'remote',
+    );
+    await _beforeComplete;
+    return delegate.sync(
+      beforeReplace: beforeReplace,
+      afterReplace: afterReplace,
+      forceReplace: forceReplace,
+      onDownloadStarted: null,
+      onProgress: onProgress,
+      failSilently: failSilently,
+      isSessionActive: isSessionActive,
+    );
+  }
 }

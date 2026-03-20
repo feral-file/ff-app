@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:app/app/providers/local_data_cleanup_provider.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/config/seed_database_config_store.dart';
 import 'package:app/infra/database/objectbox_init.dart';
@@ -11,6 +13,7 @@ import 'package:app/widgets/seed_sync_loading_indicator.dart'
     show SeedSyncLoadingIndicator;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:uuid/uuid.dart';
 
 final _log = Logger('SeedDownloadNotifier');
 
@@ -36,6 +39,7 @@ class SeedDownloadState {
     required this.status,
     this.errorMessage,
     this.progress,
+    this.isSyncInProgress = false,
   });
 
   /// Current download status.
@@ -47,18 +51,34 @@ class SeedDownloadState {
   /// Download progress 0.0–1.0 when [status] is [SeedDownloadStatus.syncing].
   final double? progress;
 
+  /// True while any sync() call is running, regardless of UI status.
+  /// Use for guards (e.g. skip resume) when [status] may stay idle due to
+  /// suppressed loading (hasCompletedSeedDownload).
+  final bool isSyncInProgress;
+
   /// Returns a copy with the given fields replaced.
   SeedDownloadState copyWith({
     SeedDownloadStatus? status,
     String? errorMessage,
     double? progress,
+    bool? isSyncInProgress,
   }) {
     return SeedDownloadState(
       status: status ?? this.status,
       errorMessage: errorMessage ?? this.errorMessage,
       progress: progress ?? this.progress,
+      isSyncInProgress: isSyncInProgress ?? this.isSyncInProgress,
     );
   }
+}
+
+/// Session for a single sync run. A newer sync overrides the previous by
+/// replacing [_activeSession]; callbacks check [isActive] before updating.
+class _SyncSession {
+  _SyncSession(this.id);
+
+  final String id;
+  bool completed = false;
 }
 
 /// Orchestrates the one-time background seed-database download.
@@ -66,60 +86,94 @@ class SeedDownloadState {
 /// The notifier is kicked off early at app startup (see `App` widget), where
 /// it can perform an ETag-based refresh. On completion (success/failure/skip)
 /// it opens `SeedDatabaseGate` so Drift can proceed.
+///
+/// Uses a session model: a newer sync request overrides the current one by
+/// replacing [_activeSession]. When overridden, the running sync must not
+/// update state, callbacks, or UI on completion.
 class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
-  bool _syncInProgress = false;
+  _SyncSession? _activeSession;
+  static const _uuid = Uuid();
+  int _syncInProgressCount = 0;
 
   @override
   SeedDownloadState build() {
     return const SeedDownloadState(status: SeedDownloadStatus.idle);
   }
 
-  /// Syncs seed DB at app start using remote ETag comparison.
-  ///
-  /// No-ops if a sync is already in progress.
-  ///
-  /// Emits [SeedDownloadStatus.syncing] only when a download starts for a
-  /// first install (!hasLocalDatabase). For updates (existing DB), status
-  /// stays idle. If ETag is unchanged, status stays idle until done.
-  ///
-  /// This method may be called again after startup (for example, when the app
-  /// resumes from background) to check for a newer remote snapshot.
-  Future<bool> syncAtAppStart({
-    required Future<void> Function() beforeReplace,
-    required Future<void> Function() afterReplace,
-    bool failSilently = true,
-  }) async {
-    if (_syncInProgress) {
-      return false;
+  bool _isSessionActive(_SyncSession session) {
+    return _activeSession?.id == session.id && !session.completed;
+  }
+
+  _SyncSession _beginSession() {
+    final session = _SyncSession(_uuid.v4());
+    _activeSession = session;
+    return session;
+  }
+
+  void _clearSession(_SyncSession session) {
+    session.completed = true;
+    if (_activeSession?.id == session.id) {
+      _activeSession = null;
     }
-    _syncInProgress = true;
+  }
+
+  /// Syncs seed DB from remote. Passes [setNotReady] as beforeReplace; passes
+  /// [performReconnectInfraInvalidation] as afterReplace. Calls [setReady] after
+  /// sync when updated. The actual replace is in [replaceDatabaseFromTemporaryFile].
+  ///
+  /// Always starts a new session; a newer session overrides the previous. Inactive
+  /// sessions must not update state, provider, or UI on completion.
+  ///
+  /// Emits [SeedDownloadStatus.syncing] only when [showLoadingInUI] and a download
+  /// starts for first install (!hasLocalDatabase). For updates, status stays idle.
+  Future<bool> sync({
+    bool forceReplace = false,
+    bool showLoadingInUI = true,
+    bool completeSeedDatabaseGate = true,
+    bool failSilently = true,
+    void Function(double progress)? onProgress,
+
+    /// Called when a download will actually occur (after ETag check).
+    /// Use to show UI (e.g. toast) only when download starts, not on ETag-unchanged skip.
+    void Function()? onDownloadStarted,
+  }) async {
+    final session = _beginSession();
+    _syncInProgressCount++;
+    state = state.copyWith(isSyncInProgress: true);
 
     final service = ref.read(seedDatabaseSyncServiceProvider);
     final appStateService = ref.read(appStateServiceProvider);
+    final seedReadyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
 
-    // Throttle state updates to every 1% to avoid flooding provider observer.
     var lastProgressBucket = -1;
 
-    // If user has completed a seed download before, subsequent syncs run in background.
     final suppressLoading = await appStateService.hasCompletedSeedDownload();
 
     try {
       final updated = await service.sync(
-        beforeReplace: beforeReplace,
-        afterReplace: afterReplace,
+        forceReplace: forceReplace,
+        beforeReplace: seedReadyNotifier.setNotReady,
+        afterReplace: () async {
+          ref
+              .read(localDataCleanupServiceProvider)
+              .performReconnectInfraInvalidation();
+        },
+        isSessionActive: () => _isSessionActive(session),
         onDownloadStarted:
             ({
               required hasLocalDatabase,
               localEtag,
               remoteEtag,
             }) {
-              // Only show loading when suppressLoading is false (first-time or post-reset).
-              if (!suppressLoading) {
+              if (!_isSessionActive(session)) return;
+              if (showLoadingInUI && !suppressLoading) {
                 notifyForceReplaceStarted();
               }
+              onDownloadStarted?.call();
             },
         failSilently: failSilently,
         onProgress: (progress) {
+          if (!_isSessionActive(session)) return;
           final bucket = (progress * 100).floor();
           if (bucket > lastProgressBucket) {
             lastProgressBucket = bucket;
@@ -128,15 +182,28 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
             );
             notifyForceReplaceProgress(progress);
           }
+          onProgress?.call(progress);
         },
       );
 
       _log.info('Seed database sync complete');
+      if (!_isSessionActive(session)) {
+        // Overridden session must not update state, UI, or gate. But if it
+        // completed replace+afterReplace (updated==true), we must restore
+        // readiness: no other path will, and DB consumers stay gated otherwise.
+        if (updated) {
+          await seedReadyNotifier.setReady();
+        }
+        return false;
+      }
       if (updated) {
         await appStateService.setHasCompletedSeedDownload(completed: true);
+        await seedReadyNotifier.setReady();
       }
       notifyForceReplaceFinished();
-      SeedDatabaseGate.complete();
+      if (completeSeedDatabaseGate) {
+        SeedDatabaseGate.complete();
+      }
       return updated;
     } on Exception catch (e, st) {
       _log.severe(
@@ -144,19 +211,22 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         e,
         st,
       );
-      notifyForceReplaceFinished(success: false, errorMessage: e.toString());
-      // Open the gate even on failure so the Drift DB is not blocked forever.
-      SeedDatabaseGate.complete();
+      if (_isSessionActive(session)) {
+        notifyForceReplaceFinished(success: false, errorMessage: e.toString());
+        if (completeSeedDatabaseGate) SeedDatabaseGate.complete();
+      }
       return false;
     } finally {
-      _syncInProgress = false;
+      _syncInProgressCount--;
+      state = state.copyWith(isSyncInProgress: _syncInProgressCount > 0);
+      _clearSession(session);
     }
   }
 
   /// Notifies that a force-replace (e.g. Forget I Exist) has started.
   /// Call from [forceReplaceDatabaseFromSeed] so tabs show [SeedSyncLoadingIndicator].
   void notifyForceReplaceStarted() {
-    state = const SeedDownloadState(
+    state = state.copyWith(
       status: SeedDownloadStatus.syncing,
       progress: 0,
     );
@@ -171,12 +241,11 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
 
   /// Notifies that force-replace finished. Call after seed replacement completes.
   void notifyForceReplaceFinished({bool success = true, String? errorMessage}) {
-    state = success
-        ? const SeedDownloadState(status: SeedDownloadStatus.done)
-        : SeedDownloadState(
-            status: SeedDownloadStatus.error,
-            errorMessage: errorMessage,
-          );
+    state = SeedDownloadState(
+      status: success ? SeedDownloadStatus.done : SeedDownloadStatus.error,
+      errorMessage: errorMessage,
+      isSyncInProgress: state.isSyncInProgress,
+    );
   }
 }
 

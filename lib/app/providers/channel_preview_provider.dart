@@ -1,7 +1,8 @@
 import 'dart:async';
 
+import 'package:app/app/providers/database_service_provider.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod/src/providers/notifier.dart';
@@ -111,6 +112,8 @@ class ChannelPreviewNotifier extends Notifier<ChannelPreviewState> {
 
   @override
   ChannelPreviewState build() {
+    ref.watch(databaseServiceProvider);
+
     _log = Logger('ChannelPreviewNotifier($_channelId)');
     ref.onDispose(() {
       _log.info('Disposing ChannelPreviewNotifier, cancelling subscription');

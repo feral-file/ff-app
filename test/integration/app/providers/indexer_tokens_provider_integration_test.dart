@@ -1,3 +1,4 @@
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
@@ -5,7 +6,6 @@ import 'package:app/domain/models/indexer/sync_collection.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_service.dart';

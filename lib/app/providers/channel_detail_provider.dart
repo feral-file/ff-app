@@ -1,7 +1,7 @@
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:riverpod/src/providers/stream_provider.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -21,14 +21,12 @@ class ChannelDetails {
 
 /// Provider for channel details state.
 /// Watches the database so the UI updates when channel or playlists change.
+/// Readiness is enforced at [databaseServiceProvider]; when not ready it
+/// returns empty data. [ref.watch] on [databaseServiceProvider] is required so
+/// invalidation/rebind tears down Drift subscriptions (read alone would not).
 final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
     StreamProvider.family<ChannelDetails, String>((ref, channelId) {
-      if (!ref.watch(isSeedDatabaseReadyProvider)) {
-        return Stream.value(
-          const ChannelDetails(channel: null, playlists: []),
-        );
-      }
-      final databaseService = ref.read(databaseServiceProvider);
+      final databaseService = ref.watch(databaseServiceProvider);
 
       return Rx.combineLatest2<Channel?, List<Playlist>, ChannelDetails>(
         databaseService.watchChannelById(channelId),
@@ -47,18 +45,21 @@ final StreamProviderFamily<ChannelDetails, String> channelDetailsProvider =
 /// Uses a single DB query with channelIds so order matches canonical
 /// publisher_id, created_at_us semantics.
 final StreamProviderFamily<List<Playlist>, String>
-    channelPlaylistsFromIdsProvider =
-    StreamProvider.family<List<Playlist>, String>((ref, channelIdsKey) {
-      final databaseService = ref.read(databaseServiceProvider);
-      final ids = channelIdsKey
-          .split(',')
-          .map((s) => s.trim())
-          .where((s) => s.isNotEmpty)
-          .toList();
-      if (ids.isEmpty) return Stream.value(<Playlist>[]);
-      return databaseService.watchPlaylists(channelIds: ids).map(
-        (list) => list
-            .where((p) => p.itemCount > 0 || p.isAddressPlaylist)
-            .toList(),
-      );
-    });
+channelPlaylistsFromIdsProvider = StreamProvider.family<List<Playlist>, String>(
+  (ref, channelIdsKey) {
+    final databaseService = ref.watch(databaseServiceProvider);
+    final ids = channelIdsKey
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (ids.isEmpty) return Stream.value(<Playlist>[]);
+    return databaseService
+        .watchPlaylists(channelIds: ids)
+        .map(
+          (list) => list
+              .where((p) => p.itemCount > 0 || p.isAddressPlaylist)
+              .toList(),
+        );
+  },
+);

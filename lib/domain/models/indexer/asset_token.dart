@@ -163,7 +163,6 @@ class AssetToken {
     'media_assets': mediaAssets?.map((e) => e.toJson()).toList(),
     'current_owner': currentOwner,
     'updated_at': updatedAt?.toIso8601String(),
-    'current_wner': currentOwner,
   };
 
   factory AssetToken.fromMeilisearchResult(Map<String, dynamic> json) {

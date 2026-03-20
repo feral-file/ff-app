@@ -22,11 +22,11 @@ class LocalDataCleanupService {
     required void Function() pauseTokenPolling,
     Future<void> Function()? clearLegacySqlite,
     Future<void> Function()? clearLegacyHive,
-    Future<void> Function()? onDatabaseReady,
     void Function(Future<void> Function() retry)? onResetFailed,
     void Function()? prepareForReset,
     this.invalidateListProvidersBeforeDbClose,
     this.invalidateReconnectInfraProviders,
+    this.invalidateProvidersForRebind,
     this.enablePostDrainSweep = true,
     this.postDrainSettleDuration = const Duration(milliseconds: 200),
     Logger? logger,
@@ -43,7 +43,6 @@ class LocalDataCleanupService {
        _pauseTokenPolling = pauseTokenPolling,
        _clearLegacySqlite = clearLegacySqlite,
        _clearLegacyHive = clearLegacyHive,
-       _onDatabaseReady = onDatabaseReady,
        _onResetFailed = onResetFailed,
        _prepareForReset = prepareForReset,
        _log = logger ?? Logger('LocalDataCleanupService');
@@ -51,11 +50,18 @@ class LocalDataCleanupService {
   final void Function(Future<void> Function() retry)? _onResetFailed;
   final void Function()? _prepareForReset;
 
-  /// Invalidates core list providers before DB close. For app.dart seed sync.
+  /// Invalidates providers that read/watch the database so they stop subscriptions.
   final void Function()? invalidateListProvidersBeforeDbClose;
 
-  /// Invalidates infra providers after DB replace. For app.dart reconnect.
+  /// Invalidates providers that hold the database connection so they reconnect.
   final void Function()? invalidateReconnectInfraProviders;
+
+  /// Invalidates data providers so they refresh from the database.
+  final void Function()? invalidateProvidersForRebind;
+
+  void performReconnectInfraInvalidation() {
+    invalidateReconnectInfraProviders?.call();
+  }
 
   final Future<void> Function() _stopWorkersGracefully;
   final Future<void> Function() _closeAndDeleteDatabase;
@@ -72,7 +78,6 @@ class LocalDataCleanupService {
   final void Function() _pauseTokenPolling;
   final Future<void> Function()? _clearLegacySqlite;
   final Future<void> Function()? _clearLegacyHive;
-  final Future<void> Function()? _onDatabaseReady;
 
   /// Whether to run a second close/delete pass after a short settle delay.
   final bool enablePostDrainSweep;
@@ -109,8 +114,9 @@ class LocalDataCleanupService {
   /// seed and bootstraps in background.
   ///
   /// Returns as soon as [_fullClear] completes. Caller may navigate to
-  /// onboarding immediately. Seed download, bootstrap, and onDatabaseReady run
-  /// fire-and-forget so UI is not blocked.
+  /// onboarding immediately. Seed download and bootstrap run fire-and-forget
+  /// so UI is not blocked. [isSeedDatabaseReadyProvider] listener runs
+  /// ensureTrackedAddresses when DB becomes ready.
   Future<void> forgetIExist() async {
     _log.info('forgetIExist: start');
     _prepareForReset?.call();
@@ -120,8 +126,6 @@ class LocalDataCleanupService {
       Future<void> fullRetry() async {
         await _recreateDatabaseFromSeed();
         await _runBootstrap();
-        final onDatabaseReady = _onDatabaseReady;
-        if (onDatabaseReady != null) await onDatabaseReady();
       }
       try {
         await fullRetry();
@@ -137,8 +141,9 @@ class LocalDataCleanupService {
   /// and ensuring tracked addresses have playlists and resume indexing.
   ///
   /// Returns as soon as [_lightClear] completes. Caller may dismiss UI
-  /// immediately. Seed replace, bootstrap, onDatabaseReady, and restore run
-  /// fire-and-forget so UI is not blocked.
+  /// immediately. Seed replace, bootstrap, and restore run fire-and-forget so
+  /// UI is not blocked. [isSeedDatabaseReadyProvider] listener runs
+  /// ensureTrackedAddresses when DB becomes ready.
   Future<void> rebuildMetadata() async {
     _log.info('rebuildMetadata: start');
     final snapshots = await _getFavoritePlaylistsSnapshot();
@@ -148,8 +153,6 @@ class LocalDataCleanupService {
       Future<void> fullRetry() async {
         await _recreateDatabaseFromSeed();
         await _runBootstrap();
-        final onDatabaseReady = _onDatabaseReady;
-        if (onDatabaseReady != null) await onDatabaseReady();
         if (snapshots.isNotEmpty) await _restoreFavoritePlaylists(snapshots);
       }
       try {

@@ -1,8 +1,9 @@
 import 'dart:async';
 
 import 'package:app/app/providers/database_error_utils.dart';
+import 'package:app/app/providers/database_service_provider.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/playlist.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -137,6 +138,8 @@ class PlaylistsNotifier extends Notifier<PlaylistsState> {
 
   @override
   PlaylistsState build() {
+    ref.watch(databaseServiceProvider);
+
     ref.onDispose(() async {
       _log.info('Disposing PlaylistsNotifier, cancelling subscription');
       await _watchSub?.cancel();

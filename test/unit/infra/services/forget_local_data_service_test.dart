@@ -42,16 +42,12 @@ void main() {
       clearLegacyHive: () async {
         events.add('clear-legacy-hive');
       },
-      onDatabaseReady: () async {
-        events.add('on-database-ready');
-      },
       postDrainSettleDuration: Duration.zero,
     );
 
     await service.forgetIExist();
 
-    // forgetIExist returns after fullClear; recreate+bootstrap+onDatabaseReady
-    // run in background.
+    // forgetIExist returns after fullClear; recreate+bootstrap run in background.
     expect(events, <String>[
       'pause-feed',
       'pause-token-polling',
@@ -101,9 +97,6 @@ void main() {
       pauseTokenPolling: () {
         events.add('pause-token-polling');
       },
-      onDatabaseReady: () async {
-        events.add('on-database-ready');
-      },
       clearLegacySqlite: () async {},
       clearLegacyHive: () async {},
       postDrainSettleDuration: Duration.zero,
@@ -111,13 +104,13 @@ void main() {
 
     await service.forgetIExist();
 
-    // forgetIExist returns after fullClear; recreate+bootstrap+onDatabaseReady
-    // run in background so last event when await returns is close-delete-db.
+    // forgetIExist returns after fullClear; recreate+bootstrap run in background
+    // so last event when await returns is close-delete-db.
     expect(events.last, equals('close-delete-db'));
   });
 
   test(
-    'rebuildMetadata uses lightClear, runs onDatabaseReady, restores favorites',
+    'rebuildMetadata uses lightClear, restores favorites',
     () async {
       final events = <String>[];
 
@@ -149,9 +142,6 @@ void main() {
         },
         runBootstrap: () async {
           events.add('run-bootstrap');
-        },
-        onDatabaseReady: () async {
-          events.add('on-database-ready');
         },
         pauseFeedWork: () {
           events.add('pause-feed');
