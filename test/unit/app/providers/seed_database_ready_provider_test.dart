@@ -41,7 +41,7 @@ void main() {
   );
 
   test(
-    'setReady can run ensureTrackedAddressesHavePlaylistsAndResume from onReady',
+    'setReady runs ensureTrackedAddressesHavePlaylistsAndResume once',
     () async {
       SeedDatabaseGate.complete();
 
@@ -56,6 +56,9 @@ void main() {
           seedDatabaseReadyActionsProvider.overrideWith((ref) {
             return SeedDatabaseReadyActions(
               onNotReady: () async {},
+              // Production [onReady] invalidates providers instead of calling
+              // ensure directly; this stub invokes ensure once to assert
+              // [setReady] awaits [onReady] and the override is visible.
               onReady: () async {
                 await ref.read(
                   ensureTrackedAddressesHavePlaylistsAndResumeProvider,
