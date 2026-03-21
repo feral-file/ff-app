@@ -131,7 +131,7 @@ class _OverlappingSeedSyncRaceFake implements SeedDatabaseSyncService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-const _noOpActions = SeedDatabaseReadyActions(
+final _noOpActions = SeedDatabaseReadyActions(
   onNotReady: _noOpFuture,
   onReady: _noOpFuture,
 );
@@ -428,7 +428,8 @@ void main() {
       expect(
         container.read(seedDownloadProvider).isSyncInProgress,
         isTrue,
-        reason: 'sync in progress even when status stays idle (suppressLoading)',
+        reason:
+            'sync in progress even when status stays idle (suppressLoading)',
       );
       expect(
         container.read(seedDownloadProvider).status,
@@ -581,7 +582,8 @@ void main() {
       expect(
         onReadyCallCount,
         greaterThanOrEqualTo(1),
-        reason: 'overridden session must call setReady when it completed replace',
+        reason:
+            'overridden session must call setReady when it completed replace',
       );
       expect(
         fakeSyncService.syncCallCount,

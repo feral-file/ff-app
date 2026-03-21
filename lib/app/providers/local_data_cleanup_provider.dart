@@ -19,6 +19,7 @@ import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_local_data_cleaner.dart';
+import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/legacy_storage_locator.dart';
 import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -34,8 +35,9 @@ import 'package:logging/logging.dart';
 ///
 /// 1. **forgetIExist** (Forget I Exist): full reset → deletes SQLite,
 ///    ObjectBox, legacy files, then replaces DB from seed and bootstraps.
-/// 2. **rebuildMetadata**: preserves favorites and tracked addresses,
-///    replaces SQLite from seed, ensures tracked addresses resume indexing.
+/// 2. **rebuildMetadata**: light clear (pause + image cache), then seed sync
+///    replaces files after download (not the cleanup close-and-delete path).
+///    Favorites snapshot/restore live in the seed sync notifier.
 
 /// Provider for ObjectBox local data cleanup.
 final objectBoxLocalDataCleanerProvider = Provider<ObjectBoxLocalDataCleaner>((
@@ -144,9 +146,9 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     },
 
     /// Called when forgetIExist/rebuildMetadata background seed replace fails.
-    /// Invokes [retry] (full sequence: replace + bootstrap + restore for
-    /// rebuildMetadata). On retry failure, restores DB-ready so the
-    /// app can recover (e.g. show retry UI) instead of staying not-ready forever.
+    /// Invokes retry (replace from seed + bootstrap). On retry failure,
+    /// restores DB-ready so the app can recover (e.g. show retry UI) instead of
+    /// staying not-ready forever.
     onResetFailed: (retry) {
       unawaited(
         (() async {
@@ -164,39 +166,39 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       );
     },
 
-    /// Drains token sync and ensureTrackedAddresses workers before DB close.
-    stopWorkersGracefully: () async {
-      await ref
-          .read(tokensSyncCoordinatorProvider.notifier)
-          .stopAndDrainForReset();
-      await ref
-          .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
-          .stopAndDrainForReset();
-      r.invalidate(tokensSyncCoordinatorProvider);
-      r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
-    },
-
-    /// Closes the DB and deletes SQLite files. Leaves [isSeedDatabaseReadyProvider]
-    /// false so no DB work runs until [rebindDatabaseProviders] (e.g. in
-    /// [forceReplaceDatabaseFromSeed] afterReplace for Forget I Exist).
+    /// Calls setNotReady so drain/close runs (workers, SQLite, ObjectBox light
+    /// clear), then deletes dp1 sqlite files. Used by Forget I Exist / full
+    /// clear only; rebuild metadata does not call this (replace deletes via
+    /// seed sync). If SeedDatabaseGate is not completed, setNotReady is a
+    /// no-op; we mirror drain + close so Forget stays safe on edge boots.
     closeAndDeleteDatabase: () async {
-      ref.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(false);
-      invalidateDatabaseConsumerProviders();
-      await SchedulerBinding.instance.endOfFrame;
-      await ref.read(appDatabaseProvider).close();
-      final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
-      await seedDatabaseService.deleteDatabaseFiles();
+      final readyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
+      await readyNotifier.setNotReady();
+      if (SeedDatabaseGate.isCompleted) {
+        final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+        await seedDatabaseService.deleteDatabaseFiles();
+      } else {
+        await ref
+            .read(tokensSyncCoordinatorProvider.notifier)
+            .stopAndDrainForReset();
+        await ref
+            .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+            .stopAndDrainForReset();
+        r.invalidate(tokensSyncCoordinatorProvider);
+        r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
+        readyNotifier.setStateDirectly(false);
+        invalidateDatabaseConsumerProviders();
+        await SchedulerBinding.instance.endOfFrame;
+        await ref.read(appDatabaseProvider).close();
+        final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+        await seedDatabaseService.deleteDatabaseFiles();
+        await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
+      }
     },
 
     /// Clears FF1 devices, app state, tracked addresses, etc.
     clearObjectBoxData: () async {
       await ref.read(objectBoxLocalDataCleanerProvider).clearAll();
-    },
-
-    /// Clears ObjectBox except TrackedAddressEntity (light clear).
-    /// Used by rebuildMetadata to preserve user-added addresses.
-    clearObjectBoxLight: () async {
-      await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
     },
 
     /// Clears CachedNetworkImage and Flutter image cache.
@@ -206,24 +208,13 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       PaintingBinding.instance.imageCache.clearLiveImages();
     },
 
-    /// Snapshot of Favorite playlists for restore (rebuildMetadata only).
-    getFavoritePlaylistsSnapshot: () async {
-      final databaseService = ref.read(databaseServiceProvider);
-      return databaseService.getFavoritePlaylistsSnapshot();
-    },
-
-    /// Restores Favorite playlists from snapshot (rebuildMetadata only).
-    restoreFavoritePlaylists: (snapshots) async {
-      final databaseService = ref.read(databaseServiceProvider);
-      await databaseService.restoreFavoritePlaylistsSnapshot(snapshots);
-    },
-
     /// Creates My Collection channel and wires FF1 watcher.
     runBootstrap: () async {
       await ref.read(bootstrapProvider.notifier).bootstrap();
     },
 
-    /// Replaces SQLite with seed. Used by both forgetIExist and rebuildMetadata.
+    /// Replaces SQLite with seed. Used by forgetIExist and rebuildMetadata
+    /// background retry.
     recreateDatabaseFromSeed: () async {
       await forceReplaceDatabaseFromSeed();
     },
