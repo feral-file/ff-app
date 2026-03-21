@@ -35,8 +35,9 @@ import 'package:logging/logging.dart';
 ///
 /// 1. **forgetIExist** (Forget I Exist): full reset → deletes SQLite,
 ///    ObjectBox, legacy files, then replaces DB from seed and bootstraps.
-/// 2. **rebuildMetadata**: preserves favorites and tracked addresses,
-///    replaces SQLite from seed, ensures tracked addresses resume indexing.
+/// 2. **rebuildMetadata**: light clear (pause + image cache), then seed sync
+///    replaces files after download (not the cleanup close-and-delete path).
+///    Favorites snapshot/restore live in the seed sync notifier.
 
 /// Provider for ObjectBox local data cleanup.
 final objectBoxLocalDataCleanerProvider = Provider<ObjectBoxLocalDataCleaner>((
@@ -145,9 +146,9 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     },
 
     /// Called when forgetIExist/rebuildMetadata background seed replace fails.
-    /// Invokes [retry] (full sequence: replace + bootstrap + restore for
-    /// rebuildMetadata). On retry failure, restores DB-ready so the
-    /// app can recover (e.g. show retry UI) instead of staying not-ready forever.
+    /// Invokes retry (replace from seed + bootstrap). On retry failure,
+    /// restores DB-ready so the app can recover (e.g. show retry UI) instead of
+    /// staying not-ready forever.
     onResetFailed: (retry) {
       unawaited(
         (() async {
@@ -165,11 +166,11 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       );
     },
 
-    /// Calls [SeedDatabaseReadyNotifier.setNotReady] so [onNotReady] runs
-    /// (drain workers, invalidate, close SQLite, ObjectBox light clear), then
-    /// deletes dp1 sqlite files. If [SeedDatabaseGate] is not completed,
-    /// [setNotReady] is a no-op; we mirror drain + close so Forget/rebuild stay
-    /// safe on edge boots.
+    /// Calls setNotReady so drain/close runs (workers, SQLite, ObjectBox light
+    /// clear), then deletes dp1 sqlite files. Used by Forget I Exist / full
+    /// clear only; rebuild metadata does not call this (replace deletes via
+    /// seed sync). If SeedDatabaseGate is not completed, setNotReady is a
+    /// no-op; we mirror drain + close so Forget stays safe on edge boots.
     closeAndDeleteDatabase: () async {
       final readyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
       await readyNotifier.setNotReady();
@@ -207,24 +208,13 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       PaintingBinding.instance.imageCache.clearLiveImages();
     },
 
-    /// Snapshot of Favorite playlists for restore (rebuildMetadata only).
-    getFavoritePlaylistsSnapshot: () async {
-      final databaseService = ref.read(databaseServiceProvider);
-      return databaseService.getFavoritePlaylistsSnapshot();
-    },
-
-    /// Restores Favorite playlists from snapshot (rebuildMetadata only).
-    restoreFavoritePlaylists: (snapshots) async {
-      final databaseService = ref.read(databaseServiceProvider);
-      await databaseService.restoreFavoritePlaylistsSnapshot(snapshots);
-    },
-
     /// Creates My Collection channel and wires FF1 watcher.
     runBootstrap: () async {
       await ref.read(bootstrapProvider.notifier).bootstrap();
     },
 
-    /// Replaces SQLite with seed. Used by both forgetIExist and rebuildMetadata.
+    /// Replaces SQLite with seed. Used by forgetIExist and rebuildMetadata
+    /// background retry.
     recreateDatabaseFromSeed: () async {
       await forceReplaceDatabaseFromSeed();
     },

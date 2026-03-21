@@ -145,7 +145,7 @@
 - goal: maintain app health, recover local state, and contact support
 - start point: Settings and menu actions
 - steps:
-  - rebuild metadata (clear/recreate DB from seed and refetch)
+  - rebuild metadata (download seed, then replace DB on disk; refetch)
   - forget I exist (clear local data, reset onboarding)
   - open release notes, legal docs, support email
 - success state: user gets clean local state or support path as needed

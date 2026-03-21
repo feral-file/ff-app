@@ -13,15 +13,15 @@ export 'package:app/infra/database/database_provider.dart'
 
 /// Readiness-aware database service.
 ///
-/// Single boundary for all DB access. When [isSeedDatabaseReadyProvider] is
-/// false (during Forget I Exist / rebuildMetadata), returns a DatabaseService
+/// Single boundary for all DB access. When the seed database is not ready
+/// (Forget I Exist, or seed replace teardown), returns a DatabaseService
 /// backed by an empty in-memory DB so no new subscriptions attach to the real
-/// DB. When ready, delegates to [rawDatabaseServiceProvider].
+/// DB. When ready, delegates to the raw database service from
+/// database_provider.
 ///
-/// Consumers that attach long-lived DB streams must also [ref.watch] this
-/// provider (not only [ref.read]) so invalidation tears down subscriptions.
-/// [LocalDataCleanupService] still uses an explicit invalidation list because
-/// [ref.read] does not register a dependency.
+/// Consumers that attach long-lived DB streams must watch this provider so
+/// invalidation tears down subscriptions. Local data cleanup still uses an
+/// explicit invalidation list because read() does not register a dependency.
 final databaseServiceProvider = Provider<DatabaseService>((ref) {
   final isReady = ref.watch(isSeedDatabaseReadyProvider);
   if (!isReady) {
