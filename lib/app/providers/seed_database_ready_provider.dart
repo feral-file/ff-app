@@ -3,7 +3,8 @@ import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
-import 'package:app/infra/services/local_data_cleanup_service.dart' show LocalDataCleanupService;
+import 'package:app/infra/services/local_data_cleanup_service.dart'
+    show LocalDataCleanupService;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -49,8 +50,12 @@ final seedDatabaseReadyActionsProvider = Provider<SeedDatabaseReadyActions>((
     cleanupService.invalidateListProvidersBeforeDbClose?.call();
     await SchedulerBinding.instance.endOfFrame;
     await ref.read(appDatabaseProvider).close();
+    // Same order as [LocalDataCleanupService] rebuildMetadata: after SQLite is
+    // closed, drop [RemoteAppConfigEntity] + [AppStateAddressEntity] so
+    // indexing/checkpoints cannot outlive the DB file being replaced.
+    await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
     // Do NOT delete files here. replaceDatabaseFromTemporaryFile deletes and
-    // renames atomically. If replace fails, old DB remains (project_spec).
+    // renames the db path atomically. If replace fails, old DB remains (project_spec).
   }
 
   Future<void> onReady() async {

@@ -186,17 +186,14 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       await ref.read(appDatabaseProvider).close();
       final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
       await seedDatabaseService.deleteDatabaseFiles();
+      // Same as [ObjectBoxLocalDataCleaner.lightClear] after seed replace teardown:
+      // drop config + per-address rows (keep [TrackedAddressEntity]) once SQLite is gone.
+      await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
     },
 
     /// Clears FF1 devices, app state, tracked addresses, etc.
     clearObjectBoxData: () async {
       await ref.read(objectBoxLocalDataCleanerProvider).clearAll();
-    },
-
-    /// Clears ObjectBox except TrackedAddressEntity (light clear).
-    /// Used by rebuildMetadata to preserve user-added addresses.
-    clearObjectBoxLight: () async {
-      await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
     },
 
     /// Clears CachedNetworkImage and Flutter image cache.

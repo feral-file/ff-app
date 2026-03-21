@@ -12,12 +12,10 @@ void main() {
       },
       closeAndDeleteDatabase: () async {
         events.add('close-delete-db');
+        events.add('clear-objectbox-light');
       },
       clearObjectBoxData: () async {
         events.add('clear-objectbox');
-      },
-      clearObjectBoxLight: () async {
-        events.add('clear-objectbox-light');
       },
       clearCachedImages: () async {
         events.add('clear-cached-images');
@@ -59,6 +57,7 @@ void main() {
       'clear-legacy-sqlite',
       'clear-legacy-hive',
       'close-delete-db',
+      'clear-objectbox-light',
     ]);
   });
 
@@ -73,12 +72,10 @@ void main() {
       },
       closeAndDeleteDatabase: () async {
         events.add('close-delete-db');
+        events.add('clear-objectbox-light');
       },
       clearObjectBoxData: () async {
         events.add('clear-objectbox');
-      },
-      clearObjectBoxLight: () async {
-        events.add('clear-objectbox-light');
       },
       clearCachedImages: () async {
         events.add('clear-cached-images');
@@ -104,9 +101,9 @@ void main() {
 
     await service.forgetIExist();
 
-    // forgetIExist returns after fullClear; recreate+bootstrap run in background
-    // so last event when await returns is close-delete-db.
-    expect(events.last, equals('close-delete-db'));
+    // forgetIExist returns after fullClear; post-drain calls close/delete again
+    // (includes objectbox light clear in the same callback).
+    expect(events.last, equals('clear-objectbox-light'));
   });
 
   test(
@@ -120,12 +117,10 @@ void main() {
         },
         closeAndDeleteDatabase: () async {
           events.add('close-delete-db');
+          events.add('clear-objectbox-light');
         },
         clearObjectBoxData: () async {
           events.add('clear-objectbox');
-        },
-        clearObjectBoxLight: () async {
-          events.add('clear-objectbox-light');
         },
         clearCachedImages: () async {
           events.add('clear-cached-images');

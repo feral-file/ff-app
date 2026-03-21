@@ -10,7 +10,6 @@ class LocalDataCleanupService {
     required Future<void> Function() stopWorkersGracefully,
     required Future<void> Function() closeAndDeleteDatabase,
     required Future<void> Function() clearObjectBoxData,
-    required Future<void> Function() clearObjectBoxLight,
     required Future<void> Function() clearCachedImages,
     required Future<void> Function() recreateDatabaseFromSeed,
     required Future<List<FavoritePlaylistSnapshot>> Function()
@@ -33,7 +32,6 @@ class LocalDataCleanupService {
   }) : _stopWorkersGracefully = stopWorkersGracefully,
        _closeAndDeleteDatabase = closeAndDeleteDatabase,
        _clearObjectBoxData = clearObjectBoxData,
-       _clearObjectBoxLight = clearObjectBoxLight,
        _clearCachedImages = clearCachedImages,
        _recreateDatabaseFromSeed = recreateDatabaseFromSeed,
        _getFavoritePlaylistsSnapshot = getFavoritePlaylistsSnapshot,
@@ -66,7 +64,6 @@ class LocalDataCleanupService {
   final Future<void> Function() _stopWorkersGracefully;
   final Future<void> Function() _closeAndDeleteDatabase;
   final Future<void> Function() _clearObjectBoxData;
-  final Future<void> Function() _clearObjectBoxLight;
   final Future<void> Function() _clearCachedImages;
   final Future<void> Function() _recreateDatabaseFromSeed;
   final Future<List<FavoritePlaylistSnapshot>> Function()
@@ -86,13 +83,13 @@ class LocalDataCleanupService {
   final Duration postDrainSettleDuration;
   final Logger _log;
 
-  /// Light clear: DB, ObjectBox (except TrackedAddress), cached images.
+  /// Light clear: drain workers, delete SQLite, ObjectBox light clear (inside
+  /// [closeAndDeleteDatabase] callback), cached images.
   Future<void> _lightClear() async {
     _pauseFeedWork();
     _pauseTokenPolling();
     await _stopWorkersGracefully();
     await _closeAndDeleteDatabase();
-    await _clearObjectBoxLight();
     await _clearCachedImages();
   }
 
