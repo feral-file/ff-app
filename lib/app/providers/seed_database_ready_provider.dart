@@ -3,54 +3,62 @@ import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
-import 'package:app/infra/services/local_data_cleanup_service.dart'
-    show LocalDataCleanupService;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Actions triggered when [isSeedDatabaseReadyProvider] changes.
+///
+/// Use [SeedDatabaseReadyActions] for tests with explicit [onNotReady]/[onReady]
+/// callbacks. Production wiring is built by [seedDatabaseReadyActionsProvider].
 class SeedDatabaseReadyActions {
-  /// Creates [SeedDatabaseReadyActions].
-  const SeedDatabaseReadyActions({
-    required this.onNotReady,
-    required this.onReady,
-  });
+  /// Stub for tests: explicit [onNotReady] / [onReady] replace wired behavior.
+  SeedDatabaseReadyActions({
+    required Future<void> Function() onNotReady,
+    required Future<void> Function() onReady,
+  }) : _ref = null,
+       _onNotReadyStub = onNotReady,
+       _onReadyStub = onReady;
 
-  /// Callback for [beforeReplace]: prepares for replace (e.g. drain workers,
-  /// close DB). Does NOT perform replace or delete files.
-  /// [replaceDatabaseFromTemporaryFile] does delete+rename. Does NOT set
-  /// [isSeedDatabaseReadyProvider]; caller does that.
-  final Future<void> Function() onNotReady;
+  /// Production wiring (same library as [seedDatabaseReadyActionsProvider]).
+  SeedDatabaseReadyActions._wired(this._ref)
+    : _onNotReadyStub = null,
+      _onReadyStub = null;
 
-  /// Callback for [setReady]: rebinds when DB becomes ready (e.g. invalidate
-  /// providers). Called after sync completes, not as the sync's afterReplace.
-  /// Does NOT perform replace.
-  final Future<void> Function() onReady;
-}
+  final Ref? _ref;
+  final Future<void> Function()? _onNotReadyStub;
+  final Future<void> Function()? _onReadyStub;
 
-/// Provides [SeedDatabaseReadyActions] for [SeedDatabaseReadyNotifier].
-/// Logic mirrors [LocalDataCleanupService] stopWorkersGracefully and rebind.
-final seedDatabaseReadyActionsProvider = Provider<SeedDatabaseReadyActions>((
-  ref,
-) {
-  final cleanupService = ref.read(localDataCleanupServiceProvider);
-
-  Future<void> onNotReady() async {
-    if (!SeedDatabaseGate.isCompleted) return;
-
+  /// Drains token sync and ensureTrackedAddresses workers, then invalidates
+  /// coordinator providers so they rebuild after DB rebind.
+  Future<void> _stopWorkersGracefully(Ref ref) async {
     await ref
         .read(tokensSyncCoordinatorProvider.notifier)
         .stopAndDrainForReset();
     await ref
         .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
         .stopAndDrainForReset();
-    ref.invalidate(tokensSyncCoordinatorProvider);
-    ref.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
+    ref
+      ..invalidate(tokensSyncCoordinatorProvider)
+      ..invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
+  }
 
+  /// Prepares for replace (drain workers, close DB). Does NOT delete files.
+  /// [replaceDatabaseFromTemporaryFile] does delete+rename. Does NOT set
+  /// [isSeedDatabaseReadyProvider]; [SeedDatabaseReadyNotifier.setNotReady] does.
+  Future<void> onNotReady() async {
+    final stub = _onNotReadyStub;
+    if (stub != null) return stub();
+
+    if (!SeedDatabaseGate.isCompleted) return;
+
+    final ref = _ref!;
+    await _stopWorkersGracefully(ref);
+
+    final cleanupService = ref.read(localDataCleanupServiceProvider);
     cleanupService.invalidateListProvidersBeforeDbClose?.call();
     await SchedulerBinding.instance.endOfFrame;
     await ref.read(appDatabaseProvider).close();
-    // Same order as [LocalDataCleanupService] rebuildMetadata: after SQLite is
+    // Same order as forget/rebuild metadata teardown: after SQLite is
     // closed, drop [RemoteAppConfigEntity] + [AppStateAddressEntity] so
     // indexing/checkpoints cannot outlive the DB file being replaced.
     await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
@@ -58,18 +66,28 @@ final seedDatabaseReadyActionsProvider = Provider<SeedDatabaseReadyActions>((
     // renames the db path atomically. If replace fails, old DB remains (project_spec).
   }
 
+  /// Rebinds when DB becomes ready (invalidate providers). Does NOT perform replace.
   Future<void> onReady() async {
+    final stub = _onReadyStub;
+    if (stub != null) return stub();
+
+    final ref = _ref!;
+    final cleanupService = ref.read(localDataCleanupServiceProvider);
     cleanupService.invalidateProvidersForRebind?.call();
     cleanupService.invalidateReconnectInfraProviders?.call();
     // trackedAddressesSyncProvider is invalidated above; when it rebuilds,
     // its watch emits and calls scheduleSync. No need to call scheduleSync
     // here—that would cause ensureTrackedAddresses to run twice.
   }
+}
 
-  return SeedDatabaseReadyActions(
-    onNotReady: onNotReady,
-    onReady: onReady,
-  );
+/// Provides [SeedDatabaseReadyActions] for [SeedDatabaseReadyNotifier].
+/// [onNotReady] is the single place for drain + close before DB replace; local
+/// cleanup [closeAndDeleteDatabase] calls [setNotReady] then deletes files.
+final seedDatabaseReadyActionsProvider = Provider<SeedDatabaseReadyActions>((
+  ref,
+) {
+  return SeedDatabaseReadyActions._wired(ref);
 });
 
 /// Notifier that manages seed database ready state.

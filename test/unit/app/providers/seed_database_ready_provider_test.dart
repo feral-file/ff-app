@@ -41,7 +41,7 @@ void main() {
   );
 
   test(
-    'setReady runs ensureTrackedAddressesHavePlaylistsAndResume once',
+    'setReady can run ensureTrackedAddressesHavePlaylistsAndResume from onReady',
     () async {
       SeedDatabaseGate.complete();
 
@@ -56,7 +56,11 @@ void main() {
           seedDatabaseReadyActionsProvider.overrideWith((ref) {
             return SeedDatabaseReadyActions(
               onNotReady: () async {},
-              onReady: () async {},
+              onReady: () async {
+                await ref.read(
+                  ensureTrackedAddressesHavePlaylistsAndResumeProvider,
+                )();
+              },
             );
           }),
         ],

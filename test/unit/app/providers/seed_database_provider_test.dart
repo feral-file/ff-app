@@ -131,7 +131,7 @@ class _OverlappingSeedSyncRaceFake implements SeedDatabaseSyncService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-const _noOpActions = SeedDatabaseReadyActions(
+final _noOpActions = SeedDatabaseReadyActions(
   onNotReady: _noOpFuture,
   onReady: _noOpFuture,
 );

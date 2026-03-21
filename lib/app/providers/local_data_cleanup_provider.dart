@@ -19,6 +19,7 @@ import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_local_data_cleaner.dart';
+import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/legacy_storage_locator.dart';
 import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -164,31 +165,34 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       );
     },
 
-    /// Drains token sync and ensureTrackedAddresses workers before DB close.
-    stopWorkersGracefully: () async {
-      await ref
-          .read(tokensSyncCoordinatorProvider.notifier)
-          .stopAndDrainForReset();
-      await ref
-          .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
-          .stopAndDrainForReset();
-      r.invalidate(tokensSyncCoordinatorProvider);
-      r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
-    },
-
-    /// Closes the DB and deletes SQLite files. Leaves [isSeedDatabaseReadyProvider]
-    /// false so no DB work runs until [rebindDatabaseProviders] (e.g. in
-    /// [forceReplaceDatabaseFromSeed] afterReplace for Forget I Exist).
+    /// Calls [SeedDatabaseReadyNotifier.setNotReady] so [onNotReady] runs
+    /// (drain workers, invalidate, close SQLite, ObjectBox light clear), then
+    /// deletes dp1 sqlite files. If [SeedDatabaseGate] is not completed,
+    /// [setNotReady] is a no-op; we mirror drain + close so Forget/rebuild stay
+    /// safe on edge boots.
     closeAndDeleteDatabase: () async {
-      ref.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(false);
-      invalidateDatabaseConsumerProviders();
-      await SchedulerBinding.instance.endOfFrame;
-      await ref.read(appDatabaseProvider).close();
-      final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
-      await seedDatabaseService.deleteDatabaseFiles();
-      // Same as [ObjectBoxLocalDataCleaner.lightClear] after seed replace teardown:
-      // drop config + per-address rows (keep [TrackedAddressEntity]) once SQLite is gone.
-      await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
+      final readyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
+      await readyNotifier.setNotReady();
+      if (SeedDatabaseGate.isCompleted) {
+        final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+        await seedDatabaseService.deleteDatabaseFiles();
+      } else {
+        await ref
+            .read(tokensSyncCoordinatorProvider.notifier)
+            .stopAndDrainForReset();
+        await ref
+            .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+            .stopAndDrainForReset();
+        r.invalidate(tokensSyncCoordinatorProvider);
+        r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
+        readyNotifier.setStateDirectly(false);
+        invalidateDatabaseConsumerProviders();
+        await SchedulerBinding.instance.endOfFrame;
+        await ref.read(appDatabaseProvider).close();
+        final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+        await seedDatabaseService.deleteDatabaseFiles();
+        await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
+      }
     },
 
     /// Clears FF1 devices, app state, tracked addresses, etc.

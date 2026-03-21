@@ -7,7 +7,6 @@ import 'package:logging/logging.dart';
 class LocalDataCleanupService {
   /// Creates a [LocalDataCleanupService].
   LocalDataCleanupService({
-    required Future<void> Function() stopWorkersGracefully,
     required Future<void> Function() closeAndDeleteDatabase,
     required Future<void> Function() clearObjectBoxData,
     required Future<void> Function() clearCachedImages,
@@ -29,8 +28,7 @@ class LocalDataCleanupService {
     this.enablePostDrainSweep = true,
     this.postDrainSettleDuration = const Duration(milliseconds: 200),
     Logger? logger,
-  }) : _stopWorkersGracefully = stopWorkersGracefully,
-       _closeAndDeleteDatabase = closeAndDeleteDatabase,
+  }) : _closeAndDeleteDatabase = closeAndDeleteDatabase,
        _clearObjectBoxData = clearObjectBoxData,
        _clearCachedImages = clearCachedImages,
        _recreateDatabaseFromSeed = recreateDatabaseFromSeed,
@@ -61,7 +59,6 @@ class LocalDataCleanupService {
     invalidateReconnectInfraProviders?.call();
   }
 
-  final Future<void> Function() _stopWorkersGracefully;
   final Future<void> Function() _closeAndDeleteDatabase;
   final Future<void> Function() _clearObjectBoxData;
   final Future<void> Function() _clearCachedImages;
@@ -83,12 +80,11 @@ class LocalDataCleanupService {
   final Duration postDrainSettleDuration;
   final Logger _log;
 
-  /// Light clear: drain workers, delete SQLite, ObjectBox light clear (inside
-  /// [closeAndDeleteDatabase] callback), cached images.
+  /// Light clear: pause polling, then [closeAndDeleteDatabase] (provider wires
+  /// not-ready teardown + file delete), then cached images.
   Future<void> _lightClear() async {
     _pauseFeedWork();
     _pauseTokenPolling();
-    await _stopWorkersGracefully();
     await _closeAndDeleteDatabase();
     await _clearCachedImages();
   }

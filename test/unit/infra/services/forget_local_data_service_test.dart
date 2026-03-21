@@ -7,9 +7,6 @@ void main() {
     final events = <String>[];
 
     final service = LocalDataCleanupService(
-      stopWorkersGracefully: () async {
-        events.add('stop-workers');
-      },
       closeAndDeleteDatabase: () async {
         events.add('close-delete-db');
         events.add('clear-objectbox-light');
@@ -49,7 +46,6 @@ void main() {
     expect(events, <String>[
       'pause-feed',
       'pause-token-polling',
-      'stop-workers',
       'close-delete-db',
       'clear-objectbox-light',
       'clear-cached-images',
@@ -67,9 +63,6 @@ void main() {
     final events = <String>[];
 
     final service = LocalDataCleanupService(
-      stopWorkersGracefully: () async {
-        events.add('stop-workers');
-      },
       closeAndDeleteDatabase: () async {
         events.add('close-delete-db');
         events.add('clear-objectbox-light');
@@ -112,9 +105,6 @@ void main() {
       final events = <String>[];
 
       final service = LocalDataCleanupService(
-        stopWorkersGracefully: () async {
-          events.add('stop-workers');
-        },
         closeAndDeleteDatabase: () async {
           events.add('close-delete-db');
           events.add('clear-objectbox-light');
@@ -154,7 +144,6 @@ void main() {
         'get-favorite-playlists-snapshot',
         'pause-feed',
         'pause-token-polling',
-        'stop-workers',
         'close-delete-db',
         'clear-objectbox-light',
         'clear-cached-images',
