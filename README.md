@@ -115,6 +115,9 @@ Required keys (ask team for dev/staging values):
 - `INDEXER_API_KEY`
 - `FF1_RELAYER_API_KEY` (or `TV_API_KEY`)
 
+Optional feature keys (feature degrades gracefully if absent):
+- `SUPPORT_API_KEY` (required for the Send Log feature in device options)
+
 Optional tooling key:
 - `FIGMA_API_KEY` (required only if using the Figma MCP server configured in `opencode.json`)
 

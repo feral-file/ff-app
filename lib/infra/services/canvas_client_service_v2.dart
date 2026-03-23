@@ -302,30 +302,6 @@ class CanvasClientServiceV2 {
     }
   }
 
-  Future<bool> sendLog(FF1Device device, String? title) async {
-    try {
-      final stub = _getStub(device);
-      final deviceId = await _getDeviceId();
-      final message = title ?? device.name;
-      const apiKey = '';
-      final request = SendLogRequest(
-        userId: deviceId,
-        title: message,
-        apiKey: apiKey,
-      );
-      final response = await stub.sendLog(request);
-      if (response.ok) {
-        _log.info('CanvasClientService: sendLog success');
-      } else {
-        _log.info('CanvasClientService: sendLog failed');
-      }
-      return response.ok;
-    } catch (e) {
-      _log.info('CanvasClientService: sendLog error: $e');
-      rethrow;
-    }
-  }
-
   Future<DeviceRealtimeMetrics> getDeviceRealtimeMetrics(
     FF1Device device,
   ) async {
