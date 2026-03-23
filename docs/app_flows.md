@@ -90,6 +90,15 @@
   - empty states shown for missing content
 - key screens involved: Home, All Channels, All Playlists, Channel Detail, Playlist Detail, Work Detail
 - key modules/services involved: `channels_provider`, `playlists_provider`, `works_provider`, DB service
+- notes (All Playlists):
+  - non–channel-scoped “View all” / All Playlists lists **group by publisher**
+    (section headers from publisher titles) when the seed DB is ready, publisher
+    and channel lookup streams have settled, and more than one publisher section
+    applies; otherwise the list stays **flat** (including a single publisher
+    bucket)
+  - **channel-scoped** All Playlists (filtered to one or more channel IDs) stays
+    **flat** and does not subscribe to full-table publisher/channel lookup
+    streams
 
 ## Flow: Search and Filter
 

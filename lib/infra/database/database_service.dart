@@ -66,6 +66,26 @@ class DatabaseService {
         );
   }
 
+  /// All channels (for resolving playlist → publisher / section titles).
+  ///
+  /// Ordered like `watchChannels` on the database: publisher_id, sort_order,
+  /// id.
+  Stream<List<Channel>> watchAllChannels() {
+    return _db
+        .watchChannels()
+        .debounceTime(const Duration(milliseconds: 300))
+        .map(
+          (rows) => rows.map(DatabaseConverters.channelDataToDomain).toList(),
+        );
+  }
+
+  /// Publisher id → display name; updates when publishers are ingested.
+  Stream<Map<int, String>> watchPublisherTitles() {
+    return _db
+        .watchPublisherTitles()
+        .debounceTime(const Duration(milliseconds: 300));
+  }
+
   /// Watch playlists as domain models.
   ///
   /// Ordered by publisher_id ASC, created_at_us ASC (canonical order).
