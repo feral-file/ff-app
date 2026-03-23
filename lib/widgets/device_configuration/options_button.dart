@@ -295,7 +295,7 @@ class OptionsButton extends ConsumerWidget {
           context,
           'Failed to send log',
           Text(
-            'The FF1 failed to send log to support.',
+            'Failed to send log to support. Please try again.',
             style: AppTypography.body(context).white,
           ),
         );
