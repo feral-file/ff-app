@@ -5,12 +5,12 @@ import 'package:app/app/providers/publisher_section_providers.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
+import 'package:app/app/utils/all_playlists_publisher_layout.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
-import 'package:app/domain/utils/playlist_publisher_sections.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/bottom_spacing.dart';
@@ -206,26 +206,15 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     final seedReady = ref.watch(isSeedDatabaseReadyProvider);
     final publisherAsync = ref.watch(publisherTitlesMapProvider);
     final channelAsync = ref.watch(allChannelsByIdMapProvider);
-    // hasValue alone stays true while reloading with stale data; require
-    // settled AsyncData (not loading).
-    final lookupsReady = publisherAsync.hasValue &&
-        channelAsync.hasValue &&
-        !publisherAsync.isLoading &&
-        !channelAsync.isLoading;
-    final publisherMap = publisherAsync.value ?? const <int, String>{};
-    final channelMap = channelAsync.value ?? const <String, Channel>{};
-
-    final sections = groupPlaylistsByPublisherSections(
-      playlists: playlists,
-      channelById: channelMap,
-      publisherIdToName: publisherMap,
-    );
-    final usePublisherSections = shouldUsePublisherGroupedLayout(
-      isChannelScoped: isChannelScoped,
+    final layout = resolveAllPlaylistsPublisherLayout(
+      isChannelScoped: false,
       seedDatabaseReady: seedReady,
-      channelAndPublisherLookupsReady: lookupsReady,
-      sectionCount: sections.length,
+      publisherAsync: publisherAsync,
+      channelAsync: channelAsync,
+      playlists: playlists,
     );
+    final usePublisherSections = layout.useSectionHeaders;
+    final sections = layout.sections;
 
     if (!usePublisherSections) {
       return [
