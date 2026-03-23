@@ -4,12 +4,12 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
-      - 'lib/**'
-      - 'patrol_test/**'
-      - 'test/integration/**'
-      - 'ios/**'
-      - 'android/**'
-      - '.github/workflows/gold-path-ui.yml'
+      - "lib/**"
+      - "patrol_test/**"
+      - "test/integration/**"
+      - "ios/**"
+      - "android/**"
+      - ".github/workflows/gold-path-ui.yml"
       - pubspec.yaml
   workflow_dispatch:
     inputs:
@@ -46,7 +46,7 @@ jobs:
     env:
       SIMULATOR_DEVICE: ${{ inputs.simulator_device || 'iPhone 16e' }}
       ANDROID_AVD_NAME: ${{ inputs.android_avd_name || '' }}
-      ANDROID_API_LEVEL: '35'
+      ANDROID_API_LEVEL: "35"
       ANDROID_SYSTEM_IMAGE: system-images;android-35;google_apis;arm64-v8a
       ANDROID_USER_HOME: /tmp/android-user-home
       ANDROID_EMULATOR_HOME: /tmp/android-emulator-home
@@ -61,10 +61,13 @@ jobs:
 
       - name: Use host Flutter/Android SDK
         run: |
-          export FLUTTER_ROOT=/Users/ffci/flutter
-          export PATH="$FLUTTER_ROOT/bin:$PATH"
-          export ANDROID_SDK_ROOT=/Users/ffci/.android/sdk
-          export PATH="$ANDROID_SDK_ROOT/platform-tools:$PATH"
+          echo "FLUTTER_ROOT=/Users/ffci/flutter" >> "$GITHUB_ENV"
+          echo "/Users/ffci/flutter/bin" >> "$GITHUB_PATH"
+          echo "ANDROID_SDK_ROOT=/Users/ffci/.android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=/Users/ffci/.android/sdk" >> "$GITHUB_ENV"
+          echo "/Users/ffci/.android/sdk/platform-tools" >> "$GITHUB_PATH"
+          echo "/Users/ffci/.android/sdk/emulator" >> "$GITHUB_PATH"
+          echo "/Users/ffci/.android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
       - name: Configure Android SDK environment
         if: matrix.platform == 'android'
