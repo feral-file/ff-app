@@ -43,7 +43,16 @@
 - Outcome: app reaches home or onboarding with providers/services initialized.
 - Important edge cases:
   - missing required env keys: app blocks and shows configuration error screen
-  - seed sync failure: app continues using existing/local DB and opens seed gate
+  - **First install (no `dp1_library.sqlite` yet):** startup seed sync may fail
+    or skip while offline; `SeedDatabaseGate` stays **pending** until a successful
+    download places the file. The app runs **lightweight bootstrap** (config +
+    FF1 auto-connect watcher only—no Drift open) so startup can still complete
+    to onboarding/home. Home tabs show retryable loading until the seed exists.
+    Full DP-1 bootstrap (My Collection channel, DB-backed feeds) runs only after
+    the file exists—on first successful sync or a later resume/retry
+    (`pendingDp1BootstrapAfterSeed`).
+  - **Existing local seed file:** seed sync failure generally continues using the
+    on-disk DB; gate completion follows normal sync outcome (see seed services).
   - legacy data exists: onboarding is marked seen and migration runs in background
 
 ### Flow: Onboarding and first-use setup
@@ -139,9 +148,12 @@
   - Who: paired-device users.
   - Touches: canvas client, `ff1_wifi_*` providers/control/transport, now-displaying providers/UI.
 - Offline-first seed database lifecycle
-  - What: startup seed download/swap by ETag, DB gate, rebind/invalidation, resume sync.
+  - What: startup seed download/swap by ETag, `SeedDatabaseGate`, first-install
+    lightweight bootstrap vs full DP-1 bootstrap after the file exists, rebind/
+    invalidation, resume/retry sync.
   - Who: all users (infrastructure behavior).
-  - Touches: `seed_database_*` services/providers, `App` bootstrap orchestration.
+  - Touches: `seed_database_*` services/providers, `App` bootstrap orchestration,
+    `bootstrap_provider` (`bootstrapWithoutDp1Library`, `pendingDp1BootstrapAfterSeed`).
 - Release/update/support utilities
   - What: release notes fetch + display, force update overlay, support email, local data cleanup flows.
   - Who: all users/support workflows.
@@ -266,7 +278,11 @@
 - FF1 layering must stay separated (`transport` / `protocol` / `control`).
 - Deletion-first and no new legacy compatibility by default.
 - Bootstrap/seed-gate invariants:
-  - seed gate must open even on sync failure
+  - **First install:** do not open Drift until `dp1_library.sqlite` exists; keep
+    `SeedDatabaseGate` pending until then; lightweight bootstrap must not block
+    on `SeedDatabaseGate.future` inside `AppDatabase._openConnection`.
+  - **With an existing seed file:** failed sync should not strand users without a
+    usable local read path when the file is still valid (see seed sync service).
   - pending addresses added before seed readiness must be migrated post-seed
 - Playback/control flows should remain resilient to enrichment failures (fallback item data still usable).
 - Large flow/screen changes must preserve existing onboarding, address-indexing, and FF1 setup reliability paths.

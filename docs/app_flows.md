@@ -17,11 +17,18 @@
   - load env config, initialize logging and optional Sentry
   - determine initial route from onboarding state + legacy DB detection
   - initialize ObjectBox services and provider overrides
-  - run app bootstrap sequence (force-update check, seed sync, legacy migration, bootstrap service, ensureTrackedAddressesHavePlaylistsAndResume)
+  - run app bootstrap sequence (force-update check, seed sync, legacy migration, bootstrap service, ensureTrackedAddressesHavePlaylistsAndResume when the seed file and gate allow DB work)
 - success state: user lands on `/` or onboarding route with DB/services ready
 - failure/edge states:
   - invalid env config shows blocking configuration error screen
-  - seed sync failure falls back to existing/local DB and still unblocks app
+  - **First install (no `dp1_library.sqlite`):** seed sync may fail or skip
+    (e.g. offline); `SeedDatabaseGate` stays pending; app runs lightweight
+    bootstrap only (no Drift open) so onboarding/home can load; tabs show
+    retryable feed-blocking UI until download succeeds; full DP-1 bootstrap and
+    tracked-address resume run after a later successful seed (including
+    `pendingDp1BootstrapAfterSeed` completion).
+  - **Existing seed file:** failed sync typically keeps using the on-disk library;
+    app still unblocks when the local DB remains valid.
   - legacy migration errors are logged and do not block startup
 - key screens involved: config error screen (fallback), Home, Onboarding
 - key modules/services involved: `lib/main.dart`, `lib/app/app.dart`, `seed_database_*`, `bootstrap_provider`, `legacy_data_migration_service`, `app_state_service`
