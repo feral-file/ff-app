@@ -12,6 +12,10 @@ typedef AllPlaylistsPublisherLayout = ({
 /// Resolves whether All Playlists should show publisher sections and the
 /// grouped section list.
 ///
+/// Once lookup streams have emitted at least once (first load), the UI stays
+/// grouped even if the streams reload or refresh (subsequent `isLoading`).
+/// This prevents layout flicker during dependency invalidation.
+///
 /// Callers that are already **channel-scoped** should not subscribe to lookup
 /// providers and should pass [playlists] only after their own early return;
 /// this function is still used in tests with channel-scoped true to assert
@@ -27,10 +31,9 @@ AllPlaylistsPublisherLayout resolveAllPlaylistsPublisherLayout({
     return (useSectionHeaders: false, sections: const []);
   }
 
-  final lookupsReady = publisherAsync.hasValue &&
-      channelAsync.hasValue &&
-      !publisherAsync.isLoading &&
-      !channelAsync.isLoading;
+  /// Both streams must have emitted at least once (have cached data) to group.
+  /// `isLoading` is not checked: reload/refresh is invisible to the UI.
+  final lookupsReady = publisherAsync.hasValue && channelAsync.hasValue;
 
   final channelMap = channelAsync.value ?? const <String, Channel>{};
   final publisherMap = publisherAsync.value ?? const <int, String>{};

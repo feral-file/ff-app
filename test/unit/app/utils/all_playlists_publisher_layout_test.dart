@@ -82,7 +82,7 @@ void main() {
       expect(r.sections.length, 2);
     });
 
-    test('publisher stream loading: flat', () {
+    test('publisher stream no hasValue: flat', () {
       final r = resolveAllPlaylistsPublisherLayout(
         isChannelScoped: false,
         seedDatabaseReady: true,
@@ -93,7 +93,7 @@ void main() {
       expect(r.useSectionHeaders, isFalse);
     });
 
-    test('channel stream loading: flat', () {
+    test('channel stream no hasValue: flat', () {
       final r = resolveAllPlaylistsPublisherLayout(
         isChannelScoped: false,
         seedDatabaseReady: true,
@@ -104,7 +104,7 @@ void main() {
       expect(r.useSectionHeaders, isFalse);
     });
 
-    test('two publisher sections and ready: headers on', () {
+    test('two publishers, ready: section headers on', () {
       final r = resolveAllPlaylistsPublisherLayout(
         isChannelScoped: false,
         seedDatabaseReady: true,
@@ -116,6 +116,27 @@ void main() {
       expect(r.sections.length, 2);
       expect(r.sections[0].title, 'Publisher One');
       expect(r.sections[1].title, 'Publisher Two');
+    });
+
+    test('reload with previous data: still grouped', () {
+      // Simulates Riverpod reload: hasValue=true (previous), isLoading=true (new)
+      final publisherReloading = AsyncData<Map<int, String>>(
+        publisherNames,
+      ).copyWithPrevious(
+        const AsyncLoading<Map<int, String>>(),
+        isRefresh: false,
+      ) as AsyncValue<Map<int, String>>;
+
+      final r = resolveAllPlaylistsPublisherLayout(
+        isChannelScoped: false,
+        seedDatabaseReady: true,
+        publisherAsync: publisherReloading,
+        channelAsync: AsyncData(channelMapTwoPubs),
+        playlists: const [pPub1, pPub2],
+      );
+      // Even though isLoading, hasValue=true means we keep grouped layout
+      expect(r.useSectionHeaders, isTrue);
+      expect(r.sections.length, 2);
     });
 
     test('single publisher bucket: flat', () {
