@@ -226,7 +226,7 @@ class OptionsButton extends ConsumerWidget {
       final control = ref.read(ff1WifiControlProvider);
       final bleControl = ref.read(ff1ControlProvider);
       const userId = 'user-id';
-      final apiKey = AppConfig.ff1RelayerApiKey;
+      final apiKey = AppConfig.supportApiKey;
       var success = false;
 
       if (device.topicId.isNotEmpty) {
