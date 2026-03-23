@@ -780,7 +780,7 @@ class FF1WifiControl {
   /// Set the loop (repeat) mode on the device.
   ///
   /// [topicId] — device identifier on the relayer
-  /// [mode] — none, playlist, or one
+  /// [mode] — playlist or one
   Future<FF1CommandResponse> setLoop({
     required String topicId,
     required LoopMode mode,
