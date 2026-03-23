@@ -33,61 +33,69 @@ void main() {
 
   group('SendLogNotifier', () {
     group('SUPPORT_API_KEY absent', () {
-      test('returns SendLogNotConfigured without contacting WiFi or BLE', () async {
-        // Regression: with a missing key the flow must short-circuit before
-        // issuing any transport command. Both transports throw if called so the
-        // test will fail fast if the guard is bypassed.
-        final wifiSpy = _SpyWifiControl(sendLogError: Exception('should not be called'));
-        final bleTransport = _SpyBleTransport(throwOnSendLog: true);
+      test(
+        'returns SendLogNotConfigured without contacting WiFi or BLE',
+        () async {
+          // Regression: with a missing key the flow must short-circuit before
+          // issuing any transport command. Both transports throw if called so
+          // the test will fail fast if the guard is bypassed.
+          final wifiSpy = _SpyWifiControl(
+            sendLogError: Exception('should not be called'),
+          );
+          final bleTransport = _SpyBleTransport(throwOnSendLog: true);
 
-        final container = ProviderContainer.test(
-          overrides: [
-            supportApiKeyProvider.overrideWithValue(''),
-            ff1WifiControlProvider.overrideWithValue(wifiSpy),
-            ff1TransportProvider.overrideWithValue(bleTransport),
-          ],
-        );
-        addTearDown(container.dispose);
+          final container = ProviderContainer.test(
+            overrides: [
+              supportApiKeyProvider.overrideWithValue(''),
+              ff1WifiControlProvider.overrideWithValue(wifiSpy),
+              ff1TransportProvider.overrideWithValue(bleTransport),
+            ],
+          );
+          addTearDown(container.dispose);
 
-        final outcome = await container
-            .read(sendLogProvider.notifier)
-            .send(wifiDevice);
+          final outcome = await container
+              .read(sendLogProvider.notifier)
+              .send(wifiDevice);
 
-        expect(outcome, isA<SendLogNotConfigured>());
-        expect(wifiSpy.sendLogCalled, isFalse);
-        expect(bleTransport.sendLogCalled, isFalse);
-      });
+          expect(outcome, isA<SendLogNotConfigured>());
+          expect(wifiSpy.sendLogCalled, isFalse);
+          expect(bleTransport.sendLogCalled, isFalse);
+        },
+      );
     });
 
     group('SUPPORT_API_KEY present', () {
-      test('passes key to WiFi when topicId is available and WiFi succeeds', () async {
-        // Regression: the support API key must reach the WiFi transport so the
-        // device can authenticate with the backend.
-        const testKey = 'test-support-key-123';
-        final wifiSpy = _SpyWifiControl(
-          response: FF1CommandResponse(status: 'ok'),
-        );
-        final bleTransport = _SpyBleTransport();
+      test(
+        'passes key to WiFi when topicId is available and WiFi succeeds',
+        () async {
+          // Regression: the support API key must reach the WiFi transport so the
+          // device can authenticate with the backend.
+          const testKey = 'test-support-key-123';
+          final wifiSpy = _SpyWifiControl(
+            response: FF1CommandResponse(status: 'ok'),
+          );
+          final bleTransport = _SpyBleTransport();
 
-        final container = ProviderContainer.test(
-          overrides: [
-            supportApiKeyProvider.overrideWithValue(testKey),
-            ff1WifiControlProvider.overrideWithValue(wifiSpy),
-            ff1TransportProvider.overrideWithValue(bleTransport),
-          ],
-        );
-        addTearDown(container.dispose);
+          final container = ProviderContainer.test(
+            overrides: [
+              supportApiKeyProvider.overrideWithValue(testKey),
+              ff1WifiControlProvider.overrideWithValue(wifiSpy),
+              ff1TransportProvider.overrideWithValue(bleTransport),
+            ],
+          );
+          addTearDown(container.dispose);
 
-        final outcome = await container
-            .read(sendLogProvider.notifier)
-            .send(wifiDevice);
+          final outcome = await container
+              .read(sendLogProvider.notifier)
+              .send(wifiDevice);
 
-        expect(outcome, isA<SendLogSuccess>());
-        expect(wifiSpy.sendLogCalled, isTrue);
-        expect(wifiSpy.capturedApiKey, testKey);
-        // BLE should not be contacted when WiFi succeeds.
-        expect(bleTransport.sendLogCalled, isFalse);
-      });
+          expect(outcome, isA<SendLogSuccess>());
+          expect(wifiSpy.sendLogCalled, isTrue);
+          expect(wifiSpy.capturedApiKey, testKey);
+          // BLE should not be contacted when WiFi succeeds.
+          expect(bleTransport.sendLogCalled, isFalse);
+        },
+      );
 
       test('falls back to BLE with the same key when WiFi fails', () async {
         const testKey = 'test-support-key-456';

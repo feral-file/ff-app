@@ -29,18 +29,22 @@ sealed class SendLogOutcome {
 /// `SUPPORT_API_KEY` is missing on this build.
 /// The device was never contacted; no transport command was issued.
 class SendLogNotConfigured extends SendLogOutcome {
+  /// Constructor for [SendLogNotConfigured].
   const SendLogNotConfigured();
 }
 
 /// Log was successfully dispatched to the support backend.
 class SendLogSuccess extends SendLogOutcome {
+  /// Constructor for [SendLogSuccess].
   const SendLogSuccess();
 }
 
 /// Log dispatch failed (WiFi and BLE both unsuccessful or threw).
 class SendLogFailure extends SendLogOutcome {
+  /// Constructor for [SendLogFailure].
   const SendLogFailure(this.error);
 
+  /// The error that occurred.
   final Object error;
 }
 
@@ -62,7 +66,7 @@ class SendLogNotifier extends Notifier<void> {
   /// Flow:
   /// 1. Validate `SUPPORT_API_KEY` is present. Return [SendLogNotConfigured]
   ///    immediately — without touching the device — if missing.
-  /// 2. Try WiFi when [device.topicId] is available. Treat any non-ok response
+  /// 2. Try WiFi when `device.topicId` is available. Treat any non-ok response
   ///    or thrown exception as a signal to fall back to BLE.
   /// 3. Fall back to BLE. Treat any thrown exception as [SendLogFailure].
   Future<SendLogOutcome> send(FF1Device device) async {
@@ -95,9 +99,11 @@ class SendLogNotifier extends Notifier<void> {
           final okFlag = ff1CommandResponseOkFlag(response);
           success = okFlag ?? ff1CommandResponseIsOk(response);
           if (!success) {
-            _log.warning('[SendLog] WiFi returned non-ok response, falling back to BLE');
+            _log.warning(
+              '[SendLog] WiFi returned non-ok response, falling back to BLE',
+            );
           }
-        } catch (e) {
+        } on Exception catch (e) {
           _log.warning('[SendLog] WiFi error: $e, falling back to BLE');
         }
       }
@@ -115,7 +121,7 @@ class SendLogNotifier extends Notifier<void> {
       }
 
       return success ? const SendLogSuccess() : const SendLogFailure('unknown');
-    } catch (e) {
+    } on Exception catch (e) {
       _log.warning('[SendLog] Failed: $e');
       return SendLogFailure(e);
     }
