@@ -14,6 +14,12 @@ class StartupSeedSyncUiPolicy {
 
   /// Whether startup should emit seed loading state to UI consumers.
   final bool showSeedLoadingInUi;
+
+  /// Default startup behavior if policy resolution fails.
+  static const visibleByDefault = StartupSeedSyncUiPolicy(
+    showUpdatingToast: true,
+    showSeedLoadingInUi: true,
+  );
 }
 
 /// Contract for startup seed-sync UI behavior.
@@ -31,10 +37,7 @@ final startupSeedSyncUiPolicyProvider = FutureProvider<StartupSeedSyncUiPolicy>(
       );
     }
 
-    return const StartupSeedSyncUiPolicy(
-      showUpdatingToast: true,
-      showSeedLoadingInUi: true,
-    );
+    return StartupSeedSyncUiPolicy.visibleByDefault;
   },
 );
 
@@ -55,7 +58,12 @@ Future<bool> runStartupSeedSyncWithPolicy({
   required StartupSeedSyncRunner runSync,
   bool failSilently = true,
 }) async {
-  final uiPolicy = await loadPolicy();
+  StartupSeedSyncUiPolicy uiPolicy;
+  try {
+    uiPolicy = await loadPolicy();
+  } on Object {
+    uiPolicy = StartupSeedSyncUiPolicy.visibleByDefault;
+  }
   return runSync(
     showUpdatingToast: uiPolicy.showUpdatingToast,
     showLoadingInUI: uiPolicy.showSeedLoadingInUi,

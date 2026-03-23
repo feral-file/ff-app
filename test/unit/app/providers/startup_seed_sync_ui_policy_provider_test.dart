@@ -107,4 +107,30 @@ void main() {
       expect(result, isFalse);
     },
   );
+
+  test(
+    'runStartupSeedSyncWithPolicy falls back to visible UI flags '
+    'when policy loading fails',
+    () async {
+      var called = false;
+      final result = await runStartupSeedSyncWithPolicy(
+        loadPolicy: () async => throw Exception('load failed'),
+        runSync:
+            ({
+              required showUpdatingToast,
+              required showLoadingInUI,
+              required failSilently,
+            }) async {
+              called = true;
+              expect(showUpdatingToast, isTrue);
+              expect(showLoadingInUI, isTrue);
+              expect(failSilently, isTrue);
+              return true;
+            },
+      );
+
+      expect(called, isTrue);
+      expect(result, isTrue);
+    },
+  );
 }
