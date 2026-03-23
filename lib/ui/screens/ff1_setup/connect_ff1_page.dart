@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
@@ -97,109 +98,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     super.initState();
     _startTime = DateTime.now();
 
-    // Start connection flow using the provider
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      _connectFF1Notifier = await ref.read(connectFF1Provider.notifier);
-      if (!mounted) return;
-      final fallbackDevice =
-          widget.payload.device ?? BluetoothDevice.fromId('');
-      final ff1DeviceInfo = widget.payload.deeplink == null
-          ? null
-          : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
-      unawaited(
-        _connectFF1Notifier?.connectBle(
-          fallbackDevice,
-          ff1DeviceInfo: ff1DeviceInfo,
-        ),
-      );
-    });
-  }
-
-  @override
-  void dispose() {
-    // Cancel connection if still in progress
-    _connectFF1Notifier?.cancelConnection();
-    super.dispose();
-  }
-
-  /// Map provider state to UI status
-  _ConnectFF1Status _getStatusFromProviderState(ConnectFF1State? state) {
-    if (state == null) {
-      return _ConnectFF1Status.connecting;
-    }
-
-    return switch (state) {
-      ConnectFF1Connecting() => _ConnectFF1Status.connecting,
-      ConnectFF1StillConnecting() => _ConnectFF1Status.stillConnecting,
-      ConnectFF1BluetoothOff() => _ConnectFF1Status.bluetoothOff,
-      ConnectFF1Connected() =>
-        state.portalIsSet
-            ? _ConnectFF1Status.portalIsSet
-            : _ConnectFF1Status.success,
-      ConnectFF1Error() => _ConnectFF1Status.error,
-      _ => _ConnectFF1Status.connecting,
-    };
-  }
-
-  Future<void> _startConnectFlow() async {
-    _startTime = DateTime.now();
-    _log.info('[ConnectFF1Page] Start connecting to FF1');
-    final fallbackDevice = widget.payload.device ?? BluetoothDevice.fromId('');
-    final ff1DeviceInfo = widget.payload.deeplink == null
-        ? null
-        : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
-    await _connectFF1Notifier?.connectBle(
-      fallbackDevice,
-      ff1DeviceInfo: ff1DeviceInfo,
-    );
-  }
-
-  void _recordDuration({required bool success}) {
-    if (_startTime == null) {
-      return;
-    }
-    final duration = DateTime.now().difference(_startTime!);
-    final ms = duration.inMilliseconds;
-    String bucket;
-    if (duration.inSeconds < 5) {
-      bucket = '<5s';
-    } else if (duration.inSeconds <= 10) {
-      bucket = '5-10s';
-    } else {
-      bucket = '>10s';
-    }
-    _log.info(
-      '[ConnectFF1Page] Connection ${success ? "success" : "failure"} '
-      'duration=${duration.inSeconds}s (${ms}ms), bucket=$bucket',
-    );
-  }
-
-  Future<void> _onCancel() async {
-    _log.info('[ConnectFF1Page] Cancel pressed, cancelling connection');
-    _connectFF1Notifier?.cancelConnection();
-    try {
-      await widget.payload.device?.disconnect();
-    } on Exception catch (e) {
-      _log.info('[ConnectFF1Page] Error while disconnecting: $e');
-    }
-
-    if (mounted) {
-      context.pop();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final setupState = ref.watch(connectFF1Provider);
-    _log.info('UI state -> $setupState');
-    final status = setupState.maybeWhen(
-      data: _getStatusFromProviderState,
-      loading: () => _ConnectFF1Status.connecting,
-      error: (error, stack) => _ConnectFF1Status.error,
-      orElse: () => _ConnectFF1Status.connecting,
-    );
-
-    // Listen for state changes to handle callbacks
+    // Listen for state changes to handle navigation and dialogs
     ref.listen<AsyncValue<ConnectFF1State>>(connectFF1Provider, (
       previous,
       next,
@@ -313,6 +212,108 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
       });
     });
 
+    // Start connection flow using the provider
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _connectFF1Notifier = await ref.read(connectFF1Provider.notifier);
+      if (!mounted) return;
+      final fallbackDevice =
+          widget.payload.device ?? BluetoothDevice.fromId('');
+      final ff1DeviceInfo = widget.payload.deeplink == null
+          ? null
+          : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
+      unawaited(
+        _connectFF1Notifier?.connectBle(
+          fallbackDevice,
+          ff1DeviceInfo: ff1DeviceInfo,
+        ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    // Cancel connection if still in progress
+    _connectFF1Notifier?.cancelConnection();
+    super.dispose();
+  }
+
+  /// Map provider state to UI status
+  _ConnectFF1Status _getStatusFromProviderState(ConnectFF1State? state) {
+    if (state == null) {
+      return _ConnectFF1Status.connecting;
+    }
+
+    return switch (state) {
+      ConnectFF1Connecting() => _ConnectFF1Status.connecting,
+      ConnectFF1StillConnecting() => _ConnectFF1Status.stillConnecting,
+      ConnectFF1BluetoothOff() => _ConnectFF1Status.bluetoothOff,
+      ConnectFF1Connected() =>
+        state.portalIsSet
+            ? _ConnectFF1Status.portalIsSet
+            : _ConnectFF1Status.success,
+      ConnectFF1Error() => _ConnectFF1Status.error,
+      _ => _ConnectFF1Status.connecting,
+    };
+  }
+
+  Future<void> _startConnectFlow() async {
+    _startTime = DateTime.now();
+    _log.info('[ConnectFF1Page] Start connecting to FF1');
+    final fallbackDevice = widget.payload.device ?? BluetoothDevice.fromId('');
+    final ff1DeviceInfo = widget.payload.deeplink == null
+        ? null
+        : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
+    await _connectFF1Notifier?.connectBle(
+      fallbackDevice,
+      ff1DeviceInfo: ff1DeviceInfo,
+    );
+  }
+
+  void _recordDuration({required bool success}) {
+    if (_startTime == null) {
+      return;
+    }
+    final duration = DateTime.now().difference(_startTime!);
+    final ms = duration.inMilliseconds;
+    String bucket;
+    if (duration.inSeconds < 5) {
+      bucket = '<5s';
+    } else if (duration.inSeconds <= 10) {
+      bucket = '5-10s';
+    } else {
+      bucket = '>10s';
+    }
+    _log.info(
+      '[ConnectFF1Page] Connection ${success ? "success" : "failure"} '
+      'duration=${duration.inSeconds}s (${ms}ms), bucket=$bucket',
+    );
+  }
+
+  Future<void> _onCancel() async {
+    _log.info('[ConnectFF1Page] Cancel pressed, cancelling connection');
+    _connectFF1Notifier?.cancelConnection();
+    try {
+      await widget.payload.device?.disconnect();
+    } on Exception catch (e) {
+      _log.info('[ConnectFF1Page] Error while disconnecting: $e');
+    }
+
+    if (mounted) {
+      context.pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final setupState = ref.watch(connectFF1Provider);
+    _log.info('UI state -> $setupState');
+    final status = setupState.maybeWhen(
+      data: _getStatusFromProviderState,
+      loading: () => _ConnectFF1Status.connecting,
+      error: (error, stack) => _ConnectFF1Status.error,
+      orElse: () => _ConnectFF1Status.connecting,
+    );
+
     return Scaffold(
       appBar: const SetupAppBar(
         withDivider: false,
@@ -412,6 +413,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                   children: [
                     Expanded(
                       child: PrimaryButton(
+                        key: GoldPathPatrolKeys.connectFF1Retry,
                         text: 'Try Again',
                         onTap: _startConnectFlow,
                         color: AppColor.white,
@@ -421,6 +423,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                     SizedBox(width: LayoutConstants.space3),
                     Expanded(
                       child: PrimaryButton(
+                        key: GoldPathPatrolKeys.connectFF1Cancel,
                         text: 'Cancel',
                         onTap: _onCancel,
                         color: AppColor.white,
@@ -431,6 +434,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                 ),
               ] else if (status != _ConnectFF1Status.portalIsSet) ...[
                 PrimaryButton(
+                  key: GoldPathPatrolKeys.connectFF1Cancel,
                   text: 'Cancel',
                   onTap: _onCancel,
                   color: AppColor.white,

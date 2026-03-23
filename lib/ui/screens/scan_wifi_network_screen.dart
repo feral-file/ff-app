@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/routing/routes.dart';
@@ -189,6 +190,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
         Text(description, style: AppTypography.body(context).white),
         SizedBox(height: LayoutConstants.space5),
         PrimaryButton(
+          key: GoldPathPatrolKeys.wifiScanRetry,
           onTap: () {
             unawaited(
               ref
@@ -232,6 +234,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
+          key: GoldPathPatrolKeys.wifiNetworkRow(ssid),
           onTap: () async {
             ref.read(connectWiFiProvider.notifier).selectNetwork(network);
             FF1Device deviceToPass;

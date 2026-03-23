@@ -54,6 +54,31 @@ abstract final class GoldPathPatrolKeys {
     'gold_path.onboarding.setup_ff1.secondary',
   );
 
+  /// Connect FF1 page action to retry connection.
+  static const connectFF1Retry = ValueKey<String>(
+    'gold_path.ff1_setup.connect_ff1.retry',
+  );
+
+  /// Connect FF1 page action to cancel connection.
+  static const connectFF1Cancel = ValueKey<String>(
+    'gold_path.ff1_setup.connect_ff1.cancel',
+  );
+
+  /// WiFi network row in scan results (scoped to network SSID).
+  static ValueKey<String> wifiNetworkRow(String ssid) {
+    return ValueKey<String>('gold_path.ff1_setup.wifi.network.$ssid');
+  }
+
+  /// WiFi scan retry action.
+  static const wifiScanRetry = ValueKey<String>(
+    'gold_path.ff1_setup.wifi.scan_retry',
+  );
+
+  /// WiFi password submit action.
+  static const wifiPasswordSubmit = ValueKey<String>(
+    'gold_path.ff1_setup.wifi.password_submit',
+  );
+
   /// Stable channel row key for Curated channel carousels.
   static ValueKey<String> channelRow(String channelId) {
     return ValueKey<String>('gold_path.channels.row.$channelId');

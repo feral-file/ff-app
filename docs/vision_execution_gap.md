@@ -1,12 +1,14 @@
 # Vision/Execution Gap Tracker
 
 ## Purpose
+
 - Track gaps between intended product behavior and current implementation.
 - Keep vision gaps and engineering refactors visible without mixing them into
   unrelated feature PRs.
 - Provide a lightweight queue for follow-up work after shipping urgent fixes.
 
 ## How to use
+
 - Keep entries outcome-focused (what user/system behavior is missing or brittle).
 - Link each gap to owning flow(s) in `docs/project_spec.md` and
   `docs/app_flows.md`.
@@ -16,6 +18,7 @@
 ## Active gaps
 
 ### 1) Onboarding action controls need stable automation anchors
+
 - Type: execution reliability + testability
 - Priority: medium
 - Affected flows:
@@ -29,6 +32,7 @@
     target keys first, not text.
 
 ### 2) FF1 connect/setup orchestration remains distributed across providers
+
 - Type: architecture simplification
 - Priority: medium
 - Affected flows:
@@ -42,6 +46,7 @@
     and routing outcomes.
 
 ### 3) Seed-sync progress competes with first-run onboarding interaction timing
+
 - Type: flow resilience
 - Priority: medium
 - Affected flows:
@@ -55,6 +60,7 @@
     state updates so interaction targets remain deterministic.
 
 ## Refactor backlog (candidate follow-ups)
+
 - Introduce `GoldPathPatrolKeys` for onboarding primary/secondary actions and
   migrate remaining label-based taps to key-based taps.
 - Extract FF1 connect lifecycle into a dedicated session object (attempt id,
@@ -64,4 +70,5 @@
   deferred recovery) with typed status events for UI/test observability.
 
 ## Completed items
+
 - None yet.

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
@@ -326,6 +327,7 @@ class _EnterWiFiPasswordScreenState
                       left: 0,
                       right: 0,
                       child: PrimaryAsyncButton(
+                        key: GoldPathPatrolKeys.wifiPasswordSubmit,
                         padding: EdgeInsets.symmetric(
                           vertical:
                               LayoutConstants.space3 + LayoutConstants.space1,
