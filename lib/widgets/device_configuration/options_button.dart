@@ -3,14 +3,14 @@ import 'dart:async';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/app/providers/send_log_provider.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
-import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
-import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_control_verifier.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
 import 'package:app/ui/ui_helper.dart';
@@ -222,66 +222,20 @@ class OptionsButton extends ConsumerWidget {
     WidgetRef ref,
     FF1Device device,
   ) async {
-    // Guard early: SUPPORT_API_KEY must be present or the log upload will be
-    // rejected by the support backend. Failing here is better than silently
-    // issuing a command to the device that will always return an auth error.
-    final apiKey = AppConfig.supportApiKey;
-    if (apiKey.isEmpty) {
-      _log.severe('[Send Log] SUPPORT_API_KEY is not configured');
-      if (!context.mounted) return;
-      await UIHelper.showDialog<void>(
-        context,
-        'Not configured',
-        Text(
-          'Send Log is not configured on this build.',
-          style: AppTypography.body(context).white,
-        ),
-      );
-      return;
-    }
+    final outcome = await ref.read(sendLogProvider.notifier).send(device);
+    if (!context.mounted) return;
 
-    try {
-      final control = ref.read(ff1WifiControlProvider);
-      final bleControl = ref.read(ff1ControlProvider);
-      const userId = 'user-id';
-      var success = false;
-
-      if (device.topicId.isNotEmpty) {
-        try {
-          _log.info('[Send Log] Attempting via WiFi');
-          final response = await control.sendLog(
-            topicId: device.topicId,
-            userId: userId,
-            title: device.name,
-            apiKey: apiKey,
-          );
-          success = _isCommandSuccessful(response);
-          if (!success) {
-            _log.warning(
-              '[Send Log] WiFi returned unsuccessful response, fallback to BLE',
-            );
-          }
-        } catch (e) {
-          _log.warning('[Send Log] WiFi error: $e, falling back to BLE');
-        }
-      }
-
-      if (!success) {
-        _log.info('[Send Log] Attempting via Bluetooth');
-        await bleControl.sendLog(
-          blDevice: device.toBluetoothDevice(),
-          userId: userId,
-          title: device.name,
-          apiKey: apiKey,
+    switch (outcome) {
+      case SendLogNotConfigured():
+        await UIHelper.showDialog<void>(
+          context,
+          'Not configured',
+          Text(
+            'Send Log is not configured on this build.',
+            style: AppTypography.body(context).white,
+          ),
         );
-        success = true;
-      }
-
-      if (!context.mounted) {
-        return;
-      }
-
-      if (success) {
+      case SendLogSuccess():
         await UIHelper.showDialog<void>(
           context,
           'Log sent',
@@ -290,7 +244,7 @@ class OptionsButton extends ConsumerWidget {
             style: AppTypography.body(context).white,
           ),
         );
-      } else {
+      case SendLogFailure():
         await UIHelper.showDialog<void>(
           context,
           'Failed to send log',
@@ -299,20 +253,6 @@ class OptionsButton extends ConsumerWidget {
             style: AppTypography.body(context).white,
           ),
         );
-      }
-    } catch (e) {
-      _log.warning('Error sending log: $e');
-      if (!context.mounted) {
-        return;
-      }
-      await UIHelper.showDialog<void>(
-        context,
-        'Failed to send log',
-        Text(
-          'Failed to send log to support. Please try again.',
-          style: AppTypography.body(context).white,
-        ),
-      );
     }
   }
 
@@ -367,7 +307,8 @@ class OptionsButton extends ConsumerWidget {
                           final response = await control.factoryReset(
                             topicId: device.topicId,
                           );
-                          success = _isCommandSuccessful(response);
+                          final okFlag = ff1CommandResponseOkFlag(response);
+                          success = okFlag ?? ff1CommandResponseIsOk(response);
                           if (!success) {
                             _log.warning(
                               '[Factory Reset] WiFi returned unsuccessful response, fallback to BLE',
@@ -456,14 +397,4 @@ class OptionsButton extends ConsumerWidget {
     );
   }
 
-  bool _isCommandSuccessful(FF1CommandResponse response) {
-    final dataOk = response.data?['ok'];
-    if (dataOk is bool) {
-      return dataOk;
-    }
-    final normalizedStatus = response.status?.toLowerCase();
-    return normalizedStatus == null ||
-        normalizedStatus == 'ok' ||
-        normalizedStatus == 'success';
-  }
 }
