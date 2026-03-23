@@ -222,11 +222,28 @@ class OptionsButton extends ConsumerWidget {
     WidgetRef ref,
     FF1Device device,
   ) async {
+    // Guard early: SUPPORT_API_KEY must be present or the log upload will be
+    // rejected by the support backend. Failing here is better than silently
+    // issuing a command to the device that will always return an auth error.
+    final apiKey = AppConfig.supportApiKey;
+    if (apiKey.isEmpty) {
+      _log.severe('[Send Log] SUPPORT_API_KEY is not configured');
+      if (!context.mounted) return;
+      await UIHelper.showDialog<void>(
+        context,
+        'Not configured',
+        Text(
+          'Send Log is not configured on this build.',
+          style: AppTypography.body(context).white,
+        ),
+      );
+      return;
+    }
+
     try {
       final control = ref.read(ff1WifiControlProvider);
       final bleControl = ref.read(ff1ControlProvider);
       const userId = 'user-id';
-      final apiKey = AppConfig.supportApiKey;
       var success = false;
 
       if (device.topicId.isNotEmpty) {
