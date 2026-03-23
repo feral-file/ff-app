@@ -5,7 +5,6 @@
 //  that can be found in the LICENSE file.
 //
 
-import 'package:app/domain/extensions/list_ext.dart';
 import 'package:app/domain/models/models.dart';
 
 /// Extension methods for String
@@ -61,25 +60,5 @@ extension StringExtension on String {
 /// Extension methods for String
 extension FF1DeviceExtension on String {
   /// Convert the string to a FF1DeviceInfo
-  FF1DeviceInfo get toFF1DeviceInfo {
-    final encodedPath = Uri.decodeFull(this);
-    final data = encodedPath.split('|');
-    if (data.length <= 1) {
-      return FF1DeviceInfo(
-        deviceId: 'FF1',
-        topicId: data.atIndexOrNull(0) ?? '',
-        isConnectedToInternet: false,
-        branchName: 'release',
-        version: '1.0.0', // default version
-      );
-    }
-
-    return FF1DeviceInfo(
-      deviceId: data.atIndexOrNull(0) ?? 'FF1',
-      topicId: data.atIndexOrNull(1) ?? '',
-      isConnectedToInternet: data.atIndexOrNull(2) == 'true',
-      branchName: data.atIndexOrNull(3) ?? 'release',
-      version: data.atIndexOrNull(4) ?? '',
-    );
-  }
+  FF1DeviceInfo get toFF1DeviceInfo => FF1DeviceInfo.fromEncodedPath(this);
 }

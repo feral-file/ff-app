@@ -10,8 +10,6 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/domain/constants/constants.dart';
-import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/logging/structured_logger.dart';
@@ -38,23 +36,6 @@ enum _ConnectFF1Status {
 }
 
 final _log = Logger('ConnectFF1Page');
-
-/// Parse [FF1DeviceInfo] from a device-connect deeplink.
-FF1DeviceInfo? parseFF1DeviceInfoFromDeeplink(String deeplink) {
-  final prefix = deviceConnectDeepLinks.firstWhere(
-    (value) => deeplink.startsWith(value),
-    orElse: () => '',
-  );
-  if (prefix.isEmpty) {
-    return null;
-  }
-
-  var path = deeplink.replaceFirst(prefix, '');
-  if (path.startsWith('/')) {
-    path = path.substring(1);
-  }
-  return path.toFF1DeviceInfo;
-}
 
 /// Payload for the connect FF1 page
 class ConnectFF1PagePayload {
@@ -220,7 +201,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           widget.payload.device ?? BluetoothDevice.fromId('');
       final ff1DeviceInfo = widget.payload.deeplink == null
           ? null
-          : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
+          : FF1DeviceInfo.fromDeeplink(widget.payload.deeplink!);
       unawaited(
         _connectFF1Notifier?.connectBle(
           fallbackDevice,
@@ -262,7 +243,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     final fallbackDevice = widget.payload.device ?? BluetoothDevice.fromId('');
     final ff1DeviceInfo = widget.payload.deeplink == null
         ? null
-        : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
+        : FF1DeviceInfo.fromDeeplink(widget.payload.deeplink!);
     await _connectFF1Notifier?.connectBle(
       fallbackDevice,
       ff1DeviceInfo: ff1DeviceInfo,
