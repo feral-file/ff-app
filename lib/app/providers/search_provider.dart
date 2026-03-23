@@ -1,8 +1,8 @@
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -13,6 +13,7 @@ class SearchResults {
     required this.channels,
     required this.playlists,
     required this.works,
+    required this.artistMatchedWorkIds,
   });
 
   /// Matching channels.
@@ -23,6 +24,14 @@ class SearchResults {
 
   /// Matching works.
   final List<PlaylistItem> works;
+
+  /// Work ids whose artist names match the query.
+  final Set<String> artistMatchedWorkIds;
+
+  /// Matching works where artist names match the query.
+  List<PlaylistItem> get artistWorks => works
+      .where((work) => artistMatchedWorkIds.contains(work.id))
+      .toList(growable: false);
 
   /// Whether there are any results.
   bool get isEmpty => channels.isEmpty && playlists.isEmpty && works.isEmpty;
@@ -110,7 +119,7 @@ final searchInputQueryProvider =
     );
 
 /// Suggestion results provider using debounced input query.
-final searchSuggestionsProvider =
+final FutureProvider<List<SearchSuggestion>> searchSuggestionsProvider =
     FutureProvider.autoDispose<List<SearchSuggestion>>((
       ref,
     ) async {
@@ -132,9 +141,9 @@ final searchSuggestionsProvider =
       try {
         final databaseService = ref.watch(databaseServiceProvider);
         final result = await Future.wait([
-          databaseService.searchChannelsByTitle(query, limit: 4),
-          databaseService.searchPlaylistsByTitle(query, limit: 4),
-          databaseService.searchItemsByTitle(query, limit: 6),
+          databaseService.searchChannels(query, limit: 4),
+          databaseService.searchPlaylists(query, limit: 4),
+          databaseService.searchItems(query, limit: 6),
         ]);
 
         final channels = result[0] as List<Channel>;
@@ -194,25 +203,34 @@ final searchResultsProvider = FutureProvider<SearchResults>((ref) async {
       channels: [],
       playlists: [],
       works: [],
+      artistMatchedWorkIds: <String>{},
     );
   }
 
   try {
     final databaseService = ref.watch(databaseServiceProvider);
-    final results = await Future.wait([
-      databaseService.searchChannelsByTitle(query),
-      databaseService.searchPlaylistsByTitle(query),
-      databaseService.searchItemsByTitle(query, limit: 40),
+    final baseResults = await Future.wait([
+      databaseService.searchChannels(query),
+      databaseService.searchPlaylists(query),
+      databaseService.searchItems(query, limit: 40),
     ]);
 
-    final matchingChannels = results[0] as List<Channel>;
-    final matchingPlaylists = results[1] as List<Playlist>;
-    final matchingWorks = results[2] as List<PlaylistItem>;
+    final matchingChannels = baseResults[0] as List<Channel>;
+    final matchingPlaylists = baseResults[1] as List<Playlist>;
+    final matchingWorks = baseResults[2] as List<PlaylistItem>;
+    final matchingWorkIds = matchingWorks.map((work) => work.id).toSet();
+    final matchingArtistWorkIds = await databaseService
+        .searchArtistMatchedItemIds(
+          query,
+          candidateIds: matchingWorkIds,
+          limit: matchingWorkIds.length,
+        );
 
     return SearchResults(
       channels: matchingChannels,
       playlists: matchingPlaylists,
       works: matchingWorks,
+      artistMatchedWorkIds: matchingArtistWorkIds,
     );
   } catch (e, stack) {
     log.severe('Search failed', e, stack);

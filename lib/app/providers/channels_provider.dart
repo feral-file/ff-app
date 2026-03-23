@@ -1,8 +1,9 @@
 import 'dart:async';
 
 import 'package:app/app/providers/database_error_utils.dart';
+import 'package:app/app/providers/database_service_provider.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/channel.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -135,6 +136,8 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 
   @override
   ChannelsState build() {
+    ref.watch(databaseServiceProvider);
+
     ref.onDispose(() async {
       _log.info('Disposing ChannelsNotifier, cancelling subscription');
       await _watchSub?.cancel();

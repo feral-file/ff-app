@@ -106,6 +106,9 @@ class AddressService {
     bool runFinalFetch = true,
     String? workflowId,
   }) async {
+    _log.info(
+      'Indexing and syncing address: $address, runFastPathFetch: $runFastPathFetch, runTriggerIndex: $runTriggerIndex, runPoll: $runPoll, runFinalFetch: $runFinalFetch, workflowId: $workflowId',
+    );
     final queryAddress = _addressForIndexer(address);
     var effectiveWorkflowId = workflowId;
 
@@ -237,8 +240,7 @@ class AddressService {
     Random? random,
   }) async {
     final rnd = random ?? Random();
-    final statuses =
-        await _appStateService.getAllAddressIndexingStatuses();
+    final statuses = await _appStateService.getAllAddressIndexingStatuses();
     for (final address in toResume) {
       await Future<void>.delayed(
         Duration(milliseconds: 100 + rnd.nextInt(401)),

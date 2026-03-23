@@ -8,11 +8,13 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
     required this.hasLocal,
     required this.remoteEtag,
     this.throwOnHead = false,
+    this.throwOnReplace = false,
   });
 
   bool hasLocal;
   String remoteEtag;
   bool throwOnHead;
+  bool throwOnReplace;
 
   int downloadCalls = 0;
   int replaceCalls = 0;
@@ -46,6 +48,9 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
   @override
   Future<void> replaceDatabaseFromTemporaryFile(String tempPath) async {
     replaceCalls += 1;
+    if (throwOnReplace) {
+      throw Exception('Simulated replace failure');
+    }
   }
 }
 
@@ -131,31 +136,130 @@ void main() {
       expect(localEtag, 'local-v1');
     });
 
-    test('forceReplace always downloads and replaces, skipping ETag check', () async {
-      final fakeSeedService = _FakeSeedDatabaseService(
-        hasLocal: true,
-        remoteEtag: 'same-etag',
-      );
-      var localEtag = 'same-etag';
-      final events = <String>[];
+    test(
+      'forceReplace always downloads and replaces, skipping ETag check',
+      () async {
+        final fakeSeedService = _FakeSeedDatabaseService(
+          hasLocal: true,
+          remoteEtag: 'same-etag',
+        );
+        var localEtag = 'same-etag';
+        final events = <String>[];
 
-      final service = SeedDatabaseSyncService(
-        seedDatabaseService: fakeSeedService,
-        loadLocalEtag: () => localEtag,
-        saveLocalEtag: (etag) => localEtag = etag,
-      );
+        final service = SeedDatabaseSyncService(
+          seedDatabaseService: fakeSeedService,
+          loadLocalEtag: () => localEtag,
+          saveLocalEtag: (etag) => localEtag = etag,
+        );
 
-      final changed = await service.sync(
-        beforeReplace: () async => events.add('before'),
-        afterReplace: () async => events.add('after'),
-        forceReplace: true,
-      );
+        final changed = await service.sync(
+          beforeReplace: () async => events.add('before'),
+          afterReplace: () async => events.add('after'),
+          forceReplace: true,
+        );
 
-      expect(changed, isTrue);
-      expect(fakeSeedService.downloadCalls, 1);
-      expect(fakeSeedService.replaceCalls, 1);
-      expect(events, ['before', 'after']);
-      expect(localEtag, 'same-etag'); // ETag saved after replace (from HEAD)
-    });
+        expect(changed, isTrue);
+        expect(fakeSeedService.downloadCalls, 1);
+        expect(fakeSeedService.replaceCalls, 1);
+        expect(events, ['before', 'after']);
+        expect(localEtag, 'same-etag'); // ETag saved after replace (from HEAD)
+      },
+    );
+
+    test(
+      'when replace fails after beforeReplace, sync returns false and '
+      'afterReplace is not called; old DB remains (project_spec fallback invariant)',
+      () async {
+        final fakeSeedService = _FakeSeedDatabaseService(
+          hasLocal: true,
+          remoteEtag: 'remote-v2',
+          throwOnReplace: true,
+        );
+        var localEtag = 'local-v1';
+        final events = <String>[];
+
+        final service = SeedDatabaseSyncService(
+          seedDatabaseService: fakeSeedService,
+          loadLocalEtag: () => localEtag,
+          saveLocalEtag: (etag) => localEtag = etag,
+        );
+
+        final changed = await service.sync(
+          beforeReplace: () async => events.add('before'),
+          afterReplace: () async => events.add('after'),
+          failSilently: true,
+        );
+
+        expect(changed, isFalse);
+        expect(fakeSeedService.replaceCalls, 1);
+        expect(events, ['before']);
+        expect(localEtag, 'local-v1');
+      },
+    );
+
+    test(
+      'when isSessionActive flips false before beforeReplace, bails early '
+      'without running teardown',
+      () async {
+        final fakeSeedService = _FakeSeedDatabaseService(
+          hasLocal: true,
+          remoteEtag: 'remote-v2',
+        );
+        var localEtag = 'local-v1';
+        final events = <String>[];
+
+        final service = SeedDatabaseSyncService(
+          seedDatabaseService: fakeSeedService,
+          loadLocalEtag: () => localEtag,
+          saveLocalEtag: (etag) => localEtag = etag,
+        );
+
+        final changed = await service.sync(
+          beforeReplace: () async => events.add('before'),
+          afterReplace: () async => events.add('after'),
+          isSessionActive: () => false,
+        );
+
+        expect(changed, isFalse);
+        expect(fakeSeedService.replaceCalls, 0);
+        expect(events, isEmpty);
+      },
+    );
+
+    test(
+      'when isSessionActive flips false after beforeReplace, completes replace '
+      '+ afterReplace to preserve reconnect path (Codex P1)',
+      () async {
+        final fakeSeedService = _FakeSeedDatabaseService(
+          hasLocal: true,
+          remoteEtag: 'remote-v2',
+        );
+        var localEtag = 'local-v1';
+        final events = <String>[];
+
+        final service = SeedDatabaseSyncService(
+          seedDatabaseService: fakeSeedService,
+          loadLocalEtag: () => localEtag,
+          saveLocalEtag: (etag) => localEtag = etag,
+        );
+
+        var callCount = 0;
+        final changed = await service.sync(
+          beforeReplace: () async {
+            events.add('before');
+          },
+          afterReplace: () async => events.add('after'),
+          isSessionActive: () {
+            callCount++;
+            return callCount <= 1;
+          },
+        );
+
+        expect(changed, isTrue);
+        expect(fakeSeedService.replaceCalls, 1);
+        expect(events, ['before', 'after']);
+        expect(localEtag, 'remote-v2');
+      },
+    );
   });
 }

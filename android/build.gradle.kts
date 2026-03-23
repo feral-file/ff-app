@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
+
 allprojects {
     repositories {
         google()
@@ -17,6 +19,16 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+}
+
+subprojects {
+    if (name == "webview_flutter_android") {
+        pluginManager.withPlugin("org.jetbrains.kotlin.android") {
+            extensions.configure<KotlinAndroidProjectExtension>("kotlin") {
+                sourceSets.getByName("main").kotlin.srcDir("src/main/java")
+            }
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {

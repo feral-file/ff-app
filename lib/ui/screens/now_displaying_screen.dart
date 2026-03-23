@@ -263,6 +263,8 @@ class _TokenPreview extends StatelessWidget {
                     aspectRatio: 4 / 5,
                     child: CachedNetworkImage(
                       imageUrl: item.thumbnailUrl!,
+                      memCacheWidth: 800,
+                      memCacheHeight: 1000,
                       fit: BoxFit.contain,
                       placeholder: (_, _) =>
                           const GalleryThumbnailPlaceholder(),

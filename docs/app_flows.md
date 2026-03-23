@@ -1,6 +1,7 @@
 # App Flows
 
 ## Document contract
+
 - This document is the execution-level companion to `docs/project_spec.md`.
 - It describes how the product contract is implemented through routes,
   providers, services, and screen transitions.
@@ -9,6 +10,7 @@
   update it to match the spec.
 
 ## Flow: Cold Start Bootstrap
+
 - goal: start app into a usable state with local data and providers initialized
 - start point: app process launch (`main()`)
 - steps:
@@ -25,6 +27,7 @@
 - key modules/services involved: `lib/main.dart`, `lib/app/app.dart`, `seed_database_*`, `bootstrap_provider`, `legacy_data_migration_service`, `app_state_service`
 
 ## Flow: Onboarding (No Deeplink)
+
 - goal: orient new users and optionally set up personal collection + FF1
 - start point: `/onboarding/introduce`
 - steps:
@@ -40,6 +43,7 @@
 - notes: TrackedAddressEntity (ObjectBox) is the single source of truth for user-added addresses; `trackedAddressesSyncProvider` watches it and ensures playlists exist + indexing resumes
 
 ## Flow: Onboarding from Device Deeplink/QR
+
 - goal: continue onboarding while preserving FF1 connect intent
 - start point: deeplink or scan action resolves to device connect
 - steps:
@@ -55,6 +59,7 @@
 - key modules/services involved: `deeplink_handler`, `router_provider`, onboarding providers
 
 ## Flow: Address Add and Personal Collection Sync
+
 - goal: create/update personal address playlist and begin token ingestion
 - start point: Add Address screen (home menu or onboarding)
 - steps:
@@ -71,6 +76,7 @@
 - key modules/services involved: `add_address_provider`, `address_service`, `domain_address_service`, `indexer_service_isolate`, `personal_tokens_sync_service`
 
 ## Flow: Browse Content and Open Details
+
 - goal: navigate DP-1 content quickly from home tabs to detail pages
 - start point: Home Index (`/`)
 - steps:
@@ -86,6 +92,7 @@
 - key modules/services involved: `channels_provider`, `playlists_provider`, `works_provider`, DB service
 
 ## Flow: Search and Filter
+
 - goal: find channels/playlists/works from local library model
 - start point: Search action from Home header
 - steps:
@@ -101,6 +108,7 @@
 - key modules/services involved: `search_provider`, DB search methods, filter helper modules
 
 ## Flow: FF1 Pairing and Wi-Fi Setup
+
 - goal: pair FF1 and establish usable connectivity for control/playback
 - start point: FF1 Device Picker, Start Setup FF1, or deeplink route
 - steps:
@@ -117,6 +125,7 @@
 - key modules/services involved: `ff1_providers`, `connect_ff1_providers`, `connect_wifi_provider`, `ff1_bluetooth_device_providers`, `ff1_wifi_control`
 
 ## Flow: Cast and Now Displaying Control
+
 - goal: play selected work/playlist on active FF1 and expose real-time control
 - start point: Work Detail or Playlist Detail play action
 - steps:
@@ -132,10 +141,11 @@
 - key modules/services involved: `canvas_client_service_v2`, `now_displaying_provider`, `ff1_wifi_providers`, `ff1_device_provider`
 
 ## Flow: Settings Recovery and Support
+
 - goal: maintain app health, recover local state, and contact support
 - start point: Settings and menu actions
 - steps:
-  - rebuild metadata (clear/recreate DB from seed and refetch)
+  - rebuild metadata (download seed, then replace DB on disk; refetch)
   - forget I exist (clear local data, reset onboarding)
   - open release notes, legal docs, support email
 - success state: user gets clean local state or support path as needed
@@ -146,6 +156,7 @@
 - key modules/services involved: `local_data_cleanup_service`, `release_notes_service`, `support_email_service`, `force_update_service`
 
 ## Screen: HomeIndexPage
+
 - role in the flow: central browsing surface and menu launcher
 - route / entry point: `/`
 - important actions: switch tabs, open search/menu utilities, open add-address, open FF1 settings
@@ -153,6 +164,7 @@
 - notes / caveats: default selected tab is Playlists in current implementation
 
 ## Screen: AddAddressScreen
+
 - role in the flow: intake and validation for wallet/domain add flow
 - route / entry point: `/add-address`
 - important actions: submit input, scan QR, continue to alias or complete
@@ -160,6 +172,7 @@
 - notes / caveats: duplicate and invalid-input errors are explicit and distinct
 
 ## Screen: AddAliasScreen
+
 - role in the flow: optional naming before persisting a raw address
 - route / entry point: `/add-alias` (requires payload)
 - important actions: submit alias or skip
@@ -167,6 +180,7 @@
 - notes / caveats: successful completion pops both alias and add-address routes
 
 ## Screen: PlaylistDetailScreen
+
 - role in the flow: playlist-level metadata, work grid, and play action
 - route / entry point: `/playlists/:playlistId`
 - important actions: cast playlist to FF1, open work detail, delete personal playlist/address
@@ -174,6 +188,7 @@
 - notes / caveats: personal playlists show collection-state header with retry indexing
 
 ## Screen: WorkDetailScreen
+
 - role in the flow: work-level media preview and metadata/provenance view
 - route / entry point: `/works/:workId`
 - important actions: cast single work, open external market links, rebuild work metadata
@@ -181,6 +196,7 @@
 - notes / caveats: token enrichment is optional; UI supports item-only fallback
 
 ## Screen: FF1DevicePickerPage
+
 - role in the flow: BLE discovery and initial FF1 selection
 - route / entry point: `/ff1-device-picker`
 - important actions: start scan, retry scan, select device
@@ -188,6 +204,7 @@
 - notes / caveats: auto-navigates when exactly one device found after scan completes
 
 ## Screen: ConnectFF1Page
+
 - role in the flow: BLE connection progress, post-connect routing, and error handling
 - route / entry point: `/connect-ff1` (requires payload)
 - important actions: cancel/retry, continue to device config or Wi-Fi flow
@@ -195,6 +212,7 @@
 - notes / caveats: transitions to "still connecting" after 15 seconds
 
 ## Screen: ScanWiFiNetworkScreen + EnterWiFiPasswordScreen
+
 - role in the flow: Wi-Fi provisioning when FF1 is not internet-ready
 - route / entry point: `/scan-wifi-networks` and `/enter-wifi-password`
 - important actions: retry scan, choose/manual SSID, submit password, finalize
@@ -202,6 +220,7 @@
 - notes / caveats: open networks auto-submit without password
 
 ## Screen: DeviceConfigScreen
+
 - role in the flow: post-pairing control surface for orientation/scaling/audio/device info
 - route / entry point: `/device-configuration`
 - important actions: adjust display settings, switch device/options, finish setup flow
@@ -209,6 +228,7 @@
 - notes / caveats: setup mode hides some advanced sections until post-setup use
 
 ## Screen: NowDisplayingScreen
+
 - role in the flow: full-screen playback status and quick interaction launch
 - route / entry point: `/now-displaying`
 - important actions: open Interact, open FF1 settings quick sheet
@@ -216,6 +236,7 @@
 - notes / caveats: route is intentionally hidden from global now-displaying bar duplication logic
 
 ## Screen: KeyboardControlScreen
+
 - role in the flow: send keyboard/touchpad events to currently connected FF1
 - route / entry point: `/keyboard-control`
 - important actions: type keys, use touchpad
@@ -223,6 +244,7 @@
 - notes / caveats: exits when keyboard closes and screen is not expanded
 
 ## Screen: SettingsPage
+
 - role in the flow: account/data maintenance entrypoint
 - route / entry point: `/settings`
 - important actions: rebuild metadata, forget I exist, open legal docs

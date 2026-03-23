@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
@@ -11,7 +12,6 @@ import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/app_database.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:drift/native.dart';

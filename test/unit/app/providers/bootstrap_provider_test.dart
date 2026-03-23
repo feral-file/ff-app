@@ -1,8 +1,8 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/database/app_database.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:drift/native.dart';

@@ -3,15 +3,7 @@ import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart' show StateProvider;
 import 'package:objectbox/objectbox.dart';
-
-/// When true, the seed database is ready and DB-watch providers may create
-/// streams. When false (during close/replace for Forget I Exist or Rebuild
-/// Metadata), providers must not create streams so [close] can complete.
-/// Set before [close]; cleared in [rebindDatabaseProviders].
-final isSeedDatabaseReadyProvider =
-    StateProvider<bool>((ref) => true);
 
 /// Provider for the Drift database instance.
 /// Override this in tests with a memory database.
@@ -21,10 +13,10 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
   return db;
 });
 
-/// Provider for the database service.
-/// This is the main entry point for all database operations.
-/// Override dependencies in tests using provider overrides.
-final databaseServiceProvider = Provider<DatabaseService>((ref) {
+/// Raw database service (no readiness gate).
+/// Used by [databaseServiceProvider] in app layer when ready.
+/// Override in tests with a fake/mock.
+final rawDatabaseServiceProvider = Provider<DatabaseService>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return DatabaseService(db);
 });

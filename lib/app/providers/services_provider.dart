@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:app/app/providers/address_indexing_job_provider.dart';
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/config/app_state_service.dart';
-import 'package:app/infra/database/database_provider.dart'
-    hide ff1BluetoothDeviceServiceProvider;
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
@@ -63,9 +63,29 @@ class EnsureTrackedAddressesSyncCoordinatorNotifier extends Notifier<void> {
     unawaited(_runWorker());
   }
 
+  /// Runs ensure sync and waits for completion.
+  ///
+  /// Use when caller needs to await (e.g. bootstrap after startup). Tracks
+  /// in-flight so [stopAndDrainForReset] can wait before DB close.
+  Future<void> runSyncAndWait() async {
+    if (_isStoppingForReset) return;
+    final ensureSync = ref.read(
+      ensureTrackedAddressesHavePlaylistsAndResumeProvider,
+    );
+    final completer = Completer<void>();
+    _inFlightCompleters.add(completer);
+    try {
+      await ensureSync();
+    } finally {
+      _inFlightCompleters.remove(completer);
+      if (!completer.isCompleted) completer.complete();
+    }
+  }
+
   Future<void> _runWorker() async {
-    final ensureSync =
-        ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider);
+    final ensureSync = ref.read(
+      ensureTrackedAddressesHavePlaylistsAndResumeProvider,
+    );
     while (_dirty && !_isStoppingForReset) {
       _dirty = false;
       final completer = Completer<void>();
@@ -138,76 +158,81 @@ final addressServiceProvider = Provider<AddressService>((ref) {
 /// is false (e.g. during seed replace or Forget I Exist).
 final ensureTrackedAddressesHavePlaylistsAndResumeProvider =
     Provider<Future<void> Function()>((ref) {
-  return () async {
-    if (!SeedDatabaseGate.isCompleted) {
-      _log.info(
-        'ensureTrackedAddressesHavePlaylistsAndResume: seed database not completed',
-      );
-      return;
-    }
-    if (!ref.read(isSeedDatabaseReadyProvider)) {
-      _log.info(
-        'ensureTrackedAddressesHavePlaylistsAndResume: database not ready',
-      );
-      return;
-    }
-    _log.info(
-      'ensureTrackedAddressesHavePlaylistsAndResume: running bootstrap',
-    );
-    await ref.read(bootstrapServiceProvider).bootstrap();
-    final appState = ref.read(appStateServiceProvider);
-    final walletAddresses = await appState.getTrackedWalletAddresses();
-    _log.info(
-      'ensureTrackedAddressesHavePlaylistsAndResume: tracked wallet addresses: '
-      '${walletAddresses.length}',
-    );
-    if (walletAddresses.isEmpty) return;
-    final normalizedAddresses = walletAddresses
-        .map((wa) => wa.address.toNormalizedAddress())
-        .toSet()
-        .toList(growable: false);
-    final databaseService = ref.read(databaseServiceProvider);
-    final playlists = await databaseService.getAddressPlaylists();
-    for (final wa in walletAddresses) {
-      final normalized = wa.address.toNormalizedAddress();
-      final hasPlaylist = playlists.any(
-        (p) => p.ownerAddress?.toNormalizedAddress() == normalized,
-      );
-      if (hasPlaylist) continue;
-      final playlist = PlaylistExt.fromWalletAddress(wa);
-      await databaseService.ingestPlaylist(playlist);
-      _log.info('Created playlist for tracked address: $normalized (name: ${wa.name})');
-    }
-    final statuses = await appState.getAllAddressIndexingStatuses();
-    final toResume = <String>[];
-    for (final addr in normalizedAddresses) {
-      final status = statuses[addr];
-      if (status == null) {
-        await appState.setAddressIndexingStatus(
-          address: addr,
-          status: AddressIndexingProcessStatus.idle(),
+      return () async {
+        if (!SeedDatabaseGate.isCompleted) {
+          _log.info(
+            'ensureTrackedAddressesHavePlaylistsAndResume: seed database not completed',
+          );
+          return;
+        }
+        if (!ref.read(isSeedDatabaseReadyProvider)) {
+          _log.info(
+            'ensureTrackedAddressesHavePlaylistsAndResume: database not ready',
+          );
+          return;
+        }
+        _log.info(
+          'ensureTrackedAddressesHavePlaylistsAndResume: running bootstrap',
         );
-        toResume.add(addr);
-      } else if (status.state != AddressIndexingProcessState.completed) {
-        toResume.add(addr);
-      }
-    }
-    if (toResume.isEmpty) return;
-    _log.info(
-      'ensureTrackedAddressesHavePlaylistsAndResume: resuming '
-      '${toResume.length} address(es)',
-    );
-    await ref.read(addressServiceProvider).resumeIndexingForAddresses(toResume);
-  };
-});
+        await ref.read(bootstrapServiceProvider).bootstrap();
+        final appState = ref.read(appStateServiceProvider);
+        final walletAddresses = await appState.getTrackedWalletAddresses();
+        _log.info(
+          'ensureTrackedAddressesHavePlaylistsAndResume: tracked wallet addresses: '
+          '${walletAddresses.length}',
+        );
+        if (walletAddresses.isEmpty) return;
+        final normalizedAddresses = walletAddresses
+            .map((wa) => wa.address.toNormalizedAddress())
+            .toSet()
+            .toList(growable: false);
+        final databaseService = ref.read(databaseServiceProvider);
+        final playlists = await databaseService.getAddressPlaylists();
+        for (final wa in walletAddresses) {
+          final normalized = wa.address.toNormalizedAddress();
+          final hasPlaylist = playlists.any(
+            (p) => p.ownerAddress?.toNormalizedAddress() == normalized,
+          );
+          if (hasPlaylist) continue;
+          final playlist = PlaylistExt.fromWalletAddress(wa);
+          await databaseService.ingestPlaylist(playlist);
+          _log.info(
+            'Created playlist for tracked address: $normalized (name: ${wa.name})',
+          );
+        }
+        final statuses = await appState.getAllAddressIndexingStatuses();
+        final toResume = <String>[];
+        for (final addr in normalizedAddresses) {
+          final status = statuses[addr];
+          if (status == null) {
+            await appState.setAddressIndexingStatus(
+              address: addr,
+              status: AddressIndexingProcessStatus.idle(),
+            );
+            toResume.add(addr);
+          } else if (status.state != AddressIndexingProcessState.completed) {
+            toResume.add(addr);
+          }
+        }
+        if (toResume.isEmpty) return;
+        _log.info(
+          'ensureTrackedAddressesHavePlaylistsAndResume: resuming '
+          '${toResume.length} address(es)',
+        );
+        await ref
+            .read(addressServiceProvider)
+            .resumeIndexingForAddresses(toResume);
+      };
+    });
 
 /// Watches ObjectBox [TrackedAddressEntity]; on emit calls
 /// [ensureTrackedAddressesSyncCoordinatorProvider]. Coordinator tracks in-flight
 /// sync for drain (Forget I Exist).
 final trackedAddressesSyncProvider = Provider<void>((ref) {
   ref.keepAlive();
-  final coordinator =
-      ref.read(ensureTrackedAddressesSyncCoordinatorProvider.notifier);
+  final coordinator = ref.read(
+    ensureTrackedAddressesSyncCoordinatorProvider.notifier,
+  );
   final appStateService = ref.read(appStateServiceProvider);
   final sub = appStateService.watchTrackedAddressesAsWalletAddresses().listen((
     addresses,

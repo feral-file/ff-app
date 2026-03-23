@@ -1,18 +1,14 @@
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/graphql/indexer_client_provider.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/domain_address_service.dart';
-import 'package:app/infra/services/indexer_service.dart';
-import 'package:app/infra/services/indexer_service_isolate.dart';
-import 'package:app/infra/services/indexer_sync_service.dart';
-import 'package:app/infra/services/personal_tokens_sync_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,8 +37,7 @@ class _FakeAppStateForAliasTest implements AppStateService {
 
   @override
   Future<Map<String, AddressIndexingProcessStatus>>
-      getAllAddressIndexingStatuses() async =>
-      Map.fromEntries(statuses.entries);
+  getAllAddressIndexingStatuses() async => Map.fromEntries(statuses.entries);
 
   @override
   Future<void> setAddressIndexingStatus({
@@ -62,8 +57,7 @@ class _FakeAppStateForAliasTest implements AppStateService {
   @override
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
-  ) =>
-      Stream.value(statuses[address]);
+  ) => Stream.value(statuses[address]);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
@@ -115,21 +109,25 @@ void main() {
             DomainAddressService(resolverUrl: '', resolverApiKey: ''),
           ),
           indexerServiceIsolateProvider.overrideWithValue(fakeIndexer),
-          bootstrapServiceProvider.overrideWith((ref) => BootstrapService(
-                databaseService: ref.read(databaseServiceProvider),
-              )),
+          bootstrapServiceProvider.overrideWith(
+            (ref) => BootstrapService(
+              databaseService: ref.read(databaseServiceProvider),
+            ),
+          ),
         ],
       );
       addTearDown(container.dispose);
 
-      final ensureFn =
-          container.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider);
-      await ensureFn();
+      await container
+          .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+          .runSyncAndWait();
 
       final playlists = await databaseService.getAddressPlaylists();
-      final playlist = playlists.where(
-        (p) => p.ownerAddress?.toLowerCase() == address.toLowerCase(),
-      ).firstOrNull;
+      final playlist = playlists
+          .where(
+            (p) => p.ownerAddress?.toLowerCase() == address.toLowerCase(),
+          )
+          .firstOrNull;
 
       expect(playlist, isNotNull);
       expect(playlist!.name, alias);

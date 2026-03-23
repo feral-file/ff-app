@@ -5,8 +5,8 @@ import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
 import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/force_update_provider.dart';
-import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart'
@@ -25,7 +25,6 @@ import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/theme/app_theme.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
@@ -324,8 +323,13 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
       // Ensure tracked addresses have playlists and resume indexing.
       // Always run after bootstrap so interrupted indexing resumes even when
-      // ETag unchanged (didReplaceSeedDatabase == false).
-      await ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider)();
+      // ETag unchanged. trackedAddressesSyncProvider emits once on subscription
+      // and ensureTrackedAddresses... exits early until SeedDatabaseGate is
+      // completed; without this call, users with existing tracked addresses
+      // can restart and never resume interrupted indexing.
+      await ref
+          .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+          .runSyncAndWait();
       if (didReplaceSeedDatabase) {
         _refreshProvidersAfterSeedDatabaseReplace();
       }
@@ -402,6 +406,18 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     if (_isResumeSeedSyncInProgress) {
       return;
     }
+    // Skip if a seed sync is already in progress (e.g. from rebuildMetadata,
+    // Forget I Exist, or startup). Use isSyncInProgress, not status: when
+    // hasCompletedSeedDownload is true, startup sync runs without setting
+    // status to syncing, so status would stay idle and resume would start
+    // a second concurrent sync.
+    final seedState = ref.read(seedDownloadProvider);
+    if (seedState.isSyncInProgress) {
+      _log.info(
+        'Seed sync on resume skipped: sync already in progress',
+      );
+      return;
+    }
     _isResumeSeedSyncInProgress = true;
 
     try {
@@ -440,6 +456,13 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     }
   }
 
+  void _refreshProvidersAfterSeedDatabaseReplace() {
+    ref
+        .read(localDataCleanupServiceProvider)
+        .invalidateListProvidersBeforeDbClose
+        ?.call();
+  }
+
   Future<bool> _syncSeedDatabaseAtStartup() async {
     return _syncSeedDatabaseIfNeeded(showUpdatingToast: true);
   }
@@ -449,75 +472,23 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     bool failSilently = true,
   }) async {
     String? toastOverlayId;
-    return ref
-        .read(seedDownloadProvider.notifier)
-        .syncAtAppStart(
-          beforeReplace: () async {
-            if (!SeedDatabaseGate.isCompleted) {
-              return;
-            }
-            if (showUpdatingToast && mounted) {
-              toastOverlayId = ref
-                  .read(appOverlayProvider.notifier)
-                  .showToast(
-                    message: 'Updating art library...',
-                  );
-              await WidgetsBinding.instance.endOfFrame;
-            }
-            await _disconnectForSeedDatabaseReplace();
-          },
-          afterReplace: () async {
-            try {
-              if (!SeedDatabaseGate.isCompleted) {
-                return;
-              }
-              await _reconnectAfterSeedDatabaseReplace();
-              await ref.read(
-                ensureTrackedAddressesHavePlaylistsAndResumeProvider,
-              )();
-            } finally {
-              final overlayId = toastOverlayId;
-              if (showUpdatingToast && mounted && overlayId != null) {
-                ref.read(appOverlayProvider.notifier).dismissOverlay(overlayId);
-              }
-            }
-          },
-          failSilently: failSilently,
-        );
-  }
-
-  Future<void> _disconnectForSeedDatabaseReplace() async {
-    await ref
-        .read(tokensSyncCoordinatorProvider.notifier)
-        .stopAndDrainForReset();
-    await ref
-        .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
-        .stopAndDrainForReset();
-
-    ref.read(isSeedDatabaseReadyProvider.notifier).state = false;
-    // Reset list/item providers so UI detaches from stale rows during swap.
-    ref
-        .read(localDataCleanupServiceProvider)
-        .invalidateListProvidersBeforeDbClose
-        ?.call();
-
-    await ref.read(databaseServiceProvider).close();
-  }
-
-  Future<void> _reconnectAfterSeedDatabaseReplace() async {
-    ref
-        .read(localDataCleanupServiceProvider)
-        .invalidateReconnectInfraProviders
-        ?.call();
-    ref.read(isSeedDatabaseReadyProvider.notifier).state = true;
-  }
-
-  void _refreshProvidersAfterSeedDatabaseReplace() {
-    // Ensure UI providers reconnect to the fresh DB connection and rows.
-    ref
-        .read(localDataCleanupServiceProvider)
-        .invalidateListProvidersBeforeDbClose
-        ?.call();
+    try {
+      return await ref.read(seedDownloadProvider.notifier).sync(
+        failSilently: failSilently,
+        onDownloadStarted: () {
+          if (showUpdatingToast && mounted) {
+            toastOverlayId = ref
+                .read(appOverlayProvider.notifier)
+                .showToast(message: 'Updating art library...');
+          }
+        },
+      );
+    } finally {
+      final overlayId = toastOverlayId;
+      if (showUpdatingToast && mounted && overlayId != null) {
+        ref.read(appOverlayProvider.notifier).dismissOverlay(overlayId);
+      }
+    }
   }
 
   Future<void> _recoverFromDatabaseResetIfNeeded() async {

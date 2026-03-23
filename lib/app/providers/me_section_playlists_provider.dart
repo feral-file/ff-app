@@ -1,7 +1,8 @@
+import 'package:app/app/providers/database_service_provider.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
-import 'package:app/infra/database/database_provider.dart';
 import 'package:riverpod/src/providers/stream_provider.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -32,7 +33,7 @@ final meSectionPlaylistsProvider = StreamProvider<MeSectionPlaylistsState>((
   if (!ref.watch(isSeedDatabaseReadyProvider)) {
     return Stream.value(MeSectionPlaylistsState.initial);
   }
-  final databaseService = ref.read(databaseServiceProvider);
+  final databaseService = ref.watch(databaseServiceProvider);
 
   return Rx.combineLatest2<Playlist?, List<Playlist>, MeSectionPlaylistsState>(
     databaseService.watchPlaylistById(Playlist.favoriteId),
@@ -62,6 +63,7 @@ final StreamProviderFamily<bool, String> isWorkInFavoriteProvider =
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
         return Stream.value(false);
       }
+      ref.watch(databaseServiceProvider);
       final favoriteService = ref.watch(favoritePlaylistServiceProvider);
       return favoriteService.watchIsWorkInFavorite(workId);
     });
