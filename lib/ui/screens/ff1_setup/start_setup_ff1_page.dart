@@ -14,7 +14,9 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/constants/constants.dart';
+import 'package:app/domain/models/ff1_device_info.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
+import 'package:app/ui/screens/ff1_setup/ff1_device_scan_page.dart';
 import 'package:app/ui/screens/onboarding/introduce_page.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/buttons/custom_primary_button.dart';
@@ -170,10 +172,27 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
     }
 
     if (hasDoneOnboarding) {
+      final ff1DeviceInfo = FF1DeviceInfo.fromDeeplink(deeplink);
+      if (ff1DeviceInfo == null) {
+        _log.warning('[StartSetupFf1Page] Invalid deeplink: $deeplink');
+        return;
+      }
+
       await context.push(
-        Routes.connectFF1Page,
-        extra: ConnectFF1PagePayload(
-          deeplink: deeplink,
+        Routes.ff1DeviceScanPage,
+        extra: FF1DeviceScanPagePayload(
+          ff1Name: ff1DeviceInfo.name,
+          onFF1Selected: (device) {
+            unawaited(
+              context.push(
+                Routes.connectFF1Page,
+                extra: ConnectFF1PagePayload(
+                  device: device,
+                  ff1DeviceInfo: ff1DeviceInfo,
+                ),
+              ),
+            );
+          },
         ),
       );
     } else {
@@ -194,7 +213,10 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
     unawaited(
       context.push(
         Routes.connectFF1Page,
-        extra: ConnectFF1PagePayload(device: device),
+        extra: ConnectFF1PagePayload(
+          device: device,
+          ff1DeviceInfo: null,
+        ),
       ),
     );
   }

@@ -306,6 +306,31 @@ void main() {
         expect(container.read(ff1ScanProvider).devices.length, 2);
       });
 
+      test('filters out devices when ff1Name does not match advName', () async {
+        final fakeTransport = FakeFF1BleTransport(
+          scanDevices: [
+            BluetoothDevice.fromId('00:11:22:33:44:55'),
+            BluetoothDevice.fromId('AA:BB:CC:DD:EE:FF'),
+          ],
+        );
+
+        final container = ProviderContainer(
+          overrides: [
+            ff1TransportProvider.overrideWithValue(fakeTransport),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final notifier = container.read(ff1ScanProvider.notifier);
+
+        await notifier.startScan(
+          timeout: const Duration(seconds: 1),
+          ff1Name: 'nonexistent-adv-name',
+        );
+
+        expect(container.read(ff1ScanProvider).devices, isEmpty);
+      });
+
       test('handles scan error', () async {
         final fakeTransport = FakeFF1BleTransport(
           scanError: Exception('Bluetooth not enabled'),

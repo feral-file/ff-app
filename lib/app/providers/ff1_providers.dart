@@ -341,16 +341,30 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
     return const FF1ScanState(isScanning: false, devices: []);
   }
 
-  /// Start scanning for devices
+  /// Start scanning for devices.
+  ///
+  /// When [ff1Name] is non-null, uses [FF1BleControl.scanForName] (stops early
+  /// when a matching advertised name is seen). Otherwise uses
+  /// [FF1BleControl.scan] for a full discovery pass.
   Future<void> startScan({
     Duration timeout = const Duration(seconds: 30),
+    String? ff1Name,
   }) async {
     if (state.isScanning) return;
 
     state = state.copyWith(isScanning: true);
 
     try {
-      final devices = await _control.scan(timeout: timeout);
+      final List<BluetoothDevice> devices;
+      if (ff1Name != null) {
+        final found = await _control.scanForName(
+          name: ff1Name,
+          timeout: timeout,
+        );
+        devices = found != null ? <BluetoothDevice>[found] : <BluetoothDevice>[];
+      } else {
+        devices = await _control.scan(timeout: timeout);
+      }
       if (!ref.mounted) return;
       state = state.copyWith(isScanning: false, devices: devices);
     } catch (e) {

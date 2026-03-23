@@ -95,6 +95,9 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
   /// Updates state to [ConnectFF1Connecting], then [ConnectFF1StillConnecting]
   /// after 15 seconds, and finally [ConnectFF1Connected] on success.
   /// Tracks terminal outcome in session.
+  ///
+  /// When [ff1DeviceInfo] is provided, skips get_info command and uses the
+  /// supplied metadata (name, topic, internet status, branch, version).
   Future<void> connectBle(
     BluetoothDevice bluetoothDevice, {
     FF1DeviceInfo? ff1DeviceInfo,

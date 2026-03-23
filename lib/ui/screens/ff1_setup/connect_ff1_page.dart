@@ -41,18 +41,16 @@ final _log = Logger('ConnectFF1Page');
 class ConnectFF1PagePayload {
   /// Constructor
   ConnectFF1PagePayload({
-    this.device,
-    this.deeplink,
-  }) : assert(
-         device != null || deeplink != null,
-         'ConnectFF1PagePayload needs bluetooth device or deeplink.',
-       );
+    required this.device,
+    required this.ff1DeviceInfo,
+  });
 
-  /// Bluetooth device
-  final BluetoothDevice? device;
+  /// Bluetooth device to connect to (required).
+  final BluetoothDevice device;
 
-  /// Device connect deeplink.
-  final String? deeplink;
+  /// Optional device info parsed from deeplink or other source.
+  /// When non-null, used to skip get_info command and provide metadata early.
+  final FF1DeviceInfo? ff1DeviceInfo;
 }
 
 /// Connect FF1 page
@@ -197,17 +195,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _connectFF1Notifier = await ref.read(connectFF1Provider.notifier);
       if (!mounted) return;
-      final fallbackDevice =
-          widget.payload.device ?? BluetoothDevice.fromId('');
-      final ff1DeviceInfo = widget.payload.deeplink == null
-          ? null
-          : FF1DeviceInfo.fromDeeplink(widget.payload.deeplink!);
-      unawaited(
-        _connectFF1Notifier?.connectBle(
-          fallbackDevice,
-          ff1DeviceInfo: ff1DeviceInfo,
-        ),
-      );
+      unawaited(_startConnectFlow());
     });
   }
 
@@ -240,13 +228,13 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   Future<void> _startConnectFlow() async {
     _startTime = DateTime.now();
     _log.info('[ConnectFF1Page] Start connecting to FF1');
-    final fallbackDevice = widget.payload.device ?? BluetoothDevice.fromId('');
-    final ff1DeviceInfo = widget.payload.deeplink == null
-        ? null
-        : FF1DeviceInfo.fromDeeplink(widget.payload.deeplink!);
-    await _connectFF1Notifier?.connectBle(
-      fallbackDevice,
-      ff1DeviceInfo: ff1DeviceInfo,
+    final notifier = _connectFF1Notifier;
+    if (notifier == null) {
+      return;
+    }
+    await notifier.connectBle(
+      widget.payload.device,
+      ff1DeviceInfo: widget.payload.ff1DeviceInfo,
     );
   }
 
@@ -274,7 +262,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     _log.info('[ConnectFF1Page] Cancel pressed, cancelling connection');
     _connectFF1Notifier?.cancelConnection();
     try {
-      await widget.payload.device?.disconnect();
+      await widget.payload.device.disconnect();
     } on Exception catch (e) {
       _log.info('[ConnectFF1Page] Error while disconnecting: $e');
     }
