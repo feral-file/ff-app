@@ -39,9 +39,19 @@ abstract final class GoldPathPatrolKeys {
     'gold_path.onboarding.add_address.primary',
   );
 
+  /// Address/domain input on the add-address flow.
+  static const onboardingAddAddressInput = ValueKey<String>(
+    'gold_path.onboarding.add_address.input',
+  );
+
   /// Add-address onboarding action that advances (Skip for now / Next).
   static const onboardingAddAddressSecondary = ValueKey<String>(
     'gold_path.onboarding.add_address.secondary',
+  );
+
+  /// Alias input on the add-alias flow.
+  static const onboardingAddAliasInput = ValueKey<String>(
+    'gold_path.onboarding.add_alias.input',
   );
 
   /// Setup-FF1 onboarding action that opens FF1 setup flow.

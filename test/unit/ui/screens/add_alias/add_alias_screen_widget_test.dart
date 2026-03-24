@@ -1,3 +1,4 @@
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/add_address_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/design/build/primitives.dart';
@@ -42,7 +43,10 @@ void main() {
       expect(skipButton.textColor, PrimitivesTokens.colorsWhite);
       expect(skipButton.borderColor, PrimitivesTokens.colorsWhite);
 
-      await tester.enterText(find.byType(TextField), 'Alice');
+      await tester.enterText(
+        find.byKey(GoldPathPatrolKeys.onboardingAddAliasInput),
+        'Alice',
+      );
       await tester.pump();
 
       expect(find.text('Skip'), findsNothing);
@@ -53,7 +57,10 @@ void main() {
       );
       expect(submitButton.color, PrimitivesTokens.colorsWhite);
 
-      await tester.enterText(find.byType(TextField), '');
+      await tester.enterText(
+        find.byKey(GoldPathPatrolKeys.onboardingAddAliasInput),
+        '',
+      );
       await tester.pump();
 
       expect(find.text('Skip'), findsOneWidget);
@@ -117,7 +124,10 @@ void main() {
       ),
     );
 
-    await tester.enterText(find.byType(TextField), '  Alice  ');
+    await tester.enterText(
+      find.byKey(GoldPathPatrolKeys.onboardingAddAliasInput),
+      '  Alice  ',
+    );
     await tester.pump();
 
     await tester.tap(find.text('Submit'));

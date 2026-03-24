@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/add_address_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/ui/screens/add_address_screen.dart';
@@ -22,7 +23,9 @@ void main() {
 
     await tester.pump();
 
-    final textField = tester.widget<TextField>(find.byType(TextField));
+    final textField = tester.widget<TextField>(
+      find.byKey(GoldPathPatrolKeys.onboardingAddAddressInput),
+    );
     expect(textField.focusNode, isNotNull);
     expect(textField.focusNode!.hasFocus, isTrue);
   });
@@ -68,8 +71,11 @@ void main() {
       ),
     );
 
-    await tester.enterText(find.byType(TextField), 'alice.eth');
-    await tester.tap(find.byType(TextField));
+    await tester.enterText(
+      find.byKey(GoldPathPatrolKeys.onboardingAddAddressInput),
+      'alice.eth',
+    );
+    await tester.tap(find.byKey(GoldPathPatrolKeys.onboardingAddAddressInput));
     await tester.pump();
 
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -122,7 +128,10 @@ void main() {
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'alice.eth');
+    await tester.enterText(
+      find.byKey(GoldPathPatrolKeys.onboardingAddAddressInput),
+      'alice.eth',
+    );
     await tester.tap(find.text('Submit'));
     await tester.pumpAndSettle();
 

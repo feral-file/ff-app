@@ -339,8 +339,7 @@ jobs:
               --dart-define FF1_TEST_DEVICE_ID="$FF1_TEST_DEVICE_ID" \
               --dart-define FF1_TEST_TOPIC_ID="$FF1_TEST_TOPIC_ID" \
               --dart-define GOLD_PATH_CANARY_CHANNEL_TITLE="$GOLD_PATH_CANARY_CHANNEL_TITLE" \
-              --dart-define GOLD_PATH_SOAK_MINUTES="$GOLD_PATH_SOAK_MINUTES" \
-              --show-flutter-logs
+              --dart-define GOLD_PATH_SOAK_MINUTES="$GOLD_PATH_SOAK_MINUTES"
           else
             patrol test \
               --target patrol_test/gold_path_test.dart \

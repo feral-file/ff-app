@@ -4,8 +4,7 @@ import 'package:app/app/patrol/gold_path_patrol_config.dart';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/work_item_thumbnail.dart';
-import 'package:flutter/material.dart'
-    show TextField, TextInputAction, ValueKey;
+import 'package:flutter/material.dart' show TextInputAction, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 
@@ -130,7 +129,12 @@ Future<void> _enterAddressAndSubmit(
   PatrolIntegrationTester $,
   String address,
 ) async {
-  final inputFinder = find.byType(TextField);
+  // Patrol can briefly see multiple text fields during the add-address to
+  // add-alias handoff, so we target the dedicated automation key instead of a
+  // broad type lookup.
+  final inputFinder = find.byKey(
+    GoldPathPatrolKeys.onboardingAddAddressInput,
+  );
   final inputField = $(inputFinder);
 
   await inputField.waitUntilExists(
