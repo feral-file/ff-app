@@ -9,9 +9,27 @@ import 'package:app/infra/ff1/wifi_control/ff1_wifi_rest_client.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_relayer_transport.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
+import 'package:app/infra/logging/structured_logger.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod/src/providers/future_provider.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+Future<void> _captureFf1WifiConnectFailureToSentry({
+  required String operation,
+  required Object exception,
+  StackTrace? stackTrace,
+}) async {
+  await Sentry.captureException(
+    exception,
+    stackTrace: stackTrace ?? StackTrace.current,
+    withScope: (scope) {
+      scope
+        ..setTag('component', 'ff1_wifi')
+        ..setTag('ff1_operation', operation);
+    },
+  );
+}
 
 // ============================================================================
 // Custom Retry Logic for WiFi Operations
@@ -173,7 +191,14 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         isConnecting: false,
         device: device,
       );
-    } on Exception catch (e) {
+    } on Exception catch (e, stackTrace) {
+      unawaited(
+        _captureFf1WifiConnectFailureToSentry(
+          operation: 'wifi_connect',
+          exception: e,
+          stackTrace: stackTrace,
+        ),
+      );
       state = state.copyWith(
         isConnected: false,
         isConnecting: false,
@@ -226,7 +251,14 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       await _control.reconnect();
 
       state = state.copyWith(isConnected: true);
-    } on Exception catch (e) {
+    } on Exception catch (e, stackTrace) {
+      unawaited(
+        _captureFf1WifiConnectFailureToSentry(
+          operation: 'wifi_reconnect',
+          exception: e,
+          stackTrace: stackTrace,
+        ),
+      );
       state = state.copyWith(
         isConnected: false,
         error: e,
@@ -493,4 +525,102 @@ ff1WifiSendCommandProvider = FutureProvider.autoDispose
 
         return params.commandFn(control, params.topicId);
       },
+    );
+
+// ============================================================================
+// Connection discrepancy watcher
+// ============================================================================
+
+/// How long the transport can be connected while device-level "connected" is
+/// false before we consider it a discrepancy worth reporting.
+const _kDiscrepancyThreshold = Duration(seconds: 10);
+
+/// Notifier backing [ff1ConnectionDiscrepancyWatcherProvider].
+///
+/// Holds the timer as a field so it persists across dependency-driven rebuilds.
+/// A `Provider` body re-runs on each watched dependency change, which would
+/// silently drop a locally-scoped timer; a `Notifier` field survives rebuilds.
+class FF1ConnectionDiscrepancyWatcher extends Notifier<void> {
+  final _log = Logger('FF1ConnectionDiscrepancyWatcher');
+  late final StructuredLogger _slog;
+  Timer? _timer;
+
+  @override
+  void build() {
+    _slog = AppStructuredLog.forLogger(
+      _log,
+      context: {'component': 'ff1_discrepancy_watcher'},
+    );
+
+    // Watch the transport-level connection (WebSocket up/down).
+    final transportConnected = ref.watch(ff1WifiConnectionProvider).isConnected;
+    // Watch the device-level connection notification (FF1 connection message).
+    final deviceConnected = ref.watch(ff1DeviceConnectedProvider);
+
+    if (transportConnected && !deviceConnected) {
+      // Arm the timer once per gap opening — field persists across rebuilds
+      // so subsequent dependency-change rebuilds while the gap is still open
+      // will hit the already-running timer and skip re-arming.
+      _timer ??= Timer(_kDiscrepancyThreshold, _onDiscrepancyDetected);
+    } else {
+      // Gap closed (transport dropped or device confirmed connected).
+      _cancelTimer();
+    }
+
+    ref.onDispose(_cancelTimer);
+  }
+
+  void _cancelTimer() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  void _onDiscrepancyDetected() {
+    _timer = null;
+
+    // Re-read to confirm the discrepancy still exists at fire time; the timer
+    // fires asynchronously so state may have resolved by then.
+    final stillTransportUp = ref.read(ff1WifiConnectionProvider).isConnected;
+    final stillDeviceDown = !ref.read(ff1DeviceConnectedProvider);
+    if (!stillTransportUp || !stillDeviceDown) {
+      return;
+    }
+
+    _slog.warning(
+      category: LogCategory.wifi,
+      event: 'connection_discrepancy',
+      message:
+          'transport connected but device-level not connected for '
+          '>${_kDiscrepancyThreshold.inSeconds}s — possible false '
+          '"Device not connected" in UI',
+      payload: {'thresholdSeconds': _kDiscrepancyThreshold.inSeconds},
+    );
+    unawaited(
+      Sentry.captureEvent(
+        SentryEvent(
+          message: SentryMessage(
+            'FF1 connection discrepancy: transport up but device-level '
+            'not connected for >${_kDiscrepancyThreshold.inSeconds}s',
+          ),
+          level: SentryLevel.warning,
+          tags: {'component': 'ff1_wifi'},
+        ),
+      ),
+    );
+  }
+}
+
+/// Connection discrepancy watcher provider.
+///
+/// Watches both the WebSocket transport state and the device-level connection
+/// notification state. When the transport is up but the device has not
+/// confirmed "connected" within [_kDiscrepancyThreshold], captures a Sentry
+/// event so we can track the frequency and circumstances of the false
+/// "Device not connected" UI state in production.
+///
+/// Keep this provider alive at the root level alongside
+/// [ff1AutoConnectWatcherProvider].
+final ff1ConnectionDiscrepancyWatcherProvider =
+    NotifierProvider<FF1ConnectionDiscrepancyWatcher, void>(
+      FF1ConnectionDiscrepancyWatcher.new,
     );
