@@ -208,6 +208,12 @@ jobs:
           echo "FF1_TEST_DEVICE_ID=$ff1_device_id" >> "$GITHUB_ENV"
           echo "FF1_TEST_TOPIC_ID=$ff1_topic_id" >> "$GITHUB_ENV"
 
+      - name: Reset generated artifacts
+        run: |
+          flutter clean
+          rm -rf build .dart_tool patrol_test/test_bundle.dart
+          rm -rf ios/Pods ios/Podfile.lock ios/.symlinks ios/Flutter/ephemeral
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -352,7 +358,8 @@ jobs:
               --dart-define FF1_TEST_TOPIC_ID="$FF1_TEST_TOPIC_ID" \
               --dart-define GOLD_PATH_CANARY_CHANNEL_TITLE="$GOLD_PATH_CANARY_CHANNEL_TITLE" \
               --dart-define GOLD_PATH_SOAK_MINUTES="$GOLD_PATH_SOAK_MINUTES" \
-              --show-flutter-logs
+              --show-flutter-logs \
+              --verbose
           else
             patrol test \
               --target patrol_test/gold_path_test.dart \
