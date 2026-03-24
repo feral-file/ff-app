@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/ff1/ff1_ble_device_connect.dart';
 import 'package:app/app/providers/ff1_connect_session_provider.dart';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
@@ -180,6 +181,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
       await control.connect(
         blDevice: blDevice,
+        maxRetries: kFf1BleConnectMaxRetriesSessionDefault,
         shouldContinue: () => _isSessionActive(session),
       );
       _assertSessionActive(session);

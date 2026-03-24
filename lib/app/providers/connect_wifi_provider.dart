@@ -2,6 +2,7 @@
 // WiFi Network Model
 // ============================================================================
 
+import 'package:app/app/ff1/ff1_ble_device_connect.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/domain/models/ff1_error.dart';
@@ -165,12 +166,12 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
       );
 
       // Step 1: Resolve BluetoothDevice — scan first if remoteId is absent.
+      final control = ref.read(ff1ControlProvider);
       late final BluetoothDevice blDevice;
       if (device.remoteId.isEmpty) {
         _log.info(
           'remoteId is empty for ${device.name}, scanning by name to resolve',
         );
-        final control = ref.read(ff1ControlProvider);
         final found = await control.scanForName(name: device.name);
         if (found == null) {
           throw FF1BluetoothError(
@@ -194,9 +195,11 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         blDevice = device.toBluetoothDevice();
       }
 
-      // Step 1: Connect to device (with automatic retry)
-      await ref.read(
-        ff1BleConnectProvider(FF1BleConnectParams(blDevice: blDevice)).future,
+      // Step 1: Connect to device (same Riverpod-style retry as former
+      // ff1BleConnectProvider).
+      await connectFf1BleDeviceWithRiverpodRetries(
+        control: control,
+        blDevice: blDevice,
       );
       _log.info('Connected to device: ${device.deviceId}');
       connectionEstablished = true;
