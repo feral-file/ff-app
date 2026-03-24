@@ -115,11 +115,15 @@ class FF1RelayerTransport implements FF1WifiTransport {
     required String apiKey,
     bool forceReconnect = false,
   }) async {
-    // Validate topicId
+    // Validate topicId — emit on error stream so `FF1WifiControl` reports once
+    // to Sentry (same path as other connect failures); do not rely on app
+    // notifier-level capture.
     if (device.topicId.isEmpty) {
-      throw const FF1WifiTransportUnavailableError(
+      const error = FF1WifiTransportUnavailableError(
         'Device topicId is required for relayer connection',
       );
+      _errorController.add(error);
+      throw error;
     }
 
     // Clear paused state on any connect. If only cleared on forceReconnect,

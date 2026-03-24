@@ -146,7 +146,11 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
         phase: BootstrapPhase.activatingAutoConnectWatcher,
         message: 'Activating FF1 auto-connect watcher...',
       );
-      ref.watch(ff1AutoConnectWatcherProvider);
+      // Same as full `bootstrap()`: keep discrepancy telemetry anywhere
+      // auto-connect runs (first install has no seed but still uses FF1).
+      ref
+        ..watch(ff1AutoConnectWatcherProvider)
+        ..watch(ff1ConnectionDiscrepancyWatcherProvider);
 
       state = const BootstrapStatus(
         phase: BootstrapPhase.completed,
@@ -213,13 +217,15 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
 
       // Keep the auto-connect watcher alive to automatically connect to relayer
       // when active FF1 device changes. Also activate the discrepancy watcher
-      // that detects and reports the false "Device not connected" gap to Sentry.
+      // that detects and reports the false "Device not connected" gap to
+      // Sentry.
       state = state.copyWith(
         phase: BootstrapPhase.activatingAutoConnectWatcher,
         message: 'Activating FF1 auto-connect watcher...',
       );
-      ref.watch(ff1AutoConnectWatcherProvider);
-      ref.watch(ff1ConnectionDiscrepancyWatcherProvider);
+      ref
+        ..watch(ff1AutoConnectWatcherProvider)
+        ..watch(ff1ConnectionDiscrepancyWatcherProvider);
 
       state = const BootstrapStatus(
         phase: BootstrapPhase.completed,
