@@ -153,12 +153,14 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       _log.info('My Collection channel created');
 
       // Keep the auto-connect watcher alive to automatically connect to relayer
-      // when active FF1 device changes
+      // when active FF1 device changes. Also activate the discrepancy watcher
+      // that detects and reports the false "Device not connected" gap to Sentry.
       state = state.copyWith(
         phase: BootstrapPhase.activatingAutoConnectWatcher,
         message: 'Activating FF1 auto-connect watcher...',
       );
       ref.watch(ff1AutoConnectWatcherProvider);
+      ref.watch(ff1ConnectionDiscrepancyWatcherProvider);
 
       state = const BootstrapStatus(
         phase: BootstrapPhase.completed,
