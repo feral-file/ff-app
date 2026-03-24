@@ -111,11 +111,12 @@
   - build DP-1 playlist payload (single work or full playlist)
   - cast to selected device through canvas/relayer client
   - consume live player/device status via Wi-Fi control streams
-  - use now-displaying full screen, quick settings, and keyboard/touchpad interactions
+  - now-displaying bar shows current item and allows navigation to work detail
+  - optional: use keyboard/touchpad interactions for remote control
 - Outcome: art is playing on FF1 with live status visible in app overlays/screens.
 - Important edge cases:
-  - no active device: now-displaying shows pair/connect guidance
-  - disconnected state: now-displaying reflects connection transitions
+  - no active device: now-displaying bar shows pair/connect guidance (invisible when not pairing)
+  - disconnected state: now-displaying bar reflects connection transitions
   - enrichment failures do not block playback UI (fallback DP-1 item data remains)
 
 ### Flow: Maintenance and recovery

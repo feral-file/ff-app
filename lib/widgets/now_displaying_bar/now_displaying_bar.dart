@@ -5,6 +5,7 @@ import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/routing/routes.dart';
+import 'package:app/app/routing/router_extensions.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
@@ -138,7 +139,7 @@ class _NowDisplayingBarCard extends ConsumerWidget {
             collapsedBuilder: (context, _) {
               return CollapsedNowPlayingBar(
                 playingObject: object,
-                onTap: () => router.push('${Routes.works}/$workId'),
+                onTap: () => router.smartPush('${Routes.works}/$workId'),
               );
             },
             expandedBuilder: (context, scrollController) {

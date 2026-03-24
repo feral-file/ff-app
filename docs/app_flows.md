@@ -152,7 +152,7 @@
   - optional: user opens Interact screen for keyboard/touchpad control
 - success state: active playback visible and controllable from app
 - failure/edge states:
-  - no paired device -> bar shows guidance state
+  - no paired device -> bar hidden (invisible, no guidance shown)
   - disconnected device -> bar shows disconnected state
   - enrichment/cache misses fall back to basic DP-1 item fields
 - key screens involved: Work Detail, Playlist Detail, Keyboard Control, Now Displaying Bar (overlay)
