@@ -288,6 +288,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   Future<void> _bootstrapAtAppStart() async {
     try {
       unawaited(_triggerForceUpdateCheck());
+      ref.read(bootstrapProvider.notifier).markSeedSyncInProgress();
 
       _log.info(
         'Starting app bootstrap: seedGate=${SeedDatabaseGate.isCompleted}',
@@ -420,6 +421,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       return;
     }
     _isResumeSeedSyncInProgress = true;
+    ref.read(bootstrapProvider.notifier).markSeedSyncInProgress();
 
     try {
       final didReplaceSeedDatabase = await _syncSeedDatabaseIfNeeded(
@@ -429,6 +431,9 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
         _refreshProvidersAfterSeedDatabaseReplace();
       }
       await _ensureDp1BootstrapAfterSeedIfPending();
+      if (!ref.read(bootstrapProvider.notifier).pendingDp1BootstrapAfterSeed) {
+        ref.read(bootstrapProvider.notifier).markSeedSyncGateOpen();
+      }
     } finally {
       _isResumeSeedSyncInProgress = false;
     }
@@ -474,16 +479,18 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   }) async {
     String? toastOverlayId;
     try {
-      return await ref.read(seedDownloadProvider.notifier).sync(
-        failSilently: failSilently,
-        onDownloadStarted: () {
-          if (showUpdatingToast && mounted) {
-            toastOverlayId = ref
-                .read(appOverlayProvider.notifier)
-                .showToast(message: 'Updating art library...');
-          }
-        },
-      );
+      return await ref
+          .read(seedDownloadProvider.notifier)
+          .sync(
+            failSilently: failSilently,
+            onDownloadStarted: () {
+              if (showUpdatingToast && mounted) {
+                toastOverlayId = ref
+                    .read(appOverlayProvider.notifier)
+                    .showToast(message: 'Updating art library...');
+              }
+            },
+          );
     } finally {
       final overlayId = toastOverlayId;
       if (showUpdatingToast && mounted && overlayId != null) {

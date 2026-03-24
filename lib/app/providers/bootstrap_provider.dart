@@ -1,6 +1,5 @@
 import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -73,6 +72,7 @@ class BootstrapStatus {
   /// Creates a BootstrapStatus.
   const BootstrapStatus({
     required this.phase,
+    this.seedSyncGatePhase = BootstrapSeedSyncGatePhase.syncInProgress,
     this.message,
     this.error,
     this.pendingDp1BootstrapAfterSeed = false,
@@ -80,6 +80,9 @@ class BootstrapStatus {
 
   /// Current typed bootstrap phase.
   final BootstrapPhase phase;
+
+  /// Current onboarding-facing seed/bootstrap gate phase.
+  final BootstrapSeedSyncGatePhase seedSyncGatePhase;
 
   /// Optional status message.
   final String? message;
@@ -94,12 +97,14 @@ class BootstrapStatus {
   /// Copy with new values.
   BootstrapStatus copyWith({
     BootstrapPhase? phase,
+    BootstrapSeedSyncGatePhase? seedSyncGatePhase,
     String? message,
     Object? error,
     bool? pendingDp1BootstrapAfterSeed,
   }) {
     return BootstrapStatus(
       phase: phase ?? this.phase,
+      seedSyncGatePhase: seedSyncGatePhase ?? this.seedSyncGatePhase,
       message: message ?? this.message,
       error: error ?? this.error,
       pendingDp1BootstrapAfterSeed:
@@ -124,17 +129,9 @@ enum BootstrapSeedSyncGatePhase {
 /// Derived seed/bootstrap handshake state for UI and tests.
 final bootstrapSeedSyncGatePhaseProvider = Provider<BootstrapSeedSyncGatePhase>(
   (ref) {
-    final seedDownload = ref.watch(seedDownloadProvider);
-    if (seedDownload.isSyncInProgress) {
-      return BootstrapSeedSyncGatePhase.syncInProgress;
-    }
-
-    final bootstrap = ref.watch(bootstrapProvider);
-    if (bootstrap.pendingDp1BootstrapAfterSeed) {
-      return BootstrapSeedSyncGatePhase.deferredRecovery;
-    }
-
-    return BootstrapSeedSyncGatePhase.gateOpen;
+    return ref.watch(
+      bootstrapProvider.select((status) => status.seedSyncGatePhase),
+    );
   },
 );
 
@@ -154,6 +151,22 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
     _log = Logger('BootstrapNotifier');
     return const BootstrapStatus(
       phase: BootstrapPhase.idle,
+    );
+  }
+
+  /// Keep onboarding actions blocked while startup seed/bootstrap work is still
+  /// settling. This closes the gap between seed sync completion and the later
+  /// lightweight/full bootstrap decision in app startup.
+  void markSeedSyncInProgress() {
+    state = state.copyWith(
+      seedSyncGatePhase: BootstrapSeedSyncGatePhase.syncInProgress,
+    );
+  }
+
+  /// Reopen onboarding actions once startup has reached a stable phase.
+  void markSeedSyncGateOpen() {
+    state = state.copyWith(
+      seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
     );
   }
 
@@ -189,6 +202,7 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
 
       state = const BootstrapStatus(
         phase: BootstrapPhase.completed,
+        seedSyncGatePhase: BootstrapSeedSyncGatePhase.deferredRecovery,
         message: 'Bootstrap completed (library download pending)',
         pendingDp1BootstrapAfterSeed: true,
       );
@@ -198,12 +212,14 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
         _log.info('Bootstrap cancelled');
         state = const BootstrapStatus(
           phase: BootstrapPhase.idle,
+          seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
         );
         return;
       }
       _log.severe('Bootstrap failed', e, stack);
       state = BootstrapStatus(
         phase: BootstrapPhase.failed,
+        seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
         message: 'Bootstrap failed: $e',
         error: e,
         pendingDp1BootstrapAfterSeed: _pendingDp1BootstrapAfterSeed,
@@ -262,6 +278,7 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
 
       state = const BootstrapStatus(
         phase: BootstrapPhase.completed,
+        seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
         message: 'Bootstrap completed successfully',
       );
       _pendingDp1BootstrapAfterSeed = false;
@@ -270,12 +287,14 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
         _log.info('Bootstrap cancelled');
         state = const BootstrapStatus(
           phase: BootstrapPhase.idle,
+          seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
         );
         return;
       }
       _log.severe('Bootstrap failed', e, stack);
       state = BootstrapStatus(
         phase: BootstrapPhase.failed,
+        seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
         message: 'Bootstrap failed: $e',
         error: e,
         pendingDp1BootstrapAfterSeed: _pendingDp1BootstrapAfterSeed,
@@ -287,6 +306,7 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
   void reset() {
     state = const BootstrapStatus(
       phase: BootstrapPhase.idle,
+      seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
     );
     _pendingDp1BootstrapAfterSeed = false;
   }

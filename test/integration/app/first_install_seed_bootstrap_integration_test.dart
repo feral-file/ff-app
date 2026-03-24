@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart'
     show databaseServiceProvider, rawDatabaseServiceProvider;
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
@@ -135,16 +136,6 @@ class _MockBootstrapService implements BootstrapService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class _DeferredRecoveryBootstrapNotifier extends BootstrapNotifier {
-  @override
-  BootstrapStatus build() {
-    return const BootstrapStatus(
-      phase: BootstrapPhase.completed,
-      pendingDp1BootstrapAfterSeed: true,
-    );
-  }
-}
-
 void main() {
   group('First install seed + lightweight bootstrap (integration)', () {
     test(
@@ -220,7 +211,7 @@ void main() {
 
     test(
       'onboarding gate defers actions while seed sync is in flight and '
-      're-opens during deferred recovery',
+      'stays closed until lightweight bootstrap publishes deferred recovery',
       () async {
         final provisionedEnvFile = await provisionIntegrationEnvFile();
         addTearDown(() async {
@@ -241,10 +232,14 @@ void main() {
             seedDatabaseServiceProvider.overrideWithValue(seedSvc),
             appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
             seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+            ff1AutoConnectWatcherProvider.overrideWithValue(null),
           ],
         );
         addTearDown(syncingContainer.dispose);
 
+        syncingContainer
+            .read(bootstrapProvider.notifier)
+            .markSeedSyncInProgress();
         final syncFuture = syncingContainer
             .read(seedDownloadProvider.notifier)
             .sync();
@@ -264,21 +259,27 @@ void main() {
         finishSync.complete(false);
         await syncFuture;
 
-        final deferredRecoveryContainer = ProviderContainer.test(
-          overrides: [
-            bootstrapProvider.overrideWith(
-              _DeferredRecoveryBootstrapNotifier.new,
-            ),
-          ],
+        expect(
+          syncingContainer.read(bootstrapSeedSyncGatePhaseProvider),
+          BootstrapSeedSyncGatePhase.syncInProgress,
         );
-        addTearDown(deferredRecoveryContainer.dispose);
+        expect(
+          syncingContainer
+              .read(onboardingAddAddressActionGateProvider)
+              .actionsEnabled,
+          isFalse,
+        );
+
+        await syncingContainer
+            .read(bootstrapProvider.notifier)
+            .bootstrapWithoutDp1Library();
 
         expect(
-          deferredRecoveryContainer.read(bootstrapSeedSyncGatePhaseProvider),
+          syncingContainer.read(bootstrapSeedSyncGatePhaseProvider),
           BootstrapSeedSyncGatePhase.deferredRecovery,
         );
         expect(
-          deferredRecoveryContainer
+          syncingContainer
               .read(onboardingAddAddressActionGateProvider)
               .actionsEnabled,
           isTrue,

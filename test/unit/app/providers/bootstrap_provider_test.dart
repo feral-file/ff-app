@@ -1,6 +1,6 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart';
-import 'package:app/app/providers/seed_database_provider.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/database/app_database.dart';
@@ -182,9 +182,21 @@ void main() {
       },
     );
 
-    test('bootstrap gate opens by default when sync is settled', () {
+    test('bootstrap gate starts closed until startup settles', () {
       final container = ProviderContainer.test();
       addTearDown(container.dispose);
+
+      expect(
+        container.read(bootstrapSeedSyncGatePhaseProvider),
+        BootstrapSeedSyncGatePhase.syncInProgress,
+      );
+    });
+
+    test('bootstrap gate can be reopened explicitly after startup settles', () {
+      final container = ProviderContainer.test();
+      addTearDown(container.dispose);
+
+      container.read(bootstrapProvider.notifier).markSeedSyncGateOpen();
 
       expect(
         container.read(bootstrapSeedSyncGatePhaseProvider),
@@ -193,26 +205,13 @@ void main() {
     });
 
     test(
-      'bootstrap gate reports sync-in-progress while seed sync is active',
-      () {
-        final container = ProviderContainer.test(
-          overrides: [
-            seedDownloadProvider.overrideWith(_SyncingSeedDownloadNotifier.new),
-          ],
-        );
-        addTearDown(container.dispose);
-
-        expect(
-          container.read(bootstrapSeedSyncGatePhaseProvider),
-          BootstrapSeedSyncGatePhase.syncInProgress,
-        );
-      },
-    );
-
-    test(
       'bootstrap gate reports deferred recovery after lightweight bootstrap',
       () async {
-        final container = ProviderContainer.test();
+        final container = ProviderContainer.test(
+          overrides: [
+            ff1AutoConnectWatcherProvider.overrideWithValue(null),
+          ],
+        );
         addTearDown(container.dispose);
 
         await container
@@ -326,15 +325,4 @@ class _MockBootstrapService implements BootstrapService {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _SyncingSeedDownloadNotifier extends SeedDownloadNotifier {
-  @override
-  SeedDownloadState build() {
-    return const SeedDownloadState(
-      status: SeedDownloadStatus.syncing,
-      progress: 0.5,
-      isSyncInProgress: true,
-    );
-  }
 }
