@@ -4,12 +4,12 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
-      - 'lib/**'
-      - 'patrol_test/**'
-      - 'test/integration/**'
-      - 'ios/**'
-      - 'android/**'
-      - '.github/workflows/gold-path-ui.yml'
+      - "lib/**"
+      - "patrol_test/**"
+      - "test/integration/**"
+      - "ios/**"
+      - "android/**"
+      - ".github/workflows/gold-path-ui.yml"
       - pubspec.yaml
   workflow_dispatch:
     inputs:
@@ -46,7 +46,7 @@ jobs:
     env:
       SIMULATOR_DEVICE: ${{ inputs.simulator_device || 'iPhone 16e' }}
       ANDROID_AVD_NAME: ${{ inputs.android_avd_name || '' }}
-      ANDROID_API_LEVEL: '35'
+      ANDROID_API_LEVEL: "35"
       ANDROID_SYSTEM_IMAGE: system-images;android-35;google_apis;arm64-v8a
       ANDROID_USER_HOME: /tmp/android-user-home
       ANDROID_EMULATOR_HOME: /tmp/android-emulator-home
@@ -59,27 +59,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-
-      - name: Setup Xcode
-        if: matrix.platform == 'ios'
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '26.2'
-
-      - name: Set up JDK 17
-        if: matrix.platform == 'android'
-        uses: actions/setup-java@v3
-        with:
-          java-version: '17'
-          distribution: 'zulu'
-
-      - name: Set up Android SDK
-        if: matrix.platform == 'android'
-        uses: android-actions/setup-android@v3
+      - name: Use host Flutter/Android SDK
+        run: |
+          echo "FLUTTER_ROOT=/Users/ffci/flutter" >> "$GITHUB_ENV"
+          echo "/Users/ffci/flutter/bin" >> "$GITHUB_PATH"
+          echo "ANDROID_SDK_ROOT=/Users/ffci/.android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=/Users/ffci/.android/sdk" >> "$GITHUB_ENV"
+          echo "/Users/ffci/.android/sdk/platform-tools" >> "$GITHUB_PATH"
+          echo "/Users/ffci/.android/sdk/emulator" >> "$GITHUB_PATH"
+          echo "/Users/ffci/.android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
       - name: Configure Android SDK environment
         if: matrix.platform == 'android'
@@ -363,6 +351,19 @@ jobs:
               --dart-define GOLD_PATH_CANARY_CHANNEL_TITLE="$GOLD_PATH_CANARY_CHANNEL_TITLE" \
               --dart-define GOLD_PATH_SOAK_MINUTES="$GOLD_PATH_SOAK_MINUTES" \
               --show-flutter-logs
+          fi
+
+      - name: Shut down iOS Simulator
+        if: always() && matrix.platform == 'ios'
+        run: |
+          xcrun simctl shutdown "$SIMULATOR_DEVICE" || true
+          osascript -e 'quit app "Simulator"' || true
+
+      - name: Shut down Android emulator
+        if: always() && matrix.platform == 'android'
+        run: |
+          if [ -n "${ANDROID_DEVICE_ID:-}" ]; then
+            adb -s "$ANDROID_DEVICE_ID" emu kill || true
           fi
 
       - name: Capture latest xcresult path
