@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/bootstrap/app_startup_orchestration.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart'
     show databaseServiceProvider, rawDatabaseServiceProvider;
@@ -288,8 +289,8 @@ void main() {
     );
 
     test(
-      'offline resume retry restores deferred recovery when no seed file '
-      'exists',
+      'startup failure after gate closes restores deferred recovery when '
+      'lightweight bootstrap was already pending',
       () async {
         final provisionedEnvFile = await provisionIntegrationEnvFile();
         addTearDown(() async {
@@ -325,11 +326,7 @@ void main() {
           BootstrapSeedSyncGatePhase.syncInProgress,
         );
 
-        if (bootstrap.pendingDp1BootstrapAfterSeed) {
-          bootstrap.markDeferredRecovery();
-        } else {
-          bootstrap.markSeedSyncGateOpen();
-        }
+        restoreOnboardingGateAfterStartupFailure(bootstrap);
 
         expect(
           container.read(bootstrapSeedSyncGatePhaseProvider),

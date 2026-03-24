@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/bootstrap/app_startup_orchestration.dart';
 import 'package:app/app/bootstrap/bootstrap_status_toast.dart';
 import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
 import 'package:app/app/providers/app_lifecycle_provider.dart';
@@ -286,9 +287,11 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   }
 
   Future<void> _bootstrapAtAppStart() async {
+    final bootstrap = ref.read(bootstrapProvider.notifier);
+
     try {
       unawaited(_triggerForceUpdateCheck());
-      ref.read(bootstrapProvider.notifier).markSeedSyncInProgress();
+      bootstrap.markSeedSyncInProgress();
 
       _log.info(
         'Starting app bootstrap: seedGate=${SeedDatabaseGate.isCompleted}',
@@ -312,13 +315,12 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
           'No local seed database yet; lightweight bootstrap only until '
           'download succeeds.',
         );
-        await ref.read(bootstrapProvider.notifier).bootstrapWithoutDp1Library();
+        await bootstrap.bootstrapWithoutDp1Library();
         return;
       }
 
       await _recoverFromDatabaseResetIfNeeded();
 
-      final bootstrap = ref.read(bootstrapProvider.notifier);
       await bootstrap.bootstrap();
 
       await _logStartupFeedState();
@@ -335,6 +337,9 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       if (didReplaceSeedDatabase) {
         _refreshProvidersAfterSeedDatabaseReplace();
       }
+    } on Object catch (e, st) {
+      _log.warning('Startup bootstrap failed before gate settled', e, st);
+      restoreOnboardingGateAfterStartupFailure(bootstrap);
     } finally {
       if (!_bootstrapReadyCompleter.isCompleted) {
         _bootstrapReadyCompleter.complete();
@@ -421,7 +426,6 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       return;
     }
     _isResumeSeedSyncInProgress = true;
-    ref.read(bootstrapProvider.notifier).markSeedSyncInProgress();
 
     try {
       final didReplaceSeedDatabase = await _syncSeedDatabaseIfNeeded(
@@ -431,12 +435,6 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
         _refreshProvidersAfterSeedDatabaseReplace();
       }
       await _ensureDp1BootstrapAfterSeedIfPending();
-      final bootstrap = ref.read(bootstrapProvider.notifier);
-      if (bootstrap.pendingDp1BootstrapAfterSeed) {
-        bootstrap.markDeferredRecovery();
-      } else {
-        bootstrap.markSeedSyncGateOpen();
-      }
     } finally {
       _isResumeSeedSyncInProgress = false;
     }
@@ -560,13 +558,18 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       ..watch(trackedAddressesSyncProvider);
     return ProviderScope(
       overrides: [
-        seedDownloadRetryProvider.overrideWithValue(() async {
-          await _syncSeedDatabaseIfNeeded(
-            showUpdatingToast: true,
-            failSilently: false,
-          );
-          await _ensureDp1BootstrapAfterSeedIfPending();
-        }),
+        seedDownloadRetryProvider.overrideWithValue(
+          () => runSeedDownloadRetry(
+            syncSeedDatabase: () {
+              return _syncSeedDatabaseIfNeeded(
+                showUpdatingToast: true,
+                failSilently: false,
+              );
+            },
+            ensureDp1BootstrapAfterSeedIfPending:
+                _ensureDp1BootstrapAfterSeedIfPending,
+          ),
+        ),
       ],
       child: widget.child,
     );
