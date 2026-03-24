@@ -331,6 +331,36 @@ void main() {
         expect(container.read(ff1ScanProvider).devices, isEmpty);
       });
 
+      test(
+        'named scans treat ff1Name as FF1 identity and use scanForName',
+        () async {
+          final fakeTransport = FakeFF1BleTransport(
+            scanDevices: [
+              BluetoothDevice.fromId('00:11:22:33:44:55'),
+              BluetoothDevice.fromId('AA:BB:CC:DD:EE:FF'),
+            ],
+          );
+
+          final container = ProviderContainer(
+            overrides: [
+              ff1TransportProvider.overrideWithValue(fakeTransport),
+            ],
+          );
+          addTearDown(container.dispose);
+
+          final notifier = container.read(ff1ScanProvider.notifier);
+
+          await notifier.startScan(
+            timeout: const Duration(seconds: 1),
+            ff1Name: '',
+          );
+
+          expect(container.read(ff1ScanProvider).devices.length, 1);
+          expect(fakeTransport.scanForNameCalls, 1);
+          expect(fakeTransport.scanCalls, 0);
+        },
+      );
+
       test('handles scan error', () async {
         final fakeTransport = FakeFF1BleTransport(
           scanError: Exception('Bluetooth not enabled'),
@@ -401,6 +431,8 @@ class FakeFF1BleTransport implements FF1BleTransport {
 
   FF1BleCommand? lastCommand;
   FF1BleRequest? lastRequest;
+  int scanForNameCalls = 0;
+  int scanCalls = 0;
 
   @override
   BluetoothAdapterState get adapterState => BluetoothAdapterState.on;
@@ -438,6 +470,7 @@ class FakeFF1BleTransport implements FF1BleTransport {
     required FutureOr<bool> Function(List<BluetoothDevice> devices) onDevice,
     Duration timeout = const Duration(seconds: 30),
   }) async {
+    scanCalls++;
     if (scanError != null) {
       throw scanError! as Exception;
     }
@@ -450,6 +483,7 @@ class FakeFF1BleTransport implements FF1BleTransport {
     required String name,
     Duration timeout = const Duration(seconds: 15),
   }) async {
+    scanForNameCalls++;
     if (scanError != null) {
       throw scanError! as Exception;
     }

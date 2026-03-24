@@ -61,11 +61,12 @@ final bluetoothAdapterStateProvider = StreamProvider<BluetoothAdapterState>((
 
 /// Returns the connected BLE device for the given device name, if currently
 /// connected. Use when we need to resolve remoteId from connected device.
-final FutureProviderFamily<BluetoothDevice?, String> connectedBlDeviceForNameProvider =
+final FutureProviderFamily<BluetoothDevice?, String>
+connectedBlDeviceForNameProvider =
     FutureProvider.family<BluetoothDevice?, String>((ref, name) async {
-  final connected = FlutterBluePlus.connectedDevices;
-  return connected.firstWhereOrNull((d) => d.advName == name);
-});
+      final connected = FlutterBluePlus.connectedDevices;
+      return connected.firstWhereOrNull((d) => d.advName == name);
+    });
 
 // ============================================================================
 // FF1 Control provider (orchestration)
@@ -344,7 +345,9 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
   /// Start scanning for devices.
   ///
   /// When [ff1Name] is non-null, uses [FF1BleControl.scanForName] (stops early
-  /// when a matching advertised name is seen). Otherwise uses
+  /// when a matching advertised name is seen). This is intentional for deeplink
+  /// setup where [ff1Name] is treated as the identity of the target FF1.
+  /// Otherwise uses
   /// [FF1BleControl.scan] for a full discovery pass.
   Future<void> startScan({
     Duration timeout = const Duration(seconds: 30),
@@ -361,7 +364,9 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
           name: ff1Name,
           timeout: timeout,
         );
-        devices = found != null ? <BluetoothDevice>[found] : <BluetoothDevice>[];
+        devices = found != null
+            ? <BluetoothDevice>[found]
+            : <BluetoothDevice>[];
       } else {
         devices = await _control.scan(timeout: timeout);
       }

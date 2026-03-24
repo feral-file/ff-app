@@ -5,7 +5,6 @@ import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
-import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -43,6 +42,7 @@ class ConnectFF1PagePayload {
   ConnectFF1PagePayload({
     required this.device,
     required this.ff1DeviceInfo,
+    this.onConnectedToInternet,
   });
 
   /// Bluetooth device to connect to (required).
@@ -51,6 +51,17 @@ class ConnectFF1PagePayload {
   /// Optional device info parsed from deeplink or other source.
   /// When non-null, used to skip get_info command and provide metadata early.
   final FF1DeviceInfo? ff1DeviceInfo;
+
+  /// Optional callback for successful internet-connected routing.
+  ///
+  /// When provided, this page delegates post-connect navigation to the caller
+  /// (for example scan-first deeplink flows that need a specific unwind path).
+  /// When null, the page performs default navigation to device configuration.
+  final Future<void> Function(
+    BuildContext context,
+    ConnectFF1Connected state,
+  )?
+  onConnectedToInternet;
 }
 
 /// Connect FF1 page
@@ -158,6 +169,26 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     }
   }
 
+  Future<void> _handleConnectedToInternet(
+    BuildContext context,
+    ConnectFF1Connected state,
+  ) async {
+    final customNavigation = widget.payload.onConnectedToInternet;
+    if (customNavigation != null) {
+      await customNavigation(context, state);
+      return;
+    }
+
+    await ref
+        .read(ff1BluetoothDeviceActionsProvider.notifier)
+        .addDevice(state.ff1device);
+    unawaited(ref.read(onboardingActionsProvider).completeOnboarding());
+    if (!context.mounted) {
+      return;
+    }
+    context.replace(Routes.deviceConfiguration);
+  }
+
   @override
   Widget build(BuildContext context) {
     // Listen for state changes to handle navigation and dialogs
@@ -170,31 +201,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           if (state is ConnectFF1Connected) {
             _recordDuration(success: true);
             if (state.isConnectedToInternet) {
-              await ref
-                  .read(ff1BluetoothDeviceActionsProvider.notifier)
-                  .addDevice(state.ff1device);
-
-              if (state.portalIsSet) {
-                if (context.mounted) {
-                  unawaited(
-                    ref.read(onboardingActionsProvider).completeOnboarding(),
-                  );
-                  context.popUntil(Routes.startSetupFf1);
-                  unawaited(
-                    context.push(Routes.deviceConfiguration),
-                  );
-                }
-              } else {
-                if (context.mounted) {
-                  unawaited(
-                    ref.read(onboardingActionsProvider).completeOnboarding(),
-                  );
-                  context.popUntil(Routes.startSetupFf1);
-                  unawaited(
-                    context.push(Routes.deviceConfiguration),
-                  );
-                }
-              }
+              await _handleConnectedToInternet(context, state);
             } else {
               if (context.mounted) {
                 context.replace(

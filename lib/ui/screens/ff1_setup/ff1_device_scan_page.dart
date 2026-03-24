@@ -29,7 +29,8 @@ class FF1DeviceScanPagePayload {
   });
 
   /// When null, the scan lists all nearby FF1 devices.
-  /// When set, results are filtered to this advertised BLE device name.
+  /// When set, this value is treated as the identity of the target FF1 and
+  /// scanning uses name-targeted lookup.
   final String? ff1Name;
 
   /// When non-null, invoked with the chosen [BluetoothDevice] instead of the
