@@ -372,7 +372,8 @@ class OptionsButton extends ConsumerWidget {
           ),
           SizedBox(height: LayoutConstants.space4),
           Text(
-            'Are you sure you want to reset the device to factory settings? This will erase all data and cannot be undone.',
+            'Are you sure you want to reset the device to factory settings? '
+            'This will erase all data and cannot be undone.',
             style: AppTypography.body(context).white,
           ),
           SizedBox(height: LayoutConstants.space10),
@@ -410,12 +411,14 @@ class OptionsButton extends ConsumerWidget {
                           success = okFlag ?? ff1CommandResponseIsOk(response);
                           if (!success) {
                             _log.warning(
-                              '[Factory Reset] WiFi returned unsuccessful response, fallback to BLE',
+                              '[Factory Reset] WiFi returned unsuccessful '
+                              'response, fallback to BLE',
                             );
                           }
                         } on Exception catch (e) {
                           _log.warning(
-                            '[Factory Reset] WiFi error: $e, falling back to BLE',
+                            '[Factory Reset] WiFi error: $e, '
+                            'falling back to BLE',
                           );
                         }
                       }
@@ -453,7 +456,9 @@ class OptionsButton extends ConsumerWidget {
           await UIHelper.showInfoDialog(
             context,
             'Restoring Factory Defaults',
-            'The device is now restoring to factory settings. It may take some time to complete. Please keep the FF1 powered on and wait until the reset is finished.',
+            'The device is now restoring to factory settings. It may take '
+            'some time to complete. Please keep the FF1 powered on and wait '
+            'until the reset is finished.',
             closeButton: 'Go Back',
             onClose: () {
               context.pop();
@@ -466,7 +471,8 @@ class OptionsButton extends ConsumerWidget {
         await UIHelper.showInfoDialog(
           context,
           'Factory Reset Failed',
-          'Something went wrong while trying to restore the device to factory settings. $result',
+          'Something went wrong while trying to restore the device to '
+          'factory settings. $result',
         );
       }
     }
@@ -543,15 +549,19 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
                                 .updateToLatestVersion(
                                   topicId: topicId,
                                 );
-                            success = ff1CommandResponseIsOk(response);
+                            final okFlag = ff1CommandResponseOkFlag(response);
+                            success =
+                                okFlag ?? ff1CommandResponseIsOk(response);
                             if (!success) {
                               _log.warning(
-                                '[Update Firmware] WiFi returned unsuccessful response, falling back to BLE',
+                                '[Update Firmware] WiFi returned '
+                                'unsuccessful response, falling back to BLE',
                               );
                             }
                           } on Exception catch (e) {
                             _log.warning(
-                              '[Update Firmware] WiFi error: $e, falling back to BLE',
+                              '[Update Firmware] WiFi error: $e, '
+                              'falling back to BLE',
                             );
                           }
                         }
@@ -592,7 +602,8 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
         await UIHelper.showInfoDialog(
           context,
           'Update Started',
-          'The FF1 is now downloading and installing the latest firmware. It will restart automatically when the update is complete.',
+          'The FF1 is now downloading and installing the latest firmware. '
+          'It will restart automatically when the update is complete.',
           closeButton: 'OK',
           onClose: () {
             context.pop();
@@ -633,5 +644,4 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
       ),
     );
   }
-
 }

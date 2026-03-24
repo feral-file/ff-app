@@ -9,14 +9,29 @@ library;
 
 /// Available FF1 BLE commands
 enum FF1BleCommand {
+  /// Send WiFi credentials (SSID + password)
   sendWifiCredentials('connect_wifi'),
+
+  /// Scan for available WiFi networks
   scanWifi('scan_wifi'),
+
+  /// Keep current WiFi connection (get topicId)
   keepWifi('keep_wifi'),
+
+  /// Get device information
   getInfo('get_info'),
+
+  /// Factory reset device
   factoryReset('factory_reset'),
+
+  /// Update to latest version
   updateToLatestVersion('update_to_latest_version'),
+
+  /// Send device logs to support
   sendLog('send_log'),
-  setTimezone('set_time')
+
+  /// Set device timezone
+  setTimezone('set_time'),
   ;
 
   const FF1BleCommand(this.wireName);
@@ -85,6 +100,7 @@ class FactoryResetRequest extends FF1BleRequest {
 
 /// Update to latest version
 class UpdateToLatestVersionRequest extends FF1BleRequest {
+  /// Constructor
   const UpdateToLatestVersionRequest();
 
   @override
@@ -181,6 +197,7 @@ class FactoryResetResponse extends FF1BleCommandResponse {
 
 /// Update to latest version response
 class UpdateToLatestVersionResponse extends FF1BleCommandResponse {
+  /// Constructor
   const UpdateToLatestVersionResponse();
 }
 

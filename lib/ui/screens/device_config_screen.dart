@@ -61,8 +61,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     with RouteAware {
   bool _isShowingQRCode = false;
 
-  /// Guards so the update prompt appears at most once per screen visit.
+  /// Guards so the update prompt appears at most once per active device.
   bool _hasShownUpdatePrompt = false;
+  String? _lastPromptDeviceId;
 
   @override
   void initState() {
@@ -74,8 +75,19 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 
   @override
   Widget build(BuildContext context) {
-    // React to device status arriving late (e.g. WiFi connects after screen open).
-    ref.listen(ff1CurrentDeviceStatusProvider, (_, __) => _checkUpdatePrompt());
+    ref
+      ..listen(activeFF1BluetoothDeviceProvider, (previous, next) {
+        final previousDeviceId = previous == null
+            ? null
+            : _deviceIdFromAsyncValue(previous);
+        final nextDeviceId = _deviceIdFromAsyncValue(next);
+        if (previousDeviceId != nextDeviceId) {
+          // Reset per-device guard so switching devices can show its own prompt.
+          _hasShownUpdatePrompt = false;
+          _lastPromptDeviceId = null;
+        }
+      })
+      ..listen(ff1CurrentDeviceStatusProvider, (_, _) => _checkUpdatePrompt());
 
     return ref
         .watch(activeFF1BluetoothDeviceProvider)
@@ -345,13 +357,18 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   /// appears at most once per screen visit regardless of how many status
   /// notifications arrive.
   void _checkUpdatePrompt() {
-    if (_hasShownUpdatePrompt || !mounted) return;
+    if (!mounted) return;
 
     final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
     final device = ref
         .read(activeFF1BluetoothDeviceProvider)
         .maybeWhen(data: (d) => d, orElse: () => null);
     if (device == null || deviceStatus == null) return;
+    if (_lastPromptDeviceId != device.deviceId) {
+      _hasShownUpdatePrompt = false;
+      _lastPromptDeviceId = device.deviceId;
+    }
+    if (_hasShownUpdatePrompt) return;
 
     final latestVersion = deviceStatus.latestVersion;
     final installedVersion = deviceStatus.installedVersion;
@@ -379,6 +396,13 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     });
   }
 
+  String? _deviceIdFromAsyncValue(AsyncValue<FF1Device?> value) {
+    return value.maybeWhen(
+      data: (device) => device?.deviceId,
+      orElse: () => null,
+    );
+  }
+
   Future<void> _showUpdatePromptDialog({
     required FF1Device device,
     required String installedVersion,
@@ -395,7 +419,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           ),
           SizedBox(height: LayoutConstants.space4),
           Text(
-            'A new version of FF1 firmware is available. Update now to get the latest improvements.',
+            'A new version of FF1 firmware is available. '
+            'Update now to get the latest improvements.',
             style: AppTypography.body(context).white,
           ),
           SizedBox(height: LayoutConstants.space10),
@@ -452,12 +477,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                                     response.status == null);
                           if (!success) {
                             _log.warning(
-                              '[Update Prompt] WiFi returned unsuccessful response, falling back to BLE',
+                              '[Update Prompt] WiFi returned '
+                              'unsuccessful response, falling back to BLE',
                             );
                           }
                         } on Exception catch (e) {
                           _log.warning(
-                            '[Update Prompt] WiFi error: $e, falling back to BLE',
+                            '[Update Prompt] WiFi error: $e, '
+                            'falling back to BLE',
                           );
                         }
                       }
@@ -498,7 +525,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
       await UIHelper.showInfoDialog(
         context,
         'Update Started',
-        'The FF1 is now downloading and installing the latest firmware. It will restart automatically when complete.',
+        'The FF1 is now downloading and installing the latest '
+            'firmware. It will restart automatically when complete.',
         closeButton: 'OK',
         onClose: () => context.pop(),
       );
@@ -506,7 +534,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
       await UIHelper.showInfoDialog(
         context,
         'Update Failed',
-        'Something went wrong while starting the update. Please try again from the options menu.',
+        'Something went wrong while starting the update. '
+            'Please try again from the options menu.',
       );
     }
   }
