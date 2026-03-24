@@ -660,7 +660,9 @@ class _SlowFakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
     bool Function()? isSessionActive,
   }) async {
     onDownloadStarted?.call(
-      hasLocalDatabase: delegate is _FakeSeedDatabaseSyncService && (delegate as _FakeSeedDatabaseSyncService).hasLocalDatabase,
+      hasLocalDatabase:
+          delegate is _FakeSeedDatabaseSyncService &&
+          (delegate as _FakeSeedDatabaseSyncService).hasLocalDatabase,
       localEtag: 'local',
       remoteEtag: 'remote',
     );
