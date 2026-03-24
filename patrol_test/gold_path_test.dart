@@ -109,7 +109,11 @@ Future<void> _submitPersonalAddressInOnboarding(
   await _openAddAddressFromOnboarding($);
   await _enterAddressAndSubmit($, address);
 
-  await $('See the art you already own').waitUntilVisible(
+  // Android CI can finish the add-address pop transition before the heading
+  // text becomes hit-testable again, even though the onboarding page is ready.
+  // The keyed secondary action is a more stable signal that we're back on the
+  // add-address onboarding surface and can continue the flow.
+  await $(GoldPathPatrolKeys.onboardingAddAddressSecondary).waitUntilVisible(
     timeout: const Duration(minutes: 1),
   );
   await $(address).waitUntilExists(
