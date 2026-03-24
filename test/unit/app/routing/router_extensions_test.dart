@@ -1,55 +1,101 @@
+import 'package:app/app/routing/router_extensions.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 void main() {
   group('SmartNavigation.smartPush', () {
-    test('navigates to different route family using push', () {
-      // Simulate current location /playlists/list-1
-      // When calling smartPush /works/item-123, should push (different family)
-      // Note: Different base routes (/playlists vs /works) → push
-      expect(
-        _extractBaseRoute('/playlists/list-1'),
-        '/playlists',
-      );
-      expect(
-        _extractBaseRoute('/works/item-123'),
-        '/works',
-      );
-      // Different routes should trigger push (not replace)
-    });
+    late GoRouter router;
 
-    test('replaces when navigating within same route family', () {
-      // Same base route (/works for both), different targets
-      // Should replace to avoid stack growth
-      expect(
-        _extractBaseRoute('/works/item-123'),
-        _extractBaseRoute('/works/item-456'),
-      );
-    });
-
-    test('no-op when already on exact same location', () {
-      // Already on /works/item-123, calling smartPush /works/item-123
-      // Should do nothing (no push, no replace)
-      expect(
-        '/works/item-123',
-        '/works/item-123',
+    setUp(() {
+      // Create a GoRouter with routes for testing
+      router = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            name: 'home',
+            builder: (context, state) => Container(),
+          ),
+          GoRoute(
+            path: '/works/:workId',
+            name: 'work-detail',
+            builder: (context, state) => Container(),
+          ),
+          GoRoute(
+            path: '/playlists/:playlistId',
+            name: 'playlist-detail',
+            builder: (context, state) => Container(),
+          ),
+        ],
       );
     });
 
-    test('extracts correct base routes', () {
-      expect(_extractBaseRoute('/'), '/');
-      expect(_extractBaseRoute('/works'), '/works');
-      expect(_extractBaseRoute('/works/item-123'), '/works');
-      expect(_extractBaseRoute('/playlists/list-1'), '/playlists');
-      expect(_extractBaseRoute('/channels/channel-abc'), '/channels');
+    test('no-op when already on exact same location', () async {
+      // Navigate to a work detail first
+      router.goNamed('work-detail', pathParameters: {'workId': 'item-123'});
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      // Get the stack size before smartPush
+      final initialStackSize =
+          router.routerDelegate.currentConfiguration.routes.length;
+
+      // Call smartPush with same location - should be no-op
+      router.smartPush('/works/item-123');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      // Stack size should not change
+      expect(
+        router.routerDelegate.currentConfiguration.routes.length,
+        initialStackSize,
+      );
+    });
+
+    test('replaces when navigating to different work in same family', () async {
+      // Navigate to work-detail for item-123
+      router.goNamed('work-detail', pathParameters: {'workId': 'item-123'});
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      final initialStackSize =
+          router.routerDelegate.currentConfiguration.routes.length;
+
+      // Call smartPush for different work - should replace
+      router.smartPush('/works/item-456');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      // Stack size should stay same (replace, not push)
+      expect(
+        router.routerDelegate.currentConfiguration.routes.length,
+        initialStackSize,
+      );
+
+      // Location should be updated to new work
+      expect(
+        router.routerDelegate.currentConfiguration.uri.path,
+        '/works/item-456',
+      );
+    });
+
+    test('pushes when navigating to different route family', () async {
+      // Navigate to playlist-detail
+      router.goNamed(
+        'playlist-detail',
+        pathParameters: {'playlistId': 'list-1'},
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      final initialStackSize =
+          router.routerDelegate.currentConfiguration.routes.length;
+
+      // Call smartPush to work detail (different family) - should push
+      router.smartPush('/works/item-123');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      // Stack size should increase (push, not replace)
+      expect(
+        router.routerDelegate.currentConfiguration.routes.length,
+        greaterThan(initialStackSize),
+      );
     });
   });
-}
-
-/// Helper function to extract base route (copy of private method for testing)
-String _extractBaseRoute(String path) {
-  final parts = path.split('/');
-  if (parts.length > 1) {
-    return '/${parts[1]}';
-  }
-  return path;
 }
