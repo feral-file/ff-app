@@ -126,6 +126,7 @@ class _NowDisplayingBarCard extends ConsumerWidget {
         final minSize = collapsedHeight / expandedHeight;
         final topicId = object.connectedDevice.topicId;
         final wifiControl = ref.read(ff1WifiControlProvider);
+        final workId = object.currentItem.id;
 
         return SizedBox(
           key: GoldPathPatrolKeys.nowDisplayingBar,
@@ -137,7 +138,7 @@ class _NowDisplayingBarCard extends ConsumerWidget {
             collapsedBuilder: (context, _) {
               return CollapsedNowPlayingBar(
                 playingObject: object,
-                onTap: () => router.push(Routes.nowDisplaying),
+                onTap: () => router.push('${Routes.works}/$workId'),
               );
             },
             expandedBuilder: (context, scrollController) {

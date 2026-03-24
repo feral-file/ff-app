@@ -212,8 +212,8 @@
 
 ### Screen group: NowDisplaying + KeyboardControl
 - Purpose: monitor current playback and send interaction commands.
-- Entry points: global now-displaying bar, `/now-displaying`, `/keyboard-control`.
-- Key actions: open interact mode, quick FF1 settings, view current work/device state.
+- Entry points: global now-displaying bar (navigates to work detail), `/keyboard-control`.
+- Key actions: view current work/device state, open interact mode, send keyboard/touchpad commands.
 - Important data: active device, connection state, player status item list/current index, cached enrichment window.
 - Related modules: `now_displaying_provider`, `ff1_wifi_providers`, touchpad/keyboard events.
 

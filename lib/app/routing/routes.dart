@@ -64,9 +64,6 @@ abstract class Routes {
   /// FF1 updating route path.
   static const ff1Updating = '/ff1-updating';
 
-  /// Now displaying (full-screen) route path.
-  static const nowDisplaying = '/now-displaying';
-
   /// Keyboard control (interact) route path.
   static const keyboardControl = '/keyboard-control';
 
@@ -159,9 +156,6 @@ abstract class RouteNames {
 
   /// FF1 updating route name.
   static const ff1Updating = 'ff1-updating';
-
-  /// Now displaying route name.
-  static const nowDisplaying = 'now-displaying';
 
   /// Keyboard control route name.
   static const keyboardControl = 'keyboard-control';
