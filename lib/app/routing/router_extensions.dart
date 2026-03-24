@@ -6,6 +6,9 @@ import 'package:go_router/go_router.dart';
 extension SmartNavigation on GoRouter {
   /// Navigates to a route, replacing if already on same route family, else pushing.
   ///
+  /// Uses the matched URI location (e.g., /works/item-123) not the route pattern
+  /// (which would be /works/:workId) to accurately detect current position.
+  ///
   /// Example:
   /// - Currently on `/works/item-123`, call `smartPush('/works/item-456')`
   ///   → Replaces with new work detail
@@ -14,16 +17,16 @@ extension SmartNavigation on GoRouter {
   /// - Currently on `/works/item-123`, call `smartPush('/works/item-123')`
   ///   → No-op (already on same work)
   void smartPush(String location) {
-    final currentPath = routerDelegate.currentConfiguration.fullPath;
+    final currentUri = routerDelegate.currentConfiguration.uri.path;
     
     // Extract the base route (e.g., '/works' from '/works/item-123')
-    final currentBase = _extractBaseRoute(currentPath);
+    final currentBase = _extractBaseRoute(currentUri);
     final targetBase = _extractBaseRoute(location);
     
     // If same route family (e.g., both are /works/*), replace instead of push
-    if (currentBase == targetBase && currentPath != location) {
+    if (currentBase == targetBase && currentUri != location) {
       replace<void>(location);
-    } else if (currentPath != location) {
+    } else if (currentUri != location) {
       // Different route family or different target, push normally
       push(location);
     }
