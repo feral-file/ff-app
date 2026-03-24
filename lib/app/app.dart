@@ -15,7 +15,6 @@ import 'package:app/app/routing/router_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/app/widgets/builder_overlay_scope.dart';
 import 'package:app/domain/models/channel.dart';
-import 'package:app/domain/models/ff1_device_info.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
@@ -23,8 +22,6 @@ import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/theme/app_theme.dart';
-import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
-import 'package:app/ui/screens/ff1_setup/ff1_device_scan_page.dart';
 import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/ui/widgets/force_update_overlay.dart';
 import 'package:app/widgets/overlays/app_global_overlay_layer.dart';
@@ -204,42 +201,15 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
   void _handleDeeplinkNavigation(DeeplinkNavigationAction action) {
     if (action.type == DeeplinkType.deviceConnect) {
-      if (action.source == DeeplinkSource.scan) {
-        final ff1DeviceInfo = FF1DeviceInfo.fromDeeplink(action.link);
-        if (ff1DeviceInfo == null) {
-          return;
-        }
-
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
         unawaited(
-          widget.router.push(
-            Routes.ff1DeviceScanPage,
-            extra: FF1DeviceScanPagePayload(
-              ff1Name: ff1DeviceInfo.name,
-              onFF1Selected: (device) {
-                unawaited(
-                  widget.router.push(
-                    Routes.connectFF1Page,
-                    extra: ConnectFF1PagePayload(
-                      device: device,
-                      ff1DeviceInfo: ff1DeviceInfo,
-                    ),
-                  ),
-                );
-              },
-            ),
+          widget.router.pushReplacement(
+            Routes.startSetupFf1,
+            extra: StartSetupFf1PagePayload(deeplink: action.link),
           ),
         );
-      } else {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          unawaited(
-            widget.router.pushReplacement(
-              Routes.startSetupFf1,
-              extra: StartSetupFf1PagePayload(deeplink: action.link),
-            ),
-          );
-        });
-      }
+      });
       return;
     }
 
