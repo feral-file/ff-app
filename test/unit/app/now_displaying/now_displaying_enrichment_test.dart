@@ -57,24 +57,27 @@ void main() {
       expect(result, isEmpty);
     });
 
-    test('returns empty when tokens is empty', () {
+    test('saves all items even when tokens is empty (fallback to DP1 data)', () {
       final items = [
         dp1ItemWithCid('item_1', '1'),
+        dp1ItemWithCid('item_2', '2'),
       ];
       final result = buildEnrichedPlaylistItemsToSave(
         missingItems: items,
         tokens: [],
       );
-      expect(result, isEmpty);
+      // All items should be saved as DP1 fallback (no enrichment)
+      expect(result.length, 2);
+      expect(result.map((p) => p.id).toSet(), {'item_1', 'item_2'});
+      // Without token, thumbnailUrl should be null
+      expect(result.every((p) => p.thumbnailUrl == null), true);
     });
 
-    test('includes only items that have a matching token by cid', () {
+    test('saves items with matching token (enriched)', () {
       // Item with cid eip155:1:erc721:0xabc:1
       final item1 = dp1ItemWithCid('item_1', '1');
       // Item with cid eip155:1:erc721:0xabc:2
       final item2 = dp1ItemWithCid('item_2', '2');
-      // Item without cid
-      final item3 = dp1ItemNoCid('item_3');
 
       final tokens = [
         tokenWithCid('eip155:1:erc721:0xabc:1'),
@@ -82,35 +85,20 @@ void main() {
       ];
 
       final result = buildEnrichedPlaylistItemsToSave(
-        missingItems: [item1, item2, item3],
-        tokens: tokens,
-      );
-
-      expect(result.length, 1);
-      expect(result.single.id, 'item_1');
-      expect(result.single.thumbnailUrl, isNotNull);
-    });
-
-    test('includes all items that have a matching token', () {
-      final item1 = dp1ItemWithCid('item_1', '1');
-      final item2 = dp1ItemWithCid('item_2', '2');
-
-      final tokens = [
-        tokenWithCid('eip155:1:erc721:0xabc:1'),
-        tokenWithCid('eip155:1:erc721:0xabc:2'),
-      ];
-
-      final result = buildEnrichedPlaylistItemsToSave(
         missingItems: [item1, item2],
         tokens: tokens,
       );
 
+      // Both items should be saved, but only item_1 is enriched
       expect(result.length, 2);
-      final ids = result.map((p) => p.id).toSet();
-      expect(ids, containsAll(['item_1', 'item_2']));
+      final item1Result = result.singleWhere((p) => p.id == 'item_1');
+      final item2Result = result.singleWhere((p) => p.id == 'item_2');
+      
+      expect(item1Result.thumbnailUrl, isNotNull); // Enriched with token
+      expect(item2Result.thumbnailUrl, isNull);    // Fallback to DP1 data
     });
 
-    test('skips items with no cid', () {
+    test('includes items with no cid (fallback to DP1 data)', () {
       final itemNoCid = dp1ItemNoCid('item_x');
       final tokens = [tokenWithCid('eip155:1:erc721:0xabc:1')];
 
@@ -119,7 +107,10 @@ void main() {
         tokens: tokens,
       );
 
-      expect(result, isEmpty);
+      // Item without cid should still be saved as DP1 fallback
+      expect(result.length, 1);
+      expect(result.single.id, 'item_x');
+      expect(result.single.thumbnailUrl, isNull);
     });
   });
 }

@@ -230,13 +230,11 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       }
     }
 
-    // Enrich only missing items within the window.
+    // Enrich items in window: always try to fetch fresh tokens from indexer
+    // to allow upgrading cached fallback items to enriched when tokens become available.
     final windowItems = items.sublist(start, end);
-    final missing = windowItems
-        .where((dp1) => !cachedById.containsKey(dp1.id))
-        .toList();
-    final enriched = missing.isNotEmpty
-        ? await _enrichMissingNowDisplayingItems(missing)
+    final enriched = windowItems.isNotEmpty
+        ? await _enrichMissingNowDisplayingItems(windowItems)
         : <String, PlaylistItem>{};
 
     // Build full list: window = enriched/cached/fallback; outside window = DP1 fallback only.
@@ -269,10 +267,19 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     );
   }
 
-  /// Fetches tokens for missing DP1 items from the indexer, builds enriched
-  /// [PlaylistItem]s (only for items that have a token), and persists them.
+  /// Fetches tokens for DP1 items from the indexer and persists all items
+  /// to the local cache (enriched with token data when available, or DP1 fallback).
+  /// 
+  /// Attempts enrichment for ALL items (not just missing), allowing cached fallback
+  /// items to be upgraded to enriched when tokens become available later
+  /// (e.g., after previous indexer timeout).
+  /// 
+  /// This ensures all items in now displaying bar are cached locally, allowing
+  /// seamless navigation even if enrichment is temporarily unavailable.
+  /// 
+  /// Uses shouldForce: true to allow upgrading fallback items to enriched.
   /// Does not invalidate the cache to avoid an infinite recompute loop.
-  /// Returns a map of item id to enriched [PlaylistItem] for the saved items.
+  /// Returns a map of item id to [PlaylistItem] for the saved/enriched items.
   Future<Map<String, PlaylistItem>> _enrichMissingNowDisplayingItems(
     List<DP1PlaylistItem> missing,
   ) async {
@@ -280,7 +287,19 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     final indexerService = ref.read(indexerServiceProvider);
 
     final cids = databaseService.extractDP1ItemCids(missing);
-    if (cids.isEmpty) return <String, PlaylistItem>{};
+    if (cids.isEmpty) {
+      // No CIDs extractable, save all as DP1 fallback
+      final toSave = buildEnrichedPlaylistItemsToSave(
+        missingItems: missing,
+        tokens: [],
+      );
+      if (toSave.isNotEmpty) {
+        await databaseService.upsertPlaylistItemsEnriched(
+          toSave,
+        );
+      }
+      return {for (final p in toSave) p.id: p};
+    }
 
     final tokens = await indexerService.getManualTokens(tokenCids: cids);
     final toSave = buildEnrichedPlaylistItemsToSave(
@@ -291,7 +310,6 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
 
     await databaseService.upsertPlaylistItemsEnriched(
       toSave,
-      shouldForce: false,
     );
     return {for (final p in toSave) p.id: p};
   }
