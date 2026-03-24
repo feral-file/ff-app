@@ -547,50 +547,53 @@ class UIHelper {
   static Future<dynamic> showCenterDialog(
     BuildContext context, {
     required Widget content,
-    bool isDismissible = true,
+    bool isDismissible = false,
   }) async {
     final theme = Theme.of(context);
-    return showCupertinoModalPopup<void>(
+    return showCupertinoModalPopup<dynamic>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Scaffold(
-        backgroundColor: Colors.transparent,
-        body: Stack(
-          children: [
-            GestureDetector(
-              onTap: isDismissible ? () => Navigator.pop(context) : null,
-              child: Container(
-                color: AppColor.primaryBlack.withValues(alpha: 0.5),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Center(
+      builder: (context) => PopScope(
+        canPop: isDismissible,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Stack(
+            children: [
+              GestureDetector(
+                onTap: isDismissible ? () => Navigator.pop(context) : null,
                 child: Container(
-                  decoration: BoxDecoration(
-                    color: theme.auGreyBackground,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  constraints: const BoxConstraints(
-                    maxHeight: 600,
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 20,
-                    horizontal: 15,
-                  ),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        content,
-                      ],
+                  color: AppColor.primaryBlack.withValues(alpha: 0.5),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Center(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: theme.auGreyBackground,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    constraints: const BoxConstraints(
+                      maxHeight: 600,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 20,
+                      horizontal: 15,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          content,
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

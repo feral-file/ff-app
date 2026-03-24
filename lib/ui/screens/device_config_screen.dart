@@ -4,7 +4,6 @@ import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_device_provider.dart';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -12,6 +11,7 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:app/domain/models/models.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
@@ -386,7 +386,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   }) async {
     final result = await UIHelper.showCenterDialog(
       context,
-      isDismissible: false,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

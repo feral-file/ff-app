@@ -11,6 +11,7 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control_verifier.dart';
+import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
 import 'package:app/ui/ui_helper.dart';
@@ -81,7 +82,7 @@ class OptionsButton extends ConsumerWidget {
     final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
 
     final options = [
-      if (isDeviceConnected)
+      if (isDeviceConnected) ...[
         OptionItem(
           title: 'Power Off',
           icon: const Icon(
@@ -96,8 +97,6 @@ class OptionsButton extends ConsumerWidget {
             ),
           ),
         ),
-      // reboot
-      if (isDeviceConnected)
         OptionItem(
           title: 'Restart',
           icon: const Icon(
@@ -112,9 +111,6 @@ class OptionsButton extends ConsumerWidget {
             ),
           ),
         ),
-      // Update FF1 firmware — only shown when connected so the command can
-      // reach the device; internet connectivity check is enforced by the device.
-      if (isDeviceConnected)
         OptionItem(
           title: 'Update FF1',
           icon: const Icon(Icons.system_update_alt),
@@ -128,6 +124,7 @@ class OptionsButton extends ConsumerWidget {
             ),
           ),
         ),
+      ],
       OptionItem(
         title: 'Send Log',
         icon: const Icon(Icons.help),
@@ -182,7 +179,6 @@ class OptionsButton extends ConsumerWidget {
   ) async {
     final result = await UIHelper.showCenterDialog(
       context,
-      isDismissible: false,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -255,7 +251,6 @@ class OptionsButton extends ConsumerWidget {
   ) async {
     final result = await UIHelper.showCenterDialog(
       context,
-      isDismissible: false,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -493,7 +488,6 @@ class OptionsButton extends ConsumerWidget {
 
     final result = await UIHelper.showCenterDialog(
       context,
-      isDismissible: false,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -549,7 +543,7 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
                                 .updateToLatestVersion(
                                   topicId: topicId,
                                 );
-                            success = _isCommandSuccessful(response);
+                            success = ff1CommandResponseIsOk(response);
                             if (!success) {
                               _log.warning(
                                 '[Update Firmware] WiFi returned unsuccessful response, falling back to BLE',
