@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
     paths:
       - "lib/**"
+      - "patrol/**"
       - "patrol_test/**"
       - "test/integration/**"
       - "ios/**"
