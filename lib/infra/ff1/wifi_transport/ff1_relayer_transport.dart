@@ -20,6 +20,7 @@ import 'dart:isolate';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
+import 'package:app/infra/logging/structured_logger.dart';
 import 'package:logging/logging.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -41,10 +42,16 @@ class FF1RelayerTransport implements FF1WifiTransport {
     required String relayerUrl,
     Logger? logger,
   }) : _relayerUrl = relayerUrl,
-       _log = logger ?? Logger('FF1RelayerTransport');
+       _log = logger ?? Logger('FF1RelayerTransport') {
+    _slog = AppStructuredLog.forLogger(
+      _log,
+      context: {'component': 'ff1_relayer_transport'},
+    );
+  }
 
   final String _relayerUrl;
   final Logger _log;
+  late final StructuredLogger _slog;
 
   // Connection state
   bool _isConnected = false;
@@ -108,11 +115,15 @@ class FF1RelayerTransport implements FF1WifiTransport {
     required String apiKey,
     bool forceReconnect = false,
   }) async {
-    // Validate topicId
+    // Validate topicId — emit on error stream so `FF1WifiControl` reports once
+    // to Sentry (same path as other connect failures); do not rely on app
+    // notifier-level capture.
     if (device.topicId.isEmpty) {
-      throw const FF1WifiTransportUnavailableError(
+      const error = FF1WifiTransportUnavailableError(
         'Device topicId is required for relayer connection',
       );
+      _errorController.add(error);
+      throw error;
     }
 
     // Clear paused state on any connect. If only cleared on forceReconnect,
@@ -299,12 +310,27 @@ class FF1RelayerTransport implements FF1WifiTransport {
         _lastError = null;
         _reconnectAttempts = 0;
         _connectionStateController.add(true);
-        _log.info('Connected to relayer');
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'ws_connected',
+          message: 'WebSocket connected to relayer',
+          payload: {'deviceId': _device?.deviceId, 'topicId': _device?.topicId},
+        );
 
       case _RelayerEventType.disconnected:
         _isConnected = false;
         _connectionStateController.add(false);
-        _log.warning('Disconnected from relayer');
+        _slog.warning(
+          category: LogCategory.wifi,
+          event: 'ws_disconnected',
+          message: 'WebSocket disconnected from relayer',
+          payload: {
+            'deviceId': _device?.deviceId,
+            'pausedForBackground': _pausedForBackground,
+            'reconnectAttempts': _reconnectAttempts,
+            'lastError': _lastError,
+          },
+        );
         if (!_pausedForBackground) {
           _scheduleReconnect();
         }
@@ -312,7 +338,12 @@ class FF1RelayerTransport implements FF1WifiTransport {
       case _RelayerEventType.error:
         final errorMsg = event.data?['error'] as String? ?? 'Unknown error';
         _lastError = errorMsg;
-        _log.warning('WebSocket error: $errorMsg');
+        _slog.warning(
+          category: LogCategory.wifi,
+          event: 'ws_error',
+          message: 'WebSocket error: $errorMsg',
+          payload: {'deviceId': _device?.deviceId, 'error': errorMsg},
+        );
         final error = FF1WifiNetworkError(errorMsg);
         _errorController.add(error);
 
@@ -339,7 +370,14 @@ class FF1RelayerTransport implements FF1WifiTransport {
   /// Schedule auto-reconnect with exponential backoff.
   void _scheduleReconnect() {
     if (_reconnectAttempts >= _maxReconnectAttempts) {
-      _log.severe('Max reconnect attempts reached, giving up');
+      _slog.error(
+        event: 'ws_reconnect_exhausted',
+        message: 'max reconnect attempts reached — giving up',
+        payload: {
+          'deviceId': _device?.deviceId,
+          'maxAttempts': _maxReconnectAttempts,
+        },
+      );
       const error = FF1WifiConnectionError(
         'Failed to reconnect after $_maxReconnectAttempts attempts',
       );
@@ -358,9 +396,18 @@ class FF1RelayerTransport implements FF1WifiTransport {
     final delay = _baseReconnectDelay * (1 << _reconnectAttempts);
     _reconnectAttempts++;
 
-    _log.info(
-      'Scheduling reconnect in ${delay.inSeconds}s '
-      '(attempt $_reconnectAttempts/$_maxReconnectAttempts)',
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'ws_reconnect_scheduled',
+      message:
+          'reconnect scheduled in ${delay.inSeconds}s '
+          '(attempt $_reconnectAttempts/$_maxReconnectAttempts)',
+      payload: {
+        'deviceId': _device?.deviceId,
+        'delaySeconds': delay.inSeconds,
+        'attempt': _reconnectAttempts,
+        'maxAttempts': _maxReconnectAttempts,
+      },
     );
 
     _reconnectTimer = Timer(delay, () async {
@@ -368,11 +415,25 @@ class FF1RelayerTransport implements FF1WifiTransport {
         return;
       }
 
-      _log.info('Attempting reconnect...');
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'ws_reconnect_attempt',
+        message: 'attempting reconnect',
+        payload: {
+          'deviceId': _device?.deviceId,
+          'attempt': _reconnectAttempts,
+        },
+      );
       try {
         await _connectInternal();
       } catch (e) {
-        _log.warning('Reconnect failed: $e');
+        _slog.warning(
+          category: LogCategory.wifi,
+          event: 'ws_reconnect_attempt_failed',
+          message: 'reconnect attempt failed',
+          payload: {'deviceId': _device?.deviceId, 'error': e.toString()},
+          error: e,
+        );
         // Will schedule another reconnect via disconnect event
       }
     });
