@@ -43,9 +43,12 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   /// Progress values to report via onProgress (e.g. [0.0, 0.5, 1.0]).
   List<double> progressValues = const [0.0, 0.5, 1.0];
 
-  /// When true (and forceReplace false), skips download (simulates ETag unchanged).
+  /// When true (and not forceReplace), skips download (ETag unchanged).
   /// onDownloadStarted is not called.
   bool skipDownload = false;
+
+  /// When true, sync returns false immediately (e.g. failed download, no file).
+  bool returnFalseWithoutDownload = false;
 
   /// When skipDownload is false, passed to onDownloadStarted. Use false for
   /// first install (emits syncing), true for update (no syncing).
@@ -68,6 +71,9 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   }) async {
     lastFailSilently = failSilently;
     syncCallCount++;
+    if (returnFalseWithoutDownload) {
+      return false;
+    }
     if (!forceReplace && skipDownload) {
       return false;
     }
@@ -77,8 +83,9 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
       remoteEtag: 'remote',
     );
     await beforeReplace();
-    for (final p in progressValues) {
-      onProgress?.call(p);
+    final progress = onProgress;
+    if (progress != null) {
+      progressValues.forEach(progress);
     }
     await afterReplace();
     return true;
@@ -253,7 +260,7 @@ void main() {
       ..hasLocalDatabase = true; // Update scenario, not first install.
     final states = <SeedDownloadState>[];
 
-    // User has completed seed download before; subsequent syncs run in background.
+    // User already completed seed download; syncs run in background.
     final container = ProviderContainer.test(
       overrides: [
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
@@ -261,8 +268,6 @@ void main() {
           _FakeAppStateService(initialHasCompletedSeedDownload: true),
         ),
         seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
-        // Snapshot uses [seedDatabaseServiceProvider], not the sync fake's
-        // hasLocalDatabase (UI only). Avoid real AppDatabase I/O in this test.
         _fakeSeedDbSvc(hasLocal: false),
       ],
     );
@@ -292,7 +297,8 @@ void main() {
         seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
         appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
         seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
-        _fakeSeedDbSvc(hasLocal: false),
+        // No replace (updated==false) but a seed file already exists on disk.
+        _fakeSeedDbSvc(hasLocal: true),
       ],
     );
     addTearDown(container.dispose);
@@ -311,6 +317,33 @@ void main() {
     );
     expect(syncingStates, isEmpty);
   });
+
+  test(
+    'does not complete SeedDatabaseGate when no local DB after sync',
+    () async {
+      final fakeSyncService = _FakeSeedDatabaseSyncService()
+        ..returnFalseWithoutDownload = true;
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          seedDatabaseServiceProvider.overrideWithValue(
+            _FakeSeedDatabaseService(hasLocal: false),
+          ),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(seedDownloadProvider.notifier).sync();
+
+      expect(SeedDatabaseGate.isCompleted, isFalse);
+      expect(
+        container.read(seedDownloadProvider).status,
+        SeedDownloadStatus.error,
+      );
+    },
+  );
 
   test('passes silent-fail flag through to sync service', () async {
     final fakeSyncService = _FakeSeedDatabaseSyncService();
@@ -627,9 +660,9 @@ class _SlowFakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
     bool Function()? isSessionActive,
   }) async {
     onDownloadStarted?.call(
-      hasLocalDatabase: delegate is _FakeSeedDatabaseSyncService
-          ? (delegate as _FakeSeedDatabaseSyncService).hasLocalDatabase
-          : false,
+      hasLocalDatabase:
+          delegate is _FakeSeedDatabaseSyncService &&
+          (delegate as _FakeSeedDatabaseSyncService).hasLocalDatabase,
       localEtag: 'local',
       remoteEtag: 'remote',
     );
@@ -638,7 +671,6 @@ class _SlowFakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
       beforeReplace: beforeReplace,
       afterReplace: afterReplace,
       forceReplace: forceReplace,
-      onDownloadStarted: null,
       onProgress: onProgress,
       failSilently: failSilently,
       isSessionActive: isSessionActive,

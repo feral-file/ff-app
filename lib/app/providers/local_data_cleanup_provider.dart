@@ -8,6 +8,7 @@ import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
+import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/playlist_details_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
@@ -77,6 +78,8 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     r.invalidate(worksProvider);
     r.invalidate(workDetailStateProvider);
     r.invalidate(favoritePlaylistServiceProvider);
+    r.invalidate(nowDisplayingCachedPlaylistItemsProvider);
+    r.invalidate(nowDisplayingProvider);
   }
 
   /// Invalidates providers that hold the database connection

@@ -12,8 +12,6 @@ import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
-import 'package:app/widgets/seed_sync_loading_indicator.dart'
-    show SeedSyncLoadingIndicator;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:uuid/uuid.dart';
@@ -283,12 +281,35 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         await appStateService.setHasCompletedSeedDownload(completed: true);
         await seedReadyNotifier.setReady();
         await _restorePreservedFavoritesAfterSuccessfulSeedReplace(session);
+        notifyForceReplaceFinished();
+        if (completeSeedDatabaseGate) {
+          SeedDatabaseGate.complete();
+        }
+        return updated;
       }
-      notifyForceReplaceFinished();
-      if (completeSeedDatabaseGate) {
-        SeedDatabaseGate.complete();
+
+      final seedOnDisk = await ref
+          .read(seedDatabaseServiceProvider)
+          .hasLocalDatabase();
+      if (seedOnDisk) {
+        notifyForceReplaceFinished();
+        if (completeSeedDatabaseGate) {
+          SeedDatabaseGate.complete();
+        }
+        return updated;
       }
-      return updated;
+
+      // Sync did not replace the file and none exists yet (e.g. first install
+      // offline): keep gate closed until a successful download.
+      const msg =
+          'Seed database file is missing after sync; waiting for a successful '
+          'download before opening the library database.';
+      _log.warning(msg);
+      notifyForceReplaceFinished(
+        success: false,
+        errorMessage: msg,
+      );
+      return false;
     } on Exception catch (e, st) {
       // Only clear this session's in-flight capture. Do not clear
       // [_pendingFavoriteSnapshots]: a superseded session may have enqueued
@@ -302,7 +323,10 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       );
       if (_isSessionActive(session)) {
         notifyForceReplaceFinished(success: false, errorMessage: e.toString());
-        if (completeSeedDatabaseGate) SeedDatabaseGate.complete();
+        if (completeSeedDatabaseGate &&
+            await ref.read(seedDatabaseServiceProvider).hasLocalDatabase()) {
+          SeedDatabaseGate.complete();
+        }
       }
       return false;
     } finally {
@@ -316,7 +340,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   }
 
   /// Notifies that a force-replace (e.g. Forget I Exist) has started.
-  /// Call from [forceReplaceDatabaseFromSeed] so tabs show [SeedSyncLoadingIndicator].
+  /// Call from the local-data cleanup force-replace flow for tab loading UI.
   void notifyForceReplaceStarted() {
     state = state.copyWith(
       status: SeedDownloadStatus.syncing,
@@ -331,7 +355,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     }
   }
 
-  /// Notifies that force-replace finished. Call after seed replacement completes.
+  /// Notifies that force-replace finished. Call after replacement completes.
   void notifyForceReplaceFinished({bool success = true, String? errorMessage}) {
     state = SeedDownloadState(
       status: success ? SeedDownloadStatus.done : SeedDownloadStatus.error,

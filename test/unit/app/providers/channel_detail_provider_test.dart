@@ -333,7 +333,7 @@ void main() {
 
       final sub = container.listen<AsyncValue<ChannelDetails>>(
         channelDetailsProvider('c1'),
-        (_, __) {},
+        (_, _) {},
         fireImmediately: true,
       );
       addTearDown(sub.close);
