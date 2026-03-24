@@ -230,11 +230,14 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       }
     }
 
-    // Enrich items in window: always try to fetch fresh tokens from indexer
-    // to allow upgrading cached fallback items to enriched when tokens become available.
+    // Enrich only items not already in cache to preserve offline-first contract.
+    // Cache misses are enriched from indexer; cache hits are served directly.
     final windowItems = items.sublist(start, end);
-    final enriched = windowItems.isNotEmpty
-        ? await _enrichMissingNowDisplayingItems(windowItems)
+    final missingItems = windowItems
+        .where((item) => !cachedById.containsKey(item.id))
+        .toList();
+    final enriched = missingItems.isNotEmpty
+        ? await _enrichMissingNowDisplayingItems(missingItems)
         : <String, PlaylistItem>{};
 
     // Build full list: window = enriched/cached/fallback; outside window = DP1 fallback only.
@@ -267,51 +270,48 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     );
   }
 
-  /// Fetches tokens for DP1 items from the indexer and persists all items
-  /// to the local cache (enriched with token data when available, or DP1 fallback).
+  /// Fetches tokens for missing DP1 items from the indexer and persists only
+  /// items with successful enrichment (token found) to the local cache.
+  ///
+  /// Only attempts enrichment for items not already in cache (cache-first contract).
+  /// Items without CID or those not found by indexer are not cached; they remain
+  /// as DP1 fallback in now-displaying but are not persisted to avoid stale data.
   /// 
-  /// Attempts enrichment for ALL items (not just missing), allowing cache to grow
-  /// as items are displayed. Items already cached are not overwritten (shouldForce: false).
+  /// On indexer failure, returns empty map; cached items are served normally,
+  /// preserving offline-first contract. Does not invalidate cache to avoid
+  /// infinite recompute loops.
   /// 
-  /// This ensures all items in now displaying bar are cached locally, allowing
-  /// seamless navigation even if enrichment is temporarily unavailable.
-  /// 
-  /// Does not invalidate the cache to avoid an infinite recompute loop.
-  /// Returns a map of item id to [PlaylistItem] for the newly saved items.
+  /// Returns a map of item id to enriched [PlaylistItem] for items successfully
+  /// saved to cache.
   Future<Map<String, PlaylistItem>> _enrichMissingNowDisplayingItems(
     List<DP1PlaylistItem> missing,
   ) async {
+    if (missing.isEmpty) return <String, PlaylistItem>{};
+
     final databaseService = ref.read(databaseServiceProvider);
     final indexerService = ref.read(indexerServiceProvider);
 
     final cids = databaseService.extractDP1ItemCids(missing);
-    if (cids.isEmpty) {
-      // No CIDs extractable, save all as DP1 fallback
+    if (cids.isEmpty) return <String, PlaylistItem>{};
+
+    try {
+      final tokens = await indexerService.getManualTokens(tokenCids: cids);
       final toSave = buildEnrichedPlaylistItemsToSave(
         missingItems: missing,
-        tokens: [],
+        tokens: tokens,
       );
-      if (toSave.isNotEmpty) {
-        await databaseService.upsertPlaylistItemsEnriched(
-          toSave,
-          shouldForce: false,
-        );
-      }
+      if (toSave.isEmpty) return <String, PlaylistItem>{};
+
+      await databaseService.upsertPlaylistItemsEnriched(
+        toSave,
+        shouldForce: false,
+      );
       return {for (final p in toSave) p.id: p};
+    } on Exception {
+      // On indexer failure, return empty map; cache-first contract
+      // ensures cached items are served from local state.
+      return <String, PlaylistItem>{};
     }
-
-    final tokens = await indexerService.getManualTokens(tokenCids: cids);
-    final toSave = buildEnrichedPlaylistItemsToSave(
-      missingItems: missing,
-      tokens: tokens,
-    );
-    if (toSave.isEmpty) return <String, PlaylistItem>{};
-
-    await databaseService.upsertPlaylistItemsEnriched(
-      toSave,
-      shouldForce: false,
-    );
-    return {for (final p in toSave) p.id: p};
   }
 }
 

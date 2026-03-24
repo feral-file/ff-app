@@ -4,11 +4,11 @@ import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/converters.dart';
 
 /// Builds the list of [PlaylistItem]s to persist from missing DP1 items and
-/// indexer tokens. Items are always saved, enriched with tokens when available
-/// or created from DP1 fallback data when token is missing.
+/// indexer tokens. Only items with tokens from indexer are saved; items not
+/// found in indexer are not cached, allowing them to be re-queried later.
 ///
-/// This ensures all items in now displaying bar are cached locally, allowing
-/// seamless navigation even if indexer is temporarily unavailable.
+/// This preserves the cache-first contract: only indexer-verified enriched
+/// data is cached locally.
 List<PlaylistItem> buildEnrichedPlaylistItemsToSave({
   required List<DP1PlaylistItem> missingItems,
   required List<AssetToken> tokens,
@@ -18,18 +18,15 @@ List<PlaylistItem> buildEnrichedPlaylistItemsToSave({
   final toSave = <PlaylistItem>[];
   for (final item in missingItems) {
     final cid = item.cid;
-    // Try to get enriched data from token if available
-    final token = cid != null ? tokensByCid[cid] : null;
-    
+    if (cid == null) {
+      // Item has no CID; cannot be enriched from indexer, skip it
+      continue;
+    }
+    // Only save items that have a token from indexer
+    final token = tokensByCid[cid];
     if (token != null) {
-      // Save with enriched token data
       toSave.add(
         DatabaseConverters.dp1PlaylistItemToPlaylistItem(item, token: token),
-      );
-    } else {
-      // Fall back to DP1 data without token enrichment
-      toSave.add(
-        DatabaseConverters.dp1PlaylistItemToPlaylistItem(item),
       );
     }
   }
