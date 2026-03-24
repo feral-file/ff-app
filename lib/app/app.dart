@@ -7,8 +7,13 @@ import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/force_update_provider.dart';
+import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
-import 'package:app/app/providers/seed_database_provider.dart';
+import 'package:app/app/providers/seed_database_provider.dart'
+    show
+        seedDatabaseServiceProvider,
+        seedDownloadProvider,
+        seedDownloadRetryProvider;
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/deeplink_handler.dart';
 import 'package:app/app/routing/router_provider.dart';
@@ -282,6 +287,22 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       _log.info(
         'Seed database sync at startup replaced file: $didReplaceSeedDatabase',
       );
+
+      final hasSeedFile = await ref
+          .read(seedDatabaseServiceProvider)
+          .hasLocalDatabase();
+      if (!hasSeedFile) {
+        // Gate stays incomplete; do not open Drift — run config + FF1 only so
+        // startup completes (onboarding / home) instead of blocking forever on
+        // SeedDatabaseGate.future inside AppDatabase._openConnection.
+        _log.warning(
+          'No local seed database yet; lightweight bootstrap only until '
+          'download succeeds.',
+        );
+        await ref.read(bootstrapProvider.notifier).bootstrapWithoutDp1Library();
+        return;
+      }
+
       await _recoverFromDatabaseResetIfNeeded();
 
       final bootstrap = ref.read(bootstrapProvider.notifier);
@@ -298,6 +319,9 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       await ref
           .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
           .runSyncAndWait();
+      if (didReplaceSeedDatabase) {
+        _refreshProvidersAfterSeedDatabaseReplace();
+      }
     } finally {
       if (!_bootstrapReadyCompleter.isCompleted) {
         _bootstrapReadyCompleter.complete();
@@ -386,12 +410,46 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     _isResumeSeedSyncInProgress = true;
 
     try {
-      await _syncSeedDatabaseIfNeeded(
+      final didReplaceSeedDatabase = await _syncSeedDatabaseIfNeeded(
         showUpdatingToast: false,
       );
+      if (didReplaceSeedDatabase) {
+        _refreshProvidersAfterSeedDatabaseReplace();
+      }
+      await _ensureDp1BootstrapAfterSeedIfPending();
     } finally {
       _isResumeSeedSyncInProgress = false;
     }
+  }
+
+  /// After seed download succeeds (retry / resume), finish My Collection + indexing
+  /// if we previously ran [BootstrapNotifier.bootstrapWithoutDp1Library].
+  Future<void> _ensureDp1BootstrapAfterSeedIfPending() async {
+    if (!mounted) {
+      return;
+    }
+    final notifier = ref.read(bootstrapProvider.notifier);
+    if (!notifier.pendingDp1BootstrapAfterSeed) {
+      return;
+    }
+    if (!await ref.read(seedDatabaseServiceProvider).hasLocalDatabase()) {
+      return;
+    }
+    try {
+      await _recoverFromDatabaseResetIfNeeded();
+      await notifier.bootstrap();
+      await _logStartupFeedState();
+      await ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider)();
+    } on Object catch (e, st) {
+      _log.warning('Post-seed DP1 bootstrap failed', e, st);
+    }
+  }
+
+  void _refreshProvidersAfterSeedDatabaseReplace() {
+    ref
+        .read(localDataCleanupServiceProvider)
+        .invalidateListProvidersBeforeDbClose
+        ?.call();
   }
 
   Future<bool> _syncSeedDatabaseAtStartup() async {
@@ -476,11 +534,10 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
   @override
   Widget build(BuildContext context) {
-    // Keep AppLifecycleNotifier alive so it can attach
-    // the WidgetsBinding observer.
-    ref.watch(appLifecycleProvider);
-    // Keep tracked addresses sync alive; watches ObjectBox TrackedAddressEntity.
-    ref.watch(trackedAddressesSyncProvider);
+    // Keep AppLifecycleNotifier + tracked-address sync alive for side effects.
+    ref
+      ..watch(appLifecycleProvider)
+      ..watch(trackedAddressesSyncProvider);
     return ProviderScope(
       overrides: [
         seedDownloadRetryProvider.overrideWithValue(() async {
@@ -488,6 +545,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
             showUpdatingToast: true,
             failSilently: false,
           );
+          await _ensureDp1BootstrapAfterSeedIfPending();
         }),
       ],
       child: widget.child,

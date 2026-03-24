@@ -107,7 +107,8 @@ class SeedDatabaseSyncService {
         }
       } on Exception catch (e, st) {
         _log.warning(
-          'Seed sync ETag check failed; falling back to shouldDownload=forceReplace.',
+          'Seed sync ETag check failed; '
+          'falling back to shouldDownload=forceReplace.',
           e,
           st,
         );
@@ -167,25 +168,31 @@ class SeedDatabaseSyncService {
             : 'Seed database installed.',
       );
       return true;
-    } on FormatException catch (e, st) {
+    } on FormatException catch (e) {
       if (!failSilently) rethrow;
+      // Message-only: avoid LoggingIntegration → Sentry for config issues.
       _log.warning(
-        'Seed database sync skipped due to invalid seed configuration (S3_*).',
-        e,
-        st,
+        'Seed database sync skipped due to invalid seed configuration '
+        '(S3_*): $e',
       );
       return false;
-    } on DioException catch (e, st) {
+    } on DioException catch (e) {
       if (!failSilently) rethrow;
-      _log.warning('Seed database sync skipped (network failure).', e, st);
+      _log.warning(
+        'Seed database sync skipped (network failure): ${e.message}',
+      );
       return false;
-    } on SocketException catch (e, st) {
+    } on SocketException catch (e) {
       if (!failSilently) rethrow;
-      _log.warning('Seed database sync skipped (offline).', e, st);
+      _log.warning('Seed database sync skipped (offline): $e');
       return false;
-    } on Exception catch (e, st) {
+    } on SeedDownloadException catch (e) {
       if (!failSilently) rethrow;
-      _log.warning('Seed database sync skipped.', e, st);
+      _log.warning('Seed database sync skipped (download failed): $e');
+      return false;
+    } on Exception catch (e) {
+      if (!failSilently) rethrow;
+      _log.warning('Seed database sync skipped: $e');
       return false;
     }
   }

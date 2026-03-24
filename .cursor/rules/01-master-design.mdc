@@ -40,3 +40,8 @@ Required direction:
 - Architecture boundaries remain intact after changes.
 - No hidden singleton business-flow state is introduced.
 - FF1 control logic changes do not require transport/protocol rewrites unless interface contracts changed.
+
+## 5) Planning sub-agent activation
+- Activate the planning/research sub-agent only when the feature feels both big and vague in requirements, and planning research is needed before safe implementation.
+- Do not activate the planning/research sub-agent when the user already provided a detailed plan with concrete steps and TODOs.
+- Do not activate the planning/research sub-agent for direct small code changes, narrow fixes, or clearly bounded edits.

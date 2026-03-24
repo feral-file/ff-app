@@ -104,6 +104,10 @@ class AppConfig {
     return url;
   }
 
+  /// Support API Key for authentication.
+  static String get supportApiKey =>
+      dotenv.get('SUPPORT_API_KEY', fallback: '');
+
   /// Remote config URL for app update (app_update section).
   static String get remoteConfigUrl => dotenv.get(
     'REMOTE_CONFIG_URL',

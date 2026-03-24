@@ -103,12 +103,71 @@ class BootstrapStatus {
 class BootstrapNotifier extends Notifier<BootstrapStatus> {
   late final Logger _log;
 
+  /// True after [bootstrapWithoutDp1Library] until a full [bootstrap] succeeds.
+  /// Used to run DP1 DB setup once the seed file appears (retry / resume).
+  bool _pendingDp1BootstrapAfterSeed = false;
+
+  /// Whether DP1 library bootstrap still needs to run after seed download.
+  bool get pendingDp1BootstrapAfterSeed => _pendingDp1BootstrapAfterSeed;
+
   @override
   BootstrapStatus build() {
     _log = Logger('BootstrapNotifier');
     return const BootstrapStatus(
       phase: BootstrapPhase.idle,
     );
+  }
+
+  /// Config + FF1 watcher only — no SQLite (seed not on disk yet).
+  ///
+  /// Call when the seed gate is still pending so we never open Drift.
+  /// Sets `pendingDp1BootstrapAfterSeed`; run full bootstrap after seed exists.
+  Future<void> bootstrapWithoutDp1Library() async {
+    if (state.phase.isInProgress) {
+      _log.info('Bootstrap already in progress');
+      return;
+    }
+
+    try {
+      state = const BootstrapStatus(
+        phase: BootstrapPhase.validatingConfiguration,
+        message: 'Initializing app...',
+      );
+
+      _log.info('Starting bootstrap without DP1 library (no seed file yet)');
+
+      if (!AppConfig.isValid) {
+        _log.severe('Invalid configuration: missing required keys');
+        throw Exception('Invalid configuration: missing required keys');
+      }
+      _log.info('Configuration is valid');
+
+      state = state.copyWith(
+        phase: BootstrapPhase.activatingAutoConnectWatcher,
+        message: 'Activating FF1 auto-connect watcher...',
+      );
+      ref.watch(ff1AutoConnectWatcherProvider);
+
+      state = const BootstrapStatus(
+        phase: BootstrapPhase.completed,
+        message: 'Bootstrap completed (library download pending)',
+      );
+      _pendingDp1BootstrapAfterSeed = true;
+    } on Exception catch (e, stack) {
+      if (_isOperationCancelled(e)) {
+        _log.info('Bootstrap cancelled');
+        state = const BootstrapStatus(
+          phase: BootstrapPhase.idle,
+        );
+        return;
+      }
+      _log.severe('Bootstrap failed', e, stack);
+      state = BootstrapStatus(
+        phase: BootstrapPhase.failed,
+        message: 'Bootstrap failed: $e',
+        error: e,
+      );
+    }
   }
 
   /// Run the bootstrap process.
@@ -164,6 +223,7 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
         phase: BootstrapPhase.completed,
         message: 'Bootstrap completed successfully',
       );
+      _pendingDp1BootstrapAfterSeed = false;
     } on Exception catch (e, stack) {
       if (_isOperationCancelled(e)) {
         _log.info('Bootstrap cancelled');
@@ -186,6 +246,7 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
     state = const BootstrapStatus(
       phase: BootstrapPhase.idle,
     );
+    _pendingDp1BootstrapAfterSeed = false;
   }
 }
 

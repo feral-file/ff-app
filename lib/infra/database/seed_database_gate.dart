@@ -1,16 +1,16 @@
 import 'dart:async';
 
 /// Gate that prevents the Drift database from opening until the seed file is
-/// placed on disk (or the download has definitively failed/been skipped).
+/// on disk or the user has an existing library file from a prior run.
 ///
-/// On a fresh install the seed database is downloaded in the background while
-/// the user goes through onboarding. `AppDatabase._openConnection` awaits
-/// `SeedDatabaseGate.future` before the `LazyDatabase` opens, so the first
-/// DB access either finds the seed file or — if download failed — creates a
-/// fresh empty database rather than racing with an in-progress download.
+/// On a fresh install the seed database is downloaded in the background.
+/// The app database open path awaits [future] before opening; [complete] is
+/// only called when `dp1_library.sqlite` exists (after seed download notifier).
+/// If the first download fails, the gate stays pending — the app must not open
+/// Drift without a seed file.
 ///
-/// Returning users already have the file: `main` calls [complete] at launch
-/// so there is zero wait on subsequent runs.
+/// Returning users already have the file: bootstrap calls [complete] at launch
+/// when the file exists, so there is zero wait on subsequent runs.
 class SeedDatabaseGate {
   SeedDatabaseGate._();
 
