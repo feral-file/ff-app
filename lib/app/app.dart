@@ -300,8 +300,9 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
         'Seed database sync at startup replaced file: $didReplaceSeedDatabase',
       );
 
-      final hasSeedFile =
-          await ref.read(seedDatabaseServiceProvider).hasLocalDatabase();
+      final hasSeedFile = await ref
+          .read(seedDatabaseServiceProvider)
+          .hasLocalDatabase();
       if (!hasSeedFile) {
         // Gate stays incomplete; do not open Drift — run config + FF1 only so
         // startup completes (onboarding / home) instead of blocking forever on
