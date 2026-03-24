@@ -112,9 +112,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       return;
     }
 
-    final factory = ref.read(ff1ConnectSessionFactoryProvider);
-    final session = factory.createSession();
-    _activeSession = session;
+    final session = _startNewSession();
 
     final control = ref.read(ff1ControlProvider);
     var blDevice = bluetoothDevice;
@@ -417,6 +415,24 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     if (_activeSession?.id == session.id) {
       _activeSession = null;
     }
+  }
+
+  FF1ConnectSession _startNewSession() {
+    final previous = _activeSession;
+    if (previous != null) {
+      // A new attempt supersedes any in-flight attempt. Cancel immediately so
+      // waits such as BT-ready are unblocked instead of hanging until a later
+      // active-session assertion point.
+      if (!previous.isTerminal) {
+        previous.completeWithOutcome(FF1ConnectOutcome.cancelled);
+      }
+      previous.cancel();
+    }
+
+    final factory = ref.read(ff1ConnectSessionFactoryProvider);
+    final session = factory.createSession();
+    _activeSession = session;
+    return session;
   }
 }
 

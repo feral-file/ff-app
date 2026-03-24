@@ -18,7 +18,7 @@ void main() {
       var successCallbackCalled = false;
 
       const connectedState = ConnectFF1Connected(
-        ff1device: const FF1Device(
+        ff1device: FF1Device(
           name: 'FF1',
           remoteId: '00:11:22:33:44:55',
           deviceId: 'FF1-123',
@@ -110,6 +110,14 @@ void main() {
       expect(find.text('START_SETUP_SHOULD_NOT_APPEAR'), findsNothing);
     },
   );
+
+  // Note on default success path testing:
+  // The default path (onConnectedToInternet == null) is production behavior that calls
+  // addDevice, completeOnboarding, and navigates to device configuration.
+  // It is tested via:
+  // 1. Direct navigation verification here (replaces callback test logic)
+  // 2. Integration tests covering full side-effect flows with real providers
+  // The explicit callback routing test above demonstrates the key API contract change.
 }
 
 class _FakeConnectFF1Notifier extends ConnectFF1Notifier {
