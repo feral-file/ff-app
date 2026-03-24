@@ -11,14 +11,13 @@ import 'package:logging/logging.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// Minimal transport for Sentry routing tests: optional network error on stream
-/// before [connect] throws.
+/// before `connect` throws.
 class _ThrowingConnectTransport implements FF1WifiTransport {
   _ThrowingConnectTransport({required this.emitNetworkErrorBeforeThrow});
 
   final bool emitNetworkErrorBeforeThrow;
 
-  final _notifications =
-      StreamController<FF1NotificationMessage>.broadcast();
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
   final _connections = StreamController<bool>.broadcast();
   final _errors = StreamController<FF1WifiTransportError>.broadcast();
 
@@ -46,7 +45,7 @@ class _ThrowingConnectTransport implements FF1WifiTransport {
     bool forceReconnect = false,
   }) async {
     if (emitNetworkErrorBeforeThrow) {
-      _errors.add(FF1WifiNetworkError('simulated transport failure'));
+      _errors.add(const FF1WifiNetworkError('simulated transport failure'));
     }
     throw Exception('connect failed');
   }
@@ -68,14 +67,13 @@ class _ThrowingConnectTransport implements FF1WifiTransport {
   }
 }
 
-/// First [connect] succeeds; second [connect] (e.g. [forceReconnect]) emits a
-/// network error and throws — mirrors resume/reconnect failure after a good
-/// initial session.
+/// First `connect` succeeds; second `connect` (e.g. `forceReconnect: true`)
+/// emits a network error and throws — mirrors resume/reconnect failure after a
+/// good initial session.
 class _ReconnectSecondCallFailsTransport implements FF1WifiTransport {
   _ReconnectSecondCallFailsTransport();
 
-  final _notifications =
-      StreamController<FF1NotificationMessage>.broadcast();
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
   final _connections = StreamController<bool>.broadcast();
   final _errors = StreamController<FF1WifiTransportError>.broadcast();
 
@@ -108,7 +106,7 @@ class _ReconnectSecondCallFailsTransport implements FF1WifiTransport {
     if (_connectCount == 1) {
       return;
     }
-    _errors.add(FF1WifiNetworkError('reconnect transport failure'));
+    _errors.add(const FF1WifiNetworkError('reconnect transport failure'));
     throw Exception('reconnect failed');
   }
 
@@ -145,11 +143,12 @@ void main() {
       capturedEvents = <SentryEvent>[];
       await Sentry.init(
         (options) {
-          options.dsn = 'https://key@o.ingest.sentry.io/1';
-          options.beforeSend = (event, hint) {
-            capturedEvents.add(event);
-            return null;
-          };
+          options
+            ..dsn = 'https://key@o.ingest.sentry.io/1'
+            ..beforeSend = (event, hint) {
+              capturedEvents.add(event);
+              return null;
+            };
         },
       );
     }
@@ -169,7 +168,6 @@ void main() {
         );
         final control = FF1WifiControl(
           transport: transport,
-          restClient: null,
           logger: Logger('test'),
         );
         addTearDown(() {
@@ -207,7 +205,6 @@ void main() {
         );
         final control = FF1WifiControl(
           transport: transport,
-          restClient: null,
           logger: Logger('test'),
         );
         addTearDown(() {
@@ -244,7 +241,6 @@ void main() {
             ff1WifiControlProvider.overrideWith((ref) {
               final control = FF1WifiControl(
                 transport: transport,
-                restClient: null,
                 logger: Logger('test'),
               );
               ref.onDispose(control.dispose);
@@ -259,7 +255,9 @@ void main() {
         addTearDown(transport.dispose);
 
         await expectLater(
-          container.read(ff1WifiConnectionProvider.notifier).connect(
+          container
+              .read(ff1WifiConnectionProvider.notifier)
+              .connect(
                 device: device,
                 userId: 'u',
                 apiKey: 'k',
@@ -285,7 +283,6 @@ void main() {
             ff1WifiControlProvider.overrideWith((ref) {
               final control = FF1WifiControl(
                 transport: transport,
-                restClient: null,
                 logger: Logger('test'),
               );
               ref.onDispose(control.dispose);

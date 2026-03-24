@@ -20,9 +20,10 @@ class _TestDeviceFlagNotifier extends Notifier<bool> {
   void setValue(bool value) => state = value;
 }
 
-final _testTransportConnected = NotifierProvider<_TestTransportFlagNotifier, bool>(
-  _TestTransportFlagNotifier.new,
-);
+final _testTransportConnected =
+    NotifierProvider<_TestTransportFlagNotifier, bool>(
+      _TestTransportFlagNotifier.new,
+    );
 
 final _testDeviceConnected = NotifierProvider<_TestDeviceFlagNotifier, bool>(
   _TestDeviceFlagNotifier.new,
@@ -37,11 +38,12 @@ void main() {
       capturedEvents = <SentryEvent>[];
       await Sentry.init(
         (options) {
-          options.dsn = 'https://key@o.ingest.sentry.io/1';
-          options.beforeSend = (event, hint) {
-            capturedEvents.add(event);
-            return null;
-          };
+          options
+            ..dsn = 'https://key@o.ingest.sentry.io/1'
+            ..beforeSend = (event, hint) {
+              capturedEvents.add(event);
+              return null;
+            };
         },
       );
     }
@@ -83,7 +85,7 @@ void main() {
 
           container.listen(
             ff1ConnectionDiscrepancyWatcherProvider,
-            (_, __) {},
+            (_, _) {},
             fireImmediately: true,
           );
 
@@ -113,7 +115,7 @@ void main() {
 
           container.listen(
             ff1ConnectionDiscrepancyWatcherProvider,
-            (_, __) {},
+            (_, _) {},
             fireImmediately: true,
           );
 
@@ -144,7 +146,7 @@ void main() {
 
           container.listen(
             ff1ConnectionDiscrepancyWatcherProvider,
-            (_, __) {},
+            (_, _) {},
             fireImmediately: true,
           );
 
@@ -163,30 +165,33 @@ void main() {
       },
     );
 
-    test('does not send a second Sentry event after timer has already fired', () async {
-      await initSentryHarness();
+    test(
+      'does not send a second Sentry event after timer has already fired',
+      () async {
+        await initSentryHarness();
 
-      FakeAsync().run((async) {
-        final container = createContainer();
-        addTearDown(container.dispose);
+        FakeAsync().run((async) {
+          final container = createContainer();
+          addTearDown(container.dispose);
 
-        container.listen(
-          ff1ConnectionDiscrepancyWatcherProvider,
-          (_, __) {},
-          fireImmediately: true,
-        );
+          container.listen(
+            ff1ConnectionDiscrepancyWatcherProvider,
+            (_, _) {},
+            fireImmediately: true,
+          );
 
-        setFlags(container, transport: true, device: false);
-        async.flushMicrotasks();
+          setFlags(container, transport: true, device: false);
+          async.flushMicrotasks();
 
-        async.elapse(ff1ConnectionDiscrepancyThreshold);
-        async.flushMicrotasks();
-        expect(capturedEvents, hasLength(1));
+          async.elapse(ff1ConnectionDiscrepancyThreshold);
+          async.flushMicrotasks();
+          expect(capturedEvents, hasLength(1));
 
-        async.elapse(ff1ConnectionDiscrepancyThreshold);
-        async.flushMicrotasks();
-        expect(capturedEvents, hasLength(1));
-      });
-    });
+          async.elapse(ff1ConnectionDiscrepancyThreshold);
+          async.flushMicrotasks();
+          expect(capturedEvents, hasLength(1));
+        });
+      },
+    );
   });
 }

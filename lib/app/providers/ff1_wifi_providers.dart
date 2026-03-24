@@ -561,7 +561,10 @@ class FF1ConnectionDiscrepancyWatcher extends Notifier<void> {
       // Arm the timer once per gap opening — field persists across rebuilds
       // so subsequent dependency-change rebuilds while the gap is still open
       // will hit the already-running timer and skip re-arming.
-      _timer ??= Timer(ff1ConnectionDiscrepancyThreshold, _onDiscrepancyDetected);
+      _timer ??= Timer(
+        ff1ConnectionDiscrepancyThreshold,
+        _onDiscrepancyDetected,
+      );
     } else {
       // Gap closed (transport dropped or device confirmed connected).
       _cancelTimer();
