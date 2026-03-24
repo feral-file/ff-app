@@ -270,16 +270,14 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   /// Fetches tokens for DP1 items from the indexer and persists all items
   /// to the local cache (enriched with token data when available, or DP1 fallback).
   /// 
-  /// Attempts enrichment for ALL items (not just missing), allowing cached fallback
-  /// items to be upgraded to enriched when tokens become available later
-  /// (e.g., after previous indexer timeout).
+  /// Attempts enrichment for ALL items (not just missing), allowing cache to grow
+  /// as items are displayed. Items already cached are not overwritten (shouldForce: false).
   /// 
   /// This ensures all items in now displaying bar are cached locally, allowing
   /// seamless navigation even if enrichment is temporarily unavailable.
   /// 
-  /// Uses shouldForce: true to allow upgrading fallback items to enriched.
   /// Does not invalidate the cache to avoid an infinite recompute loop.
-  /// Returns a map of item id to [PlaylistItem] for the saved/enriched items.
+  /// Returns a map of item id to [PlaylistItem] for the newly saved items.
   Future<Map<String, PlaylistItem>> _enrichMissingNowDisplayingItems(
     List<DP1PlaylistItem> missing,
   ) async {
@@ -296,6 +294,7 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       if (toSave.isNotEmpty) {
         await databaseService.upsertPlaylistItemsEnriched(
           toSave,
+          shouldForce: false,
         );
       }
       return {for (final p in toSave) p.id: p};
@@ -310,6 +309,7 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
 
     await databaseService.upsertPlaylistItemsEnriched(
       toSave,
+      shouldForce: false,
     );
     return {for (final p in toSave) p.id: p};
   }
