@@ -47,7 +47,10 @@ class FF1WifiControl {
   }) : _transport = transport,
        _restClient = restClient,
        _log = logger ?? Logger('FF1WifiControl') {
-    _slog = AppStructuredLog.forLogger(_log, context: {'component': 'ff1_wifi_control'});
+    _slog = AppStructuredLog.forLogger(
+      _log,
+      context: {'component': 'ff1_wifi_control'},
+    );
     _startListening();
   }
 
@@ -151,6 +154,17 @@ class FF1WifiControl {
   /// Check if transport is connected
   bool get isConnected => _transport.isConnected;
 
+  /// Emits the current transport connected flag, then every change from
+  /// `FF1WifiTransport.connectionStateStream`.
+  ///
+  /// The first value mirrors the transport's `isConnected` because connection
+  /// streams are typically broadcast and do not replay, so listeners would
+  /// otherwise miss the current state until the next edge.
+  Stream<bool> transportConnectionStates() async* {
+    yield _transport.isConnected;
+    yield* _transport.connectionStateStream;
+  }
+
   /// Check if transport is currently connecting
   bool get isConnecting => _transport.isConnecting;
 
@@ -244,8 +258,8 @@ class FF1WifiControl {
       // NOT updated here — it will only change once the device sends a
       // FF1NotificationType.connection notification. This gap (transport up,
       // device-level still false) is the root cause of the false "Device not
-      // connected" display after reconnect and is tracked by
-      // ff1ConnectionDiscrepancyWatcherProvider.
+      // connected" display after reconnect; app-layer telemetry compares live
+      // WebSocket state (not the connection notifier cache) to this flag.
       _slog.info(
         category: LogCategory.wifi,
         event: 'transport_connected',
@@ -267,7 +281,9 @@ class FF1WifiControl {
 
   /// Sends transport errors to Sentry. Network errors use a warning event to
   /// limit noise from transient WebSocket failures.
-  Future<void> _reportTransportErrorToSentry(FF1WifiTransportError error) async {
+  Future<void> _reportTransportErrorToSentry(
+    FF1WifiTransportError error,
+  ) async {
     if (error is FF1WifiNetworkError) {
       await Sentry.captureEvent(
         SentryEvent(
@@ -325,7 +341,8 @@ class FF1WifiControl {
       _slog.info(
         category: LogCategory.wifi,
         event: 'reconnect_transport_ok',
-        message: 'transport reconnected — waiting for device connection notification',
+        message:
+            'transport reconnected — waiting for device connection notification',
         payload: {
           'deviceId': _device?.deviceId,
           'isDeviceConnected': _isDeviceConnected,

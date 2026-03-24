@@ -355,6 +355,31 @@ final ff1DeviceConnectedProvider = Provider<bool>((ref) {
   );
 });
 
+/// Stream of transport-level (e.g. WebSocket) connected from `FF1WifiControl`.
+///
+/// Unlike [ff1WifiConnectionProvider], this tracks real transport up/down
+/// events from `FF1WifiTransport.connectionStateStream` (seeded with the
+/// current flag) so unexpected drops are visible immediately.
+final ff1WifiTransportConnectedStreamProvider = StreamProvider<bool>((ref) {
+  final control = ref.watch(ff1WifiControlProvider);
+  return control.transportConnectionStates();
+});
+
+/// Latest transport (WebSocket) connected flag aligned with the transport
+/// layer.
+///
+/// Do not substitute `FF1WifiConnectionNotifier.isConnected` here: that
+/// value is only updated by connect / reconnect / pause / disconnect and can
+/// stay true after an unhandled socket drop.
+final ff1WifiTransportConnectedProvider = Provider<bool>((ref) {
+  final async = ref.watch(ff1WifiTransportConnectedStreamProvider);
+  return async.when(
+    data: (connected) => connected,
+    loading: () => ref.read(ff1WifiControlProvider).isConnected,
+    error: (_, _) => false,
+  );
+});
+
 /// Whether WebSocket connection to relayer is in progress.
 ///
 /// Used by now displaying bar to show "Connecting to FF1-XXX" during connect.
@@ -531,8 +556,8 @@ ff1WifiSendCommandProvider = FutureProvider.autoDispose
 // Connection discrepancy watcher
 // ============================================================================
 
-/// How long the transport can be connected while device-level "connected" is
-/// false before we consider it a discrepancy worth reporting.
+/// How long actual transport (WebSocket) can be up while device-level
+/// "connected" is false before we consider it a discrepancy worth reporting.
 const _kDiscrepancyThreshold = Duration(seconds: 10);
 
 /// Notifier backing [ff1ConnectionDiscrepancyWatcherProvider].
@@ -541,19 +566,24 @@ const _kDiscrepancyThreshold = Duration(seconds: 10);
 /// A `Provider` body re-runs on each watched dependency change, which would
 /// silently drop a locally-scoped timer; a `Notifier` field survives rebuilds.
 class FF1ConnectionDiscrepancyWatcher extends Notifier<void> {
-  final _log = Logger('FF1ConnectionDiscrepancyWatcher');
-  late final StructuredLogger _slog;
+  /// Shared [Logger] for structured log wiring; must be static so [_slog] can
+  /// be initialized in a field initializer (instance members are not allowed
+  /// there).
+  static final _log = Logger('FF1ConnectionDiscrepancyWatcher');
+
+  // Initialized once at notifier construction — not in build(), which re-runs
+  // on every watched dependency change (re-assigning `late final` would throw).
+  final StructuredLogger _slog = AppStructuredLog.forLogger(
+    _log,
+    context: {'component': 'ff1_discrepancy_watcher'},
+  );
   Timer? _timer;
 
   @override
   void build() {
-    _slog = AppStructuredLog.forLogger(
-      _log,
-      context: {'component': 'ff1_discrepancy_watcher'},
-    );
-
-    // Watch the transport-level connection (WebSocket up/down).
-    final transportConnected = ref.watch(ff1WifiConnectionProvider).isConnected;
+    // Transport truth from WebSocket events — not [ff1WifiConnectionProvider],
+    // whose isConnected is only updated by explicit notifier calls.
+    final transportConnected = ref.watch(ff1WifiTransportConnectedProvider);
     // Watch the device-level connection notification (FF1 connection message).
     final deviceConnected = ref.watch(ff1DeviceConnectedProvider);
 
@@ -580,7 +610,7 @@ class FF1ConnectionDiscrepancyWatcher extends Notifier<void> {
 
     // Re-read to confirm the discrepancy still exists at fire time; the timer
     // fires asynchronously so state may have resolved by then.
-    final stillTransportUp = ref.read(ff1WifiConnectionProvider).isConnected;
+    final stillTransportUp = ref.read(ff1WifiTransportConnectedProvider);
     final stillDeviceDown = !ref.read(ff1DeviceConnectedProvider);
     if (!stillTransportUp || !stillDeviceDown) {
       return;
@@ -612,9 +642,10 @@ class FF1ConnectionDiscrepancyWatcher extends Notifier<void> {
 
 /// Connection discrepancy watcher provider.
 ///
-/// Watches both the WebSocket transport state and the device-level connection
-/// notification state. When the transport is up but the device has not
-/// confirmed "connected" within [_kDiscrepancyThreshold], captures a Sentry
+/// Watches [ff1WifiTransportConnectedProvider] (live WebSocket state) and
+/// [ff1DeviceConnectedProvider] (device connection notifications). When the
+/// transport is up but the device has not confirmed "connected" within
+/// [_kDiscrepancyThreshold], captures a Sentry
 /// event so we can track the frequency and circumstances of the false
 /// "Device not connected" UI state in production.
 ///
