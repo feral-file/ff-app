@@ -219,11 +219,15 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       } else {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          unawaited(
-            widget.router.pushReplacement(
-              Routes.startSetupFf1,
-              extra: StartSetupFf1PagePayload(deeplink: action.link),
-            ),
+          _log.info(
+            'Handling deeplink go to Routes.startSetupFf1',
+          );
+          // Use go() instead of pushReplacement() because Android cold start
+          // can deliver an app link before GoRouter has an active top route.
+          // pushReplacement requires an existing route to replace.
+          widget.router.go(
+            Routes.startSetupFf1,
+            extra: StartSetupFf1PagePayload(deeplink: action.link),
           );
         });
       }
