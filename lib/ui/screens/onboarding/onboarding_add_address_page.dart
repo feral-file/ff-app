@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/addresses_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -44,6 +45,8 @@ class OnboardingAddAddressPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final actionGate = ref.watch(onboardingAddAddressActionGateProvider);
+
     return Scaffold(
       backgroundColor: PrimitivesTokens.colorsDarkGrey,
       appBar: const SetupAppBar(
@@ -67,11 +70,19 @@ class OnboardingAddAddressPage extends ConsumerWidget {
             ),
             SizedBox(height: ContentRhythm.titleSupportGap),
             const _AddressList(),
+            if (actionGate.message != null) ...[
+              SizedBox(height: ContentRhythm.titleSupportGap),
+              Text(
+                actionGate.message!,
+                style: ContentRhythm.supporting(context),
+              ),
+            ],
           ],
         ),
         primaryAction: OnboardingShellAction(
           key: GoldPathPatrolKeys.onboardingAddAddressPrimary,
           onPressed: () => _onAddAddressPressed(context),
+          enabled: actionGate.actionsEnabled,
           child: Row(
             children: [
               SvgPicture.asset(
@@ -92,15 +103,22 @@ class OnboardingAddAddressPage extends ConsumerWidget {
         secondaryAction: OnboardingShellAction(
           key: GoldPathPatrolKeys.onboardingAddAddressSecondary,
           onPressed: () => _onNext(context, ref),
+          enabled: actionGate.actionsEnabled,
           child: Consumer(
             builder: (context, ref, _) {
               final addressesAsync = ref.watch(addressesProvider);
               final addresses = addressesAsync.value ?? [];
+              final actionGate = ref.watch(
+                onboardingAddAddressActionGateProvider,
+              );
+              final label = actionGate.actionsEnabled
+                  ? (addresses.isEmpty ? 'Skip for now' : 'Next')
+                  : 'Please wait';
 
               return Row(
                 children: [
                   Text(
-                    addresses.isEmpty ? 'Skip for now' : 'Next',
+                    label,
                     style: AppTypography.body(context).lightBlue,
                   ),
                   SizedBox(width: LayoutConstants.space2),
@@ -116,7 +134,9 @@ class OnboardingAddAddressPage extends ConsumerWidget {
             },
           ),
         ),
-        hintText: 'You can always add addresses later.',
+        hintText: actionGate.actionsEnabled
+            ? 'You can always add addresses later.'
+            : 'Address adds stay disabled while startup sync settles.',
       ),
     );
   }

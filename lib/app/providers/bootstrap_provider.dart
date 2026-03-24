@@ -1,5 +1,6 @@
 import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -74,6 +75,7 @@ class BootstrapStatus {
     required this.phase,
     this.message,
     this.error,
+    this.pendingDp1BootstrapAfterSeed = false,
   });
 
   /// Current typed bootstrap phase.
@@ -85,19 +87,56 @@ class BootstrapStatus {
   /// Optional error if bootstrap failed.
   final Object? error;
 
+  /// True after lightweight bootstrap while full DP-1 bootstrap is deferred
+  /// until a later successful seed download.
+  final bool pendingDp1BootstrapAfterSeed;
+
   /// Copy with new values.
   BootstrapStatus copyWith({
     BootstrapPhase? phase,
     String? message,
     Object? error,
+    bool? pendingDp1BootstrapAfterSeed,
   }) {
     return BootstrapStatus(
       phase: phase ?? this.phase,
       message: message ?? this.message,
       error: error ?? this.error,
+      pendingDp1BootstrapAfterSeed:
+          pendingDp1BootstrapAfterSeed ?? this.pendingDp1BootstrapAfterSeed,
     );
   }
 }
+
+/// Onboarding-facing gate phases for startup seed/bootstrap coordination.
+enum BootstrapSeedSyncGatePhase {
+  /// Seed sync is settled and onboarding may proceed normally.
+  gateOpen,
+
+  /// Seed sync is actively running, so onboarding actions should wait.
+  syncInProgress,
+
+  /// Lightweight bootstrap completed without a seed file; onboarding may
+  /// proceed and queued address writes will recover after a later seed sync.
+  deferredRecovery,
+}
+
+/// Derived seed/bootstrap handshake state for UI and tests.
+final bootstrapSeedSyncGatePhaseProvider = Provider<BootstrapSeedSyncGatePhase>(
+  (ref) {
+    final seedDownload = ref.watch(seedDownloadProvider);
+    if (seedDownload.isSyncInProgress) {
+      return BootstrapSeedSyncGatePhase.syncInProgress;
+    }
+
+    final bootstrap = ref.watch(bootstrapProvider);
+    if (bootstrap.pendingDp1BootstrapAfterSeed) {
+      return BootstrapSeedSyncGatePhase.deferredRecovery;
+    }
+
+    return BootstrapSeedSyncGatePhase.gateOpen;
+  },
+);
 
 /// Notifier for managing the bootstrap process.
 class BootstrapNotifier extends Notifier<BootstrapStatus> {
@@ -151,6 +190,7 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       state = const BootstrapStatus(
         phase: BootstrapPhase.completed,
         message: 'Bootstrap completed (library download pending)',
+        pendingDp1BootstrapAfterSeed: true,
       );
       _pendingDp1BootstrapAfterSeed = true;
     } on Exception catch (e, stack) {
@@ -166,6 +206,7 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
         phase: BootstrapPhase.failed,
         message: 'Bootstrap failed: $e',
         error: e,
+        pendingDp1BootstrapAfterSeed: _pendingDp1BootstrapAfterSeed,
       );
     }
   }
@@ -237,6 +278,7 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
         phase: BootstrapPhase.failed,
         message: 'Bootstrap failed: $e',
         error: e,
+        pendingDp1BootstrapAfterSeed: _pendingDp1BootstrapAfterSeed,
       );
     }
   }

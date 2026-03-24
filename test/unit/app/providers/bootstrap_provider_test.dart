@@ -1,5 +1,6 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart';
+import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/database/app_database.dart';
@@ -181,6 +182,50 @@ void main() {
       },
     );
 
+    test('bootstrap gate opens by default when sync is settled', () {
+      final container = ProviderContainer.test();
+      addTearDown(container.dispose);
+
+      expect(
+        container.read(bootstrapSeedSyncGatePhaseProvider),
+        BootstrapSeedSyncGatePhase.gateOpen,
+      );
+    });
+
+    test(
+      'bootstrap gate reports sync-in-progress while seed sync is active',
+      () {
+        final container = ProviderContainer.test(
+          overrides: [
+            seedDownloadProvider.overrideWith(_SyncingSeedDownloadNotifier.new),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        expect(
+          container.read(bootstrapSeedSyncGatePhaseProvider),
+          BootstrapSeedSyncGatePhase.syncInProgress,
+        );
+      },
+    );
+
+    test(
+      'bootstrap gate reports deferred recovery after lightweight bootstrap',
+      () async {
+        final container = ProviderContainer.test();
+        addTearDown(container.dispose);
+
+        await container
+            .read(bootstrapProvider.notifier)
+            .bootstrapWithoutDp1Library();
+
+        expect(
+          container.read(bootstrapSeedSyncGatePhaseProvider),
+          BootstrapSeedSyncGatePhase.deferredRecovery,
+        );
+      },
+    );
+
     test('demonstrates mocking BootstrapService', () async {
       final db = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(db.close);
@@ -281,4 +326,15 @@ class _MockBootstrapService implements BootstrapService {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _SyncingSeedDownloadNotifier extends SeedDownloadNotifier {
+  @override
+  SeedDownloadState build() {
+    return const SeedDownloadState(
+      status: SeedDownloadStatus.syncing,
+      progress: 0.5,
+      isSyncInProgress: true,
+    );
+  }
 }

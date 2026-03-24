@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart'
     show databaseServiceProvider, rawDatabaseServiceProvider;
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
@@ -80,6 +83,36 @@ class _TwoPhaseStartupSeedSync implements SeedDatabaseSyncService {
   }
 }
 
+/// Blocks until the test allows the seed sync to finish.
+class _BlockingStartupSeedSync implements SeedDatabaseSyncService {
+  _BlockingStartupSeedSync(this._finishCompleter);
+
+  final Completer<bool> _finishCompleter;
+
+  @override
+  Future<bool> sync({
+    required Future<void> Function() beforeReplace,
+    required Future<void> Function() afterReplace,
+    bool forceReplace = false,
+    void Function({
+      required bool hasLocalDatabase,
+      String? localEtag,
+      String? remoteEtag,
+    })?
+    onDownloadStarted,
+    void Function(double progress)? onProgress,
+    bool failSilently = false,
+    bool Function()? isSessionActive,
+  }) async {
+    onDownloadStarted?.call(
+      hasLocalDatabase: false,
+      localEtag: null,
+      remoteEtag: 'remote',
+    );
+    return _finishCompleter.future;
+  }
+}
+
 class _IntegrationSeedDbSvc extends SeedDatabaseService {
   _IntegrationSeedDbSvc() : super();
 
@@ -100,6 +133,16 @@ class _MockBootstrapService implements BootstrapService {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _DeferredRecoveryBootstrapNotifier extends BootstrapNotifier {
+  @override
+  BootstrapStatus build() {
+    return const BootstrapStatus(
+      phase: BootstrapPhase.completed,
+      pendingDp1BootstrapAfterSeed: true,
+    );
+  }
 }
 
 void main() {
@@ -171,6 +214,74 @@ void main() {
               .read(bootstrapProvider.notifier)
               .pendingDp1BootstrapAfterSeed,
           isFalse,
+        );
+      },
+    );
+
+    test(
+      'onboarding gate defers actions while seed sync is in flight and '
+      're-opens during deferred recovery',
+      () async {
+        final provisionedEnvFile = await provisionIntegrationEnvFile();
+        addTearDown(() async {
+          final parent = provisionedEnvFile.parent;
+          if (parent.existsSync()) {
+            await parent.delete(recursive: true);
+          }
+        });
+
+        SeedDatabaseGate.resetForTesting();
+
+        final finishSync = Completer<bool>();
+        final syncFake = _BlockingStartupSeedSync(finishSync);
+        final seedSvc = _IntegrationSeedDbSvc();
+        final syncingContainer = ProviderContainer.test(
+          overrides: [
+            seedDatabaseSyncServiceProvider.overrideWithValue(syncFake),
+            seedDatabaseServiceProvider.overrideWithValue(seedSvc),
+            appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+            seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+          ],
+        );
+        addTearDown(syncingContainer.dispose);
+
+        final syncFuture = syncingContainer
+            .read(seedDownloadProvider.notifier)
+            .sync();
+        await Future<void>.delayed(Duration.zero);
+
+        expect(
+          syncingContainer.read(bootstrapSeedSyncGatePhaseProvider),
+          BootstrapSeedSyncGatePhase.syncInProgress,
+        );
+        expect(
+          syncingContainer
+              .read(onboardingAddAddressActionGateProvider)
+              .actionsEnabled,
+          isFalse,
+        );
+
+        finishSync.complete(false);
+        await syncFuture;
+
+        final deferredRecoveryContainer = ProviderContainer.test(
+          overrides: [
+            bootstrapProvider.overrideWith(
+              _DeferredRecoveryBootstrapNotifier.new,
+            ),
+          ],
+        );
+        addTearDown(deferredRecoveryContainer.dispose);
+
+        expect(
+          deferredRecoveryContainer.read(bootstrapSeedSyncGatePhaseProvider),
+          BootstrapSeedSyncGatePhase.deferredRecovery,
+        );
+        expect(
+          deferredRecoveryContainer
+              .read(onboardingAddAddressActionGateProvider)
+              .actionsEnabled,
+          isTrue,
         );
       },
     );
