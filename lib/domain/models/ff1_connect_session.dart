@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:app/domain/models/ff1_error.dart';
+
 /// Terminal outcome of an FF1 connect attempt.
 enum FF1ConnectOutcome {
   /// Device connected with portal already set; ready for device config.
@@ -72,7 +74,7 @@ class FF1ConnectSession {
     _timer?.cancel();
     if (!(_btReadyCompleter?.isCompleted ?? true)) {
       _btReadyCompleter?.completeError(
-        const _FF1SessionCancelledError(),
+        const FF1ConnectionCancelledError(),
       );
     }
   }
@@ -94,14 +96,6 @@ class FF1ConnectSession {
   set btReadyCompleter(Completer<void> completer) {
     _btReadyCompleter = completer;
   }
-}
-
-/// Internal error used to signal session cancellation to waiting futures.
-class _FF1SessionCancelledError implements Exception {
-  const _FF1SessionCancelledError();
-
-  @override
-  String toString() => 'FF1 session cancelled';
 }
 
 /// Factory for creating new FF1 connect sessions with auto-incrementing IDs.
