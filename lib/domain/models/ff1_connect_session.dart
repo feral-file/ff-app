@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 
 /// Terminal outcome of an FF1 connect attempt.
 enum FF1ConnectOutcome {
@@ -55,7 +54,7 @@ class FF1ConnectSession {
   ///
   /// Used for "still connecting" delays, timeouts, etc.
   /// Automatically cancelled if session is cancelled before elapsed time.
-  void scheduleTimer(Duration delay, VoidCallback onElapsed) {
+  void scheduleTimer(Duration delay, void Function() onElapsed) {
     _timer?.cancel();
     _timer = Timer(delay, () {
       if (!_cancelled) {

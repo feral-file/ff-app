@@ -43,7 +43,8 @@ class FF1DeviceScanPagePayload {
 class FF1DeviceScanPage extends ConsumerStatefulWidget {
   /// Create the FF1 device scan page.
   const FF1DeviceScanPage({
-    required this.payload, super.key,
+    required this.payload,
+    super.key,
   });
 
   /// Navigation payload (optional name filter, auto-select, custom selection).
@@ -123,9 +124,8 @@ class _FF1DeviceScanPageState extends ConsumerState<FF1DeviceScanPage> {
             (previous?.isScanning ?? false) && !next.isScanning;
 
         final ff1Name = widget.payload.ff1Name;
-        final shouldAutoSelect = ff1Name != null &&
-            justFinished &&
-            next.devices.length == 1;
+        final shouldAutoSelect =
+            ff1Name != null && justFinished && next.devices.length == 1;
 
         if (shouldAutoSelect && context.mounted) {
           _onFf1Selected(context, next.devices.first);
@@ -251,7 +251,9 @@ class _FF1DeviceScanPageState extends ConsumerState<FF1DeviceScanPage> {
           },
         );
         ref.read(ff1ScanProvider.notifier).clear();
-        await ref.read(ff1ScanProvider.notifier).startScan(
+        await ref
+            .read(ff1ScanProvider.notifier)
+            .startScan(
               timeout: const Duration(seconds: 5),
               ff1Name: ff1Name,
             );
@@ -404,7 +406,8 @@ class _FF1DeviceScanPageState extends ConsumerState<FF1DeviceScanPage> {
         SizedBox(height: LayoutConstants.space4),
         Text(
           error != null
-              ? 'Scan error: $error'
+              ? 'We could not scan for FF1. '
+                    'Check Bluetooth is on, then try again.'
               : 'Please make sure FF1 is powered on and nearby',
           style: AppTypography.body(context).white,
           textAlign: TextAlign.center,
@@ -427,7 +430,7 @@ class _FF1DeviceScanPageState extends ConsumerState<FF1DeviceScanPage> {
     final ff1Name = widget.payload.ff1Name;
     final subtitle = ff1Name != null
         ? 'No device named "$ff1Name" was found. '
-            'Make sure FF1 is powered on and nearby, then try again'
+              'Make sure FF1 is powered on and nearby, then try again'
         : 'Make sure FF1 is powered on and nearby, then try again';
 
     return Column(

@@ -223,6 +223,91 @@ void main() {
     },
   );
 
+  testWidgets(
+    'deeplink flow: scan with ff1Name -> auto-select -> callback navigates',
+    (tester) async {
+      final navigatedDevices = <BluetoothDevice>[];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            bluetoothAdapterStateProvider.overrideWith(
+              (ref) => Stream.value(BluetoothAdapterState.on),
+            ),
+            ff1ScanProvider.overrideWith(
+              () => _ScriptedFf1ScanNotifier(
+                ({ff1Name}) async {
+                  // Simulate targeted scan finding one device
+                  expect(ff1Name, equals('DeeplinkFF1'));
+                  return [deviceA];
+                },
+              ),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: GoRouter(
+              initialLocation: '/home',
+              routes: [
+                GoRoute(
+                  path: '/home',
+                  builder: (context, state) => Scaffold(
+                    body: Center(
+                      child: TextButton(
+                        onPressed: () {
+                          // Simulate deeplink handler pushing scan page
+                          unawaited(
+                            context.push(
+                              Routes.ff1DeviceScanPage,
+                              extra: FF1DeviceScanPagePayload(
+                                ff1Name: 'DeeplinkFF1',
+                                onFF1Selected: (device) {
+                                  navigatedDevices.add(device);
+                                  // Simulate navigation to connect page
+                                  unawaited(
+                                    context.push('/connect-mock'),
+                                  );
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                        child: const Text('Scan QR'),
+                      ),
+                    ),
+                  ),
+                ),
+                GoRoute(
+                  path: Routes.ff1DeviceScanPage,
+                  builder: (context, state) {
+                    final extra = state.extra;
+                    final resolved = extra is FF1DeviceScanPagePayload
+                        ? extra
+                        : FF1DeviceScanPagePayload();
+                    return FF1DeviceScanPage(payload: resolved);
+                  },
+                ),
+                GoRoute(
+                  path: '/connect-mock',
+                  builder: (context, state) => const Scaffold(
+                    body: Text('CONNECT_PAGE_MARKER'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Scan QR'));
+      await tester.pumpAndSettle();
+
+      // Should auto-select and navigate to connect page
+      expect(find.text('CONNECT_PAGE_MARKER'), findsOneWidget);
+      expect(navigatedDevices, hasLength(1));
+      expect(navigatedDevices.first, equals(deviceA));
+    },
+  );
+
 }
 
 /// Test double: drives scan results without BLE.

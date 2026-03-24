@@ -77,120 +77,6 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     super.initState();
     _startTime = DateTime.now();
 
-    // Listen for state changes to handle navigation and dialogs
-    ref.listen<AsyncValue<ConnectFF1State>>(connectFF1Provider, (
-      previous,
-      next,
-    ) {
-      next.whenData((state) async {
-        try {
-          if (state is ConnectFF1Connected) {
-            _recordDuration(success: true);
-            if (state.isConnectedToInternet) {
-              await ref
-                  .read(ff1BluetoothDeviceActionsProvider.notifier)
-                  .addDevice(state.ff1device);
-
-              if (state.portalIsSet) {
-                if (context.mounted) {
-                  unawaited(
-                    ref.read(onboardingActionsProvider).completeOnboarding(),
-                  );
-                  context.popUntil(Routes.startSetupFf1);
-                  unawaited(
-                    context.push(Routes.deviceConfiguration),
-                  );
-                }
-              } else {
-                if (context.mounted) {
-                  unawaited(
-                    ref.read(onboardingActionsProvider).completeOnboarding(),
-                  );
-                  context.popUntil(Routes.startSetupFf1);
-                  unawaited(
-                    context.push(Routes.deviceConfiguration),
-                  );
-                }
-              }
-            } else {
-              if (context.mounted) {
-                // No internet connection, navigate to scan wifi networks page
-                context.replace(
-                  Routes.scanWifiNetworks,
-                  extra: ScanWifiNetworkPagePayload(
-                    device: state.ff1device,
-                  ),
-                );
-              }
-            }
-          } else if (state is ConnectFF1Error) {
-            _recordDuration(success: false);
-
-            if (state.exception is FF1ResponseError) {
-              final exception = state.exception as FF1ResponseError;
-              await UIHelper.showInfoDialog(
-                context,
-                exception.title,
-                exception.message,
-                closeButton: exception.shouldShowSupport
-                    ? 'Contact support'
-                    : '',
-                onClose: exception.shouldShowSupport
-                    ? () {
-                        unawaited(
-                          UIHelper.showCustomerSupport(
-                            context,
-                            supportEmailService: ref.read(
-                              supportEmailServiceProvider,
-                            ),
-                          ),
-                        );
-                      }
-                    : null,
-              );
-            } else {
-              await UIHelper.showInfoDialog(
-                context,
-                'Connect failed',
-                state.exception.toString(),
-                closeButton: 'Contact support',
-                onClose: () {
-                  unawaited(
-                    UIHelper.showCustomerSupport(
-                      context,
-                      supportEmailService: ref.read(
-                        supportEmailServiceProvider,
-                      ),
-                    ),
-                  );
-                },
-              );
-            }
-          }
-        } on Object catch (e, stack) {
-          _log.severe('[ConnectFF1Page] State handler failed', e, stack);
-          if (!context.mounted) {
-            return;
-          }
-
-          await UIHelper.showInfoDialog(
-            context,
-            'Connect failed',
-            e.toString(),
-            closeButton: 'Contact support',
-            onClose: () {
-              unawaited(
-                UIHelper.showCustomerSupport(
-                  context,
-                  supportEmailService: ref.read(supportEmailServiceProvider),
-                ),
-              );
-            },
-          );
-        }
-      });
-    });
-
     // Start connection flow using the provider
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _connectFF1Notifier = await ref.read(connectFF1Provider.notifier);
@@ -274,6 +160,119 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
   @override
   Widget build(BuildContext context) {
+    // Listen for state changes to handle navigation and dialogs
+    ref.listen<AsyncValue<ConnectFF1State>>(connectFF1Provider, (
+      previous,
+      next,
+    ) {
+      next.whenData((state) async {
+        try {
+          if (state is ConnectFF1Connected) {
+            _recordDuration(success: true);
+            if (state.isConnectedToInternet) {
+              await ref
+                  .read(ff1BluetoothDeviceActionsProvider.notifier)
+                  .addDevice(state.ff1device);
+
+              if (state.portalIsSet) {
+                if (context.mounted) {
+                  unawaited(
+                    ref.read(onboardingActionsProvider).completeOnboarding(),
+                  );
+                  context.popUntil(Routes.startSetupFf1);
+                  unawaited(
+                    context.push(Routes.deviceConfiguration),
+                  );
+                }
+              } else {
+                if (context.mounted) {
+                  unawaited(
+                    ref.read(onboardingActionsProvider).completeOnboarding(),
+                  );
+                  context.popUntil(Routes.startSetupFf1);
+                  unawaited(
+                    context.push(Routes.deviceConfiguration),
+                  );
+                }
+              }
+            } else {
+              if (context.mounted) {
+                context.replace(
+                  Routes.scanWifiNetworks,
+                  extra: ScanWifiNetworkPagePayload(
+                    device: state.ff1device,
+                  ),
+                );
+              }
+            }
+          } else if (state is ConnectFF1Error) {
+            _recordDuration(success: false);
+
+            if (state.exception is FF1ResponseError) {
+              final exception = state.exception as FF1ResponseError;
+              await UIHelper.showInfoDialog(
+                context,
+                exception.title,
+                exception.message,
+                closeButton: exception.shouldShowSupport
+                    ? 'Contact support'
+                    : '',
+                onClose: exception.shouldShowSupport
+                    ? () {
+                        unawaited(
+                          UIHelper.showCustomerSupport(
+                            context,
+                            supportEmailService: ref.read(
+                              supportEmailServiceProvider,
+                            ),
+                          ),
+                        );
+                      }
+                    : null,
+              );
+            } else {
+              await UIHelper.showInfoDialog(
+                context,
+                'Connect failed',
+                state.exception.toString(),
+                closeButton: 'Contact support',
+                onClose: () {
+                  unawaited(
+                    UIHelper.showCustomerSupport(
+                      context,
+                      supportEmailService: ref.read(
+                        supportEmailServiceProvider,
+                      ),
+                    ),
+                  );
+                },
+              );
+            }
+          }
+        } on Object catch (e, stack) {
+          _log.severe('[ConnectFF1Page] State handler failed', e, stack);
+          if (!context.mounted) {
+            return;
+          }
+
+          await UIHelper.showInfoDialog(
+            context,
+            'Connect failed',
+            e.toString(),
+            closeButton: 'Contact support',
+            onClose: () {
+              unawaited(
+                UIHelper.showCustomerSupport(
+                  context,
+                  supportEmailService: ref.read(supportEmailServiceProvider),
+                ),
+              );
+            },
+          );
+        }
+      });
+    });
+
     final setupState = ref.watch(connectFF1Provider);
     _log.info('UI state -> $setupState');
     final status = setupState.maybeWhen(
