@@ -288,8 +288,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         return updated;
       }
 
-      final seedOnDisk =
-          await ref.read(seedDatabaseServiceProvider).hasLocalDatabase();
+      final seedOnDisk = await ref
+          .read(seedDatabaseServiceProvider)
+          .hasLocalDatabase();
       if (seedOnDisk) {
         notifyForceReplaceFinished();
         if (completeSeedDatabaseGate) {
