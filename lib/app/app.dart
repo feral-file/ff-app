@@ -431,8 +431,11 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
         _refreshProvidersAfterSeedDatabaseReplace();
       }
       await _ensureDp1BootstrapAfterSeedIfPending();
-      if (!ref.read(bootstrapProvider.notifier).pendingDp1BootstrapAfterSeed) {
-        ref.read(bootstrapProvider.notifier).markSeedSyncGateOpen();
+      final bootstrap = ref.read(bootstrapProvider.notifier);
+      if (bootstrap.pendingDp1BootstrapAfterSeed) {
+        bootstrap.markDeferredRecovery();
+      } else {
+        bootstrap.markSeedSyncGateOpen();
       }
     } finally {
       _isResumeSeedSyncInProgress = false;

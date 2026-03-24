@@ -286,6 +286,61 @@ void main() {
         );
       },
     );
+
+    test(
+      'offline resume retry restores deferred recovery when no seed file '
+      'exists',
+      () async {
+        final provisionedEnvFile = await provisionIntegrationEnvFile();
+        addTearDown(() async {
+          final parent = provisionedEnvFile.parent;
+          if (parent.existsSync()) {
+            await parent.delete(recursive: true);
+          }
+        });
+
+        SeedDatabaseGate.resetForTesting();
+
+        final seedSvc = _IntegrationSeedDbSvc();
+        final container = ProviderContainer.test(
+          overrides: [
+            seedDatabaseServiceProvider.overrideWithValue(seedSvc),
+            appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+            seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+            ff1AutoConnectWatcherProvider.overrideWithValue(null),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final bootstrap = container.read(bootstrapProvider.notifier);
+        await bootstrap.bootstrapWithoutDp1Library();
+        expect(
+          container.read(bootstrapSeedSyncGatePhaseProvider),
+          BootstrapSeedSyncGatePhase.deferredRecovery,
+        );
+
+        bootstrap.markSeedSyncInProgress();
+        expect(
+          container.read(bootstrapSeedSyncGatePhaseProvider),
+          BootstrapSeedSyncGatePhase.syncInProgress,
+        );
+
+        if (bootstrap.pendingDp1BootstrapAfterSeed) {
+          bootstrap.markDeferredRecovery();
+        } else {
+          bootstrap.markSeedSyncGateOpen();
+        }
+
+        expect(
+          container.read(bootstrapSeedSyncGatePhaseProvider),
+          BootstrapSeedSyncGatePhase.deferredRecovery,
+        );
+        expect(
+          container.read(onboardingAddAddressActionGateProvider).actionsEnabled,
+          isTrue,
+        );
+      },
+    );
   });
 }
 

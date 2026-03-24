@@ -204,6 +204,31 @@ void main() {
       );
     });
 
+    test('bootstrap gate can restore deferred recovery after retry', () async {
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1AutoConnectWatcherProvider.overrideWithValue(null),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(bootstrapProvider.notifier)
+          .bootstrapWithoutDp1Library();
+
+      container.read(bootstrapProvider.notifier).markSeedSyncInProgress();
+      container.read(bootstrapProvider.notifier).markDeferredRecovery();
+
+      expect(
+        container.read(bootstrapSeedSyncGatePhaseProvider),
+        BootstrapSeedSyncGatePhase.deferredRecovery,
+      );
+      expect(
+        container.read(bootstrapProvider.notifier).pendingDp1BootstrapAfterSeed,
+        isTrue,
+      );
+    });
+
     test(
       'bootstrap gate reports deferred recovery after lightweight bootstrap',
       () async {

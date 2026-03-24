@@ -170,6 +170,16 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
     );
   }
 
+  /// Restore the stable lightweight-bootstrap state after a retry still ends
+  /// without a seed file. This keeps onboarding interactive while DP-1 work
+  /// remains deferred to a later successful seed download.
+  void markDeferredRecovery() {
+    state = state.copyWith(
+      seedSyncGatePhase: BootstrapSeedSyncGatePhase.deferredRecovery,
+      pendingDp1BootstrapAfterSeed: true,
+    );
+  }
+
   /// Config + FF1 watcher only — no SQLite (seed not on disk yet).
   ///
   /// Call when the seed gate is still pending so we never open Drift.
