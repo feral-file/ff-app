@@ -5,6 +5,7 @@
 - Define the execution contract for Orbit 3.
 - Translate roadmap outcomes into buildable, testable, evidence-backed work.
 - Keep this document implementation-focused; keep the roadmap outcome-focused.
+- Make the living channel loop explicit: `follow -> updated signal -> play on FF1`.
 
 ## Contract sources
 
@@ -26,6 +27,7 @@
 - Discovery changes must stay deterministic and explainable.
 - Trust UX must never claim verification the system does not actually perform.
 - Orbit 3 is foundation work, not a full personalization or ranking program.
+- FF1 remains a calm playback endpoint, not a feed-reading/social surface.
 
 ## Status model
 
@@ -52,6 +54,23 @@
   - deterministic grouping behavior across seed refresh and app restart
 - Dependencies: O3-05 publisher contract finalized
 - Notes: design reference in `docs/plans/publisher_grouping_ia_spec.md`
+
+### O3-01b · Living channel loop (`follow -> updated -> play`)
+
+- Outcome: followed artist/exhibition channels can publish meaningful updates that users can notice and play in one calm step.
+- Status: planned
+- In scope:
+  - minimal follow-state aware update signal on channel/playlist surfaces
+  - deterministic updated-state derivation from channel/playlist publish metadata
+  - one-tap transition from update signal to `Play on FF1 now`
+- Out of scope:
+  - social interactions (comments, likes, public counters, chat)
+  - algorithmic feed ranking
+- Acceptance evidence:
+  - at least one flagship channel proves publish -> follow -> update -> play end-to-end on existing surfaces
+  - update signal is attributable to source/publisher and does not overclaim trust
+  - playback launch path from update signal succeeds without adding new DP-1 entities
+- Dependencies: O3-03 trust-state contract and O3-05 publisher semantics
 
 ### O3-02 · Me/Curated/Global IA parity contract
 
@@ -92,7 +111,7 @@
 - Outcome: discovery improves beyond current local-only behavior without sacrificing determinism.
 - Status: planned
 - In scope:
-  - minimal discovery enhancements tied to source and trust clarity
+  - minimal discovery enhancements tied to source, trust, and living channel update visibility
   - deterministic sort/filter surfaces that are explainable to users
 - Out of scope:
   - conversational assistant discovery
@@ -101,7 +120,7 @@
   - measurable discovery path added (and documented) without non-deterministic ranking
   - integration tests for new discovery routes/providers
   - updated flow docs for search/discovery behavior
-- Dependencies: O3-01 and O3-03 complete enough to ground discovery signals
+- Dependencies: O3-01, O3-01b, and O3-03 complete enough to ground discovery signals
 
 ### O3-05 · Publisher/source semantics formalized in app contract
 
@@ -125,13 +144,16 @@
 1. **Phase A: semantics and trust boundary**
    - Items: O3-05, O3-03 (contract first)
    - Exit: publisher and trust claims are explicit, test-backed, and reviewable.
-2. **Phase B: channels source-group IA**
+2. **Phase B: living channel loop proof**
+   - Items: O3-01b
+   - Exit: one flagship channel proves publish -> follow -> update -> play on existing surfaces.
+3. **Phase C: channels source-group IA**
    - Items: O3-01
    - Exit: source-group browsing works end-to-end and remains deterministic.
-3. **Phase C: IA parity alignment**
+4. **Phase D: IA parity alignment**
    - Items: O3-02
    - Exit: Me/Curated/Global behavior is consistent and documented.
-4. **Phase D: discovery expansion**
+5. **Phase E: discovery expansion**
    - Items: O3-04
    - Exit: discovery is improved with deterministic behavior and no trust overclaims.
 
