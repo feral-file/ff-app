@@ -97,7 +97,8 @@ void main() {
             (ref) => Stream.value(const FF1ConnectionStatus(isConnected: true)),
           ),
           ff1DeviceConnectedProvider.overrideWithValue(true),
-          // Ensure cache is ready (empty) when _computeForDevice runs so missing = [dp1Item]
+          // Ensure cache is ready (empty) when _computeForDevice runs
+          // so missing = [dp1Item]
           nowDisplayingCachedPlaylistItemsProvider.overrideWith(
             (ref) => Future.value(<PlaylistItem>[]),
           ),
@@ -280,13 +281,77 @@ void main() {
       expect(object.currentItem.id, 'item_$currentIndex');
       expect(object.currentItem.title, 'Title $currentIndex');
     });
+
+    test('fallback items without token are still saved to cache', () async {
+      const deviceId = 'device_1';
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'r1',
+        deviceId: deviceId,
+        topicId: 'topic_1',
+      );
+
+      // DP1 item with cid but NO token will be returned (fallback scenario)
+      final dp1Item = DP1PlaylistItem(
+        id: 'item_no_token',
+        duration: 60,
+        title: 'Work Without Token',
+        provenance: DP1Provenance(
+          type: DP1ProvenanceType.onChain,
+          contract: DP1Contract(
+            chain: DP1ProvenanceChain.evm,
+            standard: DP1ProvenanceStandard.erc721,
+            address: '0xabc',
+            tokenId: '999',
+          ),
+        ),
+      );
+
+      final status = FF1PlayerStatus(
+        playlistId: 'playlist_1',
+        currentWorkIndex: 0,
+        items: [dp1Item],
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          databaseServiceProvider.overrideWith((ref) => recordingDb),
+          indexerServiceProvider.overrideWithValue(
+            FakeIndexerService(), // Returns empty token list (no token found)
+          ),
+          activeFF1BluetoothDeviceProvider.overrideWithValue(
+            const AsyncData(device),
+          ),
+          ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+          ff1PlayerStatusStreamProvider.overrideWith(
+            (ref) => Stream.value(status),
+          ),
+          ff1CurrentPlayerStatusProvider.overrideWithValue(status),
+          ff1ConnectionStatusStreamProvider.overrideWith(
+            (ref) => Stream.value(const FF1ConnectionStatus(isConnected: true)),
+          ),
+          ff1DeviceConnectedProvider.overrideWithValue(true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(nowDisplayingProvider);
+      await Future<void>.delayed(Duration.zero);
+
+      // Verify enrichment was attempted and item saved (even without token)
+      expect(recordingDb.savedEnriched, isNotNull);
+      expect(recordingDb.savedEnriched!.length, 1);
+      expect(recordingDb.savedEnriched!.first.id, 'item_no_token');
+      // Without token, no thumbnail
+      expect(recordingDb.savedEnriched!.first.thumbnailUrl, isNull);
+    });
   });
 }
 
-/// DatabaseService that returns no cached items and records upsertPlaylistItemsEnriched
-/// and getPlaylistItemsByIds arguments for tests.
+/// DatabaseService that returns no cached items and records
+/// upsertPlaylistItemsEnriched and getPlaylistItemsByIds arguments for tests.
 class _RecordingDatabaseService extends DatabaseService {
-  _RecordingDatabaseService(super.db);
+  _RecordingDatabaseService(AppDatabase db) : super(db);
 
   final enrichmentDone = Completer<void>();
 
