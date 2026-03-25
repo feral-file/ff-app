@@ -65,6 +65,11 @@ class _ThrowingConnectTransport implements FF1WifiTransport {
     unawaited(_connections.close());
     unawaited(_errors.close());
   }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
 }
 
 /// First `connect` succeeds; second `connect` (e.g. `forceReconnect: true`)
@@ -125,6 +130,11 @@ class _ReconnectSecondCallFailsTransport implements FF1WifiTransport {
     unawaited(_connections.close());
     unawaited(_errors.close());
   }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
 }
 
 void main() {
@@ -170,10 +180,7 @@ void main() {
           transport: transport,
           logger: Logger('test'),
         );
-        addTearDown(() {
-          control.dispose();
-          transport.dispose();
-        });
+        addTearDown(control.dispose);
 
         await expectLater(
           control.connect(
@@ -207,10 +214,7 @@ void main() {
           transport: transport,
           logger: Logger('test'),
         );
-        addTearDown(() {
-          control.dispose();
-          transport.dispose();
-        });
+        addTearDown(control.dispose);
 
         await expectLater(
           control.connect(
@@ -252,7 +256,6 @@ void main() {
           ],
         );
         addTearDown(container.dispose);
-        addTearDown(transport.dispose);
 
         await expectLater(
           container
@@ -294,7 +297,6 @@ void main() {
           ],
         );
         addTearDown(container.dispose);
-        addTearDown(transport.dispose);
 
         await container
             .read(ff1WifiConnectionProvider.notifier)

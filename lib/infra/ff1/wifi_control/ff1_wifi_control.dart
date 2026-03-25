@@ -74,6 +74,13 @@ class FF1WifiControl {
   StreamSubscription<bool>? _connectionStateSub;
   StreamSubscription<FF1WifiTransportError>? _errorSub;
 
+  /// When true, ignore transport callbacks — [dispose] has started and subjects
+  /// may be closed after subscription cancel completes.
+  bool _isTearingDown = false;
+
+  /// Single in-flight dispose; repeated [dispose] calls are ignored.
+  Future<void>? _ongoingDispose;
+
   // Current device and auth (for reconnect)
   FF1Device? _device;
   String? _userId;
@@ -191,6 +198,9 @@ class FF1WifiControl {
 
   /// Handle incoming notification from transport
   void _handleNotification(FF1NotificationMessage notification) {
+    if (_isTearingDown) {
+      return;
+    }
     _log.fine('Notification: ${notification.notificationType}');
 
     switch (notification.notificationType) {
@@ -231,6 +241,9 @@ class FF1WifiControl {
 
   /// Handle connection state change from transport
   void _handleConnectionStateChange(bool isConnected) {
+    if (_isTearingDown) {
+      return;
+    }
     _log.info('Connection state changed: $isConnected');
 
     if (!isConnected) {
@@ -364,6 +377,9 @@ class FF1WifiControl {
   ///
   /// Closes WebSocket but preserves connection params for [reconnect] on resume.
   void pauseConnection() {
+    if (_isTearingDown) {
+      return;
+    }
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_paused',
@@ -387,17 +403,34 @@ class FF1WifiControl {
 
   /// Dispose control and clean up resources.
   void dispose() {
+    _ongoingDispose ??= _disposeAsync();
+    unawaited(_ongoingDispose);
+  }
+
+  /// Cancels transport subscriptions before closing subjects so a delayed
+  /// `connectionStateStream` event (e.g. relayer [disconnect] window) cannot
+  /// call [_handleConnectionStateChange] after [_connectionStatusController] is
+  /// closed.
+  Future<void> _disposeAsync() async {
     _log.info('Disposing WiFi control');
+    _isTearingDown = true;
 
-    unawaited(_notificationSub?.cancel());
-    unawaited(_connectionStateSub?.cancel());
-    unawaited(_errorSub?.cancel());
+    await Future.wait<void>([
+      if (_notificationSub != null) _notificationSub!.cancel(),
+      if (_connectionStateSub != null) _connectionStateSub!.cancel(),
+      if (_errorSub != null) _errorSub!.cancel(),
+    ]);
+    _notificationSub = null;
+    _connectionStateSub = null;
+    _errorSub = null;
 
-    unawaited(_playerStatusController.close());
-    unawaited(_deviceStatusController.close());
-    unawaited(_connectionStatusController.close());
+    await Future.wait<void>([
+      _playerStatusController.close(),
+      _deviceStatusController.close(),
+      _connectionStatusController.close(),
+    ]);
 
-    _transport.dispose();
+    await _transport.disposeFuture();
   }
 
   // =========================================================================
