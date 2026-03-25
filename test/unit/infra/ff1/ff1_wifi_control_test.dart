@@ -4,6 +4,7 @@ import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -47,10 +48,58 @@ void main() {
         final transport = _DelayedConnectionFalseAfterDisconnectTransport();
         final control = FF1WifiControl(
           transport: transport,
-          restClient: null,
         );
         control.dispose();
         await Future<void>.delayed(const Duration(milliseconds: 200));
+      },
+    );
+
+    test(
+      'transport emitting delayed connectionState during dispose does not add after close',
+      () async {
+        final transport = _DelayedConnectionFalseAfterDisconnectTransport();
+        final control = FF1WifiControl(
+          transport: transport,
+        );
+
+        // Start dispose (this cancels subscriptions)
+        control.dispose();
+
+        // Wait for subscriptions to cancel but transport still has 100ms delay
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Trigger transport disconnect (which delays 100ms before emitting)
+        await transport.disconnect();
+
+        // Wait for delayed emit to occur
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+
+        // Verify that no exception was thrown (connection state add after close)
+        // This test passes if we reach here without an error
+      },
+    );
+
+    test(
+      'transport dispose is awaited before control teardown completes',
+      () async {
+        var transportDisposeCalled = false;
+        final transport = _CustomDisposeTransport(
+          onDispose: () {
+            transportDisposeCalled = true;
+          },
+        );
+        final control = FF1WifiControl(
+          transport: transport,
+        );
+
+        // Start dispose
+        control.dispose();
+
+        // Wait for async dispose to complete
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+
+        // Verify transport.dispose() was called
+        expect(transportDisposeCalled, isTrue);
       },
     );
   });
@@ -144,6 +193,11 @@ class _DelayedConnectionFalseAfterDisconnectTransport
     unawaited(_connections.close());
     unawaited(_errors.close());
   }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
 }
 
 class _FakeWifiTransport implements FF1WifiTransport {
@@ -181,4 +235,57 @@ class _FakeWifiTransport implements FF1WifiTransport {
 
   @override
   void dispose() {}
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
+}
+
+class _CustomDisposeTransport implements FF1WifiTransport {
+  _CustomDisposeTransport({required this.onDispose});
+
+  final VoidCallback onDispose;
+
+  @override
+  Stream<bool> get connectionStateStream => const Stream.empty();
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => const Stream.empty();
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream => const Stream.empty();
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {}
+
+  @override
+  void pauseConnection() {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    onDispose();
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
 }

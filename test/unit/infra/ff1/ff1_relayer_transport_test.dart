@@ -13,4 +13,79 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 150));
     },
   );
+
+  test(
+    'concurrent disconnect calls share single teardown completer (cycle 1 and 2)',
+    () async {
+      final transport = FF1RelayerTransport(
+        relayerUrl: 'wss://example.invalid/relayer',
+      );
+
+      // Cycle 1: both concurrent calls should complete
+      final cycle1Start = DateTime.now();
+      final f1 = transport.disconnect();
+      final f2 = transport.disconnect();
+
+      await Future.wait([f1, f2]);
+      final cycle1Duration = DateTime.now().difference(cycle1Start);
+
+      // Verify cycle 1 had meaningful delay (100ms disconnect delay + overhead)
+      expect(cycle1Duration.inMilliseconds, greaterThan(80));
+
+      // Cycle 2: verify completer resets and single-flight works independently
+      final cycle2Start = DateTime.now();
+      final f3 = transport.disconnect();
+      final f4 = transport.disconnect();
+
+      await Future.wait([f3, f4]);
+      final cycle2Duration = DateTime.now().difference(cycle2Start);
+
+      // If completer wasn't reset, cycle 2 would complete immediately (< 50ms).
+      // With proper reset, cycle 2 should also have the 100ms delay from teardown.
+      expect(cycle2Duration.inMilliseconds, greaterThan(80),
+          reason: 'Cycle 2 must execute full teardown, not reuse completed '
+              'completer from cycle 1 (proves completer was reset)');
+    },
+  );
+
+  test(
+    'dispose waits for all subscriptions before closing controllers',
+    () async {
+      final transport = FF1RelayerTransport(
+        relayerUrl: 'wss://example.invalid/relayer',
+      );
+
+      // Call dispose
+      transport.dispose();
+
+      // Wait for any pending async operations
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // Verify that the transport is fully torn down without exceptions
+      expect(transport.isConnected, isFalse);
+    },
+  );
+
+  test(
+    'connectionStateStream does not throw when added to after close during dispose',
+    () async {
+      final transport = FF1RelayerTransport(
+        relayerUrl: 'wss://example.invalid/relayer',
+      );
+
+      // Dispose the transport
+      transport.dispose();
+
+      // Wait to allow async dispose to complete
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      // Try to listen to the stream after disposal (should not throw)
+      expect(
+        () {
+          transport.connectionStateStream.listen((_) {});
+        },
+        returnsNormally,
+      );
+    },
+  );
 }

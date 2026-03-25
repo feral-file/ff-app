@@ -404,7 +404,7 @@ class FF1WifiControl {
   /// Dispose control and clean up resources.
   void dispose() {
     _ongoingDispose ??= _disposeAsync();
-    unawaited(_ongoingDispose!);
+    unawaited(_ongoingDispose);
   }
 
   /// Cancels transport subscriptions before closing subjects so a delayed
@@ -430,7 +430,7 @@ class FF1WifiControl {
       _connectionStatusController.close(),
     ]);
 
-    _transport.dispose();
+    await _transport.disposeFuture();
   }
 
   // =========================================================================

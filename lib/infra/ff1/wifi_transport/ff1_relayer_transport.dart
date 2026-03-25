@@ -82,9 +82,14 @@ class FF1RelayerTransport implements FF1WifiTransport {
   String? _userId;
   String? _apiKey;
 
-  // When true, disconnected event does not schedule Timer-based reconnect
-  // (used for app background pause; reconnect happens on app resume)
-  bool _pausedForBackground = false;
+  // When true, reconnect is suppressed (app background or during teardown).
+  // Cleared when connect() is called. Prevents Timer-based reconnect and
+  // reconnect attempts during pause/teardown windows.
+  bool _reconnectSuppressed = false;
+
+  // Single-flight teardown: shared completer ensures concurrent disconnect()
+  // and dispose() calls do not race each other on stream adds/closes.
+  Completer<void>? _teardownCompleter;
 
   @override
   bool get isConnected => _isConnected;
@@ -126,11 +131,11 @@ class FF1RelayerTransport implements FF1WifiTransport {
       throw error;
     }
 
-    // Clear paused state on any connect. If only cleared on forceReconnect,
+    // Clear reconnect suppression on any connect. If only cleared on forceReconnect,
     // a manual connect after app was backgrounded (before any device connected)
-    // would leave _pausedForBackground stuck true, silently disabling
+    // would leave _reconnectSuppressed stuck true, silently disabling
     // auto-reconnect for the rest of the session.
-    _pausedForBackground = false;
+    _reconnectSuppressed = false;
 
     // Already connected to same device (skip when forceReconnect)
     if (!forceReconnect &&
@@ -217,47 +222,67 @@ class FF1RelayerTransport implements FF1WifiTransport {
   Future<void> disconnect() async {
     _log.info('Disconnecting from relayer');
 
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
-    _reconnectAttempts = 0;
+    // Single-flight teardown: if already tearing down, wait for ongoing teardown
+    if (_reconnectSuppressed && _teardownCompleter != null) {
+      await _teardownCompleter!.future;
+      return;
+    }
 
-    // Send disconnect control message
-    const control = _RelayerControlMessage(
-      type: _RelayerControlType.disconnect,
-    );
-    _isolateSendPort?.send(control.toJson());
+    _reconnectSuppressed = true;
+    _teardownCompleter ??= Completer<void>();
+    final completer = _teardownCompleter!;
 
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    try {
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
+      _reconnectAttempts = 0;
 
-    _isConnected = false;
-    _connectionStateController.add(false);
+      // Send disconnect control message
+      const control = _RelayerControlMessage(
+        type: _RelayerControlType.disconnect,
+      );
+      _isolateSendPort?.send(control.toJson());
 
-    // Kill isolate
-    unawaited(_receiveSub?.cancel());
-    _receiveSub = null;
-    _receivePort?.close();
-    _receivePort = null;
-    _isolate?.kill(priority: Isolate.immediate);
-    _isolate = null;
-    _isolateSendPort = null;
-    _isolateReadyCompleter = null;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
 
-    // Clear cached connection params
-    _device = null;
-    _userId = null;
-    _apiKey = null;
+      _isConnected = false;
+      if (!_connectionStateController.isClosed) {
+        _connectionStateController.add(false);
+      }
+
+      // Kill isolate
+      unawaited(_receiveSub?.cancel());
+      _receiveSub = null;
+      _receivePort?.close();
+      _receivePort = null;
+      _isolate?.kill(priority: Isolate.immediate);
+      _isolate = null;
+      _isolateSendPort = null;
+      _isolateReadyCompleter = null;
+
+      // Clear cached connection params
+      _device = null;
+      _userId = null;
+      _apiKey = null;
+    } finally {
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
+      // Clear completer after completion to allow fresh teardown cycle next time
+      _teardownCompleter = null;
+    }
   }
 
   @override
   void pauseConnection() {
     _log.info('Pausing relayer connection (app background)');
 
-    // Always cancel reconnect timers and set pause flag, even when already
+    // Always cancel reconnect timers and set suppression flag, even when already
     // disconnected. After a network drop, the transport can be !_isConnected
     // but still have an active _reconnectTimer from _scheduleReconnect().
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
-    _pausedForBackground = true;
+    _reconnectSuppressed = true;
 
     // Always send disconnect when isolate exists. _connectInternal() drops
     // _isConnecting before the isolate sends its connection event, so there
@@ -281,13 +306,24 @@ class FF1RelayerTransport implements FF1WifiTransport {
     unawaited(_disposeAsync());
   }
 
+  @override
+  Future<void> disposeFuture() async {
+    await _disposeAsync();
+  }
+
   Future<void> _disposeAsync() async {
     try {
       await disconnect();
     } finally {
-      await _notificationController.close();
-      await _connectionStateController.close();
-      await _errorController.close();
+      if (!_notificationController.isClosed) {
+        await _notificationController.close();
+      }
+      if (!_connectionStateController.isClosed) {
+        await _connectionStateController.close();
+      }
+      if (!_errorController.isClosed) {
+        await _errorController.close();
+      }
     }
   }
 
@@ -316,7 +352,9 @@ class FF1RelayerTransport implements FF1WifiTransport {
         _isConnected = true;
         _lastError = null;
         _reconnectAttempts = 0;
-        _connectionStateController.add(true);
+        if (!_connectionStateController.isClosed) {
+          _connectionStateController.add(true);
+        }
         _slog.info(
           category: LogCategory.wifi,
           event: 'ws_connected',
@@ -326,19 +364,21 @@ class FF1RelayerTransport implements FF1WifiTransport {
 
       case _RelayerEventType.disconnected:
         _isConnected = false;
-        _connectionStateController.add(false);
+        if (!_connectionStateController.isClosed) {
+          _connectionStateController.add(false);
+        }
         _slog.warning(
           category: LogCategory.wifi,
           event: 'ws_disconnected',
           message: 'WebSocket disconnected from relayer',
           payload: {
             'deviceId': _device?.deviceId,
-            'pausedForBackground': _pausedForBackground,
+            'reconnectSuppressed': _reconnectSuppressed,
             'reconnectAttempts': _reconnectAttempts,
             'lastError': _lastError,
           },
         );
-        if (!_pausedForBackground) {
+        if (!_reconnectSuppressed) {
           _scheduleReconnect();
         }
 
@@ -352,7 +392,9 @@ class FF1RelayerTransport implements FF1WifiTransport {
           payload: {'deviceId': _device?.deviceId, 'error': errorMsg},
         );
         final error = FF1WifiNetworkError(errorMsg);
-        _errorController.add(error);
+        if (!_errorController.isClosed) {
+          _errorController.add(error);
+        }
 
       case _RelayerEventType.notification:
         final notificationData = event.data?['notification'] as Map?;
@@ -361,14 +403,18 @@ class FF1RelayerTransport implements FF1WifiTransport {
             final notification = FF1NotificationMessage.fromJson(
               Map<String, dynamic>.from(notificationData),
             );
-            _notificationController.add(notification);
+            if (!_notificationController.isClosed) {
+              _notificationController.add(notification);
+            }
           } catch (e) {
             _log.warning('Failed to parse notification: $e');
             final error = FF1WifiMessageError(
               'Failed to parse notification',
               originalError: e,
             );
-            _errorController.add(error);
+            if (!_errorController.isClosed) {
+              _errorController.add(error);
+            }
           }
         }
     }
@@ -376,6 +422,11 @@ class FF1RelayerTransport implements FF1WifiTransport {
 
   /// Schedule auto-reconnect with exponential backoff.
   void _scheduleReconnect() {
+    if (_reconnectSuppressed) {
+      _log.fine('Skipping reconnect schedule (suppressed)');
+      return;
+    }
+
     if (_reconnectAttempts >= _maxReconnectAttempts) {
       _slog.error(
         event: 'ws_reconnect_exhausted',
@@ -388,7 +439,9 @@ class FF1RelayerTransport implements FF1WifiTransport {
       const error = FF1WifiConnectionError(
         'Failed to reconnect after $_maxReconnectAttempts attempts',
       );
-      _errorController.add(error);
+      if (!_errorController.isClosed) {
+        _errorController.add(error);
+      }
       return;
     }
 
@@ -418,7 +471,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
     );
 
     _reconnectTimer = Timer(delay, () async {
-      if (_isConnected || _isConnecting) {
+      if (_reconnectSuppressed || _isConnected || _isConnecting) {
         return;
       }
 
