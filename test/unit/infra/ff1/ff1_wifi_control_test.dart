@@ -38,6 +38,22 @@ void main() {
       );
     });
   });
+
+  group('FF1WifiControl.dispose', () {
+    test(
+      'await subscription cancel before closing subjects (delayed transport '
+      'connection false emit)',
+      () async {
+        final transport = _DelayedConnectionFalseAfterDisconnectTransport();
+        final control = FF1WifiControl(
+          transport: transport,
+          restClient: null,
+        );
+        control.dispose();
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      },
+    );
+  });
 }
 
 class _RecordingRestClient {
@@ -73,6 +89,60 @@ class _TimeoutRestClient {
     Duration timeout = const Duration(seconds: 6),
   }) async {
     throw TimeoutException('Future not completed');
+  }
+}
+
+/// Mirrors relayer [disconnect] delaying then emitting on
+/// [connectionStateStream].
+class _DelayedConnectionFalseAfterDisconnectTransport
+    implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {}
+
+  @override
+  void pauseConnection() {}
+
+  @override
+  Future<void> disconnect() async {
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    if (!_connections.isClosed) {
+      _connections.add(false);
+    }
+  }
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
   }
 }
 

@@ -170,10 +170,7 @@ void main() {
           transport: transport,
           logger: Logger('test'),
         );
-        addTearDown(() {
-          control.dispose();
-          transport.dispose();
-        });
+        addTearDown(control.dispose);
 
         await expectLater(
           control.connect(
@@ -207,10 +204,7 @@ void main() {
           transport: transport,
           logger: Logger('test'),
         );
-        addTearDown(() {
-          control.dispose();
-          transport.dispose();
-        });
+        addTearDown(control.dispose);
 
         await expectLater(
           control.connect(
@@ -252,7 +246,6 @@ void main() {
           ],
         );
         addTearDown(container.dispose);
-        addTearDown(transport.dispose);
 
         await expectLater(
           container
@@ -294,7 +287,6 @@ void main() {
           ],
         );
         addTearDown(container.dispose);
-        addTearDown(transport.dispose);
 
         await container
             .read(ff1WifiConnectionProvider.notifier)
