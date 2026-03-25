@@ -8,6 +8,7 @@ import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Unit tests for BootstrapProvider using Riverpod testing patterns.
