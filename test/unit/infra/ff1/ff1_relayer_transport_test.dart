@@ -8,8 +8,8 @@ void main() {
       FF1RelayerTransport(
         relayerUrl: 'wss://example.invalid/relayer',
       ).dispose();
-      // disconnect() delays before emitting on the connection stream; concurrent
-      // controller.close() used to race that emit (broadcast controller closed).
+      // disconnect() delays before connection-state emit; concurrent
+      // controller.close() used to race that emit (controller already closed).
       await Future<void>.delayed(const Duration(milliseconds: 150));
     },
   );
