@@ -144,7 +144,7 @@ class _WebviewNFTRenderingWidgetState
         : widget.previewUri,
     overriddenHtml: widget.overriddenHtml,
     backgroundColor: backgroundColor,
-    onStarted: (WebViewController controller) {
+    onStarted: (controller) {
       _webViewController = controller;
     },
     onLoaded: (controller) async {
@@ -229,7 +229,7 @@ class _WebviewNFTRenderingWidgetState
       // App is being terminated - dispose WebView immediately
       // to prevent native crashes during finalization
       try {
-        _webViewController?.onDispose();
+        unawaited(_webViewController?.onDispose());
       } catch (e) {
         _log.info('Error disposing WebViewController during app detach: $e');
       }
@@ -241,7 +241,7 @@ class _WebviewNFTRenderingWidgetState
   void dispose() {
     _textController.dispose();
     try {
-      _webViewController?.onDispose();
+      unawaited(_webViewController?.onDispose());
     } catch (e) {
       _log.info('Error disposing WebViewController: $e');
     }

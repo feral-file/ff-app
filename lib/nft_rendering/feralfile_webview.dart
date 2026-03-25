@@ -119,7 +119,7 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
   @override
   void dispose() {
     try {
-      _webViewController.onDispose();
+      unawaited(_webViewController.onDispose());
     } catch (e) {
       _log.warning('Error disposing WebViewController: $e');
     }
