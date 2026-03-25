@@ -168,8 +168,7 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   Future<NowDisplayingStatus> _computeStatus() async {
     final activeDevice = ref.read(activeFF1BluetoothDeviceProvider);
     return activeDevice.when(
-      data: (device) =>
-          _computeForDevice(device).then((value) => state = value),
+      data: _computeForDevice,
       loading: () => const LoadingNowDisplaying(),
       error: (error, _) => NowDisplayingError(error),
     );
