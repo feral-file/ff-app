@@ -258,6 +258,7 @@ class AppStateService extends AppStateServiceBase {
   @override
   Future<bool> hasSeenOnboarding() async {
     return _lock.synchronized(() {
+      return false;
       return _getOrCreateSingleton().hasSeenOnboarding;
     });
   }

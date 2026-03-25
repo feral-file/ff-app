@@ -106,7 +106,19 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           try {
             _recordDuration(success: true);
             if (connected.isConnectedToInternet) {
-              await _handleConnectedToInternet(context, connected);
+              final customNavigation = widget.payload.onConnectedToInternet;
+              if (customNavigation != null) {
+                await customNavigation(context, connected);
+                return;
+              }
+
+              // Perform side effects when internet connected
+              await _performSuccessSideEffects(connected);
+
+              // Auto-navigate to config unless portalIsSet (user must tap button)
+              if (!connected.portalIsSet && context.mounted) {
+                context.replace(Routes.deviceConfiguration);
+              }
               return;
             }
 
@@ -159,8 +171,9 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                 context,
                 exception.title,
                 exception.message,
-                closeButton:
-                    exception.shouldShowSupport ? 'Contact support' : '',
+                closeButton: exception.shouldShowSupport
+                    ? 'Contact support'
+                    : '',
                 onClose: exception.shouldShowSupport
                     ? () {
                         unawaited(
@@ -184,7 +197,9 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                   unawaited(
                     UIHelper.showCustomerSupport(
                       context,
-                      supportEmailService: ref.read(supportEmailServiceProvider),
+                      supportEmailService: ref.read(
+                        supportEmailServiceProvider,
+                      ),
                     ),
                   );
                 },
@@ -283,24 +298,12 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     }
   }
 
-  Future<void> _handleConnectedToInternet(
-    BuildContext context,
-    ConnectFF1Connected state,
-  ) async {
-    final customNavigation = widget.payload.onConnectedToInternet;
-    if (customNavigation != null) {
-      await customNavigation(context, state);
-      return;
-    }
-
+  /// Perform required side effects: persist device and complete onboarding.
+  Future<void> _performSuccessSideEffects(ConnectFF1Connected state) async {
     await ref
         .read(ff1BluetoothDeviceActionsProvider.notifier)
         .addDevice(state.ff1device);
     unawaited(ref.read(onboardingActionsProvider).completeOnboarding());
-    if (!context.mounted) {
-      return;
-    }
-    context.replace(Routes.deviceConfiguration);
   }
 
   @override
@@ -385,16 +388,11 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                                 SizedBox(height: LayoutConstants.space5),
                                 PrimaryButton(
                                   onTap: () {
-                                    unawaited(
-                                      ref
-                                          .read(onboardingActionsProvider)
-                                          .completeOnboarding(),
-                                    );
-                                    unawaited(
-                                      context.push(
+                                    if (context.mounted) {
+                                      context.replace(
                                         Routes.deviceConfiguration,
-                                      ),
-                                    );
+                                      );
+                                    }
                                   },
                                   text: 'Go to Settings',
                                 ),
