@@ -4,6 +4,7 @@ import 'package:app/app/patrol/gold_path_patrol_config.dart';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/work_item_thumbnail.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart'
     show TextField, TextInputAction, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
@@ -20,24 +21,34 @@ void main() {
     ($) async {
       final config = GoldPathPatrolConfig.fromDartDefines();
 
+      _logStep('boot app');
       await createAppForPatrol($, config: config);
+      _logStep('complete onboarding');
       await _completeOnboardingIfNeeded($);
+      _logStep('verify personal playlist');
       await _assertPersonalPlaylistOnHomeAndPlaylistsTab($);
 
+      _logStep('open channels');
       await $(GoldPathPatrolKeys.channelsTab).tap();
       await $(GoldPathPatrolKeys.curatedChannelsSection).waitUntilExists(
         timeout: const Duration(minutes: 2),
       );
 
+      _logStep('locate canary');
       await _assertCanaryVisible($, config);
+      _logStep('open canary work');
       await _openCanaryWork($, config);
 
+      _logStep('reassert active FF1 device');
       await ensurePatrolActiveDevice(config);
+      _logStep('tap FF1 play');
       await _tapPlayOnFf1($);
 
+      _logStep('wait for playback state');
       await _waitForNowDisplayingOrPlayableState($);
 
       if (config.soakDuration > Duration.zero) {
+        _logStep('soak for ${config.soakDuration.inSeconds}s');
         await Future<void>.delayed(config.soakDuration);
       }
     },
@@ -107,6 +118,7 @@ Future<void> _submitPersonalAddressInOnboarding(
   PatrolIntegrationTester $,
   String address,
 ) async {
+  await _waitForOnboardingAddressActionsReady($);
   await _openAddAddressFromOnboarding($);
   await _enterAddressAndSubmit($, address);
 
@@ -120,10 +132,46 @@ Future<void> _submitPersonalAddressInOnboarding(
 
 Future<void> _openAddAddressFromOnboarding(PatrolIntegrationTester $) async {
   final addAddressButton = $(GoldPathPatrolKeys.onboardingAddAddressPrimary);
+  await _waitForOnboardingAddressActionsReady($);
   await addAddressButton.waitUntilVisible(
     timeout: const Duration(seconds: 30),
   );
   await addAddressButton.tap();
+}
+
+Future<void> _waitForOnboardingAddressActionsReady(
+  PatrolIntegrationTester $,
+) async {
+  final deadline = DateTime.now().add(const Duration(minutes: 2));
+
+  while (DateTime.now().isBefore(deadline)) {
+    final isWaiting = await _isOnboardingAddressGateBlocked($);
+    if (!isWaiting) {
+      return;
+    }
+
+    _logStep('waiting for onboarding address actions to unlock');
+    await $.pump(const Duration(seconds: 1));
+  }
+
+  throw TimeoutException(
+    'Timed out waiting for onboarding address actions to unlock.',
+  );
+}
+
+Future<bool> _isOnboardingAddressGateBlocked(PatrolIntegrationTester $) async {
+  final waitingLabelVisible = await _isVisible(
+    $('Please wait'),
+    timeout: const Duration(milliseconds: 300),
+  );
+  if (waitingLabelVisible) {
+    return true;
+  }
+
+  return _isVisible(
+    $('Address adds stay disabled while startup sync settles.'),
+    timeout: const Duration(milliseconds: 300),
+  );
 }
 
 Future<void> _enterAddressAndSubmit(
@@ -360,4 +408,8 @@ Future<void> _waitForThumbnailInChannelRow(
   throw TimeoutException(
     'Timed out waiting for a work thumbnail inside the canary channel row.',
   );
+}
+
+void _logStep(String message) {
+  debugPrint('gold_path_test: $message');
 }

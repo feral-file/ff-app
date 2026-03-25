@@ -64,6 +64,9 @@
   - finish marks onboarding complete and routes to home
 - Outcome: user enters app with onboarding flag persisted.
 - Important edge cases:
+  - while startup seed sync is actively in flight, onboarding add-address
+    actions wait for the bootstrap gate to reopen so first-run transitions stay
+    deterministic
   - if seed DB is not ready, added addresses are queued in pending store and migrated later
   - if onboarding is entered from device-connect deep link, flow branches to connect FF1
 

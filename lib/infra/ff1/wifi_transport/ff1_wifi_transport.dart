@@ -83,8 +83,20 @@ abstract class FF1WifiTransport {
     throw UnimplementedError('Sending commands not yet supported');
   }
 
-  /// Dispose transport and clean up resources
-  void dispose();
+  /// Dispose transport and clean up resources asynchronously.
+  ///
+  /// Implementations MUST override this method to handle proper async cleanup.
+  /// This is called by [dispose] for fire-and-forget, and by control layer
+  /// when cleanup ordering matters.
+  Future<void> disposeFuture();
+
+  /// Dispose transport synchronously (fire-and-forget wrapper).
+  ///
+  /// Calls [disposeFuture] but does not await it.
+  /// For sequenced async cleanup, use [disposeFuture] instead.
+  void dispose() {
+    unawaited(disposeFuture());
+  }
 }
 
 // ============================================================================

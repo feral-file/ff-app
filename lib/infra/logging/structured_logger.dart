@@ -22,6 +22,9 @@ enum LogCategory {
   /// BLE transport and lifecycle events.
   ble,
 
+  /// WiFi/relayer transport and connection lifecycle events.
+  wifi,
+
   /// Domain/service events.
   domain,
 
