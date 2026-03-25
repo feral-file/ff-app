@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -61,9 +63,11 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref
-          .read(channelsProvider(_filterToType(widget.filter)).notifier)
-          .loadChannels();
+      unawaited(
+        ref
+            .read(channelsProvider(_filterToType(widget.filter)).notifier)
+            .loadChannels(),
+      );
     });
   }
 
@@ -79,7 +83,9 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     if (widget.filter != AllChannelsFilter.curated) return;
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
-      ref.read(channelsProvider(ChannelType.dp1).notifier).loadMore();
+      unawaited(
+        ref.read(channelsProvider(ChannelType.dp1).notifier).loadMore(),
+      );
     }
   }
 
@@ -134,10 +140,13 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
               if (state.error != null && channels.isEmpty) {
                 return ErrorView(
                   error:
-                      'We couldn’t load channels. Check your connection, then Retry.',
-                  onRetry: () => ref
-                      .read(channelsProvider(channelType).notifier)
-                      .loadChannels(),
+                      'We couldn’t load channels. Check your connection, '
+                      'then Retry.',
+                  onRetry: () => unawaited(
+                    ref
+                        .read(channelsProvider(channelType).notifier)
+                        .loadChannels(),
+                  ),
                 );
               }
 
@@ -187,9 +196,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
                     itemBuilder: (context, index) => ChannelListRow(
                       channelData: rowData[index],
                       onItemTap: (item) {
-                        context.push(
-                          '${Routes.channels}/${item.id}',
-                        );
+                        unawaited(context.push('${Routes.works}/${item.id}'));
                       },
                     ),
                   ),
