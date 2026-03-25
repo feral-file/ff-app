@@ -56,9 +56,6 @@ class FeralFileWebview extends StatefulWidget {
 }
 
 class FeralFileWebviewState extends State<FeralFileWebview> {
-  static final Set<WebViewController> _retainedControllers =
-      <WebViewController>{};
-
   late WebViewController _webViewController;
   double _loadingProgress = 0;
 
@@ -121,19 +118,14 @@ class FeralFileWebviewState extends State<FeralFileWebview> {
 
   @override
   void dispose() {
-    _retainControllerForDeferredNativeCallbacks(_webViewController);
-    // webViewController dispose itself
-    _webViewController.onDispose();
+    try {
+      _webViewController.onDispose();
+    } catch (e) {
+      _log.warning('Error disposing WebViewController: $e');
+    }
+    // Don't retain controller reference - allow immediate cleanup
+    // This prevents crashes when finalizer tries to send messages during app termination
     super.dispose();
-  }
-
-  void _retainControllerForDeferredNativeCallbacks(
-    WebViewController controller,
-  ) {
-    _retainedControllers.add(controller);
-    Future<void>.delayed(const Duration(seconds: 5), () {
-      _retainedControllers.remove(controller);
-    });
   }
 
   @override
