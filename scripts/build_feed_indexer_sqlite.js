@@ -85,10 +85,12 @@ const ARGS = parseArgs(process.argv.slice(2));
 const NOW_US = String(Date.now() * 1000);
 const FALLBACK_THUMBNAIL_URI = 'assets/images/no_thumbnail.svg';
 
-main().catch((error) => {
-  console.error(`[error] ${error?.stack || String(error)}`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`[error] ${error?.stack || String(error)}`);
+    process.exit(1);
+  });
+}
 
 async function main() {
   ensureSqliteCli();
@@ -351,19 +353,19 @@ async function fetchChannelsFromFeedEndpoint(rawFeedEndpoint) {
     if (!channel?.id) {
       continue;
     }
+    const publisher = derivePublisherAttribution({
+      baseUrl,
+      source: channel,
+    });
     out.push({
       id: String(channel.id),
       baseUrl,
       channelUrl: `${baseUrl}/api/v1/channels/${encodeURIComponent(channel.id)}`,
-      publisherId: 1,
-      publisherTitle: 'Feral File',
+      publisherKey: publisher.publisherKey,
+      publisherTitle: publisher.publisherTitle,
     });
   }
-  const deduped = new Map();
-  for (const channel of out) {
-    deduped.set(`${channel.baseUrl}::${channel.id}`, channel);
-  }
-  return [...deduped.values()];
+  return finalizeChannelReferences(out);
 }
 
 function normalizeOrigin(rawUrl) {
@@ -392,28 +394,30 @@ function extractChannelsFromRegistry(publishers) {
   const channels = [];
   for (let i = 0; i < publishers.length; i += 1) {
     const publisher = publishers[i];
-    const publisherId = i + 1;
-    const publisherTitle = String(publisher?.name || '').trim() || `Publisher ${publisherId}`;
+    const publisherTitle = String(publisher?.name || '').trim()
+      || null;
     const channelUrls = Array.isArray(publisher?.channel_urls)
       ? publisher.channel_urls
       : [];
     for (const rawChannelUrl of channelUrls) {
       const parsed = parseChannelUrl(rawChannelUrl);
       if (parsed) {
+        const publisherRef = derivePublisherAttribution({
+          baseUrl: parsed.baseUrl,
+          source: {
+            publisher,
+            publisherTitle,
+          },
+        });
         channels.push({
           ...parsed,
-          publisherId,
-          publisherTitle,
+          publisherKey: publisherRef.publisherKey,
+          publisherTitle: publisherRef.publisherTitle,
         });
       }
     }
   }
-
-  const deduped = new Map();
-  for (const channel of channels) {
-    deduped.set(`${channel.baseUrl}::${channel.id}`, channel);
-  }
-  return [...deduped.values()];
+  return finalizeChannelReferences(channels);
 }
 
 function extractChannelsFromPublishArtifact(payload) {
@@ -427,17 +431,151 @@ function extractChannelsFromPublishArtifact(payload) {
     if (!parsed) {
       continue;
     }
+    const publisher = derivePublisherAttribution({
+      baseUrl: parsed.baseUrl,
+      source: exhibition,
+    });
     channels.push({
       ...parsed,
-      publisherId: 1,
-      publisherTitle: 'Feral File',
+      publisherKey: publisher.publisherKey,
+      publisherTitle: publisher.publisherTitle,
     });
   }
-  const deduped = new Map();
-  for (const channel of channels) {
-    deduped.set(`${channel.baseUrl}::${channel.id}`, channel);
+  return finalizeChannelReferences(channels);
+}
+
+function derivePublisherAttribution({baseUrl, source}) {
+  const explicitTitle = extractPublisherTitle(source);
+  const explicitKey = extractPublisherKey(source);
+  const normalizedOrigin = safeNormalizeOrigin(baseUrl);
+  const publisherTitle = explicitTitle || derivePublisherTitleFromOrigin(normalizedOrigin);
+  const publisherKey = explicitKey
+    ? `id:${explicitKey}`
+    : buildOriginScopedPublisherKey({
+      explicitTitle,
+      normalizedOrigin,
+    });
+  return {
+    publisherKey,
+    publisherTitle,
+  };
+}
+
+function extractPublisherKey(source) {
+  const candidates = [
+    source?.publisher?.id,
+    source?.source?.id,
+    source?.publisherId,
+    source?.sourceId,
+  ];
+  for (const candidate of candidates) {
+    if (candidate === null || candidate === undefined) {
+      continue;
+    }
+    const normalized = String(candidate).trim();
+    if (normalized) {
+      return normalized;
+    }
   }
-  return [...deduped.values()];
+  return null;
+}
+
+function extractPublisherTitle(source) {
+  const candidates = [
+    source?.publisher?.name,
+    source?.publisher?.title,
+    typeof source?.publisher === 'string' ? source.publisher : null,
+    source?.source?.name,
+    source?.source?.title,
+    typeof source?.source === 'string' ? source.source : null,
+    source?.publisherTitle,
+    source?.sourceTitle,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizePublisherTitle(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+function normalizePublisherTitle(rawTitle) {
+  if (typeof rawTitle !== 'string') {
+    return null;
+  }
+  const normalized = rawTitle.trim();
+  return normalized || null;
+}
+
+function buildOriginScopedPublisherKey({explicitTitle, normalizedOrigin}) {
+  const normalizedTitle = explicitTitle
+    ? `title:${explicitTitle.toLowerCase()}`
+    : null;
+  if (normalizedOrigin) {
+    return normalizedTitle
+      ? `${normalizedTitle}::origin:${normalizedOrigin}`
+      : `origin:${normalizedOrigin}`;
+  }
+  return normalizedTitle;
+}
+
+function derivePublisherTitleFromOrigin(origin) {
+  if (!origin) {
+    return null;
+  }
+  try {
+    const url = new URL(origin);
+    return url.host.replace(/^www\./u, '') || origin;
+  } catch {
+    return origin;
+  }
+}
+
+function safeNormalizeOrigin(rawUrl) {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+    return null;
+  }
+  try {
+    return normalizeOrigin(rawUrl);
+  } catch {
+    return null;
+  }
+}
+
+function finalizeChannelReferences(channels) {
+  const dedupedChannels = new Map();
+  for (const channel of channels) {
+    dedupedChannels.set(`${channel.baseUrl}::${channel.id}`, channel);
+  }
+
+  const publisherTitlesByKey = new Map();
+  for (const channel of dedupedChannels.values()) {
+    if (!channel.publisherKey || !channel.publisherTitle) {
+      continue;
+    }
+    if (!publisherTitlesByKey.has(channel.publisherKey)) {
+      publisherTitlesByKey.set(channel.publisherKey, channel.publisherTitle);
+    }
+  }
+
+  // Sort by the derived source key so publisher ids stay deterministic for the
+  // same set of sources even when input order changes across builds.
+  const publisherIdsByKey = new Map(
+    [...publisherTitlesByKey.keys()]
+      .sort((left, right) => left.localeCompare(right))
+      .map((key, index) => [key, index + 1]),
+  );
+
+  return [...dedupedChannels.values()].map((channel) => ({
+    ...channel,
+    publisherId: channel.publisherKey
+      ? (publisherIdsByKey.get(channel.publisherKey) ?? null)
+      : null,
+    publisherTitle: channel.publisherKey
+      ? (publisherTitlesByKey.get(channel.publisherKey) ?? channel.publisherTitle)
+      : channel.publisherTitle,
+  }));
 }
 
 async function loadJsonSource(source) {
@@ -1653,3 +1791,11 @@ async function fetchJson(url, options = {}) {
     throw new Error(`Invalid JSON from ${url}: ${error}`);
   }
 }
+
+module.exports = {
+  derivePublisherAttribution,
+  extractChannelsFromPublishArtifact,
+  extractChannelsFromRegistry,
+  finalizeChannelReferences,
+  normalizeOrigin,
+};
