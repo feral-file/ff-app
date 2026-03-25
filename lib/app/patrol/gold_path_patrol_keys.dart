@@ -54,6 +54,11 @@ abstract final class GoldPathPatrolKeys {
     'gold_path.onboarding.setup_ff1.secondary',
   );
 
+  /// Add-address screen action to submit an address.
+  static const onboardingAddAddressSubmit = ValueKey<String>(
+    'gold_path.onboarding.add_address.submit',
+  );
+
   /// Connect FF1 page action to retry connection.
   static const connectFF1Retry = ValueKey<String>(
     'gold_path.ff1_setup.connect_ff1.retry',

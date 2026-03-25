@@ -15,19 +15,6 @@
 
 ## Active gaps
 
-### 1) Onboarding action controls need stable automation anchors
-- Type: execution reliability + testability
-- Priority: medium
-- Affected flows:
-  - Onboarding (No Deeplink)
-  - Onboarding from Device Deeplink/QR
-- Current gap:
-  - Gold-path tests still rely on action labels like "Next"/"Finish" in parts
-    of the flow, which can be non-hit-testable during async UI transitions.
-- Desired state:
-  - All primary onboarding actions use dedicated Patrol keys and test helpers
-    target keys first, not text.
-
 ### 2) FF1 connect/setup orchestration remains distributed across providers
 - Type: architecture simplification
 - Priority: medium
@@ -51,7 +38,16 @@
   deferred recovery) with typed status events for UI/test observability.
 
 ## Completed items
-- EV-01 ingest no longer flattens publisher attribution to a hardcoded
+- EV-01: Onboarding action controls now have stable automation anchors.
+  - All onboarding action buttons (Next, Skip, Finish, Submit) use `GoldPathPatrolKeys`.
+  - Gold-path test (`patrol_test/gold_path_test.dart`) taps all actions via key, not text.
+  - Evidence:
+    - `lib/app/patrol/gold_path_patrol_keys.dart`: Added `onboardingAddAddressSubmit` key.
+    - `lib/ui/screens/add_address_screen.dart`: Submit button now uses the key.
+    - `patrol_test/gold_path_test.dart`: Replaced `$('Submit').tap()` with key-based tap.
+    - All onboarding CTA (shell-level) use dedicated patrol keys for reliable automation.
+  - Verification: All primary/secondary onboarding actions tap via keys; no text-based action taps.
+- EV-02 ingest no longer flattens publisher attribution to a hardcoded
   default.
   - Evidence:
     - `scripts/build_feed_indexer_sqlite.js` now derives publisher attribution
