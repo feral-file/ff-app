@@ -45,6 +45,11 @@
 - success state: onboarding completion flag persisted, user routed to `/`
 - failure/edge states:
   - address validation failures are inline and non-fatal
+  - while startup seed sync is still running, the add-address onboarding step
+    disables its primary/secondary actions and shows a waiting message instead
+    of racing bootstrap state changes
+  - after first-install lightweight bootstrap (`deferredRecovery`), onboarding
+    address adds re-open and queue until a later successful seed download
 - key screens involved: Introduce, Onboarding Add Address, Onboarding Setup FF1
 - key modules/services involved: `onboarding_provider`, `add_address_provider`, `address_service`, `trackedAddressesSyncProvider`
 - notes: TrackedAddressEntity (ObjectBox) is the single source of truth for user-added addresses; `trackedAddressesSyncProvider` watches it and ensures playlists exist + indexing resumes

@@ -78,6 +78,37 @@ void main() {
     expect(find.byKey(primaryKey), findsOneWidget);
     expect(find.byKey(secondaryKey), findsOneWidget);
   });
+
+  testWidgets('OnboardingShell disables actions when requested', (
+    tester,
+  ) async {
+    var taps = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: OnboardingShell(
+            content: const SizedBox.shrink(),
+            primaryAction: OnboardingShellAction(
+              child: const Text('Primary'),
+              onPressed: () => taps++,
+              enabled: false,
+            ),
+            secondaryAction: OnboardingShellAction(
+              child: const Text('Secondary'),
+              onPressed: () => taps++,
+              enabled: false,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Primary'));
+    await tester.tap(find.text('Secondary'));
+
+    expect(taps, 0);
+  });
 }
 
 void _noop() {}
