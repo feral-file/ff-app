@@ -8,11 +8,17 @@
 
 ## Contract sources
 
-- Strategy: `/home/mosko/Obsidian/docs-private/strategy/strategy-onepager.md`
-- Roadmap scope: `/home/mosko/Obsidian/docs-private/strategy/orbit-roadmap.md`
+- Strategy: private Strategy Onepager (internal)
+- Roadmap scope: private Orbit Roadmap (internal)
 - Product contract: `docs/project_spec.md`
 - Flow contract: `docs/app_flows.md`
 - DP-1 core spec: `https://raw.githubusercontent.com/display-protocol/dp1/refs/heads/main/core/v1.1.0/spec.md`
+
+## Adjacent docs and scoping
+
+- `docs/vision_execution_gap.md` tracks active implementation and refactor gaps.
+- `docs/vision_gap_orbit3.md` tracks Orbit 3 planning and execution contracts.
+- Keep Orbit 2 closure items in Orbit 2 tracker/docs; do not move unresolved Orbit 2 work into this document.
 
 ## Orbit 3 guardrails
 

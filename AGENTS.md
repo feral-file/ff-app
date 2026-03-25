@@ -63,6 +63,7 @@ A task is complete only when:
 1. Post-implementation checks are clean.
 2. Architecture/layering and DP-1 terminology constraints remain intact.
 3. Riverpod remains the flow driver; side effects stay out of widgets.
+4. If behavior or scope changes touch an execution matrix or tracker doc (for example `docs/vision_execution_gap.md`, `docs/vision_gap_orbit3.md`, or an approved plan spec), update the relevant status/evidence in the same change.
 
 ## Review workflow (implement → review loop → commit/push/PR)
 
