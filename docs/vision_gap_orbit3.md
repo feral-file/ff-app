@@ -8,8 +8,8 @@
 
 ## Contract sources
 
-- Strategy: private Strategy Onepager (internal)
-- Roadmap scope: private Orbit Roadmap (internal)
+- Strategy: `https://github.com/feral-file/docs-private/blob/main/strategy/strategy-onepager.md`
+- Roadmap scope: `https://github.com/feral-file/docs-private/blob/main/strategy/orbit-roadmap.md`
 - Product contract: `docs/project_spec.md`
 - Flow contract: `docs/app_flows.md`
 - DP-1 core spec: `https://raw.githubusercontent.com/display-protocol/dp1/refs/heads/main/core/v1.1.0/spec.md`
