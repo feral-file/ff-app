@@ -2,13 +2,11 @@ import 'dart:async';
 
 import 'package:app/app/ff1/ff1_ble_device_connect.dart';
 import 'package:app/app/providers/ff1_connect_session_provider.dart';
+import 'package:app/app/providers/ff1_ensure_ready_provider.dart';
+import 'package:app/app/providers/ff1_get_device_info_provider.dart';
 import 'package:app/app/providers/ff1_providers.dart';
-import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/app/providers/version_provider.dart';
-import 'package:app/domain/extensions/string_ext.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
-import 'package:app/infra/services/version_service.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -74,15 +72,6 @@ class ConnectFF1Error extends ConnectFF1State {
 
 /// Connect FF1 providers
 class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
-  static const List<Duration> _getInfoRetryDelays = [
-    Duration(milliseconds: 300),
-    Duration(milliseconds: 900),
-    Duration(milliseconds: 1500),
-    Duration(milliseconds: 2200),
-  ];
-
-  static const Duration _getInfoReadinessTimeout = Duration(seconds: 8);
-
   FF1ConnectSession? _activeSession;
 
   @override
@@ -185,11 +174,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         shouldContinue: () => _isSessionActive(session),
       );
       _assertSessionActive(session);
-      await _handlePostConnect(
-        ff1DeviceInfo,
-        blDevice,
-        session: session,
-      );
+      await _handlePostConnect(blDevice, ff1DeviceInfo, session: session);
       _log.info('[ConnectFF1Notifier] Successfully connected to device');
     } on FF1ConnectionCancelledError catch (_) {
       _log.info('[ConnectFF1Notifier] Connection cancelled by user');
@@ -204,149 +189,65 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
   }
 
   Future<void> _handlePostConnect(
-    FF1DeviceInfo? initialFF1DeviceInfo,
-    BluetoothDevice blDevice, {
+    BluetoothDevice blDevice,
+    FF1DeviceInfo? initialFF1DeviceInfo, {
     required FF1ConnectSession session,
   }) async {
     _assertSessionActive(session);
-    var ff1DeviceInfo = initialFF1DeviceInfo;
-    // If device info is not provided, fetch it via get_info command
-    if (ff1DeviceInfo == null) {
-      _log.info(
-        '[ConnectFF1Notifier] Device info not provided, fetching via get_info',
-      );
-      try {
-        final getInfoResponse = await _getInfoWithRetry(
-          blDevice,
-          session: session,
-        );
-        _assertSessionActive(session);
-        ff1DeviceInfo = getInfoResponse.toFF1DeviceInfo;
-
-        _log.info(
-          '[ConnectFF1Page] Got device info: '
-          'topicId=${ff1DeviceInfo.topicId}, '
-          'internet=${ff1DeviceInfo.isConnectedToInternet}, '
-          'branch=${ff1DeviceInfo.branchName}, '
-          'version=${ff1DeviceInfo.version}',
-        );
-      } on Exception catch (e) {
-        _log.warning('[ConnectFF1Page] Failed to get device info: $e');
-        rethrow;
-      }
-    }
-
-    _assertSessionActive(session);
-    // Check version compatibility
-    final versionService = ref.read(versionServiceProvider);
-    final compatibility = await versionService.checkDeviceVersionCompatibility(
-      branchName: ff1DeviceInfo.branchName,
-      deviceVersion: ff1DeviceInfo.version,
+    final deviceInfo = await ref.read(
+      ff1GetDeviceInfoProvider(
+        FF1GetDeviceInfoParams(
+          blDevice: blDevice,
+          deeplinkInfo: initialFF1DeviceInfo,
+          shouldContinue: () => _isSessionActive(session),
+        ),
+      ).future,
     );
     _assertSessionActive(session);
 
-    if (compatibility == VersionCompatibilityResult.needUpdateApp) {
-      _log.info(
-        '[ConnectFF1Notifier] App update required for device '
-        '${ff1DeviceInfo.deviceId}.',
-      );
+    _log.info(
+      '[ConnectFF1Page] Got device info: '
+      'topicId=${deviceInfo.topicId}, '
+      'internet=${deviceInfo.isConnectedToInternet}, '
+      'branch=${deviceInfo.branchName}, '
+      'version=${deviceInfo.version}',
+    );
+
+    final ensured = await ref.read(
+      ff1EnsureReadyProvider(
+        FF1EnsureReadyParams(
+          blDevice: blDevice,
+          deviceInfo: deviceInfo,
+          shouldContinue: () => _isSessionActive(session),
+        ),
+      ).future,
+    );
+    _assertSessionActive(session);
+
+    if (ensured == null) {
+      // Legacy behavior: VersionService dialog shown; do not transition state.
       session.completeWithOutcome(FF1ConnectOutcome.failed);
       return;
     }
 
-    var ff1Device = FF1Device.fromBluetoothDeviceAndDeviceInfo(
-      blDevice,
-      ff1DeviceInfo,
-    );
-
-    if (!ff1DeviceInfo.isConnectedToInternet) {
-      _setStateIfSessionActive(
-        session,
-        ConnectFF1Connected(
-          ff1device: ff1Device,
-          portalIsSet: false,
-          isConnectedToInternet: false,
-        ),
-      );
-      session.completeWithOutcome(FF1ConnectOutcome.needsWiFi);
-      return;
-    }
-
-    final topicId = ff1Device.topicId;
-    if (topicId.isNotEmpty) {
-      // Hide QR code on device
-      await ref
-          .read(ff1WifiControlProvider)
-          .showPairingQRCode(topicId: topicId, show: false);
-      _assertSessionActive(session);
-
-      // Show portal is set
-      _setStateIfSessionActive(
-        session,
-        ConnectFF1Connected(
-          ff1device: ff1Device,
-          portalIsSet: true,
-          isConnectedToInternet: true,
-        ),
-      );
-      session.completeWithOutcome(FF1ConnectOutcome.portalReady);
-      return;
-    }
-
-    final topicIdFromKeepWifi = await ref
-        .read(ff1ControlProvider)
-        .keepWifi(blDevice: blDevice);
-    if (topicIdFromKeepWifi.isEmpty) {
-      throw Exception('Failed to get topicId from keepWifi');
-    }
-
-    ff1Device = ff1Device.copyWith(topicId: topicIdFromKeepWifi);
     _setStateIfSessionActive(
       session,
       ConnectFF1Connected(
-        ff1device: ff1Device,
-        portalIsSet: false,
-        isConnectedToInternet: true,
+        ff1device: ensured.ff1Device,
+        portalIsSet: ensured.portalIsSet,
+        isConnectedToInternet: ensured.isConnectedToInternet,
       ),
     );
+
+    if (!ensured.isConnectedToInternet) {
+      session.completeWithOutcome(FF1ConnectOutcome.needsWiFi);
+      return;
+    }
+    if (ensured.portalIsSet) {
+      session.completeWithOutcome(FF1ConnectOutcome.portalReady);
+      return;
+    }
     session.completeWithOutcome(FF1ConnectOutcome.wiFiReady);
-  }
-
-  Future<String> _getInfoWithRetry(
-    BluetoothDevice blDevice, {
-    required FF1ConnectSession session,
-  }) async {
-    final control = ref.read(ff1ControlProvider);
-
-    Exception? lastError;
-    for (final delay in _getInfoRetryDelays) {
-      _assertSessionActive(session);
-      await Future<void>.delayed(delay);
-      _assertSessionActive(session);
-      try {
-        await control.waitUntilReady(
-          blDevice: blDevice,
-          timeout: _getInfoReadinessTimeout,
-        );
-        _assertSessionActive(session);
-        return await control.getInfo(blDevice: blDevice);
-      } on Exception catch (e) {
-        _assertSessionActive(session);
-        lastError = e;
-        final shouldRetry =
-            e is TimeoutException ||
-            e.toString().contains('BLE characteristic readiness timeout') ||
-            e.toString().contains('Command characteristic not found');
-        if (!shouldRetry) {
-          rethrow;
-        }
-      }
-    }
-
-    if (lastError != null) {
-      throw lastError;
-    }
-    throw Exception('Failed to get device info');
   }
 
   /// Wait until Bluetooth adapter is [BluetoothAdapterState.on].

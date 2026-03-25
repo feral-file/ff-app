@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -81,17 +82,128 @@ class ConnectFF1Page extends ConsumerStatefulWidget {
 
 class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   DateTime? _startTime;
-  late final ConnectFF1Notifier? _connectFF1Notifier;
+  FF1SetupOrchestratorNotifier? _setupOrchestrator;
+  ProviderSubscription<FF1SetupState>? _setupSub;
+  ProviderSubscription<AsyncValue<ConnectFF1State>>? _connectErrorSub;
 
   @override
   void initState() {
     super.initState();
     _startTime = DateTime.now();
 
-    // Start connection flow using the provider
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      _connectFF1Notifier = await ref.read(connectFF1Provider.notifier);
-      if (!mounted) return;
+    // Navigation + dialog side-effects must not be registered inside build.
+    _setupSub = ref.listenManual<FF1SetupState>(
+      ff1SetupOrchestratorProvider,
+      (previous, next) {
+        if (previous?.connected == next.connected) {
+          return;
+        }
+        final connected = next.connected;
+        if (connected == null) {
+          return;
+        }
+        unawaited(() async {
+          try {
+            _recordDuration(success: true);
+            if (connected.isConnectedToInternet) {
+              await _handleConnectedToInternet(context, connected);
+              return;
+            }
+
+            if (context.mounted) {
+              context.replace(
+                Routes.scanWifiNetworks,
+                extra: ScanWifiNetworkPagePayload(device: connected.ff1device),
+              );
+            }
+          } on Object catch (e, stack) {
+            _log.severe('[ConnectFF1Page] State handler failed', e, stack);
+            if (!context.mounted) {
+              return;
+            }
+
+            await UIHelper.showInfoDialog(
+              context,
+              'Connect failed',
+              e.toString(),
+              closeButton: 'Contact support',
+              onClose: () {
+                unawaited(
+                  UIHelper.showCustomerSupport(
+                    context,
+                    supportEmailService: ref.read(supportEmailServiceProvider),
+                  ),
+                );
+              },
+            );
+          }
+        }());
+      },
+    );
+
+    // Keep legacy error-dialog behavior unchanged (refactor-only).
+    _connectErrorSub = ref.listenManual<AsyncValue<ConnectFF1State>>(
+      connectFF1Provider,
+      (previous, next) {
+        next.whenData((state) async {
+          if (state is! ConnectFF1Error) {
+            return;
+          }
+
+          _recordDuration(success: false);
+
+          try {
+            if (state.exception is FF1ResponseError) {
+              final exception = state.exception as FF1ResponseError;
+              await UIHelper.showInfoDialog(
+                context,
+                exception.title,
+                exception.message,
+                closeButton:
+                    exception.shouldShowSupport ? 'Contact support' : '',
+                onClose: exception.shouldShowSupport
+                    ? () {
+                        unawaited(
+                          UIHelper.showCustomerSupport(
+                            context,
+                            supportEmailService: ref.read(
+                              supportEmailServiceProvider,
+                            ),
+                          ),
+                        );
+                      }
+                    : null,
+              );
+            } else {
+              await UIHelper.showInfoDialog(
+                context,
+                'Connect failed',
+                state.exception.toString(),
+                closeButton: 'Contact support',
+                onClose: () {
+                  unawaited(
+                    UIHelper.showCustomerSupport(
+                      context,
+                      supportEmailService: ref.read(supportEmailServiceProvider),
+                    ),
+                  );
+                },
+              );
+            }
+          } on Object catch (e, stack) {
+            _log.severe('[ConnectFF1Page] Error dialog failed', e, stack);
+          }
+        });
+      },
+    );
+
+    _setupOrchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
+
+    // Start connection flow after initState completes.
+    Future.microtask(() {
+      if (!mounted) {
+        return;
+      }
       unawaited(_startConnectFlow());
     });
   }
@@ -99,7 +211,9 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   @override
   void dispose() {
     // Cancel connection if still in progress
-    _connectFF1Notifier?.cancelConnection();
+    _setupOrchestrator?.cancel();
+    _setupSub?.close();
+    _connectErrorSub?.close();
     super.dispose();
   }
 
@@ -125,13 +239,13 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   Future<void> _startConnectFlow() async {
     _startTime = DateTime.now();
     _log.info('[ConnectFF1Page] Start connecting to FF1');
-    final notifier = _connectFF1Notifier;
+    final notifier = _setupOrchestrator;
     if (notifier == null) {
       return;
     }
-    await notifier.connectBle(
-      widget.payload.device,
-      ff1DeviceInfo: widget.payload.ff1DeviceInfo,
+    await notifier.startConnect(
+      device: widget.payload.device,
+      deeplinkInfo: widget.payload.ff1DeviceInfo,
     );
   }
 
@@ -157,7 +271,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
   Future<void> _onCancel() async {
     _log.info('[ConnectFF1Page] Cancel pressed, cancelling connection');
-    _connectFF1Notifier?.cancelConnection();
+    _setupOrchestrator?.cancel();
     try {
       await widget.payload.device.disconnect();
     } on Exception catch (e) {
@@ -191,95 +305,6 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
   @override
   Widget build(BuildContext context) {
-    // Listen for state changes to handle navigation and dialogs
-    ref.listen<AsyncValue<ConnectFF1State>>(connectFF1Provider, (
-      previous,
-      next,
-    ) {
-      next.whenData((state) async {
-        try {
-          if (state is ConnectFF1Connected) {
-            _recordDuration(success: true);
-            if (state.isConnectedToInternet) {
-              await _handleConnectedToInternet(context, state);
-            } else {
-              if (context.mounted) {
-                context.replace(
-                  Routes.scanWifiNetworks,
-                  extra: ScanWifiNetworkPagePayload(
-                    device: state.ff1device,
-                  ),
-                );
-              }
-            }
-          } else if (state is ConnectFF1Error) {
-            _recordDuration(success: false);
-
-            if (state.exception is FF1ResponseError) {
-              final exception = state.exception as FF1ResponseError;
-              await UIHelper.showInfoDialog(
-                context,
-                exception.title,
-                exception.message,
-                closeButton: exception.shouldShowSupport
-                    ? 'Contact support'
-                    : '',
-                onClose: exception.shouldShowSupport
-                    ? () {
-                        unawaited(
-                          UIHelper.showCustomerSupport(
-                            context,
-                            supportEmailService: ref.read(
-                              supportEmailServiceProvider,
-                            ),
-                          ),
-                        );
-                      }
-                    : null,
-              );
-            } else {
-              await UIHelper.showInfoDialog(
-                context,
-                'Connect failed',
-                state.exception.toString(),
-                closeButton: 'Contact support',
-                onClose: () {
-                  unawaited(
-                    UIHelper.showCustomerSupport(
-                      context,
-                      supportEmailService: ref.read(
-                        supportEmailServiceProvider,
-                      ),
-                    ),
-                  );
-                },
-              );
-            }
-          }
-        } on Object catch (e, stack) {
-          _log.severe('[ConnectFF1Page] State handler failed', e, stack);
-          if (!context.mounted) {
-            return;
-          }
-
-          await UIHelper.showInfoDialog(
-            context,
-            'Connect failed',
-            e.toString(),
-            closeButton: 'Contact support',
-            onClose: () {
-              unawaited(
-                UIHelper.showCustomerSupport(
-                  context,
-                  supportEmailService: ref.read(supportEmailServiceProvider),
-                ),
-              );
-            },
-          );
-        }
-      });
-    });
-
     final setupState = ref.watch(connectFF1Provider);
     _log.info('UI state -> $setupState');
     final status = setupState.maybeWhen(
