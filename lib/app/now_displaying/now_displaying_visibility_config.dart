@@ -20,7 +20,6 @@ const routesThatHideNowDisplayingBar = <String>[
   Routes.enterWifiPassword,
   Routes.deviceConfiguration,
   Routes.ff1Updating,
-  Routes.nowDisplaying,
   Routes.keyboardControl,
   Routes.releaseNotes,
   Routes.releaseNoteDetail,

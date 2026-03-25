@@ -72,12 +72,17 @@ class BootstrapStatus {
   /// Creates a BootstrapStatus.
   const BootstrapStatus({
     required this.phase,
+    this.seedSyncGatePhase = BootstrapSeedSyncGatePhase.syncInProgress,
     this.message,
     this.error,
+    this.pendingDp1BootstrapAfterSeed = false,
   });
 
   /// Current typed bootstrap phase.
   final BootstrapPhase phase;
+
+  /// Current onboarding-facing seed/bootstrap gate phase.
+  final BootstrapSeedSyncGatePhase seedSyncGatePhase;
 
   /// Optional status message.
   final String? message;
@@ -85,19 +90,50 @@ class BootstrapStatus {
   /// Optional error if bootstrap failed.
   final Object? error;
 
+  /// True after lightweight bootstrap while full DP-1 bootstrap is deferred
+  /// until a later successful seed download.
+  final bool pendingDp1BootstrapAfterSeed;
+
   /// Copy with new values.
   BootstrapStatus copyWith({
     BootstrapPhase? phase,
+    BootstrapSeedSyncGatePhase? seedSyncGatePhase,
     String? message,
     Object? error,
+    bool? pendingDp1BootstrapAfterSeed,
   }) {
     return BootstrapStatus(
       phase: phase ?? this.phase,
+      seedSyncGatePhase: seedSyncGatePhase ?? this.seedSyncGatePhase,
       message: message ?? this.message,
       error: error ?? this.error,
+      pendingDp1BootstrapAfterSeed:
+          pendingDp1BootstrapAfterSeed ?? this.pendingDp1BootstrapAfterSeed,
     );
   }
 }
+
+/// Onboarding-facing gate phases for startup seed/bootstrap coordination.
+enum BootstrapSeedSyncGatePhase {
+  /// Seed sync is settled and onboarding may proceed normally.
+  gateOpen,
+
+  /// Seed sync is actively running, so onboarding actions should wait.
+  syncInProgress,
+
+  /// Lightweight bootstrap completed without a seed file; onboarding may
+  /// proceed and queued address writes will recover after a later seed sync.
+  deferredRecovery,
+}
+
+/// Derived seed/bootstrap handshake state for UI and tests.
+final bootstrapSeedSyncGatePhaseProvider = Provider<BootstrapSeedSyncGatePhase>(
+  (ref) {
+    return ref.watch(
+      bootstrapProvider.select((status) => status.seedSyncGatePhase),
+    );
+  },
+);
 
 /// Notifier for managing the bootstrap process.
 class BootstrapNotifier extends Notifier<BootstrapStatus> {
@@ -115,6 +151,32 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
     _log = Logger('BootstrapNotifier');
     return const BootstrapStatus(
       phase: BootstrapPhase.idle,
+    );
+  }
+
+  /// Keep onboarding actions blocked while startup seed/bootstrap work is still
+  /// settling. This closes the gap between seed sync completion and the later
+  /// lightweight/full bootstrap decision in app startup.
+  void markSeedSyncInProgress() {
+    state = state.copyWith(
+      seedSyncGatePhase: BootstrapSeedSyncGatePhase.syncInProgress,
+    );
+  }
+
+  /// Reopen onboarding actions once startup has reached a stable phase.
+  void markSeedSyncGateOpen() {
+    state = state.copyWith(
+      seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
+    );
+  }
+
+  /// Restore the stable lightweight-bootstrap state after a retry still ends
+  /// without a seed file. This keeps onboarding interactive while DP-1 work
+  /// remains deferred to a later successful seed download.
+  void markDeferredRecovery() {
+    state = state.copyWith(
+      seedSyncGatePhase: BootstrapSeedSyncGatePhase.deferredRecovery,
+      pendingDp1BootstrapAfterSeed: true,
     );
   }
 
@@ -146,11 +208,17 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
         phase: BootstrapPhase.activatingAutoConnectWatcher,
         message: 'Activating FF1 auto-connect watcher...',
       );
-      ref.watch(ff1AutoConnectWatcherProvider);
+      // Same as full `bootstrap()`: keep discrepancy telemetry anywhere
+      // auto-connect runs (first install has no seed but still uses FF1).
+      ref
+        ..watch(ff1AutoConnectWatcherProvider)
+        ..watch(ff1ConnectionDiscrepancyWatcherProvider);
 
       state = const BootstrapStatus(
         phase: BootstrapPhase.completed,
+        seedSyncGatePhase: BootstrapSeedSyncGatePhase.deferredRecovery,
         message: 'Bootstrap completed (library download pending)',
+        pendingDp1BootstrapAfterSeed: true,
       );
       _pendingDp1BootstrapAfterSeed = true;
     } on Exception catch (e, stack) {
@@ -158,14 +226,17 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
         _log.info('Bootstrap cancelled');
         state = const BootstrapStatus(
           phase: BootstrapPhase.idle,
+          seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
         );
         return;
       }
       _log.severe('Bootstrap failed', e, stack);
       state = BootstrapStatus(
         phase: BootstrapPhase.failed,
+        seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
         message: 'Bootstrap failed: $e',
         error: e,
+        pendingDp1BootstrapAfterSeed: _pendingDp1BootstrapAfterSeed,
       );
     }
   }
@@ -212,15 +283,20 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
       _log.info('My Collection channel created');
 
       // Keep the auto-connect watcher alive to automatically connect to relayer
-      // when active FF1 device changes
+      // when active FF1 device changes. Also activate the discrepancy watcher
+      // that detects and reports the false "Device not connected" gap to
+      // Sentry.
       state = state.copyWith(
         phase: BootstrapPhase.activatingAutoConnectWatcher,
         message: 'Activating FF1 auto-connect watcher...',
       );
-      ref.watch(ff1AutoConnectWatcherProvider);
+      ref
+        ..watch(ff1AutoConnectWatcherProvider)
+        ..watch(ff1ConnectionDiscrepancyWatcherProvider);
 
       state = const BootstrapStatus(
         phase: BootstrapPhase.completed,
+        seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
         message: 'Bootstrap completed successfully',
       );
       _pendingDp1BootstrapAfterSeed = false;
@@ -229,14 +305,17 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
         _log.info('Bootstrap cancelled');
         state = const BootstrapStatus(
           phase: BootstrapPhase.idle,
+          seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
         );
         return;
       }
       _log.severe('Bootstrap failed', e, stack);
       state = BootstrapStatus(
         phase: BootstrapPhase.failed,
+        seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
         message: 'Bootstrap failed: $e',
         error: e,
+        pendingDp1BootstrapAfterSeed: _pendingDp1BootstrapAfterSeed,
       );
     }
   }
@@ -245,6 +324,7 @@ class BootstrapNotifier extends Notifier<BootstrapStatus> {
   void reset() {
     state = const BootstrapStatus(
       phase: BootstrapPhase.idle,
+      seedSyncGatePhase: BootstrapSeedSyncGatePhase.gateOpen,
     );
     _pendingDp1BootstrapAfterSeed = false;
   }

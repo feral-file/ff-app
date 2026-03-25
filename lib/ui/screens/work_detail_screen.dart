@@ -33,9 +33,9 @@ import 'package:backdrop/backdrop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shake/shake.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:shake/shake.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Work detail screen.
@@ -122,11 +122,13 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     if (_isInfoExpand) {
       _infoShrink();
     }
-    ref.read(appOverlayProvider.notifier).showToast(
-      message: 'Shake your phone to exit fullscreen mode',
-      iconPreset: ToastOverlayIconPreset.information,
-      autoDismissAfter: const Duration(seconds: 3),
-    );
+    ref
+        .read(appOverlayProvider.notifier)
+        .showToast(
+          message: 'Shake your phone to exit fullscreen mode',
+          iconPreset: ToastOverlayIconPreset.information,
+          autoDismissAfter: const Duration(seconds: 3),
+        );
     _shakeDetector = ShakeDetector.autoStart(
       onPhoneShake: (_) => unawaited(_exitFullScreen()),
     );
@@ -230,120 +232,121 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
           child: Scaffold(
             backgroundColor: AppColor.auGreyBackground,
             body: Stack(
-            children: [
-              BackdropScaffold(
-                backgroundColor: AppColor.auGreyBackground,
-                resizeToAvoidBottomInset: false,
-                appBar: _isFullScreen
-                    ? null
-                    : MainAppBar.preferred(
-                        context,
-                        backTitle: widget.backTitle ?? 'Work',
-                        backgroundColor: AppColor.auGreyBackground,
-                        actions: [
-                          FFDisplayButton(
-                            onDeviceSelected: (device) async {
-                              final canvas =
-                                  ref.read(canvasClientServiceV2Provider);
-                              final items = [item];
-                              final singleWorkPlaylist =
-                                  PlaylistExt.fromPlaylistItem(items);
-                              final dp1 =
-                                  DatabaseConverters.playlistAndItemsToDP1Playlist(
-                                singleWorkPlaylist,
-                                items,
-                              );
-                              await canvas.castPlaylist(
-                                device,
-                                dp1,
-                                DP1Intent.displayNow(),
-                                usingUrl: false,
-                              );
-                            },
+              children: [
+                BackdropScaffold(
+                  backgroundColor: AppColor.auGreyBackground,
+                  resizeToAvoidBottomInset: false,
+                  appBar: _isFullScreen
+                      ? null
+                      : MainAppBar.preferred(
+                          context,
+                          backTitle: widget.backTitle ?? 'Work',
+                          backgroundColor: AppColor.auGreyBackground,
+                          actions: [
+                            FFDisplayButton(
+                              onDeviceSelected: (device) async {
+                                final canvas = ref.read(
+                                  canvasClientServiceV2Provider,
+                                );
+                                final items = [item];
+                                final singleWorkPlaylist =
+                                    PlaylistExt.fromPlaylistItem(items);
+                                final dp1 =
+                                    DatabaseConverters.playlistAndItemsToDP1Playlist(
+                                      singleWorkPlaylist,
+                                      items,
+                                    );
+                                await canvas.castPlaylist(
+                                  device,
+                                  dp1,
+                                  DP1Intent.displayNow(),
+                                  usingUrl: false,
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                  backLayer: _isFullScreen
+                      ? GestureDetector(
+                          onTap: _exitFullScreen,
+                          behavior: HitTestBehavior.opaque,
+                          child: WorkDetailBackLayer(
+                            item: item,
+                            isFullScreen: true,
+                            mimeType: data.mimeType,
                           ),
-                        ],
-                      ),
-                backLayer: _isFullScreen
-                    ? GestureDetector(
-                        onTap: _exitFullScreen,
-                        behavior: HitTestBehavior.opaque,
-                        child: WorkDetailBackLayer(
+                        )
+                      : WorkDetailBackLayer(
                           item: item,
-                          isFullScreen: true,
+                          isFullScreen: false,
                           mimeType: data.mimeType,
                         ),
-                      )
-                    : WorkDetailBackLayer(
-                        item: item,
-                        isFullScreen: false,
-                        mimeType: data.mimeType,
-                      ),
-                reverseAnimationCurve: Curves.ease,
-                frontLayer: _isFullScreen
-                    ? const SizedBox()
-                    : _buildFrontLayer(context, data),
-                frontLayerBackgroundColor: _isFullScreen
-                    ? Colors.transparent
-                    : AppColor.auGreyBackground,
-                backLayerBackgroundColor: AppColor.auGreyBackground,
-                animationController: _animationController,
-                revealBackLayerAtStart: true,
-                frontLayerScrim: Colors.transparent,
-                backLayerScrim: Colors.transparent,
-                subHeaderAlwaysActive: false,
-                frontLayerShape: const BeveledRectangleBorder(),
-                subHeader: _isFullScreen
-                    ? null
-                    : DecoratedBox(
-                        decoration: const BoxDecoration(
-                          color: AppColor.auGreyBackground,
-                        ),
-                        child: GestureDetector(
-                          onVerticalDragEnd: (details) {
-                            final dy = details.primaryVelocity ?? 0;
-                            if (dy <= 0) {
-                              _infoExpand();
-                            } else {
-                              _infoShrink();
-                            }
-                          },
-                          child: Container(
-                            child: _buildSubHeader(
-                              context,
-                              data,
-                              item,
-                              artistStr,
+                  reverseAnimationCurve: Curves.ease,
+                  frontLayer: _isFullScreen
+                      ? const SizedBox()
+                      : _buildFrontLayer(context, data),
+                  frontLayerBackgroundColor: _isFullScreen
+                      ? Colors.transparent
+                      : AppColor.auGreyBackground,
+                  backLayerBackgroundColor: AppColor.auGreyBackground,
+                  animationController: _animationController,
+                  revealBackLayerAtStart: true,
+                  frontLayerScrim: Colors.transparent,
+                  backLayerScrim: Colors.transparent,
+                  subHeaderAlwaysActive: false,
+                  frontLayerShape: const BeveledRectangleBorder(),
+                  subHeader: _isFullScreen
+                      ? null
+                      : DecoratedBox(
+                          decoration: const BoxDecoration(
+                            color: AppColor.auGreyBackground,
+                          ),
+                          child: GestureDetector(
+                            onVerticalDragEnd: (details) {
+                              final dy = details.primaryVelocity ?? 0;
+                              if (dy <= 0) {
+                                _infoExpand();
+                              } else {
+                                _infoShrink();
+                              }
+                            },
+                            child: Container(
+                              child: _buildSubHeader(
+                                context,
+                                data,
+                                item,
+                                artistStr,
+                              ),
                             ),
                           ),
                         ),
+                ),
+                if (_isInfoExpand && !_isFullScreen)
+                  Positioned(
+                    top: _appBarBottomDy ?? 80,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: _infoShrink,
+                      onVerticalDragEnd: (details) {
+                        final dy = details.primaryVelocity ?? 0;
+                        if (dy > 0) {
+                          _infoShrink();
+                        }
+                      },
+                      child: Container(
+                        color: Colors.transparent,
+                        height:
+                            (MediaQuery.of(context).size.height -
+                                (_appBarBottomDy ?? 80) -
+                                _infoHeaderHeight) *
+                            0.5,
+                        width: MediaQuery.of(context).size.width,
                       ),
-              ),
-              if (_isInfoExpand && !_isFullScreen)
-                Positioned(
-                  top: _appBarBottomDy ?? 80,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: _infoShrink,
-                    onVerticalDragEnd: (details) {
-                      final dy = details.primaryVelocity ?? 0;
-                      if (dy > 0) {
-                        _infoShrink();
-                      }
-                    },
-                    child: Container(
-                      color: Colors.transparent,
-                      height:
-                          (MediaQuery.of(context).size.height -
-                              (_appBarBottomDy ?? 80) -
-                              _infoHeaderHeight) *
-                          0.5,
-                      width: MediaQuery.of(context).size.width,
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
         );
       },
     );

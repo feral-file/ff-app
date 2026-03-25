@@ -28,8 +28,16 @@ extension WebViewControllerExtension on WebViewController {
     );
   }
 
-  void onDispose() {
-    _log.info('WebViewController onDispose');
+  Future<void> onDispose() async {
+    try {
+      _log.info('WebViewController onDispose - clearing cache');
+      // Clear cache to free memory and trigger cleanup of associated resources
+      await clearCache();
+      _log.info('WebViewController onDispose - cleanup complete');
+    } catch (e) {
+      _log.warning('Error during WebViewController cleanup: $e');
+      // Don't rethrow - we want graceful cleanup even if individual steps fail
+    }
   }
 
   void load(Uri uri, String? overriddenHtml) {

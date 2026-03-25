@@ -7,7 +7,10 @@ import 'package:app/nft_rendering/nft_rendering_widget.dart';
 import 'package:app/nft_rendering/webview_controller_ext.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
+import 'package:logging/logging.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+
+final _log = Logger('WebviewNFTRenderingWidget');
 
 class WebviewNFTRenderingWidget extends NFTRenderingWidget {
   const WebviewNFTRenderingWidget({
@@ -141,7 +144,7 @@ class _WebviewNFTRenderingWidgetState
         : widget.previewUri,
     overriddenHtml: widget.overriddenHtml,
     backgroundColor: backgroundColor,
-    onStarted: (WebViewController controller) {
+    onStarted: (controller) {
       _webViewController = controller;
     },
     onLoaded: (controller) async {
@@ -223,8 +226,13 @@ class _WebviewNFTRenderingWidgetState
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.detached) {
-      // App is being terminated - clear WebView controller reference
-      // to prevent crash when Flutter engine destroys PlatformViewsController
+      // App is being terminated - dispose WebView immediately
+      // to prevent native crashes during finalization
+      try {
+        unawaited(_webViewController?.onDispose());
+      } catch (e) {
+        _log.info('Error disposing WebViewController during app detach: $e');
+      }
       _webViewController = null;
     }
   }
@@ -232,6 +240,11 @@ class _WebviewNFTRenderingWidgetState
   @override
   void dispose() {
     _textController.dispose();
+    try {
+      unawaited(_webViewController?.onDispose());
+    } catch (e) {
+      _log.info('Error disposing WebViewController: $e');
+    }
     _webViewController = null;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();

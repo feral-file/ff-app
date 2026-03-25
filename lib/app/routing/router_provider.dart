@@ -24,7 +24,6 @@ import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/ui/screens/ff1_test_screen.dart';
 import 'package:app/ui/screens/home_index_page.dart';
 import 'package:app/ui/screens/keyboard_control_screen.dart';
-import 'package:app/ui/screens/now_displaying_screen.dart';
 import 'package:app/ui/screens/onboarding/introduce_page.dart';
 import 'package:app/ui/screens/onboarding/onboarding_add_address_page.dart';
 import 'package:app/ui/screens/onboarding/setup_ff1_page.dart';
@@ -431,17 +430,6 @@ routerProvider = Provider.family<GoRouter, String>((
         ),
       ),
 
-      // Now displaying (full-screen) route
-      GoRoute(
-        path: Routes.nowDisplaying,
-        name: RouteNames.nowDisplaying,
-        pageBuilder: (context, state) => buildCupertinoTransitionPage(
-          context,
-          state,
-          const NowDisplayingScreen(),
-        ),
-      ),
-
       // Keyboard control (interact) route
       GoRoute(
         path: Routes.keyboardControl,
@@ -650,10 +638,6 @@ final List<_RouteScreenMapping> _routeScreenMappings = [
   _RouteScreenMapping(
     screenName: 'WorkDetailScreen',
     matches: (path) => path.startsWith('${Routes.works}/'),
-  ),
-  _RouteScreenMapping(
-    screenName: 'NowDisplayingScreen',
-    matches: (path) => path == Routes.nowDisplaying,
   ),
   _RouteScreenMapping(
     screenName: 'KeyboardControlScreen',

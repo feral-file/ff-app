@@ -20,6 +20,7 @@ class OnboardingShellAction {
     this.key,
     this.borderColor,
     this.backgroundColor,
+    this.enabled = true,
   });
 
   /// Button content widget.
@@ -36,6 +37,9 @@ class OnboardingShellAction {
 
   /// Optional background color override.
   final Color? backgroundColor;
+
+  /// Whether the action is currently available.
+  final bool enabled;
 }
 
 /// Generic shell widget for new onboarding screens.
@@ -122,6 +126,7 @@ class OnboardingShell extends StatelessWidget {
               vertical: ContentRhythm.rowVerticalPadding,
             ),
             onTap: primaryAction!.onPressed,
+            enabled: primaryAction!.enabled,
             borderColor: primaryAction!.borderColor,
             color: primaryAction!.backgroundColor,
             child: primaryAction!.child,
@@ -135,6 +140,7 @@ class OnboardingShell extends StatelessWidget {
               vertical: ContentRhythm.rowVerticalPadding,
             ),
             onTap: secondaryAction!.onPressed,
+            enabled: secondaryAction!.enabled,
             borderColor:
                 secondaryAction!.borderColor ?? AppColor.feralFileLightBlue,
             color: secondaryAction!.backgroundColor ?? Colors.transparent,

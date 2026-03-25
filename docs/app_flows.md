@@ -45,6 +45,11 @@
 - success state: onboarding completion flag persisted, user routed to `/`
 - failure/edge states:
   - address validation failures are inline and non-fatal
+  - while startup seed sync is still running, the add-address onboarding step
+    disables its primary/secondary actions and shows a waiting message instead
+    of racing bootstrap state changes
+  - after first-install lightweight bootstrap (`deferredRecovery`), onboarding
+    address adds re-open and queue until a later successful seed download
 - key screens involved: Introduce, Onboarding Add Address, Onboarding Setup FF1
 - key modules/services involved: `onboarding_provider`, `add_address_provider`, `address_service`, `trackedAddressesSyncProvider`
 - notes: TrackedAddressEntity (ObjectBox) is the single source of truth for user-added addresses; `trackedAddressesSyncProvider` watches it and ensures playlists exist + indexing resumes
@@ -149,13 +154,15 @@
 - steps:
   - build DP-1 payload and cast via canvas client to selected device
   - now-displaying state derives from active device + relayer player/device streams
-  - user opens Now Displaying full screen and optional keyboard/touchpad Interact screen
+  - now-displaying bar displays current item and appears as floating overlay
+  - user taps bar to navigate to current work detail (or already there)
+  - optional: user opens Interact screen for keyboard/touchpad control
 - success state: active playback visible and controllable from app
 - failure/edge states:
-  - no paired device -> guidance state
-  - disconnected device -> disconnected state
+  - no paired device -> bar hidden (invisible, no guidance shown)
+  - disconnected device -> bar shows disconnected state
   - enrichment/cache misses fall back to basic DP-1 item fields
-- key screens involved: Work Detail, Playlist Detail, Now Displaying, Keyboard Control
+- key screens involved: Work Detail, Playlist Detail, Keyboard Control, Now Displaying Bar (overlay)
 - key modules/services involved: `canvas_client_service_v2`, `now_displaying_provider`, `ff1_wifi_providers`, `ff1_device_provider`
 
 ## Flow: Settings Recovery and Support
@@ -247,14 +254,6 @@
 - important actions: adjust display settings, switch device/options, finish setup flow
 - dependencies: active FF1 provider, `ff1DeviceDataProvider`, FF1 Wi-Fi control
 - notes / caveats: setup mode hides some advanced sections until post-setup use
-
-## Screen: NowDisplayingScreen
-
-- role in the flow: full-screen playback status and quick interaction launch
-- route / entry point: `/now-displaying`
-- important actions: open Interact, open FF1 settings quick sheet
-- dependencies: `nowDisplayingProvider`, now-displaying quick settings widgets
-- notes / caveats: route is intentionally hidden from global now-displaying bar duplication logic
 
 ## Screen: KeyboardControlScreen
 

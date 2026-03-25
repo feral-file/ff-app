@@ -119,6 +119,7 @@ dev_dependencies:
   # Testing
   flutter_test:
     sdk: flutter
+  mockito: ^5.6.4
 
   # Linting and analysis
   flutter_lints: 6.0.0

@@ -1,14 +1,12 @@
 # Vision/Execution Gap Tracker
 
 ## Purpose
-
 - Track gaps between intended product behavior and current implementation.
 - Keep vision gaps and engineering refactors visible without mixing them into
   unrelated feature PRs.
 - Provide a lightweight queue for follow-up work after shipping urgent fixes.
 
 ## How to use
-
 - Keep entries outcome-focused (what user/system behavior is missing or brittle).
 - Link each gap to owning flow(s) in `docs/project_spec.md` and
   `docs/app_flows.md`.
@@ -18,7 +16,6 @@
 ## Active gaps
 
 ### 1) Onboarding action controls need stable automation anchors
-
 - Type: execution reliability + testability
 - Priority: medium
 - Affected flows:
@@ -32,7 +29,6 @@
     target keys first, not text.
 
 ### 2) FF1 connect/setup orchestration remains distributed across providers
-
 - Type: architecture simplification
 - Priority: medium
 - Affected flows:
@@ -45,22 +41,7 @@
   - A single connect session orchestrator owns attempt lifecycle, cancellation,
     and routing outcomes.
 
-### 3) Seed-sync progress competes with first-run onboarding interaction timing
-
-- Type: flow resilience
-- Priority: medium
-- Affected flows:
-  - Cold Start Bootstrap
-  - Onboarding (No Deeplink)
-- Current gap:
-  - Heavy seed-sync activity can overlap onboarding transitions and create UI
-    timing sensitivity in end-to-end runs.
-- Desired state:
-  - Clear handshake contract between onboarding action readiness and seed-sync
-    state updates so interaction targets remain deterministic.
-
 ## Refactor backlog (candidate follow-ups)
-
 - Introduce `GoldPathPatrolKeys` for onboarding primary/secondary actions and
   migrate remaining label-based taps to key-based taps.
 - Extract FF1 connect lifecycle into a dedicated session object (attempt id,
@@ -70,5 +51,19 @@
   deferred recovery) with typed status events for UI/test observability.
 
 ## Completed items
-
-- None yet.
+- EV-01 ingest no longer flattens publisher attribution to a hardcoded
+  default.
+  - Evidence:
+    - `scripts/build_feed_indexer_sqlite.js` now derives publisher attribution
+      from source metadata when present and falls back to the feed/channel
+      origin instead of forcing `Feral File`.
+    - `test/scripts/build_feed_indexer_sqlite.test.js` covers:
+      - publish-artifact origin-based attribution
+      - `--channels-feed-endpoint` dryrun without hardcoded publisher naming
+      - multi-source SQL generation with consistent `publishers` rows and
+        `channels.publisher_id` linkage
+    - Verification command:
+      `node --test test/scripts/build_feed_indexer_sqlite.test.js`
+- Seed-sync onboarding handshake now exposes bootstrap gate phases
+  (`gate-open`, `sync-in-progress`, `deferred-recovery`) and blocks onboarding
+  add-address actions only while startup seed sync is actively in flight.

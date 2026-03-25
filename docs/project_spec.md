@@ -64,6 +64,9 @@
   - finish marks onboarding complete and routes to home
 - Outcome: user enters app with onboarding flag persisted.
 - Important edge cases:
+  - while startup seed sync is actively in flight, onboarding add-address
+    actions wait for the bootstrap gate to reopen so first-run transitions stay
+    deterministic
   - if seed DB is not ready, added addresses are queued in pending store and migrated later
   - if onboarding is entered from device-connect deep link, flow branches to connect FF1
 
@@ -111,11 +114,12 @@
   - build DP-1 playlist payload (single work or full playlist)
   - cast to selected device through canvas/relayer client
   - consume live player/device status via Wi-Fi control streams
-  - use now-displaying full screen, quick settings, and keyboard/touchpad interactions
+  - now-displaying bar shows current item and allows navigation to work detail
+  - optional: use keyboard/touchpad interactions for remote control
 - Outcome: art is playing on FF1 with live status visible in app overlays/screens.
 - Important edge cases:
-  - no active device: now-displaying shows pair/connect guidance
-  - disconnected state: now-displaying reflects connection transitions
+  - no active device: now-displaying bar shows pair/connect guidance (invisible when not pairing)
+  - disconnected state: now-displaying bar reflects connection transitions
   - enrichment failures do not block playback UI (fallback DP-1 item data remains)
 
 ### Flow: Maintenance and recovery
@@ -212,8 +216,8 @@
 
 ### Screen group: NowDisplaying + KeyboardControl
 - Purpose: monitor current playback and send interaction commands.
-- Entry points: global now-displaying bar, `/now-displaying`, `/keyboard-control`.
-- Key actions: open interact mode, quick FF1 settings, view current work/device state.
+- Entry points: global now-displaying bar (navigates to work detail), `/keyboard-control`.
+- Key actions: view current work/device state, open interact mode, send keyboard/touchpad commands.
 - Important data: active device, connection state, player status item list/current index, cached enrichment window.
 - Related modules: `now_displaying_provider`, `ff1_wifi_providers`, touchpad/keyboard events.
 
