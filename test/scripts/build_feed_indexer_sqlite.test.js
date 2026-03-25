@@ -203,6 +203,32 @@ test('dryrun feed-endpoint ingest does not hardcode publisher attribution', asyn
   }
 });
 
+test('dryrun feed-endpoint ingest prefers channel detail attribution over host fallback', async () => {
+  const server = await startFeedServer({
+    channels: [
+      {
+        id: 'channel-a',
+        title: 'Channel A',
+        publisher: {id: 7, name: 'Detail Publisher'},
+        playlists: [{id: 'playlist-a', title: 'Playlist A'}],
+      },
+    ],
+  });
+
+  try {
+    cleanupOutputDatabase();
+    await runBuilder(['--channels-feed-endpoint', server.origin, '--dryrun', '--threads', '1']);
+
+    const publishers = queryRows(
+      "SELECT id || '|' || title FROM publishers ORDER BY id;",
+    );
+    assert.deepEqual(publishers, ['1|Detail Publisher']);
+  } finally {
+    await server.close();
+    cleanupOutputDatabase();
+  }
+});
+
 test('dryrun publish-artifact ingest keeps publisher rows and channel links consistent for multi-source input', async () => {
   const serverA = await startFeedServer({
     channels: [
@@ -417,6 +443,8 @@ async function startFeedServer({channels}) {
       res.end(JSON.stringify({
         id: channel.id,
         title: channel.title,
+        publisher: channel.publisher || null,
+        source: channel.source || null,
         created: '2024-01-01T00:00:00Z',
       }));
       return;

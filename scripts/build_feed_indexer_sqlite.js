@@ -158,22 +158,36 @@ async function main() {
         channel.id,
         ARGS.maxPlaylistsPerChannel,
       );
+      const derivedPublisher = mergePublisherAttribution(
+        derivePublisherAttribution({
+          baseUrl: channelRef.baseUrl,
+          source: channel,
+        }),
+        {
+          publisherKey: channelRef.publisherKey,
+          publisherTitle: channelRef.publisherTitle,
+        },
+      );
       fetchedByOrder[index] = {
+        id: channel.id,
         channel,
         channelPlaylists,
         baseUrl: channelRef.baseUrl,
-        publisherId: channelRef.publisherId,
-        publisherTitle: channelRef.publisherTitle,
+        publisherKey: derivedPublisher.publisherKey,
+        publisherTitle: derivedPublisher.publisherTitle,
       };
     },
+  );
+  const finalizedFetchedByOrder = finalizeChannelReferences(
+    fetchedByOrder.filter(Boolean),
   );
 
   for (
     let channelSortOrder = 0;
-    channelSortOrder < fetchedByOrder.length;
+    channelSortOrder < finalizedFetchedByOrder.length;
     channelSortOrder += 1
   ) {
-    const fetched = fetchedByOrder[channelSortOrder];
+    const fetched = finalizedFetchedByOrder[channelSortOrder];
     if (!fetched) {
       continue;
     }
@@ -754,6 +768,29 @@ function ingestChannel(
     updated_at_us: createdAtUs,
     sort_order: Number.isFinite(sortOrder) ? sortOrder : null,
   });
+}
+
+function mergePublisherAttribution(primary, fallback) {
+  if (isExplicitPublisherKey(primary?.publisherKey)) {
+    return {
+      publisherKey: primary.publisherKey,
+      publisherTitle: primary.publisherTitle || fallback?.publisherTitle || null,
+    };
+  }
+  if (isExplicitPublisherKey(fallback?.publisherKey)) {
+    return {
+      publisherKey: fallback.publisherKey,
+      publisherTitle: fallback.publisherTitle || primary?.publisherTitle || null,
+    };
+  }
+  return {
+    publisherKey: primary?.publisherKey || fallback?.publisherKey || null,
+    publisherTitle: primary?.publisherTitle || fallback?.publisherTitle || null,
+  };
+}
+
+function isExplicitPublisherKey(publisherKey) {
+  return typeof publisherKey === 'string' && publisherKey.startsWith('id:');
 }
 
 function ingestChannelPlaylists(data, channel, playlists, baseUrl) {
