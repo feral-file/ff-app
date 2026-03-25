@@ -57,7 +57,7 @@ void main() {
       expect(result, isEmpty);
     });
 
-    test('returns empty when tokens is empty (no enrichment possible)', () {
+    test('saves all items as fallback when tokens is empty', () {
       final items = [
         dp1ItemWithCid('item_1', '1'),
         dp1ItemWithCid('item_2', '2'),
@@ -66,11 +66,15 @@ void main() {
         missingItems: items,
         tokens: [],
       );
-      // No tokens available, so no items are cached
-      expect(result, isEmpty);
+      // Items with no tokens are saved as fallback DP1 items
+      expect(result, hasLength(2));
+      expect(result[0].id, 'item_1');
+      expect(result[0].thumbnailUrl, isNull); // Fallback, no token
+      expect(result[1].id, 'item_2');
+      expect(result[1].thumbnailUrl, isNull); // Fallback, no token
     });
 
-    test('saves only items with matching tokens (cache-first contract)', () {
+    test('saves enriched items with token and fallback items without', () {
       // Item with cid eip155:1:erc721:0xabc:1
       final item1 = dp1ItemWithCid('item_1', '1');
       // Item with cid eip155:1:erc721:0xabc:2
@@ -86,14 +90,16 @@ void main() {
         tokens: tokens,
       );
 
-      // Only item_1 is saved (has token); item_2 is not cached
-      expect(result.length, 1);
-      final item1Result = result.single;
-      expect(item1Result.id, 'item_1');
+      // Both items are saved; item_1 enriched, item_2 as fallback
+      expect(result, hasLength(2));
+      final item1Result = result.firstWhere((e) => e.id == 'item_1');
       expect(item1Result.thumbnailUrl, isNotNull); // Enriched with token
+      
+      final item2Result = result.firstWhere((e) => e.id == 'item_2');
+      expect(item2Result.thumbnailUrl, isNull); // Fallback, no token
     });
 
-    test('skips items with no cid (cannot be enriched from indexer)', () {
+    test('saves items with no cid as fallback DP1 items', () {
       final itemNoCid = dp1ItemNoCid('item_x');
       final itemWithCid = dp1ItemWithCid('item_y', '1');
       final tokens = [tokenWithCid('eip155:1:erc721:0xabc:1')];
@@ -103,10 +109,14 @@ void main() {
         tokens: tokens,
       );
 
-      // Only item with cid and matching token is saved
-      expect(result.length, 1);
-      expect(result.single.id, 'item_y');
-      expect(result.single.thumbnailUrl, isNotNull);
+      // Both items are saved; item_x as fallback, item_y enriched
+      expect(result, hasLength(2));
+      
+      final itemXResult = result.firstWhere((e) => e.id == 'item_x');
+      expect(itemXResult.thumbnailUrl, isNull); // Fallback, no cid
+      
+      final itemYResult = result.firstWhere((e) => e.id == 'item_y');
+      expect(itemYResult.thumbnailUrl, isNotNull); // Enriched
     });
   });
 }
