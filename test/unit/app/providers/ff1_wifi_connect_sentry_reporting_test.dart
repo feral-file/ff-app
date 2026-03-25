@@ -65,6 +65,11 @@ class _ThrowingConnectTransport implements FF1WifiTransport {
     unawaited(_connections.close());
     unawaited(_errors.close());
   }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
 }
 
 /// First `connect` succeeds; second `connect` (e.g. `forceReconnect: true`)
@@ -124,6 +129,11 @@ class _ReconnectSecondCallFailsTransport implements FF1WifiTransport {
     unawaited(_notifications.close());
     unawaited(_connections.close());
     unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
   }
 }
 
