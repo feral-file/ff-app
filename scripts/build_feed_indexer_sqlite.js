@@ -396,23 +396,24 @@ function extractChannelsFromRegistry(publishers) {
     const publisher = publishers[i];
     const publisherTitle = String(publisher?.name || '').trim()
       || null;
+    const registryPublisherKey = derivePublisherAttribution({
+      baseUrl: null,
+      source: {
+        publisher,
+        publisherTitle,
+      },
+      preferExplicitIdentity: true,
+    });
     const channelUrls = Array.isArray(publisher?.channel_urls)
       ? publisher.channel_urls
       : [];
     for (const rawChannelUrl of channelUrls) {
       const parsed = parseChannelUrl(rawChannelUrl);
       if (parsed) {
-        const publisherRef = derivePublisherAttribution({
-          baseUrl: parsed.baseUrl,
-          source: {
-            publisher,
-            publisherTitle,
-          },
-        });
         channels.push({
           ...parsed,
-          publisherKey: publisherRef.publisherKey,
-          publisherTitle: publisherRef.publisherTitle,
+          publisherKey: registryPublisherKey.publisherKey,
+          publisherTitle: registryPublisherKey.publisherTitle,
         });
       }
     }
@@ -444,7 +445,7 @@ function extractChannelsFromPublishArtifact(payload) {
   return finalizeChannelReferences(channels);
 }
 
-function derivePublisherAttribution({baseUrl, source}) {
+function derivePublisherAttribution({baseUrl, source, preferExplicitIdentity = false}) {
   const explicitTitle = extractPublisherTitle(source);
   const explicitKey = extractPublisherKey(source);
   const normalizedOrigin = safeNormalizeOrigin(baseUrl);
@@ -453,6 +454,7 @@ function derivePublisherAttribution({baseUrl, source}) {
     ? buildExplicitPublisherKey({
       explicitKey,
       normalizedOrigin,
+      preferExplicitIdentity,
     })
     : buildOriginScopedPublisherKey({
       explicitTitle,
@@ -511,8 +513,15 @@ function normalizePublisherTitle(rawTitle) {
   return normalized || null;
 }
 
-function buildExplicitPublisherKey({explicitKey, normalizedOrigin}) {
+function buildExplicitPublisherKey({
+  explicitKey,
+  normalizedOrigin,
+  preferExplicitIdentity,
+}) {
   const keyPrefix = `id:${explicitKey}`;
+  if (preferExplicitIdentity) {
+    return keyPrefix;
+  }
   // Source-provided ids are usually origin-local, so namespace them by origin
   // to prevent different feeds from collapsing into the same publisher row.
   return normalizedOrigin

@@ -136,6 +136,27 @@ test('extractChannelsFromRegistry keeps publisher linkage stable across input re
   );
 });
 
+test('extractChannelsFromRegistry keeps one explicit publisher across multiple origins', () => {
+  const channels = extractChannelsFromRegistry([
+    {
+      id: 7,
+      name: 'Publisher A',
+      channel_urls: [
+        'https://source-a.example/api/v1/channels/channel-a',
+        'https://source-b.example/api/v1/channels/channel-b',
+      ],
+    },
+  ]);
+
+  assert.deepEqual(
+    summarizeChannelPublisherLinks(channels),
+    [
+      {id: 'channel-a', publisherId: 1, publisherTitle: 'Publisher A'},
+      {id: 'channel-b', publisherId: 1, publisherTitle: 'Publisher A'},
+    ],
+  );
+});
+
 test('dryrun feed-endpoint ingest does not hardcode publisher attribution', async () => {
   const server = await startFeedServer({
     channels: [
@@ -226,6 +247,69 @@ ORDER BY c.id;
     assert.deepEqual(channelLinks, [
       `channel-a|${new URL(serverA.origin).host}`,
       `channel-b|${new URL(serverB.origin).host}`,
+    ]);
+  } finally {
+    await serverA.close();
+    await serverB.close();
+    fs.rmSync(tempDir, {recursive: true, force: true});
+    cleanupOutputDatabase();
+  }
+});
+
+test('dryrun registry ingest keeps a multi-origin registry publisher unified', async () => {
+  const serverA = await startFeedServer({
+    channels: [
+      {
+        id: 'channel-a',
+        title: 'Channel A',
+        playlists: [{id: 'playlist-a', title: 'Playlist A'}],
+      },
+    ],
+  });
+  const serverB = await startFeedServer({
+    channels: [
+      {
+        id: 'channel-b',
+        title: 'Channel B',
+        playlists: [{id: 'playlist-b', title: 'Playlist B'}],
+      },
+    ],
+  });
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ff-feed-indexer-'));
+  const registryPath = path.join(tempDir, 'channels-registry.json');
+
+  fs.writeFileSync(
+    registryPath,
+    JSON.stringify([
+      {
+        id: 7,
+        name: 'Registry Publisher',
+        channel_urls: [
+          `${serverA.origin}/api/v1/channels/channel-a`,
+          `${serverB.origin}/api/v1/channels/channel-b`,
+        ],
+      },
+    ]),
+  );
+
+  try {
+    cleanupOutputDatabase();
+    await runBuilder(['--channels-source', registryPath, '--dryrun', '--threads', '1']);
+
+    const publishers = queryRows(
+      "SELECT id || '|' || title FROM publishers ORDER BY id;",
+    );
+    const channelLinks = queryRows(`
+SELECT c.id || '|' || COALESCE(CAST(c.publisher_id AS TEXT), 'NULL') || '|' || p.title
+FROM channels c
+JOIN publishers p ON p.id = c.publisher_id
+ORDER BY c.id;
+    `);
+
+    assert.deepEqual(publishers, ['1|Registry Publisher']);
+    assert.deepEqual(channelLinks, [
+      'channel-a|1|Registry Publisher',
+      'channel-b|1|Registry Publisher',
     ]);
   } finally {
     await serverA.close();
