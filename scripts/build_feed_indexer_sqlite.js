@@ -450,7 +450,10 @@ function derivePublisherAttribution({baseUrl, source}) {
   const normalizedOrigin = safeNormalizeOrigin(baseUrl);
   const publisherTitle = explicitTitle || derivePublisherTitleFromOrigin(normalizedOrigin);
   const publisherKey = explicitKey
-    ? `id:${explicitKey}`
+    ? buildExplicitPublisherKey({
+      explicitKey,
+      normalizedOrigin,
+    })
     : buildOriginScopedPublisherKey({
       explicitTitle,
       normalizedOrigin,
@@ -506,6 +509,15 @@ function normalizePublisherTitle(rawTitle) {
   }
   const normalized = rawTitle.trim();
   return normalized || null;
+}
+
+function buildExplicitPublisherKey({explicitKey, normalizedOrigin}) {
+  const keyPrefix = `id:${explicitKey}`;
+  // Source-provided ids are usually origin-local, so namespace them by origin
+  // to prevent different feeds from collapsing into the same publisher row.
+  return normalizedOrigin
+    ? `${keyPrefix}::origin:${normalizedOrigin}`
+    : keyPrefix;
 }
 
 function buildOriginScopedPublisherKey({explicitTitle, normalizedOrigin}) {

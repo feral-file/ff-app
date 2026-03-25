@@ -8,6 +8,7 @@ const {execFileSync, spawn} = require('node:child_process');
 
 const {
   extractChannelsFromPublishArtifact,
+  extractChannelsFromRegistry,
 } = require('../../scripts/build_feed_indexer_sqlite.js');
 
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -74,6 +75,64 @@ test('extractChannelsFromPublishArtifact keeps same-title sources distinct when 
   assert.deepEqual(
     channels.map((channel) => channel.publisherTitle),
     ['Shared Publisher', 'Shared Publisher'],
+  );
+});
+
+test('extractChannelsFromPublishArtifact keeps same explicit publisher ids distinct when origins differ', () => {
+  const channels = extractChannelsFromPublishArtifact({
+    exhibitions: [
+      {
+        status: 'success',
+        publisher: {id: 1, name: 'Shared Publisher'},
+        channel: {url: 'https://source-a.example/api/v1/channels/channel-a'},
+      },
+      {
+        status: 'success',
+        publisher: {id: 1, name: 'Shared Publisher'},
+        channel: {url: 'https://source-b.example/api/v1/channels/channel-b'},
+      },
+    ],
+  });
+
+  assert.equal(channels.length, 2);
+  assert.deepEqual(
+    channels.map((channel) => channel.publisherId),
+    [1, 2],
+  );
+  assert.deepEqual(
+    channels.map((channel) => channel.publisherTitle),
+    ['Shared Publisher', 'Shared Publisher'],
+  );
+});
+
+test('extractChannelsFromRegistry keeps publisher linkage stable across input reorder', () => {
+  const registryA = [
+    {
+      id: 7,
+      name: 'Publisher B',
+      channel_urls: ['https://source-b.example/api/v1/channels/channel-b'],
+    },
+    {
+      id: 3,
+      name: 'Publisher A',
+      channel_urls: ['https://source-a.example/api/v1/channels/channel-a'],
+    },
+  ];
+  const registryB = [...registryA].reverse();
+
+  const channelsA = extractChannelsFromRegistry(registryA);
+  const channelsB = extractChannelsFromRegistry(registryB);
+
+  assert.deepEqual(
+    summarizeChannelPublisherLinks(channelsA),
+    summarizeChannelPublisherLinks(channelsB),
+  );
+  assert.deepEqual(
+    summarizeChannelPublisherLinks(channelsA),
+    [
+      {id: 'channel-a', publisherId: 1, publisherTitle: 'Publisher A'},
+      {id: 'channel-b', publisherId: 2, publisherTitle: 'Publisher B'},
+    ],
   );
 });
 
@@ -149,10 +208,10 @@ test('dryrun publish-artifact ingest keeps publisher rows and channel links cons
     cleanupOutputDatabase();
     await runBuilder(['--channels-source', artifactPath, '--dryrun', '--threads', '1']);
 
-    const expectedPublishers = [
-      `1|${new URL(serverA.origin).host}`,
-      `2|${new URL(serverB.origin).host}`,
-    ];
+    const expectedPublishers = [serverA.origin, serverB.origin]
+      .map((origin) => new URL(origin).host)
+      .sort((left, right) => left.localeCompare(right))
+      .map((host, index) => `${index + 1}|${host}`);
     const publishers = queryRows(
       "SELECT id || '|' || title FROM publishers ORDER BY id;",
     );
@@ -220,6 +279,16 @@ function cleanupOutputDatabase() {
   for (const suffix of ['', '-shm', '-wal']) {
     fs.rmSync(`${OUTPUT_DB_PATH}${suffix}`, {force: true});
   }
+}
+
+function summarizeChannelPublisherLinks(channels) {
+  return [...channels]
+    .map((channel) => ({
+      id: channel.id,
+      publisherId: channel.publisherId,
+      publisherTitle: channel.publisherTitle,
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
 }
 
 async function startFeedServer({channels}) {
