@@ -117,7 +117,7 @@ class AppConfig {
   /// Release notes markdown URL (or docs base URL) used by changelog fetcher.
   static String get releaseNotesMarkdownUrl => dotenv.get(
     'RELEASE_NOTES_MARKDOWN_URL',
-    fallback: dotenv.get('PUBDOC_URL', fallback: ''),
+    fallback: 'https://raw.githubusercontent.com/feral-file/docs/refs/heads/main/docs/changelog.md',
   );
 
   /// Base URL for feral-file-docs repo (e.g. raw GitHub).
@@ -164,7 +164,8 @@ class AppConfig {
       indexerApiUrl.isNotEmpty &&
       indexerApiKey.isNotEmpty &&
       ff1RelayerUrl.isNotEmpty &&
-      ff1RelayerApiKey.isNotEmpty;
+      ff1RelayerApiKey.isNotEmpty &&
+      supportApiKey.isNotEmpty;
 
   /// Get validation errors for all missing required configuration values.
   /// Returns a list of error messages for missing variables.
@@ -182,6 +183,9 @@ class AppConfig {
     }
     if (ff1RelayerApiKey.isEmpty) {
       errors.add('FF1_RELAYER_API_KEY (or TV_API_KEY) is missing');
+    }
+    if (supportApiKey.isEmpty) {
+      errors.add('SUPPORT_API_KEY is missing');
     }
     return errors;
   }
