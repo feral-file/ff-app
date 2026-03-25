@@ -290,5 +290,66 @@ void main() {
         );
       },
     );
+
+    test(
+      'FF1 playlistId change through stream provider resets nowDisplayingVisibility',
+      () async {
+        final playerStatus = FF1PlayerStatus(
+          playlistId: 'pl_initial',
+          currentWorkIndex: 0,
+          items: const [item],
+        );
+
+        final container = ProviderContainer.test(
+          overrides: [
+            allFF1BluetoothDevicesProvider.overrideWith(
+              (ref) => Stream.value([]),
+            ),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) {
+                return Stream<FF1PlayerStatus>.periodic(
+                  const Duration(milliseconds: 25),
+                  (count) {
+                    if (count == 0) {
+                      return playerStatus;
+                    } else {
+                      return FF1PlayerStatus(
+                        playlistId: 'pl_changed',
+                        currentWorkIndex: 0,
+                        items: const [item],
+                      );
+                    }
+                  },
+                ).take(2);
+              },
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final resets = <bool>[];
+
+        container.listen<NowDisplayingVisibilityState>(
+          nowDisplayingVisibilityProvider,
+          (prev, next) {
+            resets.add(next.nowDisplayingVisibility);
+          },
+        );
+
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+
+        container
+            .read(nowDisplayingVisibilityProvider.notifier)
+            .setNowDisplayingVisibility(false);
+
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+
+        expect(
+          resets,
+          contains(true),
+          reason: 'Bar should be visible again after playlistId changed through stream',
+        );
+      },
+    );
   });
 }
