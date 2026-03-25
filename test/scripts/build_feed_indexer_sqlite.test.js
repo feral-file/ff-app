@@ -173,6 +173,58 @@ test('extractChannelsFromRegistry synthesizes a title for explicit publisher ids
   );
 });
 
+test('extractChannelsFromRegistry keeps duplicate-name publishers distinct when no explicit id exists', () => {
+  const channels = extractChannelsFromRegistry([
+    {
+      name: 'Shared Publisher',
+      channel_urls: ['https://source-a.example/api/v1/channels/channel-a'],
+    },
+    {
+      name: 'Shared Publisher',
+      channel_urls: ['https://source-b.example/api/v1/channels/channel-b'],
+    },
+  ]);
+
+  assert.deepEqual(
+    summarizeChannelPublisherLinks(channels),
+    [
+      {id: 'channel-a', publisherId: 1, publisherTitle: 'Shared Publisher'},
+      {id: 'channel-b', publisherId: 2, publisherTitle: 'Shared Publisher'},
+    ],
+  );
+});
+
+test('extractChannelsFromRegistry keeps no-id publisher linkage stable across channel url reorder', () => {
+  const registryA = [
+    {
+      name: 'Shared Publisher',
+      channel_urls: [
+        'https://source-b.example/api/v1/channels/channel-b',
+        'https://source-a.example/api/v1/channels/channel-a',
+      ],
+    },
+    {
+      name: 'Shared Publisher',
+      channel_urls: ['https://source-c.example/api/v1/channels/channel-c'],
+    },
+  ];
+  const registryB = [
+    {
+      name: 'Shared Publisher',
+      channel_urls: [
+        'https://source-a.example/api/v1/channels/channel-a',
+        'https://source-b.example/api/v1/channels/channel-b',
+      ],
+    },
+    registryA[1],
+  ];
+
+  assert.deepEqual(
+    summarizeChannelPublisherLinks(extractChannelsFromRegistry(registryA)),
+    summarizeChannelPublisherLinks(extractChannelsFromRegistry(registryB)),
+  );
+});
+
 test('dryrun feed-endpoint ingest does not hardcode publisher attribution', async () => {
   const server = await startFeedServer({
     channels: [

@@ -421,12 +421,18 @@ function extractChannelsFromRegistry(publishers) {
     const channelUrls = Array.isArray(publisher?.channel_urls)
       ? publisher.channel_urls
       : [];
+    const parsedChannels = channelUrls
+      .map((rawChannelUrl) => parseChannelUrl(rawChannelUrl))
+      .filter(Boolean);
+    const registryFallbackKey = isExplicitPublisherKey(registryPublisherKey.publisherKey)
+      ? registryPublisherKey.publisherKey
+      : buildRegistryPublisherFallbackKey(parsedChannels);
     for (const rawChannelUrl of channelUrls) {
       const parsed = parseChannelUrl(rawChannelUrl);
       if (parsed) {
         channels.push({
           ...parsed,
-          publisherKey: registryPublisherKey.publisherKey,
+          publisherKey: registryFallbackKey,
           publisherTitle: registryPublisherKey.publisherTitle,
         });
       }
@@ -563,6 +569,25 @@ function buildOriginScopedPublisherKey({explicitTitle, normalizedOrigin}) {
       : `origin:${normalizedOrigin}`;
   }
   return normalizedTitle;
+}
+
+function buildRegistryPublisherFallbackKey(parsedChannels) {
+  const normalizedChannelUrls = [...new Set(
+    parsedChannels
+      .map((channel) => canonicalizeChannelRef(channel))
+      .filter(Boolean),
+  )].sort((left, right) => left.localeCompare(right));
+  if (normalizedChannelUrls.length === 0) {
+    return null;
+  }
+  return `registry_urls:${normalizedChannelUrls.join('|')}`;
+}
+
+function canonicalizeChannelRef(channel) {
+  if (!channel?.baseUrl || !channel?.id) {
+    return null;
+  }
+  return `${trimSlash(channel.baseUrl)}/api/v1/channels/${encodeURIComponent(channel.id)}`;
 }
 
 function derivePublisherTitleFromOrigin(origin) {
