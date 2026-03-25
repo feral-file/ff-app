@@ -361,6 +361,72 @@ ORDER BY c.id;
   }
 });
 
+test('dryrun registry ingest keeps registry identity when detail responses repeat explicit ids', async () => {
+  const sharedPublisher = {id: 7, name: 'Registry Publisher'};
+  const serverA = await startFeedServer({
+    channels: [
+      {
+        id: 'channel-a',
+        title: 'Channel A',
+        publisher: sharedPublisher,
+        playlists: [{id: 'playlist-a', title: 'Playlist A'}],
+      },
+    ],
+  });
+  const serverB = await startFeedServer({
+    channels: [
+      {
+        id: 'channel-b',
+        title: 'Channel B',
+        publisher: sharedPublisher,
+        playlists: [{id: 'playlist-b', title: 'Playlist B'}],
+      },
+    ],
+  });
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ff-feed-indexer-'));
+  const registryPath = path.join(tempDir, 'channels-registry.json');
+
+  fs.writeFileSync(
+    registryPath,
+    JSON.stringify([
+      {
+        id: 7,
+        name: 'Registry Publisher',
+        channel_urls: [
+          `${serverA.origin}/api/v1/channels/channel-a`,
+          `${serverB.origin}/api/v1/channels/channel-b`,
+        ],
+      },
+    ]),
+  );
+
+  try {
+    cleanupOutputDatabase();
+    await runBuilder(['--channels-source', registryPath, '--dryrun', '--threads', '1']);
+
+    const publishers = queryRows(
+      "SELECT id || '|' || title FROM publishers ORDER BY id;",
+    );
+    const channelLinks = queryRows(`
+SELECT c.id || '|' || COALESCE(CAST(c.publisher_id AS TEXT), 'NULL') || '|' || p.title
+FROM channels c
+JOIN publishers p ON p.id = c.publisher_id
+ORDER BY c.id;
+    `);
+
+    assert.deepEqual(publishers, ['1|Registry Publisher']);
+    assert.deepEqual(channelLinks, [
+      'channel-a|1|Registry Publisher',
+      'channel-b|1|Registry Publisher',
+    ]);
+  } finally {
+    await serverA.close();
+    await serverB.close();
+    fs.rmSync(tempDir, {recursive: true, force: true});
+    cleanupOutputDatabase();
+  }
+});
+
 function runBuilder(args) {
   return new Promise((resolve, reject) => {
     const child = spawn('node', [SCRIPT_PATH, ...args], {

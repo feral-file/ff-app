@@ -771,6 +771,12 @@ function ingestChannel(
 }
 
 function mergePublisherAttribution(primary, fallback) {
+  if (isUnscopedExplicitPublisherKey(fallback?.publisherKey)) {
+    return {
+      publisherKey: fallback.publisherKey,
+      publisherTitle: fallback.publisherTitle || primary?.publisherTitle || null,
+    };
+  }
   if (isExplicitPublisherKey(primary?.publisherKey)) {
     return {
       publisherKey: primary.publisherKey,
@@ -791,6 +797,10 @@ function mergePublisherAttribution(primary, fallback) {
 
 function isExplicitPublisherKey(publisherKey) {
   return typeof publisherKey === 'string' && publisherKey.startsWith('id:');
+}
+
+function isUnscopedExplicitPublisherKey(publisherKey) {
+  return isExplicitPublisherKey(publisherKey) && !publisherKey.includes('::origin:');
 }
 
 function ingestChannelPlaylists(data, channel, playlists, baseUrl) {
