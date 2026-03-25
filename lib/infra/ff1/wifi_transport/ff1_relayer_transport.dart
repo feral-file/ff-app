@@ -278,10 +278,17 @@ class FF1RelayerTransport implements FF1WifiTransport {
 
   @override
   void dispose() {
-    unawaited(disconnect());
-    unawaited(_notificationController.close());
-    unawaited(_connectionStateController.close());
-    unawaited(_errorController.close());
+    unawaited(_disposeAsync());
+  }
+
+  Future<void> _disposeAsync() async {
+    try {
+      await disconnect();
+    } finally {
+      await _notificationController.close();
+      await _connectionStateController.close();
+      await _errorController.close();
+    }
   }
 
   /// Handle message from isolate (connection events, notifications, errors).
