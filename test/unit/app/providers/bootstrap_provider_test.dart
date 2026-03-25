@@ -1,11 +1,11 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
-import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:drift/native.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -15,8 +15,17 @@ import 'package:flutter_test/flutter_test.dart';
 /// the Riverpod testing guide: https://riverpod.dev/docs/how_to/testing
 void main() {
   setUpAll(() async {
-    // Initialize AppConfig once for all tests
-    await AppConfig.initialize();
+    // BootstrapProvider validates AppConfig at runtime. Unit tests should not
+    // depend on a developer's local `.env` file, so we load a minimal config
+    // directly into dotenv for deterministic behavior.
+    dotenv.testLoad(
+      fileInput: '''
+INDEXER_API_URL=https://example.com/graphql
+INDEXER_API_KEY=test-key
+FF1_RELAYER_URL=wss://example.com/relayer
+FF1_RELAYER_API_KEY=test-relayer-key
+''',
+    );
   });
 
   group('BootstrapProvider - Unit Tests with Mocks', () {
