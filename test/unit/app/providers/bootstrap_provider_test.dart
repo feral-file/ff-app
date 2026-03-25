@@ -6,6 +6,7 @@ import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:drift/native.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,15 +16,16 @@ import 'package:flutter_test/flutter_test.dart';
 /// Demonstrates proper mocking using provider overrides, following
 /// the Riverpod testing guide: https://riverpod.dev/docs/how_to/testing
 void main() {
-  setUpAll(() {
-    // Bootstrap depends on AppConfig (dotenv-backed) being valid.
-    // Use dotenv.testLoad so unit tests don't rely on a local .env file.
+  setUpAll(() async {
+    // BootstrapProvider validates AppConfig at runtime. Unit tests should not
+    // depend on a developer's local `.env` file, so we load a minimal config
+    // directly into dotenv for deterministic behavior.
     dotenv.testLoad(
       fileInput: '''
-INDEXER_API_URL=https://example.invalid
-INDEXER_API_KEY=test
-FF1_RELAYER_URL=wss://example.invalid
-FF1_RELAYER_API_KEY=test
+INDEXER_API_URL=https://example.com/graphql
+INDEXER_API_KEY=test-key
+FF1_RELAYER_URL=wss://example.com/relayer
+FF1_RELAYER_API_KEY=test-relayer-key
 ''',
     );
   });
