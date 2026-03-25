@@ -254,6 +254,11 @@ class FakeWifiTransport implements FF1WifiTransport {
     unawaited(_connections.close());
     unawaited(_errors.close());
   }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
 }
 
 class FakeWifiControl extends FF1WifiControl {

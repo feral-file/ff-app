@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/infra/logging/structured_logger.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -14,11 +15,13 @@ import 'package:logging/logging.dart';
 /// Lifecycle changes are used to coordinate app-level background/foreground work.
 class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
   late final Logger _log;
+  late final StructuredLogger _slog;
   late final _Observer _observer;
 
   @override
   AppLifecycleState build() {
     _log = Logger('AppLifecycleNotifier');
+    _slog = AppStructuredLog.forLogger(_log, context: {'component': 'app_lifecycle'});
     _observer = _Observer(_onLifecycleChanged);
     WidgetsBinding.instance.addObserver(_observer);
 
@@ -47,6 +50,11 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
       coordinator.startSyncCollectionPolling();
       // Reconnect relayer WebSocket when app resumes; Timer-based reconnect
       // does not fire while app is suspended.
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'lifecycle_resumed',
+        message: 'app resumed — triggering relayer reconnect',
+      );
       unawaited(
         ref.read(ff1WifiConnectionProvider.notifier).reconnect(),
       );
@@ -55,6 +63,15 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
         state == AppLifecycleState.detached) {
       coordinator.pauseSyncCollectionPolling();
       // Pause relayer WebSocket to free resources; reconnect on resume.
+      // Note: `inactive` fires frequently on iOS (notification shade, control
+      // centre) so it also triggers pause/resume cycles — tracked as
+      // lifecycle_paused events to help diagnose false "Device not connected".
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'lifecycle_paused',
+        message: 'app lifecycle: $state — pausing relayer connection',
+        payload: {'lifecycleState': state.name},
+      );
       ref.read(ff1WifiConnectionProvider.notifier).pauseConnection();
     }
   }

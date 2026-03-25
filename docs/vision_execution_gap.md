@@ -41,19 +41,6 @@
   - A single connect session orchestrator owns attempt lifecycle, cancellation,
     and routing outcomes.
 
-### 3) Seed-sync progress competes with first-run onboarding interaction timing
-- Type: flow resilience
-- Priority: medium
-- Affected flows:
-  - Cold Start Bootstrap
-  - Onboarding (No Deeplink)
-- Current gap:
-  - Heavy seed-sync activity can overlap onboarding transitions and create UI
-    timing sensitivity in end-to-end runs.
-- Desired state:
-  - Clear handshake contract between onboarding action readiness and seed-sync
-    state updates so interaction targets remain deterministic.
-
 ## Refactor backlog (candidate follow-ups)
 - Introduce `GoldPathPatrolKeys` for onboarding primary/secondary actions and
   migrate remaining label-based taps to key-based taps.
@@ -64,4 +51,6 @@
   deferred recovery) with typed status events for UI/test observability.
 
 ## Completed items
-- None yet.
+- Seed-sync onboarding handshake now exposes bootstrap gate phases
+  (`gate-open`, `sync-in-progress`, `deferred-recovery`) and blocks onboarding
+  add-address actions only while startup seed sync is actively in flight.

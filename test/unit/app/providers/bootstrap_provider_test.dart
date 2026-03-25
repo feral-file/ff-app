@@ -1,5 +1,6 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
@@ -186,6 +187,74 @@ FF1_RELAYER_API_KEY=test
 
         expect(notifier.pendingDp1BootstrapAfterSeed, isFalse);
         expect(mockBootstrapService.bootstrapCallCount, 1);
+      },
+    );
+
+    test('bootstrap gate starts closed until startup settles', () {
+      final container = ProviderContainer.test();
+      addTearDown(container.dispose);
+
+      expect(
+        container.read(bootstrapSeedSyncGatePhaseProvider),
+        BootstrapSeedSyncGatePhase.syncInProgress,
+      );
+    });
+
+    test('bootstrap gate can be reopened explicitly after startup settles', () {
+      final container = ProviderContainer.test();
+      addTearDown(container.dispose);
+
+      container.read(bootstrapProvider.notifier).markSeedSyncGateOpen();
+
+      expect(
+        container.read(bootstrapSeedSyncGatePhaseProvider),
+        BootstrapSeedSyncGatePhase.gateOpen,
+      );
+    });
+
+    test('bootstrap gate can restore deferred recovery after retry', () async {
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1AutoConnectWatcherProvider.overrideWithValue(null),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(bootstrapProvider.notifier)
+          .bootstrapWithoutDp1Library();
+
+      container.read(bootstrapProvider.notifier).markSeedSyncInProgress();
+      container.read(bootstrapProvider.notifier).markDeferredRecovery();
+
+      expect(
+        container.read(bootstrapSeedSyncGatePhaseProvider),
+        BootstrapSeedSyncGatePhase.deferredRecovery,
+      );
+      expect(
+        container.read(bootstrapProvider.notifier).pendingDp1BootstrapAfterSeed,
+        isTrue,
+      );
+    });
+
+    test(
+      'bootstrap gate reports deferred recovery after lightweight bootstrap',
+      () async {
+        final container = ProviderContainer.test(
+          overrides: [
+            ff1AutoConnectWatcherProvider.overrideWithValue(null),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await container
+            .read(bootstrapProvider.notifier)
+            .bootstrapWithoutDp1Library();
+
+        expect(
+          container.read(bootstrapSeedSyncGatePhaseProvider),
+          BootstrapSeedSyncGatePhase.deferredRecovery,
+        );
       },
     );
 

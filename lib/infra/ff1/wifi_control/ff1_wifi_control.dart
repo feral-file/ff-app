@@ -20,8 +20,10 @@ import 'package:app/domain/models/ff1/loop_mode.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
+import 'package:app/infra/logging/structured_logger.dart';
 import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 // ============================================================================
 // WiFi Control (orchestration)
@@ -45,12 +47,17 @@ class FF1WifiControl {
   }) : _transport = transport,
        _restClient = restClient,
        _log = logger ?? Logger('FF1WifiControl') {
+    _slog = AppStructuredLog.forLogger(
+      _log,
+      context: {'component': 'ff1_wifi_control'},
+    );
     _startListening();
   }
 
   final FF1WifiTransport _transport;
   final dynamic _restClient;
   final Logger _log;
+  late final StructuredLogger _slog;
 
   // Stream controllers for state changes
   final _playerStatusController = BehaviorSubject<FF1PlayerStatus>();
@@ -66,6 +73,13 @@ class FF1WifiControl {
   StreamSubscription<FF1NotificationMessage>? _notificationSub;
   StreamSubscription<bool>? _connectionStateSub;
   StreamSubscription<FF1WifiTransportError>? _errorSub;
+
+  /// When true, ignore transport callbacks — [dispose] has started and subjects
+  /// may be closed after subscription cancel completes.
+  bool _isTearingDown = false;
+
+  /// Single in-flight dispose; repeated [dispose] calls are ignored.
+  Future<void>? _ongoingDispose;
 
   // Current device and auth (for reconnect)
   FF1Device? _device;
@@ -147,6 +161,17 @@ class FF1WifiControl {
   /// Check if transport is connected
   bool get isConnected => _transport.isConnected;
 
+  /// Emits the current transport connected flag, then every change from
+  /// `FF1WifiTransport.connectionStateStream`.
+  ///
+  /// The first value mirrors the transport's `isConnected` because connection
+  /// streams are typically broadcast and do not replay, so listeners would
+  /// otherwise miss the current state until the next edge.
+  Stream<bool> transportConnectionStates() async* {
+    yield _transport.isConnected;
+    yield* _transport.connectionStateStream;
+  }
+
   /// Check if transport is currently connecting
   bool get isConnecting => _transport.isConnecting;
 
@@ -173,6 +198,9 @@ class FF1WifiControl {
 
   /// Handle incoming notification from transport
   void _handleNotification(FF1NotificationMessage notification) {
+    if (_isTearingDown) {
+      return;
+    }
     _log.fine('Notification: ${notification.notificationType}');
 
     switch (notification.notificationType) {
@@ -190,19 +218,48 @@ class FF1WifiControl {
         final connectionStatus = FF1ConnectionStatus.fromJson(
           notification.message,
         );
+        final prev = _isDeviceConnected;
         _isDeviceConnected = connectionStatus.isConnected;
         _connectionStatusController.add(connectionStatus);
+        // Track every device-level connection notification so we can see
+        // when the device sends "connected" vs "disconnected" and correlate
+        // with the WebSocket transport state.
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'device_connection_notification',
+          message:
+              'device connection notification: isConnected=${connectionStatus.isConnected}',
+          payload: {
+            'isConnected': connectionStatus.isConnected,
+            'prevIsDeviceConnected': prev,
+            'transportConnected': _transport.isConnected,
+            'deviceId': _device?.deviceId,
+          },
+        );
     }
   }
 
   /// Handle connection state change from transport
   void _handleConnectionStateChange(bool isConnected) {
+    if (_isTearingDown) {
+      return;
+    }
     _log.info('Connection state changed: $isConnected');
 
     if (!isConnected) {
-      // if disconnected from transport
-      // update connection status
-      // Clear state on disconnect
+      // Transport dropped — clear all cached state and push a disconnected
+      // status so the UI reacts immediately. Device-level "connected" will
+      // only be restored once the device re-sends a connection notification
+      // after the WebSocket reconnects.
+      _slog.warning(
+        category: LogCategory.wifi,
+        event: 'transport_disconnected',
+        message: 'transport disconnected — clearing device-connected state',
+        payload: {
+          'prevIsDeviceConnected': _isDeviceConnected,
+          'deviceId': _device?.deviceId,
+        },
+      );
       _currentPlayerStatus = null;
       _currentDeviceStatus = null;
       _isDeviceConnected = false;
@@ -210,15 +267,59 @@ class FF1WifiControl {
         FF1ConnectionStatus(isConnected: isConnected),
       );
     } else {
-      // device connected to transport
-      // connection status is already updated by _handleNotification
-      // nothing to do
+      // Transport (WebSocket) reconnected. Device-level "connected" flag is
+      // NOT updated here — it will only change once the device sends a
+      // FF1NotificationType.connection notification. This gap (transport up,
+      // device-level still false) is the root cause of the false "Device not
+      // connected" display after reconnect; app-layer telemetry compares live
+      // WebSocket state (not the connection notifier cache) to this flag.
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'transport_connected',
+        message:
+            'transport connected — waiting for device connection notification',
+        payload: {
+          'isDeviceConnected': _isDeviceConnected,
+          'deviceId': _device?.deviceId,
+        },
+      );
     }
   }
 
   /// Handle transport error
   void _handleTransportError(FF1WifiTransportError error) {
     _log.warning('Transport error: $error');
+    unawaited(_reportTransportErrorToSentry(error));
+  }
+
+  /// Sends transport errors to Sentry. Network errors use a warning event to
+  /// limit noise from transient WebSocket failures.
+  Future<void> _reportTransportErrorToSentry(
+    FF1WifiTransportError error,
+  ) async {
+    if (error is FF1WifiNetworkError) {
+      await Sentry.captureEvent(
+        SentryEvent(
+          message: SentryMessage(error.message),
+          level: SentryLevel.warning,
+          tags: const {
+            'component': 'ff1_wifi_transport',
+            'error_kind': 'network',
+          },
+        ),
+      );
+      return;
+    }
+
+    await Sentry.captureException(
+      error,
+      stackTrace: StackTrace.current,
+      withScope: (scope) {
+        scope
+          ..setTag('component', 'ff1_wifi_transport')
+          ..setTag('error_kind', error.runtimeType.toString());
+      },
+    );
   }
 
   /// Reconnect to device (using cached connection params)
@@ -232,7 +333,16 @@ class FF1WifiControl {
       return;
     }
 
-    _log.info('Reconnecting to ${_device!.deviceId}');
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'reconnect_start',
+      message: 'reconnecting to device',
+      payload: {
+        'deviceId': _device!.deviceId,
+        'isDeviceConnected': _isDeviceConnected,
+        'isTransportConnected': _transport.isConnected,
+      },
+    );
 
     try {
       await _transport.connect(
@@ -241,8 +351,24 @@ class FF1WifiControl {
         apiKey: _apiKey!,
         forceReconnect: true,
       );
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'reconnect_transport_ok',
+        message:
+            'transport reconnected — waiting for device connection notification',
+        payload: {
+          'deviceId': _device?.deviceId,
+          'isDeviceConnected': _isDeviceConnected,
+        },
+      );
     } catch (e) {
-      _log.warning('Reconnect failed: $e');
+      _slog.warning(
+        category: LogCategory.wifi,
+        event: 'reconnect_failed',
+        message: 'reconnect failed',
+        payload: {'deviceId': _device?.deviceId, 'error': e.toString()},
+        error: e,
+      );
       rethrow;
     }
   }
@@ -251,6 +377,19 @@ class FF1WifiControl {
   ///
   /// Closes WebSocket but preserves connection params for [reconnect] on resume.
   void pauseConnection() {
+    if (_isTearingDown) {
+      return;
+    }
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'connection_paused',
+      message: 'pausing connection for background',
+      payload: {
+        'isDeviceConnected': _isDeviceConnected,
+        'isTransportConnected': _transport.isConnected,
+        'deviceId': _device?.deviceId,
+      },
+    );
     _transport.pauseConnection();
 
     // Clear current state but preserve _device, _userId, _apiKey for reconnect
@@ -264,17 +403,34 @@ class FF1WifiControl {
 
   /// Dispose control and clean up resources.
   void dispose() {
+    _ongoingDispose ??= _disposeAsync();
+    unawaited(_ongoingDispose);
+  }
+
+  /// Cancels transport subscriptions before closing subjects so a delayed
+  /// `connectionStateStream` event (e.g. relayer [disconnect] window) cannot
+  /// call [_handleConnectionStateChange] after [_connectionStatusController] is
+  /// closed.
+  Future<void> _disposeAsync() async {
     _log.info('Disposing WiFi control');
+    _isTearingDown = true;
 
-    unawaited(_notificationSub?.cancel());
-    unawaited(_connectionStateSub?.cancel());
-    unawaited(_errorSub?.cancel());
+    await Future.wait<void>([
+      if (_notificationSub != null) _notificationSub!.cancel(),
+      if (_connectionStateSub != null) _connectionStateSub!.cancel(),
+      if (_errorSub != null) _errorSub!.cancel(),
+    ]);
+    _notificationSub = null;
+    _connectionStateSub = null;
+    _errorSub = null;
 
-    unawaited(_playerStatusController.close());
-    unawaited(_deviceStatusController.close());
-    unawaited(_connectionStatusController.close());
+    await Future.wait<void>([
+      _playerStatusController.close(),
+      _deviceStatusController.close(),
+      _connectionStatusController.close(),
+    ]);
 
-    _transport.dispose();
+    await _transport.disposeFuture();
   }
 
   // =========================================================================
