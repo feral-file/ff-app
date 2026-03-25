@@ -449,7 +449,9 @@ function derivePublisherAttribution({baseUrl, source, preferExplicitIdentity = f
   const explicitTitle = extractPublisherTitle(source);
   const explicitKey = extractPublisherKey(source);
   const normalizedOrigin = safeNormalizeOrigin(baseUrl);
-  const publisherTitle = explicitTitle || derivePublisherTitleFromOrigin(normalizedOrigin);
+  const publisherTitle = explicitTitle
+    || deriveExplicitPublisherFallbackTitle(explicitKey)
+    || derivePublisherTitleFromOrigin(normalizedOrigin);
   const publisherKey = explicitKey
     ? buildExplicitPublisherKey({
       explicitKey,
@@ -511,6 +513,14 @@ function normalizePublisherTitle(rawTitle) {
   }
   const normalized = rawTitle.trim();
   return normalized || null;
+}
+
+function deriveExplicitPublisherFallbackTitle(explicitKey) {
+  if (explicitKey === null || explicitKey === undefined) {
+    return null;
+  }
+  const normalized = String(explicitKey).trim();
+  return normalized ? `Publisher ${normalized}` : null;
 }
 
 function buildExplicitPublisherKey({

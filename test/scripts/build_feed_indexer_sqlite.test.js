@@ -157,6 +157,22 @@ test('extractChannelsFromRegistry keeps one explicit publisher across multiple o
   );
 });
 
+test('extractChannelsFromRegistry synthesizes a title for explicit publisher ids without a name', () => {
+  const channels = extractChannelsFromRegistry([
+    {
+      id: 7,
+      channel_urls: ['https://source-a.example/api/v1/channels/channel-a'],
+    },
+  ]);
+
+  assert.deepEqual(
+    summarizeChannelPublisherLinks(channels),
+    [
+      {id: 'channel-a', publisherId: 1, publisherTitle: 'Publisher 7'},
+    ],
+  );
+});
+
 test('dryrun feed-endpoint ingest does not hardcode publisher attribution', async () => {
   const server = await startFeedServer({
     channels: [
