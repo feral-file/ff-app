@@ -51,6 +51,19 @@
   deferred recovery) with typed status events for UI/test observability.
 
 ## Completed items
+- EV-01 ingest no longer flattens publisher attribution to a hardcoded
+  default.
+  - Evidence:
+    - `scripts/build_feed_indexer_sqlite.js` now derives publisher attribution
+      from source metadata when present and falls back to the feed/channel
+      origin instead of forcing `Feral File`.
+    - `test/scripts/build_feed_indexer_sqlite.test.js` covers:
+      - publish-artifact origin-based attribution
+      - `--channels-feed-endpoint` dryrun without hardcoded publisher naming
+      - multi-source SQL generation with consistent `publishers` rows and
+        `channels.publisher_id` linkage
+    - Verification command:
+      `node --test test/scripts/build_feed_indexer_sqlite.test.js`
 - Seed-sync onboarding handshake now exposes bootstrap gate phases
   (`gate-open`, `sync-in-progress`, `deferred-recovery`) and blocks onboarding
   add-address actions only while startup seed sync is actively in flight.
