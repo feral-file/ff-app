@@ -370,9 +370,7 @@ class DatabaseConverters {
       created: playlist.createdAt ?? DateTime.now(),
       defaults: playlist.defaults,
       items: dp1Items,
-      signature: playlist.signatures?.isNotEmpty ?? false
-          ? playlist.signatures!.first
-          : '',
+      signatures: playlist.signatures ?? const [],
       dynamicQueries: playlist.dynamicQueries ?? const [],
     );
   }
@@ -401,7 +399,9 @@ class DatabaseConverters {
       slug: dp1.slug,
       createdAt: dp1.created,
       updatedAt: dp1.created,
-      signatures: dp1.signature.isNotEmpty ? <String>[dp1.signature] : null,
+      signatures: dp1.signatures.isNotEmpty
+          ? List<String>.from(dp1.signatures)
+          : null,
       defaults: dp1.defaults,
       dynamicQueries: dynamicQueries,
       sortMode: sortMode,

@@ -50,6 +50,8 @@ class DP1PlaylistResponse {
   /// Some servers provide:
   /// - `createdAt` or `created_at`
   /// - `signatures` (list)
+  ///
+  /// Signature fields are normalized via [dp1PlaylistSignaturesFromWire].
   static DP1Playlist _playlistFromJsonCompat(Map<String, dynamic> json) {
     try {
       return DP1Playlist.fromJson(json);
@@ -61,19 +63,6 @@ class DP1PlaylistResponse {
         created = DateTime.tryParse(createdRaw) ?? DateTime.now();
       } else {
         created = DateTime.now();
-      }
-
-      final signatureRaw = json['signature'];
-      String signature;
-      if (signatureRaw is String) {
-        signature = signatureRaw;
-      } else {
-        final signatures = json['signatures'];
-        if (signatures is List && signatures.isNotEmpty) {
-          signature = signatures.first.toString();
-        } else {
-          signature = '';
-        }
       }
 
       final itemsRaw = (json['items'] as List?) ?? const [];
@@ -90,7 +79,7 @@ class DP1PlaylistResponse {
         created: created,
         defaults: json['defaults'] as Map<String, dynamic>?,
         items: items,
-        signature: signature,
+        signatures: dp1PlaylistSignaturesFromWire(json),
         dynamicQueries: (json['dynamicQueries'] == null)
             ? []
             : (List<dynamic>.from(json['dynamicQueries'] as List))

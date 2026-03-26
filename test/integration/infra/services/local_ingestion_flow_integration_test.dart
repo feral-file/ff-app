@@ -39,7 +39,7 @@ void main() {
         slug: 'local-playlist',
         title: 'Local Playlist',
         created: DateTime.parse('2025-01-01T00:00:00Z'),
-        signature: 'sig',
+        signatures: const ['sig'],
         items: <DP1PlaylistItem>[
           DP1PlaylistItem.fromJson(
             {
