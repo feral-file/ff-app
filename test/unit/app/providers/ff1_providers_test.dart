@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'package:app/app/providers/connect_wifi_provider.dart';
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
+import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
@@ -403,7 +406,73 @@ void main() {
         expect(container.read(ff1ScanProvider).devices, isEmpty);
       });
     });
+
+    group('WiFiConnectionNotifier.sendCredentialsAndConnect', () {
+      test('uses keepWifi when sendWifiCredentials returns no topicId', () async {
+        final fakeTransport = FakeFF1BleTransport(
+          sendCommandCallback: (device, command, request, timeout) async {
+            if (command == FF1BleCommand.sendWifiCredentials) {
+              return const FF1BleResponse(
+                topic: 'wifi',
+                errorCode: 0,
+                data: [],
+              );
+            }
+            if (command == FF1BleCommand.keepWifi) {
+              return const FF1BleResponse(
+                topic: 'keep',
+                errorCode: 0,
+                data: ['topic-from-keep-wifi'],
+              );
+            }
+            throw UnimplementedError('unexpected command: $command');
+          },
+        );
+
+        final container = ProviderContainer(
+          overrides: [
+            ff1TransportProvider.overrideWithValue(fakeTransport),
+            ff1ControlProvider.overrideWith(
+              (ref) => FF1BleControl(transport: ref.read(ff1TransportProvider)),
+            ),
+            ff1BluetoothDeviceActionsProvider.overrideWith(
+              _FakeWifiDeviceActions.new,
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final notifier = container.read(connectWiFiProvider.notifier);
+        await notifier.sendCredentialsAndConnect(
+          device: const FF1Device(
+            name: 'FF1',
+            remoteId: '00:11:22:33:44:55',
+            deviceId: 'FF1-1',
+            topicId: '',
+          ),
+          ssid: 'Office',
+          password: 'secret',
+        );
+
+        expect(
+          container.read(connectWiFiProvider).status,
+          WiFiConnectionStatus.success,
+        );
+        expect(
+          container.read(connectWiFiProvider).topicId,
+          'topic-from-keep-wifi',
+        );
+      });
+    });
   });
+}
+
+class _FakeWifiDeviceActions extends FF1BluetoothDeviceActionsNotifier {
+  @override
+  void build() {}
+
+  @override
+  Future<void> addDevice(FF1Device device) async {}
 }
 
 // ============================================================================

@@ -40,8 +40,13 @@ const Duration _kGetInfoReadinessTimeout = Duration(seconds: 8);
 /// - If [FF1GetDeviceInfoParams.deeplinkInfo] is non-null, returns it (no BLE).
 /// - Otherwise, calls `get_info` with the same retry semantics as the legacy
 ///   connect notifier.
+///
+/// [autoDispose]: [FF1GetDeviceInfoParams] embeds a per-attempt
+/// [FF1GetDeviceInfoParams.shouldContinue] closure without value equality, so
+/// each connect attempt is a distinct family key. Auto-dispose drops completed
+/// instances instead of retaining them for the container lifetime.
 final ff1GetDeviceInfoProvider =
-    FutureProvider.family<FF1DeviceInfo, FF1GetDeviceInfoParams>((
+    FutureProvider.autoDispose.family<FF1DeviceInfo, FF1GetDeviceInfoParams>((
   ref,
   params,
 ) async {

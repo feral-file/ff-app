@@ -123,7 +123,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
           _assertSessionActive(session);
         } on FF1ConnectionCancelledError catch (_) {
           _log.info('[ConnectFF1Notifier] Cancelled while waiting for BT');
-      _setStateIfSessionActive(session, ConnectFF1Cancelled());
+          _setStateIfSessionActive(session, ConnectFF1Cancelled());
           session.completeWithOutcome(FF1ConnectOutcome.cancelled);
           return;
         }
@@ -244,7 +244,10 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
             .read(ff1BluetoothDeviceActionsProvider.notifier)
             .addDevice(ensured.ff1Device);
       } on Object catch (e) {
-        _setStateIfSessionActive(session, ConnectFF1Error(exception: Exception(e.toString())));
+        _setStateIfSessionActive(
+          session,
+          ConnectFF1Error(exception: Exception(e.toString())),
+        );
         session.completeWithOutcome(FF1ConnectOutcome.failed);
         return;
       }

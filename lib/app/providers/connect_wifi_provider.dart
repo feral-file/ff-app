@@ -296,12 +296,25 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         throw FF1ResponseError.fromCode(response.errorCode);
       }
 
-      if (response.data.isEmpty) {
-        throw const FF1BluetoothError('No topicId in response');
+      // Same contract as [ff1EnsureReadyProvider]: the device may already be on
+      // Wi‑Fi with internet while topicId is not included in the connect_wifi
+      // response — obtain it via keep_wifi.
+      var topicId = '';
+      if (response.data.isNotEmpty) {
+        topicId = response.data[0].trim();
+      }
+      if (topicId.isEmpty) {
+        _log.info(
+          'No topicId in sendWifiCredentials response; device may already be '
+          'online — calling keepWifi',
+        );
+        topicId = await ref.read(ff1ControlProvider).keepWifi(blDevice: blDevice);
+      }
+      if (topicId.isEmpty) {
+        throw const FF1BluetoothError('No topicId from device');
       }
 
-      final topicId = response.data[0];
-      _log.info('Received topicId from device: $topicId');
+      _log.info('Resolved topicId after Wi‑Fi setup: $topicId');
 
       state = state.copyWith(
         status: WiFiConnectionStatus.waitingForDeviceConnection,

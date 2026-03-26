@@ -48,70 +48,75 @@ class FF1EnsureReadyResult {
 /// Version compatibility check is executed before readiness decisions.
 /// If the service indicates `needUpdateApp`, returns `null` and allows the
 /// caller/orchestrator to keep the current UX (dialog already shown by service).
+///
+/// [autoDispose]: [FF1EnsureReadyParams] embeds a per-attempt
+/// [FF1EnsureReadyParams.shouldContinue] closure without value equality, so each
+/// connect attempt is a distinct family key. Auto-dispose drops completed
+/// instances instead of retaining them for the container lifetime.
 final ff1EnsureReadyProvider =
-    FutureProvider.family<FF1EnsureReadyResult?, FF1EnsureReadyParams>((
-  ref,
-  params,
-) async {
-  // Ensure cancellation can surface through async boundary consistently.
-  await Future<void>.value();
-  params.assertShouldContinue();
-  final info = params.deviceInfo;
+    FutureProvider.autoDispose.family<FF1EnsureReadyResult?, FF1EnsureReadyParams>((
+      ref,
+      params,
+    ) async {
+      // Ensure cancellation can surface through async boundary consistently.
+      await Future<void>.value();
+      params.assertShouldContinue();
+      final info = params.deviceInfo;
 
-  final versionService = ref.read(versionServiceProvider);
-  final compatibility = await versionService.checkDeviceVersionCompatibility(
-    branchName: info.branchName,
-    deviceVersion: info.version,
-  );
-  params.assertShouldContinue();
-  if (compatibility == VersionCompatibilityResult.needUpdateApp) {
-    // Legacy behavior: dialog is shown by VersionService; connect flow does not
-    // transition to a terminal UI state here.
-    return null;
-  }
+      final versionService = ref.read(versionServiceProvider);
+      final compatibility = await versionService
+          .checkDeviceVersionCompatibility(
+            branchName: info.branchName,
+            deviceVersion: info.version,
+          );
+      params.assertShouldContinue();
+      if (compatibility == VersionCompatibilityResult.needUpdateApp) {
+        // Legacy behavior: dialog is shown by VersionService; connect flow does not
+        // transition to a terminal UI state here.
+        return null;
+      }
 
-  var ff1Device = FF1Device.fromBluetoothDeviceAndDeviceInfo(
-    params.blDevice,
-    info,
-  );
+      var ff1Device = FF1Device.fromBluetoothDeviceAndDeviceInfo(
+        params.blDevice,
+        info,
+      );
 
-  if (!info.isConnectedToInternet) {
-    return FF1EnsureReadyResult(
-      ff1Device: ff1Device,
-      portalIsSet: false,
-      isConnectedToInternet: false,
-    );
-  }
+      if (!info.isConnectedToInternet) {
+        return FF1EnsureReadyResult(
+          ff1Device: ff1Device,
+          portalIsSet: false,
+          isConnectedToInternet: false,
+        );
+      }
 
-  final topicId = ff1Device.topicId;
-  if (topicId.isNotEmpty) {
-    params.assertShouldContinue();
-    await ref
-        .read(ff1WifiControlProvider)
-        .showPairingQRCode(topicId: topicId, show: false);
-    params.assertShouldContinue();
+      final topicId = ff1Device.topicId;
+      if (topicId.isNotEmpty) {
+        params.assertShouldContinue();
+        await ref
+            .read(ff1WifiControlProvider)
+            .showPairingQRCode(topicId: topicId, show: false);
+        params.assertShouldContinue();
 
-    return FF1EnsureReadyResult(
-      ff1Device: ff1Device,
-      portalIsSet: true,
-      isConnectedToInternet: true,
-    );
-  }
+        return FF1EnsureReadyResult(
+          ff1Device: ff1Device,
+          portalIsSet: true,
+          isConnectedToInternet: true,
+        );
+      }
 
-  params.assertShouldContinue();
-  final topicIdFromKeepWifi = await ref
-      .read(ff1ControlProvider)
-      .keepWifi(blDevice: params.blDevice);
-  params.assertShouldContinue();
-  if (topicIdFromKeepWifi.isEmpty) {
-    throw Exception('Failed to get topicId from keepWifi');
-  }
+      params.assertShouldContinue();
+      final topicIdFromKeepWifi = await ref
+          .read(ff1ControlProvider)
+          .keepWifi(blDevice: params.blDevice);
+      params.assertShouldContinue();
+      if (topicIdFromKeepWifi.isEmpty) {
+        throw Exception('Failed to get topicId from keepWifi');
+      }
 
-  ff1Device = ff1Device.copyWith(topicId: topicIdFromKeepWifi);
-  return FF1EnsureReadyResult(
-    ff1Device: ff1Device,
-    portalIsSet: false,
-    isConnectedToInternet: true,
-  );
-});
-
+      ff1Device = ff1Device.copyWith(topicId: topicIdFromKeepWifi);
+      return FF1EnsureReadyResult(
+        ff1Device: ff1Device,
+        portalIsSet: false,
+        isConnectedToInternet: true,
+      );
+    });

@@ -20,7 +20,9 @@ void main() {
     final container = ProviderContainer.test(
       overrides: [
         ff1ControlProvider.overrideWithValue(_FakeControl()),
-        versionServiceProvider.overrideWithValue(_fakeCompatibleVersionService()),
+        versionServiceProvider.overrideWithValue(
+          _fakeCompatibleVersionService(),
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -48,76 +50,84 @@ void main() {
     expect(result.portalIsSet, isFalse);
   });
 
-  test('Flow3 calls keepWifi when internet is connected but topicId is missing',
-      () async {
-    final control = _FakeControl()..keepWifiTopicId = 'topic-keep';
-    final container = ProviderContainer.test(
-      overrides: [
-        ff1ControlProvider.overrideWithValue(control),
-        versionServiceProvider.overrideWithValue(_fakeCompatibleVersionService()),
-      ],
-    );
-    addTearDown(container.dispose);
+  test(
+    'Flow3 calls keepWifi when internet is connected but topicId is missing',
+    () async {
+      final control = _FakeControl()..keepWifiTopicId = 'topic-keep';
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1ControlProvider.overrideWithValue(control),
+          versionServiceProvider.overrideWithValue(
+            _fakeCompatibleVersionService(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    const info = FF1DeviceInfo(
-      deviceId: 'FF1-123',
-      topicId: '',
-      isConnectedToInternet: true,
-      branchName: 'release',
-      version: '1.0.0',
-    );
+      const info = FF1DeviceInfo(
+        deviceId: 'FF1-123',
+        topicId: '',
+        isConnectedToInternet: true,
+        branchName: 'release',
+        version: '1.0.0',
+      );
 
-    final result = await container.read(
-      ff1EnsureReadyProvider(
+      final result = await container.read(
+        ff1EnsureReadyProvider(
+          FF1EnsureReadyParams(
+            blDevice: BluetoothDevice.fromId('00:11'),
+            deviceInfo: info,
+            shouldContinue: () => true,
+          ),
+        ).future,
+      );
+
+      expect(result, isNotNull);
+      expect(result!.isConnectedToInternet, isTrue);
+      expect(result.portalIsSet, isFalse);
+      expect(result.ff1Device.topicId, 'topic-keep');
+      expect(control.keepWifiCalls, 1);
+    },
+  );
+
+  test(
+    'Flow3 throws FF1ConnectionCancelledError when shouldContinue is false',
+    () async {
+      final control = _FakeControl()..keepWifiTopicId = 'topic-keep';
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1ControlProvider.overrideWithValue(control),
+          versionServiceProvider.overrideWithValue(
+            _fakeCompatibleVersionService(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      const info = FF1DeviceInfo(
+        deviceId: 'FF1-123',
+        topicId: '',
+        isConnectedToInternet: true,
+        branchName: 'release',
+        version: '1.0.0',
+      );
+
+      final provider = ff1EnsureReadyProvider(
         FF1EnsureReadyParams(
           blDevice: BluetoothDevice.fromId('00:11'),
           deviceInfo: info,
-          shouldContinue: () => true,
+          shouldContinue: () => false,
         ),
-      ).future,
-    );
+      );
+      final sub = container.listen(provider, (_, __) {}, fireImmediately: true);
 
-    expect(result, isNotNull);
-    expect(result!.isConnectedToInternet, isTrue);
-    expect(result.portalIsSet, isFalse);
-    expect(result.ff1Device.topicId, 'topic-keep');
-    expect(control.keepWifiCalls, 1);
-  });
-
-  test('Flow3 throws FF1ConnectionCancelledError when shouldContinue is false',
-      () async {
-    final control = _FakeControl()..keepWifiTopicId = 'topic-keep';
-    final container = ProviderContainer.test(
-      overrides: [
-        ff1ControlProvider.overrideWithValue(control),
-        versionServiceProvider.overrideWithValue(_fakeCompatibleVersionService()),
-      ],
-    );
-    addTearDown(container.dispose);
-
-    const info = FF1DeviceInfo(
-      deviceId: 'FF1-123',
-      topicId: '',
-      isConnectedToInternet: true,
-      branchName: 'release',
-      version: '1.0.0',
-    );
-
-    final provider = ff1EnsureReadyProvider(
-      FF1EnsureReadyParams(
-        blDevice: BluetoothDevice.fromId('00:11'),
-        deviceInfo: info,
-        shouldContinue: () => false,
-      ),
-    );
-    final sub = container.listen(provider, (_, __) {}, fireImmediately: true);
-
-    await Future<void>.delayed(Duration.zero);
-    final value = container.read(provider);
-    expect(value.hasError, isTrue);
-    expect(value.error, isA<FF1ConnectionCancelledError>());
-    sub.close();
-  });
+      await Future<void>.delayed(Duration.zero);
+      final value = container.read(provider);
+      expect(value.hasError, isTrue);
+      expect(value.error, isA<FF1ConnectionCancelledError>());
+      sub.close();
+    },
+  );
 }
 
 VersionService _fakeCompatibleVersionService() {
@@ -219,6 +229,4 @@ class _NoopBleTransport implements FF1BleTransport {
     required BluetoothDevice blDevice,
     Duration timeout = const Duration(seconds: 20),
   }) async {}
-
 }
-
