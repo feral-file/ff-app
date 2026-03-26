@@ -85,6 +85,10 @@ void main() {
       expect(factory.sessions.first.outcome, FF1ConnectOutcome.cancelled);
 
       notifier.cancelConnection();
+      expect(
+        container.read(connectFF1Provider).value,
+        isA<ConnectFF1Cancelled>(),
+      );
       await Future.wait<void>([firstAttempt, secondAttempt]);
     },
   );

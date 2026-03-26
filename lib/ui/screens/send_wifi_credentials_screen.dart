@@ -1,17 +1,16 @@
 import 'dart:async';
 
+import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
-import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
-import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
-import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/wifi_point.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
@@ -61,6 +60,7 @@ class _EnterWiFiPasswordScreenState
   final _passwordFocusNode = FocusNode();
   bool _isProcessing = false;
   String _passwordText = '';
+  ProviderSubscription<FF1SetupState>? _setupSub;
 
   /// Parse SSID from networkSsid (may contain "ssid|security" format)
   String _parseSSID(String ssid) {
@@ -87,6 +87,28 @@ class _EnterWiFiPasswordScreenState
   @override
   void initState() {
     super.initState();
+    // Navigation + dialog side-effects must not be registered inside build.
+    _setupSub = ref.listenManual<FF1SetupState>(
+      ff1SetupOrchestratorProvider,
+      (previous, next) {
+        if (previous?.effectId == next.effectId) {
+          return;
+        }
+        final effectId = next.effectId;
+        final effect = next.effect;
+        if (effect == null) {
+          return;
+        }
+        final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
+        unawaited(() async {
+          final didHandle = await _handleOrchestratorEffect(effect);
+          if (didHandle) {
+            orchestrator.ackEffect(effectId: effectId);
+          }
+        }());
+      },
+    );
+
     final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
     if (isOpen) {
       // Auto-submit for open networks
@@ -105,6 +127,7 @@ class _EnterWiFiPasswordScreenState
   void dispose() {
     _passwordController.dispose();
     _passwordFocusNode.dispose();
+    _setupSub?.close();
     super.dispose();
   }
 
@@ -131,17 +154,72 @@ class _EnterWiFiPasswordScreenState
 
     // Step 5 & 6: Send credentials and wait for device connection
     await ref
-        .read(connectWiFiProvider.notifier)
-        .sendCredentialsAndConnect(
+        .read(ff1SetupOrchestratorProvider.notifier)
+        .sendWifiCredentialsAndConnect(
           device: widget.payload.device,
           ssid: _parseSSID(widget.payload.wifiAccessPoint.ssid),
           password: password,
         );
   }
 
+  Future<bool> _handleOrchestratorEffect(FF1SetupEffect effect) async {
+    switch (effect) {
+      case FF1SetupNavigate(:final route, :final extra, :final method):
+        if (!mounted) return false;
+        switch (method) {
+          case FF1SetupNavigationMethod.push:
+            await context.push(route, extra: extra);
+          case FF1SetupNavigationMethod.replace:
+            context.replace(route, extra: extra);
+          case FF1SetupNavigationMethod.go:
+            context.go(route, extra: extra);
+        }
+        return true;
+      case FF1SetupDeviceUpdating():
+        if (!mounted) return false;
+        context.go(Routes.ff1Updating);
+        return true;
+      case FF1SetupShowError(
+          :final title,
+          :final message,
+          :final showSupportCta,
+        ):
+        if (!mounted) return false;
+        await UIHelper.showInfoDialog(
+          context,
+          title,
+          message,
+          closeButton: showSupportCta ? 'Contact support' : '',
+          onClose: showSupportCta
+              ? () {
+                  unawaited(
+                    UIHelper.showCustomerSupport(
+                      context,
+                      supportEmailService: ref.read(supportEmailServiceProvider),
+                    ),
+                  );
+                }
+              : null,
+        );
+        if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) && mounted) {
+          context.pop();
+        }
+        setState(() {
+          _isProcessing = false;
+        });
+        return true;
+      case FF1SetupEnterWifiPassword():
+      case FF1SetupInternetReady():
+      case FF1SetupNeedsWiFi():
+      case FF1SetupPop():
+        return false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final connectionState = ref.watch(connectWiFiProvider);
+    final setupState = ref.watch(ff1SetupOrchestratorProvider);
+    final connectionState = setupState.wifiState ?? const WiFiConnectionState();
     final shouldReserveNowDisplayingBar = ref.watch(
       nowDisplayingShouldShowProvider,
     );
@@ -158,121 +236,6 @@ class _EnterWiFiPasswordScreenState
         ? LayoutConstants.nowDisplayingBarReservedHeight
         : 0.0;
     final bottomInset = reservedBottomBarHeight;
-
-    // Listen for success and navigate.
-    // Use `next` (not connectionState): ref.listen fires before rebuild, so
-    // connectionState still holds the previous build's value; `next` has the
-    // newly emitted state (including topicId when status becomes success).
-    ref.listen(connectWiFiProvider, (previous, next) {
-      if (next.status == WiFiConnectionStatus.success) {
-        if (next.topicId != null) {
-          // hide qr code on device
-          unawaited(
-            ref
-                .read(ff1WifiControlProvider)
-                .showPairingQRCode(
-                  topicId: next.topicId!,
-                  show: false,
-                ),
-          );
-
-        }
-
-        unawaited(
-          ref.read(onboardingActionsProvider).completeOnboarding(),
-        );
-
-        unawaited(
-          context.push(Routes.deviceConfiguration),
-        );
-      } else if (next.status == WiFiConnectionStatus.error) {
-        final error = next.error;
-
-        if (error is FF1ResponseError) {
-          if (error is VersionCheckFailedError) {
-            unawaited(
-              UIHelper.showInfoDialog(
-                context,
-                error.title,
-                error.message,
-                closeButton: 'Contact support',
-                onClose: () {
-                  unawaited(
-                    UIHelper.showCustomerSupport(
-                      context,
-                      supportEmailService: ref.read(
-                        supportEmailServiceProvider,
-                      ),
-                    ),
-                  );
-                },
-              ).then((_) {
-                if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) &&
-                    context.mounted) {
-                  context.pop();
-                }
-              }),
-            );
-          } else if (error is DeviceUpdatingError) {
-            context.go(Routes.ff1Updating);
-          } else {
-            unawaited(
-              UIHelper.showInfoDialog(
-                context,
-                error.title,
-                error.message,
-              ).then(
-                (value) {
-                  if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) &&
-                      context.mounted) {
-                    context.pop();
-                  }
-                },
-              ),
-            );
-          }
-        } else if (error is TimeoutException) {
-          unawaited(
-            UIHelper.showInfoDialog(
-              context,
-              "Can't reach FF1",
-              "FF1 didn't respond in time. Make sure FF1 is nearby and try again.",
-            ).then((_) {
-              if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) &&
-                  context.mounted) {
-                context.pop();
-              }
-            }),
-          );
-        } else {
-          unawaited(
-            UIHelper.showInfoDialog(
-              context,
-              'Wi‑Fi setup failed',
-              "FF1 couldn't complete Wi‑Fi setup because of an unexpected issue. Contact support for help.",
-              closeButton: 'Contact support',
-              onClose: () {
-                unawaited(
-                  UIHelper.showCustomerSupport(
-                    context,
-                    supportEmailService: ref.read(supportEmailServiceProvider),
-                  ),
-                );
-              },
-            ).then((_) {
-              if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) &&
-                  context.mounted) {
-                context.pop();
-              }
-            }),
-          );
-        }
-
-        setState(() {
-          _isProcessing = false;
-        });
-      }
-    });
 
     return Scaffold(
       appBar: const SetupAppBar(

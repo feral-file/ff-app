@@ -1,71 +1,22 @@
 import 'dart:async';
 
+import 'package:app/app/ff1_setup/ff1_setup_derivation.dart';
+import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
+import 'package:app/app/ff1_setup/ff1_setup_models.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/app/providers/onboarding_provider.dart';
+import 'package:app/app/routing/routes.dart';
+import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_device_info.dart';
+import 'package:app/domain/models/ff1_error.dart';
+import 'package:app/domain/models/wifi_point.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-enum FF1SetupStep {
-  idle,
-  connecting,
-  stillConnecting,
-  bluetoothOff,
-  needsWiFi,
-  wiFiConnecting,
-  wiFiScanningNetworks,
-  wiFiSelectingNetwork,
-  wiFiSendingCredentials,
-  wiFiWaitingForDevice,
-  wiFiFinalizing,
-  readyForConfig,
-  error,
-  cancelled,
-}
-
-class FF1SetupState {
-  const FF1SetupState({
-    required this.step,
-    this.connected,
-    this.connectError,
-    this.wifiState,
-    this.selectedDevice,
-    this.deeplinkInfo,
-  });
-
-  final FF1SetupStep step;
-
-  /// Terminal connect state (Flow 1–3 output), when available.
-  final ConnectFF1Connected? connected;
-
-  /// Connect error (BLE / flow errors), when available.
-  final Exception? connectError;
-
-  /// Wi‑Fi setup sub-flow state (Flow Wi‑Fi), when applicable.
-  final WiFiConnectionState? wifiState;
-
-  /// Input context (kept for observability/debugging).
-  final BluetoothDevice? selectedDevice;
-  final FF1DeviceInfo? deeplinkInfo;
-
-  FF1SetupState copyWith({
-    FF1SetupStep? step,
-    ConnectFF1Connected? connected,
-    Exception? connectError,
-    WiFiConnectionState? wifiState,
-    BluetoothDevice? selectedDevice,
-    FF1DeviceInfo? deeplinkInfo,
-  }) {
-    return FF1SetupState(
-      step: step ?? this.step,
-      connected: connected ?? this.connected,
-      connectError: connectError ?? this.connectError,
-      wifiState: wifiState ?? this.wifiState,
-      selectedDevice: selectedDevice ?? this.selectedDevice,
-      deeplinkInfo: deeplinkInfo ?? this.deeplinkInfo,
-    );
-  }
-}
+export 'package:app/app/ff1_setup/ff1_setup_models.dart';
 
 /// Orchestrator provider: aggregates sub-flow providers without changing UX.
 ///
@@ -78,72 +29,180 @@ class FF1SetupState {
 class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   BluetoothDevice? _selectedDevice;
   FF1DeviceInfo? _deeplinkInfo;
+  bool _listenersRegistered = false;
+  int _effectId = 0;
+  FF1SetupEffect? _pendingEffect;
 
   @override
   FF1SetupState build() {
+    _ensureListenersRegistered();
     final connectAsync = ref.watch(connectFF1Provider);
     final wifi = ref.watch(connectWiFiProvider);
+    final derived = deriveFf1SetupState(
+      connectAsync: connectAsync,
+      wifi: wifi,
+      selectedDevice: _selectedDevice,
+      deeplinkInfo: _deeplinkInfo,
+    );
+    return derived.copyWith(effectId: _effectId, effect: _pendingEffect);
+  }
 
-    ConnectFF1Connected? connected;
-    Exception? connectError;
-    var step = FF1SetupStep.idle;
+  void _emitEffect(FF1SetupEffect effect) {
+    _effectId += 1;
+    _pendingEffect = effect;
+    state = state.copyWith(effectId: _effectId, effect: _pendingEffect);
+  }
 
-    connectAsync.when(
-      data: (s) {
-        switch (s) {
-          case ConnectFF1Initial():
-            step = FF1SetupStep.idle;
-          case ConnectFF1Connecting():
-            step = FF1SetupStep.connecting;
-          case ConnectFF1StillConnecting():
-            step = FF1SetupStep.stillConnecting;
-          case ConnectFF1BluetoothOff():
-            step = FF1SetupStep.bluetoothOff;
-          case ConnectFF1Error(:final exception):
-            step = FF1SetupStep.error;
-            connectError = exception;
-          case ConnectFF1Connected():
-            connected = s;
-            step = s.isConnectedToInternet
-                ? FF1SetupStep.readyForConfig
-                : FF1SetupStep.needsWiFi;
+  void _ensureListenersRegistered() {
+    if (_listenersRegistered) {
+      return;
+    }
+    _listenersRegistered = true;
+
+    ref.listen<AsyncValue<ConnectFF1State>>(
+      connectFF1Provider,
+      (previous, next) {
+        final prev = previous?.maybeWhen<ConnectFF1State?>(
+          data: (v) => v,
+          orElse: () => null,
+        );
+        final cur = next.maybeWhen<ConnectFF1State?>(
+          data: (v) => v,
+          orElse: () => null,
+        );
+        if (cur == null) {
+          return;
         }
-      },
-      error: (e, _) {
-        step = FF1SetupStep.error;
-        connectError = Exception(e.toString());
-      },
-      loading: () {
-        step = FF1SetupStep.connecting;
+
+        if (cur is ConnectFF1Cancelled && prev is! ConnectFF1Cancelled) {
+          // Cancellation is an attempt lifecycle state; navigation remains owned
+          // by the UI (e.g. cancel button) to avoid double-pop when the route is
+          // already being popped (system back gesture / teardown).
+          return;
+        }
+
+        if (cur is ConnectFF1Connected && prev != cur) {
+          if (cur.isConnectedToInternet) {
+            _emitEffect(FF1SetupInternetReady(connected: cur));
+            unawaited(
+              () async {
+                try {
+                  await ref
+                      .read(ff1BluetoothDeviceActionsProvider.notifier)
+                      .addDevice(cur.ff1device);
+                } finally {
+                  // Persist device best-effort; onboarding completion should not
+                  // depend on DB write success.
+                  unawaited(
+                    ref.read(onboardingActionsProvider).completeOnboarding(),
+                  );
+                }
+              }(),
+            );
+          } else {
+            _emitEffect(FF1SetupNeedsWiFi(device: cur.ff1device));
+          }
+          return;
+        }
+
+        if (cur is ConnectFF1Error &&
+            (prev is! ConnectFF1Error ||
+                prev.exception.toString() != cur.exception.toString())) {
+          final ex = cur.exception;
+          if (ex is FF1ResponseError) {
+            _emitEffect(
+              FF1SetupShowError(
+                title: ex.title,
+                message: ex.message,
+                showSupportCta: ex.shouldShowSupport,
+              ),
+            );
+            return;
+          }
+
+          _emitEffect(
+            FF1SetupShowError(
+              title: 'Connect failed',
+              message: ex.toString(),
+              showSupportCta: true,
+            ),
+          );
+        }
       },
     );
 
-    // When Wi‑Fi flow is active (or has emitted a non-idle state), reflect its
-    // step as the single-source-of-truth for \"what happens next\".
-    final hasWifiActivity =
-        step == FF1SetupStep.needsWiFi || wifi.status != WiFiConnectionStatus.idle;
-    if (hasWifiActivity) {
-      step = switch (wifi.status) {
-        WiFiConnectionStatus.idle => step,
-        WiFiConnectionStatus.connecting => FF1SetupStep.wiFiConnecting,
-        WiFiConnectionStatus.scanningNetworks => FF1SetupStep.wiFiScanningNetworks,
-        WiFiConnectionStatus.selectingNetwork => FF1SetupStep.wiFiSelectingNetwork,
-        WiFiConnectionStatus.sendingCredentials => FF1SetupStep.wiFiSendingCredentials,
-        WiFiConnectionStatus.waitingForDeviceConnection =>
-          FF1SetupStep.wiFiWaitingForDevice,
-        WiFiConnectionStatus.finalizingConnection => FF1SetupStep.wiFiFinalizing,
-        WiFiConnectionStatus.success => FF1SetupStep.readyForConfig,
-        WiFiConnectionStatus.error => FF1SetupStep.error,
-      };
-    }
+    ref.listen<WiFiConnectionState>(
+      connectWiFiProvider,
+      (previous, next) {
+        if (previous?.status == next.status) {
+          return;
+        }
 
-    return FF1SetupState(
-      step: step,
-      connected: connected,
-      connectError: connectError,
-      wifiState: hasWifiActivity ? wifi : null,
-      selectedDevice: _selectedDevice,
-      deeplinkInfo: _deeplinkInfo,
+        if (next.status == WiFiConnectionStatus.success) {
+          _emitEffect(
+            const FF1SetupNavigate(
+              route: Routes.deviceConfiguration,
+              method: FF1SetupNavigationMethod.push,
+            ),
+          );
+          unawaited(
+            () async {
+              final topicId = next.topicId;
+              if (topicId != null && topicId.isNotEmpty) {
+                try {
+                  await ref.read(ff1WifiControlProvider).showPairingQRCode(
+                        topicId: topicId,
+                        show: false,
+                      );
+                } on Object {
+                  // Best-effort: hiding the QR code should not block navigation.
+                }
+              }
+              await ref.read(onboardingActionsProvider).completeOnboarding();
+            }(),
+          );
+          return;
+        }
+
+        if (next.status == WiFiConnectionStatus.error) {
+          final error = next.error;
+          if (error is FF1ResponseError) {
+            if (error is DeviceUpdatingError) {
+              _emitEffect(const FF1SetupDeviceUpdating());
+              return;
+            }
+            _emitEffect(
+              FF1SetupShowError(
+                title: error.title,
+                message: error.message,
+                showSupportCta: error.shouldShowSupport,
+              ),
+            );
+            return;
+          }
+          if (error is TimeoutException) {
+            _emitEffect(
+              const FF1SetupShowError(
+                title: "Can't reach FF1",
+                message:
+                    "FF1 didn't respond in time. Make sure FF1 is nearby and try again.",
+                showSupportCta: false,
+              ),
+            );
+            return;
+          }
+          if (error != null) {
+            _emitEffect(
+              const FF1SetupShowError(
+                title: 'Wi‑Fi setup failed',
+                message:
+                    "FF1 couldn't complete Wi‑Fi setup because of an unexpected issue. Contact support for help.",
+                showSupportCta: true,
+              ),
+            );
+          }
+        }
+      },
     );
   }
 
@@ -151,6 +210,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     required BluetoothDevice device,
     FF1DeviceInfo? deeplinkInfo,
   }) async {
+    _ensureListenersRegistered();
     _selectedDevice = device;
     _deeplinkInfo = deeplinkInfo;
     // Refactor-only invariant: avoid stale success causing immediate navigation
@@ -160,23 +220,69 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       step: FF1SetupStep.connecting,
       selectedDevice: device,
       deeplinkInfo: deeplinkInfo,
-      connected: null,
-      connectError: null,
-      wifiState: null,
     );
     await ref
         .read(connectFF1Provider.notifier)
         .connectBle(device, ff1DeviceInfo: deeplinkInfo);
   }
 
+  Future<void> startWifiScan({required FF1Device device}) async {
+    _ensureListenersRegistered();
+    await ref.read(connectWiFiProvider.notifier).connectAndScanNetworks(
+          device: device,
+        );
+  }
+
+  void selectWiFiNetwork(WiFiNetwork network) {
+    _ensureListenersRegistered();
+    ref.read(connectWiFiProvider.notifier).selectNetwork(network);
+  }
+
+  void requestEnterWifiPassword({
+    required FF1Device device,
+    required WifiPoint wifiAccessPoint,
+  }) {
+    _ensureListenersRegistered();
+    _emitEffect(
+      FF1SetupEnterWifiPassword(
+        device: device,
+        wifiAccessPoint: wifiAccessPoint,
+      ),
+    );
+  }
+
+  Future<void> sendWifiCredentialsAndConnect({
+    required FF1Device device,
+    required String ssid,
+    required String password,
+  }) async {
+    _ensureListenersRegistered();
+    await ref.read(connectWiFiProvider.notifier).sendCredentialsAndConnect(
+          device: device,
+          ssid: ssid,
+          password: password,
+        );
+  }
+
   void cancel() {
+    _ensureListenersRegistered();
     ref.read(connectFF1Provider.notifier).cancelConnection();
   }
 
   void reset() {
+    _ensureListenersRegistered();
     ref.read(connectFF1Provider.notifier).reset();
     ref.read(connectWiFiProvider.notifier).reset();
     state = const FF1SetupState(step: FF1SetupStep.idle);
+  }
+
+  void ackEffect({required int effectId}) {
+    _ensureListenersRegistered();
+    if (effectId != _effectId) {
+      return;
+    }
+    _pendingEffect = null;
+    state = state.copyWith(effectId: _effectId);
   }
 }
 

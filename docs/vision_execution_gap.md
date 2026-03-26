@@ -15,18 +15,7 @@
 
 ## Active gaps
 
-### 2) FF1 connect/setup orchestration remains distributed across providers
-- Type: architecture simplification
-- Priority: medium
-- Affected flows:
-  - FF1 Pairing and Wi-Fi Setup
-  - Onboarding from Device Deeplink/QR
-- Current gap:
-  - Readiness, retries, and post-connect routing logic is spread across BLE
-    transport + connect providers + page-level handlers.
-- Desired state:
-  - A single connect session orchestrator owns attempt lifecycle, cancellation,
-    and routing outcomes.
+- None.
 
 ## Refactor backlog (candidate follow-ups)
 - Introduce `GoldPathPatrolKeys` for onboarding primary/secondary actions and
@@ -47,6 +36,25 @@
     - `patrol_test/gold_path_test.dart`: Replaced `$('Submit').tap()` with key-based tap.
     - All onboarding CTA (shell-level) use dedicated patrol keys for reliable automation.
   - Verification: All primary/secondary onboarding actions tap via keys; no text-based action taps.
+- EV-03: FF1 connect/setup orchestration is centralized under a single orchestrator.
+  - `FF1SetupOrchestrator` owns attempt lifecycle, cancellation semantics, and routing outcomes (as typed one-off effects).
+  - Connect + Wi‑Fi screens are driven by orchestrator state/effects instead of page-local routing/dialog handlers.
+  - `ConnectFF1PagePayload.onConnectedToInternet` is now navigation-only override; side effects remain owned by orchestration.
+  - Evidence:
+    - `lib/app/providers/ff1_setup_orchestrator_provider.dart`: orchestrator lifecycle + effect emission + action methods.
+    - `lib/app/ff1_setup/ff1_setup_effect.dart` + `lib/app/ff1_setup/ff1_setup_models.dart`: effect/state models.
+    - `lib/app/providers/connect_ff1_providers.dart`: cancellation now has a stable `ConnectFF1Cancelled` state.
+    - `lib/ui/screens/ff1_setup/connect_ff1_page.dart`: routes/dialogs consume orchestrator effects (fallback handles late listeners).
+    - `lib/ui/screens/scan_wifi_network_screen.dart`: delegates Wi‑Fi actions + navigation to orchestrator.
+    - `lib/ui/screens/send_wifi_credentials_screen.dart`: delegates Wi‑Fi submit + navigation/error handling to orchestrator.
+    - Tests:
+      - `test/unit/app/ff1_setup/ff1_setup_derivation_test.dart`
+      - `test/unit/app/providers/ff1_setup_orchestrator_effects_test.dart`
+      - `test/unit/ui/screens/ff1_setup/connect_ff1_page_widget_test.dart`
+  - Verification:
+    - `scripts/agent-helpers/post-implementation-checks HEAD`
+    - `flutter build apk --debug --flavor development`
+    - `scripts/report_business_coverage.sh`
 - EV-02 ingest no longer flattens publisher attribution to a hardcoded
   default.
   - Evidence:

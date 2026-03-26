@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:app/app/ff1/ff1_ble_device_connect.dart';
 import 'package:app/app/providers/ff1_connect_session_provider.dart';
 import 'package:app/app/providers/ff1_ensure_ready_provider.dart';
 import 'package:app/app/providers/ff1_get_device_info_provider.dart';
@@ -61,6 +60,9 @@ class ConnectFF1Connected extends ConnectFF1State {
 /// Bluetooth is off — waiting for the user to enable it
 class ConnectFF1BluetoothOff extends ConnectFF1State {}
 
+/// Connection attempt was cancelled by the user/caller.
+class ConnectFF1Cancelled extends ConnectFF1State {}
+
 /// Error state
 class ConnectFF1Error extends ConnectFF1State {
   /// Constructor
@@ -120,6 +122,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
           _assertSessionActive(session);
         } on FF1ConnectionCancelledError catch (_) {
           _log.info('[ConnectFF1Notifier] Cancelled while waiting for BT');
+      _setStateIfSessionActive(session, ConnectFF1Cancelled());
           session.completeWithOutcome(FF1ConnectOutcome.cancelled);
           return;
         }
@@ -170,7 +173,6 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
       await control.connect(
         blDevice: blDevice,
-        maxRetries: kFf1BleConnectMaxRetriesSessionDefault,
         shouldContinue: () => _isSessionActive(session),
       );
       _assertSessionActive(session);
@@ -178,6 +180,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       _log.info('[ConnectFF1Notifier] Successfully connected to device');
     } on FF1ConnectionCancelledError catch (_) {
       _log.info('[ConnectFF1Notifier] Connection cancelled by user');
+      _setStateIfSessionActive(session, ConnectFF1Cancelled());
       session.completeWithOutcome(FF1ConnectOutcome.cancelled);
     } on Exception catch (e) {
       _log.info('[ConnectFF1Notifier] Error connecting to device: $e');
@@ -286,6 +289,7 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
 
     session.cancel();
     _activeSession = null;
+    state = AsyncValue.data(ConnectFF1Cancelled());
   }
 
   /// Reset to initial state
