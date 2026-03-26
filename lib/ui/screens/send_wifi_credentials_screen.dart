@@ -20,6 +20,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gif_view/gif_view.dart';
 import 'package:go_router/go_router.dart';
+import 'package:logging/logging.dart';
+
+final _log = Logger('EnterWiFiPasswordScreen');
 
 /// Payload for the enter wifi password page
 class EnterWifiPasswordPagePayload {
@@ -61,6 +64,7 @@ class _EnterWiFiPasswordScreenState
   bool _isProcessing = false;
   String _passwordText = '';
   ProviderSubscription<FF1SetupState>? _setupSub;
+  bool _didAutoNavigateToConfig = false;
 
   /// Parse SSID from networkSsid (may contain "ssid|security" format)
   String _parseSSID(String ssid) {
@@ -92,20 +96,53 @@ class _EnterWiFiPasswordScreenState
       ff1SetupOrchestratorProvider,
       (previous, next) {
         if (previous?.effectId == next.effectId) {
-          return;
-        }
-        final effectId = next.effectId;
-        final effect = next.effect;
-        if (effect == null) {
-          return;
-        }
-        final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
-        unawaited(() async {
-          final didHandle = await _handleOrchestratorEffect(effect);
-          if (didHandle) {
-            orchestrator.ackEffect(effectId: effectId);
+          // Even when there is no new effect, we still want a routing fallback
+          // driven by state transitions (e.g. when a navigation effect is missed).
+        } else {
+          final effectId = next.effectId;
+          final effect = next.effect;
+          if (effect == null) {
+            return;
           }
-        }());
+          _log.info('[effect] received: id=$effectId, type=${effect.runtimeType}');
+          final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
+          unawaited(() async {
+            final didHandle = await _handleOrchestratorEffect(effect);
+            _log.info(
+              '[effect] handled=$didHandle for id=$effectId, type=${effect.runtimeType}',
+            );
+            if (didHandle) {
+              orchestrator.ackEffect(effectId: effectId);
+            }
+          }());
+          return;
+        }
+
+        // Fallback: if the Wi‑Fi flow reports a topicId, proceed to config even
+        // when the one-off navigation effect is missed/consumed elsewhere.
+        if (_didAutoNavigateToConfig) {
+          return;
+        }
+        final prevTopicId = previous?.wifiState?.topicId ?? '';
+        final nextTopicId = next.wifiState?.topicId ?? '';
+        final didReceiveTopicId = prevTopicId.isEmpty && nextTopicId.isNotEmpty;
+        final prevStatus = previous?.wifiState?.status;
+        final nextStatus = next.wifiState?.status;
+        final didReachSuccess =
+            prevStatus != WiFiConnectionStatus.success &&
+            nextStatus == WiFiConnectionStatus.success;
+
+        if (didReceiveTopicId || didReachSuccess) {
+          if (!mounted) {
+            _didAutoNavigateToConfig = true;
+            return;
+          }
+          _didAutoNavigateToConfig = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            context.go(Routes.deviceConfiguration);
+          });
+        }
       },
     );
 
@@ -169,12 +206,20 @@ class _EnterWiFiPasswordScreenState
         switch (method) {
           case FF1SetupNavigationMethod.push:
             await context.push(route, extra: extra);
+            return true;
           case FF1SetupNavigationMethod.replace:
-            context.replace(route, extra: extra);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              context.replace(route, extra: extra);
+            });
+            return true;
           case FF1SetupNavigationMethod.go:
-            context.go(route, extra: extra);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              context.go(route, extra: extra);
+            });
+            return true;
         }
-        return true;
       case FF1SetupDeviceUpdating():
         if (!mounted) return false;
         context.go(Routes.ff1Updating);

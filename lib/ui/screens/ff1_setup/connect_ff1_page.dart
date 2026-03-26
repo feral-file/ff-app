@@ -98,9 +98,8 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           final orchestrator =
               ref.read(ff1SetupOrchestratorProvider.notifier);
           unawaited(() async {
-            try {
-              await _handleOrchestratorEffect(effect);
-            } finally {
+            final didHandle = await _handleOrchestratorEffect(effect);
+            if (didHandle) {
               orchestrator.ackEffect(effectId: effectId);
             }
           }());
@@ -199,7 +198,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     };
   }
 
-  Future<void> _handleOrchestratorEffect(FF1SetupEffect effect) async {
+  Future<bool> _handleOrchestratorEffect(FF1SetupEffect effect) async {
     switch (effect) {
       case FF1SetupInternetReady(:final connected):
         _recordDuration(success: true);
@@ -207,11 +206,11 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
         if (customNavigation != null) {
           try {
             await customNavigation(context, connected);
-            return;
+            return true;
           } on Object catch (e, stack) {
             _log.severe('[ConnectFF1Page] Custom navigation failed', e, stack);
             if (!context.mounted) {
-              return;
+              return true;
             }
             await UIHelper.showInfoDialog(
               context,
@@ -227,46 +226,40 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                 );
               },
             );
-            return;
+            return true;
           }
         }
         if (!connected.portalIsSet && context.mounted) {
           context.replace(Routes.deviceConfiguration);
         }
-        return;
+        return true;
       case FF1SetupNeedsWiFi(:final device):
-        if (!context.mounted) return;
+        if (!context.mounted) return false;
         context.replace(
           Routes.scanWifiNetworks,
           extra: ScanWifiNetworkPagePayload(device: device),
         );
-        return;
-      case FF1SetupNavigate(:final route, :final extra, :final method):
-        if (!context.mounted) return;
-        switch (method) {
-          case FF1SetupNavigationMethod.push:
-            await context.push(route, extra: extra);
-          case FF1SetupNavigationMethod.replace:
-            context.replace(route, extra: extra);
-          case FF1SetupNavigationMethod.go:
-            context.go(route, extra: extra);
-        }
-        return;
+        return true;
+      case FF1SetupNavigate():
+        // Navigation effects can be emitted by downstream Wi‑Fi steps.
+        // When this page sits below those routes in the stack, handling them here
+        // can target the wrong navigator and swallow the effect for the active
+        // screen. Let the top-most screen consume these effects.
+        return false;
       case FF1SetupPop():
-        if (!context.mounted) return;
-        context.pop();
-        return;
+        // Pop is owned by the active route (e.g. cancel CTA on the current page).
+        return false;
       case FF1SetupDeviceUpdating():
-        if (!context.mounted) return;
+        if (!context.mounted) return false;
         context.go(Routes.ff1Updating);
-        return;
+        return true;
       case FF1SetupShowError(
           :final title,
           :final message,
           :final showSupportCta,
         ):
         _recordDuration(success: false);
-        if (!context.mounted) return;
+        if (!context.mounted) return false;
         await UIHelper.showInfoDialog(
           context,
           title,
@@ -283,10 +276,10 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                 }
               : null,
         );
-        return;
+        return true;
       case FF1SetupEnterWifiPassword():
         // Not expected on this screen; ignore.
-        return;
+        return false;
     }
   }
 

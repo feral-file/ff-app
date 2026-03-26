@@ -117,7 +117,36 @@ void main() {
     expect(setupState.effect, isA<FF1SetupNavigate>());
     final nav = setupState.effect as FF1SetupNavigate;
     expect(nav.route, isNotEmpty);
-    expect(nav.method, FF1SetupNavigationMethod.push);
+    expect(nav.method, FF1SetupNavigationMethod.go);
+  });
+
+  test('emits Navigate(DeviceConfig) when topicId arrives (even before success)', () async {
+    final appState = _MockAppStateService();
+    final container = ProviderContainer.test(
+      overrides: [
+        connectFF1Provider.overrideWith(() => _FakeConnectNotifier(ConnectFF1Initial())),
+        connectWiFiProvider.overrideWith(() => _FakeWiFiNotifier(const WiFiConnectionState())),
+        ff1WifiControlProvider.overrideWithValue(_StubWifiControl()),
+        onboardingActionsProvider.overrideWith(
+          (ref) => OnboardingService(ref: ref, appStateService: appState),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final keepAlive = container.listen(ff1SetupOrchestratorProvider, (_, __) {});
+    addTearDown(keepAlive.close);
+
+    final wifiNotifier =
+        container.read(connectWiFiProvider.notifier) as _FakeWiFiNotifier;
+    wifiNotifier.emitTopicIdArrived(topicId: 'topic-early');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final setupState = container.read(ff1SetupOrchestratorProvider);
+    expect(setupState.effect, isA<FF1SetupNavigate>());
+    final nav = setupState.effect as FF1SetupNavigate;
+    expect(nav.route, isNotEmpty);
+    expect(nav.method, FF1SetupNavigationMethod.go);
   });
 
 }
@@ -145,6 +174,13 @@ class _FakeWiFiNotifier extends WiFiConnectionNotifier {
 
   void emitSuccess({required String topicId}) {
     state = state.copyWith(status: WiFiConnectionStatus.success, topicId: topicId);
+  }
+
+  void emitTopicIdArrived({required String topicId}) {
+    state = state.copyWith(
+      status: WiFiConnectionStatus.waitingForDeviceConnection,
+      topicId: topicId,
+    );
   }
 }
 

@@ -14,8 +14,11 @@ import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/wifi_point.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 
 export 'package:app/app/ff1_setup/ff1_setup_models.dart';
+
+final _log = Logger('FF1SetupOrchestrator');
 
 /// Orchestrator provider: aggregates sub-flow providers without changing UX.
 ///
@@ -121,24 +124,43 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     ref.listen<WiFiConnectionState>(
       connectWiFiProvider,
       (previous, next) {
-        if (previous?.status == next.status) {
-          return;
-        }
+        final prevStatus = previous?.status;
+        final nextStatus = next.status;
+        final prevTopicId = previous?.topicId ?? '';
+        final nextTopicId = next.topicId ?? '';
 
-        if (next.status == WiFiConnectionStatus.success) {
+        _log.info(
+          '[wifi] transition: '
+          'status=$prevStatus -> $nextStatus; '
+          'topicId="${prevTopicId.isEmpty ? '(empty)' : '(set)'}" -> '
+          '"${nextTopicId.isEmpty ? '(empty)' : '(set)'}"',
+        );
+
+        // Navigation contract: once the device responds with a topicId after
+        // sending Wi‑Fi credentials, we should proceed to configuration.
+        //
+        // Relying solely on status == success is brittle: UI can be stuck in a
+        // "connecting" step if a later status transition is missed or not
+        // reached. The topicId is the strongest signal that Wi‑Fi provisioning
+        // completed.
+        final didReceiveTopicId = prevTopicId.isEmpty && nextTopicId.isNotEmpty;
+        if (didReceiveTopicId || nextStatus == WiFiConnectionStatus.success) {
+          _log.info(
+            '[wifi] emitting navigation: '
+            'didReceiveTopicId=$didReceiveTopicId; status=$nextStatus',
+          );
           _emitEffect(
             const FF1SetupNavigate(
               route: Routes.deviceConfiguration,
-              method: FF1SetupNavigationMethod.push,
+              method: FF1SetupNavigationMethod.go,
             ),
           );
           unawaited(
             () async {
-              final topicId = next.topicId;
-              if (topicId != null && topicId.isNotEmpty) {
+              if (nextTopicId.isNotEmpty) {
                 try {
                   await ref.read(ff1WifiControlProvider).showPairingQRCode(
-                        topicId: topicId,
+                        topicId: nextTopicId,
                         show: false,
                       );
                 } on Object {
@@ -151,7 +173,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
           return;
         }
 
-        if (next.status == WiFiConnectionStatus.error) {
+        if (nextStatus == WiFiConnectionStatus.error) {
           final error = next.error;
           if (error is FF1ResponseError) {
             if (error is DeviceUpdatingError) {
@@ -188,6 +210,11 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
               ),
             );
           }
+        }
+
+        // No-op: other Wi‑Fi intermediate states are reflected via derived state.
+        if (prevStatus == nextStatus && prevTopicId == nextTopicId) {
+          return;
         }
       },
     );
