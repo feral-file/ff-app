@@ -51,6 +51,16 @@
   deferred recovery) with typed status events for UI/test observability.
 
 ## Completed items
+- EV-03 (Orbit 2): Gold-path CI separates **smoke** vs **endurance** evidence.
+  - Smoke: PR job `gold-path-smoke`, fixed short soak (1 minute), artifact prefix
+    `gold-path-smoke-ios-xcresult`.
+  - Endurance: job `gold-path-endurance`, nightly schedule aligned with
+    `nightly-integration.yml` (09:00 UTC), default long soak (240 minutes,
+    overridable on `workflow_dispatch`), artifact prefix
+    `gold-path-endurance-ios-xcresult`.
+  - Shared implementation: `.github/actions/gold-path-patrol/action.yml`;
+    workflow: `.github/workflows/gold-path-ui.yml`.
+  - Manual dispatch uses input `run_profile` (`smoke` | `endurance`).
 - EV-02 (Orbit 2): Trust boundary for DP-1 playlist signatures is explicit;
   wire parsing for `signature` vs `signatures[]` is locked and regression-tested.
   - Trust boundary:
