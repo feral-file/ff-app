@@ -107,16 +107,30 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
     try {
       await notifier.reconnect();
       final state = ref.read(ff1WifiConnectionProvider);
-      _slog.info(
-        category: LogCategory.wifi,
-        event: 'lifecycle_resume_reconnect_completed',
-        message: 'lifecycle-triggered relayer reconnect completed',
-        payload: {
-          'deviceId': state.device?.deviceId,
-          'wifiStateConnected': state.isConnected,
-          'wifiStateConnecting': state.isConnecting,
-        },
-      );
+      if (state.isConnected) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'lifecycle_resume_reconnect_completed',
+          message: 'lifecycle-triggered relayer reconnect completed',
+          payload: {
+            'deviceId': state.device?.deviceId,
+            'wifiStateConnected': state.isConnected,
+            'wifiStateConnecting': state.isConnecting,
+          },
+        );
+      } else {
+        _slog.warning(
+          category: LogCategory.wifi,
+          event: 'lifecycle_resume_reconnect_not_connected',
+          message: '''
+lifecycle reconnect returned without connected state (failed or skipped)''',
+          payload: {
+            'deviceId': state.device?.deviceId ?? deviceId,
+            'wifiStateConnected': state.isConnected,
+            'wifiStateConnecting': state.isConnecting,
+          },
+        );
+      }
     } on Exception catch (e, stackTrace) {
       _slog.warning(
         category: LogCategory.wifi,

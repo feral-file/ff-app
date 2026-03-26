@@ -894,7 +894,7 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
       case _RelayerControlType.connect:
         _relayerIsolateLog(
           'control_connect',
-          'connect control received, wsUrlLen=${(control.data?['wsUrl'] as String?)?.length ?? 0}',
+          'connect control received',
         );
         wsUrl = control.data?['wsUrl'] as String?;
         await closeChannel();
