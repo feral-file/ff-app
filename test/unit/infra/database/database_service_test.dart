@@ -779,7 +779,6 @@ void main() {
           slug: 'test',
           title: 'Test Playlist',
           created: DateTime.now(),
-          signature: '',
           items: [
             const DP1PlaylistItem(id: 'item_1', duration: 0, title: 'Item 1'),
             const DP1PlaylistItem(id: 'item_2', duration: 0, title: 'Item 2'),
