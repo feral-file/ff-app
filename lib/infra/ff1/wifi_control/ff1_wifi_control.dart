@@ -85,6 +85,9 @@ class FF1WifiControl {
   FF1Device? _device;
   String? _userId;
   String? _apiKey;
+  int _flowSequence = 0;
+
+  String _nextFlowId(String stage) => '$stage-${++_flowSequence}';
 
   /// Start listening to transport streams
   void _startListening() {
@@ -123,11 +126,24 @@ class FF1WifiControl {
     required String userId,
     required String apiKey,
   }) async {
+    final flowId = _nextFlowId('connect');
     _device = device;
     _userId = userId;
     _apiKey = apiKey;
 
     _log.info('Connecting to ${device.deviceId}');
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'control_connect_requested',
+      message: 'control connect requested',
+      payload: {
+        'flowId': flowId,
+        'deviceId': device.deviceId,
+        'topicId': device.topicId,
+        'transportConnected': _transport.isConnected,
+        'transportConnecting': _transport.isConnecting,
+      },
+    );
 
     try {
       await _transport.connect(
@@ -135,15 +151,45 @@ class FF1WifiControl {
         userId: userId,
         apiKey: apiKey,
       );
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'control_connect_dispatched',
+        message: 'control connect dispatched to transport',
+        payload: {
+          'flowId': flowId,
+          'deviceId': device.deviceId,
+          'transportConnected': _transport.isConnected,
+          'transportConnecting': _transport.isConnecting,
+        },
+      );
     } catch (e) {
       _log.severe('Failed to connect: $e');
+      _slog.warning(
+        category: LogCategory.wifi,
+        event: 'control_connect_failed',
+        message: 'control connect failed',
+        payload: {'flowId': flowId, 'deviceId': device.deviceId, 'error': '$e'},
+        error: e,
+      );
       rethrow;
     }
   }
 
   /// Disconnect from device
   Future<void> disconnect() async {
+    final flowId = _nextFlowId('disconnect');
     _log.info('Disconnecting');
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'control_disconnect_requested',
+      message: 'control disconnect requested',
+      payload: {
+        'flowId': flowId,
+        'deviceId': _device?.deviceId,
+        'transportConnected': _transport.isConnected,
+        'transportConnecting': _transport.isConnecting,
+      },
+    );
 
     await _transport.disconnect();
 
@@ -156,6 +202,16 @@ class FF1WifiControl {
     _currentPlayerStatus = null;
     _currentDeviceStatus = null;
     _isDeviceConnected = false;
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'control_disconnect_completed',
+      message: 'control disconnect completed and state cleared',
+      payload: {
+        'flowId': flowId,
+        'transportConnected': _transport.isConnected,
+        'transportConnecting': _transport.isConnecting,
+      },
+    );
   }
 
   /// Check if transport is connected
@@ -245,6 +301,16 @@ class FF1WifiControl {
       return;
     }
     _log.info('Connection state changed: $isConnected');
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'transport_state_observed',
+      message: 'control observed transport connection state change',
+      payload: {
+        'transportConnected': isConnected,
+        'deviceConnectedBeforeHandling': _isDeviceConnected,
+        'deviceId': _device?.deviceId,
+      },
+    );
 
     if (!isConnected) {
       // Transport dropped — clear all cached state and push a disconnected
@@ -265,6 +331,15 @@ class FF1WifiControl {
       _isDeviceConnected = false;
       _connectionStatusController.add(
         FF1ConnectionStatus(isConnected: isConnected),
+      );
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'control_connection_status_emitted',
+        message: 'emitted connection status after transport disconnect',
+        payload: {
+          'isConnected': isConnected,
+          'deviceId': _device?.deviceId,
+        },
       );
     } else {
       // Transport (WebSocket) reconnected. Device-level "connected" flag is
@@ -328,8 +403,15 @@ class FF1WifiControl {
   /// Uses [forceReconnect] to bypass "already connected" check when connection
   /// may be stale (e.g. app was suspended, Timer-based reconnect did not fire).
   Future<void> reconnect() async {
+    final flowId = _nextFlowId('reconnect');
     if (_device == null || _userId == null || _apiKey == null) {
       _log.warning('Cannot reconnect: no cached connection params');
+      _slog.warning(
+        category: LogCategory.wifi,
+        event: 'reconnect_skipped_missing_params',
+        message: 'cannot reconnect due to missing cached params',
+        payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
+      );
       return;
     }
 
@@ -338,35 +420,60 @@ class FF1WifiControl {
       event: 'reconnect_start',
       message: 'reconnecting to device',
       payload: {
+        'flowId': flowId,
         'deviceId': _device!.deviceId,
         'isDeviceConnected': _isDeviceConnected,
         'isTransportConnected': _transport.isConnected,
+        'isTransportConnecting': _transport.isConnecting,
       },
     );
 
     try {
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'reconnect_transport_call_started',
+        message: 'calling transport.connect(forceReconnect: true)',
+        payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
+      );
       await _transport.connect(
         device: _device!,
         userId: _userId!,
         apiKey: _apiKey!,
         forceReconnect: true,
       );
-      _slog.info(
-        category: LogCategory.wifi,
-        event: 'reconnect_transport_ok',
-        message:
-            'transport reconnected — waiting for device connection notification',
-        payload: {
-          'deviceId': _device?.deviceId,
-          'isDeviceConnected': _isDeviceConnected,
-        },
-      );
+      _slog
+        ..info(
+          category: LogCategory.wifi,
+          event: 'reconnect_transport_call_completed',
+          message: 'transport.connect(forceReconnect: true) returned',
+          payload: {
+            'flowId': flowId,
+            'deviceId': _device?.deviceId,
+            'isTransportConnected': _transport.isConnected,
+            'isTransportConnecting': _transport.isConnecting,
+          },
+        )
+        ..info(
+          category: LogCategory.wifi,
+          event: 'reconnect_transport_ok',
+          message: '''
+transport reconnected — waiting for device connection notification''',
+          payload: {
+            'flowId': flowId,
+            'deviceId': _device?.deviceId,
+            'isDeviceConnected': _isDeviceConnected,
+          },
+        );
     } catch (e) {
       _slog.warning(
         category: LogCategory.wifi,
         event: 'reconnect_failed',
         message: 'reconnect failed',
-        payload: {'deviceId': _device?.deviceId, 'error': e.toString()},
+        payload: {
+          'flowId': flowId,
+          'deviceId': _device?.deviceId,
+          'error': e.toString(),
+        },
         error: e,
       );
       rethrow;
@@ -380,17 +487,32 @@ class FF1WifiControl {
     if (_isTearingDown) {
       return;
     }
+
+    final flowId = _nextFlowId('pause');
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_paused',
       message: 'pausing connection for background',
       payload: {
+        'flowId': flowId,
         'isDeviceConnected': _isDeviceConnected,
         'isTransportConnected': _transport.isConnected,
+        'isTransportConnecting': _transport.isConnecting,
         'deviceId': _device?.deviceId,
       },
     );
     _transport.pauseConnection();
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'control_pause_transport_called',
+      message: 'called transport.pauseConnection from control',
+      payload: {
+        'flowId': flowId,
+        'deviceId': _device?.deviceId,
+        'isTransportConnected': _transport.isConnected,
+        'isTransportConnecting': _transport.isConnecting,
+      },
+    );
 
     // Clear current state but preserve _device, _userId, _apiKey for reconnect
     _currentPlayerStatus = null;
@@ -398,6 +520,12 @@ class FF1WifiControl {
     _isDeviceConnected = false;
     _connectionStatusController.add(
       const FF1ConnectionStatus(isConnected: false),
+    );
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'control_pause_state_cleared',
+      message: 'pause cleared device/player state and emitted disconnected',
+      payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
     );
   }
 
