@@ -414,11 +414,9 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                               if (status == _ConnectFF1Status.portalIsSet) ...[
                                 SizedBox(height: LayoutConstants.space5),
                                 PrimaryButton(
-                                  onTap: () {
+                                  onTap: () async {
                                     if (context.mounted) {
-                                      context.replace(
-                                        Routes.deviceConfiguration,
-                                      );
+                                      context.replace(Routes.deviceConfiguration);
                                     }
                                   },
                                   text: 'Go to Settings',

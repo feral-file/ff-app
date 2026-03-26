@@ -1,7 +1,6 @@
 import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
-import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
@@ -55,7 +54,7 @@ void main() {
     );
   });
 
-  test('emits InternetReady effect and persists device when online', () async {
+  test('emits InternetReady effect when online', () async {
     const connected = ConnectFF1Connected(
       ff1device: FF1Device(
         name: 'FF1',
@@ -67,12 +66,10 @@ void main() {
       isConnectedToInternet: true,
     );
 
-    final deviceActions = _RecordingDeviceActions();
     final appState = _MockAppStateService();
     final container = ProviderContainer.test(
       overrides: [
         connectFF1Provider.overrideWith(() => _FakeConnectNotifier(ConnectFF1Initial())),
-        ff1BluetoothDeviceActionsProvider.overrideWith(() => deviceActions),
         onboardingActionsProvider.overrideWith(
           (ref) => OnboardingService(ref: ref, appStateService: appState),
         ),
@@ -91,9 +88,6 @@ void main() {
 
     final setupState = container.read(ff1SetupOrchestratorProvider);
     expect(setupState.effect, isA<FF1SetupInternetReady>());
-
-    // Side effect: device persistence should be triggered.
-    expect(deviceActions.addedDevices, [connected.ff1device]);
   });
 
   test('emits Navigate(DeviceConfig) when WiFi succeeds', () async {
@@ -151,18 +145,6 @@ class _FakeWiFiNotifier extends WiFiConnectionNotifier {
 
   void emitSuccess({required String topicId}) {
     state = state.copyWith(status: WiFiConnectionStatus.success, topicId: topicId);
-  }
-}
-
-class _RecordingDeviceActions extends FF1BluetoothDeviceActionsNotifier {
-  final List<FF1Device> addedDevices = <FF1Device>[];
-
-  @override
-  void build() {}
-
-  @override
-  Future<void> addDevice(FF1Device device) async {
-    addedDevices.add(device);
   }
 }
 

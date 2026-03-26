@@ -5,7 +5,6 @@ import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/ff1_setup/ff1_setup_models.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
-import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -83,22 +82,10 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
 
         if (cur is ConnectFF1Connected && prev != cur) {
           if (cur.isConnectedToInternet) {
+            // Root-cause fix lives in ConnectFF1Notifier: it persists/promotes
+            // the device before emitting ConnectFF1Connected(internet=true).
+            unawaited(ref.read(onboardingActionsProvider).completeOnboarding());
             _emitEffect(FF1SetupInternetReady(connected: cur));
-            unawaited(
-              () async {
-                try {
-                  await ref
-                      .read(ff1BluetoothDeviceActionsProvider.notifier)
-                      .addDevice(cur.ff1device);
-                } finally {
-                  // Persist device best-effort; onboarding completion should not
-                  // depend on DB write success.
-                  unawaited(
-                    ref.read(onboardingActionsProvider).completeOnboarding(),
-                  );
-                }
-              }(),
-            );
           } else {
             _emitEffect(FF1SetupNeedsWiFi(device: cur.ff1device));
           }
@@ -205,6 +192,9 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       },
     );
   }
+
+  /// Ensure [device] is persisted and promoted to active before navigation.
+  // No longer needed: internet-ready persistence is guaranteed by ConnectFF1Notifier.
 
   Future<void> startConnect({
     required BluetoothDevice device,

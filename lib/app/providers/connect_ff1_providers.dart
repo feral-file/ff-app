@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/ff1_connect_session_provider.dart';
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_ensure_ready_provider.dart';
 import 'package:app/app/providers/ff1_get_device_info_provider.dart';
 import 'package:app/app/providers/ff1_providers.dart';
@@ -231,6 +232,23 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       // Legacy behavior: VersionService dialog shown; do not transition state.
       session.completeWithOutcome(FF1ConnectOutcome.failed);
       return;
+    }
+
+    // Root-cause fix: once we report an internet-ready connection, the device
+    // must already be persisted and promoted to active. This prevents the user
+    // from seeing "setup complete" and navigating to device config before the
+    // device exists in local storage (e.g. if the app is backgrounded/closed).
+    if (ensured.isConnectedToInternet) {
+      try {
+        await ref
+            .read(ff1BluetoothDeviceActionsProvider.notifier)
+            .addDevice(ensured.ff1Device);
+      } on Object catch (e) {
+        _setStateIfSessionActive(session, ConnectFF1Error(exception: Exception(e.toString())));
+        session.completeWithOutcome(FF1ConnectOutcome.failed);
+        return;
+      }
+      _assertSessionActive(session);
     }
 
     _setStateIfSessionActive(
