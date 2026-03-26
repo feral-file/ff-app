@@ -51,6 +51,25 @@
   deferred recovery) with typed status events for UI/test observability.
 
 ## Completed items
+- EV-02 (Orbit 2): Trust boundary for DP-1 playlist signatures is explicit;
+  wire parsing for `signature` vs `signatures[]` is locked and regression-tested.
+  - Trust boundary:
+    - Feed/operator/pipeline sources own manifest production and any validation
+      policy on their side. The mobile app does not perform cryptographic
+      verification of DP-1 playlist signatures as a user trust signal in Orbit 2.
+    - The app parses and stores signature material from feeds/APIs for interop
+      and the local read model only (`signatures` on `Playlist`, wire
+      `DP1Playlist.signatures`). Orbit 2 does not ship user-facing trust UI that
+      implies app-side verification of those signatures (see issue #265).
+  - Evidence:
+    - `lib/domain/models/dp1/dp1_playlist.dart` — `dp1PlaylistSignaturesFromWire`,
+      `DP1Playlist` wire model
+    - `lib/domain/models/dp1/dp1_api_responses.dart` —
+      `DP1PlaylistResponse._playlistFromJsonCompat`
+    - `test/unit/domain/models/dp1/dp1_playlist_signatures_test.dart`
+  - UI copy audit: no user-facing copy claims app-side DP-1 signature
+    verification; address/domain verification and Wi-Fi test strings are
+    unrelated flows.
 - EV-01 ingest no longer flattens publisher attribution to a hardcoded
   default.
   - Evidence:
