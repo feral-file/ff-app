@@ -3,6 +3,26 @@ import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 
 // ignore_for_file: public_member_api_docs, always_put_required_named_parameters_first, unnecessary_parenthesis, sort_constructors_first, avoid_equals_and_hash_code_on_mutable_classes, hash_and_equals, prefer_collection_literals // Reason: copied from the legacy mobile app; keep DP-1 playlist wire model stable.
 
+/// Parses DP-1 playlist signature fields from a wire JSON object.
+///
+/// Prefer a non-empty `signatures` array. If it is absent or empty, maps legacy
+/// singular `signature` into a one-element list. Empty wire payloads yield an
+/// empty list.
+///
+/// Wire output from [DP1Playlist.toJson] only includes `signatures`, not legacy
+/// `signature`.
+List<String> dp1PlaylistSignaturesFromWire(Map<String, dynamic> json) {
+  final raw = json['signatures'];
+  if (raw is List && raw.isNotEmpty) {
+    return raw.map((e) => e.toString()).toList();
+  }
+  final legacy = json['signature'];
+  if (legacy is String && legacy.isNotEmpty) {
+    return [legacy];
+  }
+  return const [];
+}
+
 class DP1Playlist {
   DP1Playlist({
     required this.dpVersion,
@@ -12,7 +32,7 @@ class DP1Playlist {
     required this.created,
     this.defaults,
     required this.items,
-    required this.signature,
+    this.signatures = const [],
     this.dynamicQueries = const [],
   }) {
     // if (items.isEmpty && dynamicQueries.isEmpty) {
@@ -32,7 +52,7 @@ class DP1Playlist {
       items: (json['items'] as List<dynamic>)
           .map((e) => DP1PlaylistItem.fromJson(e as Map<String, dynamic>))
           .toList(),
-      signature: json['signature'] as String,
+      signatures: dp1PlaylistSignaturesFromWire(json),
       dynamicQueries: (json['dynamicQueries'] == null)
           ? []
           : (List<dynamic>.from(json['dynamicQueries'] as List))
@@ -52,7 +72,7 @@ class DP1Playlist {
   final DateTime created; // e.g., "2025-06-26T06:38:26.396Z"
   final Map<String, dynamic>? defaults; // e.g., {"display": {...}}
   final List<DP1PlaylistItem> items; // list of DP1PlaylistItem
-  final String signature;
+  final List<String> signatures;
   final List<DynamicQuery> dynamicQueries;
 
   Map<String, dynamic> toJson() {
@@ -64,7 +84,7 @@ class DP1Playlist {
       'created': created.toIso8601String(),
       'defaults': defaults,
       'items': items.map((e) => e.toJson()).toList(),
-      'signature': signature,
+      'signatures': signatures,
       'dynamicQueries': dynamicQueries.map((e) => e.toJson()).toList(),
     };
   }
@@ -81,7 +101,7 @@ class DP1Playlist {
     DateTime? created,
     Map<String, dynamic>? defaults,
     List<DP1PlaylistItem>? items,
-    String? signature,
+    List<String>? signatures,
     List<DynamicQuery>? dynamicQueries,
   }) {
     return DP1Playlist(
@@ -92,7 +112,7 @@ class DP1Playlist {
       created: created ?? this.created,
       defaults: defaults ?? this.defaults,
       items: items ?? this.items,
-      signature: signature ?? this.signature,
+      signatures: signatures ?? this.signatures,
       dynamicQueries: dynamicQueries ?? this.dynamicQueries,
     );
   }
