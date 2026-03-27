@@ -220,14 +220,21 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     final start = window?.start ?? 0;
     final end = window?.end ?? items.length;
 
-    // Use cached PlaylistItems (window only) when available; otherwise fall back to device payload.
-    final cachedAsync = ref.read(nowDisplayingCachedPlaylistItemsProvider);
-    final cachedById = <String, PlaylistItem>{};
-    if (cachedAsync.hasValue && cachedAsync.value != null) {
-      for (final p in cachedAsync.value!) {
-        cachedById[p.id] = p;
-      }
+    // Await DB-backed cache: a synchronous read of the FutureProvider only
+    // sees AsyncLoading while getPlaylistItemsByIds runs, which would leave
+    // cachedById empty and treat every window item as missing (extra indexer
+    // and enrichment work). Waiting for .future matches the actual cache state.
+    List<PlaylistItem> cachedList;
+    try {
+      cachedList =
+          await ref.read(nowDisplayingCachedPlaylistItemsProvider.future);
+    } on Object catch (_) {
+      // Prior behavior: treat failed cache read like empty cache (no hits).
+      cachedList = <PlaylistItem>[];
     }
+    final cachedById = <String, PlaylistItem>{
+      for (final p in cachedList) p.id: p,
+    };
 
     // Enrich only items not already in cache to preserve offline-first contract.
     // Cache misses are enriched from indexer; cache hits are served directly.
