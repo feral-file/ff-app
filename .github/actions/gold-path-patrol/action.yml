@@ -205,8 +205,13 @@ runs:
       if: ${{ inputs.platform == 'ios' }}
       shell: bash
       run: |
-        xcrun simctl boot "$SIMULATOR_DEVICE" || true
+        # Patrol can inherit a wedged simulator from prior runs on the self-hosted
+        # runner. Reset the target device first so xcodebuild does not fail with
+        # "Invalid device state" before the UI test bundle even launches.
+        xcrun simctl shutdown "$SIMULATOR_DEVICE" || true
+        xcrun simctl erase "$SIMULATOR_DEVICE" || true
         open -a Simulator
+        xcrun simctl boot "$SIMULATOR_DEVICE" || true
         xcrun simctl bootstatus "$SIMULATOR_DEVICE" -b
 
     - name: Boot Android emulator

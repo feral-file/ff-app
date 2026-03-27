@@ -126,11 +126,27 @@ Future<void> _submitPersonalAddressInOnboarding(
 }
 
 Future<void> _openAddAddressFromOnboarding(PatrolIntegrationTester $) async {
-  await _waitForOnboardingAddressActionsReady($);
-  await _tapOnboardingAction(
-    $,
-    actionKey: GoldPathPatrolKeys.onboardingAddAddressPrimary,
-    actionLabel: 'Add Address',
+  final textFieldFinder = $(find.byType(TextField));
+  final submitButtonFinder = $(GoldPathPatrolKeys.onboardingAddAddressSubmit);
+  final deadline = DateTime.now().add(const Duration(seconds: 45));
+
+  while (DateTime.now().isBefore(deadline)) {
+    await _waitForOnboardingAddressActionsReady($);
+    await _tapOnboardingAction(
+      $,
+      actionKey: GoldPathPatrolKeys.onboardingAddAddressPrimary,
+      actionLabel: 'Add Address',
+    );
+
+    await $.pump(const Duration(milliseconds: 500));
+
+    if (await _exists(textFieldFinder) || await _exists(submitButtonFinder)) {
+      return;
+    }
+  }
+
+  throw TimeoutException(
+    'Timed out waiting for add-address screen after tapping onboarding action.',
   );
 }
 
@@ -297,6 +313,20 @@ Future<bool> _isVisible(
 }) async {
   try {
     await finder.waitUntilVisible(timeout: timeout);
+    return true;
+  } on TimeoutException {
+    return false;
+  } on Exception {
+    return false;
+  }
+}
+
+Future<bool> _exists(
+  PatrolFinder finder, {
+  Duration timeout = const Duration(seconds: 2),
+}) async {
+  try {
+    await finder.waitUntilExists(timeout: timeout);
     return true;
   } on TimeoutException {
     return false;
