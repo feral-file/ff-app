@@ -26,6 +26,25 @@ import 'package:logging/logging.dart';
 
 final _log = Logger('EnterWiFiPasswordScreen');
 
+/// Whether the enter Wi‑Fi password screen should show the loading
+/// ("Connecting…") view.
+///
+/// [localProcessingFlag] is set when the user taps Submit; the Wi‑Fi notifier
+/// may transition to [WiFiConnectionStatus.error] before the dialog effect
+/// clears that flag — do not keep showing loading after a failed send.
+bool isWifiPasswordSubmitBusy({
+  required bool localProcessingFlag,
+  required WiFiConnectionStatus status,
+}) {
+  if (status == WiFiConnectionStatus.error) {
+    return false;
+  }
+  return localProcessingFlag ||
+      (status != WiFiConnectionStatus.selectingNetwork &&
+          status != WiFiConnectionStatus.idle &&
+          status != WiFiConnectionStatus.success);
+}
+
 /// Payload for the enter wifi password page
 class EnterWifiPasswordPagePayload {
   /// Constructor
@@ -66,6 +85,7 @@ class _EnterWiFiPasswordScreenState
   bool _isProcessing = false;
   String _passwordText = '';
   ProviderSubscription<FF1SetupState>? _setupSub;
+  ProviderSubscription<WiFiConnectionState>? _wifiErrorSub;
 
   /// Parse SSID from networkSsid (may contain "ssid|security" format)
   String _parseSSID(String ssid) {
@@ -118,6 +138,18 @@ class _EnterWiFiPasswordScreenState
       fireImmediately: true,
     );
 
+    // Clear submit flag when Wi‑Fi flow reports failure.
+    _wifiErrorSub = ref.listenManual<WiFiConnectionState>(
+      connectWiFiProvider,
+      (previous, next) {
+        if (next.status == WiFiConnectionStatus.error && mounted) {
+          setState(() {
+            _isProcessing = false;
+          });
+        }
+      },
+    );
+
     final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
     if (isOpen) {
       // Auto-submit for open networks
@@ -137,6 +169,7 @@ class _EnterWiFiPasswordScreenState
     _passwordController.dispose();
     _passwordFocusNode.dispose();
     _setupSub?.close();
+    _wifiErrorSub?.close();
     super.dispose();
   }
 
@@ -236,12 +269,10 @@ class _EnterWiFiPasswordScreenState
     final shouldReserveNowDisplayingBar = ref.watch(
       nowDisplayingShouldShowProvider,
     );
-    final isProcessing =
-        _isProcessing ||
-        (connectionState.status != WiFiConnectionStatus.selectingNetwork &&
-            connectionState.status != WiFiConnectionStatus.idle &&
-            connectionState.status != WiFiConnectionStatus.error &&
-            connectionState.status != WiFiConnectionStatus.success);
+    final isProcessing = isWifiPasswordSubmitBusy(
+      localProcessingFlag: _isProcessing,
+      status: connectionState.status,
+    );
     final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
     final parsedSsid = _parseSSID(widget.payload.wifiAccessPoint.ssid);
     // Open networks don't need a password; closed networks require one.
