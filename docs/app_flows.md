@@ -30,6 +30,10 @@
   - **Existing seed file:** failed sync typically keeps using the on-disk library;
     app still unblocks when the local DB remains valid.
   - legacy migration errors are logged and do not block startup
+- startup UX contract:
+  - when onboarding is incomplete, seed-sync UI is background-only (no startup
+    "Updating art library" toast / no seed loading indicator state), while sync
+    and gate behavior still run normally
 - key screens involved: config error screen (fallback), Home, Onboarding
 - key modules/services involved: `lib/main.dart`, `lib/app/app.dart`, `seed_database_*`, `bootstrap_provider`, `legacy_data_migration_service`, `app_state_service`
 

@@ -16,6 +16,7 @@ import 'package:app/app/providers/seed_database_provider.dart'
         seedDownloadProvider,
         seedDownloadRetryProvider;
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/providers/startup_seed_sync_ui_policy_provider.dart';
 import 'package:app/app/routing/deeplink_handler.dart';
 import 'package:app/app/routing/router_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -475,11 +476,26 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   }
 
   Future<bool> _syncSeedDatabaseAtStartup() async {
-    return _syncSeedDatabaseIfNeeded(showUpdatingToast: true);
+    return runStartupSeedSyncWithPolicy(
+      loadPolicy: () => ref.read(startupSeedSyncUiPolicyProvider.future),
+      runSync:
+          ({
+            required showUpdatingToast,
+            required showLoadingInUI,
+            required failSilently,
+          }) {
+            return _syncSeedDatabaseIfNeeded(
+              showUpdatingToast: showUpdatingToast,
+              showLoadingInUi: showLoadingInUI,
+              failSilently: failSilently,
+            );
+          },
+    );
   }
 
   Future<bool> _syncSeedDatabaseIfNeeded({
     required bool showUpdatingToast,
+    bool showLoadingInUi = true,
     bool failSilently = true,
   }) async {
     String? toastOverlayId;
@@ -487,6 +503,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       return await ref
           .read(seedDownloadProvider.notifier)
           .sync(
+            showLoadingInUI: showLoadingInUi,
             failSilently: failSilently,
             onDownloadStarted: () {
               if (showUpdatingToast && mounted) {
@@ -556,9 +573,12 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
   @override
   Widget build(BuildContext context) {
-    // Keep AppLifecycleNotifier + tracked-address sync alive for side effects.
     ref
+      // Keep AppLifecycleNotifier alive so it can attach
+      // the WidgetsBinding observer.
       ..watch(appLifecycleProvider)
+      // Keep tracked addresses sync alive; watches ObjectBox
+      // TrackedAddressEntity.
       ..watch(trackedAddressesSyncProvider);
     return ProviderScope(
       overrides: [
