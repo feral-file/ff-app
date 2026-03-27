@@ -164,6 +164,11 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     final token = ++_recomputeToken;
     unawaited(
       Future.microtask(() async {
+        if (token != _recomputeToken) {
+          return;
+        }
+        // Show loading immediately while _computeStatus runs (async cache + enrich).
+        state = const LoadingNowDisplaying();
         final status = await _computeStatus();
         if (token != _recomputeToken) {
           return;

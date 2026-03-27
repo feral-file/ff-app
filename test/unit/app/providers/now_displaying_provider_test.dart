@@ -136,7 +136,7 @@ void main() {
     });
 
     test(
-      'keeps initial status until async window cache read completes',
+      'shows loading until async window cache read completes',
       () async {
         const device = FF1Device(
           name: 'FF1',
@@ -189,10 +189,11 @@ void main() {
 
         expect(
           container.read(nowDisplayingProvider),
-          isA<InitialNowDisplayingStatus>(),
+          isA<LoadingNowDisplaying>(),
           reason:
-              '_computeForDevice awaits nowDisplayingCachedPlaylistItemsProvider.'
-              'future before state = success',
+              '_recompute sets Loading before _computeStatus; _computeForDevice '
+              'awaits nowDisplayingCachedPlaylistItemsProvider.future before '
+              'state = success',
         );
 
         await Future<void>.delayed(const Duration(milliseconds: 120));
