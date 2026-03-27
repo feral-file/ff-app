@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'package:app/app/providers/connect_wifi_provider.dart';
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
+import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
@@ -306,6 +309,61 @@ void main() {
         expect(container.read(ff1ScanProvider).devices.length, 2);
       });
 
+      test('filters out devices when ff1Name does not match advName', () async {
+        final fakeTransport = FakeFF1BleTransport(
+          scanDevices: [
+            BluetoothDevice.fromId('00:11:22:33:44:55'),
+            BluetoothDevice.fromId('AA:BB:CC:DD:EE:FF'),
+          ],
+        );
+
+        final container = ProviderContainer(
+          overrides: [
+            ff1TransportProvider.overrideWithValue(fakeTransport),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final notifier = container.read(ff1ScanProvider.notifier);
+
+        await notifier.startScan(
+          timeout: const Duration(seconds: 1),
+          ff1Name: 'nonexistent-adv-name',
+        );
+
+        expect(container.read(ff1ScanProvider).devices, isEmpty);
+      });
+
+      test(
+        'named scans treat ff1Name as FF1 identity and use scanForName',
+        () async {
+          final fakeTransport = FakeFF1BleTransport(
+            scanDevices: [
+              BluetoothDevice.fromId('00:11:22:33:44:55'),
+              BluetoothDevice.fromId('AA:BB:CC:DD:EE:FF'),
+            ],
+          );
+
+          final container = ProviderContainer(
+            overrides: [
+              ff1TransportProvider.overrideWithValue(fakeTransport),
+            ],
+          );
+          addTearDown(container.dispose);
+
+          final notifier = container.read(ff1ScanProvider.notifier);
+
+          await notifier.startScan(
+            timeout: const Duration(seconds: 1),
+            ff1Name: '',
+          );
+
+          expect(container.read(ff1ScanProvider).devices.length, 1);
+          expect(fakeTransport.scanForNameCalls, 1);
+          expect(fakeTransport.scanCalls, 0);
+        },
+      );
+
       test('handles scan error', () async {
         final fakeTransport = FakeFF1BleTransport(
           scanError: Exception('Bluetooth not enabled'),
@@ -348,7 +406,73 @@ void main() {
         expect(container.read(ff1ScanProvider).devices, isEmpty);
       });
     });
+
+    group('WiFiConnectionNotifier.sendCredentialsAndConnect', () {
+      test('uses keepWifi when sendWifiCredentials returns no topicId', () async {
+        final fakeTransport = FakeFF1BleTransport(
+          sendCommandCallback: (device, command, request, timeout) async {
+            if (command == FF1BleCommand.sendWifiCredentials) {
+              return const FF1BleResponse(
+                topic: 'wifi',
+                errorCode: 0,
+                data: [],
+              );
+            }
+            if (command == FF1BleCommand.keepWifi) {
+              return const FF1BleResponse(
+                topic: 'keep',
+                errorCode: 0,
+                data: ['topic-from-keep-wifi'],
+              );
+            }
+            throw UnimplementedError('unexpected command: $command');
+          },
+        );
+
+        final container = ProviderContainer(
+          overrides: [
+            ff1TransportProvider.overrideWithValue(fakeTransport),
+            ff1ControlProvider.overrideWith(
+              (ref) => FF1BleControl(transport: ref.read(ff1TransportProvider)),
+            ),
+            ff1BluetoothDeviceActionsProvider.overrideWith(
+              _FakeWifiDeviceActions.new,
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final notifier = container.read(connectWiFiProvider.notifier);
+        await notifier.sendCredentialsAndConnect(
+          device: const FF1Device(
+            name: 'FF1',
+            remoteId: '00:11:22:33:44:55',
+            deviceId: 'FF1-1',
+            topicId: '',
+          ),
+          ssid: 'Office',
+          password: 'secret',
+        );
+
+        expect(
+          container.read(connectWiFiProvider).status,
+          WiFiConnectionStatus.success,
+        );
+        expect(
+          container.read(connectWiFiProvider).topicId,
+          'topic-from-keep-wifi',
+        );
+      });
+    });
   });
+}
+
+class _FakeWifiDeviceActions extends FF1BluetoothDeviceActionsNotifier {
+  @override
+  void build() {}
+
+  @override
+  Future<void> addDevice(FF1Device device) async {}
 }
 
 // ============================================================================
@@ -376,6 +500,8 @@ class FakeFF1BleTransport implements FF1BleTransport {
 
   FF1BleCommand? lastCommand;
   FF1BleRequest? lastRequest;
+  int scanForNameCalls = 0;
+  int scanCalls = 0;
 
   @override
   BluetoothAdapterState get adapterState => BluetoothAdapterState.on;
@@ -413,6 +539,7 @@ class FakeFF1BleTransport implements FF1BleTransport {
     required FutureOr<bool> Function(List<BluetoothDevice> devices) onDevice,
     Duration timeout = const Duration(seconds: 30),
   }) async {
+    scanCalls++;
     if (scanError != null) {
       throw scanError! as Exception;
     }
@@ -425,6 +552,7 @@ class FakeFF1BleTransport implements FF1BleTransport {
     required String name,
     Duration timeout = const Duration(seconds: 15),
   }) async {
+    scanForNameCalls++;
     if (scanError != null) {
       throw scanError! as Exception;
     }

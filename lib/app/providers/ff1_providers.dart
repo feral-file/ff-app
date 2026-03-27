@@ -1,3 +1,4 @@
+import 'package:app/app/ff1/ff1_ble_device_connect.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
@@ -7,27 +8,6 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod/src/providers/future_provider.dart';
-
-// ============================================================================
-// Custom Retry Logic for BLE Operations
-// ============================================================================
-
-/// Retry logic for BLE operations (scan, connect, commands).
-///
-/// Retries up to 3 times with exponential backoff (1s, 2s, 4s).
-/// Does not retry on Errors (programming bugs).
-Duration? _bleRetry(int retryCount, Object error) {
-  // Don't retry errors (programming bugs - indicate code issues)
-  if (error is Error) {
-    return null;
-  }
-
-  // Max 3 retries
-  if (retryCount >= 3) return null;
-
-  // Exponential backoff: 1s, 2s, 4s
-  return Duration(seconds: 1 << retryCount);
-}
 
 // ============================================================================
 // Transport and Protocol providers (infrastructure)
@@ -61,11 +41,12 @@ final bluetoothAdapterStateProvider = StreamProvider<BluetoothAdapterState>((
 
 /// Returns the connected BLE device for the given device name, if currently
 /// connected. Use when we need to resolve remoteId from connected device.
-final FutureProviderFamily<BluetoothDevice?, String> connectedBlDeviceForNameProvider =
+final FutureProviderFamily<BluetoothDevice?, String>
+connectedBlDeviceForNameProvider =
     FutureProvider.family<BluetoothDevice?, String>((ref, name) async {
-  final connected = FlutterBluePlus.connectedDevices;
-  return connected.firstWhereOrNull((d) => d.advName == name);
-});
+      final connected = FlutterBluePlus.connectedDevices;
+      return connected.firstWhereOrNull((d) => d.advName == name);
+    });
 
 // ============================================================================
 // FF1 Control provider (orchestration)
@@ -87,12 +68,13 @@ final ff1ControlProvider = Provider<FF1BleControl>((ref) {
 ///
 /// This class provides typed methods for all FF1 BLE operations.
 /// It uses the transport layer to send commands and parse responses.
-class FF1BleControl {
+class FF1BleControl implements Ff1BleConnectPort {
   FF1BleControl({required FF1BleTransport transport}) : _transport = transport;
 
   final FF1BleTransport _transport;
 
   /// Connect to an FF1 device
+  @override
   Future<void> connect({
     required BluetoothDevice blDevice,
     Duration timeout = const Duration(seconds: 30),
@@ -341,16 +323,34 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
     return const FF1ScanState(isScanning: false, devices: []);
   }
 
-  /// Start scanning for devices
+  /// Start scanning for devices.
+  ///
+  /// When [ff1Name] is non-null, uses [FF1BleControl.scanForName] (stops early
+  /// when a matching advertised name is seen). This is intentional for deeplink
+  /// setup where [ff1Name] is treated as the identity of the target FF1.
+  /// Otherwise uses
+  /// [FF1BleControl.scan] for a full discovery pass.
   Future<void> startScan({
     Duration timeout = const Duration(seconds: 30),
+    String? ff1Name,
   }) async {
     if (state.isScanning) return;
 
     state = state.copyWith(isScanning: true);
 
     try {
-      final devices = await _control.scan(timeout: timeout);
+      final List<BluetoothDevice> devices;
+      if (ff1Name != null) {
+        final found = await _control.scanForName(
+          name: ff1Name,
+          timeout: timeout,
+        );
+        devices = found != null
+            ? <BluetoothDevice>[found]
+            : <BluetoothDevice>[];
+      } else {
+        devices = await _control.scan(timeout: timeout);
+      }
       if (!ref.mounted) return;
       state = state.copyWith(isScanning: false, devices: devices);
     } catch (e) {
@@ -375,54 +375,6 @@ class FF1ScanNotifier extends Notifier<FF1ScanState> {
 final NotifierProvider<FF1ScanNotifier, FF1ScanState> ff1ScanProvider =
     NotifierProvider.autoDispose<FF1ScanNotifier, FF1ScanState>(
       FF1ScanNotifier.new,
-    );
-
-/// Parameters for BLE connection
-class FF1BleConnectParams {
-  const FF1BleConnectParams({
-    required this.blDevice,
-    this.timeout = const Duration(seconds: 30),
-  });
-
-  final BluetoothDevice blDevice;
-  final Duration timeout;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is FF1BleConnectParams &&
-          runtimeType == other.runtimeType &&
-          blDevice.remoteId.str == other.blDevice.remoteId.str &&
-          timeout == other.timeout;
-
-  @override
-  int get hashCode => blDevice.remoteId.str.hashCode ^ timeout.hashCode;
-}
-
-/// Connect to FF1 device via BLE (auto-dispose, with retry).
-///
-/// This provider automatically disposes after use (BLE connect is one-time).
-/// Uses Riverpod's automatic retry mechanism (3 attempts with exponential backoff).
-///
-/// Usage:
-/// ```dart
-/// await ref.read(
-///   ff1BleConnectProvider(FF1BleConnectParams(device: device)).future,
-/// );
-/// ```
-final FutureProviderFamily<void, FF1BleConnectParams> ff1BleConnectProvider =
-    FutureProvider.autoDispose.family<void, FF1BleConnectParams>(
-      retry: _bleRetry,
-      (ref, params) async {
-        final control = ref.watch(ff1ControlProvider);
-
-        // Riverpod handles retry, so we set maxRetries to 0 in transport
-        await control.connect(
-          blDevice: params.blDevice,
-          timeout: params.timeout,
-          maxRetries: 0, // Riverpod handles retry
-        );
-      },
     );
 
 /// Parameters for BLE command execution
@@ -471,7 +423,7 @@ class FF1BleCommandParams<T extends FF1BleRequest> {
 final FutureProviderFamily<FF1BleResponse, FF1BleCommandParams<FF1BleRequest>>
 ff1BleSendCommandProvider = FutureProvider.autoDispose
     .family<FF1BleResponse, FF1BleCommandParams>(
-      retry: _bleRetry,
+      retry: bleOperationRetryDelay,
       (ref, params) async {
         final transport = ref.watch(ff1TransportProvider);
 

@@ -207,7 +207,7 @@
 - Important data: onboarding flag, tracked addresses, deeplink payload continuity.
 - Related modules: onboarding providers, add-address flow, token sync coordinator.
 
-### Screen group: FF1 setup (FF1DevicePicker, StartSetupFf1, ConnectFF1, ScanWiFi, EnterWiFiPassword, DeviceConfig, FF1Updating)
+### Screen group: FF1 setup (FF1DeviceScan, StartSetupFf1, ConnectFF1, ScanWiFi, EnterWiFiPassword, DeviceConfig, FF1Updating)
 - Purpose: discover/pair FF1 and configure connectivity/device settings.
 - Entry points: onboarding setup, menu FF1 Settings, QR deeplinks.
 - Key actions: BLE scan/connect, Wi-Fi selection/credentials, finalize pairing, adjust orientation/scaling/audio.

@@ -1,17 +1,13 @@
 import 'dart:async';
 
-import 'package:app/app/providers/connect_ff1_providers.dart';
-import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
-import 'package:app/app/providers/onboarding_provider.dart';
+import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
+import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
-import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/domain/constants/constants.dart';
-import 'package:app/domain/extensions/extensions.dart';
-import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/logging/structured_logger.dart';
 import 'package:app/theme/app_color.dart';
@@ -38,39 +34,20 @@ enum _ConnectFF1Status {
 
 final _log = Logger('ConnectFF1Page');
 
-/// Parse [FF1DeviceInfo] from a device-connect deeplink.
-FF1DeviceInfo? parseFF1DeviceInfoFromDeeplink(String deeplink) {
-  final prefix = deviceConnectDeepLinks.firstWhere(
-    (value) => deeplink.startsWith(value),
-    orElse: () => '',
-  );
-  if (prefix.isEmpty) {
-    return null;
-  }
-
-  var path = deeplink.replaceFirst(prefix, '');
-  if (path.startsWith('/')) {
-    path = path.substring(1);
-  }
-  return path.toFF1DeviceInfo;
-}
-
 /// Payload for the connect FF1 page
 class ConnectFF1PagePayload {
   /// Constructor
   ConnectFF1PagePayload({
-    this.device,
-    this.deeplink,
-  }) : assert(
-         device != null || deeplink != null,
-         'ConnectFF1PagePayload needs bluetooth device or deeplink.',
-       );
+    required this.device,
+    required this.ff1DeviceInfo,
+  });
 
-  /// Bluetooth device
-  final BluetoothDevice? device;
+  /// Bluetooth device to connect to (required).
+  final BluetoothDevice device;
 
-  /// Device connect deeplink.
-  final String? deeplink;
+  /// Optional device info parsed from deeplink or other source.
+  /// When non-null, used to skip get_info command and provide metadata early.
+  final FF1DeviceInfo? ff1DeviceInfo;
 }
 
 /// Connect FF1 page
@@ -90,67 +67,148 @@ class ConnectFF1Page extends ConsumerStatefulWidget {
 
 class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   DateTime? _startTime;
-  late final ConnectFF1Notifier? _connectFF1Notifier;
+  FF1SetupOrchestratorNotifier? _setupOrchestrator;
+  ProviderSubscription<FF1SetupState>? _setupSub;
 
   @override
   void initState() {
     super.initState();
     _startTime = DateTime.now();
 
-    // Start connection flow using the provider
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      _connectFF1Notifier = await ref.read(connectFF1Provider.notifier);
-      if (!mounted) return;
-      final fallbackDevice =
-          widget.payload.device ?? BluetoothDevice.fromId('');
-      final ff1DeviceInfo = widget.payload.deeplink == null
-          ? null
-          : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
-      unawaited(
-        _connectFF1Notifier?.connectBle(
-          fallbackDevice,
-          ff1DeviceInfo: ff1DeviceInfo,
-        ),
-      );
+    // Navigation + dialog side-effects must not be registered inside build.
+    _setupSub = ref.listenManual<FF1SetupState>(
+      ff1SetupOrchestratorProvider,
+      (previous, next) {
+        final effectId = next.effectId;
+        final effect = next.effect;
+        if (previous?.effectId != effectId && effect != null) {
+          final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
+          unawaited(() async {
+            final didHandle = await _handleOrchestratorEffect(effect);
+            if (didHandle) {
+              orchestrator.ackEffect(effectId: effectId);
+            }
+          }());
+        }
+      },
+    );
+
+    _setupOrchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
+
+    // Start the BLE flow only after this frame has built and watched the
+    // orchestrator. A microtask can run before [build] runs, which means
+    // [FF1SetupOrchestratorNotifier.build] may not have registered
+    // [ref.listen(connectFF1Provider)] yet — connect would reach terminal
+    // [ConnectFF1Connected] with no listener to emit navigation effects.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(_startConnectFlow());
     });
   }
 
   @override
   void dispose() {
     // Cancel connection if still in progress
-    _connectFF1Notifier?.cancelConnection();
+    _setupOrchestrator?.cancel();
+    _setupSub?.close();
     super.dispose();
   }
 
   /// Map provider state to UI status
-  _ConnectFF1Status _getStatusFromProviderState(ConnectFF1State? state) {
-    if (state == null) {
-      return _ConnectFF1Status.connecting;
+  _ConnectFF1Status _getStatusFromSetupState(FF1SetupState state) {
+    if (state.connected?.portalIsSet == true) {
+      return _ConnectFF1Status.portalIsSet;
     }
 
-    return switch (state) {
-      ConnectFF1Connecting() => _ConnectFF1Status.connecting,
-      ConnectFF1StillConnecting() => _ConnectFF1Status.stillConnecting,
-      ConnectFF1BluetoothOff() => _ConnectFF1Status.bluetoothOff,
-      ConnectFF1Connected() =>
-        state.portalIsSet
-            ? _ConnectFF1Status.portalIsSet
-            : _ConnectFF1Status.success,
-      ConnectFF1Error() => _ConnectFF1Status.error,
+    return switch (state.step) {
+      FF1SetupStep.connecting => _ConnectFF1Status.connecting,
+      FF1SetupStep.stillConnecting => _ConnectFF1Status.stillConnecting,
+      FF1SetupStep.bluetoothOff => _ConnectFF1Status.bluetoothOff,
+      FF1SetupStep.error => _ConnectFF1Status.error,
+      FF1SetupStep.readyForConfig => _ConnectFF1Status.success,
       _ => _ConnectFF1Status.connecting,
     };
+  }
+
+  Future<bool> _handleOrchestratorEffect(FF1SetupEffect effect) async {
+    switch (effect) {
+      case FF1SetupInternetReady(:final connected):
+        _recordDuration(success: true);
+        if (!connected.portalIsSet && context.mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!context.mounted) return;
+            context.replace(Routes.deviceConfiguration);
+          });
+        }
+        return true;
+      case FF1SetupNeedsWiFi(:final device):
+        if (!context.mounted) return false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!context.mounted) return;
+          context.replace(
+            Routes.scanWifiNetworks,
+            extra: ScanWifiNetworkPagePayload(device: device),
+          );
+        });
+        return true;
+      case FF1SetupNavigate():
+        // Navigation effects can be emitted by downstream Wi‑Fi steps.
+        // When this page sits below those routes in the stack, handling them
+        // here can target the wrong navigator and swallow the effect for the
+        // active screen. Let the top-most screen consume these effects.
+        return false;
+      case FF1SetupPop():
+        // Pop is owned by the active route (e.g. cancel CTA on the current
+        // page).
+        return false;
+      case FF1SetupDeviceUpdating():
+        if (!context.mounted) return false;
+        context.go(Routes.ff1Updating);
+        return true;
+      case FF1SetupShowError(
+        :final title,
+        :final message,
+        :final showSupportCta,
+      ):
+        _recordDuration(success: false);
+        if (!context.mounted) return false;
+        await UIHelper.showInfoDialog(
+          context,
+          title,
+          message,
+          closeButton: showSupportCta ? 'Contact support' : '',
+          onClose: showSupportCta
+              ? () {
+                  unawaited(
+                    UIHelper.showCustomerSupport(
+                      context,
+                      supportEmailService: ref.read(
+                        supportEmailServiceProvider,
+                      ),
+                    ),
+                  );
+                }
+              : null,
+        );
+        return true;
+      case FF1SetupEnterWifiPassword():
+        // Not expected on this screen; ignore.
+        return false;
+    }
   }
 
   Future<void> _startConnectFlow() async {
     _startTime = DateTime.now();
     _log.info('[ConnectFF1Page] Start connecting to FF1');
-    final fallbackDevice = widget.payload.device ?? BluetoothDevice.fromId('');
-    final ff1DeviceInfo = widget.payload.deeplink == null
-        ? null
-        : parseFF1DeviceInfoFromDeeplink(widget.payload.deeplink!);
-    await _connectFF1Notifier?.connectBle(
-      fallbackDevice,
-      ff1DeviceInfo: ff1DeviceInfo,
+    final notifier = _setupOrchestrator;
+    if (notifier == null) {
+      return;
+    }
+    await notifier.startConnect(
+      device: widget.payload.device,
+      deeplinkInfo: widget.payload.ff1DeviceInfo,
     );
   }
 
@@ -176,142 +234,24 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
   Future<void> _onCancel() async {
     _log.info('[ConnectFF1Page] Cancel pressed, cancelling connection');
-    _connectFF1Notifier?.cancelConnection();
+    _setupOrchestrator?.cancel();
     try {
-      await widget.payload.device?.disconnect();
-    } on Exception catch (e) {
+      await widget.payload.device.disconnect();
+    } on Object catch (e) {
       _log.info('[ConnectFF1Page] Error while disconnecting: $e');
     }
 
-    if (mounted) {
-      context.pop();
+    if (!mounted) {
+      return;
     }
+    context.pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    final setupState = ref.watch(connectFF1Provider);
+    final setupState = ref.watch(ff1SetupOrchestratorProvider);
     _log.info('UI state -> $setupState');
-    final status = setupState.maybeWhen(
-      data: _getStatusFromProviderState,
-      loading: () => _ConnectFF1Status.connecting,
-      error: (error, stack) => _ConnectFF1Status.error,
-      orElse: () => _ConnectFF1Status.connecting,
-    );
-
-    // Listen for state changes to handle callbacks
-    ref.listen<AsyncValue<ConnectFF1State>>(connectFF1Provider, (
-      previous,
-      next,
-    ) {
-      next.whenData((state) async {
-        try {
-          if (state is ConnectFF1Connected) {
-            _recordDuration(success: true);
-            if (state.isConnectedToInternet) {
-              await ref
-                  .read(ff1BluetoothDeviceActionsProvider.notifier)
-                  .addDevice(state.ff1device);
-
-              if (state.portalIsSet) {
-                if (context.mounted) {
-                  unawaited(
-                    ref.read(onboardingActionsProvider).completeOnboarding(),
-                  );
-                  context.popUntil(Routes.startSetupFf1);
-                  unawaited(
-                    context.push(Routes.deviceConfiguration),
-                  );
-                }
-              } else {
-                if (context.mounted) {
-                  unawaited(
-                    ref.read(onboardingActionsProvider).completeOnboarding(),
-                  );
-                  context.popUntil(Routes.startSetupFf1);
-                  unawaited(
-                    context.push(Routes.deviceConfiguration),
-                  );
-                }
-              }
-            } else {
-              if (context.mounted) {
-                // No internet connection, navigate to scan wifi networks page
-                context.replace(
-                  Routes.scanWifiNetworks,
-                  extra: ScanWifiNetworkPagePayload(
-                    device: state.ff1device,
-                  ),
-                );
-              }
-            }
-          } else if (state is ConnectFF1Error) {
-            _recordDuration(success: false);
-
-            if (state.exception is FF1ResponseError) {
-              final exception = state.exception as FF1ResponseError;
-              await UIHelper.showInfoDialog(
-                context,
-                exception.title,
-                exception.message,
-                closeButton: exception.shouldShowSupport
-                    ? 'Contact support'
-                    : '',
-                onClose: exception.shouldShowSupport
-                    ? () {
-                        unawaited(
-                          UIHelper.showCustomerSupport(
-                            context,
-                            supportEmailService: ref.read(
-                              supportEmailServiceProvider,
-                            ),
-                          ),
-                        );
-                      }
-                    : null,
-              );
-            } else {
-              await UIHelper.showInfoDialog(
-                context,
-                'Connect failed',
-                state.exception.toString(),
-                closeButton: 'Contact support',
-                onClose: () {
-                  unawaited(
-                    UIHelper.showCustomerSupport(
-                      context,
-                      supportEmailService: ref.read(
-                        supportEmailServiceProvider,
-                      ),
-                    ),
-                  );
-                },
-              );
-            }
-          }
-        } on Object catch (e, stack) {
-          _log.severe('[ConnectFF1Page] State handler failed', e, stack);
-          if (!context.mounted) {
-            return;
-          }
-
-          await UIHelper.showInfoDialog(
-            context,
-            'Connect failed',
-            e.toString(),
-            closeButton: 'Contact support',
-            onClose: () {
-              unawaited(
-                UIHelper.showCustomerSupport(
-                  context,
-                  supportEmailService: ref.read(supportEmailServiceProvider),
-                ),
-              );
-            },
-          );
-        }
-      });
-    });
+    final status = _getStatusFromSetupState(setupState);
 
     return Scaffold(
       appBar: const SetupAppBar(
@@ -383,17 +323,12 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                               if (status == _ConnectFF1Status.portalIsSet) ...[
                                 SizedBox(height: LayoutConstants.space5),
                                 PrimaryButton(
-                                  onTap: () {
-                                    unawaited(
-                                      ref
-                                          .read(onboardingActionsProvider)
-                                          .completeOnboarding(),
-                                    );
-                                    unawaited(
-                                      context.push(
+                                  onTap: () async {
+                                    if (context.mounted) {
+                                      context.replace(
                                         Routes.deviceConfiguration,
-                                      ),
-                                    );
+                                      );
+                                    }
                                   },
                                   text: 'Go to Settings',
                                 ),
@@ -412,6 +347,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                   children: [
                     Expanded(
                       child: PrimaryButton(
+                        key: GoldPathPatrolKeys.connectFF1Retry,
                         text: 'Try Again',
                         onTap: _startConnectFlow,
                         color: AppColor.white,
@@ -421,6 +357,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                     SizedBox(width: LayoutConstants.space3),
                     Expanded(
                       child: PrimaryButton(
+                        key: GoldPathPatrolKeys.connectFF1Cancel,
                         text: 'Cancel',
                         onTap: _onCancel,
                         color: AppColor.white,
@@ -431,6 +368,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                 ),
               ] else if (status != _ConnectFF1Status.portalIsSet) ...[
                 PrimaryButton(
+                  key: GoldPathPatrolKeys.connectFF1Cancel,
                   text: 'Cancel',
                   onTap: _onCancel,
                   color: AppColor.white,
@@ -496,15 +434,20 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
       case _ConnectFF1Status.connecting:
         return 'Keep your phone near FF1 and remain on this screen.';
       case _ConnectFF1Status.stillConnecting:
-        return 'We’re still trying to reach your FF1 over Bluetooth.\nIf this takes more than 15 seconds, you can cancel and try again.';
+        return 'We’re still trying to reach your FF1 over Bluetooth.\n'
+            'If this takes more than 15 seconds, you can cancel and try again.';
       case _ConnectFF1Status.bluetoothOff:
         return 'Turn on Bluetooth to connect to FF1.';
       case _ConnectFF1Status.error:
-        return 'A few things to check:\n• Make sure your FF1 is powered on.\n• Keep your phone close to the device.\n• Check that Bluetooth is turned on.';
+        return 'A few things to check:\n'
+            '• Make sure your FF1 is powered on.\n'
+            '• Keep your phone close to the device.\n'
+            '• Check that Bluetooth is turned on.';
       case _ConnectFF1Status.success:
         return 'Connected to FF1 — ready to play art.';
       case _ConnectFF1Status.portalIsSet:
-        return 'Your FF1 is already set up and connected. You can head to settings to make changes or check the status.';
+        return 'Your FF1 is already set up and connected. You can head to '
+            'settings to make changes or check the status.';
     }
   }
 }

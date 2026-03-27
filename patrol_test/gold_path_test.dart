@@ -192,8 +192,8 @@ Future<void> _enterAddressAndSubmit(
   await $.tester.testTextInput.receiveAction(TextInputAction.done);
   await $.pump(const Duration(milliseconds: 500));
 
-  if (await _isVisible($('Submit'))) {
-    await $('Submit').tap();
+  if (await _isVisible($(GoldPathPatrolKeys.onboardingAddAddressSubmit))) {
+    await $(GoldPathPatrolKeys.onboardingAddAddressSubmit).tap();
   }
 }
 

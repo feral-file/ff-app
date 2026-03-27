@@ -7,6 +7,7 @@
 
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/add_address_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/providers/scan_qr_provider.dart';
@@ -228,6 +229,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
               left: 0,
               right: 0,
               child: PrimaryButton(
+                key: GoldPathPatrolKeys.onboardingAddAddressSubmit,
                 text: 'Submit',
                 color: PrimitivesTokens.colorsWhite,
                 onTap: isSubmitEnabled ? _handleVerifyAddress : null,

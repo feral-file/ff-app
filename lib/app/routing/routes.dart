@@ -16,8 +16,8 @@ abstract class Routes {
   /// Onboarding setup FF1 page route path.
   static const onboardingSetupFf1Page = '/onboarding/setup-ff1';
 
-  /// FF1 device picker page route path.
-  static const ff1DevicePickerPage = '/ff1-device-picker';
+  /// FF1 device scan page route path.
+  static const ff1DeviceScanPage = '/ff1-device-scan';
 
   /// Global QR scan page route path.
   static const scanQrPage = '/scan-qr';
@@ -100,8 +100,8 @@ abstract class RouteNames {
   /// Onboarding setup FF1 page route name.
   static const onboardingSetupFf1 = 'onboarding-setup-ff1';
 
-  /// FF1 device picker page route name.
-  static const ff1DevicePicker = 'ff1-device-picker';
+  /// FF1 device scan page route name.
+  static const ff1DeviceScan = 'ff1-device-scan';
 
   /// Global QR scan page route name.
   static const scanQrPage = 'scan-qr';

@@ -28,7 +28,6 @@ import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/theme/app_theme.dart';
-import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
 import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/ui/widgets/force_update_overlay.dart';
 import 'package:app/widgets/overlays/app_global_overlay_layer.dart';
@@ -208,30 +207,31 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
   void _handleDeeplinkNavigation(DeeplinkNavigationAction action) {
     if (action.type == DeeplinkType.deviceConnect) {
+      final setupPayload = StartSetupFf1PagePayload(deeplink: action.link);
       if (action.source == DeeplinkSource.scan) {
+        // In-app QR scan: stack setup on the current route.
         unawaited(
           widget.router.push(
-            Routes.connectFF1Page,
-            extra: ConnectFF1PagePayload(
-              deeplink: action.link,
-            ),
+            Routes.startSetupFf1,
+            extra: setupPayload,
           ),
         );
-      } else {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _log.info(
-            'Handling deeplink go to Routes.startSetupFf1',
-          );
-          // Use go() instead of pushReplacement() because Android cold start
-          // can deliver an app link before GoRouter has an active top route.
-          // pushReplacement requires an existing route to replace.
-          widget.router.go(
-            Routes.startSetupFf1,
-            extra: StartSetupFf1PagePayload(deeplink: action.link),
-          );
-        });
+        return;
       }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        _log.info(
+          'Handling device-connect deeplink go to ${Routes.startSetupFf1}',
+        );
+        // Use go() instead of replacement/push because Android cold start can
+        // deliver an app link before GoRouter has an active top route.
+        widget.router.go(
+          Routes.startSetupFf1,
+          extra: setupPayload,
+        );
+      });
       return;
     }
 

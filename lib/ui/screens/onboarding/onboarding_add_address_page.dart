@@ -12,6 +12,7 @@ import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
+import 'package:app/ui/screens/ff1_setup/ff1_device_scan_page.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -155,10 +156,27 @@ class OnboardingAddAddressPage extends ConsumerWidget {
     );
 
     if (payload.deeplink != null && payload.deeplink!.isNotEmpty) {
+      final ff1DeviceInfo = FF1DeviceInfo.fromDeeplink(payload.deeplink!);
+      if (ff1DeviceInfo == null) {
+        unawaited(context.push(Routes.onboardingSetupFf1Page));
+        return;
+      }
+
       await context.push(
-        Routes.connectFF1Page,
-        extra: ConnectFF1PagePayload(
-          deeplink: payload.deeplink,
+        Routes.ff1DeviceScanPage,
+        extra: FF1DeviceScanPagePayload(
+          ff1Name: ff1DeviceInfo.name,
+          onFF1Selected: (device) {
+            unawaited(
+              context.push(
+                Routes.connectFF1Page,
+                extra: ConnectFF1PagePayload(
+                  device: device,
+                  ff1DeviceInfo: ff1DeviceInfo,
+                ),
+              ),
+            );
+          },
         ),
       );
     } else {

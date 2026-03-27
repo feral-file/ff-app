@@ -11,7 +11,7 @@ const routesThatHideNowDisplayingBar = <String>[
   Routes.onboardingIntroducePage,
   Routes.onboardingAddAddressPage,
   Routes.onboardingSetupFf1Page,
-  Routes.ff1DevicePickerPage,
+  Routes.ff1DeviceScanPage,
   Routes.connectFF1Page,
   Routes.addAddressPage,
   Routes.addAliasPage,

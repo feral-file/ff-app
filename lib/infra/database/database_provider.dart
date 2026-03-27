@@ -42,7 +42,7 @@ final objectBoxStoreProvider = FutureProvider<Store>((ref) async {
 /// final container = ProviderContainer(
 ///   overrides: [
 ///     ff1BluetoothDeviceServiceProvider.overrideWithValue(
-///       FF1BluetoothDeviceService(store, store.box<FF1BluetoothDeviceEntity>()),
+///       FF1BluetoothDeviceService(store.box<FF1BluetoothDeviceEntity>()),
 ///     ),
 ///   ],
 /// );
@@ -52,6 +52,6 @@ final ff1BluetoothDeviceServiceProvider = Provider<FF1BluetoothDeviceService>((
 ) {
   throw UnimplementedError(
     'FF1BluetoothDeviceService must be initialized after ObjectBox setup. '
-    'Override this provider in ProviderScope with FF1BluetoothDeviceService(store, box).',
+    'Override this provider in ProviderScope with FF1BluetoothDeviceService(box).',
   );
 });

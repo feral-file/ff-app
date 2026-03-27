@@ -4,8 +4,8 @@ import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
-import 'package:app/app/routing/routes.dart';
 import 'package:app/app/routing/router_extensions.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
@@ -101,6 +101,7 @@ class _NowDisplayingBarCard extends ConsumerWidget {
         return _NowPlayingStatusBar(
           text: 'Connecting to $name',
         );
+
       case DeviceDisconnected(:final device):
         final name = device.name.isNotEmpty ? device.name : 'FF1';
         return _NowPlayingStatusBar(
