@@ -1,3 +1,4 @@
+import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/infra/logging/structured_logger.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -18,6 +19,10 @@ final class AppProviderObserver extends ProviderObserver {
     Object error,
     StackTrace stackTrace,
   ) {
+    // User/caller cancellation is expected; do not treat as a provider failure.
+    if (error is FF1ConnectionCancelledError) {
+      return;
+    }
     final providerName = _providerName(context);
     _structuredLogger.error(
       event: 'provider_failed',

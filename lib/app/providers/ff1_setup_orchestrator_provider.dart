@@ -322,7 +322,6 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
           return;
         }
       },
-      fireImmediately: true,
     );
   }
 
