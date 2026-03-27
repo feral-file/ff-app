@@ -615,6 +615,112 @@ void main() {
       // Without token, no thumbnail
       expect(recordingDb.savedEnriched!.first.thumbnailUrl, isNull);
     });
+
+    test(
+      'early token check prevents stale recompute from setting loading after newer recompute starts',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        // Slow indexer to ensure first recompute is still computing when
+        // second recompute (triggered by statusB) starts and completes.
+        final indexer = _FirstCallSlowIndexer(
+          delay: const Duration(milliseconds: 300),
+          tokensByCid: [],
+        );
+
+        final statusA = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: [
+            DP1PlaylistItem(id: 'item_a', duration: 60, title: 'A'),
+          ],
+        );
+        final statusB = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: [
+            DP1PlaylistItem(id: 'item_b', duration: 60, title: 'B'),
+          ],
+        );
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingDb),
+            indexerServiceProvider.overrideWithValue(indexer),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => Stream<FF1PlayerStatus>.periodic(
+                const Duration(milliseconds: 20),
+                (count) => count == 0 ? statusA : statusB,
+              ).take(2),
+            ),
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        // Ensure StreamProvider subscribes first, then read notifier.
+        // This triggers:
+        // 1. build() -> microtask (_recompute for initial state)
+        // 2. Stream emits statusA after ~20ms -> microtask (_recompute for statusA)
+        // 3. Stream emits statusB after ~40ms -> microtask (_recompute for statusB, tokens slow)
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+        
+        // Drain first microtask (initial build recompute)
+        await Future<void>.delayed(Duration.zero);
+        // statusA stream event arrives + triggers microtask
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        // statusB stream event arrives + triggers microtask (indexer now slow on token fetch)
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+
+        // At this point, statusB recompute is in flight (awaiting indexer);
+        // statusA recompute is also running in background (still computing).
+        // Verify we're not in a corrupt state with loading from stale statusA
+        // token check early prevents stale token++ from overwriting statusB.
+        var state = container.read(nowDisplayingProvider);
+        expect(
+          state,
+          anyOf(
+            isA<LoadingNowDisplaying>(),
+            isA<NowDisplayingSuccess>(), // statusB may have already completed
+          ),
+          reason:
+              'Should be loading or success from statusB; stale token check '
+              'on microtask entry prevents statusA late assign',
+        );
+
+        // Wait for both recomputes to settle (first slow one, then statusB)
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+
+        // Final state must be from statusB (item_b), not corrupted by late state assign from statusA.
+        state = container.read(nowDisplayingProvider);
+        expect(state, isA<NowDisplayingSuccess>());
+        final object = (state as NowDisplayingSuccess).object as DP1NowDisplayingObject;
+        expect(
+          object.currentItem.id,
+          'item_b',
+          reason:
+              'Newer statusB must win; stale statusA recompute must not overwrite final state '
+              'because token check discards late microtask entries',
+        );
+      },
+    );
   });
 }
 

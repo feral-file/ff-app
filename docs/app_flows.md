@@ -167,7 +167,7 @@
   - no paired device -> bar hidden (invisible, no guidance shown)
   - disconnected device -> bar shows disconnected state
   - enrichment/cache misses fall back to basic DP-1 item fields
-  - slow SQLite window reads delay publishing updated now-displaying success until the read completes (prior bar state is unchanged until then)
+  - recompute sets loading immediately; slow SQLite window reads complete asynchronously before success is published
 - key screens involved: Work Detail, Playlist Detail, Keyboard Control, Now Displaying Bar (overlay)
 - key modules/services involved: `canvas_client_service_v2`, `now_displaying_provider`, `ff1_wifi_providers`, `ff1_device_provider`
 
