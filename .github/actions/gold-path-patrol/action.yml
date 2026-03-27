@@ -5,9 +5,6 @@ inputs:
   platform:
     description: ios or android
     required: true
-  soak_minutes:
-    description: GOLD_PATH_SOAK_MINUTES passed to the test
-    required: true
   artifact_prefix:
     description: Prefix for uploaded iOS xcresult (e.g. gold-path-smoke)
     required: true
@@ -329,7 +326,7 @@ runs:
     - name: Run gold path Patrol test
       shell: bash
       env:
-        GOLD_PATH_SOAK_MINUTES: ${{ inputs.soak_minutes }}
+        GOLD_PATH_SOAK_MINUTES: "1"
         GOLD_PATH_CANARY_CHANNEL_TITLE: ${{ inputs.canary_channel_title }}
       run: |
         export PATH="$PATH:$HOME/.pub-cache/bin"

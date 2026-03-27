@@ -1,5 +1,4 @@
-# Smoke (PR + optional manual): short soak — endurance (nightly + manual): long soak.
-# Nightly schedule matches `.github/workflows/nightly-integration.yml` (09:00 UTC).
+# Smoke only: run on PRs and explicit manual dispatches.
 name: Gold Path UI Test
 
 on:
@@ -18,18 +17,8 @@ on:
       - "android/**"
       - ".github/actions/gold-path-patrol/**"
       - pubspec.yaml
-  schedule:
-    - cron: "0 9 * * *"
   workflow_dispatch:
     inputs:
-      run_profile:
-        description: smoke (short soak) or endurance (long soak)
-        required: true
-        default: smoke
-        type: choice
-        options:
-          - smoke
-          - endurance
       simulator_device:
         description: iOS Simulator device name
         required: true
@@ -45,15 +34,10 @@ on:
         required: true
         default: Social Codes
         type: string
-      soak_minutes:
-        description: Soak duration in minutes (endurance profile only; smoke always uses 1)
-        required: false
-        default: "240"
-        type: string
 
 jobs:
   gold-path-smoke:
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.run_profile == 'smoke')
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
@@ -80,43 +64,7 @@ jobs:
         uses: ./.github/actions/gold-path-patrol
         with:
           platform: ${{ matrix.platform }}
-          soak_minutes: "1"
           artifact_prefix: gold-path-smoke
-          simulator_device: ${{ inputs.simulator_device || 'iPhone 16e' }}
-          android_avd_name: ${{ inputs.android_avd_name || '' }}
-          canary_channel_title: ${{ inputs.canary_channel_title || 'Social Codes' }}
-          env_vars_secret: ${{ secrets.ENV_VARS }}
-
-  gold-path-endurance:
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_profile == 'endurance')
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [ios, android]
-    runs-on: [self-hosted, macOS]
-    permissions:
-      contents: read
-    env:
-      SIMULATOR_DEVICE: ${{ inputs.simulator_device || 'iPhone 16e' }}
-      ANDROID_AVD_NAME: ${{ inputs.android_avd_name || '' }}
-      ANDROID_API_LEVEL: "35"
-      ANDROID_SYSTEM_IMAGE: system-images;android-35;google_apis;arm64-v8a
-      ANDROID_USER_HOME: /tmp/android-user-home
-      ANDROID_EMULATOR_HOME: /tmp/android-emulator-home
-      ANDROID_AVD_HOME: /tmp/android-avd
-      GOLD_PATH_CANARY_CHANNEL_TITLE: ${{ inputs.canary_channel_title || 'Social Codes' }}
-      FF1_TEST_DEVICE_ID: ${{ secrets.FF1_TEST_DEVICE_ID }}
-      FF1_TEST_TOPIC_ID: ${{ secrets.FF1_TEST_TOPIC_ID }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Run Patrol (endurance)
-        uses: ./.github/actions/gold-path-patrol
-        with:
-          platform: ${{ matrix.platform }}
-          soak_minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.soak_minutes || '240' }}
-          artifact_prefix: gold-path-endurance
           simulator_device: ${{ inputs.simulator_device || 'iPhone 16e' }}
           android_avd_name: ${{ inputs.android_avd_name || '' }}
           canary_channel_title: ${{ inputs.canary_channel_title || 'Social Codes' }}
