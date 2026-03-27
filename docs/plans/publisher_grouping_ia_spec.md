@@ -13,6 +13,7 @@
 ## Desired Product Outcome
 - Users first browse by source-level group (publisher-like grouping), then drill into sub-channels.
 - Top-level Channel browsing remains scan-friendly even when a source publishes many channels.
+- Followed artist/exhibition channels can surface meaningful updates and provide a calm one-step path to playback.
 - DP-1 vocabulary remains unchanged (Channel/Playlist/Work): grouping is a presentation/discovery layer, not a new protocol object.
 
 ## Scope
@@ -21,11 +22,12 @@
 - Channels IA in Home + "View all" pathways.
 - Source/group shelf UI and drill-in behavior.
 - Minimal data-layer support to derive stable source groups from existing channel metadata.
+- Minimal living-channel signal behavior (`Updated`) for followed channels, linked to publish metadata.
 - Documentation updates in `docs/project_spec.md` and `docs/app_flows.md` once design is accepted.
 
 ### Out of scope
 - New DP-1 object types.
-- Follow/share/star feature rollout.
+- Broad social feature rollout (comments, likes, replies, chat, public counters).
 - Full Explore redesign (conversational/faceted).
 - Playlists/Works grouping implementation in this first slice (can follow after Channel grouping proves out).
 
@@ -43,6 +45,12 @@
   - channel count
   - optional cover/preview treatment
 - Tapping a source group opens source detail listing its sub-channels.
+
+### Living channel signal behavior (v1)
+- For followed artist/exhibition channels only, show a calm `Updated` indicator when a new published update lands.
+- The indicator appears on existing channel/playlist surfaces; no new social feed screen.
+- Tapping the indicator opens the updated channel/playlist context with one clear `Play on FF1 now` action.
+- Clearing behavior is deterministic: clear when the user opens the updated context (or after successful play launch), not on timer-based heuristics.
 
 ### All Channels
 - Entry points support:
@@ -87,7 +95,7 @@
 - Implement this in source/build ordering (for example, `channels_source` and/or snapshot build input), not by adding new app-side ranking logic.
 
 ### Phase 1 (recommended first implementation)
-- Implement source grouping for Channels only.
+- Implement source grouping for Channels plus minimal living-channel `Updated` signal for followed channels.
 - Keep Playlists/Works behavior unchanged.
 - Validate usability and performance with high-volume sources.
 
@@ -99,6 +107,8 @@
 - Top-level Channels no longer shows dozens of adjacent rows for a single high-volume source.
 - Users can open `Feral File` and see its sub-channels in one drill-in surface.
 - Users can open `Objkt` and see its sub-channels similarly.
+- A followed flagship channel can show one attributable `Updated` signal after a publish update.
+- From that signal, user can reach a one-tap `Play on FF1 now` action without new IA.
 - Existing personal (`Me`) behavior is unaffected.
 - Existing channel detail/playback entry flows continue to work without regression.
 
