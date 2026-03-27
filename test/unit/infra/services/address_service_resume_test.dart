@@ -119,6 +119,46 @@ void main() {
       );
     }
 
+    test(
+        'indexAndSyncAddress sets idle before indexer when runTriggerIndex',
+        () async {
+      const address = '0xabc';
+      fakeIndexer.pullStatusResult = const AddressIndexingJobResponse(
+        workflowId: 'wf-1',
+        address: address,
+        status: IndexingJobStatus.completed,
+        totalTokensIndexed: 2,
+        totalTokensViewable: 2,
+      );
+      fakeIndexer.fetchTokensResult = TokensPage(
+        tokens: [
+          AssetToken(
+            id: 1,
+            cid: 'cid1',
+            chain: 'eip155:1',
+            standard: 'ERC-721',
+            contractAddress: address,
+            tokenNumber: '1',
+          ),
+        ],
+      );
+
+      final playlist = PlaylistExt.fromWalletAddress(
+        WalletAddress(
+          address: address,
+          createdAt: DateTime.now(),
+          name: 'Test',
+        ),
+      );
+      await databaseService.ingestPlaylist(playlist);
+
+      final service = createAddressService();
+      await service.indexAndSyncAddress(address);
+
+      expect(fakeAppState.setStatusCalls.first, endsWith(':idle'));
+      expect(fakeIndexer.callSequence, contains('index'));
+    });
+
     test('indexAndSyncAddress with resumeFrom.poll calls poll and completes',
         () async {
       const address = '0xabc';

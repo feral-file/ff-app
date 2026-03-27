@@ -112,6 +112,16 @@ class AddressService {
     final queryAddress = _addressForIndexer(address);
     var effectiveWorkflowId = workflowId;
 
+    // Clear failed state immediately so Me / playlist headers show "Syncing"
+    // before the indexer trigger returns (avoids dead UI during network wait on
+    // "Tap to retry").
+    if (runTriggerIndex) {
+      await _appStateService.setAddressIndexingStatus(
+        address: queryAddress,
+        status: AddressIndexingProcessStatus.idle(),
+      );
+    }
+
     // Step 1: Fast-path fetch
     if (runFastPathFetch) {
       unawaited(syncTokens(queryAddress));
