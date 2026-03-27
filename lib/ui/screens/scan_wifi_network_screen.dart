@@ -80,13 +80,15 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
     );
 
     // Start scanning for networks.
-    Future.microtask(() {
-      unawaited(
-        ref.read(ff1SetupOrchestratorProvider.notifier).startWifiScan(
-              device: widget.payload.device,
-            ),
-      );
-    });
+    unawaited(
+      Future<void>.microtask(() {
+        unawaited(
+          ref.read(ff1SetupOrchestratorProvider.notifier).startWifiScan(
+                device: widget.payload.device,
+              ),
+        );
+      }),
+    );
   }
 
   @override
@@ -150,7 +152,8 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                   if (isScanning) ...[
                     SliverToBoxAdapter(
                       child: Text(
-                        'Getting WiFi networks from your FF1. Please wait a moment...',
+                        'Getting WiFi networks from your FF1. '
+                        'Please wait a moment...',
                         style: AppTypography.body(context).white,
                       ),
                     ),

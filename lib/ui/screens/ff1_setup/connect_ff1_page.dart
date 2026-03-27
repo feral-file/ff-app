@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
-import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -41,7 +40,6 @@ class ConnectFF1PagePayload {
   ConnectFF1PagePayload({
     required this.device,
     required this.ff1DeviceInfo,
-    this.onConnectedToInternet,
   });
 
   /// Bluetooth device to connect to (required).
@@ -50,17 +48,6 @@ class ConnectFF1PagePayload {
   /// Optional device info parsed from deeplink or other source.
   /// When non-null, used to skip get_info command and provide metadata early.
   final FF1DeviceInfo? ff1DeviceInfo;
-
-  /// Optional callback for successful internet-connected routing.
-  ///
-  /// When provided, this page delegates post-connect navigation to the caller
-  /// (for example scan-first deeplink flows that need a specific unwind path).
-  /// When null, the page performs default navigation to device configuration.
-  final Future<void> Function(
-    BuildContext context,
-    ConnectFF1Connected state,
-  )?
-  onConnectedToInternet;
 }
 
 /// Connect FF1 page
@@ -95,78 +82,25 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
         final effectId = next.effectId;
         final effect = next.effect;
         if (previous?.effectId != effectId && effect != null) {
-          final orchestrator =
-              ref.read(ff1SetupOrchestratorProvider.notifier);
+          final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
           unawaited(() async {
             final didHandle = await _handleOrchestratorEffect(effect);
             if (didHandle) {
               orchestrator.ackEffect(effectId: effectId);
             }
           }());
-          return;
         }
-
-        // Fallback: derive routing from state transitions when an effect is not
-        // emitted (e.g. listener registered after provider already transitioned).
-        if (previous?.connected == next.connected) {
-          return;
-        }
-        final connected = next.connected;
-        if (connected == null) {
-          return;
-        }
-        unawaited(() async {
-          if (!mounted) return;
-          if (!connected.isConnectedToInternet) {
-            context.replace(
-              Routes.scanWifiNetworks,
-              extra: ScanWifiNetworkPagePayload(device: connected.ff1device),
-            );
-            return;
-          }
-
-          final customNavigation = widget.payload.onConnectedToInternet;
-          if (customNavigation != null) {
-            try {
-              await customNavigation(context, connected);
-              return;
-            } on Object catch (e, stack) {
-              _log.severe(
-                '[ConnectFF1Page] Custom navigation failed (fallback path)',
-                e,
-                stack,
-              );
-              if (!context.mounted) {
-                return;
-              }
-              await UIHelper.showInfoDialog(
-                context,
-                'Connect failed',
-                e.toString(),
-                closeButton: 'Contact support',
-                onClose: () {
-                  unawaited(
-                    UIHelper.showCustomerSupport(
-                      context,
-                      supportEmailService: ref.read(supportEmailServiceProvider),
-                    ),
-                  );
-                },
-              );
-              return;
-            }
-          }
-          if (!connected.portalIsSet && mounted) {
-            context.replace(Routes.deviceConfiguration);
-          }
-        }());
       },
     );
 
     _setupOrchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
 
-    // Start connection flow after initState completes.
-    Future.microtask(() {
+    // Start the BLE flow only after this frame has built and watched the
+    // orchestrator. A microtask can run before [build] runs, which means
+    // [FF1SetupOrchestratorNotifier.build] may not have registered
+    // [ref.listen(connectFF1Provider)] yet — connect would reach terminal
+    // [ConnectFF1Connected] with no listener to emit navigation effects.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
       }
@@ -202,62 +136,42 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     switch (effect) {
       case FF1SetupInternetReady(:final connected):
         _recordDuration(success: true);
-        final customNavigation = widget.payload.onConnectedToInternet;
-        if (customNavigation != null) {
-          try {
-            await customNavigation(context, connected);
-            return true;
-          } on Object catch (e, stack) {
-            _log.severe('[ConnectFF1Page] Custom navigation failed', e, stack);
-            if (!context.mounted) {
-              return true;
-            }
-            await UIHelper.showInfoDialog(
-              context,
-              'Connect failed',
-              e.toString(),
-              closeButton: 'Contact support',
-              onClose: () {
-                unawaited(
-                  UIHelper.showCustomerSupport(
-                    context,
-                    supportEmailService: ref.read(supportEmailServiceProvider),
-                  ),
-                );
-              },
-            );
-            return true;
-          }
-        }
         if (!connected.portalIsSet && context.mounted) {
-          context.replace(Routes.deviceConfiguration);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!context.mounted) return;
+            context.replace(Routes.deviceConfiguration);
+          });
         }
         return true;
       case FF1SetupNeedsWiFi(:final device):
         if (!context.mounted) return false;
-        context.replace(
-          Routes.scanWifiNetworks,
-          extra: ScanWifiNetworkPagePayload(device: device),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!context.mounted) return;
+          context.replace(
+            Routes.scanWifiNetworks,
+            extra: ScanWifiNetworkPagePayload(device: device),
+          );
+        });
         return true;
       case FF1SetupNavigate():
         // Navigation effects can be emitted by downstream Wi‑Fi steps.
-        // When this page sits below those routes in the stack, handling them here
-        // can target the wrong navigator and swallow the effect for the active
-        // screen. Let the top-most screen consume these effects.
+        // When this page sits below those routes in the stack, handling them
+        // here can target the wrong navigator and swallow the effect for the
+        // active screen. Let the top-most screen consume these effects.
         return false;
       case FF1SetupPop():
-        // Pop is owned by the active route (e.g. cancel CTA on the current page).
+        // Pop is owned by the active route (e.g. cancel CTA on the current
+        // page).
         return false;
       case FF1SetupDeviceUpdating():
         if (!context.mounted) return false;
         context.go(Routes.ff1Updating);
         return true;
       case FF1SetupShowError(
-          :final title,
-          :final message,
-          :final showSupportCta,
-        ):
+        :final title,
+        :final message,
+        :final showSupportCta,
+      ):
         _recordDuration(success: false);
         if (!context.mounted) return false;
         await UIHelper.showInfoDialog(
@@ -270,7 +184,9 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                   unawaited(
                     UIHelper.showCustomerSupport(
                       context,
-                      supportEmailService: ref.read(supportEmailServiceProvider),
+                      supportEmailService: ref.read(
+                        supportEmailServiceProvider,
+                      ),
                     ),
                   );
                 }
@@ -409,7 +325,9 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                                 PrimaryButton(
                                   onTap: () async {
                                     if (context.mounted) {
-                                      context.replace(Routes.deviceConfiguration);
+                                      context.replace(
+                                        Routes.deviceConfiguration,
+                                      );
                                     }
                                   },
                                   text: 'Go to Settings',
@@ -516,15 +434,20 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
       case _ConnectFF1Status.connecting:
         return 'Keep your phone near FF1 and remain on this screen.';
       case _ConnectFF1Status.stillConnecting:
-        return 'We’re still trying to reach your FF1 over Bluetooth.\nIf this takes more than 15 seconds, you can cancel and try again.';
+        return 'We’re still trying to reach your FF1 over Bluetooth.\n'
+            'If this takes more than 15 seconds, you can cancel and try again.';
       case _ConnectFF1Status.bluetoothOff:
         return 'Turn on Bluetooth to connect to FF1.';
       case _ConnectFF1Status.error:
-        return 'A few things to check:\n• Make sure your FF1 is powered on.\n• Keep your phone close to the device.\n• Check that Bluetooth is turned on.';
+        return 'A few things to check:\n'
+            '• Make sure your FF1 is powered on.\n'
+            '• Keep your phone close to the device.\n'
+            '• Check that Bluetooth is turned on.';
       case _ConnectFF1Status.success:
         return 'Connected to FF1 — ready to play art.';
       case _ConnectFF1Status.portalIsSet:
-        return 'Your FF1 is already set up and connected. You can head to settings to make changes or check the status.';
+        return 'Your FF1 is already set up and connected. You can head to '
+            'settings to make changes or check the status.';
     }
   }
 }

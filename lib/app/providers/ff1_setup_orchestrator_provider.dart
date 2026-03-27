@@ -1,5 +1,7 @@
 import 'dart:async';
 
+// ignore_for_file: public_member_api_docs // Internal app module; not a public API.
+
 import 'package:app/app/ff1_setup/ff1_setup_derivation.dart';
 import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/ff1_setup/ff1_setup_models.dart';
@@ -35,11 +37,52 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   int _effectId = 0;
   FF1SetupEffect? _pendingEffect;
 
+  /// True after [startConnect] begins a new BLE attempt until [reset].
+  ///
+  /// Connect navigation effects are emitted from [_handleConnectAsyncTransition]
+  /// (driven by [ref.watch] + microtask) only when there is a recognizable
+  /// prior connect state (Connecting, StillConnecting, Initial, Error, or prior
+  /// Connected) or when a connect attempt is active — otherwise stale
+  /// [ConnectFF1Connected] without a real in-app attempt would spuriously
+  /// navigate.
+  bool _connectAttemptActive = false;
+  int _connectAttemptSeq = 0;
+  int _connectAttemptSeqWithEmittedEffect = 0;
+  String _wifiNavEmittedForTopicId = '';
+  bool _wifiNavEmittedForSuccessWithoutTopicId = false;
+
+  /// Snapshot of [connectFF1Provider] after the previous [build] completed.
+  ///
+  /// Used with [ref.watch] + a microtask to derive connect side-effects. A
+  /// `ref.listen(connectFF1Provider)` on this notifier does not reliably
+  /// observe every [AsyncNotifier] transition (e.g. fast Connecting→Connected),
+  /// while [watch] always rebuilds when the async state changes.
+  AsyncValue<ConnectFF1State>? _connectAsyncSnapshotAtPreviousBuild;
+
   @override
   FF1SetupState build() {
     _ensureListenersRegistered();
     final connectAsync = ref.watch(connectFF1Provider);
     final wifi = ref.watch(connectWiFiProvider);
+
+    final prevConnectAsync = _connectAsyncSnapshotAtPreviousBuild;
+    _connectAsyncSnapshotAtPreviousBuild = connectAsync;
+    unawaited(
+      Future<void>.microtask(() {
+        final nextConnectAsync = ref.read(connectFF1Provider);
+        _handleConnectAsyncTransition(prevConnectAsync, nextConnectAsync);
+      }),
+    );
+    // Mirror connect path: ref.listen on Wi‑Fi can miss a transition in some
+    // timing cases; re-check success after build the same way we use a
+    // microtask for connect AsyncNotifier transitions.
+    unawaited(
+      Future<void>.microtask(() {
+        final wifiNow = ref.read(connectWiFiProvider);
+        _tryEmitWifiSuccessNavigation(wifiNow);
+      }),
+    );
+
     final derived = deriveFf1SetupState(
       connectAsync: connectAsync,
       wifi: wifi,
@@ -52,7 +95,160 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   void _emitEffect(FF1SetupEffect effect) {
     _effectId += 1;
     _pendingEffect = effect;
+    _log.info(
+      '[effect] emit effectId=$_effectId type=${effect.runtimeType}',
+    );
     state = state.copyWith(effectId: _effectId, effect: _pendingEffect);
+  }
+
+  /// Connect navigation / error effects (replaces unreliable [ref.listen] on
+  /// [connectFF1Provider] inside this [Notifier] — see [_connectAsyncSnapshotAtPreviousBuild]).
+  void _handleConnectAsyncTransition(
+    AsyncValue<ConnectFF1State>? previous,
+    AsyncValue<ConnectFF1State> next,
+  ) {
+    final prev = previous?.maybeWhen<ConnectFF1State?>(
+      data: (v) => v,
+      orElse: () => null,
+    );
+    final cur = next.maybeWhen<ConnectFF1State?>(
+      data: (v) => v,
+      orElse: () => null,
+    );
+    if (cur == null) {
+      return;
+    }
+
+    _log.fine(
+      '[connect] snapshot: prev=${prev.runtimeType} '
+      'cur=${cur.runtimeType} '
+      'attemptActive=$_connectAttemptActive',
+    );
+
+    if (cur is ConnectFF1Cancelled && prev is! ConnectFF1Cancelled) {
+      _connectAttemptActive = false;
+      return;
+    }
+
+    if (cur is ConnectFF1Connected && prev != cur) {
+      final hasPriorConnectData =
+          prev is ConnectFF1Connecting ||
+          prev is ConnectFF1StillConnecting ||
+          prev is ConnectFF1Initial ||
+          prev is ConnectFF1Error ||
+          prev is ConnectFF1Connected;
+      if (!hasPriorConnectData && !_connectAttemptActive) {
+        _log.warning(
+          '[connect] skip emit on Connected: '
+          'prev=${prev.runtimeType} attemptActive=$_connectAttemptActive '
+          '(likely stale Connected without in-app attempt)',
+        );
+        return;
+      }
+      if (_connectAttemptSeq > 0 &&
+          _connectAttemptSeqWithEmittedEffect == _connectAttemptSeq) {
+        return;
+      }
+      _log.info(
+        '[connect] emitting effect from Connected: '
+        'internet=${cur.isConnectedToInternet} '
+        'portalIsSet=${cur.portalIsSet}',
+      );
+      if (_connectAttemptActive) {
+        _connectAttemptSeqWithEmittedEffect = _connectAttemptSeq;
+      }
+      if (cur.isConnectedToInternet) {
+        unawaited(
+          ref.read(onboardingActionsProvider).completeOnboarding(),
+        );
+        _emitEffect(FF1SetupInternetReady(connected: cur));
+      } else {
+        _emitEffect(FF1SetupNeedsWiFi(device: cur.ff1device));
+      }
+      _connectAttemptActive = false;
+      return;
+    }
+
+    if (cur is ConnectFF1Connected && prev == cur) {
+      _log.fine(
+        '[connect] Connected repeated; no effect emitted '
+        '(prev == cur identity)',
+      );
+    }
+
+    if (cur is ConnectFF1Error &&
+        (prev is! ConnectFF1Error ||
+            prev.exception.toString() != cur.exception.toString())) {
+      final ex = cur.exception;
+      if (ex is FF1ResponseError) {
+        _emitEffect(
+          FF1SetupShowError(
+            title: ex.title,
+            message: ex.message,
+            showSupportCta: ex.shouldShowSupport,
+          ),
+        );
+        return;
+      }
+
+      _emitEffect(
+        FF1SetupShowError(
+          title: 'Connect failed',
+          message: ex.toString(),
+          showSupportCta: true,
+        ),
+      );
+      _connectAttemptActive = false;
+    }
+  }
+
+  /// Emits Navigate(deviceConfiguration) when Wi‑Fi reaches terminal success.
+  ///
+  /// Shared by [ref.listen] and a post-build microtask so we do not rely on a
+  /// single delivery path (same motivation as [_handleConnectAsyncTransition]).
+  void _tryEmitWifiSuccessNavigation(WiFiConnectionState next) {
+    if (next.status != WiFiConnectionStatus.success) {
+      return;
+    }
+    final nextTopicId = next.topicId ?? '';
+    if (nextTopicId.isNotEmpty) {
+      if (nextTopicId == _wifiNavEmittedForTopicId) {
+        return;
+      }
+      _wifiNavEmittedForTopicId = nextTopicId;
+    } else {
+      if (_wifiNavEmittedForSuccessWithoutTopicId) {
+        return;
+      }
+      _wifiNavEmittedForSuccessWithoutTopicId = true;
+    }
+    _log.info(
+      '[wifi] emitting navigation on Wi‑Fi success: '
+      'topicId="${nextTopicId.isEmpty ? "(empty)" : "(set)"}"',
+    );
+    _emitEffect(
+      const FF1SetupNavigate(
+        route: Routes.deviceConfiguration,
+        method: FF1SetupNavigationMethod.go,
+      ),
+    );
+    unawaited(
+      () async {
+        if (nextTopicId.isNotEmpty) {
+          try {
+            await ref
+                .read(ff1WifiControlProvider)
+                .showPairingQRCode(
+                  topicId: nextTopicId,
+                  show: false,
+                );
+          } on Object {
+            // Best-effort: hiding the QR code should not block navigation.
+          }
+        }
+        await ref.read(onboardingActionsProvider).completeOnboarding();
+      }(),
+    );
   }
 
   void _ensureListenersRegistered() {
@@ -61,69 +257,9 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     }
     _listenersRegistered = true;
 
-    ref.listen<AsyncValue<ConnectFF1State>>(
-      connectFF1Provider,
-      (previous, next) {
-        final prev = previous?.maybeWhen<ConnectFF1State?>(
-          data: (v) => v,
-          orElse: () => null,
-        );
-        final cur = next.maybeWhen<ConnectFF1State?>(
-          data: (v) => v,
-          orElse: () => null,
-        );
-        if (cur == null) {
-          return;
-        }
-
-        if (cur is ConnectFF1Cancelled && prev is! ConnectFF1Cancelled) {
-          // Cancellation is an attempt lifecycle state; navigation remains owned
-          // by the UI (e.g. cancel button) to avoid double-pop when the route is
-          // already being popped (system back gesture / teardown).
-          return;
-        }
-
-        if (cur is ConnectFF1Connected && prev != cur) {
-          if (cur.isConnectedToInternet) {
-            // Root-cause fix lives in ConnectFF1Notifier: it persists/promotes
-            // the device before emitting ConnectFF1Connected(internet=true).
-            unawaited(ref.read(onboardingActionsProvider).completeOnboarding());
-            _emitEffect(FF1SetupInternetReady(connected: cur));
-          } else {
-            _emitEffect(FF1SetupNeedsWiFi(device: cur.ff1device));
-          }
-          return;
-        }
-
-        if (cur is ConnectFF1Error &&
-            (prev is! ConnectFF1Error ||
-                prev.exception.toString() != cur.exception.toString())) {
-          final ex = cur.exception;
-          if (ex is FF1ResponseError) {
-            _emitEffect(
-              FF1SetupShowError(
-                title: ex.title,
-                message: ex.message,
-                showSupportCta: ex.shouldShowSupport,
-              ),
-            );
-            return;
-          }
-
-          _emitEffect(
-            FF1SetupShowError(
-              title: 'Connect failed',
-              message: ex.toString(),
-              showSupportCta: true,
-            ),
-          );
-        }
-      },
-    );
-
     ref.listen<WiFiConnectionState>(
-      connectWiFiProvider,
-      (previous, next) {
+        connectWiFiProvider,
+        (previous, next) {
         final prevStatus = previous?.status;
         final nextStatus = next.status;
         final prevTopicId = previous?.topicId ?? '';
@@ -136,40 +272,8 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
           '"${nextTopicId.isEmpty ? '(empty)' : '(set)'}"',
         );
 
-        // Navigation contract: once the device responds with a topicId after
-        // sending Wi‑Fi credentials, we should proceed to configuration.
-        //
-        // Relying solely on status == success is brittle: UI can be stuck in a
-        // "connecting" step if a later status transition is missed or not
-        // reached. The topicId is the strongest signal that Wi‑Fi provisioning
-        // completed.
-        final didReceiveTopicId = prevTopicId.isEmpty && nextTopicId.isNotEmpty;
-        if (didReceiveTopicId || nextStatus == WiFiConnectionStatus.success) {
-          _log.info(
-            '[wifi] emitting navigation: '
-            'didReceiveTopicId=$didReceiveTopicId; status=$nextStatus',
-          );
-          _emitEffect(
-            const FF1SetupNavigate(
-              route: Routes.deviceConfiguration,
-              method: FF1SetupNavigationMethod.go,
-            ),
-          );
-          unawaited(
-            () async {
-              if (nextTopicId.isNotEmpty) {
-                try {
-                  await ref.read(ff1WifiControlProvider).showPairingQRCode(
-                        topicId: nextTopicId,
-                        show: false,
-                      );
-                } on Object {
-                  // Best-effort: hiding the QR code should not block navigation.
-                }
-              }
-              await ref.read(onboardingActionsProvider).completeOnboarding();
-            }(),
-          );
+        if (nextStatus == WiFiConnectionStatus.success) {
+          _tryEmitWifiSuccessNavigation(next);
           return;
         }
 
@@ -194,8 +298,8 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
               const FF1SetupShowError(
                 title: "Can't reach FF1",
                 message:
-                    "FF1 didn't respond in time. Make sure FF1 is nearby and try again.",
-                showSupportCta: false,
+                    "FF1 didn't respond in time. Make sure FF1 is nearby and "
+                    'try again.',
               ),
             );
             return;
@@ -204,37 +308,60 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
             _emitEffect(
               const FF1SetupShowError(
                 title: 'Wi‑Fi setup failed',
-                message:
-                    "FF1 couldn't complete Wi‑Fi setup because of an unexpected issue. Contact support for help.",
+                message: "FF1 couldn't complete Wi‑Fi setup because of an "
+                    'unexpected issue. Contact support for help.',
                 showSupportCta: true,
               ),
             );
           }
         }
 
-        // No-op: other Wi‑Fi intermediate states are reflected via derived state.
+        // No-op: other Wi‑Fi intermediate states are reflected via derived
+        // state.
         if (prevStatus == nextStatus && prevTopicId == nextTopicId) {
           return;
         }
       },
+      fireImmediately: true,
     );
   }
 
   /// Ensure [device] is persisted and promoted to active before navigation.
-  // No longer needed: internet-ready persistence is guaranteed by ConnectFF1Notifier.
+  // No longer needed: internet-ready persistence is guaranteed by
+  // ConnectFF1Notifier.
 
   Future<void> startConnect({
     required BluetoothDevice device,
     FF1DeviceInfo? deeplinkInfo,
   }) async {
     _ensureListenersRegistered();
+    final attemptSeq = ++_connectAttemptSeq;
+    _log.info(
+      '[connect] startConnect: attemptSeq=$attemptSeq '
+      'deviceId=${device.remoteId.str.isEmpty ? '(empty)' : device.remoteId.str} '
+      'deviceName=${device.advName.isEmpty ? '(unknown)' : device.advName} '
+      'hasDeeplinkInfo=${deeplinkInfo != null}',
+    );
     _selectedDevice = device;
     _deeplinkInfo = deeplinkInfo;
+    _connectAttemptActive = true;
+    _wifiNavEmittedForTopicId = '';
+    _wifiNavEmittedForSuccessWithoutTopicId = false;
     // Refactor-only invariant: avoid stale success causing immediate navigation
     // when the connect page is opened again.
     ref.read(connectWiFiProvider.notifier).reset();
+    // Clear any terminal ConnectFF1Connected left from a prior attempt so the
+    // connect listener observes real transitions (Connecting → Connected) and
+    // fireImmediately does not conflate stale data with a missed transition.
+    ref.read(connectFF1Provider.notifier).reset();
+    // Clear any one-off effect from a prior attempt without wiping monotonic
+    // [_effectId]. Omitting [effect] in copyWith used to null the effect
+    // unintentionally; constructor + explicit fields keep notifier state
+    // consistent with [build] output.
+    _pendingEffect = null;
     state = FF1SetupState(
       step: FF1SetupStep.connecting,
+      effectId: _effectId,
       selectedDevice: device,
       deeplinkInfo: deeplinkInfo,
     );
@@ -245,7 +372,9 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
 
   Future<void> startWifiScan({required FF1Device device}) async {
     _ensureListenersRegistered();
-    await ref.read(connectWiFiProvider.notifier).connectAndScanNetworks(
+    await ref
+        .read(connectWiFiProvider.notifier)
+        .connectAndScanNetworks(
           device: device,
         );
   }
@@ -274,7 +403,11 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     required String password,
   }) async {
     _ensureListenersRegistered();
-    await ref.read(connectWiFiProvider.notifier).sendCredentialsAndConnect(
+    _wifiNavEmittedForTopicId = '';
+    _wifiNavEmittedForSuccessWithoutTopicId = false;
+    await ref
+        .read(connectWiFiProvider.notifier)
+        .sendCredentialsAndConnect(
           device: device,
           ssid: ssid,
           password: password,
@@ -283,14 +416,20 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
 
   void cancel() {
     _ensureListenersRegistered();
+    _connectAttemptActive = false;
     ref.read(connectFF1Provider.notifier).cancelConnection();
   }
 
   void reset() {
     _ensureListenersRegistered();
+    _connectAttemptActive = false;
+    _wifiNavEmittedForTopicId = '';
+    _wifiNavEmittedForSuccessWithoutTopicId = false;
     ref.read(connectFF1Provider.notifier).reset();
     ref.read(connectWiFiProvider.notifier).reset();
-    state = const FF1SetupState(step: FF1SetupStep.idle);
+    _pendingEffect = null;
+    _connectAsyncSnapshotAtPreviousBuild = null;
+    state = FF1SetupState(step: FF1SetupStep.idle, effectId: _effectId);
   }
 
   void ackEffect({required int effectId}) {
@@ -299,12 +438,11 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       return;
     }
     _pendingEffect = null;
-    state = state.copyWith(effectId: _effectId);
+    state = state.copyWith(effectId: _effectId, effect: null);
   }
 }
 
 final ff1SetupOrchestratorProvider =
     NotifierProvider<FF1SetupOrchestratorNotifier, FF1SetupState>(
-  FF1SetupOrchestratorNotifier.new,
-);
-
+      FF1SetupOrchestratorNotifier.new,
+    );

@@ -1,3 +1,5 @@
+// ignore_for_file: public_member_api_docs // UI-only widget helpers; not an API surface.
+
 import 'dart:async';
 
 import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
@@ -64,7 +66,6 @@ class _EnterWiFiPasswordScreenState
   bool _isProcessing = false;
   String _passwordText = '';
   ProviderSubscription<FF1SetupState>? _setupSub;
-  bool _didAutoNavigateToConfig = false;
 
   /// Parse SSID from networkSsid (may contain "ssid|security" format)
   String _parseSSID(String ssid) {
@@ -95,55 +96,26 @@ class _EnterWiFiPasswordScreenState
     _setupSub = ref.listenManual<FF1SetupState>(
       ff1SetupOrchestratorProvider,
       (previous, next) {
-        if (previous?.effectId == next.effectId) {
-          // Even when there is no new effect, we still want a routing fallback
-          // driven by state transitions (e.g. when a navigation effect is missed).
-        } else {
-          final effectId = next.effectId;
-          final effect = next.effect;
-          if (effect == null) {
-            return;
-          }
-          _log.info('[effect] received: id=$effectId, type=${effect.runtimeType}');
+        final effectId = next.effectId;
+        final effect = next.effect;
+        if (previous?.effectId != effectId && effect != null) {
+          _log.info(
+            '[effect] received: id=$effectId, type=${effect.runtimeType}',
+          );
           final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
           unawaited(() async {
             final didHandle = await _handleOrchestratorEffect(effect);
             _log.info(
-              '[effect] handled=$didHandle for id=$effectId, type=${effect.runtimeType}',
+              '[effect] handled=$didHandle for id=$effectId, '
+              'type=${effect.runtimeType}',
             );
             if (didHandle) {
               orchestrator.ackEffect(effectId: effectId);
             }
           }());
-          return;
-        }
-
-        // Fallback: if the Wi‑Fi flow reports a topicId, proceed to config even
-        // when the one-off navigation effect is missed/consumed elsewhere.
-        if (_didAutoNavigateToConfig) {
-          return;
-        }
-        final prevTopicId = previous?.wifiState?.topicId ?? '';
-        final nextTopicId = next.wifiState?.topicId ?? '';
-        final didReceiveTopicId = prevTopicId.isEmpty && nextTopicId.isNotEmpty;
-        final prevStatus = previous?.wifiState?.status;
-        final nextStatus = next.wifiState?.status;
-        final didReachSuccess =
-            prevStatus != WiFiConnectionStatus.success &&
-            nextStatus == WiFiConnectionStatus.success;
-
-        if (didReceiveTopicId || didReachSuccess) {
-          if (!mounted) {
-            _didAutoNavigateToConfig = true;
-            return;
-          }
-          _didAutoNavigateToConfig = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            context.go(Routes.deviceConfiguration);
-          });
         }
       },
+      fireImmediately: true,
     );
 
     final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
@@ -208,16 +180,10 @@ class _EnterWiFiPasswordScreenState
             await context.push(route, extra: extra);
             return true;
           case FF1SetupNavigationMethod.replace:
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              context.replace(route, extra: extra);
-            });
+            context.replace(route, extra: extra);
             return true;
           case FF1SetupNavigationMethod.go:
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              context.go(route, extra: extra);
-            });
+            context.go(route, extra: extra);
             return true;
         }
       case FF1SetupDeviceUpdating():
@@ -225,10 +191,10 @@ class _EnterWiFiPasswordScreenState
         context.go(Routes.ff1Updating);
         return true;
       case FF1SetupShowError(
-          :final title,
-          :final message,
-          :final showSupportCta,
-        ):
+        :final title,
+        :final message,
+        :final showSupportCta,
+      ):
         if (!mounted) return false;
         await UIHelper.showInfoDialog(
           context,
@@ -240,7 +206,9 @@ class _EnterWiFiPasswordScreenState
                   unawaited(
                     UIHelper.showCustomerSupport(
                       context,
-                      supportEmailService: ref.read(supportEmailServiceProvider),
+                      supportEmailService: ref.read(
+                        supportEmailServiceProvider,
+                      ),
                     ),
                   );
                 }
@@ -272,7 +240,8 @@ class _EnterWiFiPasswordScreenState
         _isProcessing ||
         (connectionState.status != WiFiConnectionStatus.selectingNetwork &&
             connectionState.status != WiFiConnectionStatus.idle &&
-            connectionState.status != WiFiConnectionStatus.error);
+            connectionState.status != WiFiConnectionStatus.error &&
+            connectionState.status != WiFiConnectionStatus.success);
     final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
     final parsedSsid = _parseSSID(widget.payload.wifiAccessPoint.ssid);
     // Open networks don't need a password; closed networks require one.
@@ -388,7 +357,7 @@ class _EnterWiFiPasswordScreenState
   }
 }
 
-/// PasswordTextField widget - to enter password, with button to change visibility
+/// PasswordTextField widget: enter password with visibility toggle.
 class PasswordTextField extends StatefulWidget {
   const PasswordTextField({
     required this.controller,

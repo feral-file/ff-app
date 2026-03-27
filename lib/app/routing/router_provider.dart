@@ -14,7 +14,8 @@ import 'package:app/infra/services/release_notes_service.dart';
 import 'package:app/ui/screens/add_address_screen.dart';
 import 'package:app/ui/screens/add_alias_screen.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
-import 'package:app/ui/screens/all_playlists_screen.dart' show AllPlaylistsScreen;
+import 'package:app/ui/screens/all_playlists_screen.dart'
+    show AllPlaylistsScreen;
 import 'package:app/ui/screens/channel_detail_screen.dart';
 import 'package:app/ui/screens/device_config_screen.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';

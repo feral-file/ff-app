@@ -15,6 +15,33 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+class _StallVersionService extends VersionService {
+  _StallVersionService(this.gate)
+    : super(
+        pubDocApi: _FakePubDocApi(),
+        navigatorKey: null,
+        platformOverride: 'ios',
+        packageInfoLoader: () async => PackageInfo(
+          appName: 'app',
+          packageName: 'pkg',
+          version: '10.0.0',
+          buildNumber: '1',
+        ),
+      );
+
+  final Completer<void> gate;
+
+  @override
+  Future<VersionCompatibilityResult> checkDeviceVersionCompatibility({
+    required String branchName,
+    required String deviceVersion,
+    bool requiredDeviceUpdate = false,
+  }) async {
+    await gate.future;
+    return VersionCompatibilityResult.compatible;
+  }
+}
+
 void main() {
   test('Flow3 returns needsWiFi when internet is not connected', () async {
     final container = ProviderContainer.test(
@@ -119,7 +146,7 @@ void main() {
           shouldContinue: () => false,
         ),
       );
-      final sub = container.listen(provider, (_, __) {}, fireImmediately: true);
+      final sub = container.listen(provider, (_, _) {}, fireImmediately: true);
 
       await Future<void>.delayed(Duration.zero);
       final value = container.read(provider);
@@ -128,12 +155,60 @@ void main() {
       sub.close();
     },
   );
+
+  test(
+    'throws when provider is invalidated during async (Riverpod may use '
+    'StateError)',
+    () async {
+      final gate = Completer<void>();
+      final container = ProviderContainer.test(
+        overrides: [
+          versionServiceProvider.overrideWithValue(_StallVersionService(gate)),
+          ff1ControlProvider.overrideWithValue(_FakeControl()),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      const info = FF1DeviceInfo(
+        deviceId: 'FF1-123',
+        topicId: 'topic',
+        isConnectedToInternet: true,
+        branchName: 'release',
+        version: '1.0.0',
+      );
+
+      final params = FF1EnsureReadyParams(
+        blDevice: BluetoothDevice.fromId('00:11'),
+        deviceInfo: info,
+        shouldContinue: () => true,
+      );
+
+      final provider = ff1EnsureReadyProvider(params);
+      final future = container.read(provider.future);
+
+      await Future<void>.delayed(Duration.zero);
+      container.invalidate(provider);
+
+      gate.complete();
+
+      await expectLater(
+        future,
+        throwsA(
+          predicate<Object>(
+            (e) =>
+                e is FF1ConnectionCancelledError ||
+                (e is StateError &&
+                    e.message.contains('was disposed during loading')),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 VersionService _fakeCompatibleVersionService() {
   return VersionService(
     pubDocApi: _FakePubDocApi(),
-    navigatorKey: null,
     platformOverride: 'ios',
     packageInfoLoader: () async => PackageInfo(
       appName: 'app',

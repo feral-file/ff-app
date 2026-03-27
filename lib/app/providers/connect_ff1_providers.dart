@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:app/app/providers/ff1_connect_session_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/ff1_connect_session_provider.dart';
 import 'package:app/app/providers/ff1_ensure_ready_provider.dart';
 import 'package:app/app/providers/ff1_get_device_info_provider.dart';
 import 'package:app/app/providers/ff1_providers.dart';
@@ -106,6 +106,14 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     }
 
     final session = _startNewSession();
+    final deviceIdLabel = bluetoothDevice.remoteId.str.isEmpty
+        ? '(empty)'
+        : bluetoothDevice.remoteId.str;
+    _log.info(
+      '[ConnectFF1Notifier] Start connect attempt sessionId=${session.id} '
+      'deviceId=$deviceIdLabel '
+      'hasDeeplinkInfo=${ff1DeviceInfo != null}',
+    );
 
     final control = ref.read(ff1ControlProvider);
     var blDevice = bluetoothDevice;
@@ -178,7 +186,10 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
       );
       _assertSessionActive(session);
       await _handlePostConnect(blDevice, ff1DeviceInfo, session: session);
-      _log.info('[ConnectFF1Notifier] Successfully connected to device');
+      _log.info(
+        '[ConnectFF1Notifier] Post-connect completed sessionId=${session.id} '
+        'terminalState=${state.value.runtimeType}',
+      );
     } on FF1ConnectionCancelledError catch (_) {
       _log.info('[ConnectFF1Notifier] Connection cancelled by user');
       _setStateIfSessionActive(session, ConnectFF1Cancelled());
@@ -229,7 +240,22 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     _assertSessionActive(session);
 
     if (ensured == null) {
-      // Legacy behavior: VersionService dialog shown; do not transition state.
+      // Version check may return null (e.g. needUpdateApp) after showing a
+      // dialog. We must leave the Connecting state — otherwise the user
+      // stays on "Connecting via Bluetooth..." with no recovery.
+      _log.warning(
+        '[ConnectFF1Notifier] Ensure-ready returned null; '
+        'emitting error. sessionId=${session.id}',
+      );
+      _setStateIfSessionActive(
+        session,
+        ConnectFF1Error(
+          exception: Exception(
+            'This app version may be too old for this FF1. '
+            'If you saw an update prompt, finish that first, then try again.',
+          ),
+        ),
+      );
       session.completeWithOutcome(FF1ConnectOutcome.failed);
       return;
     }
@@ -261,6 +287,11 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
         portalIsSet: ensured.portalIsSet,
         isConnectedToInternet: ensured.isConnectedToInternet,
       ),
+    );
+    _log.info(
+      '[ConnectFF1Notifier] Emitted Connected sessionId=${session.id} '
+      'internet=${ensured.isConnectedToInternet} '
+      'portalIsSet=${ensured.portalIsSet}',
     );
 
     if (!ensured.isConnectedToInternet) {
@@ -334,6 +365,10 @@ class ConnectFF1Notifier extends AsyncNotifier<ConnectFF1State> {
     ConnectFF1State value,
   ) {
     if (_isSessionActive(session)) {
+      _log.fine(
+        '[ConnectFF1Notifier] emit state sessionId=${session.id} '
+        'type=${value.runtimeType}',
+      );
       state = AsyncValue.data(value);
     }
   }

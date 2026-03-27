@@ -231,13 +231,13 @@
 ## Screen: ConnectFF1Page
 
 - role in the flow: BLE connection progress, post-connect routing, and error handling
-- route / entry point: `/connect-ff1` (requires `ConnectFF1PagePayload` with `device`, optional `ff1DeviceInfo`, and optional `onConnectedToInternet` callback)
+- route / entry point: `/connect-ff1` (requires `ConnectFF1PagePayload` with `device` and optional `ff1DeviceInfo`)
 - important actions: cancel/retry, continue to device config or Wi-Fi flow
 - dependencies: `connectFF1Provider`, onboarding actions, FF1 device persistence providers
 - notes / caveats:
   - transitions to "still connecting" after 15 seconds
   - When `ff1DeviceInfo` is provided (from deeplink), skips get_info command and uses supplied metadata
-  - **Navigation contract**: FF1 setup side effects (device persistence, onboarding completion, Wi-Fi QR hide) are always owned by the FF1 setup orchestration layer. When `onConnectedToInternet` is null (default), the flow navigates to device configuration. When `onConnectedToInternet` is provided, it may override **navigation only** (for example scan-first deeplink flows that need a specific unwind path). Callers must not re-implement FF1 setup side effects in custom callbacks.
+  - **Navigation contract**: FF1 setup side effects (device persistence, onboarding completion, Wi-Fi QR hide) are owned by the FF1 setup orchestration layer. When the device is internet-ready, the flow navigates to device configuration. When the device is not internet-ready, the flow routes into the Wi-Fi provisioning steps.
 
 ## Screen: ScanWiFiNetworkScreen + EnterWiFiPasswordScreen
 

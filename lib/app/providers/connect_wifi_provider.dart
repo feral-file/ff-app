@@ -2,12 +2,15 @@
 // WiFi Network Model
 // ============================================================================
 
+// ignore_for_file: public_member_api_docs // Internal setup flow models.
+
 import 'package:app/app/ff1/ff1_ble_device_connect.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -15,6 +18,7 @@ import 'package:logging/logging.dart';
 final _log = Logger('WiFiConnectionNotifier');
 
 /// Represents a WiFi network/SSID
+@immutable
 class WiFiNetwork {
   const WiFiNetwork(this.ssid);
 
@@ -279,7 +283,8 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
       );
       final blDevice = device.toBluetoothDevice();
 
-      // Step 5: Send WiFi credentials (connect_wifi command) with automatic retry
+      // Step 5: Send WiFi credentials (connect_wifi command) with automatic
+      // retry.
       // Device will attempt to connect to WiFi and respond with topicId
       final response = await ref.read(
         ff1BleSendCommandProvider(
@@ -308,7 +313,9 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
           'No topicId in sendWifiCredentials response; device may already be '
           'online — calling keepWifi',
         );
-        topicId = await ref.read(ff1ControlProvider).keepWifi(blDevice: blDevice);
+        topicId = await ref
+            .read(ff1ControlProvider)
+            .keepWifi(blDevice: blDevice);
       }
       if (topicId.isEmpty) {
         throw const FF1BluetoothError('No topicId from device');
@@ -345,7 +352,7 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         error: e,
         message: 'Connection failed: ${e.message}',
       );
-    } catch (e, st) {
+    } on Object catch (e, st) {
       _log.severe('Unexpected error during connection', e, st);
       state = state.copyWith(
         status: WiFiConnectionStatus.error,

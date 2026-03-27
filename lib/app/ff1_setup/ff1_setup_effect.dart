@@ -1,3 +1,5 @@
+// ignore_for_file: public_member_api_docs // Internal app effects; not a public API.
+
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/wifi_point.dart';
@@ -73,4 +75,3 @@ final class FF1SetupShowError extends FF1SetupEffect {
 final class FF1SetupDeviceUpdating extends FF1SetupEffect {
   const FF1SetupDeviceUpdating();
 }
-

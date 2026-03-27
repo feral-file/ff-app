@@ -1,12 +1,14 @@
 # Vision/Execution Gap Tracker
 
 ## Purpose
+
 - Track gaps between intended product behavior and current implementation.
 - Keep vision gaps and engineering refactors visible without mixing them into
   unrelated feature PRs.
 - Provide a lightweight queue for follow-up work after shipping urgent fixes.
 
 ## How to use
+
 - Keep entries outcome-focused (what user/system behavior is missing or brittle).
 - Link each gap to owning flow(s) in `docs/project_spec.md` and
   `docs/app_flows.md`.
@@ -18,6 +20,7 @@
 - None.
 
 ## Refactor backlog (candidate follow-ups)
+
 - Introduce `GoldPathPatrolKeys` for onboarding primary/secondary actions and
   migrate remaining label-based taps to key-based taps.
 - Extract FF1 connect lifecycle into a dedicated session object (attempt id,
@@ -27,6 +30,7 @@
   deferred recovery) with typed status events for UI/test observability.
 
 ## Completed items
+
 - EV-01: Onboarding action controls now have stable automation anchors.
   - All onboarding action buttons (Next, Skip, Finish, Submit) use `GoldPathPatrolKeys`.
   - Gold-path test (`patrol_test/gold_path_test.dart`) taps all actions via key, not text.
@@ -39,7 +43,6 @@
 - EV-03: FF1 connect/setup orchestration is centralized under a single orchestrator.
   - `FF1SetupOrchestrator` owns attempt lifecycle, cancellation semantics, and routing outcomes (as typed one-off effects).
   - Connect + Wi‑Fi screens are driven by orchestrator state/effects instead of page-local routing/dialog handlers.
-  - `ConnectFF1PagePayload.onConnectedToInternet` is now navigation-only override; side effects remain owned by orchestration.
   - Evidence:
     - `lib/app/providers/ff1_setup_orchestrator_provider.dart`: orchestrator lifecycle + effect emission + action methods.
     - `lib/app/ff1_setup/ff1_setup_effect.dart` + `lib/app/ff1_setup/ff1_setup_models.dart`: effect/state models.

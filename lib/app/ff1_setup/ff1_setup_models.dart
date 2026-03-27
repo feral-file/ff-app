@@ -1,9 +1,8 @@
+import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
 import 'package:app/domain/models/ff1_device_info.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-
-import 'ff1_setup_effect.dart';
 
 enum FF1SetupStep {
   idle,
@@ -23,6 +22,7 @@ enum FF1SetupStep {
 }
 
 class FF1SetupState {
+
   const FF1SetupState({
     required this.step,
     this.effectId = 0,
@@ -33,6 +33,8 @@ class FF1SetupState {
     this.selectedDevice,
     this.deeplinkInfo,
   });
+  /// Sentinel for [copyWith]: omit [effect] to keep the current effect.
+  static const Object _unsetEffect = Object();
 
   final FF1SetupStep step;
 
@@ -58,7 +60,7 @@ class FF1SetupState {
   FF1SetupState copyWith({
     FF1SetupStep? step,
     int? effectId,
-    FF1SetupEffect? effect,
+    Object? effect = _unsetEffect,
     ConnectFF1Connected? connected,
     Exception? connectError,
     WiFiConnectionState? wifiState,
@@ -68,7 +70,9 @@ class FF1SetupState {
     return FF1SetupState(
       step: step ?? this.step,
       effectId: effectId ?? this.effectId,
-      effect: effect,
+      effect: identical(effect, _unsetEffect)
+          ? this.effect
+          : effect as FF1SetupEffect?,
       connected: connected ?? this.connected,
       connectError: connectError ?? this.connectError,
       wifiState: wifiState ?? this.wifiState,
