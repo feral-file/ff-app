@@ -175,7 +175,8 @@ void main() {
             ),
             ff1CurrentPlayerStatusProvider.overrideWithValue(status),
             ff1ConnectionStatusStreamProvider.overrideWith(
-              (ref) => Stream.value(const FF1ConnectionStatus(isConnected: true)),
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
             ),
             ff1DeviceConnectedProvider.overrideWithValue(true),
           ],
@@ -195,102 +196,107 @@ void main() {
         );
 
         await Future<void>.delayed(const Duration(milliseconds: 120));
-        expect(container.read(nowDisplayingProvider), isA<NowDisplayingSuccess>());
+        expect(
+          container.read(nowDisplayingProvider),
+          isA<NowDisplayingSuccess>(),
+        );
       },
     );
 
     test(
       'does not call indexer when slow DB cache already has window items',
       () async {
-      const deviceId = 'device_1';
-      const device = FF1Device(
-        name: 'FF1',
-        remoteId: 'r1',
-        deviceId: deviceId,
-        topicId: 'topic_1',
-      );
+        const deviceId = 'device_1';
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: deviceId,
+          topicId: 'topic_1',
+        );
 
-      final dp1Item = DP1PlaylistItem(
-        id: 'item_1',
-        duration: 60,
-        title: 'Work',
-        provenance: DP1Provenance(
-          type: DP1ProvenanceType.onChain,
-          contract: DP1Contract(
-            chain: DP1ProvenanceChain.evm,
-            standard: DP1ProvenanceStandard.erc721,
-            address: '0xabc',
-            tokenId: '1',
+        final dp1Item = DP1PlaylistItem(
+          id: 'item_1',
+          duration: 60,
+          title: 'Work',
+          provenance: DP1Provenance(
+            type: DP1ProvenanceType.onChain,
+            contract: DP1Contract(
+              chain: DP1ProvenanceChain.evm,
+              standard: DP1ProvenanceStandard.erc721,
+              address: '0xabc',
+              tokenId: '1',
+            ),
           ),
-        ),
-      );
+        );
 
-      const cid = 'eip155:1:erc721:0xabc:1';
-      final token = AssetToken(
-        id: 1,
-        cid: cid,
-        chain: 'eip155:1',
-        standard: 'ERC-721',
-        contractAddress: '0xabc',
-        tokenNumber: '1',
-        display: TokenMetadata(
-          name: 'Token Title',
-          imageUrl: 'https://example.com/thumb.jpg',
-        ),
-      );
-
-      final status = FF1PlayerStatus(
-        playlistId: 'pl_1',
-        currentWorkIndex: 0,
-        items: [dp1Item],
-      );
-
-      const cached = PlaylistItem(
-        id: 'item_1',
-        kind: PlaylistItemKind.indexerToken,
-        title: 'Already in DB',
-      );
-      final recordingSlow = _RecordingDatabaseService(
-        db,
-        cacheDelay: const Duration(milliseconds: 30),
-        cachedItemsById: {'item_1': cached},
-      );
-
-      final fakeIndexer = FakeIndexerService(tokensByCid: [token]);
-
-      final container = ProviderContainer.test(
-        overrides: [
-          databaseServiceProvider.overrideWith((ref) => recordingSlow),
-          indexerServiceProvider.overrideWithValue(fakeIndexer),
-          activeFF1BluetoothDeviceProvider.overrideWithValue(
-            const AsyncData(device),
+        const cid = 'eip155:1:erc721:0xabc:1';
+        final token = AssetToken(
+          id: 1,
+          cid: cid,
+          chain: 'eip155:1',
+          standard: 'ERC-721',
+          contractAddress: '0xabc',
+          tokenNumber: '1',
+          display: TokenMetadata(
+            name: 'Token Title',
+            imageUrl: 'https://example.com/thumb.jpg',
           ),
-          ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
-          ff1PlayerStatusStreamProvider.overrideWith(
-            (ref) => Stream.value(status),
-          ),
-          ff1CurrentPlayerStatusProvider.overrideWithValue(status),
-          ff1ConnectionStatusStreamProvider.overrideWith(
-            (ref) => Stream.value(const FF1ConnectionStatus(isConnected: true)),
-          ),
-          ff1DeviceConnectedProvider.overrideWithValue(true),
-        ],
-      );
-      addTearDown(container.dispose);
+        );
 
-      container.read(nowDisplayingProvider);
-      await Future<void>.delayed(Duration.zero);
-      // Wait past slow cache + async recompute; indexer must stay unused.
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+        final status = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: [dp1Item],
+        );
 
-      expect(
-        fakeIndexer.lastTokenCids,
-        isNull,
-        reason:
-            'getManualTokens must not run when items are already cached '
-            '(even if getPlaylistItemsByIds completes after a delay)',
-      );
-    });
+        const cached = PlaylistItem(
+          id: 'item_1',
+          kind: PlaylistItemKind.indexerToken,
+          title: 'Already in DB',
+        );
+        final recordingSlow = _RecordingDatabaseService(
+          db,
+          cacheDelay: const Duration(milliseconds: 30),
+          cachedItemsById: {'item_1': cached},
+        );
+
+        final fakeIndexer = FakeIndexerService(tokensByCid: [token]);
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingSlow),
+            indexerServiceProvider.overrideWithValue(fakeIndexer),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => Stream.value(status),
+            ),
+            ff1CurrentPlayerStatusProvider.overrideWithValue(status),
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container.read(nowDisplayingProvider);
+        await Future<void>.delayed(Duration.zero);
+        // Wait past slow cache + async recompute; indexer must stay unused.
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+
+        expect(
+          fakeIndexer.lastTokenCids,
+          isNull,
+          reason:
+              'getManualTokens must not run when items are already cached '
+              '(even if getPlaylistItemsByIds completes after a delay)',
+        );
+      },
+    );
 
     test(
       'discards stale recompute when player status updates during slow enrich',
