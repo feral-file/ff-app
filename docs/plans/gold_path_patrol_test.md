@@ -6,6 +6,7 @@ Automate the gold path as a Patrol-based UI test:
 
 - Steps 1–6: Fresh sync → canary present in Curated surface → open Channel/Playlist → Play on FF1 → FF1 cast initiated
 - Step 7: 4+ hour soak treated as configurable (short for CI, full for nightly) or separate run
+- CI: `.github/workflows/gold-path-ui.yml` runs **smoke** on PR (1 min soak) and **endurance** on the same nightly cron as `nightly-integration.yml` (default 240 min soak); see `.github/actions/gold-path-patrol/action.yml`.
 
 ## FF1 Device Injection (Bypass BLE Pairing)
 

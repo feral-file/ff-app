@@ -141,9 +141,14 @@ class FF1WifiConnectionState {
 /// Manages connection lifecycle and state for a single device.
 class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   FF1WifiControl get _control => ref.read(ff1WifiControlProvider);
+  late final StructuredLogger _slog;
 
   @override
   FF1WifiConnectionState build() {
+    _slog = AppStructuredLog.forLogger(
+      Logger('FF1WifiConnectionNotifier'),
+      context: {'component': 'ff1_wifi_connection_notifier'},
+    );
     return const FF1WifiConnectionState(isConnected: false);
   }
 
@@ -157,7 +162,24 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
     required String userId,
     required String apiKey,
   }) async {
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'connection_notifier_connect_requested',
+      message: 'connect requested by app layer',
+      payload: {
+        'deviceId': device.deviceId,
+        'topicId': device.topicId,
+        'stateConnected': state.isConnected,
+        'stateConnecting': state.isConnecting,
+      },
+    );
     if (state.isConnected && state.device?.topicId == device.topicId) {
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'connection_notifier_connect_skipped',
+        message: 'connect skipped because notifier is already connected',
+        payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
+      );
       return;
     }
 
@@ -175,10 +197,23 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         isConnecting: false,
         device: device,
       );
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'connection_notifier_connect_completed',
+        message: 'connect completed in notifier',
+        payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
+      );
     } on Exception catch (e) {
       state = state.copyWith(
         isConnected: false,
         isConnecting: false,
+        error: e,
+      );
+      _slog.warning(
+        category: LogCategory.wifi,
+        event: 'connection_notifier_connect_failed',
+        message: 'connect failed in notifier',
+        payload: {'deviceId': device.deviceId, 'error': e.toString()},
         error: e,
       );
       rethrow;
@@ -196,6 +231,16 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   /// backgrounded, the watcher calls disconnect(); without clearing state,
   /// reconnect() on resume would use the stale cached device.
   Future<void> disconnect() async {
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'connection_notifier_disconnect_requested',
+      message: 'disconnect requested by app layer',
+      payload: {
+        'deviceId': state.device?.deviceId,
+        'stateConnected': state.isConnected,
+        'stateConnecting': state.isConnecting,
+      },
+    );
     if (state.isConnected) {
       try {
         await _control.disconnect();
@@ -205,14 +250,39 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
     } else {
       state = const FF1WifiConnectionState(isConnected: false);
     }
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'connection_notifier_disconnect_completed',
+      message: 'disconnect completed in notifier',
+      payload: {'stateConnected': state.isConnected},
+    );
   }
 
   /// Pause connection when app goes to background.
   ///
   /// Closes WebSocket but preserves [state.device] for [reconnect] on resume.
   void pauseConnection() {
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'connection_notifier_pause_requested',
+      message: 'pause requested by app layer',
+      payload: {
+        'deviceId': state.device?.deviceId,
+        'stateConnected': state.isConnected,
+        'stateConnecting': state.isConnecting,
+      },
+    );
     _control.pauseConnection();
     state = state.copyWith(isConnected: false);
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'connection_notifier_pause_completed',
+      message: 'pause completed in notifier',
+      payload: {
+        'deviceId': state.device?.deviceId,
+        'stateConnected': state.isConnected,
+      },
+    );
   }
 
   /// Reconnect to device (using cached params)
@@ -220,7 +290,22 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   /// Does not set [isConnecting]; "Connecting" status is shown only for
   /// initial connect, not for background reconnects (app resume, etc.).
   Future<void> reconnect() async {
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'connection_notifier_reconnect_requested',
+      message: 'reconnect requested by app layer',
+      payload: {
+        'deviceId': state.device?.deviceId,
+        'stateConnected': state.isConnected,
+        'stateConnecting': state.isConnecting,
+      },
+    );
     if (state.device == null) {
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'connection_notifier_reconnect_skipped',
+        message: 'reconnect skipped: notifier has no cached device',
+      );
       return;
     }
 
@@ -228,9 +313,25 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       await _control.reconnect();
 
       state = state.copyWith(isConnected: true);
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'connection_notifier_reconnect_completed',
+        message: 'reconnect completed in notifier',
+        payload: {
+          'deviceId': state.device?.deviceId,
+          'stateConnected': state.isConnected,
+        },
+      );
     } on Exception catch (e) {
       state = state.copyWith(
         isConnected: false,
+        error: e,
+      );
+      _slog.warning(
+        category: LogCategory.wifi,
+        event: 'connection_notifier_reconnect_failed',
+        message: 'reconnect failed in notifier',
+        payload: {'deviceId': state.device?.deviceId, 'error': e.toString()},
         error: e,
       );
     }
