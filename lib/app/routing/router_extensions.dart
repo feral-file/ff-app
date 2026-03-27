@@ -17,7 +17,11 @@ extension SmartNavigation on GoRouter {
   /// - Currently on `/works/item-123`, call `smartPush('/works/item-123')`
   ///   → No-op (already on same work)
   void smartPush(String location) {
-    final currentUri = routerDelegate.currentConfiguration.uri.path;
+    // matchedLocation reflects the full matched path (e.g. /works/id).
+    // currentConfiguration.uri.path is often "/" with nested navigators / shell
+    // layouts, which breaks same-route-family detection.
+    final path = routerDelegate.state.matchedLocation;
+    final currentUri = path.isEmpty ? '/' : path;
     
     // Extract the base route (e.g., '/works' from '/works/item-123')
     final currentBase = _extractBaseRoute(currentUri);
