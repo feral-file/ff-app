@@ -299,7 +299,7 @@
   - `flutter pub get`
   - `flutter test`
   - `flutter analyze`
-  - `scripts/agent-helpers/post-implementation-checks [--dir DIR] [--all] [git-ref]`
+  - `scripts/agent-helpers/post-implementation-checks.sh [--dir DIR] [--all] [git-ref]`
   - `scripts/report_business_coverage.sh`
   - `flutter build apk --flavor development --release`
   - `flutter build apk --flavor production --release`

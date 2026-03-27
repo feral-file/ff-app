@@ -21,8 +21,10 @@ globs:
 - Do not skip integration tests for cross-module behavior.
 
 ## 3) Post-implementation verification (required)
-- Run: `scripts/agent-helpers/post-implementation-checks [--dir DIR] [--all] [git-ref]`
+- Run: `scripts/agent-helpers/post-implementation-checks.sh [--dir DIR] [--all] [git-ref]`
+- Default scope is changed Dart files.
 - Fix all reported issues, rerun until report is clean.
+- When only lint issues remain, use `scripts/agent-helpers/post-implementation-checks.sh --lint-only ...` for faster reruns, then run the full check again before considering the work done.
 - Run `flutter build` and ensure success.
 
 ## 4) Coverage non-regression

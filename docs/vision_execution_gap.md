@@ -52,7 +52,7 @@
       - `test/unit/app/providers/ff1_setup_orchestrator_effects_test.dart`
       - `test/unit/ui/screens/ff1_setup/connect_ff1_page_widget_test.dart`
   - Verification:
-    - `scripts/agent-helpers/post-implementation-checks HEAD`
+    - `scripts/agent-helpers/post-implementation-checks.sh HEAD`
     - `flutter build apk --debug --flavor development`
     - `scripts/report_business_coverage.sh`
 - EV-03 (Orbit 2): Gold-path CI separates **smoke** vs **endurance** evidence.

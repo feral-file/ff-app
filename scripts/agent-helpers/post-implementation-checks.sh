@@ -5,14 +5,16 @@ set -euo pipefail
 ##
 # Post-implementation checks for agent: auto-format changed files, lint, and test.
 # Outputs compact markdown suitable for LLM processing.
-# Runs dart fix, flutter analyze, and flutter test in parallel for speed.
+# Default scope is changed Dart files compared to a git ref.
 #
 # Usage:
-#   scripts/agent-helpers/post-implementation-checks [OPTIONS] [git-ref]
+#   scripts/agent-helpers/post-implementation-checks.sh [OPTIONS] [git-ref]
 #
 # Options:
 #   --dir DIR      Check all files in this directory (lib/infra, lib/app, etc.)
 #   --all          Skip git diff filtering; check all files in --dir (or all .dart files if no --dir)
+#   --skip-tests   Skip flutter test and run only fix + lint checks
+#   --lint-only    Alias for --skip-tests
 #
 # Args:
 #   git-ref        Compare changed files to this ref (default: HEAD)
@@ -26,18 +28,20 @@ set -euo pipefail
 # Output:
 #   Markdown report with:
 #   - Auto-formatted files (via dart fix)
-#   - Lint errors/warnings/infos (detailed message only, no severity codes)
+#   - Lint errors/warnings/infos from flutter analyze and optional custom_lint
 #   - Failed tests (file)
 #
 # Examples:
-#   scripts/agent-helpers/post-implementation-checks
-#   scripts/agent-helpers/post-implementation-checks --dir lib/infra --all
-#   DART_FIX_CONCURRENCY=16 scripts/agent-helpers/post-implementation-checks --dir lib/app
-#   scripts/agent-helpers/post-implementation-checks main
+#   scripts/agent-helpers/post-implementation-checks.sh
+#   scripts/agent-helpers/post-implementation-checks.sh --lint-only
+#   scripts/agent-helpers/post-implementation-checks.sh --dir lib/infra --all
+#   DART_FIX_CONCURRENCY=16 scripts/agent-helpers/post-implementation-checks.sh --dir lib/app
+#   scripts/agent-helpers/post-implementation-checks.sh main
 ##
 
 check_dir=""
 skip_git_filter=false
+skip_tests=false
 git_ref="HEAD"
 
 # Parse arguments
@@ -49,6 +53,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --all)
       skip_git_filter=true
+      shift
+      ;;
+    --skip-tests|--lint-only)
+      skip_tests=true
       shift
       ;;
     *)
@@ -80,6 +88,7 @@ trap cleanup EXIT
 changed_files_list="$tmp_dir/changed_files.txt"
 fixed_files_list="$tmp_dir/fixed_files.txt"
 lint_report="$tmp_dir/lint_report.txt"
+custom_lint_report="$tmp_dir/custom_lint_report.txt"
 test_report="$tmp_dir/test_report.txt"
 
 ##
@@ -113,10 +122,11 @@ fi
 changed_count=$(wc -l < "$changed_files_list")
 
 ##
-# 2 & 3. Run dart fix and flutter analyze in parallel (both on all files concurrently)
+# 2. Run dart fix first so lint reflects the final on-disk state.
 ##
 : > "$fixed_files_list"
 : > "$lint_report"
+: > "$custom_lint_report"
 
 # Function to process single file for dart fix
 process_dart_fix() {
@@ -181,47 +191,72 @@ process_analyze() {
 
 export -f process_dart_fix process_analyze
 
-# Run dart fix and flutter analyze in parallel (both start immediately)
-echo "Running dart fix and flutter analyze in parallel..." >&2
+# Run dart fix first so follow-up lint matches the code that would be committed.
+echo "Running dart fix..." >&2
 echo "  dart fix concurrency: $DART_FIX_CONCURRENCY files" >&2
-echo "  flutter analyze concurrency: $FLUTTER_ANALYZE_CONCURRENCY files" >&2
 
-(
-  cat "$changed_files_list" | xargs -P "$DART_FIX_CONCURRENCY" -I {} bash -c 'process_dart_fix "$@"' _ {} "$fixed_files_list"
-) &
-dart_fix_pid=$!
-
-(
-  cat "$changed_files_list" | xargs -P "$FLUTTER_ANALYZE_CONCURRENCY" -I {} bash -c 'process_analyze "$@"' _ {} "$lint_report"
-) &
-analyze_pid=$!
-
-# Wait for both to complete
-wait $dart_fix_pid
-wait $analyze_pid
+cat "$changed_files_list" | xargs -P "$DART_FIX_CONCURRENCY" -I {} bash -c 'process_dart_fix "$@"' _ {} "$fixed_files_list"
 
 ##
-# 4. Run flutter test with parallel test execution
+# 3. Run lint checks against the post-fix state.
+##
+echo "Running flutter analyze..." >&2
+echo "  flutter analyze concurrency: $FLUTTER_ANALYZE_CONCURRENCY files" >&2
+
+cat "$changed_files_list" | xargs -P "$FLUTTER_ANALYZE_CONCURRENCY" -I {} bash -c 'process_analyze "$@"' _ {} "$lint_report"
+
+custom_lint_available=false
+if [[ -f "custom_lint.yaml" ]] && grep -q "custom_lint" "pubspec.yaml"; then
+  custom_lint_available=true
+fi
+
+if [[ "$custom_lint_available" == true ]]; then
+  echo "Running custom_lint..." >&2
+  while IFS= read -r file; do
+    if [[ -z "$file" ]] || [[ "$file" == *.g.dart ]]; then
+      continue
+    fi
+
+    custom_lint_output="$(dart run custom_lint "$file" 2>&1 || true)"
+    custom_lint_lines="$(echo "$custom_lint_output" | grep -E "^[[:space:]]*[^[:space:]].*:[0-9]+:[0-9]+ .* • " || true)"
+
+    if [[ -z "$custom_lint_lines" ]]; then
+      continue
+    fi
+
+    {
+      echo "### $file"
+      echo ""
+      python3 -c $'import re, sys\nfor raw in sys.stdin:\n  line = raw.rstrip(\"\\n\")\n  if not line.strip():\n    continue\n  match = re.search(r\":(\\d+):(\\d+)\\s+(.+?)\\s+•\\s+(.+?)\\s+•\\s+(warning|error|info)\\b\", line)\n  if not match:\n    continue\n  line_no, col_no, message, rule_name, severity = match.groups()\n  print(f\"- {line_no}:{col_no} - {message} ({rule_name}, {severity})\")' <<<"$custom_lint_lines"
+      echo ""
+    } >> "$custom_lint_report"
+  done < "$changed_files_list"
+fi
+
+##
+# 4. Run flutter test with parallel test execution unless explicitly skipped.
 ##
 : > "$test_report"
 
-echo "Running flutter test (concurrency: $FLUTTER_TEST_CONCURRENCY)..." >&2
-test_output=$(flutter test --concurrency="$FLUTTER_TEST_CONCURRENCY" 2>&1 || true)
+if [[ "$skip_tests" == false ]]; then
+  echo "Running flutter test (concurrency: $FLUTTER_TEST_CONCURRENCY)..." >&2
+  test_output=$(flutter test --concurrency="$FLUTTER_TEST_CONCURRENCY" 2>&1 || true)
 
-# Check if there are failures
-if echo "$test_output" | grep -E "(FAILED|EXCEPTION|ERROR)" > /dev/null; then
-  # Extract test files/test names with failures
-  # Format: "✗ Some test description (test/some_test.dart:123)"
-  # We want: "test/some_test.dart - Some test description"
-  echo "$test_output" | grep -E "✗ " | while read -r line; do
-    # Extract test name and file
-    test_name=$(echo "$line" | sed 's/✗ //;s/ (test\/.*//')
-    test_file=$(echo "$line" | sed -E 's/.*\(test\/(.*\.dart).*/test\/\1/' || echo "")
-    
-    if [[ -n "$test_file" ]] && [[ "$test_file" != "test/" ]]; then
-      echo "- $test_file - $test_name" >> "$test_report"
-    fi
-  done || true
+  # Check if there are failures
+  if echo "$test_output" | grep -E "(FAILED|EXCEPTION|ERROR)" > /dev/null; then
+    # Extract test files/test names with failures
+    # Format: "✗ Some test description (test/some_test.dart:123)"
+    # We want: "test/some_test.dart - Some test description"
+    echo "$test_output" | grep -E "✗ " | while read -r line; do
+      # Extract test name and file
+      test_name=$(echo "$line" | sed 's/✗ //;s/ (test\/.*//')
+      test_file=$(echo "$line" | sed -E 's/.*\(test\/(.*\.dart).*/test\/\1/' || echo "")
+      
+      if [[ -n "$test_file" ]] && [[ "$test_file" != "test/" ]]; then
+        echo "- $test_file - $test_name" >> "$test_report"
+      fi
+    done || true
+  fi
 fi
 
 ##
@@ -238,6 +273,11 @@ fi
     echo "- Compared to: \`$git_ref\`"
   else
     echo "- Mode: all files (git filtering disabled)"
+  fi
+  if [[ "$skip_tests" == true ]]; then
+    echo "- Tests: skipped (\`--skip-tests\` / \`--lint-only\`)"
+  else
+    echo "- Tests: enabled"
   fi
   echo ""
   
@@ -264,9 +304,27 @@ fi
     echo "None found."
     echo ""
   fi
+
+  if [[ "$custom_lint_available" == true ]]; then
+    if [[ -s "$custom_lint_report" ]]; then
+      echo "### Custom Lint Issues"
+      echo ""
+      cat "$custom_lint_report"
+    else
+      echo "### Custom Lint Issues"
+      echo ""
+      echo "None found."
+      echo ""
+    fi
+  fi
   
   # Test report
-  if [[ -s "$test_report" ]]; then
+  if [[ "$skip_tests" == true ]]; then
+    echo "### Test Failures"
+    echo ""
+    echo "Skipped."
+    echo ""
+  elif [[ -s "$test_report" ]]; then
     echo "### Test Failures"
     echo ""
     cat "$test_report"
