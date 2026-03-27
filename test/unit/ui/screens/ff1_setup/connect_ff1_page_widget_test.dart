@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
+import 'package:app/app/providers/connect_wifi_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -92,6 +93,7 @@ void main() {
             connectFF1Provider.overrideWith(
               () => _FakeConnectFF1Notifier(connectedState),
             ),
+            connectWiFiProvider.overrideWith(_IdleWifiNotifier.new),
             ff1BluetoothDeviceActionsProvider.overrideWith(
               _FakeFF1BluetoothDeviceActionsNotifier.new,
             ),
@@ -159,6 +161,7 @@ void main() {
             connectFF1Provider.overrideWith(
               () => _FakeConnectFF1Notifier(connectedState),
             ),
+            connectWiFiProvider.overrideWith(_IdleWifiNotifier.new),
             ff1BluetoothDeviceActionsProvider.overrideWith(
               _FakeFF1BluetoothDeviceActionsNotifier.new,
             ),
@@ -250,6 +253,7 @@ void main() {
             connectFF1Provider.overrideWith(
               () => _FakeConnectFF1Notifier(connectingState),
             ),
+            connectWiFiProvider.overrideWith(_IdleWifiNotifier.new),
             ff1BluetoothDeviceActionsProvider.overrideWith(
               _FakeFF1BluetoothDeviceActionsNotifier.new,
             ),
@@ -313,6 +317,13 @@ void main() {
   // this file and broader orchestration/provider tests elsewhere.
 }
 
+/// Wi‑Fi idle so setup derivation does not override connect with Wi‑Fi steps
+/// during FF1 connect widget tests.
+class _IdleWifiNotifier extends WiFiConnectionNotifier {
+  @override
+  WiFiConnectionState build() => const WiFiConnectionState();
+}
+
 class _FakeConnectFF1Notifier extends ConnectFF1Notifier {
   _FakeConnectFF1Notifier(this._nextState);
 
@@ -331,6 +342,9 @@ class _FakeConnectFF1Notifier extends ConnectFF1Notifier {
     // Match production: Connecting → Connected so the orchestrator always sees
     // a recognized prior connect state (not Loading→Data with no data prev).
     state = AsyncValue.data(ConnectFF1Connecting(blDevice: bluetoothDevice));
+    // Yield so Riverpod and [FF1SetupOrchestratorNotifier.build] can observe
+    // Connecting before Connected (mirrors real async connect).
+    await Future<void>.value();
     state = AsyncValue.data(_nextState);
   }
 }
