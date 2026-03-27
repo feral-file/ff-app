@@ -207,13 +207,29 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
   void _handleDeeplinkNavigation(DeeplinkNavigationAction action) {
     if (action.type == DeeplinkType.deviceConnect) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
+      final setupPayload = StartSetupFf1PagePayload(deeplink: action.link);
+      if (action.source == DeeplinkSource.scan) {
+        // In-app QR scan: stack setup on the current route.
         unawaited(
-          widget.router.pushReplacement(
+          widget.router.push(
             Routes.startSetupFf1,
-            extra: StartSetupFf1PagePayload(deeplink: action.link),
+            extra: setupPayload,
           ),
+        );
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        _log.info(
+          'Handling device-connect deeplink go to ${Routes.startSetupFf1}',
+        );
+        // Use go() instead of replacement/push because Android cold start can
+        // deliver an app link before GoRouter has an active top route.
+        widget.router.go(
+          Routes.startSetupFf1,
+          extra: setupPayload,
         );
       });
       return;

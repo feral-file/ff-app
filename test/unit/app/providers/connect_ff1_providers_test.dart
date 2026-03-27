@@ -44,6 +44,52 @@ void main() {
   });
 
   test(
+    'cancel during Bluetooth-off wait completes without unhandled error (P1)',
+    () async {
+      // Codex P1: session.cancel() must complete the BT-ready completer with
+      // FF1ConnectionCancelledError so connectBle's catch handles it — not a
+      // private error type that would fall through to Exception.
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1ControlProvider.overrideWithValue(_BluetoothOffControl()),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(connectFF1Provider.future);
+
+      final notifier = container.read(connectFF1Provider.notifier);
+      const info = FF1DeviceInfo(
+        deviceId: 'FF1-TEST',
+        topicId: '',
+        isConnectedToInternet: false,
+        branchName: 'release',
+        version: '1.0.0',
+      );
+      final emptyDevice = BluetoothDevice.fromId('');
+
+      final connectFuture = notifier.connectBle(
+        emptyDevice,
+        ff1DeviceInfo: info,
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(
+        container.read(connectFF1Provider).value,
+        isA<ConnectFF1BluetoothOff>(),
+      );
+
+      notifier.cancelConnection();
+
+      await expectLater(connectFuture, completes);
+      expect(
+        container.read(connectFF1Provider).value,
+        isA<ConnectFF1Cancelled>(),
+      );
+    },
+  );
+
+  test(
     'starting a new connect attempt cancels previous active session immediately',
     () async {
       final factory = _RecordingSessionFactory();
