@@ -121,6 +121,7 @@
   - no active device: now-displaying bar shows pair/connect guidance (invisible when not pairing)
   - disconnected state: now-displaying bar reflects connection transitions
   - enrichment failures do not block playback UI (fallback DP-1 item data remains)
+  - now-displaying **awaits** the local SQLite read for the current window (`getPlaylistItemsByIds` via `nowDisplayingCachedPlaylistItemsProvider`) before computing cache misses and indexer enrichment, so missing rows match the DB and spurious indexer work is avoided. Until that async read finishes, the notifier keeps its prior `NowDisplayingStatus` (typically the initial state on first load); after it completes, success uses DP-1 fields for any row still not in cache.
 
 ### Flow: Maintenance and recovery
 - Trigger: settings actions or remote config checks.
@@ -218,7 +219,7 @@
 - Purpose: monitor current playback and send interaction commands.
 - Entry points: global now-displaying bar (navigates to work detail), `/keyboard-control`.
 - Key actions: view current work/device state, open interact mode, send keyboard/touchpad commands.
-- Important data: active device, connection state, player status item list/current index, cached enrichment window.
+- Important data: active device, connection state, player status item list/current index, and a bounded window of items loaded from local SQLite then optionally enriched from the indexer. The notifier awaits that window cache read before publishing updated success so enrichment decisions see real cache contents.
 - Related modules: `now_displaying_provider`, `ff1_wifi_providers`, touchpad/keyboard events.
 
 ### Screen group: Settings / Release Notes / Document Viewer
@@ -273,7 +274,7 @@
 - FF1 device
   - Persisted paired device identity (BLE id + topic id + branch info) used for active-device control.
 - Now displaying object
-  - Derived runtime view of active device + currently playing items/index.
+  - Derived runtime view of active device + currently playing items/index. The flow awaits local rows for the visible window, then fills gaps with DP-1 payload fields and optional indexer-backed metadata for true cache misses.
 
 ## 8. Key constraints and invariants
 - Riverpod remains the single flow driver for shared app/business state and FF1 external events.
@@ -289,6 +290,7 @@
     usable local read path when the file is still valid (see seed sync service).
   - pending addresses added before seed readiness must be migrated post-seed
 - Playback/control flows should remain resilient to enrichment failures (fallback item data still usable).
+- Now-displaying may wait on the bounded SQLite window read before updating success; enrichment/indexer failures still leave DP-1 fallback fields usable.
 - Large flow/screen changes must preserve existing onboarding, address-indexing, and FF1 setup reliability paths.
 
 ## 9. Verification strategy

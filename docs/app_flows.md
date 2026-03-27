@@ -159,6 +159,7 @@
   - build DP-1 payload and cast via canvas client to selected device
   - now-displaying state derives from active device + relayer player/device streams
   - now-displaying bar displays current item and appears as floating overlay
+  - for the visible index window, the app awaits matching rows from local SQLite, then may call the indexer only for items still missing after that read; live DP-1 fields from the device fill gaps and cover enrichment failures
   - user taps bar to navigate to current work detail (or already there)
   - optional: user opens Interact screen for keyboard/touchpad control
 - success state: active playback visible and controllable from app
@@ -166,6 +167,7 @@
   - no paired device -> bar hidden (invisible, no guidance shown)
   - disconnected device -> bar shows disconnected state
   - enrichment/cache misses fall back to basic DP-1 item fields
+  - slow SQLite window reads delay publishing updated now-displaying success until the read completes (prior bar state is unchanged until then)
 - key screens involved: Work Detail, Playlist Detail, Keyboard Control, Now Displaying Bar (overlay)
 - key modules/services involved: `canvas_client_service_v2`, `now_displaying_provider`, `ff1_wifi_providers`, `ff1_device_provider`
 

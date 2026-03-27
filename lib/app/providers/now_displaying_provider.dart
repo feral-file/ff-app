@@ -116,6 +116,10 @@ final nowDisplayingProvider =
     );
 
 class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
+  /// Increments on each [_recompute] so a slow async compute cannot overwrite
+  /// state after a newer FF1/device/player update has already been applied.
+  int _recomputeToken = 0;
+
   @override
   NowDisplayingStatus build() {
     // Trigger recompute whenever these sources change.
@@ -157,9 +161,13 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   }
 
   void _recompute() {
+    final token = ++_recomputeToken;
     unawaited(
       Future.microtask(() async {
         final status = await _computeStatus();
+        if (token != _recomputeToken) {
+          return;
+        }
         state = status;
       }),
     );
@@ -226,8 +234,9 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     // and enrichment work). Waiting for .future matches the actual cache state.
     List<PlaylistItem> cachedList;
     try {
-      cachedList =
-          await ref.read(nowDisplayingCachedPlaylistItemsProvider.future);
+      cachedList = await ref.read(
+        nowDisplayingCachedPlaylistItemsProvider.future,
+      );
     } on Object catch (_) {
       // Prior behavior: treat failed cache read like empty cache (no hits).
       cachedList = <PlaylistItem>[];
@@ -282,11 +291,11 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   /// Only attempts enrichment for items not already in cache (cache-first contract).
   /// Items without CID or those not found by indexer are not cached; they remain
   /// as DP1 fallback in now-displaying but are not persisted to avoid stale data.
-  /// 
+  ///
   /// On indexer failure, returns empty map; cached items are served normally,
   /// preserving offline-first contract. Does not invalidate cache to avoid
   /// infinite recompute loops.
-  /// 
+  ///
   /// Returns a map of item id to enriched [PlaylistItem] for items successfully
   /// saved to cache.
   Future<Map<String, PlaylistItem>> _enrichMissingNowDisplayingItems(
