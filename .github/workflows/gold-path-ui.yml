@@ -6,12 +6,16 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
+      # Keep these explicit so workflow-only or gold-path-entrypoint edits always
+      # retrigger the smoke matrix, even when broader globs get refactored later.
+      - ".github/workflows/gold-path-ui.yml"
+      - ".github/actions/gold-path-patrol/action.yml"
+      - "patrol_test/gold_path_test.dart"
       - "lib/**"
       - "patrol_test/**"
       - "test/integration/**"
       - "ios/**"
       - "android/**"
-      - ".github/workflows/gold-path-ui.yml"
       - ".github/actions/gold-path-patrol/**"
       - pubspec.yaml
   schedule:

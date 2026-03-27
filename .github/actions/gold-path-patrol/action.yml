@@ -54,7 +54,17 @@ runs:
       if: ${{ inputs.platform == 'android' }}
       shell: bash
       run: |
+        # `yes` exits with SIGPIPE once `sdkmanager` stops reading after accepting
+        # all licenses. We only care whether `sdkmanager` succeeded, so capture its
+        # exit code explicitly instead of letting `pipefail` treat the broken pipe
+        # from `yes` as a workflow failure.
+        set +o pipefail
         yes | sdkmanager --licenses >/dev/null
+        license_status=${PIPESTATUS[1]}
+        set -o pipefail
+        if [ "$license_status" -ne 0 ]; then
+          exit "$license_status"
+        fi
         sdkmanager \
           "platform-tools" \
           "platforms;android-$ANDROID_API_LEVEL" \
