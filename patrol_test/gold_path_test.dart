@@ -273,7 +273,11 @@ Future<void> _openCanaryWork(
   await _openCanaryWorkUntilPlayTargetVisible(
     $,
     tapWork: () async {
-      await workThumbnails.at(0).tap();
+      await _tapVisibleInScrollableContext(
+        $,
+        workThumbnails.at(0),
+        description: 'first canary work thumbnail',
+      );
     },
   );
 }
@@ -297,6 +301,33 @@ Future<void> _openCanaryWorkUntilPlayTargetVisible(
 
   throw TimeoutException(
     'Timed out opening canary work before FF1 play controls became visible.',
+  );
+}
+
+Future<void> _tapVisibleInScrollableContext(
+  PatrolIntegrationTester $,
+  PatrolFinder finder, {
+  required String description,
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+
+  while (DateTime.now().isBefore(deadline)) {
+    try {
+      await finder.waitUntilExists(timeout: const Duration(seconds: 2));
+      await $.tester.ensureVisible(finder.first);
+      await $.pump(const Duration(milliseconds: 250));
+    } on Exception {
+      await $.pump(const Duration(milliseconds: 250));
+    }
+
+    if (await _tryTapVisible($, finder, timeout: const Duration(seconds: 2))) {
+      return;
+    }
+  }
+
+  throw TimeoutException(
+    'Timed out tapping $description after waiting for a hit-testable target.',
   );
 }
 
