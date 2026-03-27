@@ -85,10 +85,12 @@ const ARGS = parseArgs(process.argv.slice(2));
 const NOW_US = String(Date.now() * 1000);
 const FALLBACK_THUMBNAIL_URI = 'assets/images/no_thumbnail.svg';
 
-main().catch((error) => {
-  console.error(`[error] ${error?.stack || String(error)}`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`[error] ${error?.stack || String(error)}`);
+    process.exit(1);
+  });
+}
 
 async function main() {
   ensureSqliteCli();
@@ -156,22 +158,36 @@ async function main() {
         channel.id,
         ARGS.maxPlaylistsPerChannel,
       );
+      const derivedPublisher = mergePublisherAttribution(
+        derivePublisherAttribution({
+          baseUrl: channelRef.baseUrl,
+          source: channel,
+        }),
+        {
+          publisherKey: channelRef.publisherKey,
+          publisherTitle: channelRef.publisherTitle,
+        },
+      );
       fetchedByOrder[index] = {
+        id: channel.id,
         channel,
         channelPlaylists,
         baseUrl: channelRef.baseUrl,
-        publisherId: channelRef.publisherId,
-        publisherTitle: channelRef.publisherTitle,
+        publisherKey: derivedPublisher.publisherKey,
+        publisherTitle: derivedPublisher.publisherTitle,
       };
     },
+  );
+  const finalizedFetchedByOrder = finalizeChannelReferences(
+    fetchedByOrder.filter(Boolean),
   );
 
   for (
     let channelSortOrder = 0;
-    channelSortOrder < fetchedByOrder.length;
+    channelSortOrder < finalizedFetchedByOrder.length;
     channelSortOrder += 1
   ) {
-    const fetched = fetchedByOrder[channelSortOrder];
+    const fetched = finalizedFetchedByOrder[channelSortOrder];
     if (!fetched) {
       continue;
     }
@@ -351,19 +367,19 @@ async function fetchChannelsFromFeedEndpoint(rawFeedEndpoint) {
     if (!channel?.id) {
       continue;
     }
+    const publisher = derivePublisherAttribution({
+      baseUrl,
+      source: channel,
+    });
     out.push({
       id: String(channel.id),
       baseUrl,
       channelUrl: `${baseUrl}/api/v1/channels/${encodeURIComponent(channel.id)}`,
-      publisherId: 1,
-      publisherTitle: 'Feral File',
+      publisherKey: publisher.publisherKey,
+      publisherTitle: publisher.publisherTitle,
     });
   }
-  const deduped = new Map();
-  for (const channel of out) {
-    deduped.set(`${channel.baseUrl}::${channel.id}`, channel);
-  }
-  return [...deduped.values()];
+  return finalizeChannelReferences(out);
 }
 
 function normalizeOrigin(rawUrl) {
@@ -392,28 +408,37 @@ function extractChannelsFromRegistry(publishers) {
   const channels = [];
   for (let i = 0; i < publishers.length; i += 1) {
     const publisher = publishers[i];
-    const publisherId = i + 1;
-    const publisherTitle = String(publisher?.name || '').trim() || `Publisher ${publisherId}`;
+    const publisherTitle = String(publisher?.name || '').trim()
+      || null;
+    const registryPublisherKey = derivePublisherAttribution({
+      baseUrl: null,
+      source: {
+        publisher,
+        publisherTitle,
+      },
+      preferExplicitIdentity: true,
+    });
     const channelUrls = Array.isArray(publisher?.channel_urls)
       ? publisher.channel_urls
       : [];
+    const parsedChannels = channelUrls
+      .map((rawChannelUrl) => parseChannelUrl(rawChannelUrl))
+      .filter(Boolean);
+    const registryFallbackKey = isExplicitPublisherKey(registryPublisherKey.publisherKey)
+      ? registryPublisherKey.publisherKey
+      : buildRegistryPublisherFallbackKey(parsedChannels);
     for (const rawChannelUrl of channelUrls) {
       const parsed = parseChannelUrl(rawChannelUrl);
       if (parsed) {
         channels.push({
           ...parsed,
-          publisherId,
-          publisherTitle,
+          publisherKey: registryFallbackKey,
+          publisherTitle: registryPublisherKey.publisherTitle,
         });
       }
     }
   }
-
-  const deduped = new Map();
-  for (const channel of channels) {
-    deduped.set(`${channel.baseUrl}::${channel.id}`, channel);
-  }
-  return [...deduped.values()];
+  return finalizeChannelReferences(channels);
 }
 
 function extractChannelsFromPublishArtifact(payload) {
@@ -427,17 +452,200 @@ function extractChannelsFromPublishArtifact(payload) {
     if (!parsed) {
       continue;
     }
+    const publisher = derivePublisherAttribution({
+      baseUrl: parsed.baseUrl,
+      source: exhibition,
+    });
     channels.push({
       ...parsed,
-      publisherId: 1,
-      publisherTitle: 'Feral File',
+      publisherKey: publisher.publisherKey,
+      publisherTitle: publisher.publisherTitle,
     });
   }
-  const deduped = new Map();
-  for (const channel of channels) {
-    deduped.set(`${channel.baseUrl}::${channel.id}`, channel);
+  return finalizeChannelReferences(channels);
+}
+
+function derivePublisherAttribution({baseUrl, source, preferExplicitIdentity = false}) {
+  const explicitTitle = extractPublisherTitle(source);
+  const explicitKey = extractPublisherKey(source);
+  const normalizedOrigin = safeNormalizeOrigin(baseUrl);
+  const publisherTitle = explicitTitle
+    || deriveExplicitPublisherFallbackTitle(explicitKey)
+    || derivePublisherTitleFromOrigin(normalizedOrigin);
+  const publisherKey = explicitKey
+    ? buildExplicitPublisherKey({
+      explicitKey,
+      normalizedOrigin,
+      preferExplicitIdentity,
+    })
+    : buildOriginScopedPublisherKey({
+      explicitTitle,
+      normalizedOrigin,
+    });
+  return {
+    publisherKey,
+    publisherTitle,
+  };
+}
+
+function extractPublisherKey(source) {
+  const candidates = [
+    source?.publisher?.id,
+    source?.source?.id,
+    source?.publisherId,
+    source?.sourceId,
+  ];
+  for (const candidate of candidates) {
+    if (candidate === null || candidate === undefined) {
+      continue;
+    }
+    const normalized = String(candidate).trim();
+    if (normalized) {
+      return normalized;
+    }
   }
-  return [...deduped.values()];
+  return null;
+}
+
+function extractPublisherTitle(source) {
+  const candidates = [
+    source?.publisher?.name,
+    source?.publisher?.title,
+    typeof source?.publisher === 'string' ? source.publisher : null,
+    source?.source?.name,
+    source?.source?.title,
+    typeof source?.source === 'string' ? source.source : null,
+    source?.publisherTitle,
+    source?.sourceTitle,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizePublisherTitle(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+function normalizePublisherTitle(rawTitle) {
+  if (typeof rawTitle !== 'string') {
+    return null;
+  }
+  const normalized = rawTitle.trim();
+  return normalized || null;
+}
+
+function deriveExplicitPublisherFallbackTitle(explicitKey) {
+  if (explicitKey === null || explicitKey === undefined) {
+    return null;
+  }
+  const normalized = String(explicitKey).trim();
+  return normalized ? `Publisher ${normalized}` : null;
+}
+
+function buildExplicitPublisherKey({
+  explicitKey,
+  normalizedOrigin,
+  preferExplicitIdentity,
+}) {
+  const keyPrefix = `id:${explicitKey}`;
+  if (preferExplicitIdentity) {
+    return keyPrefix;
+  }
+  // Source-provided ids are usually origin-local, so namespace them by origin
+  // to prevent different feeds from collapsing into the same publisher row.
+  return normalizedOrigin
+    ? `${keyPrefix}::origin:${normalizedOrigin}`
+    : keyPrefix;
+}
+
+function buildOriginScopedPublisherKey({explicitTitle, normalizedOrigin}) {
+  const normalizedTitle = explicitTitle
+    ? `title:${explicitTitle.toLowerCase()}`
+    : null;
+  if (normalizedOrigin) {
+    return normalizedTitle
+      ? `${normalizedTitle}::origin:${normalizedOrigin}`
+      : `origin:${normalizedOrigin}`;
+  }
+  return normalizedTitle;
+}
+
+function buildRegistryPublisherFallbackKey(parsedChannels) {
+  const normalizedChannelUrls = [...new Set(
+    parsedChannels
+      .map((channel) => canonicalizeChannelRef(channel))
+      .filter(Boolean),
+  )].sort((left, right) => left.localeCompare(right));
+  if (normalizedChannelUrls.length === 0) {
+    return null;
+  }
+  return `registry_urls:${normalizedChannelUrls.join('|')}`;
+}
+
+function canonicalizeChannelRef(channel) {
+  if (!channel?.baseUrl || !channel?.id) {
+    return null;
+  }
+  return `${trimSlash(channel.baseUrl)}/api/v1/channels/${encodeURIComponent(channel.id)}`;
+}
+
+function derivePublisherTitleFromOrigin(origin) {
+  if (!origin) {
+    return null;
+  }
+  try {
+    const url = new URL(origin);
+    return url.host.replace(/^www\./u, '') || origin;
+  } catch {
+    return origin;
+  }
+}
+
+function safeNormalizeOrigin(rawUrl) {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+    return null;
+  }
+  try {
+    return normalizeOrigin(rawUrl);
+  } catch {
+    return null;
+  }
+}
+
+function finalizeChannelReferences(channels) {
+  const dedupedChannels = new Map();
+  for (const channel of channels) {
+    dedupedChannels.set(`${channel.baseUrl}::${channel.id}`, channel);
+  }
+
+  const publisherTitlesByKey = new Map();
+  for (const channel of dedupedChannels.values()) {
+    if (!channel.publisherKey || !channel.publisherTitle) {
+      continue;
+    }
+    if (!publisherTitlesByKey.has(channel.publisherKey)) {
+      publisherTitlesByKey.set(channel.publisherKey, channel.publisherTitle);
+    }
+  }
+
+  // Sort by the derived source key so publisher ids stay deterministic for the
+  // same set of sources even when input order changes across builds.
+  const publisherIdsByKey = new Map(
+    [...publisherTitlesByKey.keys()]
+      .sort((left, right) => left.localeCompare(right))
+      .map((key, index) => [key, index + 1]),
+  );
+
+  return [...dedupedChannels.values()].map((channel) => ({
+    ...channel,
+    publisherId: channel.publisherKey
+      ? (publisherIdsByKey.get(channel.publisherKey) ?? null)
+      : null,
+    publisherTitle: channel.publisherKey
+      ? (publisherTitlesByKey.get(channel.publisherKey) ?? channel.publisherTitle)
+      : channel.publisherTitle,
+  }));
 }
 
 async function loadJsonSource(source) {
@@ -585,6 +793,39 @@ function ingestChannel(
     updated_at_us: createdAtUs,
     sort_order: Number.isFinite(sortOrder) ? sortOrder : null,
   });
+}
+
+function mergePublisherAttribution(primary, fallback) {
+  if (isUnscopedExplicitPublisherKey(fallback?.publisherKey)) {
+    return {
+      publisherKey: fallback.publisherKey,
+      publisherTitle: fallback.publisherTitle || primary?.publisherTitle || null,
+    };
+  }
+  if (isExplicitPublisherKey(primary?.publisherKey)) {
+    return {
+      publisherKey: primary.publisherKey,
+      publisherTitle: primary.publisherTitle || fallback?.publisherTitle || null,
+    };
+  }
+  if (isExplicitPublisherKey(fallback?.publisherKey)) {
+    return {
+      publisherKey: fallback.publisherKey,
+      publisherTitle: fallback.publisherTitle || primary?.publisherTitle || null,
+    };
+  }
+  return {
+    publisherKey: primary?.publisherKey || fallback?.publisherKey || null,
+    publisherTitle: primary?.publisherTitle || fallback?.publisherTitle || null,
+  };
+}
+
+function isExplicitPublisherKey(publisherKey) {
+  return typeof publisherKey === 'string' && publisherKey.startsWith('id:');
+}
+
+function isUnscopedExplicitPublisherKey(publisherKey) {
+  return isExplicitPublisherKey(publisherKey) && !publisherKey.includes('::origin:');
 }
 
 function ingestChannelPlaylists(data, channel, playlists, baseUrl) {
@@ -1653,3 +1894,11 @@ async function fetchJson(url, options = {}) {
     throw new Error(`Invalid JSON from ${url}: ${error}`);
   }
 }
+
+module.exports = {
+  derivePublisherAttribution,
+  extractChannelsFromPublishArtifact,
+  extractChannelsFromRegistry,
+  finalizeChannelReferences,
+  normalizeOrigin,
+};

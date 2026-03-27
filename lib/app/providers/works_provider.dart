@@ -12,7 +12,8 @@ import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/infra/services/indexer_service_isolate.dart' show IndexerServiceIsolate;
+import 'package:app/infra/services/indexer_service_isolate.dart'
+    show IndexerServiceIsolate;
 import 'package:app/util/content_type_resolver.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

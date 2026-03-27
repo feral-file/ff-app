@@ -3,11 +3,13 @@
 This file defines repository-level constraints for coding agents. Detailed implementation behavior remains in `.cursor/rules/`.
 
 ## Repository overview
+
 - Project: Feral File Mobile app (Flutter) for The Digital Art System.
 - Domain lock: `Channel`, `Playlist`, `Work` only.
 - Architecture posture: offline-first local DP-1 read model + FF1 controller.
 
 ## Non-negotiables
+
 - Prefer replacing or deleting flawed code paths over narrow local tweaks when solving an issue. If a broader rewrite produces a clearer design, choose it.
 - Do not preserve legacy behavior, compatibility shims, migrations, or transitional paths unless explicitly requested.
 - Prefer stateless, testable services/utilities by default; use stateful services only when lifecycle/orchestration/session behavior truly requires state.
@@ -15,7 +17,9 @@ This file defines repository-level constraints for coding agents. Detailed imple
 - Those comments should explain `why` the code exists, the constraints/invariants it must preserve, failure or edge cases, trade-offs, and when useful the pros/cons of the chosen approach versus alternatives. Do not waste comments on restating obvious syntax.
 
 ## Spec-driven workflow (required)
+
 Before implementing any major feature, flow change, or architectural refactor:
+
 1. Read `docs/project_spec.md`.
 2. Read `docs/app_flows.md`.
 3. Summarize the relevant current flow(s), screen responsibilities, and constraints/invariants.
@@ -27,7 +31,25 @@ Canonical large-feature sequence:
 
 If work is large/architectural and no feature spec exists, do not proceed directly to implementation.
 
+## ExecPlans
+
+When writing a big feature, major flow change, significant refactor, or handling a vague command with unclear requirements, use an execution plan as described in `PLANS.md`.
+
+Use `PLANS.md` only when the work is large enough or vague enough that it needs research, branching design exploration, and staged delivery. Do not use `PLANS.md` for small direct code changes, narrow fixes, isolated test updates, or when the user already provided a detailed plan with concrete steps and TODOs.
+
+When `PLANS.md` is activated, follow it exactly:
+
+1. Read `PLANS.md` before proposing the plan.
+2. Read `docs/project_spec.md` and `docs/app_flows.md`.
+3. Summarize the current relevant flow, responsibilities, and invariants.
+4. If requirements are unclear or repository docs feel incomplete, stale, contradictory, or too low-level, stop and ask the user for clarification or higher-level context such as internal docs, Figma, or API references.
+5. For big or vague work, branch into multiple designs with trade-offs, constraints, and risks.
+6. Define test cases first for every option, following `.cursor/rules/35-testing-tdd.mdc`.
+7. Ask the user to choose when the surviving branches differ materially in behavior, architecture, scope, risk, or rollout.
+8. Prefer multi-pass milestones that can land as small PRs instead of one large implementation.
+
 ## Required development sequence (behavior changes)
+
 1. Write small, testable unit functions first.
 2. Write unit tests for those functions.
 3. Write integration tests next, with `.env` provisioned, and define expected integration outputs before implementation.
@@ -36,6 +58,7 @@ If work is large/architectural and no feature spec exists, do not proceed direct
 6. Run `scripts/agent-helpers/post-implementation-checks HEAD` and fix all reported issues.
 
 ## Rule references (authoritative detail)
+
 - `.cursor/rules/01-master-design.mdc`
 - `.cursor/rules/20-mobile-vocabulary.mdc`
 - `.cursor/rules/30-riverpod.md`
@@ -43,14 +66,17 @@ If work is large/architectural and no feature spec exists, do not proceed direct
 - `.cursor/rules/50-indexing-address-flow.mdc`
 
 ## Definition of done
+
 A task is complete only when:
+
 1. Post-implementation checks are clean.
 2. Architecture/layering and DP-1 terminology constraints remain intact.
 3. Riverpod remains the flow driver; side effects stay out of widgets.
+4. If behavior or scope changes touch an execution matrix or tracker doc (for example `docs/vision_execution_gap.md`, `docs/vision_gap_orbit3.md`, or an approved plan spec), update the relevant status/evidence in the same change.
 
 ## Review workflow (implement → review loop → commit/push/PR)
 
-After implementation, run a **review loop** until the reviewer qualifies the change. Only after the reviewer says **Verdict: accept** do you commit, push, or create a PR.
+After implementation, run a **review loop** until the reviewer qualifies the change. Only after the reviewer says **Verdict: accept** is the change available for you to commit, push, or create a PR.
 
 1. **Create a compact handoff** — Goal, files changed, key decisions and tradeoffs, checks run (e.g. lint, tests, post-implementation script).
 
@@ -61,7 +87,9 @@ After implementation, run a **review loop** until the reviewer qualifies the cha
 Do not commit, push, or create a PR (if requested) before the reviewer has accepted. The master agent and reviewer sub-agent work in this loop until the change is qualified.
 
 ## Commit message format
+
 Use Conventional Commits:
+
 - `<type>(<optional-scope>): <description>`
 - Types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`, `build`, `ci`, `perf`, `style`
 - Use `!` for breaking changes.

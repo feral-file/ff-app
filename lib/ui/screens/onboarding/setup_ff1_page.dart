@@ -107,7 +107,7 @@ class OnboardingSetupFf1Page extends ConsumerWidget {
   void _onSetupFf1(BuildContext context, WidgetRef ref) {
     // final onboardingActions = ref.read(onboardingActionsProvider);
     // unawaited(onboardingActions.completeOnboarding());
-    unawaited(context.push(Routes.ff1DevicePickerPage));
+    unawaited(context.push(Routes.ff1DeviceScanPage));
   }
 
   Future<void> _onFinish(BuildContext context, WidgetRef ref) async {

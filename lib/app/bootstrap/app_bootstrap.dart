@@ -51,7 +51,6 @@ final _log = Logger('AppBootstrap');
 Future<AppBootstrapResult> bootstrapAppDependencies() async {
   final store = await initializeObjectBox();
   final bluetoothDeviceService = FF1BluetoothDeviceService(
-    store,
     store.box<FF1BluetoothDeviceEntity>(),
   );
   final appStateService = AppStateService(

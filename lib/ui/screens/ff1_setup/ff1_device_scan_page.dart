@@ -18,19 +18,44 @@ import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-final _log = Logger('FF1DevicePickerPage');
+final _log = Logger('FF1DeviceScanPage');
 
-/// FF1 device picker page.
-class FF1DevicePickerPage extends ConsumerStatefulWidget {
-  /// Create a new instance of the FF1 device picker page.
-  const FF1DevicePickerPage({super.key});
+/// Route payload for [FF1DeviceScanPage].
+class FF1DeviceScanPagePayload {
+  /// Create payload for the FF1 device scan screen.
+  FF1DeviceScanPagePayload({
+    this.ff1Name,
+    this.onFF1Selected,
+  });
 
-  @override
-  ConsumerState<FF1DevicePickerPage> createState() =>
-      _FF1DevicePickerPageState();
+  /// When null, the scan lists all nearby FF1 devices.
+  /// When set, this value is treated as the identity of the target FF1 and
+  /// scanning uses name-targeted lookup.
+  final String? ff1Name;
+
+  /// When non-null, invoked with the chosen [BluetoothDevice] instead of the
+  /// default navigation (pop + push [Routes.startSetupFf1] with
+  /// [StartSetupFf1PagePayload]). The caller owns follow-up UX (e.g. navigate
+  /// elsewhere). When null, the page logs selection and runs the default route.
+  final void Function(BluetoothDevice device)? onFF1Selected;
 }
 
-class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
+/// FF1 device scan page: discovers nearby FF1 devices over BLE.
+class FF1DeviceScanPage extends ConsumerStatefulWidget {
+  /// Create the FF1 device scan page.
+  const FF1DeviceScanPage({
+    required this.payload,
+    super.key,
+  });
+
+  /// Navigation payload (optional name filter, auto-select, custom selection).
+  final FF1DeviceScanPagePayload payload;
+
+  @override
+  ConsumerState<FF1DeviceScanPage> createState() => _FF1DeviceScanPageState();
+}
+
+class _FF1DeviceScanPageState extends ConsumerState<FF1DeviceScanPage> {
   final _deviceListScrollController = ScrollController();
   double _lastLoggedOffset = 0;
 
@@ -93,18 +118,18 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
           }
         },
       )
-      // Auto-navigate when exactly one device is found after scan completes
+      // Auto-navigate when exactly one matching device is found after scan
+      // completes and a name filter was requested.
       ..listen<FF1ScanState>(ff1ScanProvider, (previous, next) {
-        // Scan just completed (was scanning, now not)
         final justFinished =
             (previous?.isScanning ?? false) && !next.isScanning;
 
-        // Only navigate if scan just finished and exactly one device was found
-        if (justFinished && next.devices.length == 1) {
-          // Check mounted before navigation
-          if (context.mounted) {
-            _navigateToStartSetupPage(context, next.devices.first);
-          }
+        final ff1Name = widget.payload.ff1Name;
+        final shouldAutoSelect =
+            ff1Name != null && justFinished && next.devices.length == 1;
+
+        if (shouldAutoSelect && context.mounted) {
+          _onFf1Selected(context, next.devices.first);
         }
       });
 
@@ -144,6 +169,19 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
                 return _emptyView(context);
               }
 
+              // Named scan with exactly one match: listener calls [_onFf1Selected];
+              // keep a loading-style surface so the picker never flashes.
+              final ff1Name = widget.payload.ff1Name;
+              if (ff1Name != null &&
+                  !scanState.isScanning &&
+                  scanState.devices.length == 1 &&
+                  scanState.error == null) {
+                return _scanningDevicesView(
+                  context,
+                  isAutoAdvancing: true,
+                );
+              }
+
               return _devicePickerView(context, scanState.devices);
             },
           ),
@@ -164,9 +202,9 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
     AppStructuredLog.forLogger(_log).info(
       category: LogCategory.ui,
       event: 'ui_scroll',
-      message: 'scrolled ff1_device_list',
+      message: 'scrolled ff1_device_scan_list',
       payload: {
-        'target': 'ff1_device_list',
+        'target': 'ff1_device_scan_list',
         'offset': offset.toStringAsFixed(1),
       },
     );
@@ -195,28 +233,47 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
       return;
     }
 
+    final ff1Name = widget.payload.ff1Name;
+
     await AppStructuredLog.runLoggedFlow<void>(
       logger: _log,
       flowName: 'ff1_device_scan',
-      payload: {'trigger': trigger},
+      payload: {
+        'trigger': trigger,
+        'ff1Name': ?ff1Name,
+      },
       action: () async {
         AppStructuredLog.logUiAction(
           logger: _log,
           action: 'scan_ff1_devices',
-          payload: {'trigger': trigger},
+          payload: {
+            'trigger': trigger,
+            'ff1Name': ?ff1Name,
+          },
         );
         ref.read(ff1ScanProvider.notifier).clear();
         await ref
             .read(ff1ScanProvider.notifier)
-            .startScan(timeout: const Duration(seconds: 5));
+            .startScan(
+              timeout: const Duration(seconds: 5),
+              ff1Name: ff1Name,
+            );
       },
     );
   }
 
-  void _handleDeviceSelected(
+  void _onFf1Selected(
     BuildContext context,
     BluetoothDevice device,
   ) {
+    final custom = widget.payload.onFF1Selected;
+    if (custom != null) {
+      // Pop scan page first to prevent dead-end UX when user cancels from
+      // Connect page and returns here.
+      context.pop();
+      custom(device);
+      return;
+    }
     AppStructuredLog.logUiAction(
       logger: _log,
       action: 'select_ff1_device',
@@ -281,7 +338,22 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
     );
   }
 
-  Widget _scanningDevicesView(BuildContext context) {
+  Widget _scanningDevicesView(
+    BuildContext context, {
+    bool isAutoAdvancing = false,
+  }) {
+    final ff1Name = widget.payload.ff1Name;
+    final String headline;
+    if (isAutoAdvancing) {
+      headline = ff1Name != null
+          ? 'Found $ff1Name. Continuing setup…'
+          : 'Continuing setup…';
+    } else if (ff1Name != null) {
+      headline = 'Searching for $ff1Name...';
+    } else {
+      headline = 'Searching for nearby FF1 devices...';
+    }
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -299,7 +371,7 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Searching for nearby FF1 devices...',
+                headline,
                 style: AppTypography.h2(context).white,
               ),
               SizedBox(height: LayoutConstants.space5),
@@ -335,7 +407,8 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
         SizedBox(height: LayoutConstants.space4),
         Text(
           error != null
-              ? 'Scan error: $error'
+              ? 'We could not scan for FF1. '
+                    'Check Bluetooth is on, then try again.'
               : 'Please make sure FF1 is powered on and nearby',
           style: AppTypography.body(context).white,
           textAlign: TextAlign.center,
@@ -355,6 +428,12 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
   }
 
   Widget _emptyView(BuildContext context) {
+    final ff1Name = widget.payload.ff1Name;
+    final subtitle = ff1Name != null
+        ? 'No device named "$ff1Name" was found. '
+              'Make sure FF1 is powered on and nearby, then try again'
+        : 'Make sure FF1 is powered on and nearby, then try again';
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -371,7 +450,7 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
         ),
         SizedBox(height: LayoutConstants.space4),
         Text(
-          'Make sure FF1 is powered on and nearby, then try again',
+          subtitle,
           style: AppTypography.body(context).white,
           textAlign: TextAlign.center,
         ),
@@ -414,7 +493,7 @@ class _FF1DevicePickerPageState extends ConsumerState<FF1DevicePickerPage> {
                   _DeviceItem(
                     device: device,
                     onTap: () {
-                      _handleDeviceSelected(context, device);
+                      _onFf1Selected(context, device);
                     },
                   ),
                   if (index != devices.length - 1)

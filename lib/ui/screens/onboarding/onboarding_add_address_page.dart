@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/addresses_provider.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -11,6 +12,7 @@ import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
+import 'package:app/ui/screens/ff1_setup/ff1_device_scan_page.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:app/widgets/loading_view.dart';
@@ -44,6 +46,8 @@ class OnboardingAddAddressPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final actionGate = ref.watch(onboardingAddAddressActionGateProvider);
+
     return Scaffold(
       backgroundColor: PrimitivesTokens.colorsDarkGrey,
       appBar: const SetupAppBar(
@@ -66,12 +70,22 @@ class OnboardingAddAddressPage extends ConsumerWidget {
               style: ContentRhythm.title(context),
             ),
             SizedBox(height: ContentRhythm.titleSupportGap),
-            const _AddressList(),
+            _AddressList(
+              actionsEnabled: actionGate.actionsEnabled,
+            ),
+            if (actionGate.message != null) ...[
+              SizedBox(height: ContentRhythm.titleSupportGap),
+              Text(
+                actionGate.message!,
+                style: ContentRhythm.supporting(context),
+              ),
+            ],
           ],
         ),
         primaryAction: OnboardingShellAction(
           key: GoldPathPatrolKeys.onboardingAddAddressPrimary,
           onPressed: () => _onAddAddressPressed(context),
+          enabled: actionGate.actionsEnabled,
           child: Row(
             children: [
               SvgPicture.asset(
@@ -92,15 +106,22 @@ class OnboardingAddAddressPage extends ConsumerWidget {
         secondaryAction: OnboardingShellAction(
           key: GoldPathPatrolKeys.onboardingAddAddressSecondary,
           onPressed: () => _onNext(context, ref),
+          enabled: actionGate.actionsEnabled,
           child: Consumer(
             builder: (context, ref, _) {
               final addressesAsync = ref.watch(addressesProvider);
               final addresses = addressesAsync.value ?? [];
+              final actionGate = ref.watch(
+                onboardingAddAddressActionGateProvider,
+              );
+              final label = actionGate.actionsEnabled
+                  ? (addresses.isEmpty ? 'Skip for now' : 'Next')
+                  : 'Please wait';
 
               return Row(
                 children: [
                   Text(
-                    addresses.isEmpty ? 'Skip for now' : 'Next',
+                    label,
                     style: AppTypography.body(context).lightBlue,
                   ),
                   SizedBox(width: LayoutConstants.space2),
@@ -116,7 +137,9 @@ class OnboardingAddAddressPage extends ConsumerWidget {
             },
           ),
         ),
-        hintText: 'You can always add addresses later.',
+        hintText: actionGate.actionsEnabled
+            ? 'You can always add addresses later.'
+            : 'Address adds stay disabled while startup sync settles.',
       ),
     );
   }
@@ -133,10 +156,27 @@ class OnboardingAddAddressPage extends ConsumerWidget {
     );
 
     if (payload.deeplink != null && payload.deeplink!.isNotEmpty) {
+      final ff1DeviceInfo = FF1DeviceInfo.fromDeeplink(payload.deeplink!);
+      if (ff1DeviceInfo == null) {
+        unawaited(context.push(Routes.onboardingSetupFf1Page));
+        return;
+      }
+
       await context.push(
-        Routes.connectFF1Page,
-        extra: ConnectFF1PagePayload(
-          deeplink: payload.deeplink,
+        Routes.ff1DeviceScanPage,
+        extra: FF1DeviceScanPagePayload(
+          ff1Name: ff1DeviceInfo.name,
+          onFF1Selected: (device) {
+            unawaited(
+              context.push(
+                Routes.connectFF1Page,
+                extra: ConnectFF1PagePayload(
+                  device: device,
+                  ff1DeviceInfo: ff1DeviceInfo,
+                ),
+              ),
+            );
+          },
         ),
       );
     } else {
@@ -146,7 +186,11 @@ class OnboardingAddAddressPage extends ConsumerWidget {
 }
 
 class _AddressList extends ConsumerWidget {
-  const _AddressList();
+  const _AddressList({
+    required this.actionsEnabled,
+  });
+
+  final bool actionsEnabled;
 
   void _onDelete(
     BuildContext context,
@@ -182,6 +226,7 @@ class _AddressList extends ConsumerWidget {
               children: [
                 _AddressRow(
                   address: addresses[index],
+                  enabled: actionsEnabled,
                   onDelete: (walletAddress) =>
                       _onDelete(context, ref, walletAddress),
                 ),
@@ -199,9 +244,14 @@ class _AddressList extends ConsumerWidget {
 }
 
 class _AddressRow extends StatelessWidget {
-  const _AddressRow({required this.address, required this.onDelete});
+  const _AddressRow({
+    required this.address,
+    required this.enabled,
+    required this.onDelete,
+  });
 
   final WalletAddress address;
+  final bool enabled;
   final void Function(WalletAddress) onDelete;
   @override
   Widget build(BuildContext context) {
@@ -229,21 +279,30 @@ class _AddressRow extends StatelessWidget {
               ),
             ),
           ),
-          GestureDetector(
-            onTap: () => onDelete(address),
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              color: Colors.transparent,
-              constraints: BoxConstraints(
-                minHeight: LayoutConstants.minTouchTarget,
-                minWidth: LayoutConstants.minTouchTarget,
+          Opacity(
+            opacity: enabled ? 1 : 0.45,
+            child: IgnorePointer(
+              ignoring: !enabled,
+              child: GestureDetector(
+                key: ValueKey<String>(
+                  'onboarding.add_address.delete.${address.address}',
+                ),
+                onTap: () => onDelete(address),
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  color: Colors.transparent,
+                  constraints: BoxConstraints(
+                    minHeight: LayoutConstants.minTouchTarget,
+                    minWidth: LayoutConstants.minTouchTarget,
+                  ),
+                  padding: EdgeInsets.only(
+                    top: LayoutConstants.space3 - 1,
+                    bottom: LayoutConstants.space3,
+                    left: LayoutConstants.space3,
+                  ),
+                  child: SvgPicture.asset('assets/images/minus.svg'),
+                ),
               ),
-              padding: EdgeInsets.only(
-                top: LayoutConstants.space3 - 1,
-                bottom: LayoutConstants.space3,
-                left: LayoutConstants.space3,
-              ),
-              child: SvgPicture.asset('assets/images/minus.svg'),
             ),
           ),
         ],

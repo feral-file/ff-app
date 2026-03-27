@@ -1,6 +1,7 @@
 import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
 import 'package:app/app/providers/current_route_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -106,7 +107,35 @@ class NowDisplayingVisibilityNotifier
     // Route (modal/drawer) has higher priority than path: when modal/drawer
     // is shown, hide regardless of path.
     ref.listen(currentRouteProvider, (previous, next) {
-      _applyRouteState(next);
+      // After scroll-down hides the bar, show it again when navigation or the
+      // modal stack changes so the user always sees context on a new screen.
+      final shouldResetScrollVisibility =
+          previous != null &&
+          (previous.path != next.path ||
+              previous.currentRoute != next.currentRoute);
+      _applyRouteState(
+        next,
+        resetScrollVisibility: shouldResetScrollVisibility,
+      );
+    });
+
+    // When FF1 advances to another work or playlist, surface the bar again.
+    // Note: we listen to ff1CurrentPlayerStatusProvider which collapses loading/error
+    // to null. This means on transient reconnects (loading → null → data), we may
+    // skip detecting the change if it happens during the loading phase. However, this
+    // is acceptable because:
+    // 1) The bar typically remains hidden during initial load anyway
+    // 2) Most reconnect cycles are fast enough that UI doesn't flicker
+    // 3) Full detection would require listening to the raw stream and tracking state,
+    //    adding complexity for an edge case
+    // TODO: Consider stream listener + mutable state if reconnect UX becomes priority
+    ref.listen(ff1CurrentPlayerStatusProvider, (previous, next) {
+      if (previous == null || next == null) return;
+      final playlistChanged = previous.playlistId != next.playlistId;
+      final indexChanged = previous.currentWorkIndex != next.currentWorkIndex;
+      if (playlistChanged || indexChanged) {
+        state = state.copyWith(nowDisplayingVisibility: true);
+      }
     });
 
     // Initial sync from current route state
@@ -114,15 +143,21 @@ class NowDisplayingVisibilityNotifier
     return _initialStateFromRoute(routeState);
   }
 
-  void _applyRouteState(AppRouteState routeState) {
+  void _applyRouteState(
+    AppRouteState routeState, {
+    bool resetScrollVisibility = false,
+  }) {
     state = state.copyWith(
       shouldShowNowDisplaying: shouldShowNowDisplayingForRoute(routeState),
       bottomSheetVisibility: routeState.hasModalOrDrawer,
+      nowDisplayingVisibility: resetScrollVisibility || state.nowDisplayingVisibility,
     );
   }
 
-  NowDisplayingVisibilityState _initialStateFromRoute(AppRouteState routeState) {
-    return NowDisplayingVisibilityState.initial().copyWith(
+  NowDisplayingVisibilityState _initialStateFromRoute(
+    AppRouteState routeState,
+  ) {
+    return const NowDisplayingVisibilityState.initial().copyWith(
       shouldShowNowDisplaying: shouldShowNowDisplayingForRoute(routeState),
       bottomSheetVisibility: routeState.hasModalOrDrawer,
     );

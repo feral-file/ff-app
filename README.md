@@ -115,6 +115,9 @@ Required keys (ask team for dev/staging values):
 - `INDEXER_API_KEY`
 - `FF1_RELAYER_API_KEY` (or `TV_API_KEY`)
 
+Optional feature keys (feature degrades gracefully if absent):
+- `SUPPORT_API_KEY` (required for the Send Log feature in device options)
+
 Optional tooling key:
 - `FIGMA_API_KEY` (required only if using the Figma MCP server configured in `opencode.json`)
 
@@ -213,6 +216,15 @@ What it enforces:
 - canary channel exists in seed DB
 - minimum playlist/item thresholds are met
 - reproducible report file includes required evidence checklist for the >=4h soak run
+
+### Gold Path UI (CI): smoke vs endurance
+
+The GitHub Actions workflow **Gold Path UI Test** keeps two separate evidence streams:
+
+- **Smoke** (`gold-path-smoke` job): runs on pull requests (and optional manual dispatch with profile `smoke`). Uses a **1 minute** soak. iOS xcresult artifacts are named `gold-path-smoke-ios-xcresult`.
+- **Endurance** (`gold-path-endurance` job): runs on the **same nightly schedule** as [Nightly integration tests](.github/workflows/nightly-integration.yml) (`0 9 * * *`, 09:00 UTC) and on manual dispatch with profile `endurance`. Default soak is **240 minutes** (override via workflow input). Artifacts: `gold-path-endurance-ios-xcresult`.
+
+Shared steps live in [.github/actions/gold-path-patrol](.github/actions/gold-path-patrol/action.yml).
 
 ---
 

@@ -57,24 +57,28 @@ void main() {
       expect(result, isEmpty);
     });
 
-    test('returns empty when tokens is empty', () {
+    test('saves all items as fallback when tokens is empty', () {
       final items = [
         dp1ItemWithCid('item_1', '1'),
+        dp1ItemWithCid('item_2', '2'),
       ];
       final result = buildEnrichedPlaylistItemsToSave(
         missingItems: items,
         tokens: [],
       );
-      expect(result, isEmpty);
+      // Items with no tokens are saved as fallback DP1 items
+      expect(result, hasLength(2));
+      expect(result[0].id, 'item_1');
+      expect(result[0].thumbnailUrl, isNull); // Fallback, no token
+      expect(result[1].id, 'item_2');
+      expect(result[1].thumbnailUrl, isNull); // Fallback, no token
     });
 
-    test('includes only items that have a matching token by cid', () {
+    test('saves enriched items with token and fallback items without', () {
       // Item with cid eip155:1:erc721:0xabc:1
       final item1 = dp1ItemWithCid('item_1', '1');
       // Item with cid eip155:1:erc721:0xabc:2
       final item2 = dp1ItemWithCid('item_2', '2');
-      // Item without cid
-      final item3 = dp1ItemNoCid('item_3');
 
       final tokens = [
         tokenWithCid('eip155:1:erc721:0xabc:1'),
@@ -82,44 +86,37 @@ void main() {
       ];
 
       final result = buildEnrichedPlaylistItemsToSave(
-        missingItems: [item1, item2, item3],
-        tokens: tokens,
-      );
-
-      expect(result.length, 1);
-      expect(result.single.id, 'item_1');
-      expect(result.single.thumbnailUrl, isNotNull);
-    });
-
-    test('includes all items that have a matching token', () {
-      final item1 = dp1ItemWithCid('item_1', '1');
-      final item2 = dp1ItemWithCid('item_2', '2');
-
-      final tokens = [
-        tokenWithCid('eip155:1:erc721:0xabc:1'),
-        tokenWithCid('eip155:1:erc721:0xabc:2'),
-      ];
-
-      final result = buildEnrichedPlaylistItemsToSave(
         missingItems: [item1, item2],
         tokens: tokens,
       );
 
-      expect(result.length, 2);
-      final ids = result.map((p) => p.id).toSet();
-      expect(ids, containsAll(['item_1', 'item_2']));
+      // Both items are saved; item_1 enriched, item_2 as fallback
+      expect(result, hasLength(2));
+      final item1Result = result.firstWhere((e) => e.id == 'item_1');
+      expect(item1Result.thumbnailUrl, isNotNull); // Enriched with token
+      
+      final item2Result = result.firstWhere((e) => e.id == 'item_2');
+      expect(item2Result.thumbnailUrl, isNull); // Fallback, no token
     });
 
-    test('skips items with no cid', () {
+    test('saves items with no cid as fallback DP1 items', () {
       final itemNoCid = dp1ItemNoCid('item_x');
+      final itemWithCid = dp1ItemWithCid('item_y', '1');
       final tokens = [tokenWithCid('eip155:1:erc721:0xabc:1')];
 
       final result = buildEnrichedPlaylistItemsToSave(
-        missingItems: [itemNoCid],
+        missingItems: [itemNoCid, itemWithCid],
         tokens: tokens,
       );
 
-      expect(result, isEmpty);
+      // Both items are saved; item_x as fallback, item_y enriched
+      expect(result, hasLength(2));
+      
+      final itemXResult = result.firstWhere((e) => e.id == 'item_x');
+      expect(itemXResult.thumbnailUrl, isNull); // Fallback, no cid
+      
+      final itemYResult = result.firstWhere((e) => e.id == 'item_y');
+      expect(itemYResult.thumbnailUrl, isNotNull); // Enriched
     });
   });
 }

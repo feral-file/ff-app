@@ -17,11 +17,18 @@
   - load env config, initialize logging and optional Sentry
   - determine initial route from onboarding state + legacy DB detection
   - initialize ObjectBox services and provider overrides
-  - run app bootstrap sequence (force-update check, seed sync, legacy migration, bootstrap service, ensureTrackedAddressesHavePlaylistsAndResume)
+  - run app bootstrap sequence (force-update check, seed sync, legacy migration, bootstrap service, ensureTrackedAddressesHavePlaylistsAndResume when the seed file and gate allow DB work)
 - success state: user lands on `/` or onboarding route with DB/services ready
 - failure/edge states:
   - invalid env config shows blocking configuration error screen
-  - seed sync failure falls back to existing/local DB and still unblocks app
+  - **First install (no `dp1_library.sqlite`):** seed sync may fail or skip
+    (e.g. offline); `SeedDatabaseGate` stays pending; app runs lightweight
+    bootstrap only (no Drift open) so onboarding/home can load; tabs show
+    retryable feed-blocking UI until download succeeds; full DP-1 bootstrap and
+    tracked-address resume run after a later successful seed (including
+    `pendingDp1BootstrapAfterSeed` completion).
+  - **Existing seed file:** failed sync typically keeps using the on-disk library;
+    app still unblocks when the local DB remains valid.
   - legacy migration errors are logged and do not block startup
 - startup UX contract:
   - when onboarding is incomplete, seed-sync UI is background-only (no startup
@@ -42,6 +49,11 @@
 - success state: onboarding completion flag persisted, user routed to `/`
 - failure/edge states:
   - address validation failures are inline and non-fatal
+  - while startup seed sync is still running, the add-address onboarding step
+    disables its primary/secondary actions and shows a waiting message instead
+    of racing bootstrap state changes
+  - after first-install lightweight bootstrap (`deferredRecovery`), onboarding
+    address adds re-open and queue until a later successful seed download
 - key screens involved: Introduce, Onboarding Add Address, Onboarding Setup FF1
 - key modules/services involved: `onboarding_provider`, `add_address_provider`, `address_service`, `trackedAddressesSyncProvider`
 - notes: TrackedAddressEntity (ObjectBox) is the single source of truth for user-added addresses; `trackedAddressesSyncProvider` watches it and ensures playlists exist + indexing resumes
@@ -52,15 +64,17 @@
 - start point: deeplink or scan action resolves to device connect
 - steps:
   - deeplink handler emits device-connect action
-  - app routes to start-setup/connect path
-  - if onboarding not completed, onboarding pages run with deeplink payload
-  - after onboarding add-address step, flow returns to connect FF1 page
+  - if onboarding not completed, app routes to introduce page with deeplink payload
+  - after onboarding add-address step, flow navigates to FF1 Device Scan page
+  - FF1 Device Scan page scans for the specific device (from deeplink name)
+  - when device is found, custom callback navigates to Connect FF1 page
 - success state: user completes onboarding and continues device setup path
 - failure/edge states:
   - unsupported deep links are ignored safely
   - repeated handling of same link is deduplicated
-- key screens involved: Start Setup FF1, Introduce, Onboarding Add Address, Connect FF1
-- key modules/services involved: `deeplink_handler`, `router_provider`, onboarding providers
+  - if device not found during scan, user sees empty scan result
+- key screens involved: Start Setup FF1, Introduce, Onboarding Add Address, FF1 Device Scan, Connect FF1
+- key modules/services involved: `deeplink_handler`, `router_provider`, onboarding providers, `ff1_scan_provider`
 
 ## Flow: Address Add and Personal Collection Sync
 
@@ -94,6 +108,15 @@
   - empty states shown for missing content
 - key screens involved: Home, All Channels, All Playlists, Channel Detail, Playlist Detail, Work Detail
 - key modules/services involved: `channels_provider`, `playlists_provider`, `works_provider`, DB service
+- notes (All Playlists):
+  - non–channel-scoped “View all” / All Playlists lists **group by publisher**
+    (section headers from publisher titles) when the seed DB is ready, publisher
+    and channel lookup streams have settled, and more than one publisher section
+    applies; otherwise the list stays **flat** (including a single publisher
+    bucket)
+  - **channel-scoped** All Playlists (filtered to one or more channel IDs) stays
+    **flat** and does not subscribe to full-table publisher/channel lookup
+    streams
 
 ## Flow: Search and Filter
 
@@ -135,13 +158,15 @@
 - steps:
   - build DP-1 payload and cast via canvas client to selected device
   - now-displaying state derives from active device + relayer player/device streams
-  - user opens Now Displaying full screen and optional keyboard/touchpad Interact screen
+  - now-displaying bar displays current item and appears as floating overlay
+  - user taps bar to navigate to current work detail (or already there)
+  - optional: user opens Interact screen for keyboard/touchpad control
 - success state: active playback visible and controllable from app
 - failure/edge states:
-  - no paired device -> guidance state
-  - disconnected device -> disconnected state
+  - no paired device -> bar hidden (invisible, no guidance shown)
+  - disconnected device -> bar shows disconnected state
   - enrichment/cache misses fall back to basic DP-1 item fields
-- key screens involved: Work Detail, Playlist Detail, Now Displaying, Keyboard Control
+- key screens involved: Work Detail, Playlist Detail, Keyboard Control, Now Displaying Bar (overlay)
 - key modules/services involved: `canvas_client_service_v2`, `now_displaying_provider`, `ff1_wifi_providers`, `ff1_device_provider`
 
 ## Flow: Settings Recovery and Support
@@ -149,7 +174,7 @@
 - goal: maintain app health, recover local state, and contact support
 - start point: Settings and menu actions
 - steps:
-  - rebuild metadata (clear/recreate DB from seed and refetch)
+  - rebuild metadata (download seed, then replace DB on disk; refetch)
   - forget I exist (clear local data, reset onboarding)
   - open release notes, legal docs, support email
 - success state: user gets clean local state or support path as needed
@@ -199,21 +224,24 @@
 - dependencies: `workDetailStateProvider`, indexer/DB enrichment, canvas client
 - notes / caveats: token enrichment is optional; UI supports item-only fallback
 
-## Screen: FF1DevicePickerPage
+## Screen: FF1DeviceScanPage
 
 - role in the flow: BLE discovery and initial FF1 selection
-- route / entry point: `/ff1-device-picker`
+- route / entry point: `/ff1-device-scan` (optional `extra`: `FF1DeviceScanPagePayload` with `String? ff1Name` and optional `onFF1Selected` to override default navigation after selection)
 - important actions: start scan, retry scan, select device
 - dependencies: `bluetoothAdapterStateProvider`, `ff1ScanProvider`
-- notes / caveats: auto-navigates when exactly one device found after scan completes
+- notes / caveats: when `ff1Name` is null, lists all discovered FF1 devices and does not auto-advance; user must pick one. When `ff1Name` is set, `startScan` uses name-targeted discovery; if exactly one device is returned after the scan, the app auto-advances to start setup (same as choosing that device) and shows a short “continuing setup” state instead of the picker list
 
 ## Screen: ConnectFF1Page
 
 - role in the flow: BLE connection progress, post-connect routing, and error handling
-- route / entry point: `/connect-ff1` (requires payload)
+- route / entry point: `/connect-ff1` (requires `ConnectFF1PagePayload` with `device` and optional `ff1DeviceInfo`)
 - important actions: cancel/retry, continue to device config or Wi-Fi flow
 - dependencies: `connectFF1Provider`, onboarding actions, FF1 device persistence providers
-- notes / caveats: transitions to "still connecting" after 15 seconds
+- notes / caveats:
+  - transitions to "still connecting" after 15 seconds
+  - When `ff1DeviceInfo` is provided (from deeplink), skips get_info command and uses supplied metadata
+  - **Navigation contract**: FF1 setup side effects (device persistence, onboarding completion, Wi-Fi QR hide) are owned by the FF1 setup orchestration layer. When the device is internet-ready, the flow navigates to device configuration. When the device is not internet-ready, the flow routes into the Wi-Fi provisioning steps.
 
 ## Screen: ScanWiFiNetworkScreen + EnterWiFiPasswordScreen
 
@@ -230,14 +258,6 @@
 - important actions: adjust display settings, switch device/options, finish setup flow
 - dependencies: active FF1 provider, `ff1DeviceDataProvider`, FF1 Wi-Fi control
 - notes / caveats: setup mode hides some advanced sections until post-setup use
-
-## Screen: NowDisplayingScreen
-
-- role in the flow: full-screen playback status and quick interaction launch
-- route / entry point: `/now-displaying`
-- important actions: open Interact, open FF1 settings quick sheet
-- dependencies: `nowDisplayingProvider`, now-displaying quick settings widgets
-- notes / caveats: route is intentionally hidden from global now-displaying bar duplication logic
 
 ## Screen: KeyboardControlScreen
 

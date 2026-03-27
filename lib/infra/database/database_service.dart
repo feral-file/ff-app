@@ -66,6 +66,26 @@ class DatabaseService {
         );
   }
 
+  /// All channels (for resolving playlist → publisher / section titles).
+  ///
+  /// Ordered like `watchChannels` on the database: publisher_id, sort_order,
+  /// id.
+  Stream<List<Channel>> watchAllChannels() {
+    return _db
+        .watchChannels()
+        .debounceTime(const Duration(milliseconds: 300))
+        .map(
+          (rows) => rows.map(DatabaseConverters.channelDataToDomain).toList(),
+        );
+  }
+
+  /// Publisher id → display name; updates when publishers are ingested.
+  Stream<Map<int, String>> watchPublisherTitles() {
+    return _db
+        .watchPublisherTitles()
+        .debounceTime(const Duration(milliseconds: 300));
+  }
+
   /// Watch playlists as domain models.
   ///
   /// Ordered by publisher_id ASC, created_at_us ASC (canonical order).
@@ -334,6 +354,13 @@ class DatabaseService {
       final data = await _db.getAddressPlaylists();
       return data.map(DatabaseConverters.playlistDataToDomainPreview).toList();
     } catch (e, stack) {
+      if (_isDatabaseUnavailableError(e)) {
+        _log.warning(
+          'Address playlists query skipped (database closed during seed replace '
+          'or reset): $e',
+        );
+        rethrow;
+      }
       _log.severe('Failed to get address playlists', e, stack);
       rethrow;
     }
@@ -412,8 +439,8 @@ class DatabaseService {
   ///
   /// Returns one [FavoritePlaylistSnapshot] per favorite playlist
   /// (playlist + items; entries are recreated on restore). Items order
-  /// comes from [getPlaylistItemsByProvenance]; that same order is
-  /// preserved on [restoreFavoritePlaylistsSnapshot] (no sortKeyUs stored).
+  /// comes from `getPlaylistItemsByProvenance`; that same order is
+  /// preserved on `restoreFavoritePlaylistsSnapshot` (no sortKeyUs stored).
   Future<List<FavoritePlaylistSnapshot>> getFavoritePlaylistsSnapshot() async {
     final playlistsData = await _db.getAllPlaylists(
       type: PlaylistType.favorite,
@@ -437,9 +464,10 @@ class DatabaseService {
 
   /// Restore Favorite playlists from snapshot after rebuild-metadata.
   ///
-  /// Uses the exact order of [snapshot.items] as the restore order. Snapshots
-  /// are created by [getFavoritePlaylistsSnapshot] via [getPlaylistItemsByProvenance],
-  /// so capture order = restore order. No sortKeyUs in snapshot; we assign
+  /// Uses the exact order of snapshot items as the restore order. Snapshots
+  /// are created by `getFavoritePlaylistsSnapshot` via
+  /// `getPlaylistItemsByProvenance`, so capture order = restore order.
+  /// No sortKeyUs in snapshot; we assign
   /// sortKeys from list index so provenance ordering (DESC) matches.
   Future<void> restoreFavoritePlaylistsSnapshot(
     List<FavoritePlaylistSnapshot> snapshots,
@@ -569,6 +597,13 @@ class DatabaseService {
           if (byId.containsKey(id)) byId[id]!,
       ];
     } catch (e, stack) {
+      if (_isDatabaseUnavailableError(e)) {
+        _log.warning(
+          'getPlaylistItemsByIds skipped while database is closed '
+          '(seed replace / reset): $e',
+        );
+        return [];
+      }
       _log.severe('Failed to get playlist items by ids', e, stack);
       rethrow;
     }

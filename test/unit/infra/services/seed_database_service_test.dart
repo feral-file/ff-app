@@ -133,5 +133,20 @@ void main() {
         isFalse,
       );
     });
+
+    test('retries stall watchdog cancellations', () {
+      expect(
+        SeedDatabaseService.isRetryableDownloadError(
+          DioException(
+            requestOptions: RequestOptions(
+              path: 'https://example.invalid/seed.db',
+            ),
+            type: DioExceptionType.cancel,
+            message: 'seed_download_stall: no progress for 120s',
+          ),
+        ),
+        isTrue,
+      );
+    });
   });
 }

@@ -8,8 +8,9 @@ class ObjectBoxLocalDataCleaner {
 
   final Store _store;
 
-  /// Removes all ObjectBox entities except [TrackedAddressEntity].
-  /// Used by rebuildMetadata to preserve user-added addresses.
+  /// Removes ObjectBox entities used for indexing/checkpoints before SQLite
+  /// replace; keeps [TrackedAddressEntity]. Invoked from seed not-ready
+  /// teardown during replace (not at rebuild-metadata entry).
   Future<void> lightClear() async {
     _store.runInTransaction(TxMode.write, () {
       _store.box<RemoteAppConfigEntity>().removeAll();
@@ -19,7 +20,7 @@ class ObjectBoxLocalDataCleaner {
 
   /// Removes all rows from every local ObjectBox entity used by the app.
   ///
-  /// Includes [TrackedAddressEntity] (user-added addresses) which was previously
+  /// Includes tracked-address rows (user-added addresses) which was previously
   /// omitted and caused addresses to persist after "forget I exist".
   Future<void> clearAll() async {
     _store.runInTransaction(TxMode.write, () {

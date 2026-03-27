@@ -17,7 +17,7 @@ void main() {
       final logger = Logger('StructuredLoggerTest')
         ..onRecord.listen(records.add);
 
-      StructuredLogContext.updateCurrentRoute('/ff1-device-picker');
+      StructuredLogContext.updateCurrentRoute('/ff1-device-scan');
 
       AppStructuredLog.forLogger(logger).info(
         category: LogCategory.ui,
@@ -34,7 +34,7 @@ void main() {
       final meta = jsonDecode(metaJson) as Map<String, dynamic>;
       expect(meta['category'], 'ui');
       expect(meta['event'], 'ui_action');
-      expect(meta['route'], '/ff1-device-picker');
+      expect(meta['route'], '/ff1-device-scan');
       expect(meta['sessionId'], isNotEmpty);
     });
 

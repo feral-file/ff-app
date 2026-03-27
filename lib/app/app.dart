@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/bootstrap/app_startup_orchestration.dart';
 import 'package:app/app/bootstrap/bootstrap_status_toast.dart';
 import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
 import 'package:app/app/providers/app_lifecycle_provider.dart';
@@ -7,8 +8,13 @@ import 'package:app/app/providers/app_overlay_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/force_update_provider.dart';
+import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
-import 'package:app/app/providers/seed_database_provider.dart';
+import 'package:app/app/providers/seed_database_provider.dart'
+    show
+        seedDatabaseServiceProvider,
+        seedDownloadProvider,
+        seedDownloadRetryProvider;
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/startup_seed_sync_ui_policy_provider.dart';
 import 'package:app/app/routing/deeplink_handler.dart';
@@ -23,7 +29,6 @@ import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/theme/app_theme.dart';
-import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
 import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/ui/widgets/force_update_overlay.dart';
 import 'package:app/widgets/overlays/app_global_overlay_layer.dart';
@@ -203,26 +208,31 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
   void _handleDeeplinkNavigation(DeeplinkNavigationAction action) {
     if (action.type == DeeplinkType.deviceConnect) {
+      final setupPayload = StartSetupFf1PagePayload(deeplink: action.link);
       if (action.source == DeeplinkSource.scan) {
+        // In-app QR scan: stack setup on the current route.
         unawaited(
           widget.router.push(
-            Routes.connectFF1Page,
-            extra: ConnectFF1PagePayload(
-              deeplink: action.link,
-            ),
+            Routes.startSetupFf1,
+            extra: setupPayload,
           ),
         );
-      } else {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          unawaited(
-            widget.router.pushReplacement(
-              Routes.startSetupFf1,
-              extra: StartSetupFf1PagePayload(deeplink: action.link),
-            ),
-          );
-        });
+        return;
       }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        _log.info(
+          'Handling device-connect deeplink go to ${Routes.startSetupFf1}',
+        );
+        // Use go() instead of replacement/push because Android cold start can
+        // deliver an app link before GoRouter has an active top route.
+        widget.router.go(
+          Routes.startSetupFf1,
+          extra: setupPayload,
+        );
+      });
       return;
     }
 
@@ -282,8 +292,11 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
   }
 
   Future<void> _bootstrapAtAppStart() async {
+    final bootstrap = ref.read(bootstrapProvider.notifier);
+
     try {
       unawaited(_triggerForceUpdateCheck());
+      bootstrap.markSeedSyncInProgress();
 
       _log.info(
         'Starting app bootstrap: seedGate=${SeedDatabaseGate.isCompleted}',
@@ -295,9 +308,24 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       _log.info(
         'Seed database sync at startup replaced file: $didReplaceSeedDatabase',
       );
+
+      final hasSeedFile = await ref
+          .read(seedDatabaseServiceProvider)
+          .hasLocalDatabase();
+      if (!hasSeedFile) {
+        // Gate stays incomplete; do not open Drift — run config + FF1 only so
+        // startup completes (onboarding / home) instead of blocking forever on
+        // SeedDatabaseGate.future inside AppDatabase._openConnection.
+        _log.warning(
+          'No local seed database yet; lightweight bootstrap only until '
+          'download succeeds.',
+        );
+        await bootstrap.bootstrapWithoutDp1Library();
+        return;
+      }
+
       await _recoverFromDatabaseResetIfNeeded();
 
-      final bootstrap = ref.read(bootstrapProvider.notifier);
       await bootstrap.bootstrap();
 
       await _logStartupFeedState();
@@ -311,6 +339,12 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       await ref
           .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
           .runSyncAndWait();
+      if (didReplaceSeedDatabase) {
+        _refreshProvidersAfterSeedDatabaseReplace();
+      }
+    } on Object catch (e, st) {
+      _log.warning('Startup bootstrap failed before gate settled', e, st);
+      restoreOnboardingGateAfterStartupFailure(bootstrap);
     } finally {
       if (!_bootstrapReadyCompleter.isCompleted) {
         _bootstrapReadyCompleter.complete();
@@ -399,12 +433,46 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     _isResumeSeedSyncInProgress = true;
 
     try {
-      await _syncSeedDatabaseIfNeeded(
+      final didReplaceSeedDatabase = await _syncSeedDatabaseIfNeeded(
         showUpdatingToast: false,
       );
+      if (didReplaceSeedDatabase) {
+        _refreshProvidersAfterSeedDatabaseReplace();
+      }
+      await _ensureDp1BootstrapAfterSeedIfPending();
     } finally {
       _isResumeSeedSyncInProgress = false;
     }
+  }
+
+  /// After seed download succeeds (retry / resume), finish My Collection + indexing
+  /// if we previously ran [BootstrapNotifier.bootstrapWithoutDp1Library].
+  Future<void> _ensureDp1BootstrapAfterSeedIfPending() async {
+    if (!mounted) {
+      return;
+    }
+    final notifier = ref.read(bootstrapProvider.notifier);
+    if (!notifier.pendingDp1BootstrapAfterSeed) {
+      return;
+    }
+    if (!await ref.read(seedDatabaseServiceProvider).hasLocalDatabase()) {
+      return;
+    }
+    try {
+      await _recoverFromDatabaseResetIfNeeded();
+      await notifier.bootstrap();
+      await _logStartupFeedState();
+      await ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider)();
+    } on Object catch (e, st) {
+      _log.warning('Post-seed DP1 bootstrap failed', e, st);
+    }
+  }
+
+  void _refreshProvidersAfterSeedDatabaseReplace() {
+    ref
+        .read(localDataCleanupServiceProvider)
+        .invalidateListProvidersBeforeDbClose
+        ?.call();
   }
 
   Future<bool> _syncSeedDatabaseAtStartup() async {
@@ -514,12 +582,18 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       ..watch(trackedAddressesSyncProvider);
     return ProviderScope(
       overrides: [
-        seedDownloadRetryProvider.overrideWithValue(() async {
-          await _syncSeedDatabaseIfNeeded(
-            showUpdatingToast: true,
-            failSilently: false,
-          );
-        }),
+        seedDownloadRetryProvider.overrideWithValue(
+          () => runSeedDownloadRetry(
+            syncSeedDatabase: () {
+              return _syncSeedDatabaseIfNeeded(
+                showUpdatingToast: true,
+                failSilently: false,
+              );
+            },
+            ensureDp1BootstrapAfterSeedIfPending:
+                _ensureDp1BootstrapAfterSeedIfPending,
+          ),
+        ),
       ],
       child: widget.child,
     );

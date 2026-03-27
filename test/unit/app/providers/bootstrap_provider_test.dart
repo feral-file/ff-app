@@ -1,12 +1,14 @@
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/services_provider.dart';
-import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/services/bootstrap_service.dart';
 import 'package:drift/native.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Unit tests for BootstrapProvider using Riverpod testing patterns.
@@ -15,8 +17,17 @@ import 'package:flutter_test/flutter_test.dart';
 /// the Riverpod testing guide: https://riverpod.dev/docs/how_to/testing
 void main() {
   setUpAll(() async {
-    // Initialize AppConfig once for all tests
-    await AppConfig.initialize();
+    // BootstrapProvider validates AppConfig at runtime. Unit tests should not
+    // depend on a developer's local `.env` file, so we load a minimal config
+    // directly into dotenv for deterministic behavior.
+    dotenv.testLoad(
+      fileInput: '''
+INDEXER_API_URL=https://example.com/graphql
+INDEXER_API_KEY=test-key
+FF1_RELAYER_URL=wss://example.com/relayer
+FF1_RELAYER_API_KEY=test-relayer-key
+''',
+    );
   });
 
   group('BootstrapProvider - Unit Tests with Mocks', () {
@@ -122,6 +133,133 @@ void main() {
       );
     });
 
+    test(
+      'bootstrapWithoutDp1Library skips DB bootstrap and sets pending flag',
+      () async {
+        final db = AppDatabase.forTesting(NativeDatabase.memory());
+        addTearDown(db.close);
+        final dbService = DatabaseService(db);
+        final mockBootstrapService = _MockBootstrapService();
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => dbService),
+            bootstrapServiceProvider.overrideWith(
+              (ref) => mockBootstrapService,
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final notifier = container.read(bootstrapProvider.notifier);
+        await notifier.bootstrapWithoutDp1Library();
+
+        expect(mockBootstrapService.bootstrapCallCount, 0);
+        expect(notifier.pendingDp1BootstrapAfterSeed, isTrue);
+        expect(
+          container.read(bootstrapProvider).phase,
+          BootstrapPhase.completed,
+        );
+      },
+    );
+
+    test(
+      'full bootstrap after bootstrapWithoutDp1Library clears pending flag',
+      () async {
+        final db = AppDatabase.forTesting(NativeDatabase.memory());
+        addTearDown(db.close);
+        final dbService = DatabaseService(db);
+        final mockBootstrapService = _MockBootstrapService();
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => dbService),
+            bootstrapServiceProvider.overrideWith(
+              (ref) => mockBootstrapService,
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final notifier = container.read(bootstrapProvider.notifier);
+        await notifier.bootstrapWithoutDp1Library();
+        expect(notifier.pendingDp1BootstrapAfterSeed, isTrue);
+
+        await notifier.bootstrap();
+
+        expect(notifier.pendingDp1BootstrapAfterSeed, isFalse);
+        expect(mockBootstrapService.bootstrapCallCount, 1);
+      },
+    );
+
+    test('bootstrap gate starts closed until startup settles', () {
+      final container = ProviderContainer.test();
+      addTearDown(container.dispose);
+
+      expect(
+        container.read(bootstrapSeedSyncGatePhaseProvider),
+        BootstrapSeedSyncGatePhase.syncInProgress,
+      );
+    });
+
+    test('bootstrap gate can be reopened explicitly after startup settles', () {
+      final container = ProviderContainer.test();
+      addTearDown(container.dispose);
+
+      container.read(bootstrapProvider.notifier).markSeedSyncGateOpen();
+
+      expect(
+        container.read(bootstrapSeedSyncGatePhaseProvider),
+        BootstrapSeedSyncGatePhase.gateOpen,
+      );
+    });
+
+    test('bootstrap gate can restore deferred recovery after retry', () async {
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1AutoConnectWatcherProvider.overrideWithValue(null),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(bootstrapProvider.notifier)
+          .bootstrapWithoutDp1Library();
+
+      container.read(bootstrapProvider.notifier).markSeedSyncInProgress();
+      container.read(bootstrapProvider.notifier).markDeferredRecovery();
+
+      expect(
+        container.read(bootstrapSeedSyncGatePhaseProvider),
+        BootstrapSeedSyncGatePhase.deferredRecovery,
+      );
+      expect(
+        container.read(bootstrapProvider.notifier).pendingDp1BootstrapAfterSeed,
+        isTrue,
+      );
+    });
+
+    test(
+      'bootstrap gate reports deferred recovery after lightweight bootstrap',
+      () async {
+        final container = ProviderContainer.test(
+          overrides: [
+            ff1AutoConnectWatcherProvider.overrideWithValue(null),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await container
+            .read(bootstrapProvider.notifier)
+            .bootstrapWithoutDp1Library();
+
+        expect(
+          container.read(bootstrapSeedSyncGatePhaseProvider),
+          BootstrapSeedSyncGatePhase.deferredRecovery,
+        );
+      },
+    );
+
     test('demonstrates mocking BootstrapService', () async {
       final db = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(db.close);
@@ -212,9 +350,11 @@ void main() {
 
 /// Mock BootstrapService for testing.
 class _MockBootstrapService implements BootstrapService {
+  int bootstrapCallCount = 0;
+
   @override
   Future<void> bootstrap() async {
-    // Mock implementation
+    bootstrapCallCount++;
     return;
   }
 

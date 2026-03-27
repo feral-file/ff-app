@@ -720,7 +720,7 @@ class FF1WifiShuffleRequest extends FF1WifiCommandRequest {
 class FF1WifiSetLoopRequest extends FF1WifiCommandRequest {
   /// Creates a set-loop request.
   ///
-  /// [mode] — none, playlist, or one.
+  /// [mode] — playlist or one.
   const FF1WifiSetLoopRequest({required this.mode});
 
   /// Loop mode.

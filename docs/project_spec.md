@@ -43,9 +43,16 @@
 - Outcome: app reaches home or onboarding with providers/services initialized.
 - Important edge cases:
   - missing required env keys: app blocks and shows configuration error screen
-  - seed sync failure: app continues using existing/local DB and opens seed gate
-  - when onboarding is incomplete, startup seed-sync UX stays background-only
-    (no startup update toast/loading indicator), while sync/gate behavior still runs
+  - **First install (no `dp1_library.sqlite` yet):** startup seed sync may fail
+    or skip while offline; `SeedDatabaseGate` stays **pending** until a successful
+    download places the file. The app runs **lightweight bootstrap** (config +
+    FF1 auto-connect watcher only—no Drift open) so startup can still complete
+    to onboarding/home. Home tabs show retryable loading until the seed exists.
+    Full DP-1 bootstrap (My Collection channel, DB-backed feeds) runs only after
+    the file exists—on first successful sync or a later resume/retry
+    (`pendingDp1BootstrapAfterSeed`).
+  - **Existing local seed file:** seed sync failure generally continues using the
+    on-disk DB; gate completion follows normal sync outcome (see seed services).
   - legacy data exists: onboarding is marked seen and migration runs in background
 
 ### Flow: Onboarding and first-use setup
@@ -57,6 +64,9 @@
   - finish marks onboarding complete and routes to home
 - Outcome: user enters app with onboarding flag persisted.
 - Important edge cases:
+  - while startup seed sync is actively in flight, onboarding add-address
+    actions wait for the bootstrap gate to reopen so first-run transitions stay
+    deterministic
   - if seed DB is not ready, added addresses are queued in pending store and migrated later
   - if onboarding is entered from device-connect deep link, flow branches to connect FF1
 
@@ -104,11 +114,12 @@
   - build DP-1 playlist payload (single work or full playlist)
   - cast to selected device through canvas/relayer client
   - consume live player/device status via Wi-Fi control streams
-  - use now-displaying full screen, quick settings, and keyboard/touchpad interactions
+  - now-displaying bar shows current item and allows navigation to work detail
+  - optional: use keyboard/touchpad interactions for remote control
 - Outcome: art is playing on FF1 with live status visible in app overlays/screens.
 - Important edge cases:
-  - no active device: now-displaying shows pair/connect guidance
-  - disconnected state: now-displaying reflects connection transitions
+  - no active device: now-displaying bar shows pair/connect guidance (invisible when not pairing)
+  - disconnected state: now-displaying bar reflects connection transitions
   - enrichment failures do not block playback UI (fallback DP-1 item data remains)
 
 ### Flow: Maintenance and recovery
@@ -141,9 +152,12 @@
   - Who: paired-device users.
   - Touches: canvas client, `ff1_wifi_*` providers/control/transport, now-displaying providers/UI.
 - Offline-first seed database lifecycle
-  - What: startup seed download/swap by ETag, DB gate, rebind/invalidation, resume sync.
+  - What: startup seed download/swap by ETag, `SeedDatabaseGate`, first-install
+    lightweight bootstrap vs full DP-1 bootstrap after the file exists, rebind/
+    invalidation, resume/retry sync.
   - Who: all users (infrastructure behavior).
-  - Touches: `seed_database_*` services/providers, `App` bootstrap orchestration.
+  - Touches: `seed_database_*` services/providers, `App` bootstrap orchestration,
+    `bootstrap_provider` (`bootstrapWithoutDp1Library`, `pendingDp1BootstrapAfterSeed`).
 - Release/update/support utilities
   - What: release notes fetch + display, force update overlay, support email, local data cleanup flows.
   - Who: all users/support workflows.
@@ -193,7 +207,7 @@
 - Important data: onboarding flag, tracked addresses, deeplink payload continuity.
 - Related modules: onboarding providers, add-address flow, token sync coordinator.
 
-### Screen group: FF1 setup (FF1DevicePicker, StartSetupFf1, ConnectFF1, ScanWiFi, EnterWiFiPassword, DeviceConfig, FF1Updating)
+### Screen group: FF1 setup (FF1DeviceScan, StartSetupFf1, ConnectFF1, ScanWiFi, EnterWiFiPassword, DeviceConfig, FF1Updating)
 - Purpose: discover/pair FF1 and configure connectivity/device settings.
 - Entry points: onboarding setup, menu FF1 Settings, QR deeplinks.
 - Key actions: BLE scan/connect, Wi-Fi selection/credentials, finalize pairing, adjust orientation/scaling/audio.
@@ -202,8 +216,8 @@
 
 ### Screen group: NowDisplaying + KeyboardControl
 - Purpose: monitor current playback and send interaction commands.
-- Entry points: global now-displaying bar, `/now-displaying`, `/keyboard-control`.
-- Key actions: open interact mode, quick FF1 settings, view current work/device state.
+- Entry points: global now-displaying bar (navigates to work detail), `/keyboard-control`.
+- Key actions: view current work/device state, open interact mode, send keyboard/touchpad commands.
 - Important data: active device, connection state, player status item list/current index, cached enrichment window.
 - Related modules: `now_displaying_provider`, `ff1_wifi_providers`, touchpad/keyboard events.
 
@@ -268,7 +282,11 @@
 - FF1 layering must stay separated (`transport` / `protocol` / `control`).
 - Deletion-first and no new legacy compatibility by default.
 - Bootstrap/seed-gate invariants:
-  - seed gate must open even on sync failure
+  - **First install:** do not open Drift until `dp1_library.sqlite` exists; keep
+    `SeedDatabaseGate` pending until then; lightweight bootstrap must not block
+    on `SeedDatabaseGate.future` inside `AppDatabase._openConnection`.
+  - **With an existing seed file:** failed sync should not strand users without a
+    usable local read path when the file is still valid (see seed sync service).
   - pending addresses added before seed readiness must be migrated post-seed
 - Playback/control flows should remain resilient to enrichment failures (fallback item data still usable).
 - Large flow/screen changes must preserve existing onboarding, address-indexing, and FF1 setup reliability paths.

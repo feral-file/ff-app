@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:app/app/providers/current_route_provider.dart';
 import 'package:app/app/route_observer.dart';
+import 'package:app/app/routing/all_playlists_route.dart'
+    show deriveAllPlaylistsMetadata, parseAllPlaylistsQuery;
 import 'package:app/app/routing/app_navigator_key.dart';
 import 'package:app/app/routing/app_route_observer.dart';
 import 'package:app/app/routing/page_transitions.dart';
@@ -12,19 +14,17 @@ import 'package:app/infra/services/release_notes_service.dart';
 import 'package:app/ui/screens/add_address_screen.dart';
 import 'package:app/ui/screens/add_alias_screen.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
-import 'package:app/app/routing/all_playlists_route.dart'
-    show deriveAllPlaylistsMetadata, parseAllPlaylistsQuery;
-import 'package:app/ui/screens/all_playlists_screen.dart' show AllPlaylistsScreen;
+import 'package:app/ui/screens/all_playlists_screen.dart'
+    show AllPlaylistsScreen;
 import 'package:app/ui/screens/channel_detail_screen.dart';
 import 'package:app/ui/screens/device_config_screen.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
-import 'package:app/ui/screens/ff1_setup/ff1_device_picker_page.dart';
+import 'package:app/ui/screens/ff1_setup/ff1_device_scan_page.dart';
 import 'package:app/ui/screens/ff1_setup/ff1_updating_page.dart';
 import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
 import 'package:app/ui/screens/ff1_test_screen.dart';
 import 'package:app/ui/screens/home_index_page.dart';
 import 'package:app/ui/screens/keyboard_control_screen.dart';
-import 'package:app/ui/screens/now_displaying_screen.dart';
 import 'package:app/ui/screens/onboarding/introduce_page.dart';
 import 'package:app/ui/screens/onboarding/onboarding_add_address_page.dart';
 import 'package:app/ui/screens/onboarding/setup_ff1_page.dart';
@@ -170,15 +170,20 @@ routerProvider = Provider.family<GoRouter, String>((
           ),
         ],
       ),
-      // FF1 device picker page route path.
+      // FF1 device scan page route path.
       GoRoute(
-        path: Routes.ff1DevicePickerPage,
-        name: RouteNames.ff1DevicePicker,
-        pageBuilder: (context, state) => buildCupertinoTransitionPage(
-          context,
-          state,
-          const FF1DevicePickerPage(),
-        ),
+        path: Routes.ff1DeviceScanPage,
+        name: RouteNames.ff1DeviceScan,
+        pageBuilder: (context, state) {
+          final payload = state.extra is FF1DeviceScanPagePayload
+              ? state.extra! as FF1DeviceScanPagePayload
+              : FF1DeviceScanPagePayload();
+          return buildCupertinoTransitionPage(
+            context,
+            state,
+            FF1DeviceScanPage(payload: payload),
+          );
+        },
       ),
 
       // Global QR scan route.
@@ -426,17 +431,6 @@ routerProvider = Provider.family<GoRouter, String>((
         ),
       ),
 
-      // Now displaying (full-screen) route
-      GoRoute(
-        path: Routes.nowDisplaying,
-        name: RouteNames.nowDisplaying,
-        pageBuilder: (context, state) => buildCupertinoTransitionPage(
-          context,
-          state,
-          const NowDisplayingScreen(),
-        ),
-      ),
-
       // Keyboard control (interact) route
       GoRoute(
         path: Routes.keyboardControl,
@@ -599,8 +593,8 @@ final List<_RouteScreenMapping> _routeScreenMappings = [
     matches: (path) => path == Routes.onboardingSetupFf1Page,
   ),
   _RouteScreenMapping(
-    screenName: 'FF1DevicePickerPage',
-    matches: (path) => path == Routes.ff1DevicePickerPage,
+    screenName: 'FF1DeviceScanPage',
+    matches: (path) => path == Routes.ff1DeviceScanPage,
   ),
   _RouteScreenMapping(
     screenName: 'ScanQrPage',
@@ -645,10 +639,6 @@ final List<_RouteScreenMapping> _routeScreenMappings = [
   _RouteScreenMapping(
     screenName: 'WorkDetailScreen',
     matches: (path) => path.startsWith('${Routes.works}/'),
-  ),
-  _RouteScreenMapping(
-    screenName: 'NowDisplayingScreen',
-    matches: (path) => path == Routes.nowDisplaying,
   ),
   _RouteScreenMapping(
     screenName: 'KeyboardControlScreen',

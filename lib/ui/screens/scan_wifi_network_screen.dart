@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
 import 'package:app/app/providers/ff1_providers.dart';
+import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -48,25 +51,50 @@ class ScanWiFiNetworkScreen extends ConsumerStatefulWidget {
 class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
   final TextEditingController _ssidController = TextEditingController();
   bool _shouldEnableConnectButton = false;
+  ProviderSubscription<FF1SetupState>? _setupSub;
 
   @override
   void initState() {
     super.initState();
-    // Start scanning for networks
-    Future.microtask(() {
-      unawaited(
-        ref
-            .read(connectWiFiProvider.notifier)
-            .connectAndScanNetworks(
-              device: widget.payload.device,
-            ),
-      );
-    });
+    // Navigation side-effects must not be registered inside build.
+    _setupSub = ref.listenManual<FF1SetupState>(
+      ff1SetupOrchestratorProvider,
+      (previous, next) {
+        if (previous?.effectId == next.effectId) {
+          return;
+        }
+        final effectId = next.effectId;
+        final effect = next.effect;
+        if (effect == null) {
+          return;
+        }
+
+        final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
+        unawaited(() async {
+          final didHandle = await _handleOrchestratorEffect(effect);
+          if (didHandle) {
+            orchestrator.ackEffect(effectId: effectId);
+          }
+        }());
+      },
+    );
+
+    // Start scanning for networks.
+    unawaited(
+      Future<void>.microtask(() {
+        unawaited(
+          ref.read(ff1SetupOrchestratorProvider.notifier).startWifiScan(
+                device: widget.payload.device,
+              ),
+        );
+      }),
+    );
   }
 
   @override
   void dispose() {
     _ssidController.dispose();
+    _setupSub?.close();
     super.dispose();
   }
 
@@ -94,7 +122,8 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final connectionState = ref.watch(connectWiFiProvider);
+    final setupState = ref.watch(ff1SetupOrchestratorProvider);
+    final connectionState = setupState.wifiState ?? const WiFiConnectionState();
     final isScanning =
         connectionState.status == WiFiConnectionStatus.connecting ||
         connectionState.status == WiFiConnectionStatus.scanningNetworks;
@@ -123,7 +152,8 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                   if (isScanning) ...[
                     SliverToBoxAdapter(
                       child: Text(
-                        'Getting WiFi networks from your FF1. Please wait a moment...',
+                        'Getting WiFi networks from your FF1. '
+                        'Please wait a moment...',
                         style: AppTypography.body(context).white,
                       ),
                     ),
@@ -189,11 +219,12 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
         Text(description, style: AppTypography.body(context).white),
         SizedBox(height: LayoutConstants.space5),
         PrimaryButton(
+          key: GoldPathPatrolKeys.wifiScanRetry,
           onTap: () {
             unawaited(
               ref
-                  .read(connectWiFiProvider.notifier)
-                  .connectAndScanNetworks(device: widget.payload.device),
+                  .read(ff1SetupOrchestratorProvider.notifier)
+                  .startWifiScan(device: widget.payload.device),
             );
           },
           text: 'Try again',
@@ -232,8 +263,11 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
+          key: GoldPathPatrolKeys.wifiNetworkRow(ssid),
           onTap: () async {
-            ref.read(connectWiFiProvider.notifier).selectNetwork(network);
+            ref
+                .read(ff1SetupOrchestratorProvider.notifier)
+                .selectWiFiNetwork(network);
             FF1Device deviceToPass;
             if (widget.payload.device.remoteId.isEmpty) {
               final connected = await ref.read(
@@ -250,15 +284,12 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
               deviceToPass = widget.payload.device;
             }
             if (!context.mounted) return;
-            unawaited(
-              context.push(
-                Routes.enterWifiPassword,
-                extra: EnterWifiPasswordPagePayload(
+            ref
+                .read(ff1SetupOrchestratorProvider.notifier)
+                .requestEnterWifiPassword(
                   device: deviceToPass,
                   wifiAccessPoint: WifiPoint(ssid),
-                ),
-              ),
-            );
+                );
           },
           child: SizedBox(
             width: double.infinity,
@@ -370,7 +401,9 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                   }
                   // Create a WiFiNetwork for the manually entered SSID
                   final network = WiFiNetwork(ssid);
-                  ref.read(connectWiFiProvider.notifier).selectNetwork(network);
+                  ref
+                      .read(ff1SetupOrchestratorProvider.notifier)
+                      .selectWiFiNetwork(network);
                   FF1Device deviceToPass;
                   if (widget.payload.device.remoteId.isEmpty) {
                     final connected = await ref.read(
@@ -387,15 +420,12 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                     deviceToPass = widget.payload.device;
                   }
                   if (!context.mounted) return;
-                  unawaited(
-                    context.push(
-                      Routes.enterWifiPassword,
-                      extra: EnterWifiPasswordPagePayload(
+                  ref
+                      .read(ff1SetupOrchestratorProvider.notifier)
+                      .requestEnterWifiPassword(
                         device: deviceToPass,
                         wifiAccessPoint: WifiPoint(ssid),
-                      ),
-                    ),
-                  );
+                      );
                 },
                 text: 'Continue',
               ),
@@ -408,5 +438,33 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
         ),
       ],
     );
+  }
+
+  Future<bool> _handleOrchestratorEffect(FF1SetupEffect effect) async {
+    switch (effect) {
+      case FF1SetupEnterWifiPassword(:final device, :final wifiAccessPoint):
+        if (!mounted) return false;
+        unawaited(
+          context.push(
+            Routes.enterWifiPassword,
+            extra: EnterWifiPasswordPagePayload(
+              device: device,
+              wifiAccessPoint: wifiAccessPoint,
+            ),
+          ),
+        );
+        return true;
+      case FF1SetupDeviceUpdating():
+        if (!mounted) return false;
+        context.go(Routes.ff1Updating);
+        return true;
+      case FF1SetupShowError():
+      case FF1SetupInternetReady():
+      case FF1SetupNeedsWiFi():
+      case FF1SetupNavigate():
+      case FF1SetupPop():
+        // Not expected on this screen.
+        return false;
+    }
   }
 }

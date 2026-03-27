@@ -2,11 +2,15 @@
 // WiFi Network Model
 // ============================================================================
 
+// ignore_for_file: public_member_api_docs // Internal setup flow models.
+
+import 'package:app/app/ff1/ff1_ble_device_connect.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -14,6 +18,7 @@ import 'package:logging/logging.dart';
 final _log = Logger('WiFiConnectionNotifier');
 
 /// Represents a WiFi network/SSID
+@immutable
 class WiFiNetwork {
   const WiFiNetwork(this.ssid);
 
@@ -165,12 +170,12 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
       );
 
       // Step 1: Resolve BluetoothDevice — scan first if remoteId is absent.
+      final control = ref.read(ff1ControlProvider);
       late final BluetoothDevice blDevice;
       if (device.remoteId.isEmpty) {
         _log.info(
           'remoteId is empty for ${device.name}, scanning by name to resolve',
         );
-        final control = ref.read(ff1ControlProvider);
         final found = await control.scanForName(name: device.name);
         if (found == null) {
           throw FF1BluetoothError(
@@ -194,9 +199,11 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         blDevice = device.toBluetoothDevice();
       }
 
-      // Step 1: Connect to device (with automatic retry)
-      await ref.read(
-        ff1BleConnectProvider(FF1BleConnectParams(blDevice: blDevice)).future,
+      // Step 1: Connect to device (same Riverpod-style retry as former
+      // ff1BleConnectProvider).
+      await connectFf1BleDeviceWithRiverpodRetries(
+        control: control,
+        blDevice: blDevice,
       );
       _log.info('Connected to device: ${device.deviceId}');
       connectionEstablished = true;
@@ -276,7 +283,8 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
       );
       final blDevice = device.toBluetoothDevice();
 
-      // Step 5: Send WiFi credentials (connect_wifi command) with automatic retry
+      // Step 5: Send WiFi credentials (connect_wifi command) with automatic
+      // retry.
       // Device will attempt to connect to WiFi and respond with topicId
       final response = await ref.read(
         ff1BleSendCommandProvider(
@@ -293,12 +301,27 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         throw FF1ResponseError.fromCode(response.errorCode);
       }
 
-      if (response.data.isEmpty) {
-        throw const FF1BluetoothError('No topicId in response');
+      // Same contract as [ff1EnsureReadyProvider]: the device may already be on
+      // Wi‑Fi with internet while topicId is not included in the connect_wifi
+      // response — obtain it via keep_wifi.
+      var topicId = '';
+      if (response.data.isNotEmpty) {
+        topicId = response.data[0].trim();
+      }
+      if (topicId.isEmpty) {
+        _log.info(
+          'No topicId in sendWifiCredentials response; device may already be '
+          'online — calling keepWifi',
+        );
+        topicId = await ref
+            .read(ff1ControlProvider)
+            .keepWifi(blDevice: blDevice);
+      }
+      if (topicId.isEmpty) {
+        throw const FF1BluetoothError('No topicId from device');
       }
 
-      final topicId = response.data[0];
-      _log.info('Received topicId from device: $topicId');
+      _log.info('Resolved topicId after Wi‑Fi setup: $topicId');
 
       state = state.copyWith(
         status: WiFiConnectionStatus.waitingForDeviceConnection,
@@ -329,7 +352,7 @@ class WiFiConnectionNotifier extends Notifier<WiFiConnectionState> {
         error: e,
         message: 'Connection failed: ${e.message}',
       );
-    } catch (e, st) {
+    } on Object catch (e, st) {
       _log.severe('Unexpected error during connection', e, st);
       state = state.copyWith(
         status: WiFiConnectionStatus.error,

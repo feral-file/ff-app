@@ -16,25 +16,23 @@ import 'package:objectbox/objectbox.dart';
 /// - Tracking connection states
 class FF1BluetoothDeviceService {
   /// Creates a FF1BluetoothDeviceService.
-  ///
-  /// [store] is used for [watchAllDevices] to react to ObjectBox changes.
-  FF1BluetoothDeviceService(this._store, this._box) {
-    _log = Logger('FF1BluetoothDeviceService');
-  }
+  FF1BluetoothDeviceService(this._box) : _log = Logger('FF1BluetoothDeviceService');
 
-  final Store _store;
   final Box<FF1BluetoothDeviceEntity> _box;
-  late final Logger _log;
+  final Logger _log;
 
   /// Stream of all devices; emits whenever the ObjectBox entity changes.
   ///
   /// Use this instead of [getAllDevices] when you need reactive updates
   /// (e.g. migration, add/remove device) without manual invalidate.
-  Stream<List<FF1Device>> watchAllDevices() async* {
-    yield getAllDevices();
-    await for (final _ in _store.watch<FF1BluetoothDeviceEntity>()) {
-      yield getAllDevices();
-    }
+  Stream<List<FF1Device>> watchAllDevices() {
+    // Avoid missing change events between the initial synchronous read and the
+    // watch subscription. QueryBuilder.watch(triggerImmediately: true)
+    // guarantees the first emission occurs after the listener is attached.
+    final queryBuilder = _box.query();
+    return queryBuilder.watch(triggerImmediately: true).map(
+          (query) => query.find().map(_entityToDomain).toList(),
+        );
   }
 
   /// Get all stored Bluetooth devices
@@ -86,11 +84,15 @@ class FF1BluetoothDeviceService {
   ///
   /// Use this instead of [getActiveDevice] when you need reactive updates
   /// (e.g. migration, setActiveDevice) without manual invalidate.
-  Stream<FF1Device?> watchActiveDevice() async* {
-    yield getActiveDevice();
-    await for (final _ in _store.watch<FF1BluetoothDeviceEntity>()) {
-      yield getActiveDevice();
-    }
+  Stream<FF1Device?> watchActiveDevice() {
+    // Avoid missing change events between the initial synchronous read and the
+    // watch subscription. QueryBuilder.watch(triggerImmediately: true)
+    // guarantees the first emission occurs after the listener is attached.
+    final queryBuilder = _box.query(FF1BluetoothDeviceEntity_.isActive.equals(true));
+    return queryBuilder.watch(triggerImmediately: true).map((query) {
+          final results = query.find();
+          return results.isEmpty ? null : _entityToDomain(results.first);
+        });
   }
 
   /// Get the currently active device

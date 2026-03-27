@@ -83,14 +83,12 @@ class WorkGridCard extends StatelessWidget {
     }
 
     return Align(
-      alignment: Alignment.center,
       child: CachedNetworkImage(
         imageUrl: url,
         memCacheWidth: (targetWidth * 2).round(),
         memCacheHeight: (targetWidth * 2).round(),
         width: targetWidth,
         fit: BoxFit.fitWidth,
-        alignment: Alignment.center,
         placeholder: (context, url) => const GalleryThumbnailPlaceholder(),
         errorWidget: (context, url, error) {
           _log.warning('Failed to load thumbnail for work ${item.id}: $error');
