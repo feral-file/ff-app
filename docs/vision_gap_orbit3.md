@@ -120,21 +120,6 @@
   - source semantics are traceable from artifact -> DB fields -> UI grouping behavior
 - Dependencies: none (this is the foundation item)
 
-## Sequencing and exit criteria
-
-1. **Phase A: semantics and trust boundary**
-   - Items: O3-05, O3-03 (contract first)
-   - Exit: publisher and trust claims are explicit, test-backed, and reviewable.
-2. **Phase B: channels source-group IA**
-   - Items: O3-01
-   - Exit: source-group browsing works end-to-end and remains deterministic.
-3. **Phase C: IA parity alignment**
-   - Items: O3-02
-   - Exit: Me/Curated/Global behavior is consistent and documented.
-4. **Phase D: discovery expansion**
-   - Items: O3-04
-   - Exit: discovery is improved with deterministic behavior and no trust overclaims.
-
 ## Definition of done (Orbit 3)
 
 - All O3 items marked complete with linked evidence.
