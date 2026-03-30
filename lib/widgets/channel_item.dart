@@ -2,6 +2,7 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/app/utils/html/prepare_truncated_html.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/content_rhythm.dart';
+import 'package:app/design/text_selection_on_dark_surface.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
@@ -81,31 +82,37 @@ class ChannelHeader extends StatelessWidget {
                     if (rawSummary != null && rawSummary.isNotEmpty) ...[
                       SizedBox(height: ContentRhythm.titleSupportGap),
                       if (renderSummaryAsHtml)
-                        SelectionArea(
-                          child: HtmlWidget(
-                            prepareHtmlForRender(rawSummary),
-                            textStyle: ContentRhythm.longForm(context),
-                            onTapUrl: (url) async {
-                              await launchUrl(
-                                Uri.parse(url),
-                                mode: LaunchMode.externalApplication,
-                              );
-                              return true;
-                            },
-                            customStylesBuilder: (element) {
-                              if (element.localName == 'p') {
-                                return {
-                                  'margin': '0 0 12px 0',
-                                };
-                              }
-                              if (element.localName == 'a') {
-                                return {
-                                  'color': PrimitivesTokens.colorsWhite
-                                      .toHexString(),
-                                };
-                              }
-                              return null;
-                            },
+                        Theme(
+                          data: Theme.of(context).copyWith(
+                            textSelectionTheme:
+                                textSelectionThemeForDarkContentSurface(),
+                          ),
+                          child: SelectionArea(
+                            child: HtmlWidget(
+                              prepareHtmlForRender(rawSummary),
+                              textStyle: ContentRhythm.longForm(context),
+                              onTapUrl: (url) async {
+                                await launchUrl(
+                                  Uri.parse(url),
+                                  mode: LaunchMode.externalApplication,
+                                );
+                                return true;
+                              },
+                              customStylesBuilder: (element) {
+                                if (element.localName == 'p') {
+                                  return {
+                                    'margin': '0 0 12px 0',
+                                  };
+                                }
+                                if (element.localName == 'a') {
+                                  return {
+                                    'color': PrimitivesTokens.colorsWhite
+                                        .toHexString(),
+                                  };
+                                }
+                                return null;
+                              },
+                            ),
                           ),
                         )
                       else

@@ -9,6 +9,7 @@ import 'package:app/app/providers/works_provider.dart';
 import 'package:app/app/utils/html/au_html_style.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/content_rhythm.dart';
+import 'package:app/design/text_selection_on_dark_surface.dart';
 import 'package:app/domain/extensions/asset_token_ext.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/dp1/dp1_intent.dart';
@@ -666,19 +667,25 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                       children: [
                         Semantics(
                           label: 'Desc',
-                          child: SelectionArea(
-                            focusNode: _selectTextFocusNode,
-                            child: HtmlWidget(
-                              descriptionHtml,
-                              customStylesBuilder: auHtmlStyle,
-                              textStyle: ContentRhythm.title(context),
-                              onTapUrl: (url) async {
-                                await launchUrl(
-                                  Uri.parse(url),
-                                  mode: LaunchMode.externalApplication,
-                                );
-                                return true;
-                              },
+                          child: Theme(
+                            data: Theme.of(context).copyWith(
+                              textSelectionTheme:
+                                  textSelectionThemeForDarkContentSurface(),
+                            ),
+                            child: SelectionArea(
+                              focusNode: _selectTextFocusNode,
+                              child: HtmlWidget(
+                                descriptionHtml,
+                                customStylesBuilder: auHtmlStyle,
+                                textStyle: ContentRhythm.title(context),
+                                onTapUrl: (url) async {
+                                  await launchUrl(
+                                    Uri.parse(url),
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                  return true;
+                                },
+                              ),
                             ),
                           ),
                         ),
