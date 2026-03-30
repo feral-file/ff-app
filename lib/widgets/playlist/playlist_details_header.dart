@@ -1,5 +1,6 @@
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/utils/works_count_label.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
 
@@ -82,7 +83,7 @@ class PlaylistDetailsHeader extends StatelessWidget {
                       if (total != null) ...[
                         SizedBox(height: LayoutConstants.space1),
                         Text(
-                          '$total works',
+                          formatWorksCountLabel(total!),
                           style: AppTypography.bodySmall(context).grey,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

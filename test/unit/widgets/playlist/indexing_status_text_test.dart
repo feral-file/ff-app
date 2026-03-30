@@ -48,7 +48,9 @@ void main() {
 
     test('waitingForIndexStatus + job null: Syncing with ready', () {
       final result = deriveIndexingStatusText(
-        processStatus: _status(AddressIndexingProcessState.waitingForIndexStatus),
+        processStatus: _status(
+          AddressIndexingProcessState.waitingForIndexStatus,
+        ),
         readyCount: 2,
       );
       expect(result.text, 'Syncing • 2 ready');
@@ -89,31 +91,42 @@ void main() {
       expect(result.showRetry, isFalse);
     });
 
-    test('completed: prefers readyCount, falls back to totalTokensViewable', () {
-      const job = AddressIndexingJobResponse(
-        workflowId: 'wf_1',
-        address: '0xabc',
-        status: IndexingJobStatus.completed,
-        totalTokensIndexed: 10,
-        totalTokensViewable: 9,
-      );
-      expect(
-        deriveIndexingStatusText(
-          processStatus: _status(AddressIndexingProcessState.completed),
-          job: job,
-          readyCount: 7,
-        ).text,
-        'Up to date • 7 works',
-      );
-      expect(
-        deriveIndexingStatusText(
-          processStatus: _status(AddressIndexingProcessState.completed),
-          job: job,
-          readyCount: null,
-        ).text,
-        'Up to date • 9 works',
-      );
-    });
+    test(
+      'completed: prefers readyCount, falls back to totalTokensViewable',
+      () {
+        const job = AddressIndexingJobResponse(
+          workflowId: 'wf_1',
+          address: '0xabc',
+          status: IndexingJobStatus.completed,
+          totalTokensIndexed: 10,
+          totalTokensViewable: 9,
+        );
+        expect(
+          deriveIndexingStatusText(
+            processStatus: _status(AddressIndexingProcessState.completed),
+            job: job,
+            readyCount: 7,
+          ).text,
+          'Up to date • 7 works',
+        );
+        expect(
+          deriveIndexingStatusText(
+            processStatus: _status(AddressIndexingProcessState.completed),
+            job: job,
+            readyCount: 1,
+          ).text,
+          'Up to date • 1 work',
+        );
+        expect(
+          deriveIndexingStatusText(
+            processStatus: _status(AddressIndexingProcessState.completed),
+            job: job,
+            readyCount: null,
+          ).text,
+          'Up to date • 9 works',
+        );
+      },
+    );
 
     test('failed: shows sync issue and retry', () {
       final result = deriveIndexingStatusText(
@@ -141,21 +154,24 @@ void main() {
       expect(result.showRetry, isFalse);
     });
 
-    test('syncingTokens + job completed: shows Syncing with indexed found count', () {
-      const job = AddressIndexingJobResponse(
-        workflowId: 'wf_1',
-        address: '0xabc',
-        status: IndexingJobStatus.completed,
-        totalTokensIndexed: 10,
-        totalTokensViewable: 9,
-      );
-      final result = deriveIndexingStatusText(
-        processStatus: _status(AddressIndexingProcessState.syncingTokens),
-        job: job,
-        readyCount: 5,
-      );
-      expect(result.text, 'Syncing • 5 ready • 10 found');
-      expect(result.showRetry, isFalse);
-    });
+    test(
+      'syncingTokens + job completed: shows Syncing with indexed found count',
+      () {
+        const job = AddressIndexingJobResponse(
+          workflowId: 'wf_1',
+          address: '0xabc',
+          status: IndexingJobStatus.completed,
+          totalTokensIndexed: 10,
+          totalTokensViewable: 9,
+        );
+        final result = deriveIndexingStatusText(
+          processStatus: _status(AddressIndexingProcessState.syncingTokens),
+          job: job,
+          readyCount: 5,
+        );
+        expect(result.text, 'Syncing • 5 ready • 10 found');
+        expect(result.showRetry, isFalse);
+      },
+    );
   });
 }
