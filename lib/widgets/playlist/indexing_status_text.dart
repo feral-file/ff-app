@@ -1,14 +1,19 @@
 import 'package:app/domain/models/indexer/workflow.dart';
 import 'package:app/infra/config/app_state_service.dart';
+import 'package:app/ui/formatters/works_count_label.dart';
 
 /// Status text and retry hint for address-based playlist indexing.
 class IndexingStatusText {
+  /// Creates an [IndexingStatusText].
   const IndexingStatusText({
     required this.text,
     required this.showRetry,
   });
 
+  /// Derived status line, or null when the line should be omitted.
   final String? text;
+
+  /// When true, show a retry affordance (sync failure/cancel).
   final bool showRetry;
 }
 
@@ -21,9 +26,10 @@ class IndexingStatusText {
 /// Patterns:
 /// - idle: Syncing • {ready} (fallback for already-indexed addresses)
 /// - indexingTriggered, waitingForIndexStatus, syncingTokens: Syncing • ...
-///   (IndexingJobStatus.completed is just one step; process may still be syncing)
+///   (IndexingJobStatus.completed is one step; process may still be syncing)
 /// - paused: Paused • {ready} ready • resumes later
-/// - completed: Up to date • {works} works (only when processStatus.state is completed)
+/// - completed: Up to date • singular/plural work count (when process is
+///   completed)
 /// - failed: Sync issue (+ retry)
 IndexingStatusText deriveIndexingStatusText({
   required int? readyCount,
@@ -47,7 +53,7 @@ IndexingStatusText deriveIndexingStatusText({
       return IndexingStatusText(
         text: _joinParts(<String>[
           'Up to date',
-          if (worksCount != null) '$worksCount works',
+          if (worksCount != null) formatWorksCountLabel(worksCount),
         ]),
         showRetry: false,
       );
