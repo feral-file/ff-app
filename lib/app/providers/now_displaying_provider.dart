@@ -97,7 +97,29 @@ final nowDisplayingRequestedRangeProvider =
 class NowDisplayingRequestedRangeNotifier
     extends Notifier<({int start, int end})?> {
   @override
-  ({int start, int end})? build() => null;
+  ({int start, int end})? build() {
+    // Drop monotonic scroll expansion when the playing list identity changes
+    // (new playlist / ordered items) or playback clears, so playlist B does
+    // not inherit A's widened range.
+    ref.listen<FF1PlayerStatus?>(
+      ff1CurrentPlayerStatusProvider,
+      (prev, next) {
+        final before = _playlistIdentityFromStatus(prev);
+        final after = _playlistIdentityFromStatus(next);
+        if (before == null && after == null) {
+          return;
+        }
+        if (before == null || after == null) {
+          state = null;
+          return;
+        }
+        if (!_playlistIdentitiesEqual(before, after)) {
+          state = null;
+        }
+      },
+    );
+    return null;
+  }
 
   /// Merges [start, end) into the current requested range (expands to include the new range).
   void expandTo(int start, int end) {
@@ -109,6 +131,12 @@ class NowDisplayingRequestedRangeNotifier
     final mergedStart = start < prev.start ? start : prev.start;
     final mergedEnd = end > prev.end ? end : prev.end;
     state = (start: mergedStart, end: mergedEnd);
+  }
+
+  /// Clears scroll expansion so the next window is only around [currentWorkIndex].
+  /// Call when the playing list identity changes (new playlist / items from FF1).
+  void clear() {
+    state = null;
   }
 }
 
@@ -174,9 +202,8 @@ final nowDisplayingProvider =
     );
 
 class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
-  /// Increments at the start of each [_runRecomputeLoop] iteration so a slow
-  /// async compute cannot overwrite state after a newer recompute has bumped
-  /// the token.
+  /// Bumped on every [_enqueueRecompute]; each loop iteration captures an
+  /// epoch snapshot so a slow async pass does not publish after newer FF1 data.
   int _recomputeToken = 0;
 
   /// Identity of the last **full** compute (cache + enrich). Used to skip
@@ -212,11 +239,16 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   /// Merges [incoming] into [_pendingRecomputeCause] and runs a single async
   /// loop so [await] phases do not interleave with a second token bump (which
   /// would skip `state = computed` and strand the notifier on loading).
+  ///
+  /// Increments [_recomputeToken] on every call so any in-flight compute that
+  /// started with an older epoch is discarded after await (newer FF1 updates
+  /// must not lose to a slow cache/enrichment pass).
   void _enqueueRecompute(_NowDisplayingRecomputeCause incoming) {
     _pendingRecomputeCause = _mergeRecomputeCauses(
       _pendingRecomputeCause,
       incoming,
     );
+    _recomputeToken++;
     if (_recomputeLoopRunning) {
       return;
     }
@@ -234,13 +266,15 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         }
         final cause = _pendingRecomputeCause;
         _pendingRecomputeCause = _NowDisplayingRecomputeCause.generic;
-        final token = ++_recomputeToken;
+        // Epoch is bumped on every [_enqueueRecompute], not here, so a newer
+        // player/device update during await invalidates this iteration.
+        final epoch = _recomputeToken;
         await Future<void>.microtask(() {});
         if (!ref.mounted) {
           return;
         }
-        if (token != _recomputeToken) {
-          return;
+        if (epoch != _recomputeToken) {
+          continue;
         }
         final status = ref.read(ff1CurrentPlayerStatusProvider);
         final identity = _playlistIdentityFromStatus(status);
@@ -252,8 +286,8 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         if (!ref.mounted) {
           return;
         }
-        if (token != _recomputeToken) {
-          return;
+        if (epoch != _recomputeToken) {
+          continue;
         }
         state = computed;
         // A cache-window-only follow-up with the same playlist identity as the

@@ -1047,6 +1047,174 @@ void main() {
         );
       },
     );
+
+    test(
+      'newer player status during slow DB cache does not publish stale success',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        final dp1Items = [
+          const DP1PlaylistItem(id: 'item_0', duration: 60, title: 'A'),
+          const DP1PlaylistItem(id: 'item_1', duration: 60, title: 'B'),
+        ];
+
+        final statusIndex0 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: dp1Items,
+        );
+        final statusIndex1 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 1,
+          items: dp1Items,
+        );
+
+        final recordingSlow = _RecordingDatabaseService(
+          db,
+          cacheDelay: const Duration(milliseconds: 200),
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        addTearDown(playerStatusController.close);
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingSlow),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        playerStatusController.add(statusIndex0);
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        playerStatusController.add(statusIndex1);
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+
+        final state = container.read(nowDisplayingProvider);
+        expect(state, isA<NowDisplayingSuccess>());
+        final object =
+            (state as NowDisplayingSuccess).object as DP1NowDisplayingObject;
+        expect(
+          object.index,
+          1,
+          reason:
+              'Recompute epoch must discard slow cache result from older index',
+        );
+        expect(object.currentItem.id, 'item_1');
+      },
+    );
+
+    test(
+      'playing list identity change clears expanded requested range',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        final itemsPl1 = [
+          const DP1PlaylistItem(id: 'a0', duration: 60, title: 'A'),
+        ];
+        final itemsPl2 = [
+          const DP1PlaylistItem(id: 'b0', duration: 60, title: 'B'),
+        ];
+
+        final statusPl1 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: itemsPl1,
+        );
+        final statusPl2 = FF1PlayerStatus(
+          playlistId: 'pl_2',
+          currentWorkIndex: 0,
+          items: itemsPl2,
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        addTearDown(playerStatusController.close);
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingDb),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        playerStatusController.add(statusPl1);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        container.read(nowDisplayingRequestedRangeProvider.notifier).expandTo(
+              0,
+              500,
+            );
+        expect(
+          container.read(nowDisplayingRequestedRangeProvider),
+          isNotNull,
+        );
+
+        playerStatusController.add(statusPl2);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        expect(
+          container.read(nowDisplayingRequestedRangeProvider),
+          isNull,
+          reason:
+              'NowDisplayingRequestedRangeNotifier clears expansion on list identity change',
+        );
+      },
+    );
   });
 }
 

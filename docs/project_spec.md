@@ -130,7 +130,7 @@
   - no active device: now-displaying bar shows pair/connect guidance (invisible when not pairing)
   - disconnected state: now-displaying bar reflects connection transitions
   - enrichment failures do not block playback UI (fallback DP-1 item data remains)
-  - now-displaying **awaits** the local SQLite read for the current window before computing cache misses and indexer enrichment, so `missingItems` matches the DB and spurious enrich calls are avoided. The bar shows a **loading overlay** only when the playing list identity changes (playlist id or ordered item ids from FF1). Pause/sleep or index changes that keep the same visible window reuse the last built rows without another SQLite pass; when the index moves enough to shift the window (long playlists), the new slice is loaded/enriched without a list-identity change and without treating that as a playlist change for the loading overlay.
+  - now-displaying stays aligned with live FF1 playback: enrichment uses local data when available and DP-1 fallback otherwise; the bar avoids a loading flash except when the playing **list** from FF1 changes (see `docs/app_flows.md` for window and overlay behavior).
 
 ### Flow: Maintenance and recovery
 

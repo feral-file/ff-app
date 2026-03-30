@@ -168,6 +168,7 @@
   - disconnected device -> bar shows disconnected state
   - enrichment/cache misses fall back to basic DP-1 item fields
   - loading overlay only when playlist id or item list from FF1 changes; pause/sleep or index nudges that keep the same visible index window reuse rows without flashing loading; if the index moves enough to shift the window on a long playlist, the app reloads/enriches that new slice without requiring a list-identity change (still no loading flash when playlist/items are unchanged)
+  - expanded-bar scroll expansion is scoped to the current playing list: switching playlist or ordered items clears the widened range so the next window is not inflated by a previous session
 - key screens involved: Work Detail, Playlist Detail, Keyboard Control, Now Displaying Bar (overlay)
 - key modules/services involved: `canvas_client_service_v2`, `now_displaying_provider`, `ff1_wifi_providers`, `ff1_device_provider`
 
