@@ -6,7 +6,7 @@ import 'package:app/infra/services/indexer_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // List-tokens: default `limit` matches `indexerTokensPageSize`; explicit
-// `limit` overrides. Response `offset` field is the next cursor (see TokensPage).
+// `limit` overrides. Response `offset` is the next cursor (see TokensPage).
 
 class FakeIndexerClient extends IndexerClient {
   FakeIndexerClient() : super(endpoint: 'http://localhost');
@@ -173,6 +173,26 @@ void main() {
       expect(client.lastVars['owners'], equals(['0x111']));
       expect(client.lastVars['limit'], equals(50));
       expect(client.lastVars['offset'], equals(0));
+    },
+  );
+
+  test(
+    'IndexerService.fetchTokensPageByAddresses defaults limit to '
+    'indexerTokensPageSize',
+    () async {
+      final client = FakeIndexerClient()
+        ..tokensPayload = <String, dynamic>{
+          'items': <dynamic>[],
+          'offset': null,
+        };
+
+      final service = IndexerService(client: client);
+      await service.fetchTokensPageByAddresses(
+        addresses: const ['0x111'],
+      );
+
+      expect(client.lastVars['limit'], equals(indexerTokensPageSize));
+      expect(client.lastVars.containsKey('offset'), isFalse);
     },
   );
 

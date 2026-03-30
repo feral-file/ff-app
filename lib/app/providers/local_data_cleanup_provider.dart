@@ -220,6 +220,10 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     /// background retry.
     recreateDatabaseFromSeed: () async {
       await forceReplaceDatabaseFromSeed();
+      // ObjectBox may still hold list-tokens cursors; SQLite playlists are new.
+      await ref
+          .read(appStateServiceProvider)
+          .clearAllPersonalTokensListFetchOffsets();
     },
     pauseFeedWork: () {
       // No-op: feed manager removed; seed database is the source of DP1 data.

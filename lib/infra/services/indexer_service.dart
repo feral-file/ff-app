@@ -67,7 +67,8 @@ class IndexerService {
   Future<ChangeList> getChanges(QueryChangesRequest request) async {
     try {
       _log.info(
-        'Fetching changes (addresses: ${request.addresses.length}, tokenCids: ${request.tokenCids.length}, anchor: ${request.anchor})',
+        'Fetching changes (addresses: ${request.addresses.length}, '
+        'tokenCids: ${request.tokenCids.length}, anchor: ${request.anchor})',
       );
 
       final data = await _client.query(
@@ -116,8 +117,8 @@ class IndexerService {
     final results = <AssetToken>[];
 
     if (hasIds) {
-      // If tokenIds > 255, we must batch. We always fetch the full set then apply
-      // offset/limit on the merged result to keep caller semantics stable.
+      // If tokenIds > 255, we must batch. We always fetch the full set then
+      // apply offset/limit on the merged result to keep caller semantics stable.
       final fetched = <AssetToken>[];
       final effectiveOwners = owners ?? const <String>[];
       for (final batch in _batchesOf(ids, _maxUint8Limit)) {
@@ -142,8 +143,9 @@ class IndexerService {
         _log.info('Fetching ${cids.length} tokens by tokenCids');
         more = await _fetchTokensByCids(tokenCids: cids);
         _log.info('Fetched ${more.length} tokens');
-      } catch (e, stack) {
-        // Fail-open for enrichment flows: do not propagate indexer outages to UI.
+      } on Object catch (e, stack) {
+        // Fail-open for enrichment flows: do not propagate indexer outages to
+        // the UI.
         _log.warning(
           'Failed to fetch tokens by CIDs; returning empty',
           e,
@@ -188,13 +190,13 @@ class IndexerService {
     int? limit,
     int? offset,
   }) async {
+    // Always send limit so GraphQL does not fall back to schema default (20).
+    final effectiveLimit = limit ?? indexerTokensPageSize;
     final vars = <String, dynamic>{
       'owners': addresses,
       'chains': _defaultChains,
+      'limit': effectiveLimit,
     };
-    if (limit != null) {
-      vars['limit'] = limit;
-    }
     if (offset != null) {
       vars['offset'] = offset;
     }
@@ -243,7 +245,7 @@ class IndexerService {
           offset: 0,
         );
         results.addAll(tokens);
-      } catch (e, stack) {
+      } on Object catch (e, stack) {
         // Keep processing remaining batches when one request fails.
         _log.warning(
           'Failed token CID batch (${batch.length}); skipping batch',

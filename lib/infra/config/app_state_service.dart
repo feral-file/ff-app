@@ -137,6 +137,13 @@ abstract class AppStateServiceBase {
     required int? nextFetchOffset,
   });
 
+  /// Clears persisted list-tokens cursors for all addresses.
+  ///
+  /// Call after the DP-1 SQLite library was replaced while ObjectBox was kept
+  /// (e.g. seed replace during rebuild metadata) so sync does not resume from
+  /// a stale indexer offset against rebuilt empty playlists.
+  Future<void> clearAllPersonalTokensListFetchOffsets();
+
   Future<List<String>> getAddressesWithCompletedIndexing();
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
@@ -312,7 +319,8 @@ class AppStateService extends AppStateServiceBase {
     });
   }
 
-  /// Persist seed download completion. When true, subsequent syncs run in background.
+  /// Persist seed download completion. When true, subsequent syncs run in
+  /// background.
   @override
   Future<void> setHasCompletedSeedDownload({required bool completed}) async {
     await _lock.synchronized(() async {
@@ -422,7 +430,22 @@ class AppStateService extends AppStateServiceBase {
     });
   }
 
-  /// Returns addresses with indexing status completed (ready for syncCollection).
+  @override
+  Future<void> clearAllPersonalTokensListFetchOffsets() async {
+    await _lock.synchronized(() async {
+      for (final row in _appStateAddressBox.getAll()) {
+        if (!row.hasPersonalTokensIndexerNextOffset) continue;
+        row
+          ..hasPersonalTokensIndexerNextOffset = false
+          ..personalTokensIndexerNextOffset = 0
+          ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
+        _appStateAddressBox.put(row);
+      }
+    });
+  }
+
+  /// Returns addresses with indexing status completed (ready for
+  /// syncCollection).
   @override
   Future<List<String>> getAddressesWithCompletedIndexing() async {
     return _lock.synchronized(() {
@@ -455,10 +478,12 @@ class AppStateService extends AppStateServiceBase {
     });
   }
 
-  /// Stream of per-address indexing process status; emits when ObjectBox changes.
+  /// Stream of per-address indexing process status; emits when ObjectBox
+  /// changes.
   ///
-  /// Use instead of [getAddressIndexingStatus] when you need reactive updates
-  /// without manual invalidation. Any [setAddressIndexingStatus] triggers emit.
+  /// Prefer this stream over one-shot reads when you need reactive updates
+  /// without manual invalidation. Any call to set address indexing status
+  /// triggers emit.
   @override
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
@@ -475,8 +500,14 @@ class AppStateService extends AppStateServiceBase {
     required String address,
     required AddressIndexingProcessStatus status,
   }) async {
-    final normalizedAddress = _normalizeAddressKey(address);
     await _lock.synchronized(() async {
+      final normalizedAddress = _normalizeAddressKey(address);
+      // Same tracked guard as setPersonalTokensListFetchOffset: in-flight
+      // indexing must not recreate rows after removeAddress / clearAddressState.
+      final tracked = _findTrackedAddress(normalizedAddress);
+      if (tracked == null) {
+        return;
+      }
       var row = _findAddressState(normalizedAddress);
       row ??= _createAddressState(normalizedAddress);
       row
@@ -488,8 +519,10 @@ class AppStateService extends AppStateServiceBase {
         ..indexingProcessWorkflowId = status.workflowId ?? ''
         ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
       _appStateAddressBox.put(row);
+      _log.info(
+        'Set address indexing status for $address: ${status.state}',
+      );
     });
-    _log.info('Set address indexing status for $address: ${status.state}');
   }
 
   @override
@@ -559,12 +592,12 @@ class AppStateService extends AppStateServiceBase {
   @override
   Future<List<String>> getTrackedPersonalAddresses() async {
     return _lock.synchronized(() {
-      final addresses = _trackedAddressBox
-          .getAll()
-          .map((row) => row.normalizedAddress)
-          .toSet()
-          .toList();
-      addresses.sort();
+      final addresses = (_trackedAddressBox
+              .getAll()
+              .map((row) => row.normalizedAddress)
+              .toSet()
+              .toList())
+        ..sort();
       return addresses;
     });
   }

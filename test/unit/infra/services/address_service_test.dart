@@ -67,6 +67,12 @@ class _FakeAppStateService implements AppStateServiceBase {
   }
 
   @override
+  Future<void> clearAllPersonalTokensListFetchOffsets() async {
+    personalTokensOffsets.clear();
+    personalTokensOffsetWrites.clear();
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -154,6 +160,55 @@ void main() {
     );
   });
 
+  test(
+    'syncTokens drops stale cursor when playlist itemCount is zero',
+    () async {
+      const addr = '0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8';
+      await databaseService.ingestPlaylist(
+        const Playlist(
+          id: 'addr:eth:0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8',
+          name: 'Personal',
+          type: PlaylistType.addressBased,
+          channelId: Channel.myCollectionId,
+          ownerAddress: addr,
+          ownerChain: 'eth',
+        ),
+      );
+      fakeAppState.personalTokensOffsets[addr.toNormalizedAddress()] = 500;
+
+      final fakeIsolate = FakeIndexerServiceIsolate()
+        ..fetchTokensPageSequence = [
+          const TokensPage(tokens: []),
+        ];
+
+      final indexerSyncService = IndexerSyncService(
+        indexerService: IndexerService(
+          client: IndexerClient(endpoint: 'https://example.invalid'),
+        ),
+        databaseService: databaseService,
+      );
+
+      final service = AddressService(
+        databaseService: databaseService,
+        indexerSyncService: indexerSyncService,
+        domainAddressService: DomainAddressService(
+          resolverUrl: '',
+          resolverApiKey: '',
+        ),
+        personalTokensSyncService: _FakePersonalTokensSyncService(),
+        indexerServiceIsolate: fakeIsolate,
+        appStateService: fakeAppState,
+      );
+
+      await service.syncTokens(addr);
+      expect(fakeIsolate.fetchTokensPageOffsets.single, 0);
+      expect(
+        fakeAppState.personalTokensOffsets[addr.toNormalizedAddress()],
+        isNull,
+      );
+    },
+  );
+
   test('syncTokens follows nextOffset until null', () async {
     final fakeIsolate = FakeIndexerServiceIsolate()
       ..fetchTokensPageSequence = [
@@ -220,7 +275,9 @@ void main() {
     expect(fakeAppState.personalTokensOffsetWrites, equals(<int?>[42, null]));
   });
 
-  test('syncTokens resumes first request from persisted indexer cursor', () async {
+  test(
+    'syncTokens resumes first request from persisted indexer cursor',
+    () async {
     const addr = '0xabc';
     fakeAppState.personalTokensOffsets[addr.toNormalizedAddress()] = 500;
 
@@ -251,6 +308,44 @@ void main() {
     await service.syncTokens(addr);
     expect(fakeIsolate.fetchTokensPageOffsets.single, 500);
   });
+
+  test(
+    'syncTokens resume uses persisted cursor for mixed-case 0x (canonical key '
+    'matches playlist / app state)',
+    () async {
+      const mixed = '0x49Fc8AD516FBCC9bA3123D56e63A35d05AA9EFB8';
+      final canonical = mixed.toNormalizedAddress();
+      fakeAppState.personalTokensOffsets[canonical] = 701;
+
+      final fakeIsolate = FakeIndexerServiceIsolate()
+        ..fetchTokensPageSequence = [
+          const TokensPage(tokens: []),
+        ];
+
+      final indexerSyncService = IndexerSyncService(
+        indexerService: IndexerService(
+          client: IndexerClient(endpoint: 'https://example.invalid'),
+        ),
+        databaseService: databaseService,
+      );
+
+      final service = AddressService(
+        databaseService: databaseService,
+        indexerSyncService: indexerSyncService,
+        domainAddressService: DomainAddressService(
+          resolverUrl: '',
+          resolverApiKey: '',
+        ),
+        personalTokensSyncService: _FakePersonalTokensSyncService(),
+        indexerServiceIsolate: fakeIsolate,
+        appStateService: fakeAppState,
+      );
+
+      await service.syncTokens(mixed);
+      expect(fakeIsolate.fetchTokensPageOffsets.single, 701);
+      expect(fakeIsolate.fetchTokensAddresses.single, <String>[canonical]);
+    },
+  );
 
   test(
     'syncTokens does not persist indexer cursor after address removed from '

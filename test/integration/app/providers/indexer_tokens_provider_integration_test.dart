@@ -55,6 +55,9 @@ class IntegrationAppStateService implements AppStateService {
   }) async {}
 
   @override
+  Future<void> clearAllPersonalTokensListFetchOffsets() async {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -137,8 +140,8 @@ void main() {
 
   Future<void> seedAddressPlaylist(String address) async {
     final nowUs = DateTime.now().microsecondsSinceEpoch;
-    // Use INSERT OR IGNORE: first test creates playlist; second test reuses same
-    // address and playlist already exists from prior test in this file.
+    // Use INSERT OR IGNORE: first test creates playlist; second test reuses
+    // the same address and playlist from a prior test in this file.
     await context.database.customStatement(
       '''
       INSERT OR IGNORE INTO playlists (
@@ -307,109 +310,112 @@ void main() {
       );
 
       final baseTime = DateTime.now().toUtc();
-      mockIndexer.mockSyncResult = SyncCollectionResult(
-        events: [
-          // Token 1 (removal): acquired -> metadata_updated -> released -> metadata_updated -> released (last transfer)
-          TokenEvent(
-            id: 1,
-            tokenId: tokenToRelease.id,
-            eventType: 'acquired',
-            ownerAddress: normalizedAddress,
-            occurredAt: baseTime.add(const Duration(seconds: 1)),
+      mockIndexer
+        ..mockSyncResult = SyncCollectionResult(
+          events: [
+            // Token 1 (removal): acquired -> metadata_updated -> released ->
+            // metadata_updated -> released (last transfer)
+            TokenEvent(
+              id: 1,
+              tokenId: tokenToRelease.id,
+              eventType: 'acquired',
+              ownerAddress: normalizedAddress,
+              occurredAt: baseTime.add(const Duration(seconds: 1)),
+            ),
+            TokenEvent(
+              id: 2,
+              tokenId: tokenToRelease.id,
+              eventType: 'metadata_updated',
+              occurredAt: baseTime.add(const Duration(seconds: 2)),
+            ),
+            TokenEvent(
+              id: 3,
+              tokenId: tokenToRelease.id,
+              eventType: 'released',
+              ownerAddress: normalizedAddress,
+              occurredAt: baseTime.add(const Duration(seconds: 3)),
+            ),
+            TokenEvent(
+              id: 4,
+              tokenId: tokenToRelease.id,
+              eventType: 'metadata_updated',
+              occurredAt: baseTime.add(const Duration(seconds: 4)),
+            ),
+            TokenEvent(
+              id: 5,
+              tokenId: tokenToRelease.id,
+              eventType: 'released',
+              ownerAddress: normalizedAddress,
+              occurredAt: baseTime.add(const Duration(seconds: 5)),
+            ),
+            // Token 2 (updated): acquired -> released -> metadata_updated ->
+            // acquired (last transfer)
+            TokenEvent(
+              id: 6,
+              tokenId: tokenToUpdate1.id,
+              eventType: 'acquired',
+              ownerAddress: normalizedAddress,
+              occurredAt: baseTime.add(const Duration(seconds: 10)),
+            ),
+            TokenEvent(
+              id: 7,
+              tokenId: tokenToUpdate1.id,
+              eventType: 'released',
+              ownerAddress: normalizedAddress,
+              occurredAt: baseTime.add(const Duration(seconds: 11)),
+            ),
+            TokenEvent(
+              id: 8,
+              tokenId: tokenToUpdate1.id,
+              eventType: 'metadata_updated',
+              occurredAt: baseTime.add(const Duration(seconds: 12)),
+            ),
+            TokenEvent(
+              id: 9,
+              tokenId: tokenToUpdate1.id,
+              eventType: 'acquired',
+              ownerAddress: normalizedAddress,
+              occurredAt: baseTime.add(const Duration(seconds: 13)),
+            ),
+            // Token 3 (updated): metadata_updated -> acquired ->
+            // metadata_updated -> metadata_updated (last transfer = acquired)
+            TokenEvent(
+              id: 10,
+              tokenId: tokenToUpdate2.id,
+              eventType: 'metadata_updated',
+              occurredAt: baseTime.add(const Duration(seconds: 20)),
+            ),
+            TokenEvent(
+              id: 11,
+              tokenId: tokenToUpdate2.id,
+              eventType: 'acquired',
+              ownerAddress: normalizedAddress,
+              occurredAt: baseTime.add(const Duration(seconds: 21)),
+            ),
+            TokenEvent(
+              id: 12,
+              tokenId: tokenToUpdate2.id,
+              eventType: 'metadata_updated',
+              occurredAt: baseTime.add(const Duration(seconds: 22)),
+            ),
+            TokenEvent(
+              id: 13,
+              tokenId: tokenToUpdate2.id,
+              eventType: 'metadata_updated',
+              occurredAt: baseTime.add(const Duration(seconds: 23)),
+            ),
+          ],
+          nextCheckpoint: SyncCheckpoint(
+            timestamp: baseTime.add(const Duration(seconds: 30)),
+            eventId: 99,
           ),
-          TokenEvent(
-            id: 2,
-            tokenId: tokenToRelease.id,
-            eventType: 'metadata_updated',
-            occurredAt: baseTime.add(const Duration(seconds: 2)),
-          ),
-          TokenEvent(
-            id: 3,
-            tokenId: tokenToRelease.id,
-            eventType: 'released',
-            ownerAddress: normalizedAddress,
-            occurredAt: baseTime.add(const Duration(seconds: 3)),
-          ),
-          TokenEvent(
-            id: 4,
-            tokenId: tokenToRelease.id,
-            eventType: 'metadata_updated',
-            occurredAt: baseTime.add(const Duration(seconds: 4)),
-          ),
-          TokenEvent(
-            id: 5,
-            tokenId: tokenToRelease.id,
-            eventType: 'released',
-            ownerAddress: normalizedAddress,
-            occurredAt: baseTime.add(const Duration(seconds: 5)),
-          ),
-          // Token 2 (updated): acquired -> released -> metadata_updated -> acquired (last transfer)
-          TokenEvent(
-            id: 6,
-            tokenId: tokenToUpdate1.id,
-            eventType: 'acquired',
-            ownerAddress: normalizedAddress,
-            occurredAt: baseTime.add(const Duration(seconds: 10)),
-          ),
-          TokenEvent(
-            id: 7,
-            tokenId: tokenToUpdate1.id,
-            eventType: 'released',
-            ownerAddress: normalizedAddress,
-            occurredAt: baseTime.add(const Duration(seconds: 11)),
-          ),
-          TokenEvent(
-            id: 8,
-            tokenId: tokenToUpdate1.id,
-            eventType: 'metadata_updated',
-            occurredAt: baseTime.add(const Duration(seconds: 12)),
-          ),
-          TokenEvent(
-            id: 9,
-            tokenId: tokenToUpdate1.id,
-            eventType: 'acquired',
-            ownerAddress: normalizedAddress,
-            occurredAt: baseTime.add(const Duration(seconds: 13)),
-          ),
-          // Token 3 (updated): metadata_updated -> acquired -> metadata_updated -> metadata_updated (last transfer = acquired)
-          TokenEvent(
-            id: 10,
-            tokenId: tokenToUpdate2.id,
-            eventType: 'metadata_updated',
-            occurredAt: baseTime.add(const Duration(seconds: 20)),
-          ),
-          TokenEvent(
-            id: 11,
-            tokenId: tokenToUpdate2.id,
-            eventType: 'acquired',
-            ownerAddress: normalizedAddress,
-            occurredAt: baseTime.add(const Duration(seconds: 21)),
-          ),
-          TokenEvent(
-            id: 12,
-            tokenId: tokenToUpdate2.id,
-            eventType: 'metadata_updated',
-            occurredAt: baseTime.add(const Duration(seconds: 22)),
-          ),
-          TokenEvent(
-            id: 13,
-            tokenId: tokenToUpdate2.id,
-            eventType: 'metadata_updated',
-            occurredAt: baseTime.add(const Duration(seconds: 23)),
-          ),
-        ],
-        nextCheckpoint: SyncCheckpoint(
-          timestamp: baseTime.add(const Duration(seconds: 30)),
-          eventId: 99,
-        ),
-        serverTime: baseTime,
-      );
-
-      mockIndexer.mockTokensById = {
-        tokenToRelease.id: tokenToRelease,
-        tokenToUpdate1.id: tokenToUpdate1,
-        tokenToUpdate2.id: tokenToUpdate2,
-      };
+          serverTime: baseTime,
+        )
+        ..mockTokensById = {
+          tokenToRelease.id: tokenToRelease,
+          tokenToUpdate1.id: tokenToUpdate1,
+          tokenToUpdate2.id: tokenToUpdate2,
+        };
 
       final syncService = container.read(addressSyncCollectionServiceProvider);
       await syncService.syncAddressWithCollection(resolvedAddress);

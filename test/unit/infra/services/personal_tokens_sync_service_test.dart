@@ -32,6 +32,11 @@ class _FakeAppStateService implements AppStateService {
   }
 
   @override
+  Future<void> clearAllPersonalTokensListFetchOffsets() async {
+    personalTokensOffsets.clear();
+  }
+
+  @override
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
   ) => Stream.value(null);
@@ -233,6 +238,47 @@ void main() {
         indexer.fetchLimits,
         equals(<int?>[indexerTokensPageSize]),
       );
+      expect(
+        appState.personalTokensOffsets[playlistOwner.toNormalizedAddress()],
+        isNull,
+      );
+    },
+  );
+
+  test(
+    'clears stale persisted offset when playlist itemCount is zero',
+    () async {
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(database.close);
+      final databaseService = DatabaseService(database);
+      const playlistOwner = '0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8';
+
+      await databaseService.ingestPlaylist(
+        const Playlist(
+          id: 'addr:eth:0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8',
+          name: 'Personal',
+          type: PlaylistType.addressBased,
+          channelId: Channel.myCollectionId,
+          ownerAddress: playlistOwner,
+          ownerChain: 'eth',
+        ),
+      );
+
+      final appState = _FakeAppStateService()
+        ..personalTokensOffsets[playlistOwner.toNormalizedAddress()] = 500;
+
+      final indexer = _RecordingIndexerService()
+        ..responseSequence = [
+          const TokensPage(tokens: []),
+        ];
+
+      await PersonalTokensSyncService(
+        indexerService: indexer,
+        databaseService: databaseService,
+        appStateService: appState,
+      ).syncAddresses(addresses: const <String>[playlistOwner]);
+
+      expect(indexer.fetchOffsets, equals(const <int?>[0]));
       expect(
         appState.personalTokensOffsets[playlistOwner.toNormalizedAddress()],
         isNull,

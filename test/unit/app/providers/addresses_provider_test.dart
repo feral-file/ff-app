@@ -6,9 +6,11 @@ import 'package:app/infra/config/app_state_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Fake [AppStateService] that exposes controlled [watchTrackedAddressesAsWalletAddresses].
+/// Fake app state: controlled stream of tracked wallet addresses for tests.
 class _FakeAppStateServiceForAddresses implements AppStateService {
   List<WalletAddress> _addresses = [];
+
+  List<WalletAddress> get addresses => List<WalletAddress>.from(_addresses);
 
   set addresses(List<WalletAddress> value) => _addresses = value;
 
@@ -41,6 +43,9 @@ class _FakeAppStateServiceForAddresses implements AppStateService {
     required String address,
     required int? nextFetchOffset,
   }) async {}
+
+  @override
+  Future<void> clearAllPersonalTokensListFetchOffsets() async {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

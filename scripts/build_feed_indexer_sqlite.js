@@ -23,7 +23,7 @@ query getTokens(
   $token_ids: [Uint64!]
   $token_cids: [String!]
   $token_numbers: [String!]
-  $limit: Uint8 = 20
+  $limit: Uint8 = 255
   $offset: Uint64 = 0
   $sort_by: TokenSortBy = created_at
   $sort_order: Order = asc

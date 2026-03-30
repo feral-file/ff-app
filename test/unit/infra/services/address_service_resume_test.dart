@@ -1,5 +1,6 @@
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/models.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
@@ -78,6 +79,11 @@ class _FakeAppStateServiceForResume implements AppStateServiceBase {
   }
 
   @override
+  Future<void> clearAllPersonalTokensListFetchOffsets() async {
+    persistedPersonalTokensCursor = null;
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -143,25 +149,26 @@ void main() {
         'when runTriggerIndex',
         () async {
       const address = '0xabc';
-      fakeIndexer.pullStatusResult = const AddressIndexingJobResponse(
-        workflowId: 'wf-1',
-        address: address,
-        status: IndexingJobStatus.completed,
-        totalTokensIndexed: 2,
-        totalTokensViewable: 2,
-      );
-      fakeIndexer.fetchTokensResult = TokensPage(
-        tokens: [
-          AssetToken(
-            id: 1,
-            cid: 'cid1',
-            chain: 'eip155:1',
-            standard: 'ERC-721',
-            contractAddress: address,
-            tokenNumber: '1',
-          ),
-        ],
-      );
+      fakeIndexer
+        ..pullStatusResult = const AddressIndexingJobResponse(
+          workflowId: 'wf-1',
+          address: address,
+          status: IndexingJobStatus.completed,
+          totalTokensIndexed: 2,
+          totalTokensViewable: 2,
+        )
+        ..fetchTokensResult = TokensPage(
+          tokens: [
+            AssetToken(
+              id: 1,
+              cid: 'cid1',
+              chain: 'eip155:1',
+              standard: 'ERC-721',
+              contractAddress: address,
+              tokenNumber: '1',
+            ),
+          ],
+        );
 
       final playlist = PlaylistExt.fromWalletAddress(
         WalletAddress(
@@ -190,25 +197,26 @@ void main() {
     test('indexAndSyncAddress with resumeFrom.poll calls poll and completes',
         () async {
       const address = '0xabc';
-      fakeIndexer.pullStatusResult = const AddressIndexingJobResponse(
-        workflowId: 'wf-1',
-        address: address,
-        status: IndexingJobStatus.completed,
-        totalTokensIndexed: 2,
-        totalTokensViewable: 2,
-      );
-      fakeIndexer.fetchTokensResult = TokensPage(
-        tokens: [
-          AssetToken(
-            id: 1,
-            cid: 'cid1',
-            chain: 'eip155:1',
-            standard: 'ERC-721',
-            contractAddress: address,
-            tokenNumber: '1',
-          ),
-        ],
-      );
+      fakeIndexer
+        ..pullStatusResult = const AddressIndexingJobResponse(
+          workflowId: 'wf-1',
+          address: address,
+          status: IndexingJobStatus.completed,
+          totalTokensIndexed: 2,
+          totalTokensViewable: 2,
+        )
+        ..fetchTokensResult = TokensPage(
+          tokens: [
+            AssetToken(
+              id: 1,
+              cid: 'cid1',
+              chain: 'eip155:1',
+              standard: 'ERC-721',
+              contractAddress: address,
+              tokenNumber: '1',
+            ),
+          ],
+        );
 
       final playlist = PlaylistExt.fromWalletAddress(
         WalletAddress(
@@ -232,7 +240,9 @@ void main() {
       expect(fakeAppState.setStatusCalls, contains('0xabc:completed'));
     });
 
-    test('indexAndSyncAddress with resumeFrom.fromFetchOnly completes', () async {
+    test(
+      'indexAndSyncAddress with resumeFrom.fromFetchOnly completes',
+      () async {
       const address = '0xabc';
       fakeIndexer.fetchTokensResult = TokensPage(
         tokens: [
@@ -303,14 +313,15 @@ void main() {
       );
       await databaseService.ingestPlaylist(playlist);
 
-      fakeIndexer.fetchTokensResult = const TokensPage(tokens: []);
-      fakeIndexer.pullStatusResult = const AddressIndexingJobResponse(
-        workflowId: 'wf-1',
-        address: address,
-        status: IndexingJobStatus.completed,
-        totalTokensIndexed: 0,
-        totalTokensViewable: 0,
-      );
+      fakeIndexer
+        ..fetchTokensResult = const TokensPage(tokens: [])
+        ..pullStatusResult = const AddressIndexingJobResponse(
+          workflowId: 'wf-1',
+          address: address,
+          status: IndexingJobStatus.completed,
+          totalTokensIndexed: 0,
+          totalTokensViewable: 0,
+        );
 
       final statuses = {
         address: AddressIndexingProcessStatus.idle(),
@@ -339,14 +350,15 @@ void main() {
         );
         await databaseService.ingestPlaylist(playlist);
 
-        fakeIndexer.fetchTokensResult = const TokensPage(tokens: []);
-        fakeIndexer.pullStatusResult = const AddressIndexingJobResponse(
-          workflowId: 'wf-1',
-          address: address,
-          status: IndexingJobStatus.completed,
-          totalTokensIndexed: 0,
-          totalTokensViewable: 0,
-        );
+        fakeIndexer
+          ..fetchTokensResult = const TokensPage(tokens: [])
+          ..pullStatusResult = const AddressIndexingJobResponse(
+            workflowId: 'wf-1',
+            address: address,
+            status: IndexingJobStatus.completed,
+            totalTokensIndexed: 0,
+            totalTokensViewable: 0,
+          );
 
         final statuses = <String, AddressIndexingProcessStatus>{};
         final toResume = <String>[];
@@ -378,14 +390,15 @@ void main() {
         );
         await databaseService.ingestPlaylist(playlist);
 
-        fakeIndexer.pullStatusResult = const AddressIndexingJobResponse(
-          workflowId: 'wf-1',
-          address: address,
-          status: IndexingJobStatus.completed,
-          totalTokensIndexed: 0,
-          totalTokensViewable: 0,
-        );
-        fakeIndexer.fetchTokensResult = const TokensPage(tokens: []);
+        fakeIndexer
+          ..pullStatusResult = const AddressIndexingJobResponse(
+            workflowId: 'wf-1',
+            address: address,
+            status: IndexingJobStatus.completed,
+            totalTokensIndexed: 0,
+            totalTokensViewable: 0,
+          )
+          ..fetchTokensResult = const TokensPage(tokens: []);
 
         final statuses = {
           address: AddressIndexingProcessStatus.indexingTriggered(
@@ -444,7 +457,7 @@ void main() {
             createdAt: DateTime.now(),
             name: 'Test',
           ),
-        );
+        ).copyWith(itemCount: 1);
         await databaseService.ingestPlaylist(playlist);
 
         fakeIndexer.fetchTokensResult = const TokensPage(tokens: []);
@@ -462,6 +475,42 @@ void main() {
 
         expect(fakeIndexer.fetchTokensPageOffsets, isNotEmpty);
         expect(fakeIndexer.fetchTokensPageOffsets.first, 888);
+      },
+    );
+
+    test(
+      'resumeIndexingForAddresses syncingTokens uses persisted offset for '
+      'mixed-case address (canonical query, not offset 0)',
+      () async {
+        const address = '0xAbCdEf0000000000000000000000000000000001';
+        final playlist = PlaylistExt.fromWalletAddress(
+          WalletAddress(
+            address: address,
+            createdAt: DateTime.now(),
+            name: 'Test',
+          ),
+        ).copyWith(itemCount: 1);
+        await databaseService.ingestPlaylist(playlist);
+
+        fakeIndexer.fetchTokensResult = const TokensPage(tokens: []);
+
+        final statuses = {
+          address: AddressIndexingProcessStatus.syncingTokens(),
+        };
+        final toResume = [address];
+        final service = createAddressService(statuses: statuses);
+        fakeAppState.persistedPersonalTokensCursor = 777;
+
+        await service.resumeIndexingForAddresses(toResume);
+
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+
+        expect(fakeIndexer.fetchTokensPageOffsets, isNotEmpty);
+        expect(fakeIndexer.fetchTokensPageOffsets.first, 777);
+        expect(
+          fakeIndexer.fetchTokensAddresses.first,
+          <String>[address.toNormalizedAddress()],
+        );
       },
     );
   });

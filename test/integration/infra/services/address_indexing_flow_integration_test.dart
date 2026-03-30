@@ -77,7 +77,7 @@ void main() {
   });
 
   test(
-    'addAddressOrDomain einstein-rosen.eth triggers index→pullStatus→fetchTokens and ingests 100+ tokens',
+    'einstein-rosen.eth: addAddressOrDomain ingests 100+ tokens (full flow)',
     () async {
       expect(AppConfig.domainResolverUrl, isNotEmpty);
       expect(AppConfig.domainResolverApiKey, isNotEmpty);
@@ -94,8 +94,9 @@ void main() {
       testAppStateService.setTargetAddress(resolvedAddress);
 
       // Provider-driven flow: ensure playlists exist and resume indexing.
-      // AddressService.addAddress only writes tracked state; playlist creation
-      // and indexing are triggered by ensureTrackedAddressesHavePlaylistsAndResume.
+      // AddressService.addAddress only writes tracked state; playlist
+      // creation and indexing are triggered by
+      // ensureTrackedAddressesHavePlaylistsAndResume.
       await _ensurePlaylistsAndResumeIndexing(
         appState: testAppStateService,
         databaseService: context.databaseService,
@@ -112,7 +113,9 @@ void main() {
         final playlists =
             await context.databaseService.getAddressPlaylists();
         final match = playlists.where(
-          (p) => p.ownerAddress?.toNormalizedAddress() == resolvedAddress.toNormalizedAddress(),
+          (p) =>
+              p.ownerAddress?.toNormalizedAddress() ==
+              resolvedAddress.toNormalizedAddress(),
         ).toList();
         if (match.isNotEmpty) {
           tokenCount = match.first.itemCount;
@@ -127,11 +130,13 @@ void main() {
         reason: 'Expected >100 tokens ingested for $inputDomain.',
       );
 
-      // Alias preservation: playlist created from domain should keep user-facing name.
+      // Alias preservation: playlist from domain keeps user-facing name.
       final playlists =
           await context.databaseService.getAddressPlaylists();
       final playlistForAddress = playlists.where(
-        (p) => p.ownerAddress?.toNormalizedAddress() == resolvedAddress.toNormalizedAddress(),
+        (p) =>
+            p.ownerAddress?.toNormalizedAddress() ==
+            resolvedAddress.toNormalizedAddress(),
       ).firstOrNull;
       expect(
         playlistForAddress?.name,
@@ -140,8 +145,8 @@ void main() {
       );
 
       // Wait for background indexing to fully complete before test exits.
-      // AddressService._scheduleAddressIndexing fires unawaited work; if we exit
-      // early, tearDown closes the DB while that work still runs, causing
+      // AddressService schedules unawaited indexing work; if we exit early,
+      // tearDown closes the DB while that work still runs, causing
       // "Channel was closed" and "failed after test completion" on CI.
       await testAppStateService.whenIndexingCompleted();
 
@@ -166,8 +171,7 @@ void main() {
   );
 }
 
-/// Runs the ensure-playlists-and-resume logic, mirroring
-/// [ensureTrackedAddressesHavePlaylistsAndResumeProvider].
+/// Runs the ensure-playlists-and-resume logic, mirroring the app provider.
 /// Used when testing without Riverpod (e.g. integration test).
 Future<void> _ensurePlaylistsAndResumeIndexing({
   required AppStateServiceBase appState,
@@ -193,8 +197,9 @@ Future<void> _ensurePlaylistsAndResumeIndexing({
   await addressService.resumeIndexingForAddresses(normalizedAddresses);
 }
 
-/// App state service that completes a future when indexing reaches [completed]
-/// for the target address. Used to wait for background indexing before tearDown.
+/// App state service that completes a future when indexing reaches a
+/// terminal completed state for the target address. Used to wait for background
+/// indexing before tearDown.
 class _TestAppStateService implements AppStateServiceBase {
   _TestAppStateService();
 
@@ -209,7 +214,7 @@ class _TestAppStateService implements AppStateServiceBase {
   }
 
   /// Waits for indexing to complete for the target address. Call after
-  /// [setTargetAddress]. Times out after 5 minutes to avoid hanging.
+  /// setTargetAddress. Times out after 5 minutes to avoid hanging.
   Future<void> whenIndexingCompleted() async {
     final c = _completer;
     if (c == null) return;
@@ -241,7 +246,9 @@ class _TestAppStateService implements AppStateServiceBase {
   }) async {
     final normalized = address.toNormalizedAddress();
     _addressStatuses[normalized] = status;
-    if (_targetAddressNormalized == null || _completer == null || _completer!.isCompleted) {
+    if (_targetAddressNormalized == null ||
+        _completer == null ||
+        _completer!.isCompleted) {
       return;
     }
     if (normalized != _targetAddressNormalized) return;
@@ -254,7 +261,8 @@ class _TestAppStateService implements AppStateServiceBase {
   }
 
   @override
-  Future<Map<String, AddressIndexingProcessStatus>> getAllAddressIndexingStatuses() async =>
+  Future<Map<String, AddressIndexingProcessStatus>>
+  getAllAddressIndexingStatuses() async =>
       Map.unmodifiable(_addressStatuses);
 
   @override
@@ -297,6 +305,9 @@ class _TestAppStateService implements AppStateServiceBase {
     required String address,
     required int? nextFetchOffset,
   }) async {}
+
+  @override
+  Future<void> clearAllPersonalTokensListFetchOffsets() async {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
