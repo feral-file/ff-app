@@ -53,6 +53,13 @@ bool _playlistIdentitiesEqual(_PlaylistIdentity? a, _PlaylistIdentity? b) {
   return true;
 }
 
+bool _windowsEqual(
+  ({int start, int end}) a,
+  ({int start, int end}) b,
+) {
+  return a.start == b.start && a.end == b.end;
+}
+
 _NowDisplayingRecomputeCause _mergeRecomputeCauses(
   _NowDisplayingRecomputeCause a,
   _NowDisplayingRecomputeCause b,
@@ -180,6 +187,10 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   /// [state] is briefly [LoadingNowDisplaying] between microtask phases.
   List<PlaylistItem>? _lastFullSuccessPlaylistItems;
 
+  /// [nowDisplayingWindowProvider] snapshot from the last full compute.
+  /// Fast path is invalid if the index window shifts (new slice needs cache/enrich).
+  ({int start, int end})? _lastFullComputeWindow;
+
   _NowDisplayingRecomputeCause _pendingRecomputeCause =
       _NowDisplayingRecomputeCause.generic;
 
@@ -195,6 +206,7 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   void _clearPlaybackIdentity() {
     _lastFullComputeIdentity = null;
     _lastFullSuccessPlaylistItems = null;
+    _lastFullComputeWindow = null;
   }
 
   /// Merges [incoming] into [_pendingRecomputeCause] and runs a single async
@@ -268,6 +280,9 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     if (!ref.mounted) {
       return;
     }
+    // Wake up another loop pass if a listener merged a cause while we exited
+    // early (e.g. ref disposed mid-await). Incoming [generic] is merged with
+    // [_pendingRecomputeCause] and does not erase requestedRange/cacheWindow.
     if (_pendingRecomputeCause != _NowDisplayingRecomputeCause.generic) {
       _enqueueRecompute(_NowDisplayingRecomputeCause.generic);
     }
@@ -401,25 +416,32 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
 
     final identity = _playlistIdentityFromStatus(status);
 
-    // Fast path: same playlist + same ordered item ids (index / pause / sleep,
-    // or window shift without playlist change). Skip SQLite + indexer.
+    // Fast path: same playlist + same ordered item ids, and the same visible
+    // index window as the last full compute (pause / sleep / tiny index nudge
+    // that does not move [start,end)). Skip SQLite + indexer.
     //
-    // [cacheWindow] is included because a work-index change moves the
-    // now-displaying window and invalidates [nowDisplayingCachedPlaylistItemsProvider]
-    // even though the underlying playlist rows are unchanged; we still reuse
-    // the last built [PlaylistItem] list until playlist/items identity changes.
+    // We do not fast-path when the window shifts (e.g. long playlist, index
+    // jumps): [_lastFullSuccessPlaylistItems] may still have DP-1 fallbacks
+    // outside the previous window; the new slice must reload cache + enrich.
+    //
+    // [cacheWindow] is never fast-pathed: it means DB rows for the current
+    // window arrived and must be merged into the built list.
     // [requestedRange] is excluded: user expanded the bar and may need new rows.
     //
     // Use [_lastFullSuccessPlaylistItems] instead of reading [state] so we are
     // not blocked when [state] is still [LoadingNowDisplaying] between loop
     // iterations or microtasks.
     final lastItems = _lastFullSuccessPlaylistItems;
-    if ((cause == _NowDisplayingRecomputeCause.generic ||
-            cause == _NowDisplayingRecomputeCause.cacheWindow) &&
+    final windowNow = ref.read(nowDisplayingWindowProvider);
+    final lastWindow = _lastFullComputeWindow;
+    if (cause == _NowDisplayingRecomputeCause.generic &&
         identity != null &&
         _lastFullComputeIdentity != null &&
         _playlistIdentitiesEqual(identity, _lastFullComputeIdentity) &&
-        lastItems != null) {
+        lastItems != null &&
+        windowNow != null &&
+        lastWindow != null &&
+        _windowsEqual(windowNow, lastWindow)) {
       final items = status.items!;
       final index = status.currentWorkIndex;
       if (index != null && index >= 0 && index < items.length) {
@@ -501,9 +523,10 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
               ),
     ];
 
-    // Full compute succeeded; record identity + items for loading + fast-path.
+    // Full compute succeeded; record identity + items + window for loading + fast-path.
     _lastFullComputeIdentity = identity;
     _lastFullSuccessPlaylistItems = playlistItems;
+    _lastFullComputeWindow = (start: start, end: end);
 
     return NowDisplayingSuccess(
       DP1NowDisplayingObject(

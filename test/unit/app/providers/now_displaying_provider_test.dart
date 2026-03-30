@@ -288,6 +288,90 @@ void main() {
     );
 
     test(
+      'same playlist identity but index shifts visible window triggers extra '
+      'DB read',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        const n = 200;
+        final dp1Items = List<DP1PlaylistItem>.generate(
+          n,
+          (i) => DP1PlaylistItem(
+            id: 'item_$i',
+            duration: 60,
+            title: 'T$i',
+          ),
+        );
+
+        final statusIndex0 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: dp1Items,
+        );
+        final statusIndex100 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 100,
+          items: dp1Items,
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        addTearDown(playerStatusController.close);
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingDb),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        playerStatusController.add(statusIndex0);
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+        final callsAfterFirstWindow =
+            recordingDb.getPlaylistItemsByIdsCalls.length;
+        expect(callsAfterFirstWindow, greaterThanOrEqualTo(1));
+
+        playerStatusController.add(statusIndex100);
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+
+        expect(
+          recordingDb.getPlaylistItemsByIdsCalls.length,
+          greaterThan(callsAfterFirstWindow),
+          reason:
+              'When currentWorkIndex moves the visible window, cache/enrich '
+              'must run for the new slice (no fast-path)',
+        );
+      },
+    );
+
+    test(
       'pause toggle with same playlist identity skips extra DB cache read',
       () async {
         const device = FF1Device(
