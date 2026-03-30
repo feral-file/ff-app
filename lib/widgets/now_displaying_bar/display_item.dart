@@ -121,9 +121,13 @@ class _Thumbnail extends StatelessWidget {
             ? const GalleryNoThumbnailWidget()
             : CachedNetworkImage(
                 imageUrl: url!,
+                width: thumbW,
+                height: thumbH,
                 memCacheWidth: decodePixelsForLogicalSize(thumbW, dpr),
                 memCacheHeight: decodePixelsForLogicalSize(thumbH, dpr),
                 fit: BoxFit.cover,
+                // Avoid default low filter — cover looks soft on small tiles.
+                filterQuality: FilterQuality.high,
                 placeholder: (_, _) => const GalleryThumbnailPlaceholder(),
                 errorWidget: (_, _, _) => const GalleryThumbnailErrorWidget(),
               ),
