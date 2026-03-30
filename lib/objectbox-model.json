@@ -125,7 +125,7 @@
     },
     {
       "id": "10:3855157679464200367",
-      "lastPropertyId": "18:4052192049678900918",
+      "lastPropertyId": "20:5073244221920036021",
       "name": "AppStateAddressEntity",
       "properties": [
         {
@@ -179,6 +179,16 @@
         {
           "id": "18:4052192049678900918",
           "name": "checkpointEventId",
+          "type": 6
+        },
+        {
+          "id": "19:3402359910228899955",
+          "name": "hasPersonalTokensIndexerNextOffset",
+          "type": 1
+        },
+        {
+          "id": "20:5073244221920036021",
+          "name": "personalTokensIndexerNextOffset",
           "type": 6
         }
       ],

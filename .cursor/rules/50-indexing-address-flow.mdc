@@ -25,3 +25,9 @@ This rule governs address indexing behavior only.
 - Preserve per-address workflow mapping (`address <-> workflow_id`).
 - Avoid duplicate token ingestion for the same address/page cursor.
 - Keep poll loop idempotent and resumable.
+
+## 5) Indexer list-tokens pagination (owners / address playlists)
+- Default GraphQL `limit` is `indexerTokensPageSize` (255; schema `Uint8` max). Do not infer “last page” from `items.length < limit` alone; use `nextOffset == null` as the terminal signal.
+- **`PersonalTokensSyncService`**: Persists the next request `offset` in `AppStateAddressEntity` (`hasPersonalTokensIndexerNextOffset` / `personalTokensIndexerNextOffset`) so app restarts resume from the indexer cursor. When no cursor is stored, the first offset is the address playlist `itemCount`.
+- **`AddressService.syncTokens`** (ingest after indexing): Pages with the same cursor rules inside a single run; list offset is not persisted in app state (workflow-driven ingest; see call sites).
+- **Unit coverage**: `test/unit/infra/services/indexer_service_test.dart` (default limit vs explicit `limit`), `address_service_test.dart` (`syncTokens` / `nextOffset`), `personal_tokens_sync_service_test.dart` (cursor chain and persisted offset vs `itemCount`).

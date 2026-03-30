@@ -125,6 +125,18 @@ abstract class AppStateServiceBase {
     required SyncCheckpoint checkpoint,
   });
   Future<void> clearAddressCheckpoint(String address);
+
+  /// Next indexer list-tokens offset for personal token sync, or null to derive
+  /// the first offset from playlist row count on the next sync.
+  Future<int?> getPersonalTokensListFetchOffset(String address);
+
+  /// Persists the next list-tokens offset, or clears when the argument is null
+  /// (catch-up finished; next run derives from playlist row count).
+  Future<void> setPersonalTokensListFetchOffset({
+    required String address,
+    required int? nextFetchOffset,
+  });
+
   Future<List<String>> getAddressesWithCompletedIndexing();
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
@@ -366,6 +378,40 @@ class AppStateService extends AppStateServiceBase {
         ..hasCheckpoint = false
         ..checkpointTimestampUs = 0
         ..checkpointEventId = 0;
+      _appStateAddressBox.put(row);
+    });
+  }
+
+  @override
+  Future<int?> getPersonalTokensListFetchOffset(String address) async {
+    return _lock.synchronized(() {
+      final row = _findAddressState(_normalizeAddressKey(address));
+      if (row == null || !row.hasPersonalTokensIndexerNextOffset) {
+        return null;
+      }
+      return row.personalTokensIndexerNextOffset;
+    });
+  }
+
+  @override
+  Future<void> setPersonalTokensListFetchOffset({
+    required String address,
+    required int? nextFetchOffset,
+  }) async {
+    await _lock.synchronized(() async {
+      final normalized = _normalizeAddressKey(address);
+      var row = _findAddressState(normalized);
+      row ??= _createAddressState(normalized);
+      if (nextFetchOffset == null) {
+        row
+          ..hasPersonalTokensIndexerNextOffset = false
+          ..personalTokensIndexerNextOffset = 0;
+      } else {
+        row
+          ..hasPersonalTokensIndexerNextOffset = true
+          ..personalTokensIndexerNextOffset = nextFetchOffset;
+      }
+      row.updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
       _appStateAddressBox.put(row);
     });
   }

@@ -26,6 +26,15 @@ class _FakeAppStateService implements AppStateServiceBase {
       List.unmodifiable(_tracked);
 
   @override
+  Future<int?> getPersonalTokensListFetchOffset(String address) async => null;
+
+  @override
+  Future<void> setPersonalTokensListFetchOffset({
+    required String address,
+    required int? nextFetchOffset,
+  }) async {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
