@@ -26,6 +26,8 @@ class _FakeAppStateServiceForResume implements AppStateServiceBase {
   final Map<String, AddressIndexingProcessStatus> statuses;
   final List<String> trackedAddresses;
   final List<String> setStatusCalls = <String>[];
+  final List<AddressIndexingProcessStatus> recordedStatuses =
+      <AddressIndexingProcessStatus>[];
 
   @override
   Future<Map<String, AddressIndexingProcessStatus>>
@@ -37,6 +39,7 @@ class _FakeAppStateServiceForResume implements AppStateServiceBase {
     required String address,
     required AddressIndexingProcessStatus status,
   }) async {
+    recordedStatuses.add(status);
     setStatusCalls.add('$address:${status.state.name}');
   }
 
@@ -120,7 +123,8 @@ void main() {
     }
 
     test(
-        'indexAndSyncAddress sets idle before indexer when runTriggerIndex',
+        'indexAndSyncAddress sets indexingTriggeredPending then workflow id '
+        'when runTriggerIndex',
         () async {
       const address = '0xabc';
       fakeIndexer.pullStatusResult = const AddressIndexingJobResponse(
@@ -155,7 +159,15 @@ void main() {
       final service = createAddressService();
       await service.indexAndSyncAddress(address);
 
-      expect(fakeAppState.setStatusCalls.first, endsWith(':idle'));
+      expect(fakeAppState.recordedStatuses.first.state,
+          AddressIndexingProcessState.indexingTriggered);
+      expect(fakeAppState.recordedStatuses.first.workflowId, isNull);
+      final withWorkflowId = fakeAppState.recordedStatuses
+          .where((s) => s.workflowId == 'wf-1')
+          .toList();
+      expect(withWorkflowId, isNotEmpty);
+      expect(withWorkflowId.first.state,
+          AddressIndexingProcessState.indexingTriggered);
       expect(fakeIndexer.callSequence, contains('index'));
     });
 

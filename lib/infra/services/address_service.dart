@@ -112,13 +112,14 @@ class AddressService {
     final queryAddress = _addressForIndexer(address);
     var effectiveWorkflowId = workflowId;
 
-    // Clear failed state immediately so Me / playlist headers show "Syncing"
-    // before the indexer trigger returns (avoids dead UI during network wait on
-    // "Tap to retry").
+    // Persist "trigger submitted, workflow id not known yet" so Me / playlist
+    // headers show Syncing before the indexer trigger returns (same contract as
+    // add-address recovery in app.dart). Avoid idle, which means no active
+    // indexing process.
     if (runTriggerIndex) {
       await _appStateService.setAddressIndexingStatus(
         address: queryAddress,
-        status: AddressIndexingProcessStatus.idle(),
+        status: AddressIndexingProcessStatus.indexingTriggeredPending(),
       );
     }
 
