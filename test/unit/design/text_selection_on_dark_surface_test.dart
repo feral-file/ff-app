@@ -4,14 +4,17 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
-    'dark content surface selection uses distinct highlight, not auQuickSilver',
+    'dark content surface selection uses feralFileLightBlue at 0.45 alpha',
     () {
       final theme = textSelectionThemeForDarkContentSurface();
-      expect(theme.selectionColor, isNot(equals(AppColor.auQuickSilver)));
-      expect(theme.selectionColor!.a, greaterThan(0));
-      expect(theme.selectionColor!.a, lessThanOrEqualTo(1));
+      final expectedSelection =
+          AppColor.feralFileLightBlue.withValues(alpha: 0.45);
+      expect(theme.selectionColor, equals(expectedSelection));
       expect(theme.cursorColor, equals(AppColor.feralFileLightBlue));
-      expect(theme.selectionHandleColor, equals(AppColor.feralFileLightBlue));
+      expect(
+        theme.selectionHandleColor,
+        equals(AppColor.feralFileLightBlue),
+      );
     },
   );
 }
