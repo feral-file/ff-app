@@ -13,6 +13,12 @@ class FakeIndexerServiceIsolate implements IndexerServiceIsolateOperations {
   ];
   AddressIndexingJobResponse? pullStatusResult;
   TokensPage fetchTokensResult = const TokensPage(tokens: []);
+
+  /// When non-empty, each [fetchTokensPageByAddresses] call returns the next
+  /// entry (cursor pagination tests). When exhausted, uses [fetchTokensResult].
+  List<TokensPage> fetchTokensPageSequence = const [];
+  int _fetchTokensPageSequenceIndex = 0;
+
   AssetToken? rebuildMetadataAndFetchTokenResult;
 
   @override
@@ -45,6 +51,10 @@ class FakeIndexerServiceIsolate implements IndexerServiceIsolateOperations {
     int? offset,
   }) async {
     callSequence.add('fetchTokens');
+    if (fetchTokensPageSequence.isNotEmpty &&
+        _fetchTokensPageSequenceIndex < fetchTokensPageSequence.length) {
+      return fetchTokensPageSequence[_fetchTokensPageSequenceIndex++];
+    }
     return fetchTokensResult;
   }
 

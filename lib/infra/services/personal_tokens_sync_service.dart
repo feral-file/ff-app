@@ -77,26 +77,27 @@ class PersonalTokensSyncService {
         }
         final queryAddress = _addressForIndexer(playlistAddress);
 
-        final tokens = await _indexerService.fetchTokensByAddresses(
+        final page = await _indexerService.fetchTokensPageByAddresses(
           addresses: <String>[queryAddress],
           limit: indexerTokensPageSize,
           offset: offset,
         );
 
-        if (tokens.isEmpty) {
+        if (page.tokens.isEmpty) {
           active.remove(addressKey);
           continue;
         }
 
         await _databaseService.ingestTokensForAddress(
           address: queryAddress,
-          tokens: tokens,
+          tokens: page.tokens,
         );
 
-        if (tokens.length < indexerTokensPageSize) {
+        final next = page.nextOffset;
+        if (next == null) {
           active.remove(addressKey);
         } else {
-          active[addressKey] = offset + tokens.length;
+          active[addressKey] = next;
         }
       }
     }

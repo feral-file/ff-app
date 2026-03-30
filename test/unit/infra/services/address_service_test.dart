@@ -109,4 +109,61 @@ void main() {
       equals('0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8'),
     );
   });
+
+  test('syncTokens follows nextOffset until null', () async {
+    final fakeIsolate = FakeIndexerServiceIsolate()
+      ..fetchTokensPageSequence = [
+        TokensPage(
+          tokens: [
+            AssetToken(
+              id: 1,
+              cid: 'cid1',
+              chain: 'eip155:1',
+              standard: 'ERC-721',
+              contractAddress: '0xabc',
+              tokenNumber: '1',
+            ),
+          ],
+          nextOffset: 42,
+        ),
+        TokensPage(
+          tokens: [
+            AssetToken(
+              id: 2,
+              cid: 'cid2',
+              chain: 'eip155:1',
+              standard: 'ERC-721',
+              contractAddress: '0xabc',
+              tokenNumber: '2',
+            ),
+          ],
+        ),
+      ];
+
+    final indexerSyncService = IndexerSyncService(
+      indexerService: IndexerService(
+        client: IndexerClient(endpoint: 'https://example.invalid'),
+      ),
+      databaseService: databaseService,
+    );
+
+    final service = AddressService(
+      databaseService: databaseService,
+      indexerSyncService: indexerSyncService,
+      domainAddressService: DomainAddressService(
+        resolverUrl: '',
+        resolverApiKey: '',
+      ),
+      personalTokensSyncService: _FakePersonalTokensSyncService(),
+      indexerServiceIsolate: fakeIsolate,
+      appStateService: fakeAppState,
+    );
+
+    final total = await service.syncTokens('0xabc');
+    expect(total, 2);
+    expect(
+      fakeIsolate.callSequence.where((e) => e == 'fetchTokens').length,
+      2,
+    );
+  });
 }
