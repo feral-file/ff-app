@@ -130,7 +130,7 @@
   - no active device: now-displaying bar shows pair/connect guidance (invisible when not pairing)
   - disconnected state: now-displaying bar reflects connection transitions
   - enrichment failures do not block playback UI (fallback DP-1 item data remains)
-  - now-displaying **awaits** the local SQLite read for the current window before computing cache misses and indexer enrichment, so `missingItems` matches the DB and spurious enrich calls are avoided. While awaiting that read and enrichment, the notifier shows **loading state**; after it completes, success uses DP-1 fallbacks for rows still absent from cache.
+  - now-displaying **awaits** the local SQLite read for the current window before computing cache misses and indexer enrichment, so `missingItems` matches the DB and spurious enrich calls are avoided. The bar shows a **loading overlay** only when the playing list identity changes (playlist id or ordered item ids from FF1), not for index-only or pause/sleep-only updates; those reuse the last built item list without another SQLite/indexer pass when the list is unchanged.
 
 ### Flow: Maintenance and recovery
 

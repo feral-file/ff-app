@@ -17,6 +17,57 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// DP1 fallback to avoid loading thousands of items at once.
 const int nowDisplayingWindowHalfSize = 50;
 
+/// Playlist + ordered item ids from [FF1PlayerStatus], used to detect when the
+/// playing list changed vs index-only / transport-only updates (pause, sleep).
+typedef _PlaylistIdentity = ({
+  String? playlistId,
+  List<String> itemIds,
+});
+
+enum _NowDisplayingRecomputeCause {
+  /// Player/device/connection/connecting or initial build.
+  generic,
+  /// [nowDisplayingCachedPlaylistItemsProvider] completed; must merge DB rows.
+  cacheWindow,
+  /// User expanded scroll range in the bar; window may need new cache/enrichment.
+  requestedRange,
+}
+
+_PlaylistIdentity? _playlistIdentityFromStatus(FF1PlayerStatus? status) {
+  if (status == null) return null;
+  final items = status.items;
+  if (items == null) return null;
+  return (
+    playlistId: status.playlistId,
+    itemIds: [for (final i in items) i.id],
+  );
+}
+
+bool _playlistIdentitiesEqual(_PlaylistIdentity? a, _PlaylistIdentity? b) {
+  if (a == null || b == null) return false;
+  if (a.playlistId != b.playlistId) return false;
+  if (a.itemIds.length != b.itemIds.length) return false;
+  for (var i = 0; i < a.itemIds.length; i++) {
+    if (a.itemIds[i] != b.itemIds[i]) return false;
+  }
+  return true;
+}
+
+_NowDisplayingRecomputeCause _mergeRecomputeCauses(
+  _NowDisplayingRecomputeCause a,
+  _NowDisplayingRecomputeCause b,
+) {
+  if (a == _NowDisplayingRecomputeCause.requestedRange ||
+      b == _NowDisplayingRecomputeCause.requestedRange) {
+    return _NowDisplayingRecomputeCause.requestedRange;
+  }
+  if (a == _NowDisplayingRecomputeCause.cacheWindow ||
+      b == _NowDisplayingRecomputeCause.cacheWindow) {
+    return _NowDisplayingRecomputeCause.cacheWindow;
+  }
+  return _NowDisplayingRecomputeCause.generic;
+}
+
 /// Item IDs from current FF1 player status (for cache lookup).
 final nowDisplayingItemIdsProvider = Provider<List<String>>((ref) {
   final status = ref.watch(ff1CurrentPlayerStatusProvider);
@@ -116,9 +167,127 @@ final nowDisplayingProvider =
     );
 
 class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
-  /// Increments on each [_recompute] so a slow async compute cannot overwrite
-  /// state after a newer FF1/device/player update has already been applied.
+  /// Increments at the start of each [_runRecomputeLoop] iteration so a slow
+  /// async compute cannot overwrite state after a newer recompute has bumped
+  /// the token.
   int _recomputeToken = 0;
+
+  /// Identity of the last **full** compute (cache + enrich). Used to skip
+  /// loading UI and the heavy path when only index / pause / sleep changes.
+  _PlaylistIdentity? _lastFullComputeIdentity;
+
+  /// Items from the last successful full compute; used for fast path when
+  /// [state] is briefly [LoadingNowDisplaying] between microtask phases.
+  List<PlaylistItem>? _lastFullSuccessPlaylistItems;
+
+  _NowDisplayingRecomputeCause _pendingRecomputeCause =
+      _NowDisplayingRecomputeCause.generic;
+
+  /// True while [_runRecomputeLoop] is running; further [_enqueueRecompute] calls
+  /// only merge into [_pendingRecomputeCause] and are drained by the loop.
+  bool _recomputeLoopRunning = false;
+
+  /// Chains async recompute work so a later recompute does not interleave
+  /// while an earlier one still shows [LoadingNowDisplaying] or awaits cache —
+  /// otherwise fast-path checks would see the wrong [state].
+  Future<void>? _recomputeWorkTail;
+
+  void _clearPlaybackIdentity() {
+    _lastFullComputeIdentity = null;
+    _lastFullSuccessPlaylistItems = null;
+  }
+
+  /// Merges [incoming] into [_pendingRecomputeCause] and runs a single async
+  /// loop so [await] phases do not interleave with a second token bump (which
+  /// would skip `state = computed` and strand the notifier on loading).
+  void _enqueueRecompute(_NowDisplayingRecomputeCause incoming) {
+    _pendingRecomputeCause = _mergeRecomputeCauses(
+      _pendingRecomputeCause,
+      incoming,
+    );
+    if (_recomputeLoopRunning) {
+      return;
+    }
+    _recomputeLoopRunning = true;
+    unawaited(
+      _runAfterPriorRecomputeWork(_runRecomputeLoop),
+    );
+  }
+
+  Future<void> _runRecomputeLoop() async {
+    try {
+      while (true) {
+        if (!ref.mounted) {
+          return;
+        }
+        final cause = _pendingRecomputeCause;
+        _pendingRecomputeCause = _NowDisplayingRecomputeCause.generic;
+        final token = ++_recomputeToken;
+        await Future<void>.microtask(() {});
+        if (!ref.mounted) {
+          return;
+        }
+        if (token != _recomputeToken) {
+          return;
+        }
+        final status = ref.read(ff1CurrentPlayerStatusProvider);
+        final identity = _playlistIdentityFromStatus(status);
+        final showLoadingOverlay = _shouldShowLoadingOverlay(identity);
+        if (showLoadingOverlay) {
+          state = const LoadingNowDisplaying();
+        }
+        final computed = await _computeStatus(cause: cause);
+        if (!ref.mounted) {
+          return;
+        }
+        if (token != _recomputeToken) {
+          return;
+        }
+        state = computed;
+        // A cache-window-only follow-up with the same playlist identity as the
+        // last full compute does not need another DB pass; drop redundant
+        // cacheWindow so we do not loop with a second full path.
+        if (_pendingRecomputeCause ==
+                _NowDisplayingRecomputeCause.cacheWindow &&
+            computed is NowDisplayingSuccess) {
+          final statusAfter = ref.read(ff1CurrentPlayerStatusProvider);
+          final idAfter = _playlistIdentityFromStatus(statusAfter);
+          if (idAfter != null &&
+              _lastFullComputeIdentity != null &&
+              _playlistIdentitiesEqual(idAfter, _lastFullComputeIdentity)) {
+            _pendingRecomputeCause = _NowDisplayingRecomputeCause.generic;
+          }
+        }
+        if (_pendingRecomputeCause == _NowDisplayingRecomputeCause.generic) {
+          break;
+        }
+      }
+    } finally {
+      _recomputeLoopRunning = false;
+    }
+    if (!ref.mounted) {
+      return;
+    }
+    if (_pendingRecomputeCause != _NowDisplayingRecomputeCause.generic) {
+      _enqueueRecompute(_NowDisplayingRecomputeCause.generic);
+    }
+  }
+
+  Future<void> _runAfterPriorRecomputeWork(Future<void> Function() work) async {
+    final previous = _recomputeWorkTail;
+    final completer = Completer<void>();
+    _recomputeWorkTail = completer.future;
+    if (previous != null) {
+      await previous;
+    }
+    try {
+      await work();
+    } finally {
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
+    }
+  }
 
   @override
   NowDisplayingStatus build() {
@@ -131,98 +300,150 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     // ff1DeviceConnectedProvider) are rebuilt before we read them.
     ref.listen<AsyncValue<FF1Device?>>(
       activeFF1BluetoothDeviceProvider,
-      (_, _) => unawaited(Future.microtask(_recompute)),
+      (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
     );
     ref.listen<AsyncValue<FF1PlayerStatus>>(
       ff1PlayerStatusStreamProvider,
-      (_, _) => unawaited(Future.microtask(_recompute)),
+      (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
     );
     ref.listen<AsyncValue<FF1ConnectionStatus>>(
       ff1ConnectionStatusStreamProvider,
-      (_, _) => unawaited(Future.microtask(_recompute)),
+      (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
     );
     ref.listen<bool>(
       ff1WifiConnectingProvider,
-      (_, _) => unawaited(Future.microtask(_recompute)),
+      (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
     );
     ref.listen<AsyncValue<List<PlaylistItem>>>(
       nowDisplayingCachedPlaylistItemsProvider,
-      (_, _) => unawaited(Future.microtask(_recompute)),
+      (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.cacheWindow),
     );
     ref.listen<({int start, int end})?>(
       nowDisplayingRequestedRangeProvider,
-      (_, _) => unawaited(Future.microtask(_recompute)),
+      (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.requestedRange),
     );
 
     // Match the previous manager contract: start at an explicit initial state,
     // then compute derived status on the next microtask.
-    unawaited(Future<void>.microtask(_recompute));
+    _enqueueRecompute(_NowDisplayingRecomputeCause.generic);
     return const InitialNowDisplayingStatus();
   }
 
-  void _recompute() {
-    final token = ++_recomputeToken;
-    unawaited(
-      Future.microtask(() async {
-        if (token != _recomputeToken) {
-          return;
-        }
-        // Show loading immediately while _computeStatus runs (async cache + enrich).
-        state = const LoadingNowDisplaying();
-        final status = await _computeStatus();
-        if (token != _recomputeToken) {
-          return;
-        }
-        state = status;
-      }),
+  /// Loading overlay only when the playing list identity changed (playlistId or
+  /// ordered item ids), not when only index / pause / sleep changes.
+  ///
+  /// When [currentIdentity] is null because the stream is briefly between
+  /// values (AsyncLoading) but we already have a successful full compute,
+  /// do not set [LoadingNowDisplaying] here — that would hide [NowDisplayingSuccess]
+  /// and break the fast path that reuses the last built item list.
+  bool _shouldShowLoadingOverlay(_PlaylistIdentity? currentIdentity) {
+    if (_lastFullComputeIdentity == null) {
+      return true;
+    }
+    if (currentIdentity == null) {
+      return false;
+    }
+    return !_playlistIdentitiesEqual(
+      currentIdentity,
+      _lastFullComputeIdentity,
     );
   }
 
-  Future<NowDisplayingStatus> _computeStatus() async {
+  Future<NowDisplayingStatus> _computeStatus({
+    required _NowDisplayingRecomputeCause cause,
+  }) async {
     final activeDevice = ref.read(activeFF1BluetoothDeviceProvider);
     return activeDevice.when(
-      data: _computeForDevice,
+      data: (d) => _computeForDevice(d, cause: cause),
       loading: () => const LoadingNowDisplaying(),
-      error: (error, _) => NowDisplayingError(error),
+      error: (error, _) {
+        _clearPlaybackIdentity();
+        return NowDisplayingError(error);
+      },
     );
   }
 
-  Future<NowDisplayingStatus> _computeForDevice(FF1Device? device) async {
+  Future<NowDisplayingStatus> _computeForDevice(
+    FF1Device? device, {
+    required _NowDisplayingRecomputeCause cause,
+  }) async {
     if (device == null) {
+      _clearPlaybackIdentity();
       return const NoDevicePaired();
     }
 
     final isConnected = ref.read(ff1DeviceConnectedProvider);
     final isConnecting = ref.read(ff1WifiConnectingProvider);
     if (isConnecting) {
+      _clearPlaybackIdentity();
       return DeviceConnecting(device);
     }
     if (!isConnected) {
+      _clearPlaybackIdentity();
       return DeviceDisconnected(device);
     }
 
     final status = ref.read(ff1CurrentPlayerStatusProvider);
     if (status == null) {
+      _clearPlaybackIdentity();
       return LoadingNowDisplaying(device: device);
     }
 
     // Explicit loading state when a playlist is selected but items are still
     // being fetched on the device side.
     if (status.playlistId != null && status.items == null) {
+      _clearPlaybackIdentity();
       return LoadingNowDisplaying(
         device: device,
         playlistId: status.playlistId,
       );
     }
 
+    final identity = _playlistIdentityFromStatus(status);
+
+    // Fast path: same playlist + same ordered item ids (index / pause / sleep,
+    // or window shift without playlist change). Skip SQLite + indexer.
+    //
+    // [cacheWindow] is included because a work-index change moves the
+    // now-displaying window and invalidates [nowDisplayingCachedPlaylistItemsProvider]
+    // even though the underlying playlist rows are unchanged; we still reuse
+    // the last built [PlaylistItem] list until playlist/items identity changes.
+    // [requestedRange] is excluded: user expanded the bar and may need new rows.
+    //
+    // Use [_lastFullSuccessPlaylistItems] instead of reading [state] so we are
+    // not blocked when [state] is still [LoadingNowDisplaying] between loop
+    // iterations or microtasks.
+    final lastItems = _lastFullSuccessPlaylistItems;
+    if ((cause == _NowDisplayingRecomputeCause.generic ||
+            cause == _NowDisplayingRecomputeCause.cacheWindow) &&
+        identity != null &&
+        _lastFullComputeIdentity != null &&
+        _playlistIdentitiesEqual(identity, _lastFullComputeIdentity) &&
+        lastItems != null) {
+      final items = status.items!;
+      final index = status.currentWorkIndex;
+      if (index != null && index >= 0 && index < items.length) {
+        return NowDisplayingSuccess(
+          DP1NowDisplayingObject(
+            connectedDevice: device,
+            index: index,
+            items: lastItems,
+            isSleeping: status.isSleeping,
+          ),
+        );
+      }
+    }
+
     final items = status.items;
     final index = status.currentWorkIndex;
     if (items == null || items.isEmpty || index == null) {
+      _clearPlaybackIdentity();
       return NowDisplayingError(
         StateError('No items to display'),
       );
     }
     if (index < 0 || index >= items.length) {
+      _clearPlaybackIdentity();
       return NowDisplayingError(
         RangeError.index(index, items, 'currentWorkIndex'),
       );
@@ -279,6 +500,10 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
                 duration: items[i].duration,
               ),
     ];
+
+    // Full compute succeeded; record identity + items for loading + fast-path.
+    _lastFullComputeIdentity = identity;
+    _lastFullSuccessPlaylistItems = playlistItems;
 
     return NowDisplayingSuccess(
       DP1NowDisplayingObject(
