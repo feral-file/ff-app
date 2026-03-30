@@ -31,7 +31,7 @@ void main() {
     );
   });
 
-  // Integration test: resolves ENS to address, runs indexing, and validates offset-cursor pagination.
+  // Resolves ENS, runs indexing, validates offset-cursor pagination.
   test(
     'indexes reas.eth and paginates token pages without duplicate CIDs',
     () async {
@@ -68,15 +68,18 @@ void main() {
         address: address,
       );
 
+      // Small page size forces multiple requests (app default is 255 per page).
+      const integrationPageSize = 50;
       final tokens = await fetchAllTokensByOffsetCursor(
         indexerService: indexerService,
         address: address,
+        pageSize: integrationPageSize,
       );
 
       expect(
         tokens.length,
-        greaterThan(50),
-        reason: 'Expected more than one page for reas.eth after indexing.',
+        greaterThan(integrationPageSize),
+        reason: 'Need >1 page when pageSize is $integrationPageSize.',
       );
       expect(
         tokens.map((token) => token.cid).toSet().length,

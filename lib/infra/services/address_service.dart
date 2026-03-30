@@ -67,26 +67,28 @@ class AddressService {
 
   /// Fetches token pages for address and ingests into DB.
   ///
-  /// Paginates from [startOffset] until no more tokens. Returns total ingested.
+  /// Paginates using the indexer offset cursor: `nextOffset == null` means
+  /// there are no more pages (do not infer completion from page length).
+  /// Starts from [startOffset] for the first request. Returns total ingested.
   Future<int> syncTokens(String address, {int startOffset = 0}) async {
     const pageSize = indexerTokensPageSize;
-    var offset = startOffset;
     var total = 0;
+    int? nextOffset = startOffset;
     while (true) {
       final page = await _indexerServiceIsolate.fetchTokensPageByAddresses(
         addresses: [address],
         limit: pageSize,
-        offset: offset,
+        offset: nextOffset,
       );
       if (page.tokens.isEmpty) return total;
       await _databaseService.ingestTokensForAddress(
         address: address,
         tokens: page.tokens,
       );
-      final count = page.tokens.length;
-      total += count;
-      offset += count;
-      if (count < pageSize) break;
+      total += page.tokens.length;
+      final cursor = page.nextOffset;
+      if (cursor == null) break;
+      nextOffset = cursor;
     }
     return total;
   }
