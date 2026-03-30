@@ -1,6 +1,6 @@
 import 'package:app/domain/models/indexer/workflow.dart';
-import 'package:app/domain/utils/works_count_label.dart';
 import 'package:app/infra/config/app_state_service.dart';
+import 'package:app/ui/formatters/works_count_label.dart';
 
 /// Status text and retry hint for address-based playlist indexing.
 class IndexingStatusText {

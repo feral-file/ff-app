@@ -1,7 +1,7 @@
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/domain/utils/works_count_label.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/formatters/works_count_label.dart';
 import 'package:flutter/material.dart';
 
 /// Playlist details header.

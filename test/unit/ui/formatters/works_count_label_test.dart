@@ -1,4 +1,4 @@
-import 'package:app/domain/utils/works_count_label.dart';
+import 'package:app/ui/formatters/works_count_label.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
