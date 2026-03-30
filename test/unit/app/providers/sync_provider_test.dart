@@ -11,6 +11,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 class MockAppStateService implements AppStateService {
   @override
+  Future<int?> getPersonalTokensListFetchOffset(String address) async => null;
+
+  @override
+  Future<void> setPersonalTokensListFetchOffset({
+    required String address,
+    required int? nextFetchOffset,
+  }) async {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

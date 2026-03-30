@@ -1,3 +1,4 @@
+import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
@@ -40,8 +41,16 @@ class _FakeAppStateService implements AppStateServiceBase {
   @override
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
-  ) =>
-      Stream.value(null);
+  ) => Stream.value(null);
+
+  @override
+  Future<int?> getPersonalTokensListFetchOffset(String address) async => null;
+
+  @override
+  Future<void> setPersonalTokensListFetchOffset({
+    required String address,
+    required int? nextFetchOffset,
+  }) async {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -85,8 +94,8 @@ void main() {
       ),
       personalTokensSyncService: _FakePersonalTokensSyncService(),
       indexerServiceIsolate: FakeIndexerServiceIsolate(),
-        appStateService: fakeAppState,
-      );
+      appStateService: fakeAppState,
+    );
   });
 
   tearDown(() async {
@@ -164,6 +173,10 @@ void main() {
     expect(
       fakeIsolate.callSequence.where((e) => e == 'fetchTokens').length,
       2,
+    );
+    expect(
+      fakeIsolate.fetchTokensPageLimits,
+      equals(<int?>[indexerTokensPageSize, indexerTokensPageSize]),
     );
   });
 }

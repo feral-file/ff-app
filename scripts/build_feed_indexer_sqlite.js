@@ -78,7 +78,7 @@ const REMOTE_CONFIG_URL =
   'https://dp1-feed-operator-api-prod.autonomy-system.workers.dev/api/v1/registry/channels';
 const DEFAULT_CHANNEL_SOURCE = REMOTE_CONFIG_URL;
 const INDEXER_API_URL = 'https://indexer-v2.feralfile.com';
-const INDEXER_BATCH_SIZE = 255;
+const INDEXER_BATCH_SIZE = 50;
 
 const ARGS = parseArgs(process.argv.slice(2));
 

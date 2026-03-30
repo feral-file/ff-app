@@ -163,7 +163,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(10, 3855157679464200367),
     name: 'AppStateAddressEntity',
-    lastPropertyId: const obx_int.IdUid(18, 4052192049678900918),
+    lastPropertyId: const obx_int.IdUid(20, 5073244221920036021),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -224,6 +224,18 @@ final _entities = <obx_int.ModelEntity>[
       obx_int.ModelProperty(
         id: const obx_int.IdUid(18, 4052192049678900918),
         name: 'checkpointEventId',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(19, 3402359910228899955),
+        name: 'hasPersonalTokensIndexerNextOffset',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(20, 5073244221920036021),
+        name: 'personalTokensIndexerNextOffset',
         type: 6,
         flags: 0,
       ),
@@ -641,7 +653,7 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final indexingProcessWorkflowIdOffset = fbb.writeString(
           object.indexingProcessWorkflowId,
         );
-        fbb.startTable(19);
+        fbb.startTable(21);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, normalizedAddressOffset);
         fbb.addInt64(6, object.indexingProcessStateIndex);
@@ -652,6 +664,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
         fbb.addBool(15, object.hasCheckpoint);
         fbb.addInt64(16, object.checkpointTimestampUs);
         fbb.addInt64(17, object.checkpointEventId);
+        fbb.addBool(18, object.hasPersonalTokensIndexerNextOffset);
+        fbb.addInt64(19, object.personalTokensIndexerNextOffset);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -693,6 +707,10 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final indexingProcessWorkflowIdParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGet(buffer, rootOffset, 28, '');
+        final hasPersonalTokensIndexerNextOffsetParam = const fb.BoolReader()
+            .vTableGet(buffer, rootOffset, 40, false);
+        final personalTokensIndexerNextOffsetParam = const fb.Int64Reader()
+            .vTableGet(buffer, rootOffset, 42, 0);
         final updatedAtUsParam = const fb.Int64Reader().vTableGet(
           buffer,
           rootOffset,
@@ -708,6 +726,9 @@ obx_int.ModelDefinition getObjectBoxModel() {
           indexingProcessUpdatedAtUs: indexingProcessUpdatedAtUsParam,
           indexingProcessErrorMessage: indexingProcessErrorMessageParam,
           indexingProcessWorkflowId: indexingProcessWorkflowIdParam,
+          hasPersonalTokensIndexerNextOffset:
+              hasPersonalTokensIndexerNextOffsetParam,
+          personalTokensIndexerNextOffset: personalTokensIndexerNextOffsetParam,
           updatedAtUs: updatedAtUsParam,
         )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
 
@@ -1026,6 +1047,18 @@ class AppStateAddressEntity_ {
   static final checkpointEventId =
       obx.QueryIntegerProperty<AppStateAddressEntity>(
         _entities[2].properties[9],
+      );
+
+  /// See [AppStateAddressEntity.hasPersonalTokensIndexerNextOffset].
+  static final hasPersonalTokensIndexerNextOffset =
+      obx.QueryBooleanProperty<AppStateAddressEntity>(
+        _entities[2].properties[10],
+      );
+
+  /// See [AppStateAddressEntity.personalTokensIndexerNextOffset].
+  static final personalTokensIndexerNextOffset =
+      obx.QueryIntegerProperty<AppStateAddressEntity>(
+        _entities[2].properties[11],
       );
 }
 

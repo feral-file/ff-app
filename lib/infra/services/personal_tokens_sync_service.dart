@@ -39,18 +39,28 @@ class PersonalTokensSyncService {
   }
 
   /// Fetches tokens for address. Used for initial fetch after address is indexed.
-  /// Paginates via offset until no more tokens; ingests each page into the
-  /// address playlist. This is independent of [AddressSyncCollectionService]
-  /// which updates already-fetched tokens.
+  ///
+  /// Paginates using indexer `nextOffset`. The next request offset is
+  /// persisted in app state so restarts resume from the indexer cursor (which
+  /// may differ from SQLite [Playlist.itemCount]). When a run finishes
+  /// (`nextOffset == null`), persisted state is cleared so the next sync starts
+  /// from [itemCount] again.
+  ///
+  /// This is independent of [AddressSyncCollectionService] which updates
+  /// already-fetched tokens.
   Future<void> syncAddresses({required List<String> addresses}) async {
     if (addresses.isEmpty) return;
 
     final playlists = await _databaseService.getAddressPlaylists();
-    final offsetByAddressKey = <String, int>{
-      for (final playlist in playlists)
-        if (playlist.ownerAddress != null)
-          _addressKey(playlist.ownerAddress!): playlist.itemCount,
-    };
+    final offsetByAddressKey = <String, int>{};
+    for (final playlist in playlists) {
+      final owner = playlist.ownerAddress;
+      if (owner == null) continue;
+      final key = _addressKey(owner);
+      final persisted =
+          await _appStateService.getPersonalTokensListFetchOffset(owner);
+      offsetByAddressKey[key] = persisted ?? playlist.itemCount;
+    }
     final playlistAddressByKey = <String, String>{
       for (final playlist in playlists)
         if (playlist.ownerAddress != null)
@@ -84,6 +94,10 @@ class PersonalTokensSyncService {
         );
 
         if (page.tokens.isEmpty) {
+          await _appStateService.setPersonalTokensListFetchOffset(
+            address: queryAddress,
+            nextFetchOffset: null,
+          );
           active.remove(addressKey);
           continue;
         }
@@ -94,6 +108,10 @@ class PersonalTokensSyncService {
         );
 
         final next = page.nextOffset;
+        await _appStateService.setPersonalTokensListFetchOffset(
+          address: queryAddress,
+          nextFetchOffset: next,
+        );
         if (next == null) {
           active.remove(addressKey);
         } else {

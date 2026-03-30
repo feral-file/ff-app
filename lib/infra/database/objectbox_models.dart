@@ -263,6 +263,15 @@ class AppStateAddressEntity {
   /// Indexer workflow ID for resume (when state is indexingTriggered, etc).
   String indexingProcessWorkflowId;
 
+  /// When true, [personalTokensIndexerNextOffset] is the next `offset` for
+  /// indexer list-tokens fetches ([PersonalTokensSyncService]). When false,
+  /// the next run derives offset from playlist [itemCount] in SQLite.
+  bool hasPersonalTokensIndexerNextOffset;
+
+  /// Next indexer list-tokens offset (only meaningful if
+  /// [hasPersonalTokensIndexerNextOffset] is true).
+  int personalTokensIndexerNextOffset;
+
   /// Last write timestamp for this row.
   int updatedAtUs;
 
@@ -275,6 +284,8 @@ class AppStateAddressEntity {
     this.indexingProcessUpdatedAtUs = 0,
     this.indexingProcessErrorMessage = '',
     this.indexingProcessWorkflowId = '',
+    this.hasPersonalTokensIndexerNextOffset = false,
+    this.personalTokensIndexerNextOffset = 0,
     required this.updatedAtUs,
   });
 }
