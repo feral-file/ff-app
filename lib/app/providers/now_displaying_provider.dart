@@ -27,8 +27,6 @@ typedef _PlaylistIdentity = ({
 enum _NowDisplayingRecomputeCause {
   /// Player/device/connection/connecting or initial build.
   generic,
-  /// [nowDisplayingCachedPlaylistItemsProvider] completed; must merge DB rows.
-  cacheWindow,
   /// User expanded scroll range in the bar; window may need new cache/enrichment.
   requestedRange,
 }
@@ -68,10 +66,6 @@ _NowDisplayingRecomputeCause _mergeRecomputeCauses(
       b == _NowDisplayingRecomputeCause.requestedRange) {
     return _NowDisplayingRecomputeCause.requestedRange;
   }
-  if (a == _NowDisplayingRecomputeCause.cacheWindow ||
-      b == _NowDisplayingRecomputeCause.cacheWindow) {
-    return _NowDisplayingRecomputeCause.cacheWindow;
-  }
   return _NowDisplayingRecomputeCause.generic;
 }
 
@@ -84,7 +78,8 @@ final nowDisplayingItemIdsProvider = Provider<List<String>>((ref) {
 });
 
 /// User-requested range from scrolling in the expanded bar.
-/// When set, the effective window is merged with the base window (around current index).
+/// When set, the effective window is merged with the base window
+/// (around current index).
 final nowDisplayingRequestedRangeProvider =
     NotifierProvider<
       NowDisplayingRequestedRangeNotifier,
@@ -93,35 +88,52 @@ final nowDisplayingRequestedRangeProvider =
       NowDisplayingRequestedRangeNotifier.new,
     );
 
-/// Notifier for scroll-requested window range; updated when user scrolls in expanded bar.
+/// Notifier for scroll-requested window range; updated when user scrolls in the
+/// expanded bar.
 class NowDisplayingRequestedRangeNotifier
     extends Notifier<({int start, int end})?> {
+  _PlaylistIdentity? _lastConfirmedIdentity;
+
   @override
   ({int start, int end})? build() {
+    _lastConfirmedIdentity = _playlistIdentityFromStatus(
+      ref.read(ff1CurrentPlayerStatusProvider),
+    );
+
     // Drop monotonic scroll expansion when the playing list identity changes
     // (new playlist / ordered items) or playback clears, so playlist B does
     // not inherit A's widened range.
     ref.listen<FF1PlayerStatus?>(
       ff1CurrentPlayerStatusProvider,
       (prev, next) {
-        final before = _playlistIdentityFromStatus(prev);
+        // Clear when playback is explicitly cleared (playlistId == null).
+        // A transient provider null (loading/error/reconnect) does not map to
+        // a real playback clear and must not clear the expanded range.
+        if (next != null && next.playlistId == null) {
+          _lastConfirmedIdentity = null;
+          state = null;
+          return;
+        }
+
+        // Only clear on confirmed playing-list identity change. Identity is
+        // considered "confirmed" only when FF1 provides an item list; gaps
+        // where items are null (device still fetching) or provider is null
+        // (reconnect) should not clear on their own.
         final after = _playlistIdentityFromStatus(next);
-        if (before == null && after == null) {
-          return;
-        }
-        if (before == null || after == null) {
-          state = null;
-          return;
-        }
-        if (!_playlistIdentitiesEqual(before, after)) {
+        if (after == null) return;
+
+        final last = _lastConfirmedIdentity;
+        if (last != null && !_playlistIdentitiesEqual(last, after)) {
           state = null;
         }
+        _lastConfirmedIdentity = after;
       },
     );
     return null;
   }
 
-  /// Merges [start, end) into the current requested range (expands to include the new range).
+  /// Merges `[start,end)` into the current requested range (expands to include
+  /// the new range).
   void expandTo(int start, int end) {
     final prev = state;
     if (prev == null) {
@@ -133,14 +145,16 @@ class NowDisplayingRequestedRangeNotifier
     state = (start: mergedStart, end: mergedEnd);
   }
 
-  /// Clears scroll expansion so the next window is only around [currentWorkIndex].
+  /// Clears scroll expansion so the next window is only around the current
+  /// work index.
   /// Call when the playing list identity changes (new playlist / items from FF1).
   void clear() {
     state = null;
   }
 }
 
-/// Window of indices [start, end) around currentWorkIndex, merged with scroll-requested range.
+/// Window of indices `[start,end)` around currentWorkIndex, merged with
+/// scroll-requested range.
 /// Only items in this range are fetched from cache and enriched.
 final nowDisplayingWindowProvider = Provider<({int start, int end})?>((ref) {
   final status = ref.watch(ff1CurrentPlayerStatusProvider);
@@ -184,7 +198,8 @@ final nowDisplayingWindowItemIdsProvider = Provider<List<String>>((ref) {
   return ids.sublist(window.start, window.end);
 });
 
-/// Cached [PlaylistItem]s for the current now-displaying item IDs in window only.
+/// Cached [PlaylistItem]s for the current now-displaying item IDs in window
+/// only.
 /// Used to show enriched data (e.g. thumbnail, artists) when available locally.
 final nowDisplayingCachedPlaylistItemsProvider =
     FutureProvider<List<PlaylistItem>>((ref) async {
@@ -201,6 +216,7 @@ final nowDisplayingProvider =
       NowDisplayingNotifier.new,
     );
 
+/// Computes [NowDisplayingStatus] from FF1 device + player status signals.
 class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   /// Bumped on every [_enqueueRecompute]; each loop iteration captures an
   /// epoch snapshot so a slow async pass does not publish after newer FF1 data.
@@ -214,6 +230,19 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   /// [state] is briefly [LoadingNowDisplaying] between microtask phases.
   List<PlaylistItem>? _lastFullSuccessPlaylistItems;
 
+  /// Index from the last successful full compute.
+  ///
+  /// Why: ff1CurrentPlayerStatusProvider intentionally maps stream
+  /// loading/error to null. A reconnect/resubscribe can briefly produce:
+  /// `data -> null -> same data` without any playlist identity change.
+  ///
+  /// We keep showing the last known now-displaying state across that transient
+  /// gap so the UI does not flash loading or clear the expanded window.
+  int? _lastFullSuccessIndex;
+
+  /// Sleep/paused flag from the last successful full compute.
+  bool? _lastFullSuccessIsSleeping;
+
   /// [nowDisplayingWindowProvider] snapshot from the last full compute.
   /// Fast path is invalid if the index window shifts (new slice needs cache/enrich).
   ({int start, int end})? _lastFullComputeWindow;
@@ -221,7 +250,8 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   _NowDisplayingRecomputeCause _pendingRecomputeCause =
       _NowDisplayingRecomputeCause.generic;
 
-  /// True while [_runRecomputeLoop] is running; further [_enqueueRecompute] calls
+  /// True while [_runRecomputeLoop] is running; further [_enqueueRecompute]
+  /// calls
   /// only merge into [_pendingRecomputeCause] and are drained by the loop.
   bool _recomputeLoopRunning = false;
 
@@ -233,11 +263,13 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   void _clearPlaybackIdentity() {
     _lastFullComputeIdentity = null;
     _lastFullSuccessPlaylistItems = null;
+    _lastFullSuccessIndex = null;
+    _lastFullSuccessIsSleeping = null;
     _lastFullComputeWindow = null;
   }
 
   /// Merges [incoming] into [_pendingRecomputeCause] and runs a single async
-  /// loop so [await] phases do not interleave with a second token bump (which
+  /// loop so `await` phases do not interleave with a second token bump (which
   /// would skip `state = computed` and strand the notifier on loading).
   ///
   /// Increments [_recomputeToken] on every call so any in-flight compute that
@@ -290,20 +322,6 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
           continue;
         }
         state = computed;
-        // A cache-window-only follow-up with the same playlist identity as the
-        // last full compute does not need another DB pass; drop redundant
-        // cacheWindow so we do not loop with a second full path.
-        if (_pendingRecomputeCause ==
-                _NowDisplayingRecomputeCause.cacheWindow &&
-            computed is NowDisplayingSuccess) {
-          final statusAfter = ref.read(ff1CurrentPlayerStatusProvider);
-          final idAfter = _playlistIdentityFromStatus(statusAfter);
-          if (idAfter != null &&
-              _lastFullComputeIdentity != null &&
-              _playlistIdentitiesEqual(idAfter, _lastFullComputeIdentity)) {
-            _pendingRecomputeCause = _NowDisplayingRecomputeCause.generic;
-          }
-        }
         if (_pendingRecomputeCause == _NowDisplayingRecomputeCause.generic) {
           break;
         }
@@ -316,7 +334,7 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     }
     // Wake up another loop pass if a listener merged a cause while we exited
     // early (e.g. ref disposed mid-await). Incoming [generic] is merged with
-    // [_pendingRecomputeCause] and does not erase requestedRange/cacheWindow.
+    // [_pendingRecomputeCause] and does not erase requestedRange.
     if (_pendingRecomputeCause != _NowDisplayingRecomputeCause.generic) {
       _enqueueRecompute(_NowDisplayingRecomputeCause.generic);
     }
@@ -343,34 +361,33 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     // Trigger recompute whenever these sources change.
     //
     // Note: ff1CurrentPlayerStatusProvider and ff1DeviceConnectedProvider are
-    // plain Providers over values stored inside FF1WifiControl. We listen to the
+    // plain Providers over values stored inside FF1WifiControl. We listen to
+    // the
     // corresponding stream providers to ensure updates are observed.
     // Defer _recompute to next microtask so dependent providers (e.g.
     // ff1DeviceConnectedProvider) are rebuilt before we read them.
-    ref.listen<AsyncValue<FF1Device?>>(
-      activeFF1BluetoothDeviceProvider,
-      (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
-    );
-    ref.listen<AsyncValue<FF1PlayerStatus>>(
-      ff1PlayerStatusStreamProvider,
-      (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
-    );
-    ref.listen<AsyncValue<FF1ConnectionStatus>>(
-      ff1ConnectionStatusStreamProvider,
-      (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
-    );
-    ref.listen<bool>(
-      ff1WifiConnectingProvider,
-      (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
-    );
-    ref.listen<AsyncValue<List<PlaylistItem>>>(
-      nowDisplayingCachedPlaylistItemsProvider,
-      (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.cacheWindow),
-    );
-    ref.listen<({int start, int end})?>(
-      nowDisplayingRequestedRangeProvider,
-      (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.requestedRange),
-    );
+    ref
+      ..listen<AsyncValue<FF1Device?>>(
+        activeFF1BluetoothDeviceProvider,
+        (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
+      )
+      ..listen<AsyncValue<FF1PlayerStatus>>(
+        ff1PlayerStatusStreamProvider,
+        (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
+      )
+      ..listen<AsyncValue<FF1ConnectionStatus>>(
+        ff1ConnectionStatusStreamProvider,
+        (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
+      )
+      ..listen<bool>(
+        ff1WifiConnectingProvider,
+        (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
+      )
+      ..listen<({int start, int end})?>(
+        nowDisplayingRequestedRangeProvider,
+        (_, _) =>
+            _enqueueRecompute(_NowDisplayingRecomputeCause.requestedRange),
+      );
 
     // Match the previous manager contract: start at an explicit initial state,
     // then compute derived status on the next microtask.
@@ -383,8 +400,9 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   ///
   /// When [currentIdentity] is null because the stream is briefly between
   /// values (AsyncLoading) but we already have a successful full compute,
-  /// do not set [LoadingNowDisplaying] here — that would hide [NowDisplayingSuccess]
-  /// and break the fast path that reuses the last built item list.
+  /// do not set [LoadingNowDisplaying] here — that would hide
+  /// [NowDisplayingSuccess] and break the fast path that reuses the last built
+  /// item list.
   bool _shouldShowLoadingOverlay(_PlaylistIdentity? currentIdentity) {
     if (_lastFullComputeIdentity == null) {
       return true;
@@ -434,6 +452,31 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
 
     final status = ref.read(ff1CurrentPlayerStatusProvider);
     if (status == null) {
+      // ff1CurrentPlayerStatusProvider maps stream loading/error to null. A
+      // reconnect/resubscribe can briefly produce:
+      //   data -> null -> same data
+      // This is not a playback reset and must not clear identity or flash a
+      // loading overlay for the same playing list.
+      final lastIdentity = _lastFullComputeIdentity;
+      final lastItems = _lastFullSuccessPlaylistItems;
+      final lastIndex = _lastFullSuccessIndex;
+      final lastIsSleeping = _lastFullSuccessIsSleeping;
+      if (lastIdentity != null &&
+          lastItems != null &&
+          lastIndex != null &&
+          lastIsSleeping != null &&
+          lastIndex >= 0 &&
+          lastIndex < lastItems.length) {
+        return NowDisplayingSuccess(
+          DP1NowDisplayingObject(
+            connectedDevice: device,
+            index: lastIndex,
+            items: lastItems,
+            isSleeping: lastIsSleeping,
+          ),
+        );
+      }
+
       _clearPlaybackIdentity();
       return LoadingNowDisplaying(device: device);
     }
@@ -458,9 +501,8 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     // jumps): [_lastFullSuccessPlaylistItems] may still have DP-1 fallbacks
     // outside the previous window; the new slice must reload cache + enrich.
     //
-    // [cacheWindow] is never fast-pathed: it means DB rows for the current
-    // window arrived and must be merged into the built list.
-    // [requestedRange] is excluded: user expanded the bar and may need new rows.
+    // [requestedRange] is excluded: user expanded the bar and may need new
+    // rows.
     //
     // Use [_lastFullSuccessPlaylistItems] instead of reading [state] so we are
     // not blocked when [state] is still [LoadingNowDisplaying] between loop
@@ -527,7 +569,8 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       for (final p in cachedList) p.id: p,
     };
 
-    // Enrich only items not already in cache to preserve offline-first contract.
+    // Enrich only items not already in cache to preserve offline-first
+    // contract.
     // Cache misses are enriched from indexer; cache hits are served directly.
     final windowItems = items.sublist(start, end);
     final missingItems = windowItems
@@ -537,7 +580,8 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         ? await _enrichMissingNowDisplayingItems(missingItems)
         : <String, PlaylistItem>{};
 
-    // Build full list: window = enriched/cached/fallback; outside window = DP1 fallback only.
+    // Build full list: window = enriched/cached/fallback; outside window = DP1
+    // fallback only.
     final playlistItems = [
       for (var i = 0; i < items.length; i++)
         (i >= start && i < end)
@@ -557,9 +601,12 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
               ),
     ];
 
-    // Full compute succeeded; record identity + items + window for loading + fast-path.
+    // Full compute succeeded; record identity + items + window for loading +
+    // fast-path.
     _lastFullComputeIdentity = identity;
     _lastFullSuccessPlaylistItems = playlistItems;
+    _lastFullSuccessIndex = index;
+    _lastFullSuccessIsSleeping = status.isSleeping;
     _lastFullComputeWindow = (start: start, end: end);
 
     return NowDisplayingSuccess(
@@ -575,9 +622,10 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   /// Fetches tokens for missing DP1 items from the indexer and persists only
   /// items with successful enrichment (token found) to the local cache.
   ///
-  /// Only attempts enrichment for items not already in cache (cache-first contract).
-  /// Items without CID or those not found by indexer are not cached; they remain
-  /// as DP1 fallback in now-displaying but are not persisted to avoid stale data.
+  /// Only attempts enrichment for items not already in cache (cache-first
+  /// contract). Items without CID or those not found by indexer are not cached;
+  /// they remain as DP1 fallback in now-displaying but are not persisted to
+  /// avoid stale data.
   ///
   /// On indexer failure, returns empty map; cached items are served normally,
   /// preserving offline-first contract. Does not invalidate cache to avoid
@@ -619,49 +667,69 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
 
 /// Base interface for now displaying states.
 abstract class NowDisplayingStatus {
+  /// Creates a now displaying status.
   const NowDisplayingStatus();
 }
 
 /// Initial state before any signal is received.
 class InitialNowDisplayingStatus extends NowDisplayingStatus {
+  /// Creates an initial now-displaying state.
   const InitialNowDisplayingStatus();
 }
 
 /// Loading state (waiting for device/player status data).
 class LoadingNowDisplaying extends NowDisplayingStatus {
+  /// Creates a loading now-displaying state.
   const LoadingNowDisplaying({
     this.device,
     this.playlistId,
   });
 
+  /// Connected device, when known.
   final FF1Device? device;
+
+  /// Playlist id, when known.
   final String? playlistId;
 }
 
+/// FF1 is connected and connecting to Wi-Fi/relayer is in progress.
 class DeviceConnecting extends NowDisplayingStatus {
+  /// Creates a connecting state.
   const DeviceConnecting(this.device);
 
+  /// Connected device.
   final FF1Device device;
 }
 
+/// FF1 is paired but disconnected.
 class DeviceDisconnected extends NowDisplayingStatus {
+  /// Creates a disconnected state.
   const DeviceDisconnected(this.device);
 
+  /// Connected device.
   final FF1Device device;
 }
 
+/// Successfully computed now-displaying state.
 class NowDisplayingSuccess extends NowDisplayingStatus {
+  /// Creates a success state.
   const NowDisplayingSuccess(this.object);
 
+  /// Derived now-displaying object (DP-1-based today).
   final NowDisplayingObjectBase object;
 }
 
+/// Error state when now-displaying cannot be computed.
 class NowDisplayingError extends NowDisplayingStatus {
+  /// Creates an error state.
   const NowDisplayingError(this.error);
 
+  /// Underlying error.
   final Object error;
 }
 
+/// No FF1 device is paired/active.
 class NoDevicePaired extends NowDisplayingStatus {
+  /// Creates a no-device-paired state.
   const NoDevicePaired();
 }

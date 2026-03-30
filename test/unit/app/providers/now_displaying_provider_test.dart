@@ -191,9 +191,10 @@ void main() {
           container.read(nowDisplayingProvider),
           isA<LoadingNowDisplaying>(),
           reason:
-              '_recompute sets Loading before _computeStatus; _computeForDevice '
-              'awaits nowDisplayingCachedPlaylistItemsProvider.future before '
-              'state = success',
+              '_recompute sets Loading before _computeStatus; '
+              '_computeForDevice awaits '
+              'nowDisplayingCachedPlaylistItemsProvider.future before state = '
+              'success',
         );
 
         await Future<void>.delayed(const Duration(milliseconds: 120));
@@ -512,7 +513,8 @@ void main() {
         expect(
           callsAfterInitial,
           greaterThanOrEqualTo(1),
-          reason: 'Initial compute should read the window from DB at least once',
+          reason:
+              'Initial compute should read the window from DB at least once',
         );
 
         container
@@ -621,6 +623,94 @@ void main() {
           reason:
               'getManualTokens must not run when items are already cached '
               '(even if getPlaylistItemsByIds completes after a delay)',
+        );
+      },
+    );
+
+    test(
+      'slow DB cache read does not trigger duplicate indexer enrichment calls',
+      () async {
+        const deviceId = 'device_1';
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: deviceId,
+          topicId: 'topic_1',
+        );
+
+        final dp1Item = DP1PlaylistItem(
+          id: 'item_1',
+          duration: 60,
+          title: 'Work',
+          provenance: DP1Provenance(
+            type: DP1ProvenanceType.onChain,
+            contract: DP1Contract(
+              chain: DP1ProvenanceChain.evm,
+              standard: DP1ProvenanceStandard.erc721,
+              address: '0xabc',
+              tokenId: '1',
+            ),
+          ),
+        );
+
+        const cid = 'eip155:1:erc721:0xabc:1';
+        final token = AssetToken(
+          id: 1,
+          cid: cid,
+          chain: 'eip155:1',
+          standard: 'ERC-721',
+          contractAddress: '0xabc',
+          tokenNumber: '1',
+          display: TokenMetadata(
+            name: 'Token Title',
+            imageUrl: 'https://example.com/thumb.jpg',
+          ),
+        );
+
+        final status = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: [dp1Item],
+        );
+
+        final recordingSlow = _RecordingDatabaseService(
+          db,
+          cacheDelay: const Duration(milliseconds: 80),
+        );
+
+        final countingIndexer = _CountingIndexerService(tokensByCid: [token]);
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingSlow),
+            indexerServiceProvider.overrideWithValue(countingIndexer),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => Stream.value(status),
+            ),
+            ff1CurrentPlayerStatusProvider.overrideWithValue(status),
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container.read(nowDisplayingProvider);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+
+        expect(
+          countingIndexer.getManualTokensCalls,
+          1,
+          reason:
+              'A single recompute should await the cache read and then enrich '
+              'once; cache completion must not force a second enrichment pass.',
         );
       },
     );
@@ -943,7 +1033,8 @@ void main() {
     });
 
     test(
-      'early token check prevents stale recompute from setting loading after newer recompute starts',
+      'early token check prevents stale recompute from setting loading '
+      'after newer recompute starts',
       () async {
         const device = FF1Device(
           name: 'FF1',
@@ -999,8 +1090,10 @@ void main() {
         // Ensure StreamProvider subscribes first, then read notifier.
         // This triggers:
         // 1. build() -> microtask (_recompute for initial state)
-        // 2. Stream emits statusA after ~20ms -> microtask (_recompute for statusA)
-        // 3. Stream emits statusB after ~40ms -> microtask (_recompute for statusB, tokens slow)
+        // 2. Stream emits statusA after ~20ms -> microtask (_recompute for
+        //    statusA)
+        // 3. Stream emits statusB after ~40ms -> microtask (_recompute for
+        //    statusB, tokens slow)
         container
           ..listen<AsyncValue<FF1PlayerStatus>>(
             ff1PlayerStatusStreamProvider,
@@ -1012,7 +1105,8 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         // statusA stream event arrives + triggers microtask
         await Future<void>.delayed(const Duration(milliseconds: 30));
-        // statusB stream event arrives + triggers microtask (indexer now slow on token fetch)
+        // statusB stream event arrives + triggers microtask (indexer now slow
+        // on token fetch)
         await Future<void>.delayed(const Duration(milliseconds: 30));
 
         // At this point, statusB recompute is in flight (awaiting indexer);
@@ -1034,16 +1128,19 @@ void main() {
         // Wait for both recomputes to settle (first slow one, then statusB)
         await Future<void>.delayed(const Duration(milliseconds: 350));
 
-        // Final state must be from statusB (item_b), not corrupted by late state assign from statusA.
+        // Final state must be from statusB (item_b), not corrupted by late
+        // state assign from statusA.
         state = container.read(nowDisplayingProvider);
         expect(state, isA<NowDisplayingSuccess>());
-        final object = (state as NowDisplayingSuccess).object as DP1NowDisplayingObject;
+        final object =
+            (state as NowDisplayingSuccess).object as DP1NowDisplayingObject;
         expect(
           object.currentItem.id,
           'item_b',
           reason:
-              'Newer statusB must win; stale statusA recompute must not overwrite final state '
-              'because token check discards late microtask entries',
+              'Newer statusB must win; stale statusA recompute must not '
+              'overwrite final state because token check discards late '
+              'microtask entries',
         );
       },
     );
@@ -1211,8 +1308,212 @@ void main() {
           container.read(nowDisplayingRequestedRangeProvider),
           isNull,
           reason:
-              'NowDisplayingRequestedRangeNotifier clears expansion on list identity change',
+              'NowDisplayingRequestedRangeNotifier clears expansion on list '
+              'identity change',
         );
+      },
+    );
+
+    test(
+      'playing list identity change clears requested range even if items are '
+      'null in between',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        final itemsPl1 = [
+          const DP1PlaylistItem(id: 'a0', duration: 60, title: 'A'),
+        ];
+        final itemsPl2 = [
+          const DP1PlaylistItem(id: 'b0', duration: 60, title: 'B'),
+        ];
+
+        final statusPl1 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: itemsPl1,
+        );
+        final statusPl2Loading = FF1PlayerStatus(
+          playlistId: 'pl_2',
+          currentWorkIndex: 0,
+        );
+        final statusPl2 = FF1PlayerStatus(
+          playlistId: 'pl_2',
+          currentWorkIndex: 0,
+          items: itemsPl2,
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        addTearDown(playerStatusController.close);
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingDb),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        playerStatusController.add(statusPl1);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        container.read(nowDisplayingRequestedRangeProvider.notifier).expandTo(
+              0,
+              500,
+            );
+        expect(container.read(nowDisplayingRequestedRangeProvider), isNotNull);
+
+        // New playlist announced but items not yet available: don't clear yet.
+        playerStatusController.add(statusPl2Loading);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        expect(container.read(nowDisplayingRequestedRangeProvider), isNotNull);
+
+        // Once the new item list is confirmed, clear the widened range.
+        playerStatusController.add(statusPl2);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        expect(container.read(nowDisplayingRequestedRangeProvider), isNull);
+      },
+    );
+
+    test(
+      'transient null player status does not clear requested range or flash '
+      'loading',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        final itemsPl1 = [
+          const DP1PlaylistItem(id: 'a0', duration: 60, title: 'A'),
+        ];
+
+        final statusPl1 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: itemsPl1,
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        addTearDown(playerStatusController.close);
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingDb),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final emitted = <NowDisplayingStatus>[];
+        final subscription = container.listen<NowDisplayingStatus>(
+          nowDisplayingProvider,
+          (_, next) => emitted.add(next),
+        );
+        addTearDown(subscription.close);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        playerStatusController.add(statusPl1);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        container.read(nowDisplayingRequestedRangeProvider.notifier).expandTo(
+              0,
+              500,
+            );
+
+        expect(
+          container.read(nowDisplayingProvider),
+          isA<NowDisplayingSuccess>(),
+        );
+        expect(container.read(nowDisplayingRequestedRangeProvider), isNotNull);
+
+        // Start tracking after we have a stable success state.
+        emitted.clear();
+
+        // Simulate a reconnect/resubscribe blip: stream error maps to null
+        // status, then the same status arrives again.
+        playerStatusController.addError(StateError('transient reconnect'));
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        expect(
+          emitted.whereType<LoadingNowDisplaying>(),
+          isEmpty,
+          reason:
+              'Transient status null (loading/error) must not flash loading '
+              'for the same playing list',
+        );
+        expect(
+          container.read(nowDisplayingProvider),
+          isA<NowDisplayingSuccess>(),
+          reason:
+              'Transient status null must keep the last computed '
+              'now-displaying state',
+        );
+        expect(
+          container.read(nowDisplayingRequestedRangeProvider),
+          isNotNull,
+          reason:
+              'Transient status null must not clear the expanded requested '
+              'range',
+        );
+
+        playerStatusController.add(statusPl1);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        expect(
+          container.read(nowDisplayingProvider),
+          isA<NowDisplayingSuccess>(),
+        );
+        expect(container.read(nowDisplayingRequestedRangeProvider), isNotNull);
       },
     );
   });
@@ -1251,16 +1552,46 @@ class _FirstCallSlowIndexer extends FakeIndexerService {
   }
 }
 
+class _CountingIndexerService extends FakeIndexerService {
+  _CountingIndexerService({
+    required super.tokensByCid,
+  });
+
+  int getManualTokensCalls = 0;
+
+  @override
+  Future<List<AssetToken>> getManualTokens({
+    List<int>? tokenIds,
+    List<String>? owners,
+    List<String>? tokenCids,
+    int? limit,
+    int? offset,
+  }) async {
+    getManualTokensCalls++;
+    return super.getManualTokens(
+      tokenIds: tokenIds,
+      owners: owners,
+      tokenCids: tokenCids,
+      limit: limit,
+      offset: offset,
+    );
+  }
+}
+
 /// DatabaseService that returns no cached items and records
 /// upsertPlaylistItemsEnriched and getPlaylistItemsByIds arguments for tests.
 class _RecordingDatabaseService extends DatabaseService {
+  // Reason: DatabaseService's positional parameter name is `_db`
+  // (library-private), so this test-only subclass cannot use a super-parameter.
+  // ignore: use_super_parameters
   _RecordingDatabaseService(
-    super.db, {
+    AppDatabase db, {
     this.cacheDelay = Duration.zero,
     this.cachedItemsById = const {},
-  });
+  }) : super(db);
 
-  /// When non-zero, delays cache response (simulates slow getPlaylistItemsByIds).
+  /// When non-zero, delays cache response (simulates slow
+  /// getPlaylistItemsByIds).
   final Duration cacheDelay;
 
   final Map<String, PlaylistItem> cachedItemsById;
