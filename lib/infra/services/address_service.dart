@@ -80,12 +80,13 @@ class AddressService {
         limit: pageSize,
         offset: nextOffset,
       );
-      if (page.tokens.isEmpty) return total;
-      await _databaseService.ingestTokensForAddress(
-        address: address,
-        tokens: page.tokens,
-      );
-      total += page.tokens.length;
+      if (page.tokens.isNotEmpty) {
+        await _databaseService.ingestTokensForAddress(
+          address: address,
+          tokens: page.tokens,
+        );
+        total += page.tokens.length;
+      }
       final cursor = page.nextOffset;
       if (cursor == null) break;
       nextOffset = cursor;

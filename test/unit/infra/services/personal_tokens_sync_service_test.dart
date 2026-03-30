@@ -34,8 +34,7 @@ class _FakeAppStateService implements AppStateService {
   @override
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
-  ) =>
-      Stream.value(null);
+  ) => Stream.value(null);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -80,8 +79,8 @@ class _RecordingIndexerService extends IndexerService {
 }
 
 void main() {
-  // Covers: [indexerTokensPageSize] as list-tokens limit, nextOffset chaining,
-  // and persisted offset vs playlist itemCount (see indexer_constants + rule 50).
+  // Covers: indexer page size, nextOffset chaining, persisted offset vs
+  // playlist itemCount (indexer_constants + rule 50).
 
   test('sync uses lowercased 0x address format for indexer fetch', () async {
     final database = AppDatabase.forTesting(NativeDatabase.memory());
@@ -240,4 +239,54 @@ void main() {
       );
     },
   );
+
+  test('continues after empty page when nextOffset is non-null', () async {
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(database.close);
+    final databaseService = DatabaseService(database);
+    const playlistOwner = '0X99FC8AD516FBCC9BA3123D56E63A35D05AA9EFB8';
+
+    await databaseService.ingestPlaylist(
+      const Playlist(
+        id: 'addr:eth:0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8',
+        name: 'Personal',
+        type: PlaylistType.addressBased,
+        channelId: Channel.myCollectionId,
+        ownerAddress: playlistOwner,
+        ownerChain: 'eth',
+      ),
+    );
+
+    final indexer = _RecordingIndexerService()
+      ..responseSequence = [
+        const TokensPage(tokens: [], nextOffset: 42),
+        TokensPage(
+          tokens: [
+            AssetToken(
+              id: 1,
+              cid: 'cid1',
+              chain: 'eip155:1',
+              standard: 'ERC-721',
+              contractAddress: '0xabc',
+              tokenNumber: '1',
+            ),
+          ],
+        ),
+      ];
+
+    final appState = _FakeAppStateService();
+
+    await PersonalTokensSyncService(
+      indexerService: indexer,
+      databaseService: databaseService,
+      appStateService: appState,
+    ).syncAddresses(addresses: const <String>[playlistOwner]);
+
+    expect(indexer.fetchOffsets, equals(const <int?>[0, 42]));
+    expect(indexer.requestedAddresses, hasLength(2));
+    expect(
+      appState.personalTokensOffsets[playlistOwner.toNormalizedAddress()],
+      isNull,
+    );
+  });
 }

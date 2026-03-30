@@ -38,7 +38,7 @@ class PersonalTokensSyncService {
     await syncAddresses(addresses: tracked);
   }
 
-  /// Fetches tokens for address. Used for initial fetch after address is indexed.
+  /// Fetches tokens for address (initial fetch after address is indexed).
   ///
   /// Paginates using indexer `nextOffset`. The next request offset is
   /// persisted in app state so restarts resume from the indexer cursor (which
@@ -57,8 +57,9 @@ class PersonalTokensSyncService {
       final owner = playlist.ownerAddress;
       if (owner == null) continue;
       final key = _addressKey(owner);
-      final persisted =
-          await _appStateService.getPersonalTokensListFetchOffset(owner);
+      final persisted = await _appStateService.getPersonalTokensListFetchOffset(
+        owner,
+      );
       offsetByAddressKey[key] = persisted ?? playlist.itemCount;
     }
     final playlistAddressByKey = <String, String>{
@@ -93,19 +94,12 @@ class PersonalTokensSyncService {
           offset: offset,
         );
 
-        if (page.tokens.isEmpty) {
-          await _appStateService.setPersonalTokensListFetchOffset(
+        if (page.tokens.isNotEmpty) {
+          await _databaseService.ingestTokensForAddress(
             address: queryAddress,
-            nextFetchOffset: null,
+            tokens: page.tokens,
           );
-          active.remove(addressKey);
-          continue;
         }
-
-        await _databaseService.ingestTokensForAddress(
-          address: queryAddress,
-          tokens: page.tokens,
-        );
 
         final next = page.nextOffset;
         await _appStateService.setPersonalTokensListFetchOffset(

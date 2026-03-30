@@ -1,3 +1,4 @@
+import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/domain_address_service.dart';
@@ -31,7 +32,7 @@ void main() {
     );
   });
 
-  // Integration test: resolves ENS to address, runs indexing, and validates offset-cursor pagination.
+  // Integration: ENS resolve, indexing, offset-cursor pagination (no dup CIDs).
   test(
     'indexes reas.eth and paginates token pages without duplicate CIDs',
     () async {
@@ -68,15 +69,21 @@ void main() {
         address: address,
       );
 
+      // Small page size so we exercise multi-page cursor fetches when needed.
+      const integrationPageSize = 50;
       final tokens = await fetchAllTokensByOffsetCursor(
         indexerService: indexerService,
         address: address,
+        pageSize: integrationPageSize,
       );
 
       expect(
         tokens.length,
-        greaterThan(50),
-        reason: 'Expected more than one page for reas.eth after indexing.',
+        greaterThan(integrationPageSize),
+        reason:
+            'Expected more than one page for reas.eth after indexing '
+            '(pageSize=$integrationPageSize; production default is '
+            '$indexerTokensPageSize).',
       );
       expect(
         tokens.map((token) => token.cid).toSet().length,
