@@ -22,6 +22,9 @@ class FakeIndexerServiceIsolate implements IndexerServiceIsolateOperations {
   /// Last `limit` passed to each [fetchTokensPageByAddresses] call (tests).
   final List<int?> fetchTokensPageLimits = <int?>[];
 
+  /// Last `offset` passed to each [fetchTokensPageByAddresses] call (tests).
+  final List<int?> fetchTokensPageOffsets = <int?>[];
+
   AssetToken? rebuildMetadataAndFetchTokenResult;
 
   @override
@@ -55,6 +58,7 @@ class FakeIndexerServiceIsolate implements IndexerServiceIsolateOperations {
   }) async {
     callSequence.add('fetchTokens');
     fetchTokensPageLimits.add(limit);
+    fetchTokensPageOffsets.add(offset);
     if (fetchTokensPageSequence.isNotEmpty &&
         _fetchTokensPageSequenceIndex < fetchTokensPageSequence.length) {
       return fetchTokensPageSequence[_fetchTokensPageSequenceIndex++];
