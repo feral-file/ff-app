@@ -78,7 +78,9 @@ const REMOTE_CONFIG_URL =
   'https://dp1-feed-operator-api-prod.autonomy-system.workers.dev/api/v1/registry/channels';
 const DEFAULT_CHANNEL_SOURCE = REMOTE_CONFIG_URL;
 const INDEXER_API_URL = 'https://indexer-v2.feralfile.com';
-const INDEXER_BATCH_SIZE = 50;
+// Indexer GraphQL `limit` is Uint8, max 255. Use the max to reduce requests
+// during seed generation.
+const INDEXER_BATCH_SIZE = 255;
 
 const ARGS = parseArgs(process.argv.slice(2));
 
@@ -995,7 +997,7 @@ function provenanceToCid(provenance) {
 async function fetchIndexerTokensByCids({
   indexerApiUrl,
   cids,
-  batchSize = 50,
+  batchSize = INDEXER_BATCH_SIZE,
   channelId = '',
 }) {
   const out = new Map();

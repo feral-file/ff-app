@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/bootstrap/app_startup_orchestration.dart';
 import 'package:app/app/bootstrap/bootstrap_status_toast.dart';
+import 'package:app/app/bootstrap/database_reset_recovery_service.dart';
 import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
 import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
@@ -23,7 +24,6 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/app/widgets/builder_overlay_scope.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
-import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
@@ -543,32 +543,10 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       return;
     }
 
-    final addressService = ref.read(addressServiceProvider);
-
-    for (final address in addresses) {
-      await appState.clearAddressCheckpoint(address);
-
-      await appState.setAddressIndexingStatus(
-        address: address,
-        status: AddressIndexingProcessStatus.indexingTriggeredPending(),
-      );
-
-      await addressService.addAddress(
-        walletAddress: WalletAddress(
-          address: address,
-          createdAt: DateTime.now(),
-          name: _shortAddress(address),
-        ),
-      );
-    }
-  }
-
-  String _shortAddress(String address) {
-    if (address.length <= 10) {
-      return address;
-    }
-    return '${address.substring(0, 6)}...'
-        '${address.substring(address.length - 4)}';
+    await DatabaseResetRecoveryService(appStateService: appState).recover(
+      normalizedAddresses: addresses,
+      aliasForAddress: shortAddressAlias,
+    );
   }
 
   @override
