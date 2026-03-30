@@ -28,13 +28,13 @@ import 'package:app/widgets/ff_display_button.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/webview_controller_text_field.dart';
 import 'package:app/widgets/work_detail/artwork_details_header.dart';
+import 'package:app/widgets/work_detail/work_detail_html_description.dart';
 import 'package:app/widgets/work_detail/work_detail_sections.dart';
 import 'package:backdrop/backdrop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:shake/shake.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -664,23 +664,18 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Semantics(
-                          label: 'Desc',
-                          child: SelectionArea(
-                            focusNode: _selectTextFocusNode,
-                            child: HtmlWidget(
-                              descriptionHtml,
-                              customStylesBuilder: auHtmlStyle,
-                              textStyle: ContentRhythm.title(context),
-                              onTapUrl: (url) async {
-                                await launchUrl(
-                                  Uri.parse(url),
-                                  mode: LaunchMode.externalApplication,
-                                );
-                                return true;
-                              },
-                            ),
-                          ),
+                        WorkDetailHtmlDescription(
+                          descriptionHtml: descriptionHtml,
+                          customStylesBuilder: auHtmlStyle,
+                          textStyle: ContentRhythm.title(context),
+                          focusNode: _selectTextFocusNode,
+                          onTapUrl: (url) async {
+                            await launchUrl(
+                              Uri.parse(url),
+                              mode: LaunchMode.externalApplication,
+                            );
+                            return true;
+                          },
                         ),
                         const SizedBox(height: 40),
                         buildWorkDetailMetadataSection(
