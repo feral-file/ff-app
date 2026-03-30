@@ -112,6 +112,17 @@ class AddressService {
     final queryAddress = _addressForIndexer(address);
     var effectiveWorkflowId = workflowId;
 
+    // Persist "trigger submitted, workflow id not known yet" so Me / playlist
+    // headers show Syncing before the indexer trigger returns (same contract as
+    // add-address recovery in app.dart). Avoid idle, which means no active
+    // indexing process.
+    if (runTriggerIndex) {
+      await _appStateService.setAddressIndexingStatus(
+        address: queryAddress,
+        status: AddressIndexingProcessStatus.indexingTriggeredPending(),
+      );
+    }
+
     // Step 1: Fast-path fetch
     if (runFastPathFetch) {
       unawaited(syncTokens(queryAddress));
