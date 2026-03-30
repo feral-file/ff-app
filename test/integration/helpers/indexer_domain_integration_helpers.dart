@@ -1,3 +1,4 @@
+import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -51,7 +52,7 @@ Future<void> waitForAddressIndexingCompletion({
 Future<List<AssetToken>> fetchAllTokensByOffsetCursor({
   required IndexerService indexerService,
   required String address,
-  int pageSize = 50,
+  int pageSize = indexerTokensPageSize,
   int maxPages = 100,
 }) async {
   final allTokens = <AssetToken>[];
@@ -64,11 +65,9 @@ Future<List<AssetToken>> fetchAllTokensByOffsetCursor({
       offset: nextOffset,
     );
 
-    if (response.tokens.isEmpty) {
-      break;
+    if (response.tokens.isNotEmpty) {
+      allTokens.addAll(response.tokens);
     }
-
-    allTokens.addAll(response.tokens);
     if (response.nextOffset == null) {
       return allTokens;
     }
