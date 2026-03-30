@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
@@ -68,7 +69,7 @@ class AddressService {
   ///
   /// Paginates from [startOffset] until no more tokens. Returns total ingested.
   Future<int> syncTokens(String address, {int startOffset = 0}) async {
-    const pageSize = 50;
+    const pageSize = indexerTokensPageSize;
     var offset = startOffset;
     var total = 0;
     while (true) {

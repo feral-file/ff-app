@@ -1,3 +1,4 @@
+import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/changes/change.dart';
 import 'package:app/domain/models/indexer/sync_collection.dart';
@@ -30,7 +31,6 @@ class IndexerService {
   // manual fetch by CID in batches of 40) to avoid overly large payloads.
   static const int _maxUint8Limit = 255;
   static const int _manualFetchCidsBatchSize = 40;
-  static const int _defaultTokensPageSize = 50;
   static const List<String> _defaultChains = <String>[
     'eip155:1',
     'tezos:mainnet',
@@ -168,8 +168,8 @@ class IndexerService {
     int? offset,
   }) async {
     try {
-      // Default behavior: QueryListTokensRequest page size is 50.
-      final effectiveLimit = limit ?? _defaultTokensPageSize;
+      // Default behavior: use indexerTokensPageSize when limit is omitted.
+      final effectiveLimit = limit ?? indexerTokensPageSize;
       final page = await fetchTokensPageByAddresses(
         addresses: addresses,
         limit: effectiveLimit,

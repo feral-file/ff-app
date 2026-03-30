@@ -1,5 +1,6 @@
 // ignore_for_file: public_member_api_docs // Reason: small service API is self-descriptive and covered by provider usage.
 
+import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_service.dart';
@@ -22,8 +23,6 @@ class PersonalTokensSyncService {
   final DatabaseService _databaseService;
   final AppStateServiceBase _appStateService;
   final Logger _log;
-
-  static const int pageSize = 50;
 
   Future<void> trackAddress(String address) {
     return _appStateService.trackPersonalAddress(address);
@@ -80,7 +79,7 @@ class PersonalTokensSyncService {
 
         final tokens = await _indexerService.fetchTokensByAddresses(
           addresses: <String>[queryAddress],
-          limit: pageSize,
+          limit: indexerTokensPageSize,
           offset: offset,
         );
 
@@ -94,7 +93,7 @@ class PersonalTokensSyncService {
           tokens: tokens,
         );
 
-        if (tokens.length < pageSize) {
+        if (tokens.length < indexerTokensPageSize) {
           active.remove(addressKey);
         } else {
           active[addressKey] = offset + tokens.length;
