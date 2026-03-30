@@ -35,6 +35,9 @@ class _FakeAppStateService implements AppStateServiceBase {
   }) async {}
 
   @override
+  Future<void> clearAllPersonalTokensListFetchOffsets() async {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

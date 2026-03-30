@@ -216,6 +216,9 @@ class MockAppStateService implements AppStateService {
   }) async {}
 
   @override
+  Future<void> clearAllPersonalTokensListFetchOffsets() async {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 

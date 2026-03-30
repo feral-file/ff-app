@@ -42,6 +42,9 @@ class _FakeAppStateService implements AppStateService {
   }) async {}
 
   @override
+  Future<void> clearAllPersonalTokensListFetchOffsets() async {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -101,8 +104,9 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   }
 }
 
-/// Sync 1 runs [beforeReplace], then waits on [blockAfterBeforeReplace] so sync
-/// 2 can interleave; the first session's snapshot must still restore later.
+/// Sync 1 runs the before-replace hook, then waits on the race completer so
+/// sync 2 can interleave; the first session's snapshot must still restore
+/// later.
 class _OverlappingSeedSyncRaceFake implements SeedDatabaseSyncService {
   _OverlappingSeedSyncRaceFake({
     required Completer<void> blockAfterBeforeReplace,
@@ -155,13 +159,15 @@ final _noOpActions = SeedDatabaseReadyActions(
 Future<void> _noOpFuture() async {}
 
 class _SpyDatabaseService extends DatabaseService {
-  _SpyDatabaseService(super.db);
+  // Super ctor takes private `_db`; cannot use super-initializer from tests.
+  // ignore: use_super_parameters
+  _SpyDatabaseService(AppDatabase db) : super(db);
 
   int snapshotCalls = 0;
   int restoreCalls = 0;
 
   /// When true, snapshot returns an empty list (restore is skipped). Use when
-  /// the test cannot survive provider invalidation closing the test [AppDatabase].
+  /// the test cannot survive provider invalidation closing the test database.
   bool snapshotReturnsEmpty = false;
 
   @override
@@ -641,8 +647,8 @@ void main() {
   );
 }
 
-/// Wraps a sync service: delegates until onDownloadStarted, then awaits
-/// [beforeComplete] before continuing. Allows override to happen after
+/// Wraps a sync service: delegates until onDownloadStarted, then awaits the
+/// injected delay future before continuing. Allows override to happen after
 /// syncing state is set but before completion.
 class _SlowFakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   _SlowFakeSeedDatabaseSyncService({

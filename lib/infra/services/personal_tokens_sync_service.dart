@@ -42,12 +42,11 @@ class PersonalTokensSyncService {
   ///
   /// Paginates using indexer `nextOffset`. The next request offset is
   /// persisted in app state so restarts resume from the indexer cursor (which
-  /// may differ from SQLite [Playlist.itemCount]). When a run finishes
+  /// may differ from SQLite playlist row count). When a run finishes
   /// (`nextOffset == null`), persisted state is cleared so the next sync starts
-  /// from [itemCount] again.
+  /// from row count again.
   ///
-  /// This is independent of [AddressSyncCollectionService] which updates
-  /// already-fetched tokens.
+  /// This is independent of sync-collection updates for already-fetched tokens.
   Future<void> syncAddresses({required List<String> addresses}) async {
     if (addresses.isEmpty) return;
 
@@ -57,9 +56,22 @@ class PersonalTokensSyncService {
       final owner = playlist.ownerAddress;
       if (owner == null) continue;
       final key = _addressKey(owner);
-      final persisted = await _appStateService.getPersonalTokensListFetchOffset(
-        owner,
+      final canonicalOwner = owner.toNormalizedAddress();
+      // Cursor lookups use toNormalizedAddress (same key as playlist rows and
+      // token ingest) so they align with AddressService.syncTokens.
+      var persisted = await _appStateService.getPersonalTokensListFetchOffset(
+        canonicalOwner,
       );
+      // Stale cursor: ObjectBox still holds an offset from before SQLite was
+      // replaced (rebuild metadata) while the playlist row has no items yet.
+      // Starting at a non-zero offset would skip the head of the token list.
+      if (persisted != null && playlist.itemCount == 0) {
+        await _appStateService.setPersonalTokensListFetchOffset(
+          address: canonicalOwner,
+          nextFetchOffset: null,
+        );
+        persisted = null;
+      }
       offsetByAddressKey[key] = persisted ?? playlist.itemCount;
     }
     final playlistAddressByKey = <String, String>{
@@ -86,7 +98,7 @@ class PersonalTokensSyncService {
           active.remove(addressKey);
           continue;
         }
-        final queryAddress = _addressForIndexer(playlistAddress);
+        final queryAddress = playlistAddress.toNormalizedAddress();
 
         final page = await _indexerService.fetchTokensPageByAddresses(
           addresses: <String>[queryAddress],
@@ -121,14 +133,4 @@ class PersonalTokensSyncService {
   }
 
   String _addressKey(String address) => address.toNormalizedAddress();
-
-  String _addressForIndexer(String address) {
-    final trimmed = address.trim();
-    if (trimmed.startsWith('0x') || trimmed.startsWith('0X')) {
-      return trimmed.startsWith('0X')
-          ? '0x${trimmed.substring(2).toLowerCase()}'
-          : trimmed.toLowerCase();
-    }
-    return trimmed;
-  }
 }

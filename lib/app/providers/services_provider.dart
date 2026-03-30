@@ -134,20 +134,16 @@ final addressServiceProvider = Provider<AddressService>((ref) {
   );
   final indexerServiceIsolate = ref.watch(indexerServiceIsolateProvider);
 
-  final service = AddressService(
+  return AddressService(
     databaseService: databaseService,
     indexerSyncService: indexerSyncService,
     domainAddressService: domainAddressService,
     personalTokensSyncService: personalTokensSyncService,
     indexerServiceIsolate: indexerServiceIsolate,
     appStateService: ref.watch(appStateServiceProvider),
-  );
-
-  service.setIndexingJobStatusCallback((response) {
-    ref.read(addressIndexingJobProvider.notifier).updateJob(response);
-  });
-
-  return service;
+  )..setIndexingJobStatusCallback((response) {
+      ref.read(addressIndexingJobProvider.notifier).updateJob(response);
+    });
 });
 
 /// Ensures tracked addresses have playlists and resumes indexing for

@@ -69,12 +69,16 @@ class _FakeAppStateForAliasTest implements AppStateService {
   }) async {}
 
   @override
+  Future<void> clearAllPersonalTokensListFetchOffsets() async {}
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 
 void main() {
   test(
-    'ensureTrackedAddressesHavePlaylistsAndResume preserves alias in playlist name',
+    'ensureTrackedAddressesHavePlaylistsAndResume preserves alias in '
+    'playlist name',
     () async {
       await ensureDotEnvLoaded();
       SeedDatabaseGate.complete();

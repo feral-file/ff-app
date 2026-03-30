@@ -42,11 +42,11 @@ class AddressService {
 
   void Function(AddressIndexingJobResponse)? _onIndexingJobStatusCallback;
 
-  /// Sets a callback that receives real-time indexer job status updates.
-  ///
-  /// The callback is invoked when [pullStatus] returns during [indexAndSyncAddress].
+  /// Registers a callback for real-time indexer job status updates (pull
+  /// status during indexAndSyncAddress).
+  // ignore: use_setters_to_change_properties
   void setIndexingJobStatusCallback(
-    void Function(AddressIndexingJobResponse) callback,
+    void Function(AddressIndexingJobResponse)? callback,
   ) {
     _onIndexingJobStatusCallback = callback;
   }
@@ -76,10 +76,29 @@ class AddressService {
   /// the last page left off instead of replaying from the start.
   Future<int> syncTokens(String address, {int startOffset = 0}) async {
     const pageSize = indexerTokensPageSize;
+    // Canonical form matches playlist owner + ingest (toNormalizedAddress) so
+    // indexer queries and cursor keys stay aligned with SQLite rows.
     final queryAddress = _addressForIndexer(address);
-    final persisted = await _appStateService.getPersonalTokensListFetchOffset(
+    var persisted = await _appStateService.getPersonalTokensListFetchOffset(
       queryAddress,
     );
+    // Stale cursor: ObjectBox offset from before SQLite was replaced while the
+    // address playlist has no rows yet — do not skip the head of the list.
+    if (persisted != null && startOffset == 0) {
+      final playlists = await _databaseService.getAddressPlaylists();
+      for (final p in playlists) {
+        if (p.ownerAddress?.toNormalizedAddress() == queryAddress) {
+          if (p.itemCount == 0) {
+            await _appStateService.setPersonalTokensListFetchOffset(
+              address: queryAddress,
+              nextFetchOffset: null,
+            );
+            persisted = null;
+          }
+          break;
+        }
+      }
+    }
     // Non-zero startOffset is for tests or explicit overrides; default path
     // prefers the stored cursor over replaying from 0 after process restart.
     var total = 0;
@@ -112,8 +131,8 @@ class AddressService {
   /// Runs indexing flow: index → poll → fetch+ingest.
   ///
   /// Single flow. Each step has a flag — set to false when that step was
-  /// already done (e.g. on app restart). Pass [workflowId] when [runTriggerIndex]
-  /// is false and [runPoll] is true.
+  /// already done (e.g. on app restart). Pass workflow id when trigger index is
+  /// false and poll is true.
   ///
   /// Steps: (1) fast-path fetch, (2) trigger index, (3) poll until done,
   /// (4) final fetch+ingest.
@@ -126,7 +145,10 @@ class AddressService {
     String? workflowId,
   }) async {
     _log.info(
-      'Indexing and syncing address: $address, runFastPathFetch: $runFastPathFetch, runTriggerIndex: $runTriggerIndex, runPoll: $runPoll, runFinalFetch: $runFinalFetch, workflowId: $workflowId',
+      'Indexing and syncing address: $address, runFastPathFetch: '
+          '$runFastPathFetch, runTriggerIndex: $runTriggerIndex, '
+          'runPoll: $runPoll, runFinalFetch: $runFinalFetch, '
+          'workflowId: $workflowId',
     );
     final queryAddress = _addressForIndexer(address);
     var effectiveWorkflowId = workflowId;
@@ -198,7 +220,8 @@ class AddressService {
       const maxAttempts = 60;
 
       _log.info(
-        'Polling for address indexing status for $queryAddress with workflowId: $wfId',
+        'Polling for address indexing status for $queryAddress with '
+        'workflowId: $wfId',
       );
 
       await _appStateService.setAddressIndexingStatus(
@@ -261,9 +284,9 @@ class AddressService {
 
   /// Resumes indexing for addresses with non-completed status.
   ///
-  /// Called by [ensureTrackedAddressesHavePlaylistsAndResumeProvider] after
-  /// playlists are ensured. Fetches status per address from [AppStateService];
-  /// each address is processed according to its status (idle→trigger index,
+  /// Called by the ensure-playlists-and-resume flow after playlists are
+  /// ensured. Fetches status per address from app state; each address is
+  /// processed according to its status (idle→trigger index,
   /// indexingTriggered→poll, etc.).
   Future<void> resumeIndexingForAddresses(
     List<String> toResume, {
@@ -352,8 +375,8 @@ class AddressService {
   /// then write ObjectBox (addTrackedAddress, setAddressIndexingStatus).
   ///
   /// If duplicate, throws Exception('Address already added').
-  /// Playlist creation and indexing are triggered by
-  /// [ensureTrackedAddressesHavePlaylistsAndResumeProvider].
+  /// Playlist creation and indexing are triggered by the ensure-playlists-and-
+  /// resume provider.
   Future<void> addAddress({
     required WalletAddress walletAddress,
   }) async {
