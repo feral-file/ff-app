@@ -400,6 +400,12 @@ class AppStateService extends AppStateServiceBase {
   }) async {
     await _lock.synchronized(() async {
       final normalized = _normalizeAddressKey(address);
+      // Ignore cursor writes after the address was removed from tracking; a
+      // slow in-flight sync must not recreate [AppStateAddressEntity] rows.
+      final tracked = _findTrackedAddress(normalized);
+      if (tracked == null) {
+        return;
+      }
       var row = _findAddressState(normalized);
       row ??= _createAddressState(normalized);
       if (nextFetchOffset == null) {

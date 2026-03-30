@@ -29,6 +29,10 @@ class _FakeAppStateServiceForResume implements AppStateServiceBase {
   final List<AddressIndexingProcessStatus> recordedStatuses =
       <AddressIndexingProcessStatus>[];
 
+  /// Configurable cursor returned by [getPersonalTokensListFetchOffset] for
+  /// resume-from-syncingTokens tests.
+  int? persistedPersonalTokensCursor;
+
   @override
   Future<Map<String, AddressIndexingProcessStatus>>
       getAllAddressIndexingStatuses() async =>
@@ -62,13 +66,16 @@ class _FakeAppStateServiceForResume implements AppStateServiceBase {
   Future<void> clearAddressState(String address) async {}
 
   @override
-  Future<int?> getPersonalTokensListFetchOffset(String address) async => null;
+  Future<int?> getPersonalTokensListFetchOffset(String address) async =>
+      persistedPersonalTokensCursor;
 
   @override
   Future<void> setPersonalTokensListFetchOffset({
     required String address,
     required int? nextFetchOffset,
-  }) async {}
+  }) async {
+    persistedPersonalTokensCursor = nextFetchOffset;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -425,5 +432,37 @@ void main() {
       expect(fakeIndexer.callSequence, isNot(contains('index')));
       expect(fakeIndexer.callSequence, isNot(contains('pullStatus')));
     });
+
+    test(
+      'resumeIndexingForAddresses syncingTokens uses persisted indexer offset '
+      'for first fetchTokens',
+      () async {
+        const address = '0xabc';
+        final playlist = PlaylistExt.fromWalletAddress(
+          WalletAddress(
+            address: address,
+            createdAt: DateTime.now(),
+            name: 'Test',
+          ),
+        );
+        await databaseService.ingestPlaylist(playlist);
+
+        fakeIndexer.fetchTokensResult = const TokensPage(tokens: []);
+
+        final statuses = {
+          address: AddressIndexingProcessStatus.syncingTokens(),
+        };
+        final toResume = [address];
+        final service = createAddressService(statuses: statuses);
+        fakeAppState.persistedPersonalTokensCursor = 888;
+
+        await service.resumeIndexingForAddresses(toResume);
+
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+
+        expect(fakeIndexer.fetchTokensPageOffsets, isNotEmpty);
+        expect(fakeIndexer.fetchTokensPageOffsets.first, 888);
+      },
+    );
   });
 }

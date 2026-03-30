@@ -1,5 +1,6 @@
 import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/models/models.dart';
+import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
@@ -19,6 +20,10 @@ import 'fake_indexer_service_isolate.dart';
 class _FakeAppStateService implements AppStateServiceBase {
   final List<String> trackedAddresses = [];
   final List<String> addTrackedAddressCalls = [];
+  final Map<String, int?> personalTokensOffsets = {};
+  final List<int?> personalTokensOffsetWrites = [];
+
+  String _key(String address) => address.toNormalizedAddress();
 
   @override
   Future<void> setAddressIndexingStatus({
@@ -44,13 +49,22 @@ class _FakeAppStateService implements AppStateServiceBase {
   ) => Stream.value(null);
 
   @override
-  Future<int?> getPersonalTokensListFetchOffset(String address) async => null;
+  Future<int?> getPersonalTokensListFetchOffset(String address) async =>
+      personalTokensOffsets[_key(address)];
 
   @override
   Future<void> setPersonalTokensListFetchOffset({
     required String address,
     required int? nextFetchOffset,
-  }) async {}
+  }) async {
+    final k = _key(address);
+    personalTokensOffsetWrites.add(nextFetchOffset);
+    if (nextFetchOffset == null) {
+      personalTokensOffsets.remove(k);
+    } else {
+      personalTokensOffsets[k] = nextFetchOffset;
+    }
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -59,6 +73,27 @@ class _FakeAppStateService implements AppStateServiceBase {
 class _FakePersonalTokensSyncService implements PersonalTokensSyncService {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Mirrors [AppStateService.setPersonalTokensListFetchOffset]: cursor writes
+/// require a tracked address so stale sync work cannot recreate app-state rows
+/// after [AppStateService.clearAddressState].
+class _FakeAppStateServiceWithTrackedGuard extends _FakeAppStateService {
+  @override
+  Future<void> setPersonalTokensListFetchOffset({
+    required String address,
+    required int? nextFetchOffset,
+  }) async {
+    final k = _key(address);
+    final hasTracked = trackedAddresses.any((a) => _key(a) == k);
+    if (!hasTracked) {
+      return;
+    }
+    await super.setPersonalTokensListFetchOffset(
+      address: address,
+      nextFetchOffset: nextFetchOffset,
+    );
+  }
 }
 
 void main() {
@@ -178,7 +213,82 @@ void main() {
       fakeIsolate.fetchTokensPageLimits,
       equals(<int?>[indexerTokensPageSize, indexerTokensPageSize]),
     );
+    expect(
+      fakeIsolate.fetchTokensPageOffsets,
+      equals(<int?>[0, 42]),
+    );
+    expect(fakeAppState.personalTokensOffsetWrites, equals(<int?>[42, null]));
   });
+
+  test('syncTokens resumes first request from persisted indexer cursor', () async {
+    const addr = '0xabc';
+    fakeAppState.personalTokensOffsets[addr.toNormalizedAddress()] = 500;
+
+    final fakeIsolate = FakeIndexerServiceIsolate()
+      ..fetchTokensPageSequence = [
+        const TokensPage(tokens: []),
+      ];
+
+    final indexerSyncService = IndexerSyncService(
+      indexerService: IndexerService(
+        client: IndexerClient(endpoint: 'https://example.invalid'),
+      ),
+      databaseService: databaseService,
+    );
+
+    final service = AddressService(
+      databaseService: databaseService,
+      indexerSyncService: indexerSyncService,
+      domainAddressService: DomainAddressService(
+        resolverUrl: '',
+        resolverApiKey: '',
+      ),
+      personalTokensSyncService: _FakePersonalTokensSyncService(),
+      indexerServiceIsolate: fakeIsolate,
+      appStateService: fakeAppState,
+    );
+
+    await service.syncTokens(addr);
+    expect(fakeIsolate.fetchTokensPageOffsets.single, 500);
+  });
+
+  test(
+    'syncTokens does not persist indexer cursor after address removed from '
+    'tracking (mirrors AppStateService tracked guard)',
+    () async {
+      final guardedFake = _FakeAppStateServiceWithTrackedGuard();
+      await guardedFake.addTrackedAddress('0xabc');
+      guardedFake.trackedAddresses.clear();
+
+      final fakeIsolate = FakeIndexerServiceIsolate()
+        ..fetchTokensPageSequence = [
+          const TokensPage(tokens: []),
+        ];
+
+      final indexerSyncService = IndexerSyncService(
+        indexerService: IndexerService(
+          client: IndexerClient(endpoint: 'https://example.invalid'),
+        ),
+        databaseService: databaseService,
+      );
+
+      final service = AddressService(
+        databaseService: databaseService,
+        indexerSyncService: indexerSyncService,
+        domainAddressService: DomainAddressService(
+          resolverUrl: '',
+          resolverApiKey: '',
+        ),
+        personalTokensSyncService: _FakePersonalTokensSyncService(),
+        indexerServiceIsolate: fakeIsolate,
+        appStateService: guardedFake,
+      );
+
+      await service.syncTokens('0xabc');
+      expect(guardedFake.personalTokensOffsets, isEmpty);
+      expect(guardedFake.personalTokensOffsetWrites, isEmpty);
+    },
+  );
 
   test(
     'syncTokens continues when page has no tokens but nextOffset is set',
@@ -225,6 +335,7 @@ void main() {
         fakeIsolate.callSequence.where((e) => e == 'fetchTokens').length,
         2,
       );
+      expect(fakeIsolate.fetchTokensPageOffsets, equals(<int?>[0, 7]));
     },
   );
 }

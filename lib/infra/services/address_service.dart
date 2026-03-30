@@ -69,25 +69,40 @@ class AddressService {
   ///
   /// Paginates using the indexer offset cursor: `nextOffset == null` means
   /// there are no more pages (do not infer completion from page length).
-  /// Starts from [startOffset] for the first request. Returns total ingested.
+  ///
+  /// The first request uses [startOffset] when it is non-zero; otherwise the
+  /// persisted indexer cursor from app state (if any), then `0`. Each page
+  /// writes the next cursor so restarts during `syncingTokens` resume where
+  /// the last page left off instead of replaying from the start.
   Future<int> syncTokens(String address, {int startOffset = 0}) async {
     const pageSize = indexerTokensPageSize;
+    final queryAddress = _addressForIndexer(address);
+    final persisted = await _appStateService.getPersonalTokensListFetchOffset(
+      queryAddress,
+    );
+    // Non-zero startOffset is for tests or explicit overrides; default path
+    // prefers the stored cursor over replaying from 0 after process restart.
     var total = 0;
-    int? nextOffset = startOffset;
+    int? nextOffset =
+        startOffset != 0 ? startOffset : (persisted ?? 0);
     while (true) {
       final page = await _indexerServiceIsolate.fetchTokensPageByAddresses(
-        addresses: [address],
+        addresses: [queryAddress],
         limit: pageSize,
         offset: nextOffset,
       );
       if (page.tokens.isNotEmpty) {
         await _databaseService.ingestTokensForAddress(
-          address: address,
+          address: queryAddress,
           tokens: page.tokens,
         );
         total += page.tokens.length;
       }
       final cursor = page.nextOffset;
+      await _appStateService.setPersonalTokensListFetchOffset(
+        address: queryAddress,
+        nextFetchOffset: cursor,
+      );
       if (cursor == null) break;
       nextOffset = cursor;
     }
