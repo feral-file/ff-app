@@ -131,7 +131,7 @@ void main() {
       expect(client.lastSubKey, equals('tokens'));
       expect(client.lastDoc, equals(getTokens));
       expect(client.lastVars['owners'], equals(['0x111', '0x222']));
-      expect(client.lastVars['limit'], equals(50));
+      expect(client.lastVars['limit'], equals(255));
       expect(client.lastVars['chains'], equals(['eip155:1', 'tezos:mainnet']));
       expect(client.lastVars.containsKey('offset'), isFalse);
     },
