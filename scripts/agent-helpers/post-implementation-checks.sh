@@ -90,6 +90,7 @@ fixed_files_list="$tmp_dir/fixed_files.txt"
 lint_report="$tmp_dir/lint_report.txt"
 custom_lint_report="$tmp_dir/custom_lint_report.txt"
 test_report="$tmp_dir/test_report.txt"
+status_summary="$tmp_dir/status_summary.txt"
 
 ##
 # 1. Get list of .dart files to check
@@ -127,6 +128,7 @@ changed_count=$(wc -l < "$changed_files_list")
 : > "$fixed_files_list"
 : > "$lint_report"
 : > "$custom_lint_report"
+: > "$status_summary"
 
 # Function to process single file for dart fix
 process_dart_fix() {
@@ -218,7 +220,7 @@ if [[ "$custom_lint_available" == true ]]; then
     fi
 
     custom_lint_output="$(dart run custom_lint "$file" 2>&1 || true)"
-    custom_lint_lines="$(echo "$custom_lint_output" | grep -E "^[[:space:]]*[^[:space:]].*:[0-9]+:[0-9]+ .* • " || true)"
+    custom_lint_lines="$(echo "$custom_lint_output" | grep -E "^[[:space:]]*[^[:space:]].*:[0-9]+:[0-9]+.*•.*•" || true)"
 
     if [[ -z "$custom_lint_lines" ]]; then
       continue
@@ -227,7 +229,10 @@ if [[ "$custom_lint_available" == true ]]; then
     {
       echo "### $file"
       echo ""
-      python3 -c $'import re, sys\nfor raw in sys.stdin:\n  line = raw.rstrip(\"\\n\")\n  if not line.strip():\n    continue\n  match = re.search(r\":(\\d+):(\\d+)\\s+(.+?)\\s+•\\s+(.+?)\\s+•\\s+(warning|error|info)\\b\", line)\n  if not match:\n    continue\n  line_no, col_no, message, rule_name, severity = match.groups()\n  print(f\"- {line_no}:{col_no} - {message} ({rule_name}, {severity})\")' <<<"$custom_lint_lines"
+      # custom_lint output is not stable across versions: some builds include a
+      # trailing severity token while others stop at `file:line:col • msg • rule`.
+      # Accept both shapes so local checks do not silently miss CI-visible issues.
+      python3 -c $'import re, sys\nfor raw in sys.stdin:\n  line = raw.rstrip(\"\\n\")\n  if not line.strip():\n    continue\n  parts = [p.strip() for p in line.split(\"•\")]\n  if len(parts) < 3:\n    continue\n  location = parts[0]\n  message = parts[1]\n  rule_name = parts[2]\n  severity = parts[3] if len(parts) > 3 else None\n  match = re.search(r\":(\\d+):(\\d+)\\b\", location)\n  if not match:\n    continue\n  line_no, col_no = match.groups()\n  suffix = f\" ({rule_name}, {severity})\" if severity else f\" ({rule_name})\"\n  print(f\"- {line_no}:{col_no} - {message}{suffix}\")' <<<"$custom_lint_lines"
       echo ""
     } >> "$custom_lint_report"
   done < "$changed_files_list"
@@ -257,6 +262,26 @@ if [[ "$skip_tests" == false ]]; then
       fi
     done || true
   fi
+fi
+
+overall_exit_code=0
+
+# The helper is a verification gate, not just a reporter. Keep the markdown
+# output for review loops, but fail the command whenever lint or tests found
+# actionable issues so reruns are authoritative like CI.
+if [[ -s "$lint_report" ]]; then
+  echo "lint" >> "$status_summary"
+  overall_exit_code=1
+fi
+
+if [[ -s "$custom_lint_report" ]]; then
+  echo "custom_lint" >> "$status_summary"
+  overall_exit_code=1
+fi
+
+if [[ -s "$test_report" ]]; then
+  echo "test" >> "$status_summary"
+  overall_exit_code=1
 fi
 
 ##
@@ -341,4 +366,8 @@ fi
 # Also write to file in project root for reference
 cp "$tmp_dir/final_report.md" "$repo_root/.post-implementation-checks-report.md"
 
-exit 0
+if [[ "$overall_exit_code" -ne 0 ]]; then
+  echo "Post-implementation checks failed: $(paste -sd ', ' "$status_summary")" >&2
+fi
+
+exit "$overall_exit_code"
