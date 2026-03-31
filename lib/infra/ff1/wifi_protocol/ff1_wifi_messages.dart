@@ -737,19 +737,27 @@ class FF1WifiSetLoopRequest extends FF1WifiCommandRequest {
 // FFP / DDC monitor (controld via relayer) — not FF1 system audio (ffos#84)
 // ============================================================================
 
-/// Poll/read current DDC panel snapshot (`ddcPanelStatus` in response).
+/// Poll/read current DDC panel snapshot.
+///
+/// Wire command name and flat `message` response shape match ffos issue 84
+/// (comment describing `ddcPanelStatus` / optional brightness, contrast,
+/// volume, mute, power, monitor, errors).
 class FfpDdcGetPanelStatusRequest extends FF1WifiCommandRequest {
   /// Creates a get DDC panel status request.
   const FfpDdcGetPanelStatusRequest();
 
   @override
-  String get command => 'getDdcPanelStatus';
+  String get command => 'ddcPanelStatus';
 
   @override
   Map<String, dynamic> get params => {};
 }
 
 /// Set monitor brightness (VCP) — may return explicit unsupported on FFP.
+///
+/// Wire: `ddcPanelControl` with `action` + `value` (ffos issue 84 comment).
+/// [monitorId] is kept for call-site consistency; not sent until controld
+/// defines multi-monitor routing.
 class FfpDdcMonitorSetBrightnessRequest extends FF1WifiCommandRequest {
   /// Creates set brightness request.
   const FfpDdcMonitorSetBrightnessRequest({
@@ -757,19 +765,19 @@ class FfpDdcMonitorSetBrightnessRequest extends FF1WifiCommandRequest {
     required this.percent,
   });
 
-  /// Monitor id from [FfpDdcMonitorPanel.monitorId].
+  /// Reserved for future multi-monitor routing; wire is `action`/`value` only.
   final String monitorId;
 
   /// 0–100.
   final int percent;
 
   @override
-  String get command => 'setFfpMonitorBrightness';
+  String get command => 'ddcPanelControl';
 
   @override
   Map<String, dynamic> get params => {
-    'monitorId': monitorId,
-    'percent': percent,
+    'action': 'brightness',
+    'value': percent,
   };
 }
 
@@ -788,12 +796,12 @@ class FfpDdcMonitorSetContrastRequest extends FF1WifiCommandRequest {
   final int percent;
 
   @override
-  String get command => 'setFfpMonitorContrast';
+  String get command => 'ddcPanelControl';
 
   @override
   Map<String, dynamic> get params => {
-    'monitorId': monitorId,
-    'percent': percent,
+    'action': 'contrast',
+    'value': percent,
   };
 }
 
@@ -812,12 +820,12 @@ class FfpDdcMonitorSetVolumeRequest extends FF1WifiCommandRequest {
   final int percent;
 
   @override
-  String get command => 'setFfpMonitorVolume';
+  String get command => 'ddcPanelControl';
 
   @override
   Map<String, dynamic> get params => {
-    'monitorId': monitorId,
-    'percent': percent,
+    'action': 'volume',
+    'value': percent,
   };
 }
 
@@ -836,12 +844,12 @@ class FfpDdcMonitorSetMuteRequest extends FF1WifiCommandRequest {
   final bool muted;
 
   @override
-  String get command => 'setFfpMonitorMute';
+  String get command => 'ddcPanelControl';
 
   @override
   Map<String, dynamic> get params => {
-    'monitorId': monitorId,
-    'muted': muted,
+    'action': 'mute',
+    'value': muted ? 'on' : 'off',
   };
 }
 
@@ -859,12 +867,12 @@ class FfpDdcMonitorSetPowerRequest extends FF1WifiCommandRequest {
   final String powerState;
 
   @override
-  String get command => 'setFfpMonitorPower';
+  String get command => 'ddcPanelControl';
 
   @override
   Map<String, dynamic> get params => {
-    'monitorId': monitorId,
-    'powerState': powerState,
+    'action': 'power',
+    'value': powerState,
   };
 }
 

@@ -1150,8 +1150,8 @@ transport reconnected — waiting for device connection notification''',
 
   /// FFP / DDC: read panel snapshot (not FF1 system audio).
   ///
-  /// Relayer returns nested JSON; unwrapFf1RelayerPayload and
-  /// FfpDdcPanelStatus.fromRelayerPayload map `ddcPanelStatus` when present.
+  /// Relayer returns nested JSON; unwrapFf1RelayerPayload then
+  /// FfpDdcPanelStatus.fromRelayerPayload (flat `ddcPanelStatus` / `message`).
   Future<FfpDdcPanelStatus> getFfpDdcPanelStatus({
     required String topicId,
   }) async {
@@ -1260,11 +1260,12 @@ transport reconnected — waiting for device connection notification''',
     required String topicId,
     required FF1WifiCommandRequest request,
   }) async {
-    if (_restClient == null) {
+    final restClient = _restClient;
+    if (restClient == null) {
       throw StateError('REST client not available');
     }
     final response =
-        await _restClient.sendCommand(
+        await restClient.sendCommand(
               topicId: topicId,
               command: request.command,
               params: request.params,
@@ -1275,7 +1276,7 @@ transport reconnected — waiting for device connection notification''',
 }
 
 void _throwIfFfpCommandFailed(FF1CommandResponse r, String action) {
-  if (ff1CommandResponseIsOk(r) || ff1CommandResponseOkFlag(r) == true) {
+  if (ff1CommandResponseSucceeded(r)) {
     return;
   }
   final data = r.data ?? {};
@@ -1284,10 +1285,9 @@ void _throwIfFfpCommandFailed(FF1CommandResponse r, String action) {
   if (errMap is Map) {
     message = errMap['message']?.toString() ?? '';
   }
-  message = message.isNotEmpty
-      ? message
-      : (data['message']?.toString() ?? '');
-  final code = data['code']?.toString().toLowerCase() ??
+  message = message.isNotEmpty ? message : (data['message']?.toString() ?? '');
+  final code =
+      data['code']?.toString().toLowerCase() ??
       (errMap is Map ? errMap['code']?.toString().toLowerCase() : null);
   final lower = message.toLowerCase();
   final unsupported = code == 'unsupported' || lower.contains('unsupported');

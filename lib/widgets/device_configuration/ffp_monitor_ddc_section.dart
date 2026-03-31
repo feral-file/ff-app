@@ -38,52 +38,50 @@ class FfpMonitorDdcSection extends ConsumerStatefulWidget {
 
 class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
   /// Local slider values while dragging or after optimistic set.
-  final Map<String, Map<String, double>> _optimistic = {};
+  final Map<String, double> _optimistic = {};
+  FfpDdcPanelStatus? _lastStatus;
 
-  double _sliderValue(
-    FfpDdcMonitorPanel panel,
-    String key,
-    int? serverPercent,
-  ) {
-    final mid = panel.monitorId;
-    final local = _optimistic[mid]?[key];
+  String _monitorId(FfpDdcPanelStatus s) =>
+      s.monitor?.trim().isNotEmpty ?? false ? s.monitor!.trim() : 'default';
+
+  double _sliderValue(String key, int? serverPercent) {
+    final local = _optimistic[key];
     if (local != null) {
       return local;
     }
     return (serverPercent ?? 0).toDouble();
   }
 
-  void _setOptimistic(String monitorId, String key, double v) {
+  void _setOptimistic(String key, double v) {
+    if (!mounted) {
+      return;
+    }
     setState(() {
-      _optimistic.putIfAbsent(monitorId, () => {});
-      _optimistic[monitorId]![key] = v;
+      _optimistic[key] = v;
     });
   }
 
-  void _clearOptimisticKey(String monitorId, String key) {
+  void _clearOptimisticKey(String key) {
+    if (!mounted) {
+      return;
+    }
     setState(() {
-      _optimistic[monitorId]?.remove(key);
-      if (_optimistic[monitorId]?.isEmpty ?? false) {
-        _optimistic.remove(monitorId);
-      }
+      _optimistic.remove(key);
     });
   }
 
-  Future<void> _runBrightness(
-    FfpDdcMonitorPanel panel,
-    double v,
-  ) async {
+  Future<void> _runBrightness(FfpDdcPanelStatus s, double v) async {
     final control = ref.read(ff1WifiControlProvider);
-    final mid = panel.monitorId;
-    final prev = _optimistic[mid]?['brightness'];
-    _setOptimistic(mid, 'brightness', v);
+    final mid = _monitorId(s);
+    final prev = _optimistic['brightness'];
+    _setOptimistic('brightness', v);
     try {
       await control.setFfpMonitorBrightness(
         topicId: widget.topicId,
         monitorId: mid,
         percent: v.round(),
       );
-      _clearOptimisticKey(mid, 'brightness');
+      _clearOptimisticKey('brightness');
     } on FfpDdcUnsupportedException catch (e) {
       _log.info('Brightness unsupported: $e');
       if (mounted) {
@@ -92,68 +90,68 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
         );
       }
       if (prev != null) {
-        _setOptimistic(mid, 'brightness', prev);
+        _setOptimistic('brightness', prev);
       } else {
-        _clearOptimisticKey(mid, 'brightness');
+        _clearOptimisticKey('brightness');
       }
     } on Exception catch (e) {
       _log.warning('setFfpMonitorBrightness: $e');
       if (prev != null) {
-        _setOptimistic(mid, 'brightness', prev);
+        _setOptimistic('brightness', prev);
       } else {
-        _clearOptimisticKey(mid, 'brightness');
+        _clearOptimisticKey('brightness');
       }
     }
   }
 
-  Future<void> _runContrast(FfpDdcMonitorPanel panel, double v) async {
+  Future<void> _runContrast(FfpDdcPanelStatus s, double v) async {
     final control = ref.read(ff1WifiControlProvider);
-    final mid = panel.monitorId;
-    final prev = _optimistic[mid]?['contrast'];
-    _setOptimistic(mid, 'contrast', v);
+    final mid = _monitorId(s);
+    final prev = _optimistic['contrast'];
+    _setOptimistic('contrast', v);
     try {
       await control.setFfpMonitorContrast(
         topicId: widget.topicId,
         monitorId: mid,
         percent: v.round(),
       );
-      _clearOptimisticKey(mid, 'contrast');
+      _clearOptimisticKey('contrast');
     } on Exception catch (e) {
       _log.warning('setFfpMonitorContrast: $e');
       if (prev != null) {
-        _setOptimistic(mid, 'contrast', prev);
+        _setOptimistic('contrast', prev);
       } else {
-        _clearOptimisticKey(mid, 'contrast');
+        _clearOptimisticKey('contrast');
       }
     }
   }
 
-  Future<void> _runMonitorVolume(FfpDdcMonitorPanel panel, double v) async {
+  Future<void> _runMonitorVolume(FfpDdcPanelStatus s, double v) async {
     final control = ref.read(ff1WifiControlProvider);
-    final mid = panel.monitorId;
-    final prev = _optimistic[mid]?['monitorVolume'];
-    _setOptimistic(mid, 'monitorVolume', v);
+    final mid = _monitorId(s);
+    final prev = _optimistic['monitorVolume'];
+    _setOptimistic('monitorVolume', v);
     try {
       await control.setFfpMonitorVolume(
         topicId: widget.topicId,
         monitorId: mid,
         percent: v.round(),
       );
-      _clearOptimisticKey(mid, 'monitorVolume');
+      _clearOptimisticKey('monitorVolume');
     } on Exception catch (e) {
       _log.warning('setFfpMonitorVolume: $e');
       if (prev != null) {
-        _setOptimistic(mid, 'monitorVolume', prev);
+        _setOptimistic('monitorVolume', prev);
       } else {
-        _clearOptimisticKey(mid, 'monitorVolume');
+        _clearOptimisticKey('monitorVolume');
       }
     }
   }
 
-  Future<void> _toggleMute(FfpDdcMonitorPanel panel) async {
+  Future<void> _toggleMute(FfpDdcPanelStatus s) async {
     final control = ref.read(ff1WifiControlProvider);
-    final mid = panel.monitorId;
-    final next = !(panel.isMuted ?? false);
+    final mid = _monitorId(s);
+    final next = !(s.mute ?? false);
     try {
       await control.setFfpMonitorMute(
         topicId: widget.topicId,
@@ -175,137 +173,144 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
 
     return async.when(
       data: (status) {
-        if (status.panels.isEmpty) {
+        _lastStatus = status;
+        if (!status.hasData) {
           return const SizedBox.shrink();
         }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Display (FFP)',
-              style: AppTypography.body(context).white,
-            ),
-            SizedBox(height: LayoutConstants.space2),
-            Text(
-              'Monitor brightness and volume here apply to the connected '
-              'display. FF1 audio is controlled in Audio above.',
-              style: AppTypography.caption(context).white,
-            ),
-            SizedBox(height: LayoutConstants.space4),
-            for (final panel in status.panels) _panel(context, panel),
-          ],
-        );
+        return _statusContent(context, status);
       },
-      loading: () => const SizedBox.shrink(),
+      loading: () => _lastStatus == null || !_lastStatus!.hasData
+          ? const SizedBox.shrink()
+          : _statusContent(context, _lastStatus!),
       error: (e, _) {
         _log.fine('Ffp DDC panel status unavailable: $e');
-        return const SizedBox.shrink();
+        return _lastStatus == null || !_lastStatus!.hasData
+            ? const SizedBox.shrink()
+            : _statusContent(context, _lastStatus!);
       },
     );
   }
 
-  Widget _panel(BuildContext context, FfpDdcMonitorPanel panel) {
-    final name = panel.displayName?.trim().isNotEmpty ?? false
-        ? panel.displayName!
-        : panel.monitorId;
-    final power = _powerLabel(panel.powerState);
+  Widget _statusContent(BuildContext context, FfpDdcPanelStatus status) {
+    final err = status.errors;
+    final showBrightness = err?.containsKey('brightness') != true;
+    final showContrast = err?.containsKey('contrast') != true;
+    final showVol = err?.containsKey('volume') != true;
+    final showMute = err?.containsKey('mute') != true;
+
+    final name = status.monitor?.trim().isNotEmpty ?? false
+        ? status.monitor!.trim()
+        : 'Display';
+    final power = _powerLabel(status.power);
     final enable = widget.isControllable;
 
-    final showBrightness = panel.capabilities.brightnessSupported != false;
-    final showContrast = panel.capabilities.contrastSupported != false;
-    final showVol = panel.capabilities.volumeSupported != false;
-    final showMute = panel.capabilities.muteSupported != false;
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: LayoutConstants.space6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Monitor: $name',
-            style: AppTypography.body(context).white,
-          ),
-          SizedBox(height: LayoutConstants.space2),
-          Text(
-            'Power: $power',
-            style: AppTypography.caption(context).white,
-          ),
-          SizedBox(height: LayoutConstants.space4),
-          if (showBrightness) ...[
-            LabeledSliderControl(
-              label: 'Brightness',
-              value: _sliderValue(panel, 'brightness', panel.brightnessPercent),
-              enabled: enable,
-              onChanged: (v) =>
-                  _setOptimistic(panel.monitorId, 'brightness', v),
-              onChangeEnd: (v) => _runBrightness(panel, v),
-            ),
-            SizedBox(height: LayoutConstants.space4),
-          ],
-          if (showContrast) ...[
-            LabeledSliderControl(
-              label: 'Contrast',
-              value: _sliderValue(panel, 'contrast', panel.contrastPercent),
-              enabled: enable,
-              onChanged: (v) => _setOptimistic(panel.monitorId, 'contrast', v),
-              onChangeEnd: (v) => _runContrast(panel, v),
-            ),
-            SizedBox(height: LayoutConstants.space4),
-          ],
-          if (showVol || showMute)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (showMute)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: IconButton(
-                      onPressed: enable ? () => _toggleMute(panel) : null,
-                      icon: Icon(
-                        (panel.isMuted ?? false)
-                            ? Icons.volume_off
-                            : Icons.volume_up,
-                        color: enable
-                            ? AppColor.white
-                            : AppColor.white.withValues(alpha: 0.4),
-                      ),
-                    ),
-                  ),
-                if (showVol)
-                  Expanded(
-                    child: LabeledSliderControl(
-                      label: 'Monitor volume',
-                      value: _sliderValue(
-                        panel,
-                        'monitorVolume',
-                        panel.monitorVolumePercent,
-                      ),
-                      enabled: enable,
-                      onChanged: (v) => _setOptimistic(
-                        panel.monitorId,
-                        'monitorVolume',
-                        v,
-                      ),
-                      onChangeEnd: (v) => _runMonitorVolume(panel, v),
-                    ),
-                  ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Display (FFP)',
+          style: AppTypography.body(context).white,
+        ),
+        SizedBox(height: LayoutConstants.space2),
+        Text(
+          'Monitor brightness and volume here apply to the connected '
+          'display. FF1 audio is controlled in Audio above.',
+          style: AppTypography.caption(context).white,
+        ),
+        SizedBox(height: LayoutConstants.space4),
+        Padding(
+          padding: EdgeInsets.only(bottom: LayoutConstants.space6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Monitor: $name',
+                style: AppTypography.body(context).white,
+              ),
+              SizedBox(height: LayoutConstants.space2),
+              Text(
+                'Power: $power',
+                style: AppTypography.caption(context).white,
+              ),
+              SizedBox(height: LayoutConstants.space4),
+              if (showBrightness) ...[
+                LabeledSliderControl(
+                  label: 'Brightness',
+                  value: _sliderValue('brightness', status.brightness),
+                  enabled: enable,
+                  onChanged: (v) => _setOptimistic('brightness', v),
+                  onChangeEnd: (v) => _runBrightness(status, v),
+                ),
+                SizedBox(height: LayoutConstants.space4),
               ],
-            ),
-        ],
-      ),
+              if (showContrast) ...[
+                LabeledSliderControl(
+                  label: 'Contrast',
+                  value: _sliderValue('contrast', status.contrast),
+                  enabled: enable,
+                  onChanged: (v) => _setOptimistic('contrast', v),
+                  onChangeEnd: (v) => _runContrast(status, v),
+                ),
+                SizedBox(height: LayoutConstants.space4),
+              ],
+              if (showVol || showMute)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (showMute)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: IconButton(
+                          onPressed: enable ? () => _toggleMute(status) : null,
+                          icon: Icon(
+                            (status.mute ?? false)
+                                ? Icons.volume_off
+                                : Icons.volume_up,
+                            color: enable
+                                ? AppColor.white
+                                : AppColor.white.withValues(alpha: 0.4),
+                          ),
+                        ),
+                      ),
+                    if (showVol)
+                      Expanded(
+                        child: LabeledSliderControl(
+                          label: 'Monitor volume',
+                          value: _sliderValue(
+                            'monitorVolume',
+                            status.volume,
+                          ),
+                          enabled: enable,
+                          onChanged: (v) =>
+                              _setOptimistic('monitorVolume', v),
+                          onChangeEnd: (v) => _runMonitorVolume(status, v),
+                        ),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
-  String _powerLabel(FfpDdcPowerState? p) {
-    switch (p) {
-      case FfpDdcPowerState.on:
+  String _powerLabel(String? p) {
+    switch (p?.trim().toLowerCase()) {
+      case 'on':
+      case 'poweron':
         return 'On';
-      case FfpDdcPowerState.off:
+      case 'off':
+      case 'poweroff':
         return 'Off';
-      case FfpDdcPowerState.standby:
+      case 'standby':
+      case 'suspend':
         return 'Standby';
       case null:
+      case '':
         return 'Unknown';
+      default:
+        return p ?? 'Unknown';
     }
   }
 }

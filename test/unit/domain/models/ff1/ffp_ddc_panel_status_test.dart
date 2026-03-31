@@ -3,55 +3,50 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('FfpDdcPanelStatus', () {
-    test('fromJson parses panels list', () {
+    test('fromRelayerPayload parses ffos #84 flat message', () {
       final json = {
-        'panels': [
-          {
-            'monitorId': 'm1',
-            'displayName': 'HDMI-1',
-            'powerState': 'on',
-            'brightness': 40,
-            'contrast': 50,
-            'monitorVolume': 60,
-            'isMuted': false,
-            'capabilities': {
-              'brightness': false,
-              'contrast': true,
-              'volume': true,
-              'mute': true,
-            },
-          },
-        ],
+        'brightness': 50,
+        'contrast': 50,
+        'volume': 50,
+        'mute': 'off',
+        'power': 'on',
+        'monitor': 'MSI:MSI MD272UPS',
       };
-      final s = FfpDdcPanelStatus.fromJson(json);
-      expect(s.panels, hasLength(1));
-      final p = s.panels.single;
-      expect(p.monitorId, 'm1');
-      expect(p.displayName, 'HDMI-1');
-      expect(p.powerState, FfpDdcPowerState.on);
-      expect(p.brightnessPercent, 40);
-      expect(p.contrastPercent, 50);
-      expect(p.monitorVolumePercent, 60);
-      expect(p.isMuted, isFalse);
-      expect(p.capabilities.brightnessSupported, isFalse);
-      expect(p.capabilities.contrastSupported, isTrue);
+      final s = FfpDdcPanelStatus.fromRelayerPayload(json);
+      expect(s.hasData, isTrue);
+      expect(s.brightness, 50);
+      expect(s.contrast, 50);
+      expect(s.volume, 50);
+      expect(s.mute, isFalse);
+      expect(s.power, 'on');
+      expect(s.monitor, 'MSI:MSI MD272UPS');
     });
 
-    test('fromRelayerPayload unwraps ddcPanelStatus', () {
+    test('errors map hides failed VCP reads in UI terms (field present)', () {
+      final json = {
+        'monitor': 'X',
+        'errors': {'brightness': 'read failed'},
+      };
+      final s = FfpDdcPanelStatus.fromRelayerPayload(json);
+      expect(s.errors?['brightness'], 'read failed');
+      expect(s.hasData, isTrue);
+    });
+
+    test('nested ddcPanelStatus map', () {
       final json = {
         'ddcPanelStatus': {
-          'panels': [
-            {'monitorId': 'a', 'powerState': 'standby'},
-          ],
+          'volume': 10,
+          'mute': 'on',
         },
       };
       final s = FfpDdcPanelStatus.fromRelayerPayload(json);
-      expect(s.panels.single.powerState, FfpDdcPowerState.standby);
+      expect(s.volume, 10);
+      expect(s.mute, isTrue);
     });
 
-    test('empty panels when missing', () {
-      final s = FfpDdcPanelStatus.fromJson({});
-      expect(s.panels, isEmpty);
+    test('empty map has no data', () {
+      final s = FfpDdcPanelStatus.fromRelayerPayload({});
+      expect(s.hasData, isFalse);
     });
   });
 }

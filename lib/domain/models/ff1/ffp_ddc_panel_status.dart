@@ -1,167 +1,102 @@
-/// FFP display / DDC monitor snapshot (ffos#84).
+/// Snapshot from FF1 `ddcPanelStatus` command (flat `message`, ffos#84).
 ///
 /// Distinct from FF1 system audio (`FF1DeviceStatus.volume` / `setVolume`).
 library;
 
-/// Power state reported for a connected display (DDC / panel).
-enum FfpDdcPowerState {
-  on,
-  off,
-  standby,
-}
-
-/// Per-monitor capability flags from controld (explicit unsupported vs supported).
-class FfpDdcPanelCapabilities {
-  const FfpDdcPanelCapabilities({
-    this.brightnessSupported,
-    this.contrastSupported,
-    this.volumeSupported,
-    this.muteSupported,
-    this.powerSupported,
-  });
-
-  factory FfpDdcPanelCapabilities.fromJson(Map<String, dynamic>? json) {
-    if (json == null || json.isEmpty) {
-      return const FfpDdcPanelCapabilities();
-    }
-    bool? read(String key) {
-      final v = json[key];
-      if (v is bool) {
-        return v;
-      }
-      return null;
-    }
-
-    return FfpDdcPanelCapabilities(
-      brightnessSupported: read('brightness'),
-      contrastSupported: read('contrast'),
-      volumeSupported: read('volume'),
-      muteSupported: read('mute'),
-      powerSupported: read('power'),
-    );
-  }
-
-  /// When null, treat as supported unless UI chooses a stricter default.
-  final bool? brightnessSupported;
-  final bool? contrastSupported;
-  final bool? volumeSupported;
-  final bool? muteSupported;
-  final bool? powerSupported;
-
-  bool isSupported(String feature) {
-    switch (feature) {
-      case 'brightness':
-        return brightnessSupported ?? true;
-      case 'contrast':
-        return contrastSupported ?? true;
-      case 'volume':
-        return volumeSupported ?? true;
-      case 'mute':
-        return muteSupported ?? true;
-      case 'power':
-        return powerSupported ?? true;
-      default:
-        return true;
-    }
-  }
-}
-
-/// One physical or logical monitor exposed via DDC.
-class FfpDdcMonitorPanel {
-  const FfpDdcMonitorPanel({
-    required this.monitorId,
-    this.displayName,
-    this.powerState,
-    this.brightnessPercent,
-    this.contrastPercent,
-    this.monitorVolumePercent,
-    this.isMuted,
-    this.capabilities = const FfpDdcPanelCapabilities(),
-  });
-
-  factory FfpDdcMonitorPanel.fromJson(Map<String, dynamic> json) {
-    return FfpDdcMonitorPanel(
-      monitorId: json['monitorId']?.toString() ?? json['id']?.toString() ?? '',
-      displayName: json['displayName'] as String? ?? json['name'] as String?,
-      powerState: _parsePower(json['powerState'] ?? json['power']),
-      brightnessPercent: _parsePercent(json['brightness']),
-      contrastPercent: _parsePercent(json['contrast']),
-      monitorVolumePercent: _parsePercent(
-        json['monitorVolume'] ?? json['volume'],
-      ),
-      isMuted: json['isMuted'] as bool? ?? json['muted'] as bool?,
-      capabilities: FfpDdcPanelCapabilities.fromJson(
-        json['capabilities'] is Map
-            ? Map<String, dynamic>.from(json['capabilities'] as Map)
-            : null,
-      ),
-    );
-  }
-
-  final String monitorId;
-  final String? displayName;
-  final FfpDdcPowerState? powerState;
-  final int? brightnessPercent;
-  final int? contrastPercent;
-
-  /// DDC / monitor speaker volume — not FF1 player volume.
-  final int? monitorVolumePercent;
-  final bool? isMuted;
-  final FfpDdcPanelCapabilities capabilities;
-}
-
-/// Root snapshot: one or more monitors (e.g. internal + external).
+/// Parsed `ddcPanelStatus` / unwrapped relayer `message` for the connected display.
 class FfpDdcPanelStatus {
-  const FfpDdcPanelStatus({required this.panels});
+  /// Creates a DDC panel snapshot (typically from `fromRelayerPayload`).
+  const FfpDdcPanelStatus({
+    this.brightness,
+    this.contrast,
+    this.volume,
+    this.mute,
+    this.power,
+    this.monitor,
+    this.errors,
+  });
 
-  factory FfpDdcPanelStatus.fromJson(Map<String, dynamic> json) {
-    final rawPanels = json['panels'] ?? json['monitors'];
-    if (rawPanels is! List) {
-      return const FfpDdcPanelStatus(panels: []);
-    }
-    final panels = <FfpDdcMonitorPanel>[];
-    for (final item in rawPanels) {
-      if (item is Map) {
-        panels.add(
-          FfpDdcMonitorPanel.fromJson(Map<String, dynamic>.from(item)),
-        );
-      }
-    }
-    return FfpDdcPanelStatus(panels: panels);
-  }
-
-  /// Parses relayer payload that may nest under the `ddcPanelStatus` key.
+  /// After relayer unwrap: flat `message`, or nested `ddcPanelStatus` map.
   factory FfpDdcPanelStatus.fromRelayerPayload(Map<String, dynamic> json) {
+    if (json.isEmpty) {
+      return const FfpDdcPanelStatus();
+    }
     final nested = json['ddcPanelStatus'];
     if (nested is Map) {
-      return FfpDdcPanelStatus.fromJson(
+      return FfpDdcPanelStatus._fromWireMap(
         Map<String, dynamic>.from(nested),
       );
     }
-    return FfpDdcPanelStatus.fromJson(json);
+    return FfpDdcPanelStatus._fromWireMap(json);
   }
 
-  final List<FfpDdcMonitorPanel> panels;
+  factory FfpDdcPanelStatus._fromWireMap(Map<String, dynamic> m) {
+    final errRaw = m['errors'];
+    Map<String, String>? errMap;
+    if (errRaw is Map) {
+      errMap = {};
+      for (final e in errRaw.entries) {
+        errMap[e.key.toString()] = e.value?.toString() ?? '';
+      }
+    }
+    return FfpDdcPanelStatus(
+      brightness: _parsePercent(m['brightness']),
+      contrast: _parsePercent(m['contrast']),
+      volume: _parsePercent(m['volume']),
+      mute: _parseMute(m['mute']),
+      power: m['power']?.toString(),
+      monitor: m['monitor'] as String?,
+      errors: errMap,
+    );
+  }
+
+  /// 0–100 when read succeeded.
+  final int? brightness;
+
+  /// 0–100 when read succeeded.
+  final int? contrast;
+
+  /// DDC / monitor speaker volume 0–100 — not FF1 player volume.
+  final int? volume;
+
+  /// Mute when read succeeded (`mute` wire: `on` / `off`).
+  final bool? mute;
+
+  /// Wire values: `on`, `off`, `standby`, etc.
+  final String? power;
+
+  /// `Vendor:Model` from controld (`ddcutil detect --brief`).
+  final String? monitor;
+
+  /// Field name → error message when that VCP read failed.
+  final Map<String, String>? errors;
+
+  /// True when there is anything to show (values, monitor id, or read errors).
+  bool get hasData =>
+      brightness != null ||
+      contrast != null ||
+      volume != null ||
+      mute != null ||
+      power != null ||
+      (monitor != null && monitor!.trim().isNotEmpty) ||
+      (errors != null && errors!.isNotEmpty);
 }
 
-FfpDdcPowerState? _parsePower(Object? raw) {
+bool? _parseMute(Object? raw) {
   if (raw == null) {
     return null;
   }
-  final s = raw.toString().trim().toLowerCase();
-  switch (s) {
-    case 'on':
-    case 'poweron':
-      return FfpDdcPowerState.on;
-    case 'off':
-    case 'poweroff':
-      return FfpDdcPowerState.off;
-    case 'standby':
-    case 'suspend':
-      return FfpDdcPowerState.standby;
-    default:
-      return null;
+  if (raw is bool) {
+    return raw;
   }
+  final s = raw.toString().trim().toLowerCase();
+  if (s == 'on') {
+    return true;
+  }
+  if (s == 'off') {
+    return false;
+  }
+  return null;
 }
 
 int? _parsePercent(Object? raw) {

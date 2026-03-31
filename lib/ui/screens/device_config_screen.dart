@@ -292,6 +292,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                     horizontal: LayoutConstants.pageHorizontalDefault,
                   ),
                   child: FfpMonitorDdcSection(
+                    key: ValueKey(topicId),
                     topicId: topicId,
                     isConnected: isDeviceConnected,
                     isControllable: isControllable,

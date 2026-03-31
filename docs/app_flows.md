@@ -253,11 +253,11 @@
 
 ## Screen: DeviceConfigScreen
 
-- role in the flow: post-pairing control surface for orientation/scaling/audio/device info
+- role in the flow: post-pairing control surface for orientation/scaling/audio/display monitor controls/device info
 - route / entry point: `/device-configuration`
-- important actions: adjust display settings, switch device/options, finish setup flow
+- important actions: adjust display settings, monitor brightness/contrast/volume, switch device/options, finish setup flow
 - dependencies: active FF1 provider, `ff1DeviceDataProvider`, FF1 Wi-Fi control
-- notes / caveats: setup mode hides some advanced sections until post-setup use
+- notes / caveats: setup mode hides some advanced sections until post-setup use; FFP/DDC monitor controls are driven by relayer poll data and may be unavailable when the connected display does not expose DDC capabilities
 
 ## Screen: KeyboardControlScreen
 
