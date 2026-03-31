@@ -3,6 +3,7 @@ import 'package:app/app/utils/html/prepare_truncated_html.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/content_rhythm.dart';
 import 'package:app/domain/extensions/extensions.dart';
+import 'package:app/widgets/dark_surface_html_selection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:go_router/go_router.dart';
@@ -81,7 +82,7 @@ class ChannelHeader extends StatelessWidget {
                     if (rawSummary != null && rawSummary.isNotEmpty) ...[
                       SizedBox(height: ContentRhythm.titleSupportGap),
                       if (renderSummaryAsHtml)
-                        SelectionArea(
+                        DarkSurfaceHtmlSelection(
                           child: HtmlWidget(
                             prepareHtmlForRender(rawSummary),
                             textStyle: ContentRhythm.longForm(context),

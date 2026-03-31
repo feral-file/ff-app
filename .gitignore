@@ -130,6 +130,8 @@ old_ff_app
 
 # Cursor
 .cursor/codebase-rule.mdc
+# Symlinked personal Cursor rules (machine-local)
+.cursor/local-rules/
 
 # Database snapshot
 scripts/ff_feed_indexer_seed.sqlite
