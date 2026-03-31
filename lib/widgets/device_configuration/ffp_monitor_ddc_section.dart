@@ -5,7 +5,7 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1/ffp_ddc_command_errors.dart';
 import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/theme/app_color.dart';
-import 'package:app/widgets/device_configuration/labeled_slider_control.dart';
+import 'package:app/widgets/device_configuration/ffp_slider_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -119,24 +119,6 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
     }
   }
 
-  Future<void> _toggleMute(FfpDdcPanelStatus s) async {
-    final control = ref.read(ff1WifiControlProvider);
-    final mid = _monitorId(s);
-    final prev = _status ?? s;
-    final next = !(prev.mute ?? false);
-    _setStatus(prev.copyWith(mute: next));
-    try {
-      await control.setFfpMonitorMute(
-        topicId: widget.topicId,
-        monitorId: mid,
-        muted: next,
-      );
-    } on Exception catch (e) {
-      _log.warning('setFfpMonitorMute: $e');
-      _setStatus(prev);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (!widget.isConnected || widget.topicId.isEmpty) {
@@ -178,7 +160,6 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
     final showBrightness = err?.containsKey('brightness') != true;
     final showContrast = err?.containsKey('contrast') != true;
     final showVol = err?.containsKey('volume') != true;
-    final showMute = err?.containsKey('mute') != true;
 
     final name = status.monitor?.trim().isNotEmpty ?? false
         ? status.monitor!.trim()
@@ -186,94 +167,109 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
     final power = _powerLabel(status.power);
     final enable = widget.isControllable;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Display (FFP)',
-          style: AppTypography.body(context).white,
-        ),
-        SizedBox(height: LayoutConstants.space2),
-        Text(
-          'Monitor brightness and volume here apply to the connected '
-          'display. FF1 audio is controlled in Audio above.',
-          style: AppTypography.caption(context).white,
-        ),
-        SizedBox(height: LayoutConstants.space4),
-        Padding(
-          padding: EdgeInsets.only(bottom: LayoutConstants.space6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Monitor: $name',
-                style: AppTypography.body(context).white,
-              ),
-              SizedBox(height: LayoutConstants.space2),
-              Text(
-                'Power: $power',
-                style: AppTypography.caption(context).white,
-              ),
-              SizedBox(height: LayoutConstants.space4),
-              if (showBrightness) ...[
-                LabeledSliderControl(
-                  label: 'Brightness',
-                  value: (status.brightness ?? 0).toDouble(),
-                  enabled: enable,
-                  onChanged: (v) =>
-                      _setStatus(status.copyWith(brightness: v.round())),
-                  onChangeEnd: (v) => _runBrightness(status, v),
-                ),
-                SizedBox(height: LayoutConstants.space4),
-              ],
-              if (showContrast) ...[
-                LabeledSliderControl(
-                  label: 'Contrast',
-                  value: (status.contrast ?? 0).toDouble(),
-                  enabled: enable,
-                  onChanged: (v) =>
-                      _setStatus(status.copyWith(contrast: v.round())),
-                  onChangeEnd: (v) => _runContrast(status, v),
-                ),
-                SizedBox(height: LayoutConstants.space4),
-              ],
-              if (showVol || showMute)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (showMute)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: IconButton(
-                          onPressed: enable ? () => _toggleMute(status) : null,
-                          icon: Icon(
-                            (status.mute ?? false)
-                                ? Icons.volume_off
-                                : Icons.volume_up,
-                            color: enable
-                                ? AppColor.white
-                                : AppColor.white.withValues(alpha: 0.4),
-                          ),
-                        ),
-                      ),
-                    if (showVol)
-                      Expanded(
-                        child: LabeledSliderControl(
-                          label: 'Monitor volume',
-                          value: (status.volume ?? 0).toDouble(),
-                          enabled: enable,
-                          onChanged: (v) =>
-                              _setStatus(status.copyWith(volume: v.round())),
-                          onChangeEnd: (v) => _runMonitorVolume(status, v),
-                        ),
-                      ),
-                  ],
-                ),
-            ],
-          ),
-        ),
-      ],
+    const divider = Divider(
+      height: 16,
+      color: AppColor.auGreyBackground,
+      thickness: 1,
     );
+
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: AppColor.primaryBlack,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _KeyValueRow(
+            title: 'Monitor:',
+            child: Text(
+              name,
+              style: AppTypography.body(context).white,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          divider,
+          _KeyValueRow(
+            title: 'Power:',
+            child: Row(
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: _powerDotColor(status.power),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    power,
+                    style: AppTypography.body(context).white,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (showBrightness) ...[
+            SizedBox(height: LayoutConstants.space4),
+            FfpBrightnessControl(
+              key: const ValueKey('ffp_brightness_slider'),
+              value: (status.brightness ?? 0).toDouble(),
+              enabled: enable,
+              onChanged: (v) =>
+                  _setStatus(status.copyWith(brightness: v.round())),
+              onChangeEnd: (v) => _runBrightness(status, v),
+            ),
+          ],
+          if (showContrast) ...[
+            SizedBox(height: LayoutConstants.space4),
+            FfpContrastControl(
+              key: const ValueKey('ffp_contrast_slider'),
+              value: (status.contrast ?? 0).toDouble(),
+              enabled: enable,
+              onChanged: (v) =>
+                  _setStatus(status.copyWith(contrast: v.round())),
+              onChangeEnd: (v) => _runContrast(status, v),
+            ),
+          ],
+          if (showVol) ...[
+            SizedBox(height: LayoutConstants.space4),
+            FfpMonitorVolumeControl(
+              key: const ValueKey('ffp_monitor_volume_slider'),
+              value: (status.volume ?? 0).toDouble(),
+              enabled: enable && showVol,
+              iconEnabled: enable,
+              onChanged: (v) =>
+                  _setStatus(status.copyWith(volume: v.round())),
+              onChangeEnd: (v) => _runMonitorVolume(status, v),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Color _powerDotColor(String? p) {
+    switch (p?.trim().toLowerCase()) {
+      case 'on':
+      case 'poweron':
+        return Colors.green;
+      case 'off':
+      case 'poweroff':
+        return Colors.red;
+      case 'standby':
+      case 'suspend':
+        return Colors.grey;
+      case null:
+      case '':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
   }
 
   String _powerLabel(String? p) {
@@ -293,5 +289,37 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
       default:
         return p ?? 'Unknown';
     }
+  }
+}
+
+class _KeyValueRow extends StatelessWidget {
+  const _KeyValueRow({
+    required this.title,
+    required this.child,
+  });
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: AppTypography.body(context).grey,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: child,
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -5,10 +5,10 @@ import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
-import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
+import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:app/widgets/device_configuration/ffp_monitor_ddc_section.dart';
-import 'package:app/widgets/device_configuration/labeled_slider_control.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -50,10 +50,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final sliderFinder = find.descendant(
-        of: find.ancestor(
-          of: find.text('Brightness'),
-          matching: find.byType(LabeledSliderControl),
-        ),
+        of: find.byKey(const ValueKey('ffp_brightness_slider')),
         matching: find.byType(Slider),
       );
       expect(sliderFinder, findsOneWidget);
@@ -73,7 +70,8 @@ void main() {
         80,
         reason:
             'The immediate resync can still report the pre-write brightness. '
-            'The widget must keep the requested value until polling catches up.',
+            'The widget must keep the requested value until '
+            'polling catches up.',
       );
     },
   );

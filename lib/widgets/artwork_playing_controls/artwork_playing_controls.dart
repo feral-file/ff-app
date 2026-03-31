@@ -1,14 +1,18 @@
 import 'dart:async';
 
+import 'package:app/app/providers/ff1_device_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1/art_framing.dart';
+import 'package:app/domain/models/ff1/ffp_ddc_command_errors.dart';
+import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/device_configuration/audio_control.dart';
+import 'package:app/widgets/device_configuration/ffp_slider_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
@@ -19,11 +23,13 @@ import 'package:go_router/go_router.dart';
 /// Shows Rotate, Fit/Fill, Volume, and Interact controls. Commands are sent
 /// via the WiFi control layer using the connected device's [FF1Device.topicId].
 class ArtworkPlayingControls extends ConsumerStatefulWidget {
+  /// Creates playback controls for the currently playing work.
   const ArtworkPlayingControls({
     required this.playingDevice,
     super.key,
   });
 
+  /// The device that is currently playing the work.
   final FF1Device playingDevice;
 
   @override
@@ -43,7 +49,7 @@ class _ArtworkPlayingControlsState
     final control = ref.read(ff1WifiControlProvider);
     try {
       await control.rotate(topicId: _topicId);
-    } catch (_) {}
+    } on Exception catch (_) {}
   }
 
   Future<void> _setFraming(ArtFraming framing) async {
@@ -52,7 +58,7 @@ class _ArtworkPlayingControlsState
     try {
       await control.updateArtFraming(topicId: _topicId, framing: framing);
       if (mounted) setState(() => _selectedFraming = framing);
-    } catch (_) {}
+    } on Exception catch (_) {}
   }
 
   @override
@@ -100,21 +106,18 @@ class _ArtworkPlayingControlsState
             ],
           ),
           SizedBox(height: LayoutConstants.space3),
-          // Volume control row — wrapped in same black pill as other controls.
-          Container(
-            padding: EdgeInsets.symmetric(
-              vertical: 10,
-              horizontal: LayoutConstants.space3,
-            ),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(50),
-              color: PrimitivesTokens.colorsBlack,
-            ),
+          // Audio control row — wrapped in the same black pill as other
+          // controls.
+          _ControlPill(
             child: AudioControl(
               topicId: _topicId,
               gap: LayoutConstants.space2,
               iconSize: 18,
             ),
+          ),
+          SizedBox(height: LayoutConstants.space3),
+          _FfpMonitorQuickControls(
+            topicId: _topicId,
           ),
           SizedBox(height: LayoutConstants.space3),
           SizedBox(
@@ -140,6 +143,200 @@ class _ArtworkPlayingControlsState
           ),
         ],
       ),
+    );
+  }
+}
+
+class _FfpMonitorQuickControls extends ConsumerStatefulWidget {
+  const _FfpMonitorQuickControls({
+    required this.topicId,
+  });
+
+  final String topicId;
+
+  @override
+  ConsumerState<_FfpMonitorQuickControls> createState() =>
+      _FfpMonitorQuickControlsState();
+}
+
+class _FfpMonitorQuickControlsState
+    extends ConsumerState<_FfpMonitorQuickControls> {
+  FfpDdcPanelStatus? _status;
+  bool _syncedFromDevice = false;
+
+  String _monitorId(FfpDdcPanelStatus s) =>
+      s.monitor?.trim().isNotEmpty ?? false ? s.monitor!.trim() : 'default';
+
+  void _applyDeviceStatus(FfpDdcPanelStatus? status) {
+    if (status == null || !status.hasData || _syncedFromDevice) {
+      return;
+    }
+    _status = status;
+    _syncedFromDevice = true;
+  }
+
+  void _setStatus(FfpDdcPanelStatus status) {
+    if (!mounted) return;
+    setState(() => _status = status);
+  }
+
+  Future<void> _runBrightness(FfpDdcPanelStatus s, double v) async {
+    final control = ref.read(ff1WifiControlProvider);
+    final mid = _monitorId(s);
+    final prev = _status ?? s;
+    _setStatus(prev.copyWith(brightness: v.round()));
+    try {
+      await control.setFfpMonitorBrightness(
+        topicId: widget.topicId,
+        monitorId: mid,
+        percent: v.round(),
+      );
+    } on FfpDdcUnsupportedException catch (e) {
+      // Some panels report brightness support inconsistently. Surface the error
+      // and revert to the last confirmed value.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+      _setStatus(prev);
+    } on Exception catch (_) {
+      _setStatus(prev);
+    }
+  }
+
+  Future<void> _runContrast(FfpDdcPanelStatus s, double v) async {
+    final control = ref.read(ff1WifiControlProvider);
+    final mid = _monitorId(s);
+    final prev = _status ?? s;
+    _setStatus(prev.copyWith(contrast: v.round()));
+    try {
+      await control.setFfpMonitorContrast(
+        topicId: widget.topicId,
+        monitorId: mid,
+        percent: v.round(),
+      );
+    } on Exception catch (_) {
+      _setStatus(prev);
+    }
+  }
+
+  Future<void> _runMonitorVolume(FfpDdcPanelStatus s, double v) async {
+    final control = ref.read(ff1WifiControlProvider);
+    final mid = _monitorId(s);
+    final prev = _status ?? s;
+    _setStatus(prev.copyWith(volume: v.round()));
+    try {
+      await control.setFfpMonitorVolume(
+        topicId: widget.topicId,
+        monitorId: mid,
+        percent: v.round(),
+      );
+    } on Exception catch (_) {
+      _setStatus(prev);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.topicId.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final statusProvider = ff1FfpDdcPanelStatusStreamProvider(widget.topicId);
+    ref.listen<AsyncValue<FfpDdcPanelStatus>>(statusProvider, (_, next) {
+      next.whenData((status) {
+        if (!_syncedFromDevice) {
+          setState(() => _applyDeviceStatus(status));
+        }
+      });
+    });
+
+    final async = ref.watch(statusProvider);
+    return async.when(
+      data: (status) {
+        final display = _status ?? status;
+        if (!display.hasData) {
+          return const SizedBox.shrink();
+        }
+        return _content(display);
+      },
+      loading: () => _status == null || !_status!.hasData
+          ? const SizedBox.shrink()
+          : _content(_status!),
+      error: (error, stackTrace) => _status == null || !_status!.hasData
+          ? const SizedBox.shrink()
+          : _content(_status!),
+    );
+  }
+
+  Widget _content(FfpDdcPanelStatus status) {
+    final err = status.errors;
+    final showBrightness = err?.containsKey('brightness') != true;
+    final showContrast = err?.containsKey('contrast') != true;
+    final showVol = err?.containsKey('volume') != true;
+
+    final controls = <Widget>[
+      if (showBrightness)
+        _ControlPill(
+          child: FfpBrightnessControl(
+            value: (status.brightness ?? 0).toDouble(),
+            onChanged: (v) =>
+                _setStatus(status.copyWith(brightness: v.round())),
+            onChangeEnd: (v) => _runBrightness(status, v),
+          ),
+        ),
+      if (showContrast)
+        _ControlPill(
+          child: FfpContrastControl(
+            value: (status.contrast ?? 0).toDouble(),
+            onChanged: (v) => _setStatus(status.copyWith(contrast: v.round())),
+            onChangeEnd: (v) => _runContrast(status, v),
+          ),
+        ),
+      if (showVol)
+        _ControlPill(
+          child: FfpMonitorVolumeControl(
+            value: (status.volume ?? 0).toDouble(),
+            onChanged: (v) => _setStatus(status.copyWith(volume: v.round())),
+            onChangeEnd: (v) => _runMonitorVolume(status, v),
+          ),
+        ),
+    ];
+
+    if (controls.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      children: [
+        for (var i = 0; i < controls.length; i++) ...[
+          controls[i],
+          if (i != controls.length - 1)
+            SizedBox(height: LayoutConstants.space3),
+        ],
+      ],
+    );
+  }
+}
+
+class _ControlPill extends StatelessWidget {
+  const _ControlPill({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        vertical: LayoutConstants.space1,
+        horizontal: LayoutConstants.space3,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(50),
+        color: PrimitivesTokens.colorsBlack,
+      ),
+      child: child,
     );
   }
 }
