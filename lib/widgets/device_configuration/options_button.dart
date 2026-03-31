@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/ff1/ff1_relayer_firmware_update_service.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
@@ -117,7 +118,7 @@ class OptionsButton extends ConsumerWidget {
           onTap: () => unawaited(
             _onUpdateFirmwareSelected(
               context,
-              control,
+              ref,
               device,
               deviceStatus,
             ),
@@ -481,7 +482,7 @@ class OptionsButton extends ConsumerWidget {
 
   Future<void> _onUpdateFirmwareSelected(
     BuildContext context,
-    FF1WifiControl control,
+    WidgetRef ref,
     FF1Device device,
     FF1DeviceStatus? deviceStatus,
   ) async {
@@ -537,49 +538,31 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
                     color: Colors.transparent,
                     borderColor: AppColor.white,
                     onTap: () async {
-                      try {
-                        if (topicId.isEmpty) {
+                      final outcome = await ref
+                          .read(ff1RelayerFirmwareUpdateServiceProvider)
+                          .start(topicId: topicId);
+                      if (!context.mounted) return;
+                      switch (outcome) {
+                        case Ff1RelayerFirmwareUpdateOutcome.success:
+                          _log.info('[Update Firmware] Relayer OK');
+                          Navigator.pop(context, true);
+                        case Ff1RelayerFirmwareUpdateOutcome.missingTopic:
                           _log.warning(
-                            '[Update Firmware] Missing topicId while connected',
+                            '[Update Firmware] Missing topicId',
                           );
-                          if (context.mounted) {
-                            Navigator.pop(
-                              context,
-                              Exception('missing topic'),
-                            );
-                          }
-                          return;
-                        }
-
-                        _log.info('[Update Firmware] Starting via relayer');
-                        final response = await control.updateToLatestVersion(
-                          topicId: topicId,
-                        );
-                        final okFlag = ff1CommandResponseOkFlag(response);
-                        final success =
-                            okFlag ?? ff1CommandResponseIsOk(response);
-                        if (!success) {
+                          Navigator.pop(context, Exception('missing topic'));
+                        case Ff1RelayerFirmwareUpdateOutcome.relayerRejected:
                           _log.warning(
                             '[Update Firmware] Relayer returned unsuccessful '
                             'response',
                           );
-                          if (context.mounted) {
-                            Navigator.pop(
-                              context,
-                              Exception('relayer rejected'),
-                            );
-                          }
-                          return;
-                        }
-
-                        if (context.mounted) {
-                          Navigator.pop(context, true);
-                        }
-                      } on Exception catch (e) {
-                        _log.warning('[Update Firmware] Failed: $e');
-                        if (context.mounted) {
-                          Navigator.pop(context, e);
-                        }
+                          Navigator.pop(
+                            context,
+                            Exception('relayer rejected'),
+                          );
+                        case Ff1RelayerFirmwareUpdateOutcome.commandFailed:
+                          _log.warning('[Update Firmware] Command failed');
+                          Navigator.pop(context, Exception('command failed'));
                       }
                     },
                   ),

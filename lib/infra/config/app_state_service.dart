@@ -1,9 +1,8 @@
-import 'dart:convert';
-
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/indexer/sync_collection.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
+import 'package:app/infra/config/dismissed_firmware_versions_json.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/objectbox.g.dart'
@@ -328,7 +327,9 @@ class AppStateService extends AppStateServiceBase {
 
   @override
   String getDismissedUpdateVersion(String deviceId) {
-    final map = _decodeDismissedVersions(_getOrCreateSingleton());
+    final map = decodeDismissedFirmwareVersionsMap(
+      _getOrCreateSingleton().dismissedUpdateVersionsJson,
+    );
     return map[deviceId] ?? '';
   }
 
@@ -339,23 +340,16 @@ class AppStateService extends AppStateServiceBase {
   }) async {
     await _lock.synchronized(() async {
       final app = _getOrCreateSingleton();
-      final map = _decodeDismissedVersions(app);
+      final map = decodeDismissedFirmwareVersionsMap(
+        app.dismissedUpdateVersionsJson,
+      );
       map[deviceId] = version;
       app
-        ..dismissedUpdateVersionsJson = jsonEncode(map)
+        ..dismissedUpdateVersionsJson =
+            encodeDismissedFirmwareVersionsMap(map)
         ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
       _appStateBox.put(app);
     });
-  }
-
-  Map<String, String> _decodeDismissedVersions(AppStateEntity entity) {
-    try {
-      final decoded = jsonDecode(entity.dismissedUpdateVersionsJson);
-      if (decoded is Map) {
-        return decoded.map((k, v) => MapEntry(k.toString(), v.toString()));
-      }
-    } catch (_) {}
-    return {};
   }
 
   /// Get syncCollection checkpoint for an address.

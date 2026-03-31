@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/ff1/ff1_relayer_firmware_update_service.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_device_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
@@ -7,12 +8,12 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/ff1/firmware_update_prompt_policy.dart';
 import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
-import 'package:app/infra/ff1/wifi_control/ff1_wifi_control_verifier.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/custom_app_bar.dart';
@@ -61,9 +62,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     with RouteAware {
   bool _isShowingQRCode = false;
 
-  /// Guards so the update prompt appears at most once per active device.
-  bool _hasShownUpdatePrompt = false;
   String? _lastPromptDeviceId;
+
+  /// Latest reported version we already auto-prompted for this session. When
+  /// the device reports a newer latest version, the prompt may show again.
+  String? _sessionPromptedForLatestVersion;
 
   @override
   void initState() {
@@ -82,8 +85,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             : _deviceIdFromAsyncValue(previous);
         final nextDeviceId = _deviceIdFromAsyncValue(next);
         if (previousDeviceId != nextDeviceId) {
-          // Reset guard so another device can get its own update prompt.
-          _hasShownUpdatePrompt = false;
+          _sessionPromptedForLatestVersion = null;
           _lastPromptDeviceId = null;
         }
       })
@@ -355,50 +357,51 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 
   /// Checks whether an update prompt should be shown and schedules it.
   ///
-  /// Called once after the first frame (initState) and every time device status
-  /// changes (ref.listen). The [_hasShownUpdatePrompt] flag ensures the dialog
-  /// appears at most once per screen visit regardless of how many status
-  /// notifications arrive.
+  /// Called after the first frame and on each device status notification.
+  /// Session dedupe tracks which latest version we already prompted for so a
+  /// newer reported latest can show again without leaving this screen.
   void _checkUpdatePrompt() {
     if (!mounted) return;
-    // Auto-prompt is for post-setup device configuration; during setup the
-    // screen blocks back navigation and hides the options menu, so starting
-    // an update here would strand the user without the documented flow.
-    if (widget.payload.isInSetupProcess) return;
-    if (!ref.read(ff1DeviceConnectedProvider)) return;
 
     final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
     final device = ref
         .read(activeFF1BluetoothDeviceProvider)
         .maybeWhen(data: (d) => d, orElse: () => null);
     if (device == null || deviceStatus == null) return;
+
     if (_lastPromptDeviceId != device.deviceId) {
-      _hasShownUpdatePrompt = false;
+      _sessionPromptedForLatestVersion = null;
       _lastPromptDeviceId = device.deviceId;
     }
-    if (_hasShownUpdatePrompt) return;
 
     final latestVersion = deviceStatus.latestVersion;
     final installedVersion = deviceStatus.installedVersion;
-    if (latestVersion == null ||
-        installedVersion == null ||
-        latestVersion == installedVersion) {
-      return;
-    }
-
     final dismissedVersion = ref
         .read(appStateServiceProvider)
         .getDismissedUpdateVersion(device.deviceId);
-    if (dismissedVersion == latestVersion) return;
 
-    _hasShownUpdatePrompt = true;
+    if (!shouldOfferFirmwareUpdateAutoPrompt(
+      isInSetupProcess: widget.payload.isInSetupProcess,
+      isRelayerConnected: ref.read(ff1DeviceConnectedProvider),
+      installedVersion: installedVersion,
+      latestVersion: latestVersion,
+      dismissedLatestVersionForDevice: dismissedVersion,
+    )) {
+      return;
+    }
+
+    if (_sessionPromptedForLatestVersion == latestVersion) return;
+
+    _sessionPromptedForLatestVersion = latestVersion;
+    final installed = installedVersion!;
+    final latest = latestVersion!;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(
         _showUpdatePromptDialog(
           device: device,
-          installedVersion: installedVersion,
-          latestVersion: latestVersion,
+          installedVersion: installed,
+          latestVersion: latest,
         ),
       );
     });
@@ -463,51 +466,26 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                   color: Colors.transparent,
                   borderColor: AppColor.white,
                   onTap: () async {
-                    try {
-                      if (device.topicId.isEmpty) {
-                        _log.warning(
-                          '[Update Prompt] Missing topicId while connected',
-                        );
-                        if (mounted) {
-                          Navigator.pop(
-                            context,
-                            Exception('missing topic'),
-                          );
-                        }
-                        return;
-                      }
-
-                      _log.info('[Update Prompt] Starting via relayer');
-                      final response = await ref
-                          .read(ff1WifiControlProvider)
-                          .updateToLatestVersion(
-                            topicId: device.topicId,
-                          );
-                      final okFlag = ff1CommandResponseOkFlag(response);
-                      final success =
-                          okFlag ?? ff1CommandResponseIsOk(response);
-                      if (!success) {
+                    final outcome = await ref
+                        .read(ff1RelayerFirmwareUpdateServiceProvider)
+                        .start(topicId: device.topicId);
+                    if (!mounted) return;
+                    switch (outcome) {
+                      case Ff1RelayerFirmwareUpdateOutcome.success:
+                        _log.info('[Update Prompt] Relayer accepted update');
+                        Navigator.pop(context, true);
+                      case Ff1RelayerFirmwareUpdateOutcome.missingTopic:
+                        _log.warning('[Update Prompt] Missing topicId');
+                        Navigator.pop(context, Exception('missing topic'));
+                      case Ff1RelayerFirmwareUpdateOutcome.relayerRejected:
                         _log.warning(
                           '[Update Prompt] Relayer returned unsuccessful '
                           'response',
                         );
-                        if (mounted) {
-                          Navigator.pop(
-                            context,
-                            Exception('relayer rejected'),
-                          );
-                        }
-                        return;
-                      }
-
-                      if (mounted) {
-                        Navigator.pop(context, true);
-                      }
-                    } on Exception catch (e) {
-                      _log.warning('[Update Prompt] Update failed: $e');
-                      if (mounted) {
-                        Navigator.pop(context, e);
-                      }
+                        Navigator.pop(context, Exception('relayer rejected'));
+                      case Ff1RelayerFirmwareUpdateOutcome.commandFailed:
+                        _log.warning('[Update Prompt] Update command failed');
+                        Navigator.pop(context, Exception('command failed'));
                     }
                   },
                 ),
