@@ -69,8 +69,9 @@ done
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-# Ensure dependencies (including dart_code_linter) are resolved before analyze
-flutter pub get > /dev/null 2>&1 || true
+# Ensure dependencies are resolved before any verification work starts.
+# If setup fails, the helper must fail fast instead of pretending checks passed.
+flutter pub get > /dev/null 2>&1
 
 # Concurrency settings (can be overridden via environment)
 # Default: 8 for file operations, 4 for tests (to avoid resource contention)
@@ -90,6 +91,7 @@ fixed_files_list="$tmp_dir/fixed_files.txt"
 lint_report="$tmp_dir/lint_report.txt"
 custom_lint_report="$tmp_dir/custom_lint_report.txt"
 test_report="$tmp_dir/test_report.txt"
+tool_failure_report="$tmp_dir/tool_failure_report.txt"
 status_summary="$tmp_dir/status_summary.txt"
 
 ##
@@ -128,12 +130,14 @@ changed_count=$(wc -l < "$changed_files_list")
 : > "$fixed_files_list"
 : > "$lint_report"
 : > "$custom_lint_report"
+: > "$tool_failure_report"
 : > "$status_summary"
 
 # Function to process single file for dart fix
 process_dart_fix() {
   local file="$1"
   local fixed_list="$2"
+  local tool_failure_out="$3"
   
   if [[ -z "$file" ]]; then
     return
@@ -143,7 +147,20 @@ process_dart_fix() {
   before_mtime=$(stat -f%m "$file" 2>/dev/null || echo "0")
   
   # Run dart fix for this file
-  dart fix --apply "$file" > /dev/null 2>&1 || true
+  if ! dart_fix_output=$(dart fix --apply "$file" 2>&1); then
+    {
+      echo "### $file"
+      echo ""
+      echo "- dart fix failed"
+      if [[ -n "$dart_fix_output" ]]; then
+        echo '```'
+        echo "$dart_fix_output"
+        echo '```'
+      fi
+      echo ""
+    } >> "$tool_failure_out"
+    return
+  fi
   
   # Capture file mtime after
   after_mtime=$(stat -f%m "$file" 2>/dev/null || echo "0")
@@ -158,18 +175,33 @@ process_dart_fix() {
 process_analyze() {
   local file="$1"
   local lint_out="$2"
+  local tool_failure_out="$3"
   
   if [[ -z "$file" ]]; then
     return
   fi
   
   # Run flutter analyze
-  analyze_output=$(flutter analyze "$file" 2>&1 || true)
+  analyze_status=0
+  analyze_output="$(flutter analyze "$file" 2>&1)" || analyze_status=$?
   
   # Extract lint issues: info • msg • path/file.dart:10:5 • code
   lint_lines=$(echo "$analyze_output" | grep -E "• .* • .*:[0-9]+:[0-9]+ • " || true)
   
   if [[ -z "$lint_lines" ]]; then
+    if [[ "$analyze_status" -ne 0 ]]; then
+      {
+        echo "### $file"
+        echo ""
+        echo "- flutter analyze failed before producing parseable diagnostics"
+        if [[ -n "$analyze_output" ]]; then
+          echo '```'
+          echo "$analyze_output"
+          echo '```'
+        fi
+        echo ""
+      } >> "$tool_failure_out"
+    fi
     return
   fi
   
@@ -191,21 +223,27 @@ process_analyze() {
   rm -f "$temp_lint"
 }
 
+# Run analyze first to match CI's current contract. The helper still applies
+# fixes afterward so the next rerun starts from the same post-fix state that
+# contributors would see locally.
 export -f process_dart_fix process_analyze
 
-# Run dart fix first so follow-up lint matches the code that would be committed.
-echo "Running dart fix..." >&2
-echo "  dart fix concurrency: $DART_FIX_CONCURRENCY files" >&2
-
-cat "$changed_files_list" | xargs -P "$DART_FIX_CONCURRENCY" -I {} bash -c 'process_dart_fix "$@"' _ {} "$fixed_files_list"
-
 ##
-# 3. Run lint checks against the post-fix state.
+# 2. Run flutter analyze against the pre-fix state to mirror CI.
 ##
 echo "Running flutter analyze..." >&2
 echo "  flutter analyze concurrency: $FLUTTER_ANALYZE_CONCURRENCY files" >&2
 
-cat "$changed_files_list" | xargs -P "$FLUTTER_ANALYZE_CONCURRENCY" -I {} bash -c 'process_analyze "$@"' _ {} "$lint_report"
+cat "$changed_files_list" | xargs -P "$FLUTTER_ANALYZE_CONCURRENCY" -I {} bash -c 'process_analyze "$@"' _ {} "$lint_report" "$tool_failure_report"
+
+##
+# 3. Apply dart fix after analyze to keep the local working tree aligned with
+# the auto-fix pass CI performs after surfacing diagnostics.
+##
+echo "Running dart fix..." >&2
+echo "  dart fix concurrency: $DART_FIX_CONCURRENCY files" >&2
+
+cat "$changed_files_list" | xargs -P "$DART_FIX_CONCURRENCY" -I {} bash -c 'process_dart_fix "$@"' _ {} "$fixed_files_list" "$tool_failure_report"
 
 custom_lint_available=false
 if [[ -f "custom_lint.yaml" ]] && grep -q "custom_lint" "pubspec.yaml"; then
@@ -219,10 +257,24 @@ if [[ "$custom_lint_available" == true ]]; then
       continue
     fi
 
-    custom_lint_output="$(dart run custom_lint "$file" 2>&1 || true)"
+    custom_lint_status=0
+    custom_lint_output="$(dart run custom_lint "$file" 2>&1)" || custom_lint_status=$?
     custom_lint_lines="$(echo "$custom_lint_output" | grep -E "^[[:space:]]*[^[:space:]].*:[0-9]+:[0-9]+.*•.*•" || true)"
 
     if [[ -z "$custom_lint_lines" ]]; then
+      if [[ "$custom_lint_status" -ne 0 ]]; then
+        {
+          echo "### $file"
+          echo ""
+          echo "- custom_lint failed before producing parseable diagnostics"
+          if [[ -n "$custom_lint_output" ]]; then
+            echo '```'
+            echo "$custom_lint_output"
+            echo '```'
+          fi
+          echo ""
+        } >> "$tool_failure_report"
+      fi
       continue
     fi
 
@@ -245,7 +297,8 @@ fi
 
 if [[ "$skip_tests" == false ]]; then
   echo "Running flutter test (concurrency: $FLUTTER_TEST_CONCURRENCY)..." >&2
-  test_output=$(flutter test --concurrency="$FLUTTER_TEST_CONCURRENCY" 2>&1 || true)
+  test_status=0
+  test_output="$(flutter test --concurrency="$FLUTTER_TEST_CONCURRENCY" 2>&1)" || test_status=$?
 
   # Check if there are failures
   if echo "$test_output" | grep -E "(FAILED|EXCEPTION|ERROR)" > /dev/null; then
@@ -261,6 +314,15 @@ if [[ "$skip_tests" == false ]]; then
         echo "- $test_file - $test_name" >> "$test_report"
       fi
     done || true
+  elif [[ "$test_status" -ne 0 ]]; then
+    {
+      echo "- flutter test failed before producing parseable failures"
+      if [[ -n "$test_output" ]]; then
+        echo '```'
+        echo "$test_output"
+        echo '```'
+      fi
+    } >> "$tool_failure_report"
   fi
 fi
 
@@ -281,6 +343,11 @@ fi
 
 if [[ -s "$test_report" ]]; then
   echo "test" >> "$status_summary"
+  overall_exit_code=1
+fi
+
+if [[ -s "$tool_failure_report" ]]; then
+  echo "tool_failure" >> "$status_summary"
   overall_exit_code=1
 fi
 
@@ -341,6 +408,12 @@ fi
       echo "None found."
       echo ""
     fi
+  fi
+
+  if [[ -s "$tool_failure_report" ]]; then
+    echo "### Tool Failures"
+    echo ""
+    cat "$tool_failure_report"
   fi
   
   # Test report
