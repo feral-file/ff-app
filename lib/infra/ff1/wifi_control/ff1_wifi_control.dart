@@ -16,9 +16,13 @@ import 'dart:ui' show Offset;
 
 import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
+import 'package:app/domain/models/ff1/ffp_ddc_command_errors.dart';
+import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/domain/models/ff1/loop_mode.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_control_verifier.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
+import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_payload_unwrap.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:app/infra/logging/structured_logger.dart';
 import 'package:logging/logging.dart';
@@ -1136,27 +1140,163 @@ transport reconnected — waiting for device connection notification''',
                 params: request.params,
               )
               as Map<String, dynamic>;
-      final payload = _unwrapMetricsPayload(response);
+      final payload = unwrapFf1RelayerPayload(response);
       return DeviceRealtimeMetrics.fromJson(payload);
     } catch (e) {
       _log.severe('Failed to fetch realtime metrics: $e');
       rethrow;
     }
   }
+
+  /// FFP / DDC: read panel snapshot (not FF1 system audio).
+  ///
+  /// Relayer returns nested JSON; unwrapFf1RelayerPayload and
+  /// FfpDdcPanelStatus.fromRelayerPayload map `ddcPanelStatus` when present.
+  Future<FfpDdcPanelStatus> getFfpDdcPanelStatus({
+    required String topicId,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      const request = FfpDdcGetPanelStatusRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      final payload = unwrapFf1RelayerPayload(response);
+      return FfpDdcPanelStatus.fromRelayerPayload(payload);
+    } catch (e) {
+      _log.severe('Failed to fetch FFP DDC panel status: $e');
+      rethrow;
+    }
+  }
+
+  /// FFP / DDC: set monitor brightness (may throw [FfpDdcUnsupportedException]).
+  Future<void> setFfpMonitorBrightness({
+    required String topicId,
+    required String monitorId,
+    required int percent,
+  }) async {
+    final r = await _sendFfpDdcCommand(
+      topicId: topicId,
+      request: FfpDdcMonitorSetBrightnessRequest(
+        monitorId: monitorId,
+        percent: percent.clamp(0, 100),
+      ),
+    );
+    _throwIfFfpCommandFailed(r, 'setFfpMonitorBrightness');
+  }
+
+  /// FFP / DDC: set monitor contrast.
+  Future<void> setFfpMonitorContrast({
+    required String topicId,
+    required String monitorId,
+    required int percent,
+  }) async {
+    final r = await _sendFfpDdcCommand(
+      topicId: topicId,
+      request: FfpDdcMonitorSetContrastRequest(
+        monitorId: monitorId,
+        percent: percent.clamp(0, 100),
+      ),
+    );
+    _throwIfFfpCommandFailed(r, 'setFfpMonitorContrast');
+  }
+
+  /// FFP / DDC: set monitor (speaker) volume — not FF1 `setVolume` audio.
+  Future<void> setFfpMonitorVolume({
+    required String topicId,
+    required String monitorId,
+    required int percent,
+  }) async {
+    final r = await _sendFfpDdcCommand(
+      topicId: topicId,
+      request: FfpDdcMonitorSetVolumeRequest(
+        monitorId: monitorId,
+        percent: percent.clamp(0, 100),
+      ),
+    );
+    _throwIfFfpCommandFailed(r, 'setFfpMonitorVolume');
+  }
+
+  /// FFP / DDC: set monitor mute.
+  Future<void> setFfpMonitorMute({
+    required String topicId,
+    required String monitorId,
+    required bool muted,
+  }) async {
+    final r = await _sendFfpDdcCommand(
+      topicId: topicId,
+      request: FfpDdcMonitorSetMuteRequest(
+        monitorId: monitorId,
+        muted: muted,
+      ),
+    );
+    _throwIfFfpCommandFailed(r, 'setFfpMonitorMute');
+  }
+
+  /// FFP / DDC: power (on / off / standby).
+  Future<void> setFfpMonitorPower({
+    required String topicId,
+    required String monitorId,
+    required String powerState,
+  }) async {
+    final r = await _sendFfpDdcCommand(
+      topicId: topicId,
+      request: FfpDdcMonitorSetPowerRequest(
+        monitorId: monitorId,
+        powerState: powerState,
+      ),
+    );
+    _throwIfFfpCommandFailed(r, 'setFfpMonitorPower');
+  }
+
+  Future<FF1CommandResponse> _sendFfpDdcCommand({
+    required String topicId,
+    required FF1WifiCommandRequest request,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+    final response =
+        await _restClient.sendCommand(
+              topicId: topicId,
+              command: request.command,
+              params: request.params,
+            )
+            as Map<String, dynamic>;
+    return FF1CommandResponse.fromJson(response);
+  }
 }
 
-Map<String, dynamic> _unwrapMetricsPayload(Map<String, dynamic> response) {
-  dynamic current = response;
-  while (current is Map<String, dynamic>) {
-    if (current.containsKey('message') && current['message'] is Map) {
-      current = Map<String, dynamic>.from(current['message'] as Map);
-      continue;
-    }
-    if (current.containsKey('data') && current['data'] is Map) {
-      current = Map<String, dynamic>.from(current['data'] as Map);
-      continue;
-    }
-    return current;
+void _throwIfFfpCommandFailed(FF1CommandResponse r, String action) {
+  if (ff1CommandResponseIsOk(r) || ff1CommandResponseOkFlag(r) == true) {
+    return;
   }
-  throw StateError('Invalid realtime metrics payload type');
+  final data = r.data ?? {};
+  final errMap = data['error'];
+  var message = '';
+  if (errMap is Map) {
+    message = errMap['message']?.toString() ?? '';
+  }
+  message = message.isNotEmpty
+      ? message
+      : (data['message']?.toString() ?? '');
+  final code = data['code']?.toString().toLowerCase() ??
+      (errMap is Map ? errMap['code']?.toString().toLowerCase() : null);
+  final lower = message.toLowerCase();
+  final unsupported = code == 'unsupported' || lower.contains('unsupported');
+  if (unsupported) {
+    throw FfpDdcUnsupportedException(
+      message.isNotEmpty ? message : 'Operation not supported ($action)',
+    );
+  }
+  throw FfpDdcCommandException(
+    message.isNotEmpty ? message : 'FFP DDC command failed: $action',
+  );
 }

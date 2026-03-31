@@ -1,7 +1,10 @@
+import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
+import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod/src/providers/stream_provider.dart';
 
@@ -70,6 +73,42 @@ ff1DeviceRealtimeMetricsStreamProvider = StreamProvider.autoDispose
         while (true) {
           await Future<void>.delayed(const Duration(seconds: 5));
           yield await control.getDeviceRealtimeMetrics(topicId: topicId);
+        }
+      }();
+    });
+
+/// Polls FFP DDC panel status every 30s (display / monitor — not FF1 audio).
+///
+/// Polling runs only while the app is [AppLifecycleState.resumed] and FF1 is
+/// connected. When the app is backgrounded or inactive, the stream stops so the
+/// loop does not keep firing; when the app resumes and the device is online
+/// again, polling restarts from a fresh subscription.
+final StreamProviderFamily<FfpDdcPanelStatus, String>
+ff1FfpDdcPanelStatusStreamProvider = StreamProvider.autoDispose
+    .family<FfpDdcPanelStatus, String>((
+      ref,
+      topicId,
+    ) {
+      if (topicId.isEmpty) {
+        return const Stream<FfpDdcPanelStatus>.empty();
+      }
+
+      final lifecycle = ref.watch(appLifecycleProvider);
+      if (lifecycle != AppLifecycleState.resumed) {
+        return const Stream<FfpDdcPanelStatus>.empty();
+      }
+
+      final isConnected = ref.watch(ff1DeviceConnectedProvider);
+      if (!isConnected) {
+        return const Stream<FfpDdcPanelStatus>.empty();
+      }
+
+      final control = ref.watch(ff1WifiControlProvider);
+      return () async* {
+        yield await control.getFfpDdcPanelStatus(topicId: topicId);
+        while (true) {
+          await Future<void>.delayed(const Duration(seconds: 30));
+          yield await control.getFfpDdcPanelStatus(topicId: topicId);
         }
       }();
     });

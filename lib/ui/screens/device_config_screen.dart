@@ -16,6 +16,7 @@ import 'package:app/widgets/device_configuration/audio_control.dart';
 import 'package:app/widgets/device_configuration/canvas_setting.dart';
 import 'package:app/widgets/device_configuration/device_info_box.dart';
 import 'package:app/widgets/device_configuration/device_metrics_section.dart';
+import 'package:app/widgets/device_configuration/ffp_monitor_ddc_section.dart';
 import 'package:app/widgets/device_configuration/options_button.dart';
 import 'package:app/widgets/device_configuration/switch_device_button.dart';
 import 'package:flutter/material.dart';
@@ -284,6 +285,20 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 ),
               ),
             ),
+            if (isDeviceConnected) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: LayoutConstants.pageHorizontalDefault,
+                  ),
+                  child: FfpMonitorDdcSection(
+                    topicId: topicId,
+                    isConnected: isDeviceConnected,
+                    isControllable: isControllable,
+                  ),
+                ),
+              ),
+            ],
             const SliverToBoxAdapter(
               child: Divider(
                 color: AppColor.primaryBlack,

@@ -6,6 +6,8 @@ export 'dp1/dp1_manifest.dart';
 export 'dp1/dp1_playlist.dart';
 export 'dp1/dp1_playlist_item.dart';
 export 'dp1/dp1_provenance.dart';
+export 'ff1/ffp_ddc_command_errors.dart';
+export 'ff1/ffp_ddc_panel_status.dart';
 export 'ff1_connect_session.dart';
 export 'ff1_device.dart';
 export 'ff1_device_info.dart';
