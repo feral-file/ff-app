@@ -106,11 +106,11 @@ if [[ "$skip_git_filter" == true ]]; then
   fi
   filter_mode="all files"
 else
-  # Check only changed files (exclude generated .g.dart)
+  # Check only CI-relevant changed files (exclude deletions and generated .g.dart)
   if [[ -n "$check_dir" ]]; then
-    git diff --name-only "$git_ref" -- "$check_dir/*.dart" | grep -v '\.g\.dart$' > "$changed_files_list" || true
+    git diff --name-only --diff-filter=ACMRTUXB "$git_ref" -- "$check_dir/*.dart" | grep -v '\.g\.dart$' > "$changed_files_list" || true
   else
-    git diff --name-only "$git_ref" -- '*.dart' | grep -v '\.g\.dart$' > "$changed_files_list" || true
+    git diff --name-only --diff-filter=ACMRTUXB "$git_ref" -- '*.dart' | grep -v '\.g\.dart$' > "$changed_files_list" || true
   fi
   filter_mode="changed files (compared to \`$git_ref\`)"
 fi
