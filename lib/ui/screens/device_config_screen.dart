@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_device_provider.dart';
-import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -13,6 +12,7 @@ import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_control_verifier.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/custom_app_bar.dart';
@@ -82,12 +82,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             : _deviceIdFromAsyncValue(previous);
         final nextDeviceId = _deviceIdFromAsyncValue(next);
         if (previousDeviceId != nextDeviceId) {
-          // Reset per-device guard so switching devices can show its own prompt.
+          // Reset guard so another device can get its own update prompt.
           _hasShownUpdatePrompt = false;
           _lastPromptDeviceId = null;
         }
       })
-      ..listen(ff1CurrentDeviceStatusProvider, (_, _) => _checkUpdatePrompt());
+      ..listen(
+        ff1CurrentDeviceStatusProvider,
+        (_, _) => _checkUpdatePrompt(),
+      );
 
     return ref
         .watch(activeFF1BluetoothDeviceProvider)
@@ -358,6 +361,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   /// notifications arrive.
   void _checkUpdatePrompt() {
     if (!mounted) return;
+    // Auto-prompt is for post-setup device configuration; during setup the
+    // screen blocks back navigation and hides the options menu, so starting
+    // an update here would strand the user without the documented flow.
+    if (widget.payload.isInSetupProcess) return;
+    if (!ref.read(ff1DeviceConnectedProvider)) return;
 
     final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
     final device = ref
@@ -456,53 +464,44 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                   borderColor: AppColor.white,
                   onTap: () async {
                     try {
-                      var success = false;
-
-                      if (device.topicId.isNotEmpty) {
-                        try {
-                          _log.info(
-                            '[Update Prompt] Attempting via WiFi',
-                          );
-                          final response = await ref
-                              .read(ff1WifiControlProvider)
-                              .updateToLatestVersion(
-                                topicId: device.topicId,
-                              );
-                          final dataOk = response.data?['ok'];
-                          success = dataOk is bool
-                              ? dataOk
-                              : (response.status?.toLowerCase() == 'ok' ||
-                                    response.status?.toLowerCase() ==
-                                        'success' ||
-                                    response.status == null);
-                          if (!success) {
-                            _log.warning(
-                              '[Update Prompt] WiFi returned '
-                              'unsuccessful response, falling back to BLE',
-                            );
-                          }
-                        } on Exception catch (e) {
-                          _log.warning(
-                            '[Update Prompt] WiFi error: $e, '
-                            'falling back to BLE',
+                      if (device.topicId.isEmpty) {
+                        _log.warning(
+                          '[Update Prompt] Missing topicId while connected',
+                        );
+                        if (mounted) {
+                          Navigator.pop(
+                            context,
+                            Exception('missing topic'),
                           );
                         }
+                        return;
                       }
 
+                      _log.info('[Update Prompt] Starting via relayer');
+                      final response = await ref
+                          .read(ff1WifiControlProvider)
+                          .updateToLatestVersion(
+                            topicId: device.topicId,
+                          );
+                      final okFlag = ff1CommandResponseOkFlag(response);
+                      final success =
+                          okFlag ?? ff1CommandResponseIsOk(response);
                       if (!success) {
-                        _log.info(
-                          '[Update Prompt] Attempting via Bluetooth',
+                        _log.warning(
+                          '[Update Prompt] Relayer returned unsuccessful '
+                          'response',
                         );
-                        await ref
-                            .read(ff1ControlProvider)
-                            .updateToLatestVersion(
-                              blDevice: device.toBluetoothDevice(),
-                            );
-                        success = true;
+                        if (mounted) {
+                          Navigator.pop(
+                            context,
+                            Exception('relayer rejected'),
+                          );
+                        }
+                        return;
                       }
 
                       if (mounted) {
-                        Navigator.pop(context, success);
+                        Navigator.pop(context, true);
                       }
                     } on Exception catch (e) {
                       _log.warning('[Update Prompt] Update failed: $e');
@@ -522,20 +521,20 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     if (!mounted) return;
 
     if (result is bool && result) {
+      // Do not pass onClose: showInfoDialog already pops the sheet; an extra
+      // context.pop() would remove DeviceConfigScreen underneath.
       await UIHelper.showInfoDialog(
         context,
         'Update Started',
         'The FF1 is now downloading and installing the latest '
             'firmware. It will restart automatically when complete.',
         closeButton: 'OK',
-        onClose: () => context.pop(),
       );
     } else if (result is Exception || result is Error) {
       await UIHelper.showInfoDialog(
         context,
         'Update Failed',
-        'Something went wrong while starting the update. '
-            'Please try again from the options menu.',
+        'Something went wrong while starting the update. Please try again.',
       );
     }
   }

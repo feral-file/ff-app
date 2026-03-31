@@ -117,7 +117,6 @@ class OptionsButton extends ConsumerWidget {
           onTap: () => unawaited(
             _onUpdateFirmwareSelected(
               context,
-              ref,
               control,
               device,
               deviceStatus,
@@ -238,7 +237,8 @@ class OptionsButton extends ConsumerWidget {
         await UIHelper.showInfoDialog(
           context,
           'Power Off Failed',
-          'Something went wrong while trying to power off the device. $result',
+          'Something went wrong while trying to power off the device. '
+          'Please try again.',
         );
       }
     }
@@ -310,7 +310,8 @@ class OptionsButton extends ConsumerWidget {
         await UIHelper.showInfoDialog(
           context,
           'Restart Failed',
-          'Something went wrong while trying to restart the device. $result',
+          'Something went wrong while trying to restart the device. '
+          'Please try again.',
         );
       }
     }
@@ -472,7 +473,7 @@ class OptionsButton extends ConsumerWidget {
           context,
           'Factory Reset Failed',
           'Something went wrong while trying to restore the device to '
-          'factory settings. $result',
+          'factory settings. Please try again.',
         );
       }
     }
@@ -480,7 +481,6 @@ class OptionsButton extends ConsumerWidget {
 
   Future<void> _onUpdateFirmwareSelected(
     BuildContext context,
-    WidgetRef ref,
     FF1WifiControl control,
     FF1Device device,
     FF1DeviceStatus? deviceStatus,
@@ -538,48 +538,42 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
                     borderColor: AppColor.white,
                     onTap: () async {
                       try {
-                        var success = false;
-
-                        if (topicId.isNotEmpty) {
-                          try {
-                            _log.info(
-                              '[Update Firmware] Attempting via WiFi',
-                            );
-                            final response = await control
-                                .updateToLatestVersion(
-                                  topicId: topicId,
-                                );
-                            final okFlag = ff1CommandResponseOkFlag(response);
-                            success =
-                                okFlag ?? ff1CommandResponseIsOk(response);
-                            if (!success) {
-                              _log.warning(
-                                '[Update Firmware] WiFi returned '
-                                'unsuccessful response, falling back to BLE',
-                              );
-                            }
-                          } on Exception catch (e) {
-                            _log.warning(
-                              '[Update Firmware] WiFi error: $e, '
-                              'falling back to BLE',
+                        if (topicId.isEmpty) {
+                          _log.warning(
+                            '[Update Firmware] Missing topicId while connected',
+                          );
+                          if (context.mounted) {
+                            Navigator.pop(
+                              context,
+                              Exception('missing topic'),
                             );
                           }
+                          return;
                         }
 
+                        _log.info('[Update Firmware] Starting via relayer');
+                        final response = await control.updateToLatestVersion(
+                          topicId: topicId,
+                        );
+                        final okFlag = ff1CommandResponseOkFlag(response);
+                        final success =
+                            okFlag ?? ff1CommandResponseIsOk(response);
                         if (!success) {
-                          _log.info(
-                            '[Update Firmware] Attempting via Bluetooth',
+                          _log.warning(
+                            '[Update Firmware] Relayer returned unsuccessful '
+                            'response',
                           );
-                          await ref
-                              .read(ff1ControlProvider)
-                              .updateToLatestVersion(
-                                blDevice: device.toBluetoothDevice(),
-                              );
-                          success = true;
+                          if (context.mounted) {
+                            Navigator.pop(
+                              context,
+                              Exception('relayer rejected'),
+                            );
+                          }
+                          return;
                         }
 
                         if (context.mounted) {
-                          Navigator.pop(context, success);
+                          Navigator.pop(context, true);
                         }
                       } on Exception catch (e) {
                         _log.warning('[Update Firmware] Failed: $e');
@@ -605,9 +599,6 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
           'The FF1 is now downloading and installing the latest firmware. '
           'It will restart automatically when the update is complete.',
           closeButton: 'OK',
-          onClose: () {
-            context.pop();
-          },
         );
       }
     } else if (result is Exception || result is Error) {
@@ -615,7 +606,8 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
         await UIHelper.showInfoDialog(
           context,
           'Update Failed',
-          'Something went wrong while trying to start the update. $result',
+          'Something went wrong while trying to start the update. '
+          'Please try again.',
         );
       }
     }

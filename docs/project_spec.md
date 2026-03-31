@@ -211,6 +211,7 @@
 - Purpose: discover/pair FF1 and configure connectivity/device settings.
 - Entry points: onboarding setup, menu FF1 Settings, QR deeplinks.
 - Key actions: BLE scan/connect, Wi-Fi selection/credentials, finalize pairing, adjust orientation/scaling/audio.
+- Firmware updates: Device Configuration can prompt when a newer version is reported (only after setup, not during the initial setup visit); manual **Update FF1** and the prompt both run only while the device is relayer-connected and start the update over Wi-Fi/relayer (no Bluetooth update path).
 - Important data: BLE state, FF1 device info/topicId, device/player status streams.
 - Related modules: FF1 providers (BLE + Wi-Fi), FF1 services, ObjectBox device store.
 
