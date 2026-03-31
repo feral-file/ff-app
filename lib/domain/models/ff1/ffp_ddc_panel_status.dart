@@ -80,6 +80,27 @@ class FfpDdcPanelStatus {
       power != null ||
       (monitor != null && monitor!.trim().isNotEmpty) ||
       (errors != null && errors!.isNotEmpty);
+
+  /// Merge updates (e.g. after a DDC write while a refresh is in flight).
+  FfpDdcPanelStatus copyWith({
+    int? brightness,
+    int? contrast,
+    int? volume,
+    bool? mute,
+    String? power,
+    String? monitor,
+    Map<String, String>? errors,
+  }) {
+    return FfpDdcPanelStatus(
+      brightness: brightness ?? this.brightness,
+      contrast: contrast ?? this.contrast,
+      volume: volume ?? this.volume,
+      mute: mute ?? this.mute,
+      power: power ?? this.power,
+      monitor: monitor ?? this.monitor,
+      errors: errors ?? this.errors,
+    );
+  }
 }
 
 bool? _parseMute(Object? raw) {

@@ -48,5 +48,17 @@ void main() {
       final s = FfpDdcPanelStatus.fromRelayerPayload({});
       expect(s.hasData, isFalse);
     });
+
+    test('copyWith updates one field and keeps the rest', () {
+      const base = FfpDdcPanelStatus(
+        brightness: 40,
+        contrast: 50,
+        monitor: 'X',
+      );
+      final u = base.copyWith(brightness: 80);
+      expect(u.brightness, 80);
+      expect(u.contrast, 50);
+      expect(u.monitor, 'X');
+    });
   });
 }

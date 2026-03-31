@@ -37,51 +37,40 @@ class FfpMonitorDdcSection extends ConsumerStatefulWidget {
 }
 
 class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
-  /// Local slider values while dragging or after optimistic set.
-  final Map<String, double> _optimistic = {};
-  FfpDdcPanelStatus? _lastStatus;
+  FfpDdcPanelStatus? _status;
+  bool _syncedFromDevice = false;
 
   String _monitorId(FfpDdcPanelStatus s) =>
       s.monitor?.trim().isNotEmpty ?? false ? s.monitor!.trim() : 'default';
 
-  double _sliderValue(String key, int? serverPercent) {
-    final local = _optimistic[key];
-    if (local != null) {
-      return local;
+  void _applyDeviceStatus(FfpDdcPanelStatus? status) {
+    if (status == null || !status.hasData || _syncedFromDevice) {
+      return;
     }
-    return (serverPercent ?? 0).toDouble();
+    _status = status;
+    _syncedFromDevice = true;
   }
 
-  void _setOptimistic(String key, double v) {
+  void _setStatus(FfpDdcPanelStatus status) {
     if (!mounted) {
       return;
     }
     setState(() {
-      _optimistic[key] = v;
-    });
-  }
-
-  void _clearOptimisticKey(String key) {
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _optimistic.remove(key);
+      _status = status;
     });
   }
 
   Future<void> _runBrightness(FfpDdcPanelStatus s, double v) async {
     final control = ref.read(ff1WifiControlProvider);
     final mid = _monitorId(s);
-    final prev = _optimistic['brightness'];
-    _setOptimistic('brightness', v);
+    final prev = _status ?? s;
+    _setStatus(prev.copyWith(brightness: v.round()));
     try {
       await control.setFfpMonitorBrightness(
         topicId: widget.topicId,
         monitorId: mid,
         percent: v.round(),
       );
-      _clearOptimisticKey('brightness');
     } on FfpDdcUnsupportedException catch (e) {
       _log.info('Brightness unsupported: $e');
       if (mounted) {
@@ -89,69 +78,53 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
           SnackBar(content: Text(e.message)),
         );
       }
-      if (prev != null) {
-        _setOptimistic('brightness', prev);
-      } else {
-        _clearOptimisticKey('brightness');
-      }
+      _setStatus(prev);
     } on Exception catch (e) {
       _log.warning('setFfpMonitorBrightness: $e');
-      if (prev != null) {
-        _setOptimistic('brightness', prev);
-      } else {
-        _clearOptimisticKey('brightness');
-      }
+      _setStatus(prev);
     }
   }
 
   Future<void> _runContrast(FfpDdcPanelStatus s, double v) async {
     final control = ref.read(ff1WifiControlProvider);
     final mid = _monitorId(s);
-    final prev = _optimistic['contrast'];
-    _setOptimistic('contrast', v);
+    final prev = _status ?? s;
+    _setStatus(prev.copyWith(contrast: v.round()));
     try {
       await control.setFfpMonitorContrast(
         topicId: widget.topicId,
         monitorId: mid,
         percent: v.round(),
       );
-      _clearOptimisticKey('contrast');
     } on Exception catch (e) {
       _log.warning('setFfpMonitorContrast: $e');
-      if (prev != null) {
-        _setOptimistic('contrast', prev);
-      } else {
-        _clearOptimisticKey('contrast');
-      }
+      _setStatus(prev);
     }
   }
 
   Future<void> _runMonitorVolume(FfpDdcPanelStatus s, double v) async {
     final control = ref.read(ff1WifiControlProvider);
     final mid = _monitorId(s);
-    final prev = _optimistic['monitorVolume'];
-    _setOptimistic('monitorVolume', v);
+    final prev = _status ?? s;
+    _setStatus(prev.copyWith(volume: v.round()));
     try {
       await control.setFfpMonitorVolume(
         topicId: widget.topicId,
         monitorId: mid,
         percent: v.round(),
       );
-      _clearOptimisticKey('monitorVolume');
     } on Exception catch (e) {
       _log.warning('setFfpMonitorVolume: $e');
-      if (prev != null) {
-        _setOptimistic('monitorVolume', prev);
-      } else {
-        _clearOptimisticKey('monitorVolume');
-      }
+      _setStatus(prev);
     }
   }
 
   Future<void> _toggleMute(FfpDdcPanelStatus s) async {
     final control = ref.read(ff1WifiControlProvider);
     final mid = _monitorId(s);
-    final next = !(s.mute ?? false);
+    final prev = _status ?? s;
+    final next = !(prev.mute ?? false);
+    _setStatus(prev.copyWith(mute: next));
     try {
       await control.setFfpMonitorMute(
         topicId: widget.topicId,
@@ -160,6 +133,7 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
       );
     } on Exception catch (e) {
       _log.warning('setFfpMonitorMute: $e');
+      _setStatus(prev);
     }
   }
 
@@ -169,24 +143,32 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
       return const SizedBox.shrink();
     }
 
-    final async = ref.watch(ff1FfpDdcPanelStatusStreamProvider(widget.topicId));
+    final statusProvider = ff1FfpDdcPanelStatusStreamProvider(widget.topicId);
+    ref.listen<AsyncValue<FfpDdcPanelStatus>>(statusProvider, (_, next) {
+      next.whenData((status) {
+        if (!_syncedFromDevice) {
+          setState(() => _applyDeviceStatus(status));
+        }
+      });
+    });
+    final async = ref.watch(statusProvider);
 
     return async.when(
       data: (status) {
-        _lastStatus = status;
-        if (!status.hasData) {
+        final display = _status ?? status;
+        if (!display.hasData) {
           return const SizedBox.shrink();
         }
-        return _statusContent(context, status);
+        return _statusContent(context, display);
       },
-      loading: () => _lastStatus == null || !_lastStatus!.hasData
+      loading: () => _status == null || !_status!.hasData
           ? const SizedBox.shrink()
-          : _statusContent(context, _lastStatus!),
+          : _statusContent(context, _status!),
       error: (e, _) {
         _log.fine('Ffp DDC panel status unavailable: $e');
-        return _lastStatus == null || !_lastStatus!.hasData
+        return _status == null || !_status!.hasData
             ? const SizedBox.shrink()
-            : _statusContent(context, _lastStatus!);
+            : _statusContent(context, _status!);
       },
     );
   }
@@ -236,9 +218,10 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
               if (showBrightness) ...[
                 LabeledSliderControl(
                   label: 'Brightness',
-                  value: _sliderValue('brightness', status.brightness),
+                  value: (status.brightness ?? 0).toDouble(),
                   enabled: enable,
-                  onChanged: (v) => _setOptimistic('brightness', v),
+                  onChanged: (v) =>
+                      _setStatus(status.copyWith(brightness: v.round())),
                   onChangeEnd: (v) => _runBrightness(status, v),
                 ),
                 SizedBox(height: LayoutConstants.space4),
@@ -246,9 +229,10 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
               if (showContrast) ...[
                 LabeledSliderControl(
                   label: 'Contrast',
-                  value: _sliderValue('contrast', status.contrast),
+                  value: (status.contrast ?? 0).toDouble(),
                   enabled: enable,
-                  onChanged: (v) => _setOptimistic('contrast', v),
+                  onChanged: (v) =>
+                      _setStatus(status.copyWith(contrast: v.round())),
                   onChangeEnd: (v) => _runContrast(status, v),
                 ),
                 SizedBox(height: LayoutConstants.space4),
@@ -276,13 +260,10 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
                       Expanded(
                         child: LabeledSliderControl(
                           label: 'Monitor volume',
-                          value: _sliderValue(
-                            'monitorVolume',
-                            status.volume,
-                          ),
+                          value: (status.volume ?? 0).toDouble(),
                           enabled: enable,
                           onChanged: (v) =>
-                              _setOptimistic('monitorVolume', v),
+                              _setStatus(status.copyWith(volume: v.round())),
                           onChangeEnd: (v) => _runMonitorVolume(status, v),
                         ),
                       ),
