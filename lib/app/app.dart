@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:app/app/bootstrap/app_startup_orchestration.dart';
 import 'package:app/app/bootstrap/bootstrap_status_toast.dart';
-import 'package:app/app/bootstrap/database_reset_recovery_service.dart';
 import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
 import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
@@ -24,9 +23,6 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/app/widgets/builder_overlay_scope.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
-import 'package:app/domain/utils/address_deduplication.dart';
-import 'package:app/infra/config/app_state_service.dart';
-import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/theme/app_theme.dart';
 import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
@@ -324,8 +320,6 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
         return;
       }
 
-      await _recoverFromDatabaseResetIfNeeded();
-
       await bootstrap.bootstrap();
 
       await _logStartupFeedState();
@@ -459,7 +453,6 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       return;
     }
     try {
-      await _recoverFromDatabaseResetIfNeeded();
       await notifier.bootstrap();
       await _logStartupFeedState();
       await ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider)();
@@ -521,42 +514,11 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     }
   }
 
-  Future<void> _recoverFromDatabaseResetIfNeeded() async {
-    final requiresReindex = await consumeDatabaseResetReindexMarker();
-    if (!requiresReindex) {
-      return;
-    }
-
-    final appState = ref.read(appStateServiceProvider);
-    final databaseService = ref.read(databaseServiceProvider);
-
-    // Read known addresses from SQLite source of truth.
-    final addressPlaylists = await databaseService.getAddressPlaylists();
-    final addresses = addressPlaylists
-        .map((playlist) => playlist.ownerAddress)
-        .whereType<String>()
-        .map((address) => address.toNormalizedAddress())
-        .toSet()
-        .toList(growable: false);
-
-    if (addresses.isEmpty) {
-      return;
-    }
-
-    await DatabaseResetRecoveryService(appStateService: appState).recover(
-      normalizedAddresses: addresses,
-      aliasForAddress: shortAddressAlias,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    // Keep AppLifecycleNotifier + tracked-address sync alive for side effects.
     ref
-      // Keep AppLifecycleNotifier alive so it can attach
-      // the WidgetsBinding observer.
       ..watch(appLifecycleProvider)
-      // Keep tracked addresses sync alive; watches ObjectBox
-      // TrackedAddressEntity.
       ..watch(trackedAddressesSyncProvider);
     return ProviderScope(
       overrides: [
