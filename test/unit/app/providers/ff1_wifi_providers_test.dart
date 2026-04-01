@@ -1,10 +1,14 @@
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/app/providers/version_provider.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/infra/api/pubdoc_api.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
+import 'package:app/infra/services/version_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'provider_test_helpers.dart';
 
@@ -377,4 +381,212 @@ void main() {
       expect(container.read(ff1DeviceConnectedProvider), isFalse);
     },
   );
+
+  test(
+    'auto-connect version check waits for fresh device status after switch',
+    () async {
+      await ensureDotEnvLoaded();
+
+      final deviceService = MockFF1BluetoothDeviceService();
+      final wifiControl = FakeWifiControl();
+      final versionService = _RecordingVersionService();
+      const deviceA = FF1Device(
+        name: 'FF1-A',
+        remoteId: 'remote-a',
+        deviceId: 'device-a',
+        topicId: 'topic-a',
+        branchName: 'main',
+      );
+      const deviceB = FF1Device(
+        name: 'FF1-B',
+        remoteId: 'remote-b',
+        deviceId: 'device-b',
+        topicId: 'topic-b',
+        branchName: 'main',
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1BluetoothDeviceServiceProvider.overrideWithValue(deviceService),
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+          versionServiceProvider.overrideWithValue(versionService),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container
+        ..listen(
+          ff1AutoConnectWatcherProvider,
+          (_, _) {},
+        )
+        ..listen<AsyncValue<FF1ConnectionStatus>>(
+          ff1ConnectionStatusStreamProvider,
+          (_, _) {},
+        )
+        ..listen<AsyncValue<FF1DeviceStatus>>(
+          ff1DeviceStatusStreamProvider,
+          (_, _) {},
+        );
+
+      deviceService
+        ..devices = [deviceA]
+        ..activeDeviceId = deviceA.deviceId;
+      container.invalidate(activeFF1BluetoothDeviceProvider);
+      await container.read(activeFF1BluetoothDeviceProvider.future);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      wifiControl.emitDeviceStatus(
+        const FF1DeviceStatus(latestVersion: '1.0.0'),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(versionService.deviceVersions, ['1.0.0']);
+
+      deviceService
+        ..devices = [deviceA, deviceB]
+        ..activeDeviceId = deviceB.deviceId;
+      container.invalidate(activeFF1BluetoothDeviceProvider);
+      await container.read(activeFF1BluetoothDeviceProvider.future);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      expect(wifiControl.lastConnectedDevice?.deviceId, deviceB.deviceId);
+
+      wifiControl.emitDeviceStatus(
+        const FF1DeviceStatus(latestVersion: '2.0.0'),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+
+      expect(versionService.deviceVersions, contains('1.0.0'));
+      expect(versionService.deviceVersions.last, '2.0.0');
+      expect(versionService.deviceVersions, isNot(contains('')));
+    },
+  );
+
+  test(
+    'auto-connect version check uses device status emitted during connect',
+    () async {
+      await ensureDotEnvLoaded();
+
+      final deviceService = MockFF1BluetoothDeviceService();
+      final wifiControl = _AutoStatusWifiControl(
+        statusesByDeviceId: const {
+          'device-a': FF1DeviceStatus(latestVersion: '1.0.0'),
+          'device-b': FF1DeviceStatus(latestVersion: '2.0.0'),
+        },
+      );
+      final versionService = _RecordingVersionService();
+      const deviceA = FF1Device(
+        name: 'FF1-A',
+        remoteId: 'remote-a',
+        deviceId: 'device-a',
+        topicId: 'topic-a',
+        branchName: 'main',
+      );
+      const deviceB = FF1Device(
+        name: 'FF1-B',
+        remoteId: 'remote-b',
+        deviceId: 'device-b',
+        topicId: 'topic-b',
+        branchName: 'main',
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1BluetoothDeviceServiceProvider.overrideWithValue(deviceService),
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+          versionServiceProvider.overrideWithValue(versionService),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.listen(
+        ff1AutoConnectWatcherProvider,
+        (_, _) {},
+      );
+
+      deviceService
+        ..devices = [deviceA]
+        ..activeDeviceId = deviceA.deviceId;
+      container.invalidate(activeFF1BluetoothDeviceProvider);
+      await container.read(activeFF1BluetoothDeviceProvider.future);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      deviceService
+        ..devices = [deviceA, deviceB]
+        ..activeDeviceId = deviceB.deviceId;
+      container.invalidate(activeFF1BluetoothDeviceProvider);
+      await container.read(activeFF1BluetoothDeviceProvider.future);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(versionService.deviceVersions, contains('1.0.0'));
+      expect(versionService.deviceVersions.last, '2.0.0');
+    },
+  );
+}
+
+class _RecordingVersionService extends VersionService {
+  _RecordingVersionService()
+    : super(
+        pubDocApi: _FakePubDocApi(),
+        navigatorKey: null,
+        platformOverride: 'ios',
+        packageInfoLoader: () async => PackageInfo(
+          appName: 'app',
+          packageName: 'pkg',
+          version: '10.0.0',
+          buildNumber: '1',
+        ),
+      );
+
+  final List<String> deviceVersions = <String>[];
+
+  @override
+  Future<VersionCompatibilityResult> checkDeviceVersionCompatibility({
+    required String branchName,
+    required String deviceVersion,
+    bool requiredDeviceUpdate = false,
+  }) async {
+    deviceVersions.add(deviceVersion);
+    return VersionCompatibilityResult.compatible;
+  }
+}
+
+class _AutoStatusWifiControl extends FakeWifiControl {
+  _AutoStatusWifiControl({
+    required this.statusesByDeviceId,
+  });
+
+  final Map<String, FF1DeviceStatus> statusesByDeviceId;
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+  }) async {
+    await super.connect(device: device, userId: userId, apiKey: apiKey);
+    final status = statusesByDeviceId[device.deviceId];
+    if (status != null) {
+      emitDeviceStatus(status);
+    }
+  }
+}
+
+class _FakePubDocApi implements PubDocApi {
+  @override
+  Future<Map<String, dynamic>> getVersionCompatibility() async => {};
+
+  Future<List<dynamic>> getReleaseNotes() async => <dynamic>[];
+
+  @override
+  Future<String> getAppleModelIdentifier() async => '';
+
+  @override
+  Future<String> getVersionContent() async => '';
 }

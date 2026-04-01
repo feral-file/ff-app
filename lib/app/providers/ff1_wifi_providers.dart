@@ -503,11 +503,27 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
             );
 
             final versionService = ref.read(versionServiceProvider);
-            final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
+            final control = ref.read(ff1WifiControlProvider);
+            final deviceStatus = await control.waitForFreshDeviceStatus();
+            if (deviceStatus == null) {
+              logger.warning(
+                'Skipping device version compatibility check: '
+                'device status not available after connect',
+              );
+              return;
+            }
+            final deviceVersion = deviceStatus.latestVersion;
+            if (deviceVersion == null || deviceVersion.isEmpty) {
+              logger.warning(
+                'Skipping device version compatibility check: '
+                'device version not available in fresh device status',
+              );
+              return;
+            }
             unawaited(
               versionService.checkDeviceVersionCompatibility(
                 branchName: device.branchName,
-                deviceVersion: deviceStatus?.latestVersion ?? '',
+                deviceVersion: deviceVersion,
                 requiredDeviceUpdate: true,
               ),
             );

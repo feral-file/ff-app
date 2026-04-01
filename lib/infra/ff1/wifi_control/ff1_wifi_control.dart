@@ -73,6 +73,7 @@ class FF1WifiControl {
   FF1PlayerStatus? _currentPlayerStatus;
   FF1DeviceStatus? _currentDeviceStatus;
   bool _isDeviceConnected = false;
+  Completer<FF1DeviceStatus?>? _freshDeviceStatusCompleter;
 
   // Stream subscriptions
   StreamSubscription<FF1NotificationMessage>? _notificationSub;
@@ -133,6 +134,7 @@ class FF1WifiControl {
   }) async {
     final flowId = _nextFlowId('connect');
     final previousDeviceId = _device?.deviceId;
+    _freshDeviceStatusCompleter?.complete(null);
     _device = device;
     _userId = userId;
     _apiKey = apiKey;
@@ -147,6 +149,7 @@ class FF1WifiControl {
     _currentPlayerStatus = null;
     _currentDeviceStatus = null;
     _isDeviceConnected = false;
+    _freshDeviceStatusCompleter = Completer<FF1DeviceStatus?>();
     _connectionStatusController.add(const FF1ConnectionStatus(isConnected: false));
 
     _log.info('Connecting to ${device.deviceId}');
@@ -221,6 +224,8 @@ class FF1WifiControl {
     _currentPlayerStatus = null;
     _currentDeviceStatus = null;
     _isDeviceConnected = false;
+    _freshDeviceStatusCompleter?.complete(null);
+    _freshDeviceStatusCompleter = null;
     _slog.info(
       category: LogCategory.wifi,
       event: 'control_disconnect_completed',
@@ -256,6 +261,19 @@ class FF1WifiControl {
   /// Current device status (last received)
   FF1DeviceStatus? get currentDeviceStatus => _currentDeviceStatus;
 
+  /// Waits for the first device status observed after the most recent connect
+  /// reset. Returns the already-received fresh status immediately when
+  /// available, or `null` on timeout / teardown.
+  Future<FF1DeviceStatus?> waitForFreshDeviceStatus({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final completer = _freshDeviceStatusCompleter;
+    if (completer == null) {
+      return _currentDeviceStatus;
+    }
+    return completer.future.timeout(timeout, onTimeout: () => null);
+  }
+
   /// Whether device is connected (per connection notification)
   bool get isDeviceConnected => _isDeviceConnected;
 
@@ -288,6 +306,8 @@ class FF1WifiControl {
         final deviceStatus = FF1DeviceStatus.fromJson(notification.message);
         _currentDeviceStatus = deviceStatus;
         _deviceStatusController.add(deviceStatus);
+        _freshDeviceStatusCompleter?.complete(deviceStatus);
+        _freshDeviceStatusCompleter = null;
 
       case FF1NotificationType.connection:
         final connectionStatus = FF1ConnectionStatus.fromJson(
@@ -348,6 +368,8 @@ class FF1WifiControl {
       _currentPlayerStatus = null;
       _currentDeviceStatus = null;
       _isDeviceConnected = false;
+      _freshDeviceStatusCompleter?.complete(null);
+      _freshDeviceStatusCompleter = null;
       _connectionStatusController.add(
         FF1ConnectionStatus(isConnected: isConnected),
       );
@@ -537,6 +559,8 @@ transport reconnected — waiting for device connection notification''',
     _currentPlayerStatus = null;
     _currentDeviceStatus = null;
     _isDeviceConnected = false;
+    _freshDeviceStatusCompleter?.complete(null);
+    _freshDeviceStatusCompleter = null;
     _connectionStatusController.add(
       const FF1ConnectionStatus(isConnected: false),
     );
