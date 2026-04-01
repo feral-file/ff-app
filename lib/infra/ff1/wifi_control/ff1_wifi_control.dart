@@ -1196,34 +1196,6 @@ transport reconnected — waiting for device connection notification''',
     }
   }
 
-  /// FFP / DDC: read panel snapshot (not FF1 system audio).
-  ///
-  /// Relayer returns nested JSON; unwrapFf1RelayerPayload then
-  /// FfpDdcPanelStatus.fromRelayerPayload (flat `ddcPanelStatus` / `message`).
-  Future<FfpDdcPanelStatus> getFfpDdcPanelStatus({
-    required String topicId,
-  }) async {
-    if (_restClient == null) {
-      throw StateError('REST client not available');
-    }
-
-    try {
-      const request = FfpDdcGetPanelStatusRequest();
-      final response =
-          await _restClient.sendCommand(
-                topicId: topicId,
-                command: request.command,
-                params: request.params,
-              )
-              as Map<String, dynamic>;
-      final payload = unwrapFf1RelayerPayload(response);
-      return FfpDdcPanelStatus.fromRelayerPayload(payload);
-    } catch (e) {
-      _log.severe('Failed to fetch FFP DDC panel status: $e');
-      rethrow;
-    }
-  }
-
   /// FFP / DDC: set monitor brightness (may throw [FfpDdcUnsupportedException]).
   Future<void> setFfpMonitorBrightness({
     required String topicId,

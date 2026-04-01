@@ -34,14 +34,7 @@ void main() {
           activeFF1BluetoothDeviceProvider.overrideWith((ref) {
             return Stream.value(device);
           }),
-          ff1WifiControlProvider.overrideWithValue(
-            _FakeWifiControl(
-              resyncedStatus: const FfpDdcPanelStatus(
-                brightness: 20,
-                monitor: 'Test Monitor',
-              ),
-            ),
-          ),
+          ff1WifiControlProvider.overrideWithValue(_FakeWifiControl()),
           ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith((ref) {
             return statuses.stream;
           }),
@@ -103,11 +96,7 @@ void main() {
         brightness: 20,
         monitor: 'Test Monitor',
       );
-      const staleResync = FfpDdcPanelStatus(
-        brightness: 20,
-        monitor: 'Test Monitor',
-      );
-      final control = _FakeWifiControl(resyncedStatus: staleResync);
+      final control = _FakeWifiControl();
 
       await tester.pumpWidget(
         ProviderScope(
@@ -171,12 +160,7 @@ void main() {
         topicId: topicId,
       );
       final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
-      final control = _FakeWifiControl(
-        resyncedStatus: const FfpDdcPanelStatus(
-          brightness: 20,
-          monitor: 'Test Monitor',
-        ),
-      );
+      final control = _FakeWifiControl();
 
       addTearDown(statuses.close);
 
@@ -252,21 +236,13 @@ void main() {
 }
 
 class _FakeWifiControl extends FF1WifiControl {
-  _FakeWifiControl({required this.resyncedStatus})
+  _FakeWifiControl()
     : super(
         transport: _FakeWifiTransport(),
         restClient: null,
       );
 
-  final FfpDdcPanelStatus resyncedStatus;
   int? lastBrightness;
-
-  @override
-  Future<FfpDdcPanelStatus> getFfpDdcPanelStatus({
-    required String topicId,
-  }) async {
-    return resyncedStatus;
-  }
 
   @override
   Future<void> setFfpMonitorBrightness({

@@ -370,13 +370,9 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
         monitorId: _monitorId(state),
         powerState: powerState,
       );
-      try {
-        final fresh = await control.getFfpDdcPanelStatus(topicId: _topicId);
-        _deviceStatus = fresh;
-      } on Exception {
-        // Keep waiting for either the explicit refresh or relayer push to
-        // confirm the power state; the optimistic value remains visible.
-      }
+      // Panel snapshot only arrives via relayer notification; `_deviceStatus`
+      // updates from `ff1FfpDdcPanelStatusStreamProvider` when the device
+      // pushes. Optimistic `_pendingPower` stays until then.
       state = _deriveState();
     } on Exception {
       _pendingPower = previousPending;

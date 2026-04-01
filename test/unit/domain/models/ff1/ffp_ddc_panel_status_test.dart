@@ -52,9 +52,9 @@ void main() {
       expect(s.hasData, isTrue);
     });
 
-    test('nested ddcPanelStatus map', () {
+    test('nested ddc_status map', () {
       final json = {
-        'ddcPanelStatus': {
+        'ddc_status': {
           'volume': 10,
           'mute': 'on',
         },
@@ -62,6 +62,14 @@ void main() {
       final s = FfpDdcPanelStatus.fromRelayerPayload(json);
       expect(s.volume, 10);
       expect(s.mute, isTrue);
+    });
+
+    test('nested legacy ddcPanelStatus key still parses', () {
+      final json = {
+        'ddcPanelStatus': {'volume': 5},
+      };
+      final s = FfpDdcPanelStatus.fromRelayerPayload(json);
+      expect(s.volume, 5);
     });
 
     test('empty map has no data', () {

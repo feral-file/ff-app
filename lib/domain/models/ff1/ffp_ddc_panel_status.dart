@@ -1,12 +1,13 @@
-/// Snapshot from FF1 `ddcPanelStatus` command (flat `message`, ffos#84).
+/// DDC panel snapshot from relayer notifications only (`notification_type`
+/// `ddc_status` or `default`), flat `message` (ffos#84).
 ///
-/// Relayer may send `notification_type: "default"` with the same flat `message`
+/// Relayer may use `notification_type: "default"` with the same flat `message`
 /// shape (brightness, contrast, volume, power, monitor, errors, …).
 ///
 /// Distinct from FF1 system audio (`FF1DeviceStatus.volume` / `setVolume`).
 library;
 
-/// Parsed `ddcPanelStatus` / unwrapped relayer `message` for the connected display.
+/// Parsed `ddc_status` / unwrapped relayer `message` for the connected display.
 class FfpDdcPanelStatus {
   /// Creates a DDC panel snapshot (typically from `fromRelayerPayload`).
   const FfpDdcPanelStatus({
@@ -19,12 +20,13 @@ class FfpDdcPanelStatus {
     this.errors,
   });
 
-  /// After relayer unwrap: flat `message`, or nested `ddcPanelStatus` map.
+  /// After relayer unwrap: flat `message`, or nested `ddc_status` map
+  /// (legacy key `ddcPanelStatus` still accepted).
   factory FfpDdcPanelStatus.fromRelayerPayload(Map<String, dynamic> json) {
     if (json.isEmpty) {
       return const FfpDdcPanelStatus();
     }
-    final nested = json['ddcPanelStatus'];
+    final nested = json['ddc_status'] ?? json['ddcPanelStatus'];
     if (nested is Map) {
       return FfpDdcPanelStatus._fromWireMap(
         Map<String, dynamic>.from(nested),

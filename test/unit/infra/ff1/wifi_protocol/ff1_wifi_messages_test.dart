@@ -54,9 +54,9 @@ void main() {
       );
     });
 
-    test('fromString parses ddcPanelStatus correctly', () {
+    test('fromString parses ddc_status correctly', () {
       expect(
-        FF1NotificationType.fromString('ddcPanelStatus'),
+        FF1NotificationType.fromString('ddc_status'),
         FF1NotificationType.ffpDdcPanelStatus,
       );
     });
@@ -78,7 +78,7 @@ void main() {
     test('value returns correct string', () {
       expect(FF1NotificationType.playerStatus.value, 'player_status');
       expect(FF1NotificationType.deviceStatus.value, 'device_status');
-      expect(FF1NotificationType.ffpDdcPanelStatus.value, 'ddcPanelStatus');
+      expect(FF1NotificationType.ffpDdcPanelStatus.value, 'ddc_status');
       expect(FF1NotificationType.ffpStatusDefault.value, 'default');
       expect(FF1NotificationType.connection.value, 'connection');
     });
