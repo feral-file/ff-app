@@ -91,7 +91,7 @@
 - Outcome: personal address-based playlists appear in "Me" sections and receive indexed tokens.
 - Important edge cases:
   - indexing can resume from persisted workflow state after app restart
-  - personal token list sync paginates on indexer `nextOffset` only (`null` means no more pages). The app persists that list cursor in app state so restarts resume from the indexer offset, which may differ from the local playlist row count; the cursor is cleared when pagination completes, when the seed SQLite file is replaced while ObjectBox is preserved (rebuild metadata), and when a stale cursor would start past the head of an empty playlist row
+  - personal token list sync paginates on indexer `nextOffset` only (`null` means no more pages). The app persists that list cursor in app state so restarts resume from the indexer offset, which may differ from the local playlist row count; when a cursor is stored it takes precedence over playlist `itemCount` (an empty playlist row alone does not invalidate it). The cursor is cleared when pagination completes and when the seed SQLite file is replaced while ObjectBox is preserved (rebuild metadata)
   - background fast-path sync runs before polling completes
   - remove address deletes playlist + related local token items and clears app state anchors/status
 
