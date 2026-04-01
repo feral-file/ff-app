@@ -3,11 +3,16 @@ alwaysApply: true
 ---
 # Review workflow rule
 
-When implementation is complete (tests and post-implementation checks pass), run a **review loop** until the reviewer qualifies the change. Do not commit, push, or create a PR before **Verdict: accept**.
+This is the mandatory post-implementation gate. After any implementation, do not consider the work done, and do not commit, push, or create a PR, until both paths are clear:
 
-1. **Handoff** — Produce a compact handoff: goal, files changed, key decisions, checks run, known tradeoffs.
-2. **Review** — Invoke the **reviewer** subagent (e.g. `/reviewer`) with fresh context. Give it the handoff, the diff (`git diff --stat`, `git diff`), and any test/lint output. The reviewer follows `prompts/code-review.md` and ends with **Verdict: accept** or **Verdict: revise**.
-3. **If Verdict: revise** — Address the reviewer's findings, re-run tests and post-implementation checks, update the handoff, and invoke the reviewer again. Repeat until **Verdict: accept**.
-4. **After Verdict: accept** — Commit (Conventional Commits), push, and create a PR only if the user requested it.
+1. Deterministic check: `scripts/agent-helpers/post-implementation-checks.sh HEAD` is clean and every reported issue is fixed.
+2. Inference check: the reviewer pool accepts the full diff against `main`.
 
-The master agent and reviewer work in this loop until the change is qualified.
+1. **Handoff** — Produce a compact handoff: master purpose, recent implementation change, files changed, key decisions, checks run.
+2. **Diff** — Generate the review diff by comparing the branch to `main`, not only the latest commit or latest local edit.
+3. **Review pool** — Spawn 2-3 fresh-context `reviewer` subagents in parallel based on implementation complexity. Size the pool from the actual implementation complexity only. Do not increase reviewer count because of test-only, doc-only, workflow-only, or dependency-only changes.
+4. **Inputs** — Give each reviewer the handoff, the diff against `main`, and any relevant test or lint output. Each reviewer follows `prompts/code-review.md` and ends with **Verdict: accept** or **Verdict: revise**.
+5. **If any Verdict: revise** — Collect all reviewer reports, merge all valid findings into one action list, fix every valid issue found across the full review pool, re-run the deterministic checks, update the handoff, and send the updated diff against `main` back for another review round. Repeat until the full pool accepts.
+6. **After Verdict: accept** — Commit (Conventional Commits), push, and create a PR only if the user requested it.
+
+Keep this rule focused. Do not duplicate detailed review heuristics here; `prompts/code-review.md` remains the source of truth for review content and output.

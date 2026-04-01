@@ -69,22 +69,22 @@ When `PLANS.md` is activated, follow it exactly:
 
 A task is complete only when:
 
-1. Post-implementation checks are clean.
-2. Architecture/layering and DP-1 terminology constraints remain intact.
-3. Riverpod remains the flow driver; side effects stay out of widgets.
-4. If behavior or scope changes touch an execution matrix or tracker doc (for example `docs/vision_execution_gap.md`, `docs/vision_gap_orbit3.md`, or an approved plan spec), update the relevant status/evidence in the same change.
+1. `scripts/agent-helpers/post-implementation-checks.sh HEAD` completes cleanly and every issue it reports has been fixed. Treat this script as a release gate, not a best-effort signal.
+2. The review pool, sized to match the implementation complexity of the full diff against `main`, concludes with **Verdict: accept** after all valid findings have been addressed. Reviewer count should be based on the actual implementation complexity only, not inflated by test-only, doc-only, workflow-only, or dependency-only changes.
 
 ## Review workflow (implement → review loop → commit/push/PR)
 
-After implementation, run a **review loop** until the reviewer qualifies the change. Only after the reviewer says **Verdict: accept** is the change available for you to commit, push, or create a PR.
+After implementation, run a **review loop** until the reviewers qualify the change. Only after the review pool says **Verdict: accept** is the change available for you to commit, push, or create a PR.
 
-1. **Create a compact handoff** — Goal, files changed, key decisions and tradeoffs, checks run (e.g. lint, tests, post-implementation script).
+1. **Create a compact handoff** — Include the master purpose of the work, the recent change being reviewed, files changed, key decisions and tradeoffs.
 
-2. **Invoke the reviewer sub-agent** — Run a fresh-context review. Give it the handoff, the diff, and any test/lint output. The reviewer follows `prompts/code-review.md` and ends with **Verdict: accept** or **Verdict: revise**.
+2. **Generate the review diff from `main`** — Always generate the diff by comparing the current change against the `main` branch so reviewers see the full branch delta, not only the most recent commit or latest local change after many commits.
 
-3. **If Verdict: revise** — Address the reviewer’s findings (fix issues, add tests/docs as needed), re-run tests and post-implementation checks, update the handoff, and invoke the reviewer again. Repeat until **Verdict: accept**.
+3. **Invoke the reviewer sub-agents** — Spawn 2-3 fresh-context reviewers in parallel based on the implementation complexity of the full diff against `main`. Do not increase reviewer count because of test-only, doc-only, workflow-only, or dependency-only changes. Give each reviewer the handoff, the diff against `main`, and any test/lint output. Every reviewer follows `prompts/code-review.md` and ends with **Verdict: accept** or **Verdict: revise**. Close each reviewer sub-agent after it finishes its review.
 
-Do not commit, push, or create a PR (if requested) before the reviewer has accepted. The master agent and reviewer sub-agent work in this loop until the change is qualified.
+4. **If any reviewer says Verdict: revise** — The main agent must collect all reports from all reviewer sub-agents, merge the findings into one action list, fix every valid issue raised across the full review pool, re-run tests and post-implementation checks, update the handoff, and send the updated branch diff against `main` to a newly spawned set of reviewer sub-agents for another round. Do not reuse prior reviewer sessions.
+
+Do not commit, push, or create a PR (if requested) before the reviewers have accepted. The master agent owns collecting all reviewer feedback, resolving the combined findings, and repeating the loop until the change is qualified.
 
 ## Commit message format
 
