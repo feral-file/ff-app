@@ -2,11 +2,11 @@ import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/indexer/sync_collection.dart';
 import 'package:app/domain/models/wallet_address.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
-import 'package:app/infra/config/dismissed_firmware_versions_json.dart';
 import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/objectbox.g.dart'
     show AppStateAddressEntity_, AppStateEntity_, TrackedAddressEntity_;
+import 'package:app/util/json_string_map_codec.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:objectbox/objectbox.dart';
@@ -327,7 +327,7 @@ class AppStateService extends AppStateServiceBase {
 
   @override
   String getDismissedUpdateVersion(String deviceId) {
-    final map = decodeDismissedFirmwareVersionsMap(
+    final map = decodeJsonStringMap(
       _getOrCreateSingleton().dismissedUpdateVersionsJson,
     );
     return map[deviceId] ?? '';
@@ -340,13 +340,12 @@ class AppStateService extends AppStateServiceBase {
   }) async {
     await _lock.synchronized(() async {
       final app = _getOrCreateSingleton();
-      final map = decodeDismissedFirmwareVersionsMap(
+      final map = decodeJsonStringMap(
         app.dismissedUpdateVersionsJson,
       );
       map[deviceId] = version;
       app
-        ..dismissedUpdateVersionsJson =
-            encodeDismissedFirmwareVersionsMap(map)
+        ..dismissedUpdateVersionsJson = encodeJsonStringMap(map)
         ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
       _appStateBox.put(app);
     });

@@ -148,7 +148,6 @@
 - failure/edge states:
   - BLE/network errors route to retry/cancel/support paths
   - device-updating/version-check errors trigger dedicated dialogs/routes
-  - firmware: optional **update available** center prompt on Device Configuration when installed/latest versions differ (gated off during `isInSetupProcess`); **Update FF1** and the prompt require relayer connectivity and start the update via Wi-Fi/relayer only (shared app-layer relayer update service); dismissing the prompt for a given latest version is remembered per device until the reported latest changes; if latest changes again during the same Device Config visit, the prompt can reappear for that new latest (unless dismissed)
 - key screens involved: FF1 Device Picker, Start Setup FF1, Connect FF1, Scan WiFi, Enter WiFi Password, Device Config
 - key modules/services involved: `ff1_providers`, `connect_ff1_providers`, `connect_wifi_provider`, `ff1_bluetooth_device_providers`, `ff1_wifi_control`
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/ff1/ff1_firmware_update_prompt_orchestrator.dart';
 import 'package:app/app/ff1/ff1_relayer_firmware_update_service.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_device_provider.dart';
@@ -8,7 +9,6 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/domain/ff1/firmware_update_prompt_policy.dart';
 import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:app/domain/models/models.dart';
@@ -62,11 +62,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     with RouteAware {
   bool _isShowingQRCode = false;
 
-  String? _lastPromptDeviceId;
-
-  /// Latest reported version we already auto-prompted for this session. When
-  /// the device reports a newer latest version, the prompt may show again.
-  String? _sessionPromptedForLatestVersion;
+  /// App-layer session for auto firmware prompt (dedupe, in-flight guard).
+  Ff1FirmwarePromptSessionState _promptSession =
+      const Ff1FirmwarePromptSessionState();
 
   @override
   void initState() {
@@ -79,18 +77,16 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   @override
   Widget build(BuildContext context) {
     ref
-      ..listen(activeFF1BluetoothDeviceProvider, (previous, next) {
-        final previousDeviceId = previous == null
-            ? null
-            : _deviceIdFromAsyncValue(previous);
-        final nextDeviceId = _deviceIdFromAsyncValue(next);
-        if (previousDeviceId != nextDeviceId) {
-          _sessionPromptedForLatestVersion = null;
-          _lastPromptDeviceId = null;
-        }
-      })
+      ..listen(
+        activeFF1BluetoothDeviceProvider,
+        (_, _) => _checkUpdatePrompt(),
+      )
       ..listen(
         ff1CurrentDeviceStatusProvider,
+        (_, _) => _checkUpdatePrompt(),
+      )
+      ..listen(
+        ff1DeviceConnectedProvider,
         (_, _) => _checkUpdatePrompt(),
       );
 
@@ -367,54 +363,62 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     final device = ref
         .read(activeFF1BluetoothDeviceProvider)
         .maybeWhen(data: (d) => d, orElse: () => null);
-    if (device == null || deviceStatus == null) return;
 
-    if (_lastPromptDeviceId != device.deviceId) {
-      _sessionPromptedForLatestVersion = null;
-      _lastPromptDeviceId = device.deviceId;
-    }
+    final dismissedVersion = device == null
+        ? ''
+        : ref
+            .read(appStateServiceProvider)
+            .getDismissedUpdateVersion(device.deviceId);
 
-    final latestVersion = deviceStatus.latestVersion;
-    final installedVersion = deviceStatus.installedVersion;
-    final dismissedVersion = ref
-        .read(appStateServiceProvider)
-        .getDismissedUpdateVersion(device.deviceId);
-
-    if (!shouldOfferFirmwareUpdateAutoPrompt(
+    final output = computeFirmwareUpdatePromptTick(
+      session: _promptSession,
+      activeDeviceId: device?.deviceId,
       isInSetupProcess: widget.payload.isInSetupProcess,
       isRelayerConnected: ref.read(ff1DeviceConnectedProvider),
-      installedVersion: installedVersion,
-      latestVersion: latestVersion,
+      installedVersion: deviceStatus?.installedVersion,
+      latestVersion: deviceStatus?.latestVersion,
       dismissedLatestVersionForDevice: dismissedVersion,
-    )) {
+    );
+
+    _promptSession = output.session;
+
+    final show = output.show;
+    if (show == null || device == null) {
       return;
     }
 
-    if (_sessionPromptedForLatestVersion == latestVersion) return;
-
-    _sessionPromptedForLatestVersion = latestVersion;
-    final installed = installedVersion!;
-    final latest = latestVersion!;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(
         _showUpdatePromptDialog(
           device: device,
-          installedVersion: installed,
-          latestVersion: latest,
+          installedVersion: show.installedVersion,
+          latestVersion: show.latestVersion,
         ),
       );
     });
   }
 
-  String? _deviceIdFromAsyncValue(AsyncValue<FF1Device?> value) {
-    return value.maybeWhen(
-      data: (device) => device?.deviceId,
-      orElse: () => null,
-    );
+  Future<void> _showUpdatePromptDialog({
+    required FF1Device device,
+    required String installedVersion,
+    required String latestVersion,
+  }) async {
+    try {
+      await _runUpdatePromptDialog(
+        device: device,
+        installedVersion: installedVersion,
+        latestVersion: latestVersion,
+      );
+    } finally {
+      if (mounted) {
+        _promptSession = clearFirmwareUpdatePromptInFlight(_promptSession);
+        _checkUpdatePrompt();
+      }
+    }
   }
 
-  Future<void> _showUpdatePromptDialog({
+  Future<void> _runUpdatePromptDialog({
     required FF1Device device,
     required String installedVersion,
     required String latestVersion,
@@ -473,6 +477,16 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                     switch (outcome) {
                       case Ff1RelayerFirmwareUpdateOutcome.success:
                         _log.info('[Update Prompt] Relayer accepted update');
+                        // Success = command accepted; installed lags until OTA
+                        // finishes. Dismiss like Later so finally does not
+                        // re-offer the same latest build.
+                        await ref
+                            .read(appStateServiceProvider)
+                            .setDismissedUpdateVersion(
+                              deviceId: device.deviceId,
+                              version: latestVersion,
+                            );
+                        if (!mounted) return;
                         Navigator.pop(context, true);
                       case Ff1RelayerFirmwareUpdateOutcome.missingTopic:
                         _log.warning('[Update Prompt] Missing topicId');

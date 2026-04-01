@@ -78,18 +78,21 @@ void main() {
       );
     });
 
-    test('true when update available, connected, post-setup, not dismissed', () {
-      expect(
-        shouldOfferFirmwareUpdateAutoPrompt(
-          isInSetupProcess: false,
-          isRelayerConnected: true,
-          installedVersion: '1.0.0',
-          latestVersion: '2.0.0',
-          dismissedLatestVersionForDevice: '',
-        ),
-        isTrue,
-      );
-    });
+    test(
+      'true when update available, connected, post-setup, not dismissed',
+      () {
+        expect(
+          shouldOfferFirmwareUpdateAutoPrompt(
+            isInSetupProcess: false,
+            isRelayerConnected: true,
+            installedVersion: '1.0.0',
+            latestVersion: '2.0.0',
+            dismissedLatestVersionForDevice: '',
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test('true when dismissed older version but latest moved forward', () {
       expect(

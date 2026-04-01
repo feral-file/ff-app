@@ -1,6 +1,6 @@
 /// Rules for when Device Configuration may show the automatic firmware
-/// update prompt. Session-level dedupe (same [latestVersion] already prompted)
-/// stays in the screen state; this function covers product gates only.
+/// update prompt. Session-level dedupe for the same latest version string is
+/// handled in app-layer orchestration; this function covers product gates only.
 bool shouldOfferFirmwareUpdateAutoPrompt({
   required bool isInSetupProcess,
   required bool isRelayerConnected,
