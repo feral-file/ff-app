@@ -23,6 +23,7 @@ class _FakeAppStateService implements AppStateService {
     : _hasCompletedSeedDownload = initialHasCompletedSeedDownload;
 
   bool _hasCompletedSeedDownload;
+  int clearAllPersonalTokensListFetchOffsetsCallCount = 0;
 
   @override
   Future<bool> hasCompletedSeedDownload() async => _hasCompletedSeedDownload;
@@ -42,7 +43,9 @@ class _FakeAppStateService implements AppStateService {
   }) async {}
 
   @override
-  Future<void> clearAllPersonalTokensListFetchOffsets() async {}
+  Future<void> clearAllPersonalTokensListFetchOffsets() async {
+    clearAllPersonalTokensListFetchOffsetsCallCount++;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -385,18 +388,22 @@ void main() {
     'setReady is called and runs onReady only when DB was replaced',
     () async {
       final fakeSyncService = _FakeSeedDatabaseSyncService();
+      final fakeAppStateService = _FakeAppStateService();
       var onReadyCalled = false;
       final actions = SeedDatabaseReadyActions(
-        onNotReady: _noOpFuture,
+        onNotReady: () async {
+          await fakeAppStateService.clearAllPersonalTokensListFetchOffsets();
+        },
         onReady: () async {
           onReadyCalled = true;
         },
       );
+      SeedDatabaseGate.complete();
 
       final container = ProviderContainer.test(
         overrides: [
           seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
-          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          appStateServiceProvider.overrideWithValue(fakeAppStateService),
           seedDatabaseReadyActionsProvider.overrideWithValue(actions),
           _fakeSeedDbSvc(hasLocal: false),
         ],
@@ -409,6 +416,13 @@ void main() {
         onReadyCalled,
         isTrue,
         reason: 'setReady runs onReady when DB replaced',
+      );
+      expect(
+        fakeAppStateService.clearAllPersonalTokensListFetchOffsetsCallCount,
+        1,
+        reason:
+            'successful seed replacement must invalidate persisted '
+            'personal-token list cursors before the DB is rebound',
       );
     },
   );
