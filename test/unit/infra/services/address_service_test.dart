@@ -22,6 +22,7 @@ class _FakeAppStateService implements AppStateServiceBase {
   final List<String> addTrackedAddressCalls = [];
   final Map<String, int?> personalTokensOffsets = {};
   final List<int?> personalTokensOffsetWrites = [];
+  final Map<String, AddressIndexingProcessStatus> indexingStatuses = {};
 
   String _key(String address) => address.toNormalizedAddress();
 
@@ -29,7 +30,9 @@ class _FakeAppStateService implements AppStateServiceBase {
   Future<void> setAddressIndexingStatus({
     required String address,
     required AddressIndexingProcessStatus status,
-  }) async {}
+  }) async {
+    indexingStatuses[_key(address)] = status;
+  }
 
   @override
   Future<void> addTrackedAddress(String address, {String alias = ''}) async {
@@ -382,6 +385,39 @@ void main() {
       await service.syncTokens('0xabc');
       expect(guardedFake.personalTokensOffsets, isEmpty);
       expect(guardedFake.personalTokensOffsetWrites, isEmpty);
+    },
+  );
+
+  test(
+    'status writes are preserved before tracking while cursor writes stay '
+    'guarded',
+    () async {
+      final guardedFake = _FakeAppStateServiceWithTrackedGuard();
+      const address = '0xAbC';
+      final normalized = address.toNormalizedAddress();
+
+      await guardedFake.setAddressIndexingStatus(
+        address: address,
+        status: AddressIndexingProcessStatus.indexingTriggeredPending(),
+      );
+      await guardedFake.setPersonalTokensListFetchOffset(
+        address: address,
+        nextFetchOffset: 255,
+      );
+
+      expect(
+        guardedFake.indexingStatuses[normalized]?.state,
+        AddressIndexingProcessState.indexingTriggered,
+        reason:
+            'reset recovery writes status before the address is re-tracked',
+      );
+      expect(
+        guardedFake.personalTokensOffsets,
+        isEmpty,
+        reason:
+            'cursor writes stay guarded so stale sync work cannot recreate '
+            'address state rows after tracking was removed',
+      );
     },
   );
 

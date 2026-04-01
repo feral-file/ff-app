@@ -154,7 +154,10 @@ abstract class AppStateServiceBase {
   });
 
   /// Adds address to tracked list (with optional alias) and ensures
-  /// [AppStateAddressEntity] exists. Call before setAddressIndexingStatus.
+  /// [AppStateAddressEntity] exists.
+  ///
+  /// Indexing status may also be written before tracking for recovery flows
+  /// that reconstruct tracked addresses from SQLite after a reset.
   Future<void> addTrackedAddress(String address, {String alias = ''});
   Future<void> clearAddressState(String address);
   Future<Map<String, AddressIndexingProcessStatus>>
@@ -502,12 +505,6 @@ class AppStateService extends AppStateServiceBase {
   }) async {
     await _lock.synchronized(() async {
       final normalizedAddress = _normalizeAddressKey(address);
-      // Same tracked guard as setPersonalTokensListFetchOffset: in-flight
-      // indexing must not recreate rows after removeAddress / clearAddressState.
-      final tracked = _findTrackedAddress(normalizedAddress);
-      if (tracked == null) {
-        return;
-      }
       var row = _findAddressState(normalizedAddress);
       row ??= _createAddressState(normalizedAddress);
       row
