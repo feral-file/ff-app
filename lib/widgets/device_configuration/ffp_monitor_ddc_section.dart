@@ -119,6 +119,34 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
     }
   }
 
+  /// `ddcPanelControl` with action `power` (wire: on / off / standby).
+  Future<void> _runPower(FfpDdcPanelStatus s, String powerState) async {
+    final control = ref.read(ff1WifiControlProvider);
+    final mid = _monitorId(s);
+    final prev = _status ?? s;
+    _setStatus(prev.copyWith(power: powerState));
+    try {
+      await control.setFfpMonitorPower(
+        topicId: widget.topicId,
+        monitorId: mid,
+        powerState: powerState,
+      );
+      try {
+        final fresh = await control.getFfpDdcPanelStatus(
+          topicId: widget.topicId,
+        );
+        if (mounted) {
+          _setStatus(fresh);
+        }
+      } on Exception catch (e) {
+        _log.fine('getFfpDdcPanelStatus after power: $e');
+      }
+    } on Exception catch (e) {
+      _log.warning('setFfpMonitorPower: $e');
+      _setStatus(prev);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!widget.isConnected || widget.topicId.isEmpty) {
@@ -160,6 +188,7 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
     final showBrightness = err?.containsKey('brightness') != true;
     final showContrast = err?.containsKey('contrast') != true;
     final showVol = err?.containsKey('volume') != true;
+    final showPowerControl = err?.containsKey('power') != true;
 
     final name = status.monitor?.trim().isNotEmpty ?? false
         ? status.monitor!.trim()
@@ -211,6 +240,8 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (showPowerControl && enable)
+                  ..._otherPowerModeButtons(context, status),
               ],
             ),
           ),
@@ -253,6 +284,88 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
     );
   }
 
+  /// The two modes not currently active (on=green, off=red, standby=yellow).
+  List<({String wire, Color color})> _otherPowerModes(String? powerRaw) {
+    final c = _normalizePowerKey(powerRaw);
+    const all = <({String wire, Color color})>[
+      (wire: 'on', color: Colors.green),
+      (wire: 'off', color: Colors.red),
+      (wire: 'standby', color: Colors.amber),
+    ];
+    if (c == null) {
+      return [
+        (wire: 'on', color: Colors.green),
+        (wire: 'off', color: Colors.red),
+      ];
+    }
+    return all.where((m) => m.wire != c).toList();
+  }
+
+  IconData _powerModeIcon(String _) {
+    return Icons.power_settings_new;
+  }
+
+  String _powerModeSemanticLabel(String wire) {
+    switch (wire) {
+      case 'on':
+        return 'On';
+      case 'off':
+        return 'Off';
+      case 'standby':
+        return 'Standby';
+      default:
+        return 'Power';
+    }
+  }
+
+  String? _normalizePowerKey(String? p) {
+    switch (p?.trim().toLowerCase()) {
+      case 'on':
+      case 'poweron':
+        return 'on';
+      case 'off':
+      case 'poweroff':
+        return 'off';
+      case 'standby':
+      case 'suspend':
+        return 'standby';
+      default:
+        return null;
+    }
+  }
+
+  List<Widget> _otherPowerModeButtons(
+    BuildContext context,
+    FfpDdcPanelStatus status,
+  ) {
+    return _otherPowerModes(status.power)
+        .map(
+          (m) => Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Semantics(
+              button: true,
+              label: _powerModeSemanticLabel(m.wire),
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  minimumSize: const Size(44, 44),
+                  maximumSize: const Size(44, 44),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: () => _runPower(status, m.wire),
+                icon: Icon(
+                  _powerModeIcon(m.wire),
+                  color: m.color,
+                  size: 24,
+                ),
+              ),
+            ),
+          ),
+        )
+        .toList();
+  }
+
   Color _powerDotColor(String? p) {
     switch (p?.trim().toLowerCase()) {
       case 'on':
@@ -263,7 +376,7 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
         return Colors.red;
       case 'standby':
       case 'suspend':
-        return Colors.grey;
+        return Colors.amber;
       case null:
       case '':
         return Colors.grey;
