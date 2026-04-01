@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'provider_test_helpers.dart';
+
 void main() {
   group('NowDisplayingVisibilityNotifier scroll flag reset', () {
     const item = DP1PlaylistItem(
@@ -294,35 +296,19 @@ void main() {
     test(
       'FF1 playlistId change through stream provider resets nowDisplayingVisibility',
       () async {
-        final playerStatus = FF1PlayerStatus(
-          playlistId: 'pl_initial',
-          currentWorkIndex: 0,
-          items: const [item],
-        );
+        // [ff1CurrentPlayerStatusProvider] watches the stream for invalidation
+        // but reads [FF1WifiControl.currentPlayerStatus]. Overriding only the
+        // stream without updating the control leaves playlistId stale — use
+        // [FakeWifiControl.emitPlayerStatus] so the stream and cache stay aligned
+        // (same as production notifications).
+        final fakeControl = FakeWifiControl();
 
         final container = ProviderContainer.test(
           overrides: [
             allFF1BluetoothDevicesProvider.overrideWith(
               (ref) => Stream.value([]),
             ),
-            ff1PlayerStatusStreamProvider.overrideWith(
-              (ref) {
-                return Stream<FF1PlayerStatus>.periodic(
-                  const Duration(milliseconds: 25),
-                  (count) {
-                    if (count == 0) {
-                      return playerStatus;
-                    } else {
-                      return FF1PlayerStatus(
-                        playlistId: 'pl_changed',
-                        currentWorkIndex: 0,
-                        items: const [item],
-                      );
-                    }
-                  },
-                ).take(2);
-              },
-            ),
+            ff1WifiControlProvider.overrideWithValue(fakeControl),
           ],
         );
         addTearDown(container.dispose);
@@ -336,13 +322,29 @@ void main() {
           },
         );
 
-        await Future<void>.delayed(const Duration(milliseconds: 10));
+        container.read(nowDisplayingVisibilityProvider);
+
+        fakeControl.emitPlayerStatus(
+          FF1PlayerStatus(
+            playlistId: 'pl_initial',
+            currentWorkIndex: 0,
+            items: const [item],
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
 
         container
             .read(nowDisplayingVisibilityProvider.notifier)
             .setNowDisplayingVisibility(false);
 
-        await Future<void>.delayed(const Duration(milliseconds: 150));
+        fakeControl.emitPlayerStatus(
+          FF1PlayerStatus(
+            playlistId: 'pl_changed',
+            currentWorkIndex: 0,
+            items: const [item],
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
 
         expect(
           resets,

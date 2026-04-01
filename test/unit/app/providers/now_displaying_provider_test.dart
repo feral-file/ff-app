@@ -22,8 +22,8 @@ import 'provider_test_helpers.dart';
 
 // Shared override used by stream-driven tests that bypass FF1WifiControl.
 // ignore: specify_nonobvious_property_types
-final streamBackedCurrentPlayerStatusOverride =
-    ff1CurrentPlayerStatusProvider.overrideWith((ref) {
+final streamBackedCurrentPlayerStatusOverride = ff1CurrentPlayerStatusProvider
+    .overrideWith((ref) {
       final async = ref.watch(ff1PlayerStatusStreamProvider);
       return async.when(
         data: (status) => status,
@@ -216,6 +216,77 @@ void main() {
         );
       },
     );
+
+    test('initial no-device state does not flash loading', () async {
+      final container = ProviderContainer.test(
+        overrides: [
+          databaseServiceProvider.overrideWith((ref) => recordingDb),
+          indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+          activeFF1BluetoothDeviceProvider.overrideWithValue(
+            const AsyncData(null),
+          ),
+          ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final emitted = <NowDisplayingStatus>[];
+      final subscription = container.listen<NowDisplayingStatus>(
+        nowDisplayingProvider,
+        (_, next) => emitted.add(next),
+      );
+      addTearDown(subscription.close);
+
+      container.read(nowDisplayingProvider);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(emitted.whereType<LoadingNowDisplaying>(), isEmpty);
+      expect(container.read(nowDisplayingProvider), isA<NoDevicePaired>());
+    });
+
+    test('initial disconnected device state does not flash loading', () async {
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'r1',
+        deviceId: 'device_1',
+        topicId: 'topic_1',
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          databaseServiceProvider.overrideWith((ref) => recordingDb),
+          indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+          activeFF1BluetoothDeviceProvider.overrideWithValue(
+            const AsyncData(device),
+          ),
+          ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+          ff1ConnectionStatusStreamProvider.overrideWith(
+            (ref) =>
+                Stream.value(const FF1ConnectionStatus(isConnected: false)),
+          ),
+          ff1DeviceConnectedProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final emitted = <NowDisplayingStatus>[];
+      final subscription = container.listen<NowDisplayingStatus>(
+        nowDisplayingProvider,
+        (_, next) => emitted.add(next),
+      );
+      addTearDown(subscription.close);
+
+      container.read(nowDisplayingProvider);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(emitted.whereType<LoadingNowDisplaying>(), isEmpty);
+      expect(
+        container.read(nowDisplayingProvider),
+        isA<DeviceDisconnected>(),
+      );
+    });
 
     test(
       'same playlist and item ids only index change skips extra DB cache read',
@@ -543,11 +614,13 @@ void main() {
 
         await Future<void>.delayed(Duration.zero);
         activeDeviceController.add(deviceA);
-        await container.read(ff1WifiConnectionProvider.notifier).connect(
-          device: deviceA,
-          userId: 'user-a',
-          apiKey: 'key-a',
-        );
+        await container
+            .read(ff1WifiConnectionProvider.notifier)
+            .connect(
+              device: deviceA,
+              userId: 'user-a',
+              apiKey: 'key-a',
+            );
         wifiControl
           ..emitConnectionStatus(isConnected: true)
           ..emitPlayerStatus(statusA);
@@ -559,16 +632,21 @@ void main() {
         );
 
         activeDeviceController.add(deviceB);
-        await container.read(ff1WifiConnectionProvider.notifier).connect(
-          device: deviceB,
-          userId: 'user-b',
-          apiKey: 'key-b',
-        );
+        await container
+            .read(ff1WifiConnectionProvider.notifier)
+            .connect(
+              device: deviceB,
+              userId: 'user-b',
+              apiKey: 'key-b',
+            );
         wifiControl.emitConnectionStatus(isConnected: true);
         await Future<void>.delayed(const Duration(milliseconds: 80));
 
         expect(
-          container.read(ff1PlayerStatusStreamProvider).asData?.value
+          container
+              .read(ff1PlayerStatusStreamProvider)
+              .asData
+              ?.value
               .playlistId,
           statusA.playlistId,
         );
@@ -1400,7 +1478,7 @@ void main() {
             (_, _) {},
           )
           ..read(nowDisplayingProvider);
-        
+
         // Drain first microtask (initial build recompute)
         await Future<void>.delayed(Duration.zero);
         // statusA stream event arrives + triggers microtask
@@ -1594,7 +1672,9 @@ void main() {
         playerStatusController.add(statusPl1);
         await Future<void>.delayed(const Duration(milliseconds: 120));
 
-        container.read(nowDisplayingRequestedRangeProvider.notifier).expandTo(
+        container
+            .read(nowDisplayingRequestedRangeProvider.notifier)
+            .expandTo(
               0,
               500,
             );
@@ -1686,7 +1766,9 @@ void main() {
         playerStatusController.add(statusPl1);
         await Future<void>.delayed(const Duration(milliseconds: 120));
 
-        container.read(nowDisplayingRequestedRangeProvider.notifier).expandTo(
+        container
+            .read(nowDisplayingRequestedRangeProvider.notifier)
+            .expandTo(
               0,
               500,
             );
@@ -1769,7 +1851,9 @@ void main() {
         playerStatusController.add(statusPl1);
         await Future<void>.delayed(const Duration(milliseconds: 120));
 
-        container.read(nowDisplayingRequestedRangeProvider.notifier).expandTo(
+        container
+            .read(nowDisplayingRequestedRangeProvider.notifier)
+            .expandTo(
               0,
               500,
             );

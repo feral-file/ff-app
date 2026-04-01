@@ -150,7 +150,9 @@ class FF1WifiControl {
     _currentDeviceStatus = null;
     _isDeviceConnected = false;
     _freshDeviceStatusCompleter = Completer<FF1DeviceStatus?>();
-    _connectionStatusController.add(const FF1ConnectionStatus(isConnected: false));
+    _connectionStatusController.add(
+      const FF1ConnectionStatus(isConnected: false),
+    );
 
     _log.info('Connecting to ${device.deviceId}');
     _slog.info(
@@ -267,11 +269,22 @@ class FF1WifiControl {
   Future<FF1DeviceStatus?> waitForFreshDeviceStatus({
     Duration timeout = const Duration(seconds: 5),
   }) async {
+    final future = freshDeviceStatusFuture();
+    return future.timeout(timeout, onTimeout: () => null);
+  }
+
+  /// Future for the first device status observed after the most recent connect
+  /// reset.
+  ///
+  /// Why: callers that do an initial short timeout can keep awaiting this same
+  /// future later without switching to the replaying device-status stream,
+  /// which may still buffer a previous session's payload.
+  Future<FF1DeviceStatus?> freshDeviceStatusFuture() {
     final completer = _freshDeviceStatusCompleter;
     if (completer == null) {
-      return _currentDeviceStatus;
+      return Future<FF1DeviceStatus?>.value(_currentDeviceStatus);
     }
-    return completer.future.timeout(timeout, onTimeout: () => null);
+    return completer.future;
   }
 
   /// Whether device is connected (per connection notification)

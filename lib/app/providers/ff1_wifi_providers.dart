@@ -468,6 +468,73 @@ final ff1WifiConnectingProvider = Provider<bool>((ref) {
   return connectionState.isConnecting;
 });
 
+Future<void> _runRequiredDeviceVersionCheck({
+  required Ref ref,
+  required Logger logger,
+  required FF1Device device,
+  FF1DeviceStatus? deviceStatus,
+}) async {
+  final deviceVersion = deviceStatus?.latestVersion;
+  if (deviceVersion == null || deviceVersion.isEmpty) {
+    logger.warning(
+      'Skipping device version compatibility check: '
+      'device version not available in device status',
+    );
+    return;
+  }
+
+  await ref
+      .read(versionServiceProvider)
+      .checkDeviceVersionCompatibility(
+        branchName: device.branchName,
+        deviceVersion: deviceVersion,
+        requiredDeviceUpdate: true,
+      );
+}
+
+Future<void> _scheduleRequiredDeviceVersionCheck({
+  required Ref ref,
+  required Logger logger,
+  required FF1Device device,
+}) async {
+  final control = ref.read(ff1WifiControlProvider);
+  // This runs in an unawaited background task, so do not impose an arbitrary
+  // timeout. We want the required-update gate to fire when the first fresh
+  // status for this connection session arrives, and FF1WifiControl resolves
+  // this future with null automatically on teardown / device switch.
+  final deviceStatus = await control.freshDeviceStatusFuture();
+  if (!ref.mounted) {
+    return;
+  }
+  if (deviceStatus == null) {
+    logger.warning(
+      'Skipping device version compatibility check: '
+      'fresh device status unavailable for this session',
+    );
+    return;
+  }
+  final activeDevice = ref
+      .read(activeFF1BluetoothDeviceProvider)
+      .when(
+        data: (value) => value,
+        loading: () => null,
+        error: (_, _) => null,
+      );
+  if (activeDevice?.deviceId != device.deviceId) {
+    logger.info(
+      'Skipping device version compatibility check for '
+      '${device.deviceId}: active device changed before status arrived',
+    );
+    return;
+  }
+  await _runRequiredDeviceVersionCheck(
+    ref: ref,
+    logger: logger,
+    device: device,
+    deviceStatus: deviceStatus,
+  );
+}
+
 // ============================================================================
 // Auto-connect to active FF1 device
 // ============================================================================
@@ -501,30 +568,11 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
               userId: 'user_id',
               apiKey: AppConfig.ff1RelayerApiKey,
             );
-
-            final versionService = ref.read(versionServiceProvider);
-            final control = ref.read(ff1WifiControlProvider);
-            final deviceStatus = await control.waitForFreshDeviceStatus();
-            if (deviceStatus == null) {
-              logger.warning(
-                'Skipping device version compatibility check: '
-                'device status not available after connect',
-              );
-              return;
-            }
-            final deviceVersion = deviceStatus.latestVersion;
-            if (deviceVersion == null || deviceVersion.isEmpty) {
-              logger.warning(
-                'Skipping device version compatibility check: '
-                'device version not available in fresh device status',
-              );
-              return;
-            }
             unawaited(
-              versionService.checkDeviceVersionCompatibility(
-                branchName: device.branchName,
-                deviceVersion: deviceVersion,
-                requiredDeviceUpdate: true,
+              _scheduleRequiredDeviceVersionCheck(
+                ref: ref,
+                logger: logger,
+                device: device,
               ),
             );
           } else {

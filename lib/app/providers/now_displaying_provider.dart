@@ -27,6 +27,7 @@ typedef _PlaylistIdentity = ({
 enum _NowDisplayingRecomputeCause {
   /// Player/device/connection/connecting or initial build.
   generic,
+
   /// User expanded scroll range in the bar; window may need new cache/enrichment.
   requestedRange,
 }
@@ -418,11 +419,11 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   /// [NowDisplayingSuccess] and break the fast path that reuses the last built
   /// item list.
   bool _shouldShowLoadingOverlay(_PlaylistIdentity? currentIdentity) {
-    if (_lastFullComputeIdentity == null) {
-      return true;
-    }
     if (currentIdentity == null) {
       return false;
+    }
+    if (_lastFullComputeIdentity == null) {
+      return true;
     }
     return !_playlistIdentitiesEqual(
       currentIdentity,

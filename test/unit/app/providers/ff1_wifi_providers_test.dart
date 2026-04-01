@@ -213,11 +213,13 @@ void main() {
           (_, _) {},
         );
 
-      await container.read(ff1WifiConnectionProvider.notifier).connect(
-        device: deviceA,
-        userId: 'user-a',
-        apiKey: 'key-a',
-      );
+      await container
+          .read(ff1WifiConnectionProvider.notifier)
+          .connect(
+            device: deviceA,
+            userId: 'user-a',
+            apiKey: 'key-a',
+          );
       wifiControl
         ..emitConnectionStatus(isConnected: true)
         ..emitPlayerStatus(statusA);
@@ -228,11 +230,13 @@ void main() {
         statusA.playlistId,
       );
 
-      await container.read(ff1WifiConnectionProvider.notifier).connect(
-        device: deviceB,
-        userId: 'user-b',
-        apiKey: 'key-b',
-      );
+      await container
+          .read(ff1WifiConnectionProvider.notifier)
+          .connect(
+            device: deviceB,
+            userId: 'user-b',
+            apiKey: 'key-b',
+          );
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       expect(
@@ -295,11 +299,13 @@ void main() {
           (_, _) {},
         );
 
-      await container.read(ff1WifiConnectionProvider.notifier).connect(
-        device: device,
-        userId: 'user-a',
-        apiKey: 'key-a',
-      );
+      await container
+          .read(ff1WifiConnectionProvider.notifier)
+          .connect(
+            device: device,
+            userId: 'user-a',
+            apiKey: 'key-a',
+          );
       wifiControl
         ..emitConnectionStatus(isConnected: true)
         ..emitPlayerStatus(playerStatus)
@@ -361,21 +367,25 @@ void main() {
           (_, _) {},
         );
 
-      await container.read(ff1WifiConnectionProvider.notifier).connect(
-        device: deviceA,
-        userId: 'user-a',
-        apiKey: 'key-a',
-      );
+      await container
+          .read(ff1WifiConnectionProvider.notifier)
+          .connect(
+            device: deviceA,
+            userId: 'user-a',
+            apiKey: 'key-a',
+          );
       wifiControl.emitConnectionStatus(isConnected: true);
       await Future<void>.delayed(Duration.zero);
 
       expect(container.read(ff1DeviceConnectedProvider), isTrue);
 
-      await container.read(ff1WifiConnectionProvider.notifier).connect(
-        device: deviceB,
-        userId: 'user-b',
-        apiKey: 'key-b',
-      );
+      await container
+          .read(ff1WifiConnectionProvider.notifier)
+          .connect(
+            device: deviceB,
+            userId: 'user-b',
+            apiKey: 'key-b',
+          );
       await Future<void>.delayed(Duration.zero);
 
       expect(container.read(ff1DeviceConnectedProvider), isFalse);
@@ -526,6 +536,92 @@ void main() {
 
       expect(versionService.deviceVersions, contains('1.0.0'));
       expect(versionService.deviceVersions.last, '2.0.0');
+    },
+  );
+
+  test(
+    'auto-connect version check does not reuse previous device status',
+    () async {
+      await ensureDotEnvLoaded();
+
+      final deviceService = MockFF1BluetoothDeviceService();
+      final wifiControl = FakeWifiControl();
+      final versionService = _RecordingVersionService();
+      const deviceA = FF1Device(
+        name: 'FF1-A',
+        remoteId: 'remote-a',
+        deviceId: 'device-a',
+        topicId: 'topic-a',
+        branchName: 'main',
+      );
+      const deviceB = FF1Device(
+        name: 'FF1-B',
+        remoteId: 'remote-b',
+        deviceId: 'device-b',
+        topicId: 'topic-b',
+        branchName: 'main',
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1BluetoothDeviceServiceProvider.overrideWithValue(deviceService),
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+          versionServiceProvider.overrideWithValue(versionService),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.listen(
+        ff1AutoConnectWatcherProvider,
+        (_, _) {},
+      );
+
+      deviceService
+        ..devices = [deviceA]
+        ..activeDeviceId = deviceA.deviceId;
+      container.invalidate(activeFF1BluetoothDeviceProvider);
+      await container.read(activeFF1BluetoothDeviceProvider.future);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(
+        versionService.deviceVersions,
+        isEmpty,
+        reason:
+            'Fresh status timeout should defer, not immediately complete, '
+            'the device version check',
+      );
+
+      wifiControl.emitDeviceStatus(
+        const FF1DeviceStatus(latestVersion: '1.0.0'),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(versionService.deviceVersions, ['1.0.0']);
+
+      deviceService
+        ..devices = [deviceA, deviceB]
+        ..activeDeviceId = deviceB.deviceId;
+      container.invalidate(activeFF1BluetoothDeviceProvider);
+      await container.read(activeFF1BluetoothDeviceProvider.future);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(
+        versionService.deviceVersions,
+        ['1.0.0'],
+        reason:
+            'Switching to device B must not reuse device A status before '
+            'device B emits a fresh status',
+      );
+
+      wifiControl.emitDeviceStatus(
+        const FF1DeviceStatus(latestVersion: '2.0.0'),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(versionService.deviceVersions, ['1.0.0', '2.0.0']);
     },
   );
 }
