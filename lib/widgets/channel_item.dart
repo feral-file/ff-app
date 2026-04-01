@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/app/utils/html/prepare_truncated_html.dart';
 import 'package:app/design/build/primitives.dart';
@@ -6,7 +9,6 @@ import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/widgets/dark_surface_html_selection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
-import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Channel Header - displays channel title and summary
@@ -54,7 +56,9 @@ class ChannelHeader extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         if (clickable) {
-          context.push('${Routes.channels}/$channelId');
+          unawaited(
+            context.pushWithPreviousTitle('${Routes.channels}/$channelId'),
+          );
         }
       },
       behavior: HitTestBehavior.opaque,

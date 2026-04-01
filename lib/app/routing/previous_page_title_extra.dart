@@ -10,6 +10,20 @@ final class PreviousPageTitleExtra {
 
 const _genericIndexTitle = 'Index';
 
+/// Creates [PreviousPageTitleExtra] from a raw title string.
+///
+/// Returns null when the title is missing/blank or matches the generic shell
+/// title ("Index"), which is not a user-visible surface in this app.
+PreviousPageTitleExtra? previousPageTitleExtraFromTitle(String? title) {
+  if (title == null) return null;
+
+  final normalizedTitle = title.trim();
+  if (normalizedTitle.isEmpty || normalizedTitle == _genericIndexTitle) {
+    return null;
+  }
+  return PreviousPageTitleExtra(normalizedTitle);
+}
+
 /// Returns the wrapped title when [extra] is [PreviousPageTitleExtra];
 /// otherwise null.
 String? previousPageTitleFromExtra(Object? extra) {

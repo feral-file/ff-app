@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:app/app/providers/channel_detail_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/all_playlists_route.dart';
+import 'package:app/app/routing/navigation_extensions.dart';
+import 'package:app/app/routing/previous_page_title_extra.dart';
+import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/content_rhythm.dart';
@@ -28,11 +33,15 @@ class ChannelDetailScreen extends ConsumerStatefulWidget {
   /// Creates a ChannelDetailScreen.
   const ChannelDetailScreen({
     required this.channelId,
+    this.backTitle,
     super.key,
   });
 
   /// The channel ID to display.
   final String channelId;
+
+  /// Optional back button label (title of the previous screen).
+  final String? backTitle;
 
   @override
   ConsumerState<ChannelDetailScreen> createState() =>
@@ -46,7 +55,8 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
     final address = playlist.ownerAddress;
     if (address == null || address.isEmpty) return '';
     if (address.length > 10) {
-      return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+      return '${address.substring(0, 6)}'
+          '...${address.substring(address.length - 4)}';
     }
     return address;
   }
@@ -119,11 +129,23 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
                     hasMore: nonAddress.length > _previewCount,
                     onViewAllTap: nonAddress.length > _previewCount
                         ? () => context.push(
-                            '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelIds: [channelId], playlistTypes: [PlaylistType.dp1, PlaylistType.favorite])}',
+                            '${Routes.allPlaylists}'
+                            '${buildAllPlaylistsQuery(
+                              channelIds: [channelId],
+                              playlistTypes: [
+                                PlaylistType.dp1,
+                                PlaylistType.favorite,
+                              ],
+                            )}',
+                            extra: PreviousPageTitleExtra(channel.name),
                           )
                         : null,
                     onPlaylistItemTap: (item) {
-                      context.push('${Routes.works}/${item.id}');
+                      unawaited(
+                        context.pushWithPreviousTitle(
+                          '${Routes.works}/${item.id}',
+                        ),
+                      );
                     },
                     playlistHeaderBuilder: (playlist, itemCount) {
                       if (playlist.type == PlaylistType.favorite) {
@@ -158,11 +180,20 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
                     hasMore: addressPlaylists.length > _previewCount,
                     onViewAllTap: addressPlaylists.length > _previewCount
                         ? () => context.push(
-                            '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelIds: [channelId], playlistTypes: [PlaylistType.addressBased])}',
+                            '${Routes.allPlaylists}'
+                            '${buildAllPlaylistsQuery(
+                              channelIds: [channelId],
+                              playlistTypes: [PlaylistType.addressBased],
+                            )}',
+                            extra: PreviousPageTitleExtra(channel.name),
                           )
                         : null,
                     onPlaylistItemTap: (item) {
-                      context.push('${Routes.works}/${item.id}');
+                      unawaited(
+                        context.pushWithPreviousTitle(
+                          '${Routes.works}/${item.id}',
+                        ),
+                      );
                     },
                     playlistHeaderBuilder: (playlist, itemCount) {
                       final ownerAddress = playlist.ownerAddress;
@@ -234,7 +265,9 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
             itemBuilder: (context, index) => PlaylistRowItem(
               playlist: playlists[index],
               onItemTap: (item) {
-                context.push('${Routes.works}/${item.id}');
+                unawaited(
+                  context.pushWithPreviousTitle('${Routes.works}/${item.id}'),
+                );
               },
             ),
           ),
@@ -254,7 +287,7 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
       backgroundColor: AppColor.auGreyBackground,
       appBar: MainAppBar.preferred(
         context,
-        backTitle: 'Channels',
+        backTitle: widget.backTitle ?? 'Channels',
         backgroundColor: AppColor.auGreyBackground,
       ),
       body: SafeArea(
@@ -268,7 +301,8 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
                 loading: () => const LoadingView(),
                 error: (error, _) => ErrorView(
                   error:
-                      'We couldn’t load this channel. Check your connection, then Retry.',
+                      'We couldn’t load this channel. Check your connection, '
+                      'then Retry.',
                   onRetry: onRefresh,
                 ),
                 data: (details) {
@@ -284,19 +318,22 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
                   }
 
                   final isMeChannel = channel.type == ChannelType.localVirtual;
-                  if (isMeChannel) {
-                    return _buildMeChannelContent(
-                      context,
-                      ref,
-                      channel,
-                      playlists,
-                    );
-                  }
-
-                  return _buildDefaultChannelContent(
-                    context,
-                    channel,
-                    playlists,
+                  return PreviousPageTitleScope(
+                    title: channel.name.isNotEmpty ? channel.name : 'Channel',
+                    child: Builder(
+                      builder: (scopedContext) => isMeChannel
+                          ? _buildMeChannelContent(
+                              scopedContext,
+                              ref,
+                              channel,
+                              playlists,
+                            )
+                          : _buildDefaultChannelContent(
+                              scopedContext,
+                              channel,
+                              playlists,
+                            ),
+                    ),
                   );
                 },
               ),

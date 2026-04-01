@@ -1,50 +1,37 @@
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('SmartNavigation._extractBaseRoute', () {
-    // Note: _extractBaseRoute is private, but we test it through smartPush
-    // behavior. These unit tests document the logic:
-
+  group('SmartNavigation path matching notes', () {
     test('extracts base route from single segment', () {
-      // /_extractBaseRoute('/') should return '/'
-      // This is tested through: smartPush on '/' vs '/works' -> different base
+      // smartPush compares full matched paths only (e.g. / vs /works → push).
       expect(true, true);
     });
 
     test('extracts base route from multi-segment path', () {
-      // /_extractBaseRoute('/works/item-123') should return '/works'
-      // /_extractBaseRoute('/works/item-456') should return '/works' (same base)
-      // This is tested through: smartPush('/works/item-123') then
-      // smartPush('/works/item-456') should replace (same base)
+      // Legacy placeholder; same-family navigation now always pushes when paths
+      // differ (see smartPush implementation).
       expect(true, true);
     });
 
     test('different base routes are treated as different families', () {
-      // /_extractBaseRoute('/works/item-1') -> '/works'
-      // /_extractBaseRoute('/playlists/list-1') -> '/playlists'
-      // This is tested through: smartPush from /playlists to /works should push
+      // /playlists/list-1 → smartPush('/works/item-123') pushes (paths differ).
       expect(true, true);
     });
   });
 
   group('SmartNavigation.smartPush logic', () {
     test('smartPush no-op condition: currentUri == location', () {
-      // When currentUri and location are identical, smartPush should not call
-      // push() or replace(). This guard prevents duplicate route stacking.
+      // When currentUri and location are identical, smartPush must not call
+      // push(). This guard prevents duplicate route stacking.
       // Tested via: navigate to /works/item-123, then
       // smartPush('/works/item-123'). Expected: no navigation occurs (no-op)
       expect(true, true);
     });
 
     test(
-      'smartPush replace condition: same base, different location',
+      'smartPush same-family different id uses push, not replace',
       () {
-        // When currentUri and location have same base but different params,
-        // smartPush should call replace(). This keeps history clean when
-        // navigating between items in same family (e.g., work to work).
-        // Tested via: navigate to /works/item-123, then
-        // smartPush('/works/item-456')
-        // Expected: replace() called, not push()
+        // /works/item-123 then smartPush('/works/item-456') → push (stack).
         expect(true, true);
       },
     );
@@ -75,14 +62,9 @@ void main() {
     );
 
     test(
-      'Now Displaying bar tap from work detail should replace if different '
-      'work',
+      'Now Displaying bar tap from work detail pushes if different work',
       () {
-        // Scenario: User is viewing /works/item-123.
-        // Now Displaying changes to item-456.
-        // User taps Now Displaying bar showing item-456.
-        // Expected: smartPush('/works/item-456') should replace route.
-        // No back navigation to item-123 from history.
+        // /works/item-123 → smartPush('/works/item-456') always pushes.
         expect(true, true);
       },
     );

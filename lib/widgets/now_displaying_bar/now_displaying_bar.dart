@@ -4,6 +4,8 @@ import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
+import 'package:app/app/routing/current_navigation_titles_provider.dart';
+import 'package:app/app/routing/previous_page_title_extra.dart';
 import 'package:app/app/routing/router_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/build/primitives.dart';
@@ -91,6 +93,11 @@ class _NowDisplayingBarCard extends ConsumerWidget {
   final NowDisplayingStatus status;
   final GoRouter router;
 
+  PreviousPageTitleExtra? _navigationExtraForTap(WidgetRef ref) {
+    final previousTitle = ref.read(currentVisiblePageTitleProvider);
+    return previousPageTitleExtraFromTitle(previousTitle);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     switch (status) {
@@ -140,7 +147,10 @@ class _NowDisplayingBarCard extends ConsumerWidget {
             collapsedBuilder: (context, _) {
               return CollapsedNowPlayingBar(
                 playingObject: object,
-                onTap: () => router.smartPush('${Routes.works}/$workId'),
+                onTap: () => router.smartPush(
+                  '${Routes.works}/$workId',
+                  extra: _navigationExtraForTap(ref),
+                ),
               );
             },
             expandedBuilder: (context, scrollController) {

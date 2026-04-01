@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:app/app/providers/channel_detail_provider.dart';
+import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/publisher_section_providers.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/routing/navigation_extensions.dart';
+import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/app/utils/all_playlists_publisher_layout.dart';
 import 'package:app/design/app_typography.dart';
@@ -24,7 +29,6 @@ import 'package:app/widgets/playlist/section_details_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:go_router/go_router.dart';
 
 /// All playlists screen.
 ///
@@ -38,11 +42,12 @@ class AllPlaylistsScreen extends ConsumerStatefulWidget {
     this.title,
     this.description,
     this.iconAsset,
+    this.backTitle,
     super.key,
   });
 
-  /// Channel types to show playlists for (dp1 = curated, localVirtual = personal).
-  /// When null or empty, defaults to [ChannelType.dp1].
+  /// Channel types: [ChannelType.dp1] (curated), [ChannelType.localVirtual]
+  /// (personal). When null or empty, defaults to [ChannelType.dp1].
   final List<ChannelType>? channelTypes;
 
   /// Optional channel IDs to filter playlists. When null or empty, ignored.
@@ -61,6 +66,9 @@ class AllPlaylistsScreen extends ConsumerStatefulWidget {
   /// Never shown without title.
   final String? iconAsset;
 
+  /// Prior screen title for the back control from navigation extra, when set.
+  final String? backTitle;
+
   @override
   ConsumerState<AllPlaylistsScreen> createState() => _AllPlaylistsScreenState();
 }
@@ -76,7 +84,11 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final types = _effectiveChannelTypes();
       if (_effectiveChannelIds().isEmpty && types.contains(ChannelType.dp1)) {
-        ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
+        unawaited(
+          ref
+              .read(playlistsProvider(PlaylistType.dp1).notifier)
+              .loadPlaylists(),
+        );
       }
       // Personal and channel-scoped use stream providers (auto-load on watch).
     });
@@ -96,6 +108,24 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     return types;
   }
 
+  String _resolveBackLabel(List<String> channelIds) {
+    final explicit = widget.backTitle;
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    if (channelIds.length == 1) {
+      final channelAsync = ref.watch(channelByIdProvider(channelIds.first));
+      return channelAsync.when(
+        data: (c) {
+          final name = c?.name;
+          if (name != null && name.isNotEmpty) return name;
+          return 'Playlists';
+        },
+        loading: () => 'Playlists',
+        error: (_, _) => 'Playlists',
+      );
+    }
+    return 'Playlists';
+  }
+
   List<String> _effectiveChannelIds() {
     final ids = widget.channelIds;
     if (ids == null || ids.isEmpty) return [];
@@ -107,7 +137,9 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     if (!_effectiveChannelTypes().contains(ChannelType.dp1)) return;
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
-      ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadMore();
+      unawaited(
+        ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadMore(),
+      );
     }
   }
 
@@ -115,7 +147,8 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     final address = playlist.ownerAddress;
     if (address == null || address.isEmpty) return '';
     if (address.length > 10) {
-      return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+      return '${address.substring(0, 6)}'
+          '...${address.substring(address.length - 4)}';
     }
     return address;
   }
@@ -180,7 +213,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
             }
           : null,
       onItemTap: (item) {
-        context.push('${Routes.works}/${item.id}');
+        unawaited(context.pushWithPreviousTitle('${Routes.works}/${item.id}'));
       },
     );
   }
@@ -268,16 +301,17 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     bool hasError;
 
     if (isChannelScoped) {
-      // Never touch playlistsProvider or meSectionPlaylistsProvider when channel-scoped.
-      // ref.read on non-autoDispose providers still initializes them and starts DB watches.
-      final channelPlaylistsAsync =
-          ref.watch(channelPlaylistsFromIdsProvider(ids.join(',')));
-      final raw =
-          channelPlaylistsAsync.when(
-            data: (v) => v,
-            loading: () => <Playlist>[],
-            error: (_, _) => <Playlist>[],
-          );
+      // Never touch playlistsProvider or meSectionPlaylistsProvider when
+      // channel-scoped. ref.read on non-autoDispose providers still
+      // initializes them and starts DB watches.
+      final channelPlaylistsAsync = ref.watch(
+        channelPlaylistsFromIdsProvider(ids.join(',')),
+      );
+      final raw = channelPlaylistsAsync.when(
+        data: (v) => v,
+        loading: () => <Playlist>[],
+        error: (_, _) => <Playlist>[],
+      );
       playlists = _filterByPlaylistTypes(raw, widget.playlistTypes);
       isLoading = channelPlaylistsAsync.isLoading;
       isLoadingMore = false;
@@ -326,94 +360,106 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     final title = widget.title;
     final description = widget.description;
     final iconAsset = widget.iconAsset;
+    final backLabel = _resolveBackLabel(ids);
+    final pageTitle = title ?? 'Playlists';
 
-    return Scaffold(
-      backgroundColor: AppColor.auGreyBackground,
-      appBar: MainAppBar.preferred(
-        context,
-        backTitle: 'Index',
-      ),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _onRefresh,
-          backgroundColor: AppColor.primaryBlack,
-          color: AppColor.white,
-          child: Builder(
-            builder: (context) {
-              if (isLoading && playlists.isEmpty) {
-                return const LoadingView();
-              }
+    return PreviousPageTitleScope(
+      title: pageTitle,
+      child: Scaffold(
+        backgroundColor: AppColor.auGreyBackground,
+        appBar: MainAppBar.preferred(
+          context,
+          backTitle: backLabel,
+        ),
+        body: SafeArea(
+          child: RefreshIndicator(
+            onRefresh: _onRefresh,
+            backgroundColor: AppColor.primaryBlack,
+            color: AppColor.white,
+            child: Builder(
+              builder: (context) {
+                if (isLoading && playlists.isEmpty) {
+                  return const LoadingView();
+                }
 
-              if (hasError && playlists.isEmpty) {
-                return ErrorView(
-                  error:
-                      'We couldn’t load playlists. Check your connection, then Retry.',
-                  onRetry: () {
-                    if (isChannelScoped) {
-                      ref.invalidate(
-                        channelPlaylistsFromIdsProvider(ids.join(',')),
-                      );
-                    } else {
-                      if (_effectiveChannelTypes().contains(
-                        ChannelType.localVirtual,
-                      )) {
-                        ref.invalidate(meSectionPlaylistsProvider);
+                if (hasError && playlists.isEmpty) {
+                  return ErrorView(
+                    error:
+                        'We couldn’t load playlists. Check your connection, '
+                        'then Retry.',
+                    onRetry: () {
+                      if (isChannelScoped) {
+                        ref.invalidate(
+                          channelPlaylistsFromIdsProvider(ids.join(',')),
+                        );
+                      } else {
+                        if (_effectiveChannelTypes().contains(
+                          ChannelType.localVirtual,
+                        )) {
+                          ref.invalidate(meSectionPlaylistsProvider);
+                        }
+                        if (_effectiveChannelTypes().contains(
+                          ChannelType.dp1,
+                        )) {
+                          unawaited(
+                            ref
+                                .read(
+                                  playlistsProvider(PlaylistType.dp1).notifier,
+                                )
+                                .loadPlaylists(),
+                          );
+                        }
                       }
-                      if (_effectiveChannelTypes().contains(ChannelType.dp1)) {
-                        ref
-                            .read(playlistsProvider(PlaylistType.dp1).notifier)
-                            .loadPlaylists();
-                      }
-                    }
-                  },
-                );
-              }
+                    },
+                  );
+                }
 
-              if (playlists.isEmpty) {
-                return Center(
-                  child: Text(
-                    'No playlists found',
-                    style: AppTypography.body(context).grey,
-                  ),
-                );
-              }
+                if (playlists.isEmpty) {
+                  return Center(
+                    child: Text(
+                      'No playlists found',
+                      style: AppTypography.body(context).grey,
+                    ),
+                  );
+                }
 
-              return CustomScrollView(
-                controller: _scrollController,
-                slivers: [
-                  const SliverToBoxAdapter(child: SizedBox(height: 21)),
-                  if (title != null)
-                    SliverToBoxAdapter(
-                      child: SectionDetailsHeader(
-                        icon: iconAsset != null
-                            ? SvgPicture.asset(
-                                iconAsset,
-                                width: LayoutConstants.iconSizeDefault,
-                                height: LayoutConstants.iconSizeDefault,
-                                colorFilter: const ColorFilter.mode(
-                                  AppColor.white,
-                                  BlendMode.srcIn,
-                                ),
-                              )
-                            : null,
-                        title: title,
-                        description: description,
+                return CustomScrollView(
+                  controller: _scrollController,
+                  slivers: [
+                    const SliverToBoxAdapter(child: SizedBox(height: 21)),
+                    if (title != null)
+                      SliverToBoxAdapter(
+                        child: SectionDetailsHeader(
+                          icon: iconAsset != null
+                              ? SvgPicture.asset(
+                                  iconAsset,
+                                  width: LayoutConstants.iconSizeDefault,
+                                  height: LayoutConstants.iconSizeDefault,
+                                  colorFilter: const ColorFilter.mode(
+                                    AppColor.white,
+                                    BlendMode.srcIn,
+                                  ),
+                                )
+                              : null,
+                          title: title,
+                          description: description,
+                        ),
                       ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 50)),
+                    ..._playlistSlivers(
+                      context: context,
+                      playlists: playlists,
+                      isChannelScoped: isChannelScoped,
                     ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 50)),
-                  ..._playlistSlivers(
-                    context: context,
-                    playlists: playlists,
-                    isChannelScoped: isChannelScoped,
-                  ),
-                  if (hasMore || isLoadingMore)
-                    SliverToBoxAdapter(
-                      child: LoadMoreIndicator(isLoadingMore: isLoadingMore),
-                    ),
-                  const SliverToBoxAdapter(child: BottomSpacing()),
-                ],
-              );
-            },
+                    if (hasMore || isLoadingMore)
+                      SliverToBoxAdapter(
+                        child: LoadMoreIndicator(isLoadingMore: isLoadingMore),
+                      ),
+                    const SliverToBoxAdapter(child: BottomSpacing()),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),

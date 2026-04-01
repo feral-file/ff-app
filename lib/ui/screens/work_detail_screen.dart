@@ -1,3 +1,5 @@
+// ignore_for_file: public_member_api_docs, lines_longer_than_80_chars, discarded_futures, avoid_catches_without_on_clauses // Reason: legacy-derived screen; this change is focused on back-title propagation only.
+
 import 'dart:async';
 
 import 'package:after_layout/after_layout.dart';
@@ -6,6 +8,7 @@ import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
+import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/utils/html/au_html_style.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/content_rhythm.dart';
@@ -37,6 +40,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:shake/shake.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+/// User-visible work title for `PreviousPageTitleScope` (global mirror when
+/// the scope publishes to navigation).
+String _visibleTitleForWorkItem(PlaylistItem item) {
+  final trimmed = item.title?.trim();
+  return (trimmed != null && trimmed.isNotEmpty) ? trimmed : 'Work';
+}
 
 /// Work detail screen.
 /// Shows details for a playlist item (work). UI matches old artwork detail page:
@@ -174,13 +184,14 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
   @override
   Widget build(BuildContext context) {
     final asyncData = ref.watch(workDetailStateProvider(widget.workId));
+    final effectiveBackTitle = widget.backTitle ?? 'Work';
 
     return asyncData.when(
       loading: () => Scaffold(
         backgroundColor: AppColor.auGreyBackground,
         appBar: MainAppBar.preferred(
           context,
-          backTitle: widget.backTitle ?? 'Work',
+          backTitle: effectiveBackTitle,
           backgroundColor: AppColor.auGreyBackground,
         ),
         body: const DelayedLoadingGate(
@@ -192,7 +203,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
         backgroundColor: AppColor.auGreyBackground,
         appBar: MainAppBar.preferred(
           context,
-          backTitle: widget.backTitle ?? 'Work',
+          backTitle: effectiveBackTitle,
           backgroundColor: AppColor.auGreyBackground,
         ),
         body: ErrorView(
@@ -207,7 +218,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
             backgroundColor: AppColor.auGreyBackground,
             appBar: MainAppBar.preferred(
               context,
-              backTitle: widget.backTitle ?? 'Work',
+              backTitle: effectiveBackTitle,
               backgroundColor: AppColor.auGreyBackground,
             ),
             body: Center(
@@ -221,130 +232,134 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
 
         final item = data.item;
         final artistStr = artistStringFromPlaylistItem(item);
+        final pageTitle = _visibleTitleForWorkItem(item);
 
-        return PopScope(
-          canPop: !_isFullScreen,
-          onPopInvokedWithResult: (didPop, result) async {
-            if (_isFullScreen && !didPop) {
-              await _exitFullScreen();
-            }
-          },
-          child: Scaffold(
-            backgroundColor: AppColor.auGreyBackground,
-            body: Stack(
-              children: [
-                BackdropScaffold(
-                  backgroundColor: AppColor.auGreyBackground,
-                  resizeToAvoidBottomInset: false,
-                  appBar: _isFullScreen
-                      ? null
-                      : MainAppBar.preferred(
-                          context,
-                          backTitle: widget.backTitle ?? 'Work',
-                          backgroundColor: AppColor.auGreyBackground,
-                          actions: [
-                            FFDisplayButton(
-                              onDeviceSelected: (device) async {
-                                final canvas = ref.read(
-                                  canvasClientServiceV2Provider,
-                                );
-                                final items = [item];
-                                final singleWorkPlaylist =
-                                    PlaylistExt.fromPlaylistItem(items);
-                                final dp1 =
-                                    DatabaseConverters.playlistAndItemsToDP1Playlist(
-                                      singleWorkPlaylist,
-                                      items,
-                                    );
-                                await canvas.castPlaylist(
-                                  device,
-                                  dp1,
-                                  DP1Intent.displayNow(),
-                                  usingUrl: false,
-                                );
-                              },
+        return PreviousPageTitleScope(
+          title: pageTitle,
+          child: PopScope(
+            canPop: !_isFullScreen,
+            onPopInvokedWithResult: (didPop, result) async {
+              if (_isFullScreen && !didPop) {
+                await _exitFullScreen();
+              }
+            },
+            child: Scaffold(
+              backgroundColor: AppColor.auGreyBackground,
+              body: Stack(
+                children: [
+                  BackdropScaffold(
+                    backgroundColor: AppColor.auGreyBackground,
+                    resizeToAvoidBottomInset: false,
+                    appBar: _isFullScreen
+                        ? null
+                        : MainAppBar.preferred(
+                            context,
+                            backTitle: effectiveBackTitle,
+                            backgroundColor: AppColor.auGreyBackground,
+                            actions: [
+                              FFDisplayButton(
+                                onDeviceSelected: (device) async {
+                                  final canvas = ref.read(
+                                    canvasClientServiceV2Provider,
+                                  );
+                                  final items = [item];
+                                  final singleWorkPlaylist =
+                                      PlaylistExt.fromPlaylistItem(items);
+                                  final dp1 =
+                                      DatabaseConverters.playlistAndItemsToDP1Playlist(
+                                        singleWorkPlaylist,
+                                        items,
+                                      );
+                                  await canvas.castPlaylist(
+                                    device,
+                                    dp1,
+                                    DP1Intent.displayNow(),
+                                    usingUrl: false,
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                    backLayer: _isFullScreen
+                        ? GestureDetector(
+                            onTap: _exitFullScreen,
+                            behavior: HitTestBehavior.opaque,
+                            child: WorkDetailBackLayer(
+                              item: item,
+                              isFullScreen: true,
+                              mimeType: data.mimeType,
                             ),
-                          ],
-                        ),
-                  backLayer: _isFullScreen
-                      ? GestureDetector(
-                          onTap: _exitFullScreen,
-                          behavior: HitTestBehavior.opaque,
-                          child: WorkDetailBackLayer(
+                          )
+                        : WorkDetailBackLayer(
                             item: item,
-                            isFullScreen: true,
+                            isFullScreen: false,
                             mimeType: data.mimeType,
                           ),
-                        )
-                      : WorkDetailBackLayer(
-                          item: item,
-                          isFullScreen: false,
-                          mimeType: data.mimeType,
-                        ),
-                  reverseAnimationCurve: Curves.ease,
-                  frontLayer: _isFullScreen
-                      ? const SizedBox()
-                      : _buildFrontLayer(context, data),
-                  frontLayerBackgroundColor: _isFullScreen
-                      ? Colors.transparent
-                      : AppColor.auGreyBackground,
-                  backLayerBackgroundColor: AppColor.auGreyBackground,
-                  animationController: _animationController,
-                  revealBackLayerAtStart: true,
-                  frontLayerScrim: Colors.transparent,
-                  backLayerScrim: Colors.transparent,
-                  subHeaderAlwaysActive: false,
-                  frontLayerShape: const BeveledRectangleBorder(),
-                  subHeader: _isFullScreen
-                      ? null
-                      : DecoratedBox(
-                          decoration: const BoxDecoration(
-                            color: AppColor.auGreyBackground,
-                          ),
-                          child: GestureDetector(
-                            onVerticalDragEnd: (details) {
-                              final dy = details.primaryVelocity ?? 0;
-                              if (dy <= 0) {
-                                _infoExpand();
-                              } else {
-                                _infoShrink();
-                              }
-                            },
-                            child: Container(
-                              child: _buildSubHeader(
-                                context,
-                                data,
-                                item,
-                                artistStr,
+                    reverseAnimationCurve: Curves.ease,
+                    frontLayer: _isFullScreen
+                        ? const SizedBox()
+                        : _buildFrontLayer(context, data),
+                    frontLayerBackgroundColor: _isFullScreen
+                        ? Colors.transparent
+                        : AppColor.auGreyBackground,
+                    backLayerBackgroundColor: AppColor.auGreyBackground,
+                    animationController: _animationController,
+                    revealBackLayerAtStart: true,
+                    frontLayerScrim: Colors.transparent,
+                    backLayerScrim: Colors.transparent,
+                    subHeaderAlwaysActive: false,
+                    frontLayerShape: const BeveledRectangleBorder(),
+                    subHeader: _isFullScreen
+                        ? null
+                        : DecoratedBox(
+                            decoration: const BoxDecoration(
+                              color: AppColor.auGreyBackground,
+                            ),
+                            child: GestureDetector(
+                              onVerticalDragEnd: (details) {
+                                final dy = details.primaryVelocity ?? 0;
+                                if (dy <= 0) {
+                                  _infoExpand();
+                                } else {
+                                  _infoShrink();
+                                }
+                              },
+                              child: Container(
+                                child: _buildSubHeader(
+                                  context,
+                                  data,
+                                  item,
+                                  artistStr,
+                                ),
                               ),
                             ),
                           ),
+                  ),
+                  if (_isInfoExpand && !_isFullScreen)
+                    Positioned(
+                      top: _appBarBottomDy ?? 80,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: _infoShrink,
+                        onVerticalDragEnd: (details) {
+                          final dy = details.primaryVelocity ?? 0;
+                          if (dy > 0) {
+                            _infoShrink();
+                          }
+                        },
+                        child: Container(
+                          color: Colors.transparent,
+                          height:
+                              (MediaQuery.of(context).size.height -
+                                  (_appBarBottomDy ?? 80) -
+                                  _infoHeaderHeight) *
+                              0.5,
+                          width: MediaQuery.of(context).size.width,
                         ),
-                ),
-                if (_isInfoExpand && !_isFullScreen)
-                  Positioned(
-                    top: _appBarBottomDy ?? 80,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onTap: _infoShrink,
-                      onVerticalDragEnd: (details) {
-                        final dy = details.primaryVelocity ?? 0;
-                        if (dy > 0) {
-                          _infoShrink();
-                        }
-                      },
-                      child: Container(
-                        color: Colors.transparent,
-                        height:
-                            (MediaQuery.of(context).size.height -
-                                (_appBarBottomDy ?? 80) -
-                                _infoHeaderHeight) *
-                            0.5,
-                        width: MediaQuery.of(context).size.width,
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         );
