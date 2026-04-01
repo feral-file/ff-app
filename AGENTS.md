@@ -55,7 +55,7 @@ When `PLANS.md` is activated, follow it exactly:
 3. Write integration tests next, with `.env` provisioned, and define expected integration outputs before implementation.
 4. Run tests and ensure they all pass.
 5. Implement/compose app flow that uses the tested functions.
-6. Run `scripts/agent-helpers/post-implementation-checks HEAD` and fix all reported issues.
+6. Run `scripts/agent-helpers/post-implementation-checks.sh HEAD` and fix all reported issues.
 
 ## Rule references (authoritative detail)
 
