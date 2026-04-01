@@ -147,6 +147,7 @@ class FF1WifiControl {
     _currentPlayerStatus = null;
     _currentDeviceStatus = null;
     _isDeviceConnected = false;
+    _connectionStatusController.add(const FF1ConnectionStatus(isConnected: false));
 
     _log.info('Connecting to ${device.deviceId}');
     _slog.info(

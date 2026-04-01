@@ -260,6 +260,12 @@ class FakeWifiTransport implements FF1WifiTransport {
     _connections.add(false);
   }
 
+  void emitTransportConnection({required bool isConnected}) {
+    _isConnected = isConnected;
+    _isConnecting = false;
+    _connections.add(isConnected);
+  }
+
   void emitPlayerStatus(FF1PlayerStatus status) {
     _notifications.add(
       FF1NotificationMessage(
@@ -353,5 +359,9 @@ class FakeWifiControl extends FF1WifiControl {
 
   void emitConnectionStatus({required bool isConnected}) {
     _transport.emitConnectionStatus(isConnected: isConnected);
+  }
+
+  void emitTransportConnection({required bool isConnected}) {
+    _transport.emitTransportConnection(isConnected: isConnected);
   }
 }

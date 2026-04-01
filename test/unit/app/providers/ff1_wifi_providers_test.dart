@@ -200,6 +200,10 @@ void main() {
           ff1PlayerStatusStreamProvider,
           (_, _) {},
         )
+        ..listen<AsyncValue<FF1ConnectionStatus>>(
+          ff1ConnectionStatusStreamProvider,
+          (_, _) {},
+        )
         ..listen<FF1PlayerStatus?>(
           ff1CurrentPlayerStatusProvider,
           (_, _) {},
@@ -210,7 +214,9 @@ void main() {
         userId: 'user-a',
         apiKey: 'key-a',
       );
-      wifiControl.emitPlayerStatus(statusA);
+      wifiControl
+        ..emitConnectionStatus(isConnected: true)
+        ..emitPlayerStatus(statusA);
       await Future<void>.delayed(Duration.zero);
 
       expect(
@@ -223,13 +229,152 @@ void main() {
         userId: 'user-b',
         apiKey: 'key-b',
       );
-      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
 
       expect(
         container.read(ff1PlayerStatusStreamProvider).asData?.value.playlistId,
         statusA.playlistId,
       );
       expect(container.read(ff1CurrentPlayerStatusProvider), isNull);
+    },
+  );
+
+  test(
+    'transport disconnect clears current player and device status providers',
+    () async {
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+      final playerStatus = FF1PlayerStatus(
+        playlistId: 'playlist-a',
+        currentWorkIndex: 0,
+        items: const <DP1PlaylistItem>[],
+      );
+      const deviceStatus = FF1DeviceStatus(
+        connectedWifi: 'studio',
+        internetConnected: true,
+      );
+
+      final wifiControl = FakeWifiControl();
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container
+        ..listen<AsyncValue<FF1PlayerStatus>>(
+          ff1PlayerStatusStreamProvider,
+          (_, _) {},
+        )
+        ..listen<AsyncValue<FF1DeviceStatus>>(
+          ff1DeviceStatusStreamProvider,
+          (_, _) {},
+        )
+        ..listen<AsyncValue<FF1ConnectionStatus>>(
+          ff1ConnectionStatusStreamProvider,
+          (_, _) {},
+        )
+        ..listen<FF1PlayerStatus?>(
+          ff1CurrentPlayerStatusProvider,
+          (_, _) {},
+        )
+        ..listen<FF1DeviceStatus?>(
+          ff1CurrentDeviceStatusProvider,
+          (_, _) {},
+        );
+
+      await container.read(ff1WifiConnectionProvider.notifier).connect(
+        device: device,
+        userId: 'user-a',
+        apiKey: 'key-a',
+      );
+      wifiControl
+        ..emitConnectionStatus(isConnected: true)
+        ..emitPlayerStatus(playerStatus)
+        ..emitDeviceStatus(deviceStatus);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        container.read(ff1CurrentPlayerStatusProvider)?.playlistId,
+        playerStatus.playlistId,
+      );
+      expect(
+        container.read(ff1CurrentDeviceStatusProvider)?.connectedWifi,
+        deviceStatus.connectedWifi,
+      );
+
+      wifiControl.emitTransportConnection(isConnected: false);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(container.read(ff1CurrentPlayerStatusProvider), isNull);
+      expect(container.read(ff1CurrentDeviceStatusProvider), isNull);
+    },
+  );
+
+  test(
+    'device switch resets ff1DeviceConnectedProvider before new '
+    'connection notification',
+    () async {
+      const deviceA = FF1Device(
+        name: 'FF1-A',
+        remoteId: 'remote-a',
+        deviceId: 'device-a',
+        topicId: 'topic-a',
+      );
+      const deviceB = FF1Device(
+        name: 'FF1-B',
+        remoteId: 'remote-b',
+        deviceId: 'device-b',
+        topicId: 'topic-b',
+      );
+
+      final wifiControl = FakeWifiControl();
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container
+        ..listen<AsyncValue<FF1ConnectionStatus>>(
+          ff1ConnectionStatusStreamProvider,
+          (_, _) {},
+        )
+        ..listen<bool>(
+          ff1DeviceConnectedProvider,
+          (_, _) {},
+        );
+
+      await container.read(ff1WifiConnectionProvider.notifier).connect(
+        device: deviceA,
+        userId: 'user-a',
+        apiKey: 'key-a',
+      );
+      wifiControl.emitConnectionStatus(isConnected: true);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(container.read(ff1DeviceConnectedProvider), isTrue);
+
+      await container.read(ff1WifiConnectionProvider.notifier).connect(
+        device: deviceB,
+        userId: 'user-b',
+        apiKey: 'key-b',
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(container.read(ff1DeviceConnectedProvider), isFalse);
     },
   );
 }

@@ -403,7 +403,7 @@ final ff1SupportsPlaybackModesProvider = Provider<bool>((ref) {
 final ff1CurrentPlayerStatusProvider = Provider<FF1PlayerStatus?>((ref) {
   final control = ref.watch(ff1WifiControlProvider);
   ref.watch(ff1PlayerStatusStreamProvider);
-  ref.watch(ff1WifiConnectionProvider);
+  ref.watch(ff1ConnectionStatusStreamProvider);
   return control.currentPlayerStatus;
 });
 
@@ -416,7 +416,7 @@ final ff1CurrentPlayerStatusProvider = Provider<FF1PlayerStatus?>((ref) {
 final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
   final control = ref.watch(ff1WifiControlProvider);
   ref.watch(ff1DeviceStatusStreamProvider);
-  ref.watch(ff1WifiConnectionProvider);
+  ref.watch(ff1ConnectionStatusStreamProvider);
   return control.currentDeviceStatus;
 });
 
