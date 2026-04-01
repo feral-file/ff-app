@@ -56,6 +56,16 @@ class PlaylistDetailScreen extends ConsumerStatefulWidget {
 class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
   final ScrollController _scrollController = ScrollController();
 
+  String _pageTitle(AsyncValue<PlaylistDetailsState> detailsAsync) {
+    final playlist = switch (detailsAsync) {
+      AsyncData(value: final details) => details.playlist,
+      _ => null,
+    };
+    final name = playlist?.name.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return 'Playlist';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -88,84 +98,81 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
     final state = detailsAsync.hasValue ? detailsAsync.value : null;
     final hasPlaylist = state?.playlist != null && state?.items != null;
 
-    return Scaffold(
-      backgroundColor: AppColor.auGreyBackground,
-      appBar: MainAppBar.preferred(
-        context,
-        backTitle: widget.backTitle ?? 'Playlists',
+    return PreviousPageTitleScope(
+      title: _pageTitle(detailsAsync),
+      child: Scaffold(
         backgroundColor: AppColor.auGreyBackground,
-        actions: [
-          if (hasPlaylist)
-            FFDisplayButton(
-              onDeviceSelected: (device) async {
-                final current = ref
-                    .read(playlistDetailsProvider(widget.playlistId))
-                    .value;
-                if (current?.playlist == null || current?.items == null) {
-                  return;
-                }
-                final canvas = ref.read(canvasClientServiceV2Provider);
+        appBar: MainAppBar.preferred(
+          context,
+          backTitle: widget.backTitle ?? '',
+          backgroundColor: AppColor.auGreyBackground,
+          actions: [
+            if (hasPlaylist)
+              FFDisplayButton(
+                onDeviceSelected: (device) async {
+                  final current = ref
+                      .read(playlistDetailsProvider(widget.playlistId))
+                      .value;
+                  if (current?.playlist == null || current?.items == null) {
+                    return;
+                  }
+                  final canvas = ref.read(canvasClientServiceV2Provider);
 
-                final database = ref.read(databaseServiceProvider);
+                  final database = ref.read(databaseServiceProvider);
 
-                final allItems = await database.getPlaylistItems(
-                  widget.playlistId,
-                );
-                final dp1 = DatabaseConverters.playlistAndItemsToDP1Playlist(
-                  current!.playlist!,
-                  allItems,
-                );
-                await canvas.castPlaylist(
-                  device,
-                  dp1,
-                  DP1Intent.displayNow(),
-                  usingUrl: false,
-                );
-              },
+                  final allItems = await database.getPlaylistItems(
+                    widget.playlistId,
+                  );
+                  final dp1 = DatabaseConverters.playlistAndItemsToDP1Playlist(
+                    current!.playlist!,
+                    allItems,
+                  );
+                  await canvas.castPlaylist(
+                    device,
+                    dp1,
+                    DP1Intent.displayNow(),
+                    usingUrl: false,
+                  );
+                },
+              ),
+          ],
+        ),
+        body: SafeArea(
+          child: detailsAsync.when(
+            loading: () => const DelayedLoadingGate(
+              isLoading: true,
+              child: LoadingView(),
             ),
-        ],
-      ),
-      body: SafeArea(
-        child: detailsAsync.when(
-          loading: () => const DelayedLoadingGate(
-            isLoading: true,
-            child: LoadingView(),
-          ),
-          error: (error, _) => ErrorView(
-            error:
-                'We couldn’t load this playlist. Check your connection, then '
-                'Retry.',
-            onRetry: () =>
-                ref.invalidate(playlistDetailsProvider(widget.playlistId)),
-          ),
-          data: (state) {
-            final playlist = state.playlist;
-            final items = state.items;
-            if (playlist == null) {
-              return Center(
-                child: Text(
-                  'Playlist not found',
-                  style: AppTypography.body(context).grey,
-                ),
-              );
-            }
+            error: (error, _) => ErrorView(
+              error:
+                  'We couldn’t load this playlist. Check your connection, then '
+                  'Retry.',
+              onRetry: () =>
+                  ref.invalidate(playlistDetailsProvider(widget.playlistId)),
+            ),
+            data: (state) {
+              final playlist = state.playlist;
+              final items = state.items;
+              if (playlist == null) {
+                return Center(
+                  child: Text(
+                    'Playlist not found',
+                    style: AppTypography.body(context).grey,
+                  ),
+                );
+              }
 
-            // Playlist (domain) uses name; channel for subtitle
-            final channelId = playlist.channelId;
-            final channelAsync = channelId == null
-                ? const AsyncValue<Channel?>.data(null)
-                : ref.watch(channelByIdProvider(channelId));
+              // Playlist (domain) uses name; channel for subtitle
+              final channelId = playlist.channelId;
+              final channelAsync = channelId == null
+                  ? const AsyncValue<Channel?>.data(null)
+                  : ref.watch(channelByIdProvider(channelId));
 
-            final ownerAddress = playlist.ownerAddress;
-            final isAddressPlaylist =
-                ownerAddress != null && ownerAddress.isNotEmpty;
+              final ownerAddress = playlist.ownerAddress;
+              final isAddressPlaylist =
+                  ownerAddress != null && ownerAddress.isNotEmpty;
 
-            final playlistTitle = playlist.name.isNotEmpty
-                ? playlist.name
-                : 'Playlist';
-            return PreviousPageTitleScope(
-              title: playlistTitle,
-              child: Builder(
+              return Builder(
                 builder: (scopedContext) => CustomScrollView(
                   controller: _scrollController,
                   slivers: [
@@ -278,9 +285,9 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen> {
                       ),
                   ],
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );

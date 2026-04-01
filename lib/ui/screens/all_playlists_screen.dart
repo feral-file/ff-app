@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:app/app/providers/channel_detail_provider.dart';
-import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/publisher_section_providers.dart';
@@ -106,24 +105,6 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     final types = widget.channelTypes;
     if (types == null || types.isEmpty) return [ChannelType.dp1];
     return types;
-  }
-
-  String _resolveBackLabel(List<String> channelIds) {
-    final explicit = widget.backTitle;
-    if (explicit != null && explicit.isNotEmpty) return explicit;
-    if (channelIds.length == 1) {
-      final channelAsync = ref.watch(channelByIdProvider(channelIds.first));
-      return channelAsync.when(
-        data: (c) {
-          final name = c?.name;
-          if (name != null && name.isNotEmpty) return name;
-          return 'Playlists';
-        },
-        loading: () => 'Playlists',
-        error: (_, _) => 'Playlists',
-      );
-    }
-    return 'Playlists';
   }
 
   List<String> _effectiveChannelIds() {
@@ -360,7 +341,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     final title = widget.title;
     final description = widget.description;
     final iconAsset = widget.iconAsset;
-    final backLabel = _resolveBackLabel(ids);
+    final backLabel = widget.backTitle ?? '';
     final pageTitle = title ?? 'Playlists';
 
     return PreviousPageTitleScope(

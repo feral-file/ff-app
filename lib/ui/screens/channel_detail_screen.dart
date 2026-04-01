@@ -51,6 +51,16 @@ class ChannelDetailScreen extends ConsumerStatefulWidget {
 class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
   static const int _previewCount = 5;
 
+  String _pageTitle(AsyncValue<ChannelDetails> detailsAsync) {
+    final channel = switch (detailsAsync) {
+      AsyncData(value: final details) => details.channel,
+      _ => null,
+    };
+    final name = channel?.name.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return 'Channel';
+  }
+
   String _creatorForAddressPlaylist(Playlist playlist) {
     final address = playlist.ownerAddress;
     if (address == null || address.isEmpty) return '';
@@ -279,64 +289,63 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final channelId = widget.channelId;
+    final detailsAsync = ref.watch(channelDetailsProvider(channelId));
     Future<void> onRefresh() async {
       ref.invalidate(channelDetailsProvider(channelId));
     }
 
-    return Scaffold(
-      backgroundColor: AppColor.auGreyBackground,
-      appBar: MainAppBar.preferred(
-        context,
-        backTitle: widget.backTitle ?? 'Channels',
+    return PreviousPageTitleScope(
+      title: _pageTitle(detailsAsync),
+      child: Scaffold(
         backgroundColor: AppColor.auGreyBackground,
-      ),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: onRefresh,
-          backgroundColor: AppColor.primaryBlack,
-          color: AppColor.white,
-          child: ref
-              .watch(channelDetailsProvider(channelId))
-              .when(
-                loading: () => const LoadingView(),
-                error: (error, _) => ErrorView(
-                  error:
-                      'We couldn’t load this channel. Check your connection, '
-                      'then Retry.',
-                  onRetry: onRefresh,
-                ),
-                data: (details) {
-                  final channel = details.channel;
-                  final playlists = details.playlists;
-                  if (channel == null) {
-                    return Center(
-                      child: Text(
-                        'Channel not found',
-                        style: AppTypography.body(context).grey,
-                      ),
-                    );
-                  }
-
-                  final isMeChannel = channel.type == ChannelType.localVirtual;
-                  return PreviousPageTitleScope(
-                    title: channel.name.isNotEmpty ? channel.name : 'Channel',
-                    child: Builder(
-                      builder: (scopedContext) => isMeChannel
-                          ? _buildMeChannelContent(
-                              scopedContext,
-                              ref,
-                              channel,
-                              playlists,
-                            )
-                          : _buildDefaultChannelContent(
-                              scopedContext,
-                              channel,
-                              playlists,
-                            ),
+        appBar: MainAppBar.preferred(
+          context,
+          backTitle: widget.backTitle ?? '',
+          backgroundColor: AppColor.auGreyBackground,
+        ),
+        body: SafeArea(
+          child: RefreshIndicator(
+            onRefresh: onRefresh,
+            backgroundColor: AppColor.primaryBlack,
+            color: AppColor.white,
+            child: detailsAsync.when(
+              loading: () => const LoadingView(),
+              error: (error, _) => ErrorView(
+                error:
+                    'We couldn’t load this channel. Check your connection, '
+                    'then Retry.',
+                onRetry: onRefresh,
+              ),
+              data: (details) {
+                final channel = details.channel;
+                final playlists = details.playlists;
+                if (channel == null) {
+                  return Center(
+                    child: Text(
+                      'Channel not found',
+                      style: AppTypography.body(context).grey,
                     ),
                   );
-                },
-              ),
+                }
+
+                final isMeChannel = channel.type == ChannelType.localVirtual;
+                return Builder(
+                  builder: (scopedContext) => isMeChannel
+                      ? _buildMeChannelContent(
+                          scopedContext,
+                          ref,
+                          channel,
+                          playlists,
+                        )
+                      : _buildDefaultChannelContent(
+                          scopedContext,
+                          channel,
+                          playlists,
+                        ),
+                );
+              },
+            ),
+          ),
         ),
       ),
     );

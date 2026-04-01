@@ -3,6 +3,7 @@ import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
+import 'package:app/app/providers/playlist_details_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/publisher_section_providers.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
@@ -19,8 +20,10 @@ import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/ui/screens/all_playlists_screen.dart';
 import 'package:app/ui/screens/channel_detail_screen.dart';
+import 'package:app/ui/screens/playlist_detail_screen.dart';
 import 'package:app/ui/screens/tabs/playlists_tab_page.dart';
 import 'package:app/ui/screens/tabs/works_tab_page.dart';
+import 'package:app/ui/screens/work_detail_screen.dart';
 import 'package:app/widgets/now_displaying_bar/now_displaying_bar.dart';
 import 'package:app/widgets/work_grid_card.dart';
 import 'package:flutter/material.dart';
@@ -88,6 +91,30 @@ class _StubWorksNotifier extends WorksNotifier {
     required int startIndex,
     required int endIndex,
   }) {}
+}
+
+class _StaticPlaylistDetailsNotifier extends PlaylistDetailsNotifier {
+  // PlaylistDetailsNotifier stores this family argument in a private
+  // `_playlistId` field, so the test double cannot match the parameter name.
+  // ignore: matching_super_parameters
+  _StaticPlaylistDetailsNotifier(super.playlistId, this._state);
+
+  final AsyncValue<PlaylistDetailsState> _state;
+
+  @override
+  AsyncValue<PlaylistDetailsState> build() => _state;
+}
+
+class _StaticWorkDetailNotifier extends WorkDetailNotifier {
+  // WorkDetailNotifier stores this family argument in a private `_itemId`
+  // field, so the test double cannot match the parameter name.
+  // ignore: matching_super_parameters
+  _StaticWorkDetailNotifier(super.itemId, this._state);
+
+  final AsyncValue<WorkDetailData?> _state;
+
+  @override
+  AsyncValue<WorkDetailData?> build() => _state;
 }
 
 class _StaticNowDisplayingNotifier extends NowDisplayingNotifier {
@@ -356,6 +383,53 @@ void main() {
       expect(find.text('Playlists'), findsWidgets);
     });
 
+    testWidgets(
+      'direct all playlists entry does not invent a channel back title',
+      (tester) async {
+        const channelId = 'ch_1';
+        const channelName = 'Deep Link Channel';
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              channelPlaylistsFromIdsProvider(channelId).overrideWith(
+                (ref) => Stream.value(const <Playlist>[]),
+              ),
+            ],
+            child: MaterialApp.router(
+              routerConfig: GoRouter(
+                initialLocation: '/playlists/all?channelIds=$channelId',
+                routes: [
+                  GoRoute(
+                    path: '/playlists/all',
+                    builder: (context, state) {
+                      final params = parseAllPlaylistsQuery(
+                        state.uri.queryParameters,
+                      );
+                      final metadata = deriveAllPlaylistsMetadata(params);
+                      return AllPlaylistsScreen(
+                        channelTypes: params.channelTypes,
+                        channelIds: params.channelIds,
+                        playlistTypes: params.playlistTypes,
+                        title: metadata.title,
+                        description: metadata.description,
+                        iconAsset: metadata.iconAsset,
+                        backTitle: previousPageTitleFromExtra(state.extra),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.text(channelName), findsNothing);
+      },
+    );
+
     testWidgets('works tab pushes work detail with Works back title', (
       tester,
     ) async {
@@ -479,6 +553,196 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(previousPageTitleFromExtra(pushedExtra), 'Channels');
+      },
+    );
+
+    testWidgets(
+      'channel detail loading state publishes a fallback overlay title',
+      (tester) async {
+        Object? pushedExtra;
+        const channelId = 'ch_loading';
+        late GoRouter router;
+
+        router = GoRouter(
+          initialLocation: '/channels/$channelId',
+          routes: [
+            GoRoute(
+              path: '/channels/:channelId',
+              builder: (context, state) =>
+                  const ChannelDetailScreen(channelId: channelId),
+            ),
+            GoRoute(
+              path: '/works/:workId',
+              builder: (context, state) {
+                pushedExtra = state.extra;
+                return const SizedBox.shrink();
+              },
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              channelDetailsProvider(channelId).overrideWith(
+                (ref) => const Stream<ChannelDetails>.empty(),
+              ),
+              nowDisplayingProvider.overrideWith(
+                () => _StaticNowDisplayingNotifier(
+                  _nowDisplayingSuccess(
+                    workId: 'overlay_work',
+                    title: 'Overlay Work',
+                  ),
+                ),
+              ),
+              nowDisplayingVisibilityProvider.overrideWith(
+                () => _StaticNowDisplayingVisibilityNotifier(
+                  _visibleNowDisplayingState,
+                ),
+              ),
+              ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+              ff1SupportsPlaybackModesProvider.overrideWithValue(false),
+            ],
+            child: _appWithNowDisplayingOverlay(router: router),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Overlay Work'));
+        await tester.pumpAndSettle();
+
+        expect(previousPageTitleFromExtra(pushedExtra), 'Channel');
+      },
+    );
+
+    testWidgets(
+      'playlist detail loading state publishes a fallback overlay title',
+      (tester) async {
+        Object? pushedExtra;
+        const playlistId = 'playlist_loading';
+        late GoRouter router;
+
+        router = GoRouter(
+          initialLocation: '/playlists/$playlistId',
+          routes: [
+            GoRoute(
+              path: '/playlists/:playlistId',
+              builder: (context, state) =>
+                  const PlaylistDetailScreen(playlistId: playlistId),
+            ),
+            GoRoute(
+              path: '/works/:workId',
+              builder: (context, state) {
+                pushedExtra = state.extra;
+                return const SizedBox.shrink();
+              },
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              playlistDetailsProvider(playlistId).overrideWith(
+                () => _StaticPlaylistDetailsNotifier(
+                  playlistId,
+                  const AsyncValue<PlaylistDetailsState>.loading(),
+                ),
+              ),
+              nowDisplayingProvider.overrideWith(
+                () => _StaticNowDisplayingNotifier(
+                  _nowDisplayingSuccess(
+                    workId: 'overlay_work',
+                    title: 'Overlay Work',
+                  ),
+                ),
+              ),
+              nowDisplayingVisibilityProvider.overrideWith(
+                () => _StaticNowDisplayingVisibilityNotifier(
+                  _visibleNowDisplayingState,
+                ),
+              ),
+              ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+              ff1SupportsPlaybackModesProvider.overrideWithValue(false),
+            ],
+            child: _appWithNowDisplayingOverlay(router: router),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Overlay Work'));
+        await tester.pumpAndSettle();
+
+        expect(previousPageTitleFromExtra(pushedExtra), 'Playlist');
+      },
+    );
+
+    testWidgets(
+      'work detail not-found state publishes a fallback overlay title',
+      (tester) async {
+        Object? pushedExtra;
+        const workId = 'missing_work';
+        late GoRouter router;
+
+        router = GoRouter(
+          initialLocation: '/works/$workId',
+          routes: [
+            GoRoute(
+              path: '/works/:workId',
+              builder: (context, state) {
+                final currentWorkId = state.pathParameters['workId']!;
+                if (currentWorkId == 'overlay_work') {
+                  pushedExtra = state.extra;
+                }
+                return WorkDetailScreen(workId: currentWorkId);
+              },
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              workDetailStateProvider(workId).overrideWith(
+                () => _StaticWorkDetailNotifier(
+                  workId,
+                  const AsyncValue<WorkDetailData?>.data(null),
+                ),
+              ),
+              workDetailStateProvider('overlay_work').overrideWith(
+                () => _StaticWorkDetailNotifier(
+                  'overlay_work',
+                  const AsyncValue<WorkDetailData?>.data(null),
+                ),
+              ),
+              nowDisplayingProvider.overrideWith(
+                () => _StaticNowDisplayingNotifier(
+                  _nowDisplayingSuccess(
+                    workId: 'overlay_work',
+                    title: 'Overlay Work',
+                  ),
+                ),
+              ),
+              nowDisplayingVisibilityProvider.overrideWith(
+                () => _StaticNowDisplayingVisibilityNotifier(
+                  _visibleNowDisplayingState,
+                ),
+              ),
+              ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+              ff1SupportsPlaybackModesProvider.overrideWithValue(false),
+            ],
+            child: _appWithNowDisplayingOverlay(router: router),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Overlay Work'));
+        await tester.pumpAndSettle();
+
+        expect(previousPageTitleFromExtra(pushedExtra), 'Work');
       },
     );
 

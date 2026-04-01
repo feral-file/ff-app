@@ -52,8 +52,7 @@ class AllChannelsScreen extends ConsumerStatefulWidget {
   /// Which channels to show.
   final AllChannelsFilter filter;
 
-  /// Prior screen title for the back control; defaults to `'Channels'` when
-  /// null (e.g. deep link).
+  /// Prior screen title for the back control.
   final String? backTitle;
 
   @override
@@ -132,7 +131,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
         backgroundColor: AppColor.auGreyBackground,
         appBar: MainAppBar.preferred(
           context,
-          backTitle: widget.backTitle ?? 'Channels',
+          backTitle: widget.backTitle ?? '',
         ),
         body: SafeArea(
           child: RefreshIndicator(

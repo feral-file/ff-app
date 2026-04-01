@@ -41,13 +41,6 @@ import 'package:flutter_svg/svg.dart';
 import 'package:shake/shake.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// User-visible work title for `PreviousPageTitleScope` (global mirror when
-/// the scope publishes to navigation).
-String _visibleTitleForWorkItem(PlaylistItem item) {
-  final trimmed = item.title?.trim();
-  return (trimmed != null && trimmed.isNotEmpty) ? trimmed : 'Work';
-}
-
 /// Work detail screen.
 /// Shows details for a playlist item (work). UI matches old artwork detail page:
 /// BackdropScaffold with back layer (media), front layer (info panel), subheader.
@@ -181,62 +174,72 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
     _animationController.animateTo(_infoExpandPosition);
   }
 
+  String _pageTitle(AsyncValue<WorkDetailData?> asyncData) {
+    final item = switch (asyncData) {
+      AsyncData(value: final data) => data?.item,
+      _ => null,
+    };
+    final workTitle = item?.title?.trim();
+    if (workTitle != null && workTitle.isNotEmpty) return workTitle;
+    return 'Work';
+  }
+
   @override
   Widget build(BuildContext context) {
     final asyncData = ref.watch(workDetailStateProvider(widget.workId));
-    final effectiveBackTitle = widget.backTitle ?? 'Work';
+    final effectiveBackTitle = widget.backTitle ?? '';
 
-    return asyncData.when(
-      loading: () => Scaffold(
-        backgroundColor: AppColor.auGreyBackground,
-        appBar: MainAppBar.preferred(
-          context,
-          backTitle: effectiveBackTitle,
+    return PreviousPageTitleScope(
+      title: _pageTitle(asyncData),
+      child: asyncData.when(
+        loading: () => Scaffold(
           backgroundColor: AppColor.auGreyBackground,
-        ),
-        body: const DelayedLoadingGate(
-          isLoading: true,
-          child: LoadingView(),
-        ),
-      ),
-      error: (error, _) => Scaffold(
-        backgroundColor: AppColor.auGreyBackground,
-        appBar: MainAppBar.preferred(
-          context,
-          backTitle: effectiveBackTitle,
-          backgroundColor: AppColor.auGreyBackground,
-        ),
-        body: ErrorView(
-          error:
-              'We couldn’t load this work. Check your connection, then Retry.',
-          onRetry: () => ref.invalidate(workDetailStateProvider(widget.workId)),
-        ),
-      ),
-      data: (data) {
-        if (data == null) {
-          return Scaffold(
+          appBar: MainAppBar.preferred(
+            context,
+            backTitle: effectiveBackTitle,
             backgroundColor: AppColor.auGreyBackground,
-            appBar: MainAppBar.preferred(
-              context,
-              backTitle: effectiveBackTitle,
+          ),
+          body: const DelayedLoadingGate(
+            isLoading: true,
+            child: LoadingView(),
+          ),
+        ),
+        error: (error, _) => Scaffold(
+          backgroundColor: AppColor.auGreyBackground,
+          appBar: MainAppBar.preferred(
+            context,
+            backTitle: effectiveBackTitle,
+            backgroundColor: AppColor.auGreyBackground,
+          ),
+          body: ErrorView(
+            error:
+                'We couldn’t load this work. Check your connection, then Retry.',
+            onRetry: () =>
+                ref.invalidate(workDetailStateProvider(widget.workId)),
+          ),
+        ),
+        data: (data) {
+          if (data == null) {
+            return Scaffold(
               backgroundColor: AppColor.auGreyBackground,
-            ),
-            body: Center(
-              child: Text(
-                'Work not found',
-                style: AppTypography.body(context).grey,
+              appBar: MainAppBar.preferred(
+                context,
+                backTitle: effectiveBackTitle,
+                backgroundColor: AppColor.auGreyBackground,
               ),
-            ),
-          );
-        }
+              body: Center(
+                child: Text(
+                  'Work not found',
+                  style: AppTypography.body(context).grey,
+                ),
+              ),
+            );
+          }
 
-        final item = data.item;
-        final artistStr = artistStringFromPlaylistItem(item);
-        final pageTitle = _visibleTitleForWorkItem(item);
+          final item = data.item;
+          final artistStr = artistStringFromPlaylistItem(item);
 
-        return PreviousPageTitleScope(
-          title: pageTitle,
-          child: PopScope(
+          return PopScope(
             canPop: !_isFullScreen,
             onPopInvokedWithResult: (didPop, result) async {
               if (_isFullScreen && !didPop) {
@@ -361,9 +364,9 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                 ],
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
