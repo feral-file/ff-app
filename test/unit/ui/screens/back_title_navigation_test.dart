@@ -1,6 +1,8 @@
 import 'package:app/app/providers/channel_detail_provider.dart';
-import 'package:app/app/providers/channels_provider.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
+import 'package:app/app/providers/now_displaying_provider.dart';
+import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/publisher_section_providers.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
@@ -8,19 +10,25 @@ import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
 import 'package:app/app/routing/all_playlists_route.dart';
 import 'package:app/app/routing/previous_page_title_extra.dart';
+import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/ui/screens/all_playlists_screen.dart';
 import 'package:app/ui/screens/channel_detail_screen.dart';
 import 'package:app/ui/screens/tabs/playlists_tab_page.dart';
 import 'package:app/ui/screens/tabs/works_tab_page.dart';
+import 'package:app/widgets/now_displaying_bar/now_displaying_bar.dart';
 import 'package:app/widgets/work_grid_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../app/providers/provider_test_helpers.dart';
 
 class _SeedDoneNotifier extends SeedDownloadNotifier {
   @override
@@ -35,6 +43,9 @@ class _SeedNotReadyNotifier extends SeedDatabaseReadyNotifier {
 }
 
 class _StubPlaylistsNotifier extends PlaylistsNotifier {
+  // PlaylistsNotifier stores this positional argument in a private `_type`
+  // field, so the test double cannot match the superclass parameter name.
+  // ignore: matching_super_parameters
   _StubPlaylistsNotifier(super.type, this._state);
 
   final PlaylistsState _state;
@@ -77,6 +88,99 @@ class _StubWorksNotifier extends WorksNotifier {
     required int startIndex,
     required int endIndex,
   }) {}
+}
+
+class _StaticNowDisplayingNotifier extends NowDisplayingNotifier {
+  _StaticNowDisplayingNotifier(this._state);
+
+  final NowDisplayingStatus _state;
+
+  @override
+  NowDisplayingStatus build() => _state;
+}
+
+class _StaticNowDisplayingVisibilityNotifier
+    extends NowDisplayingVisibilityNotifier {
+  _StaticNowDisplayingVisibilityNotifier(this._state);
+
+  final NowDisplayingVisibilityState _state;
+
+  @override
+  NowDisplayingVisibilityState build() => _state;
+}
+
+class _ScopedTitlePage extends StatelessWidget {
+  const _ScopedTitlePage({
+    required this.title,
+    this.child = const SizedBox.shrink(),
+  });
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return PreviousPageTitleScope(
+      title: title,
+      child: Scaffold(body: child),
+    );
+  }
+}
+
+Widget _appWithNowDisplayingOverlay({
+  required GoRouter router,
+}) {
+  return MaterialApp.router(
+    routerConfig: router,
+    builder: (context, child) => Overlay(
+      initialEntries: [
+        OverlayEntry(
+          builder: (context) => Stack(
+            children: [
+              child ?? const SizedBox.shrink(),
+              NowDisplayingBarOverlay(router: router),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+const _visibleNowDisplayingState = NowDisplayingVisibilityState(
+  shouldShowNowDisplaying: true,
+  nowDisplayingVisibility: true,
+  bottomSheetVisibility: false,
+  keyboardVisibility: false,
+  hasFF1: true,
+  workDetailPanelExpanded: false,
+);
+
+const _testDevice = FF1Device(
+  name: 'Living Room FF1',
+  remoteId: 'remote-1',
+  deviceId: 'device-1',
+  topicId: 'topic-1',
+);
+
+NowDisplayingSuccess _nowDisplayingSuccess({
+  required String workId,
+  required String title,
+}) {
+  return NowDisplayingSuccess(
+    DP1NowDisplayingObject(
+      connectedDevice: _testDevice,
+      index: 0,
+      items: [
+        PlaylistItem(
+          id: workId,
+          kind: PlaylistItemKind.dp1Item,
+          title: title,
+        ),
+      ],
+      isSleeping: false,
+    ),
+  );
 }
 
 void main() {
@@ -209,7 +313,7 @@ void main() {
                 GoRoute(
                   path: '/channels/:channelId',
                   builder: (context, state) =>
-                      ChannelDetailScreen(channelId: channelId),
+                      const ChannelDetailScreen(channelId: channelId),
                 ),
                 GoRoute(
                   path: '/playlists/all',
@@ -306,5 +410,189 @@ void main() {
 
       expect(previousPageTitleFromExtra(pushedExtra), 'Works');
     });
+
+    testWidgets(
+      'now displaying bar uses the latest page title after switching pages',
+      (tester) async {
+        Object? pushedExtra;
+        late GoRouter router;
+
+        router = GoRouter(
+          initialLocation: '/playlists',
+          routes: [
+            GoRoute(
+              path: '/playlists',
+              builder: (context, state) => _ScopedTitlePage(
+                title: 'Playlists',
+                child: Center(
+                  child: ElevatedButton(
+                    onPressed: () => context.go('/channels'),
+                    child: const Text('Go to channels'),
+                  ),
+                ),
+              ),
+            ),
+            GoRoute(
+              path: '/channels',
+              builder: (context, state) =>
+                  const _ScopedTitlePage(title: 'Channels'),
+            ),
+            GoRoute(
+              path: '/works/:workId',
+              builder: (context, state) {
+                pushedExtra = state.extra;
+                return const SizedBox.shrink();
+              },
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              nowDisplayingProvider.overrideWith(
+                () => _StaticNowDisplayingNotifier(
+                  _nowDisplayingSuccess(
+                    workId: 'work_2',
+                    title: 'Overlay Work 2',
+                  ),
+                ),
+              ),
+              nowDisplayingVisibilityProvider.overrideWith(
+                () => _StaticNowDisplayingVisibilityNotifier(
+                  _visibleNowDisplayingState,
+                ),
+              ),
+              ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+              ff1SupportsPlaybackModesProvider.overrideWithValue(false),
+            ],
+            child: _appWithNowDisplayingOverlay(router: router),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Go to channels'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Overlay Work 2'));
+        await tester.pumpAndSettle();
+
+        expect(previousPageTitleFromExtra(pushedExtra), 'Channels');
+      },
+    );
+
+    testWidgets(
+      'now displaying bar no-ops when tapping the current work',
+      (tester) async {
+        late GoRouter router;
+        var workBuildCount = 0;
+
+        router = GoRouter(
+          initialLocation: '/works/work_1',
+          routes: [
+            GoRoute(
+              path: '/works/:workId',
+              builder: (context, state) {
+                workBuildCount++;
+                return const _ScopedTitlePage(title: 'Work 1');
+              },
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              nowDisplayingProvider.overrideWith(
+                () => _StaticNowDisplayingNotifier(
+                  _nowDisplayingSuccess(
+                    workId: 'work_1',
+                    title: 'Overlay Current Work',
+                  ),
+                ),
+              ),
+              nowDisplayingVisibilityProvider.overrideWith(
+                () => _StaticNowDisplayingVisibilityNotifier(
+                  _visibleNowDisplayingState,
+                ),
+              ),
+              ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+              ff1SupportsPlaybackModesProvider.overrideWithValue(false),
+            ],
+            child: _appWithNowDisplayingOverlay(router: router),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Overlay Current Work'));
+        await tester.pumpAndSettle();
+
+        expect(router.routerDelegate.state.matchedLocation, '/works/work_1');
+        expect(workBuildCount, 1);
+      },
+    );
+
+    testWidgets(
+      'now displaying bar pushes a different work with the current work title',
+      (tester) async {
+        Object? pushedExtra;
+        late GoRouter router;
+        final visitedLocations = <String>[];
+
+        router = GoRouter(
+          initialLocation: '/works/work_1',
+          routes: [
+            GoRoute(
+              path: '/works/:workId',
+              builder: (context, state) {
+                final workId = state.pathParameters['workId']!;
+                visitedLocations.add(state.matchedLocation);
+                if (workId == 'work_2') {
+                  pushedExtra = state.extra;
+                }
+                return _ScopedTitlePage(
+                  title: workId == 'work_1' ? 'Work 1' : 'Work 2',
+                );
+              },
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              nowDisplayingProvider.overrideWith(
+                () => _StaticNowDisplayingNotifier(
+                  _nowDisplayingSuccess(
+                    workId: 'work_2',
+                    title: 'Overlay Next Work',
+                  ),
+                ),
+              ),
+              nowDisplayingVisibilityProvider.overrideWith(
+                () => _StaticNowDisplayingVisibilityNotifier(
+                  _visibleNowDisplayingState,
+                ),
+              ),
+              ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+              ff1SupportsPlaybackModesProvider.overrideWithValue(false),
+            ],
+            child: _appWithNowDisplayingOverlay(router: router),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Overlay Next Work'));
+        await tester.pumpAndSettle();
+
+        expect(visitedLocations.first, '/works/work_1');
+        expect(visitedLocations, contains('/works/work_2'));
+        expect(router.routerDelegate.state.matchedLocation, '/works/work_2');
+        expect(previousPageTitleFromExtra(pushedExtra), 'Work 1');
+      },
+    );
   });
 }
