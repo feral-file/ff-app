@@ -145,7 +145,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
   return LocalDataCleanupService(
     /// Set immediately at start of forgetIExist so no new DB work starts.
     prepareForReset: () {
-      ref.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(false);
+      ref.read(isSeedDatabaseReadyProvider.notifier).stateDirectly = false;
     },
 
     /// Called when forgetIExist/rebuildMetadata background seed replace fails.
@@ -159,9 +159,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
             await retry();
           } on Object catch (_) {
             // Retry failed; restore readiness so app can recover.
-            ref
-                .read(isSeedDatabaseReadyProvider.notifier)
-                .setStateDirectly(true);
+            ref.read(isSeedDatabaseReadyProvider.notifier).stateDirectly = true;
             r.invalidate(appDatabaseProvider);
             r.invalidate(databaseServiceProvider);
           }
@@ -189,7 +187,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
             .stopAndDrainForReset();
         r.invalidate(tokensSyncCoordinatorProvider);
         r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
-        readyNotifier.setStateDirectly(false);
+        readyNotifier.stateDirectly = false;
         invalidateDatabaseConsumerProviders();
         await SchedulerBinding.instance.endOfFrame;
         await ref.read(appDatabaseProvider).close();
@@ -220,10 +218,6 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     /// background retry.
     recreateDatabaseFromSeed: () async {
       await forceReplaceDatabaseFromSeed();
-      // ObjectBox may still hold list-tokens cursors; SQLite playlists are new.
-      await ref
-          .read(appStateServiceProvider)
-          .clearAllPersonalTokensListFetchOffsets();
     },
     pauseFeedWork: () {
       // No-op: feed manager removed; seed database is the source of DP1 data.

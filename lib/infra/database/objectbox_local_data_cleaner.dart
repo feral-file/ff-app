@@ -8,9 +8,13 @@ class ObjectBoxLocalDataCleaner {
 
   final Store _store;
 
-  /// Removes ObjectBox entities used for indexing/checkpoints before SQLite
-  /// replace; keeps [TrackedAddressEntity]. Invoked from seed not-ready
-  /// teardown during replace (not at rebuild-metadata entry).
+  /// Removes per-address app state before SQLite replace, while preserving the
+  /// tracked-address list itself.
+  ///
+  /// This deletes every [AppStateAddressEntity] row, which intentionally drops
+  /// stored checkpoints, workflow status, and list-tokens cursors. After the
+  /// new SQLite file is ready, tracked-address resume rebuilds fresh per-
+  /// address state from [TrackedAddressEntity].
   Future<void> lightClear() async {
     _store.runInTransaction(TxMode.write, () {
       _store.box<RemoteAppConfigEntity>().removeAll();

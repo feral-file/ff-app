@@ -91,7 +91,7 @@
 - Outcome: personal address-based playlists appear in "Me" sections and receive indexed tokens.
 - Important edge cases:
   - indexing can resume from persisted workflow state after app restart
-  - personal token list sync paginates on indexer `nextOffset` only (`null` means no more pages). The app persists that list cursor in app state so restarts resume from the indexer offset, which may differ from the local playlist row count; the cursor is cleared when pagination completes, when the seed SQLite file is replaced while ObjectBox is preserved (rebuild metadata), and when a stale cursor would start past the head of an empty playlist row
+  - personal token list sync paginates on indexer `nextOffset` only (`null` means no more pages). The app persists that list cursor in app state so restarts resume from the indexer offset, which may differ from the local playlist row count; the cursor is cleared when pagination completes, when a stale cursor would start past the head of an empty playlist row, and whenever SQLite recovery/rebuild clears per-address app state before tracked-address resume recreates it
   - background fast-path sync runs before polling completes
   - remove address deletes playlist + related local token items and clears app state anchors/status
 
@@ -133,7 +133,7 @@
 - Outcome: user can recover local state and keep app/device healthy.
 - Important edge cases:
   - cleanup timeout/failure still routes user back to onboarding
-  - rebuild metadata preserves known personal addresses before refetch
+  - rebuild metadata preserves known personal addresses before refetch, but clears per-address indexing/checkpoint/cursor state because `AppStateAddressEntity` rows are rebuilt from the tracked-address list after the new SQLite file is ready
 
 ## 4. Major functionalities
 - DP-1 browsing (Channels/Playlists/Works)

@@ -281,19 +281,12 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         // `finally` when no sync remains in flight.
         if (updated) {
           await seedReadyNotifier.setReady();
-          // SQLite was replaced while ObjectBox is preserved: drop any
-          // list-tokens cursors so token sync cannot resume from a stale
-          // offset.
-          await appStateService.clearAllPersonalTokensListFetchOffsets();
           _appendSessionSnapshotToPendingFavorites(session);
         }
         return false;
       }
       if (updated) {
         await appStateService.setHasCompletedSeedDownload(completed: true);
-        // SQLite was replaced while ObjectBox is preserved: drop any
-        // list-tokens cursors so token sync cannot resume from a stale offset.
-        await appStateService.clearAllPersonalTokensListFetchOffsets();
         await seedReadyNotifier.setReady();
         await _restorePreservedFavoritesAfterSuccessfulSeedReplace(session);
         notifyForceReplaceFinished();

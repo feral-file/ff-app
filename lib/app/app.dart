@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/bootstrap/app_startup_orchestration.dart';
 import 'package:app/app/bootstrap/bootstrap_status_toast.dart';
+import 'package:app/app/bootstrap/database_reset_reindex_service.dart';
 import 'package:app/app/now_displaying/now_displaying_visibility_sync.dart';
 import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
@@ -23,6 +24,8 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/app/widgets/builder_overlay_scope.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
+import 'package:app/infra/config/app_state_service.dart';
+import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/theme/app_theme.dart';
 import 'package:app/ui/screens/ff1_setup/start_setup_ff1_page.dart';
@@ -320,6 +323,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
         return;
       }
 
+      await _resetTrackedAddressesAfterDatabaseResetIfNeeded();
       await bootstrap.bootstrap();
 
       await _logStartupFeedState();
@@ -453,6 +457,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       return;
     }
     try {
+      await _resetTrackedAddressesAfterDatabaseResetIfNeeded();
       await notifier.bootstrap();
       await _logStartupFeedState();
       await ref.read(ensureTrackedAddressesHavePlaylistsAndResumeProvider)();
@@ -511,6 +516,21 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
       if (showUpdatingToast && mounted && overlayId != null) {
         ref.read(appOverlayProvider.notifier).dismissOverlay(overlayId);
       }
+    }
+  }
+
+  Future<void> _resetTrackedAddressesAfterDatabaseResetIfNeeded() async {
+    final didReset =
+        await DatabaseResetReindexService(
+          appStateService: ref.read(appStateServiceProvider),
+        ).resetTrackedAddressesIfNeeded(
+          consumeResetMarker: consumeDatabaseResetReindexMarker,
+        );
+    if (didReset) {
+      _log.warning(
+        'DP-1 SQLite database was recreated; tracked addresses will reindex '
+        'from reset app-state progress.',
+      );
     }
   }
 

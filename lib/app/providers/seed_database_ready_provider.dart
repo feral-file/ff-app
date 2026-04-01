@@ -42,9 +42,9 @@ class SeedDatabaseReadyActions {
       ..invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
   }
 
-  /// Prepares for replace (drain workers, close DB). Does NOT delete files.
-  /// [replaceDatabaseFromTemporaryFile] does delete+rename. Does NOT set
-  /// [isSeedDatabaseReadyProvider]; [SeedDatabaseReadyNotifier.setNotReady] does.
+  /// Prepares for replace (drain workers, close DB). Does not delete files.
+  /// `replaceDatabaseFromTemporaryFile` does delete+rename. This method also
+  /// does not flip `isSeedDatabaseReadyProvider`; `setNotReady()` does that.
   Future<void> onNotReady() async {
     final stub = _onNotReadyStub;
     if (stub != null) return stub();
@@ -58,15 +58,17 @@ class SeedDatabaseReadyActions {
     cleanupService.invalidateListProvidersBeforeDbClose?.call();
     await SchedulerBinding.instance.endOfFrame;
     await ref.read(appDatabaseProvider).close();
-    // Same order as forget/rebuild metadata teardown: after SQLite is
-    // closed, drop [RemoteAppConfigEntity] + [AppStateAddressEntity] so
-    // indexing/checkpoints cannot outlive the DB file being replaced.
+    // Same order as forget/rebuild metadata teardown: after SQLite is closed,
+    // drop remote app config and per-address app-state rows. This
+    // intentionally clears per-address workflow/checkpoint/cursor state while
+    // keeping the tracked-address list as the recovery source of truth.
     await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
-    // Do NOT delete files here. replaceDatabaseFromTemporaryFile deletes and
-    // renames the db path atomically. If replace fails, old DB remains (project_spec).
+    // Do not delete files here. replaceDatabaseFromTemporaryFile deletes and
+    // renames the db path atomically. If replace fails, the old DB remains.
   }
 
-  /// Rebinds when DB becomes ready (invalidate providers). Does NOT perform replace.
+  /// Rebinds when DB becomes ready (invalidate providers). Does not perform
+  /// replace.
   Future<void> onReady() async {
     final stub = _onReadyStub;
     if (stub != null) return stub();
@@ -81,9 +83,10 @@ class SeedDatabaseReadyActions {
   }
 }
 
-/// Provides [SeedDatabaseReadyActions] for [SeedDatabaseReadyNotifier].
-/// [onNotReady] is the single place for drain + close before DB replace; local
-/// cleanup [closeAndDeleteDatabase] calls [setNotReady] then deletes files.
+/// Provides `SeedDatabaseReadyActions` for `SeedDatabaseReadyNotifier`.
+/// `onNotReady()` is the single place for drain + close before DB replace;
+/// local cleanup `closeAndDeleteDatabase()` calls `setNotReady()` then deletes
+/// files.
 final seedDatabaseReadyActionsProvider = Provider<SeedDatabaseReadyActions>((
   ref,
 ) {
@@ -97,16 +100,15 @@ class SeedDatabaseReadyNotifier extends Notifier<bool> {
   @override
   bool build() => true;
 
-  /// Direct state setter for flows that manage their own teardown (e.g. forgetIExist).
-  /// Does NOT run onNotReady/onReady.
-  void setStateDirectly(bool value) {
-    state = value;
-  }
+  /// Direct state setter for flows that manage their own teardown (for
+  /// example, `forgetIExist()`). This does not run `onNotReady()`/`onReady()`.
+  bool get stateDirectly => state;
+  set stateDirectly(bool value) => state = value;
 
   /// Sets state = false first, then runs onNotReady.
   /// Ready-state flip before teardown prevents DB consumers from scheduling
   /// work during invalidation/close (avoids close/reset race).
-  /// No-op if [SeedDatabaseGate] not completed (first install).
+  /// No-op if `SeedDatabaseGate` is not completed (first install).
   Future<void> setNotReady() async {
     if (!SeedDatabaseGate.isCompleted) return;
     final actions = ref.read(seedDatabaseReadyActionsProvider);
@@ -114,10 +116,10 @@ class SeedDatabaseReadyNotifier extends Notifier<bool> {
     await actions.onNotReady();
   }
 
-  /// Runs [onReady] (invalidate / rebind) first, then sets state = true.
+  /// Runs `onReady()` (invalidate / rebind) first, then sets state = true.
   ///
-  /// Ordering avoids a window where [isSeedDatabaseReadyProvider] is true while
-  /// consumers still see a stale or closed DB before [appDatabaseProvider]
+  /// Ordering avoids a window where `isSeedDatabaseReadyProvider` is true while
+  /// consumers still see a stale or closed DB before `appDatabaseProvider`
   /// invalidation completes.
   Future<void> setReady() async {
     final actions = ref.read(seedDatabaseReadyActionsProvider);
@@ -128,9 +130,9 @@ class SeedDatabaseReadyNotifier extends Notifier<bool> {
 
 /// When true, the seed database is ready and DB-watch providers may create
 /// streams. When false (during close/replace for Forget I Exist or Rebuild
-/// Metadata), providers must not create streams so [close] can complete.
+/// Metadata), providers must not create streams so database close can complete.
 ///
-/// Use [SeedDatabaseReadyNotifier.setNotReady]/[setReady] to toggle; logic
+/// Use `SeedDatabaseReadyNotifier.setNotReady()` / `setReady()` to toggle; logic
 /// triggers automatically on value change.
 final isSeedDatabaseReadyProvider =
     NotifierProvider<SeedDatabaseReadyNotifier, bool>(

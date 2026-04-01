@@ -1,3 +1,7 @@
+// This file exposes a broad service interface used across the app; requiring
+// per-member API docs here adds noise without improving maintainability.
+// ignore_for_file: public_member_api_docs
+
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/indexer/sync_collection.dart';
 import 'package:app/domain/models/wallet_address.dart';
@@ -139,9 +143,8 @@ abstract class AppStateServiceBase {
 
   /// Clears persisted list-tokens cursors for all addresses.
   ///
-  /// Call after the DP-1 SQLite library was replaced while ObjectBox was kept
-  /// (e.g. seed replace during rebuild metadata) so sync does not resume from
-  /// a stale indexer offset against rebuilt empty playlists.
+  /// Use only for targeted recovery flows where [AppStateAddressEntity] rows
+  /// remain present but every saved list cursor is known to be stale.
   Future<void> clearAllPersonalTokensListFetchOffsets();
 
   Future<List<String>> getAddressesWithCompletedIndexing();
@@ -592,12 +595,13 @@ class AppStateService extends AppStateServiceBase {
   @override
   Future<List<String>> getTrackedPersonalAddresses() async {
     return _lock.synchronized(() {
-      final addresses = (_trackedAddressBox
-              .getAll()
-              .map((row) => row.normalizedAddress)
-              .toSet()
-              .toList())
-        ..sort();
+      final addresses =
+          (_trackedAddressBox
+                .getAll()
+                .map((row) => row.normalizedAddress)
+                .toSet()
+                .toList())
+            ..sort();
       return addresses;
     });
   }

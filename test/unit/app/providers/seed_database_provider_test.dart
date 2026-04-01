@@ -416,8 +416,10 @@ void main() {
       );
       expect(
         fakeAppState.clearAllPersonalTokensListFetchOffsetsCalls,
-        1,
-        reason: 'seed replace must clear stale list-tokens cursors',
+        0,
+        reason:
+            'seed replace now relies on AppStateAddressEntity teardown instead '
+            'of a selective cursor clear',
       );
     },
   );

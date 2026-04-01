@@ -56,7 +56,7 @@
     address adds re-open and queue until a later successful seed download
 - key screens involved: Introduce, Onboarding Add Address, Onboarding Setup FF1
 - key modules/services involved: `onboarding_provider`, `add_address_provider`, `address_service`, `trackedAddressesSyncProvider`
-- notes: TrackedAddressEntity (ObjectBox) is the single source of truth for user-added addresses; `trackedAddressesSyncProvider` watches it and ensures playlists exist + indexing resumes
+- notes: TrackedAddressEntity (ObjectBox) is the single source of truth for user-added addresses; `trackedAddressesSyncProvider` watches it and ensures playlists exist + indexing resumes. When SQLite is rebuilt or recovered, per-address app state is cleared and reconstructed from this tracked-address list.
 
 ## Flow: Onboarding from Device Deeplink/QR
 
@@ -92,7 +92,7 @@
   - indexing workflow resumes after app restarts via persisted app state
 - key screens involved: Add Address, Add Alias, Playlist screens (Me)
 - key modules/services involved: `add_address_provider`, `address_service`, `domain_address_service`, `indexer_service_isolate`, `personal_tokens_sync_service`
-- indexer list-tokens pagination: default page size `indexerTokensPageSize` (255); advance pages using response `nextOffset` until null. Personal token sync stores the next indexer offset in app state so resume after restart follows the indexer cursor (see `lib/domain/constants/indexer_constants.dart` and `.cursor/rules/50-indexing-address-flow.mdc`).
+- indexer list-tokens pagination: default page size `indexerTokensPageSize` (255); advance pages using response `nextOffset` until null. Personal token sync stores the next indexer offset in app state so resume after restart follows the indexer cursor (see `lib/domain/constants/indexer_constants.dart` and `.cursor/rules/50-indexing-address-flow.mdc`). Rebuild/reset flows that replace or recreate SQLite drop `AppStateAddressEntity` rows, so tracked-address resume recreates fresh indexing/checkpoint/cursor state from `TrackedAddressEntity`.
 
 ## Flow: Browse Content and Open Details
 
