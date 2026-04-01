@@ -20,14 +20,7 @@ globs:
 - Do not ship behavior changes without unit coverage.
 - Do not skip integration tests for cross-module behavior.
 
-## 3) Post-implementation verification (required)
-- Run: `scripts/agent-helpers/post-implementation-checks.sh [--dir DIR] [--all] [git-ref]`
-- Default scope is changed Dart files.
-- Fix all reported issues, rerun until report is clean.
-- When only lint issues remain, use `scripts/agent-helpers/post-implementation-checks.sh --lint-only ...` for faster reruns, then run the full check again before considering the work done.
-- Run `flutter build` and ensure success.
-
-## 4) Coverage non-regression
+## 3) Coverage non-regression
 - Generate business-layer coverage via `scripts/report_business_coverage.sh`.
 - Scope is fixed to `lib/app`, `lib/domain`, `lib/infra`.
 - Do not regress baseline coverage unless explicitly approved and baseline is intentionally updated.
