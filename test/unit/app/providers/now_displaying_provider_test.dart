@@ -20,6 +20,18 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'provider_test_helpers.dart';
 
+// Shared override used by stream-driven tests that bypass FF1WifiControl.
+// ignore: specify_nonobvious_property_types
+final streamBackedCurrentPlayerStatusOverride =
+    ff1CurrentPlayerStatusProvider.overrideWith((ref) {
+      final async = ref.watch(ff1PlayerStatusStreamProvider);
+      return async.when(
+        data: (status) => status,
+        loading: () => null,
+        error: (_, _) => null,
+      );
+    });
+
 void main() {
   group('NowDisplayingNotifier enrichment', () {
     late AppDatabase db;
@@ -247,6 +259,7 @@ void main() {
             ff1PlayerStatusStreamProvider.overrideWith(
               (ref) => playerStatusController.stream,
             ),
+            streamBackedCurrentPlayerStatusOverride,
             ff1ConnectionStatusStreamProvider.overrideWith(
               (ref) =>
                   Stream.value(const FF1ConnectionStatus(isConnected: true)),
@@ -285,6 +298,288 @@ void main() {
             (state as NowDisplayingSuccess).object as DP1NowDisplayingObject;
         expect(object.index, 1);
         expect(object.currentItem.id, 'item_1');
+      },
+    );
+
+    test(
+      'transient null after fast-path index update preserves latest index',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        final dp1Items = [
+          const DP1PlaylistItem(id: 'item_0', duration: 60, title: 'A'),
+          const DP1PlaylistItem(id: 'item_1', duration: 60, title: 'B'),
+        ];
+
+        final statusIndex0 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: dp1Items,
+        );
+        final statusIndex1 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 1,
+          items: dp1Items,
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        addTearDown(playerStatusController.close);
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingDb),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            streamBackedCurrentPlayerStatusOverride,
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        playerStatusController.add(statusIndex0);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        final state0 = container.read(nowDisplayingProvider);
+        expect(state0, isA<NowDisplayingSuccess>());
+        final object0 =
+            (state0 as NowDisplayingSuccess).object as DP1NowDisplayingObject;
+        expect(object0.index, 0);
+
+        playerStatusController.add(statusIndex1);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        final state1 = container.read(nowDisplayingProvider);
+        expect(state1, isA<NowDisplayingSuccess>());
+        final object1 =
+            (state1 as NowDisplayingSuccess).object as DP1NowDisplayingObject;
+        expect(object1.index, 1);
+
+        // Simulate a reconnect/resubscribe blip: stream error maps to null
+        // player status. The provider should keep the latest index from the
+        // fast-path update.
+        playerStatusController.addError(StateError('transient reconnect'));
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        final stateAfterNull = container.read(nowDisplayingProvider);
+        expect(stateAfterNull, isA<NowDisplayingSuccess>());
+        final objectAfterNull =
+            (stateAfterNull as NowDisplayingSuccess).object
+                as DP1NowDisplayingObject;
+        expect(objectAfterNull.index, 1);
+      },
+    );
+
+    test(
+      'reconnect round-trip with same playlist does not flash loading',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        final status = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: const [
+            DP1PlaylistItem(id: 'item_0', duration: 60, title: 'A'),
+          ],
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        final connectionStatusController =
+            StreamController<FF1ConnectionStatus>(sync: true);
+        addTearDown(playerStatusController.close);
+        addTearDown(connectionStatusController.close);
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingDb),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            streamBackedCurrentPlayerStatusOverride,
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) => connectionStatusController.stream,
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final emitted = <NowDisplayingStatus>[];
+        final subscription = container.listen<NowDisplayingStatus>(
+          nowDisplayingProvider,
+          (_, next) => emitted.add(next),
+        );
+        addTearDown(subscription.close);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..listen<AsyncValue<FF1ConnectionStatus>>(
+            ff1ConnectionStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        connectionStatusController.add(
+          const FF1ConnectionStatus(isConnected: true),
+        );
+        playerStatusController.add(status);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        emitted.clear();
+
+        connectionStatusController.add(
+          const FF1ConnectionStatus(isConnected: false),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        connectionStatusController.add(
+          const FF1ConnectionStatus(isConnected: true),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        expect(emitted.whereType<LoadingNowDisplaying>(), isEmpty);
+        expect(emitted.whereType<DeviceDisconnected>(), isNotEmpty);
+        expect(
+          container.read(nowDisplayingProvider),
+          isA<NowDisplayingSuccess>(),
+        );
+      },
+    );
+
+    test(
+      'active device switch does not reuse stale success snapshot',
+      () async {
+        const deviceA = FF1Device(
+          name: 'FF1-A',
+          remoteId: 'r1',
+          deviceId: 'device_a',
+          topicId: 'topic_a',
+        );
+        const deviceB = FF1Device(
+          name: 'FF1-B',
+          remoteId: 'r2',
+          deviceId: 'device_b',
+          topicId: 'topic_b',
+        );
+
+        final statusA = FF1PlayerStatus(
+          playlistId: 'pl_a',
+          currentWorkIndex: 0,
+          items: const [
+            DP1PlaylistItem(id: 'item_a0', duration: 60, title: 'A'),
+          ],
+        );
+
+        final activeDeviceController = StreamController<FF1Device?>(
+          sync: true,
+        );
+        addTearDown(activeDeviceController.close);
+        final wifiControl = FakeWifiControl();
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingDb),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWith(
+              (ref) => activeDeviceController.stream,
+            ),
+            ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container
+          ..listen<AsyncValue<FF1Device?>>(
+            activeFF1BluetoothDeviceProvider,
+            (_, _) {},
+          )
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..listen<AsyncValue<FF1ConnectionStatus>>(
+            ff1ConnectionStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        activeDeviceController.add(deviceA);
+        await container.read(ff1WifiConnectionProvider.notifier).connect(
+          device: deviceA,
+          userId: 'user-a',
+          apiKey: 'key-a',
+        );
+        wifiControl
+          ..emitConnectionStatus(isConnected: true)
+          ..emitPlayerStatus(statusA);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        expect(
+          container.read(nowDisplayingProvider),
+          isA<NowDisplayingSuccess>(),
+        );
+
+        activeDeviceController.add(deviceB);
+        await container.read(ff1WifiConnectionProvider.notifier).connect(
+          device: deviceB,
+          userId: 'user-b',
+          apiKey: 'key-b',
+        );
+        wifiControl.emitConnectionStatus(isConnected: true);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        expect(
+          container.read(ff1PlayerStatusStreamProvider).asData?.value
+              .playlistId,
+          statusA.playlistId,
+        );
+        expect(container.read(ff1CurrentPlayerStatusProvider), isNull);
+
+        final state = container.read(nowDisplayingProvider);
+        expect(state, isA<LoadingNowDisplaying>());
+        expect(
+          (state as LoadingNowDisplaying).device?.deviceId,
+          deviceB.deviceId,
+        );
       },
     );
 
@@ -336,6 +631,7 @@ void main() {
             ff1PlayerStatusStreamProvider.overrideWith(
               (ref) => playerStatusController.stream,
             ),
+            streamBackedCurrentPlayerStatusOverride,
             ff1ConnectionStatusStreamProvider.overrideWith(
               (ref) =>
                   Stream.value(const FF1ConnectionStatus(isConnected: true)),
@@ -417,6 +713,7 @@ void main() {
             ff1PlayerStatusStreamProvider.overrideWith(
               (ref) => playerStatusController.stream,
             ),
+            streamBackedCurrentPlayerStatusOverride,
             ff1ConnectionStatusStreamProvider.overrideWith(
               (ref) =>
                   Stream.value(const FF1ConnectionStatus(isConnected: true)),
@@ -490,6 +787,7 @@ void main() {
             ff1PlayerStatusStreamProvider.overrideWith(
               (ref) => Stream.value(status),
             ),
+            streamBackedCurrentPlayerStatusOverride,
             ff1ConnectionStatusStreamProvider.overrideWith(
               (ref) =>
                   Stream.value(const FF1ConnectionStatus(isConnected: true)),
@@ -789,6 +1087,7 @@ void main() {
                 (count) => count == 0 ? statusA : statusB,
               ).take(2),
             ),
+            streamBackedCurrentPlayerStatusOverride,
             ff1ConnectionStatusStreamProvider.overrideWith(
               (ref) =>
                   Stream.value(const FF1ConnectionStatus(isConnected: true)),
@@ -1078,6 +1377,7 @@ void main() {
                 (count) => count == 0 ? statusA : statusB,
               ).take(2),
             ),
+            streamBackedCurrentPlayerStatusOverride,
             ff1ConnectionStatusStreamProvider.overrideWith(
               (ref) =>
                   Stream.value(const FF1ConnectionStatus(isConnected: true)),
@@ -1192,6 +1492,7 @@ void main() {
             ff1PlayerStatusStreamProvider.overrideWith(
               (ref) => playerStatusController.stream,
             ),
+            streamBackedCurrentPlayerStatusOverride,
             ff1ConnectionStatusStreamProvider.overrideWith(
               (ref) =>
                   Stream.value(const FF1ConnectionStatus(isConnected: true)),
@@ -1272,6 +1573,7 @@ void main() {
             ff1PlayerStatusStreamProvider.overrideWith(
               (ref) => playerStatusController.stream,
             ),
+            streamBackedCurrentPlayerStatusOverride,
             ff1ConnectionStatusStreamProvider.overrideWith(
               (ref) =>
                   Stream.value(const FF1ConnectionStatus(isConnected: true)),
@@ -1363,6 +1665,7 @@ void main() {
             ff1PlayerStatusStreamProvider.overrideWith(
               (ref) => playerStatusController.stream,
             ),
+            streamBackedCurrentPlayerStatusOverride,
             ff1ConnectionStatusStreamProvider.overrideWith(
               (ref) =>
                   Stream.value(const FF1ConnectionStatus(isConnected: true)),
@@ -1438,6 +1741,7 @@ void main() {
             ff1PlayerStatusStreamProvider.overrideWith(
               (ref) => playerStatusController.stream,
             ),
+            streamBackedCurrentPlayerStatusOverride,
             ff1ConnectionStatusStreamProvider.overrideWith(
               (ref) =>
                   Stream.value(const FF1ConnectionStatus(isConnected: true)),
@@ -1514,6 +1818,87 @@ void main() {
           isA<NowDisplayingSuccess>(),
         );
         expect(container.read(nowDisplayingRequestedRangeProvider), isNotNull);
+      },
+    );
+
+    test(
+      'same playlist items-null refetch gap does not flash loading',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        final statusReady = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: const [
+            DP1PlaylistItem(id: 'item_0', duration: 60, title: 'A'),
+          ],
+        );
+        final statusFetching = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        addTearDown(playerStatusController.close);
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingDb),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            streamBackedCurrentPlayerStatusOverride,
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final emitted = <NowDisplayingStatus>[];
+        final subscription = container.listen<NowDisplayingStatus>(
+          nowDisplayingProvider,
+          (_, next) => emitted.add(next),
+        );
+        addTearDown(subscription.close);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        playerStatusController.add(statusReady);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        emitted.clear();
+
+        playerStatusController.add(statusFetching);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        playerStatusController.add(statusReady);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        expect(emitted.whereType<LoadingNowDisplaying>(), isEmpty);
+        expect(
+          container.read(nowDisplayingProvider),
+          isA<NowDisplayingSuccess>(),
+        );
       },
     );
   });

@@ -1,6 +1,8 @@
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,7 +10,8 @@ import 'provider_test_helpers.dart';
 
 void main() {
   test('ff1 wifi params equality and default notifier state', () {
-    // Unit test: verifies FF1 WiFi connect params equality and initial connection state.
+    // Unit test: verifies FF1 WiFi connect params equality and initial
+    // connection state.
     const p1 = FF1WifiConnectParams(
       device: FF1Device(
         name: 'D',
@@ -68,8 +71,9 @@ void main() {
       addTearDown(container.dispose);
 
       // Initially no active device
-      deviceService.devices = [];
-      deviceService.activeDeviceId = null;
+      deviceService
+        ..devices = []
+        ..activeDeviceId = null;
 
       // Watch the auto-connect provider to keep it alive
       container.listen(
@@ -84,8 +88,9 @@ void main() {
       expect(wifiControl.connectCalled, isFalse);
 
       // Set active device
-      deviceService.devices = [device];
-      deviceService.activeDeviceId = device.deviceId;
+      deviceService
+        ..devices = [device]
+        ..activeDeviceId = device.deviceId;
       container.invalidate(activeFF1BluetoothDeviceProvider);
 
       // Wait for active device to update
@@ -128,8 +133,9 @@ void main() {
       addTearDown(container.dispose);
 
       // Start with active device
-      deviceService.devices = [device];
-      deviceService.activeDeviceId = device.deviceId;
+      deviceService
+        ..devices = [device]
+        ..activeDeviceId = device.deviceId;
 
       // Watch the auto-connect provider to keep it alive
       container.listen(
@@ -153,6 +159,77 @@ void main() {
 
       // Verify disconnection was attempted
       expect(wifiControl.disconnectCalled, isTrue);
+    },
+  );
+
+  test(
+    'ff1CurrentPlayerStatusProvider clears live status on device switch '
+    'even while stream still replays previous payload',
+    () async {
+      const deviceA = FF1Device(
+        name: 'FF1-A',
+        remoteId: 'remote-a',
+        deviceId: 'device-a',
+        topicId: 'topic-a',
+      );
+      const deviceB = FF1Device(
+        name: 'FF1-B',
+        remoteId: 'remote-b',
+        deviceId: 'device-b',
+        topicId: 'topic-b',
+      );
+      final statusA = FF1PlayerStatus(
+        playlistId: 'playlist-a',
+        currentWorkIndex: 0,
+        items: const <DP1PlaylistItem>[],
+      );
+
+      final wifiControl = FakeWifiControl();
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container
+        ..listen<AsyncValue<FF1PlayerStatus>>(
+          ff1PlayerStatusStreamProvider,
+          (_, _) {},
+        )
+        ..listen<FF1PlayerStatus?>(
+          ff1CurrentPlayerStatusProvider,
+          (_, _) {},
+        );
+
+      await container.read(ff1WifiConnectionProvider.notifier).connect(
+        device: deviceA,
+        userId: 'user-a',
+        apiKey: 'key-a',
+      );
+      wifiControl.emitPlayerStatus(statusA);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        container.read(ff1CurrentPlayerStatusProvider)?.playlistId,
+        statusA.playlistId,
+      );
+
+      await container.read(ff1WifiConnectionProvider.notifier).connect(
+        device: deviceB,
+        userId: 'user-b',
+        apiKey: 'key-b',
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        container.read(ff1PlayerStatusStreamProvider).asData?.value.playlistId,
+        statusA.playlistId,
+      );
+      expect(container.read(ff1CurrentPlayerStatusProvider), isNull);
     },
   );
 }

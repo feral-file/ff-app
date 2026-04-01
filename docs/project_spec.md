@@ -238,7 +238,7 @@
 - Purpose: monitor current playback and send interaction commands.
 - Entry points: global now-displaying bar (navigates to work detail), `/keyboard-control`.
 - Key actions: view current work/device state, open interact mode, send keyboard/touchpad commands.
-- Important data: active device, connection state, player status item list/current index, and a bounded window of items loaded from SQLite then optionally enriched. The notifier awaits that window cache read before publishing updated success so enrichment decisions see real cache rows.
+- Important data: active device, connection state, current item list/index, and enough metadata to keep playback UI usable when enrichment is incomplete.
 - Related modules: `now_displaying_provider`, `ff1_wifi_providers`, touchpad/keyboard events.
 
 ### Screen group: Settings / Release Notes / Document Viewer
@@ -296,7 +296,7 @@
 - FF1 device
   - Persisted paired device identity (BLE id + topic id + branch info) used for active-device control.
 - Now displaying object
-  - Derived runtime view of active device + currently playing items/index. The flow awaits local rows for the visible window, then applies DP-1 fallbacks and optional indexer-backed fields for true cache misses.
+  - Derived runtime view of active device + currently playing items/index.
 
 ## 8. Key constraints and invariants
 
@@ -313,7 +313,7 @@
     usable local read path when the file is still valid (see seed sync service).
   - pending addresses added before seed readiness must be migrated post-seed
 - Playback/control flows should remain resilient to enrichment failures (fallback item data still usable).
-- Now-displaying may wait on the bounded SQLite window read before updating success; enrichment/indexer failures still leave DP-1 fallback fields usable.
+- Now-displaying must remain aligned with live FF1 playback while keeping playback UI usable when enrichment is slow or fails.
 - Large flow/screen changes must preserve existing onboarding, address-indexing, and FF1 setup reliability paths.
 
 ## 9. Verification strategy

@@ -69,6 +69,14 @@ _NowDisplayingRecomputeCause _mergeRecomputeCauses(
   return _NowDisplayingRecomputeCause.generic;
 }
 
+String? _deviceIdFromAsync(AsyncValue<FF1Device?>? asyncValue) {
+  return asyncValue?.when(
+    data: (device) => device?.deviceId,
+    loading: () => null,
+    error: (_, _) => null,
+  );
+}
+
 /// Item IDs from current FF1 player status (for cache lookup).
 final nowDisplayingItemIdsProvider = Provider<List<String>>((ref) {
   final status = ref.watch(ff1CurrentPlayerStatusProvider);
@@ -243,6 +251,13 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   /// Sleep/paused flag from the last successful full compute.
   bool? _lastFullSuccessIsSleeping;
 
+  /// Device id associated with the last successful playback snapshot.
+  ///
+  /// Why: reconnect-style fallback must only reuse the last success state for
+  /// the same FF1 device. Reusing device A's snapshot for device B would show
+  /// stale playback from the wrong screen.
+  String? _lastFullSuccessDeviceId;
+
   /// [nowDisplayingWindowProvider] snapshot from the last full compute.
   /// Fast path is invalid if the index window shifts (new slice needs cache/enrich).
   ({int start, int end})? _lastFullComputeWindow;
@@ -250,44 +265,48 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   _NowDisplayingRecomputeCause _pendingRecomputeCause =
       _NowDisplayingRecomputeCause.generic;
 
-  /// True while [_runRecomputeLoop] is running; further [_enqueueRecompute]
-  /// calls
-  /// only merge into [_pendingRecomputeCause] and are drained by the loop.
-  bool _recomputeLoopRunning = false;
+  /// Whether a recompute request is queued for the loop to process.
+  ///
+  /// Why: `generic` is a real recompute cause, so it cannot also mean
+  /// "nothing queued" without risking dropped updates.
+  bool _hasPendingRecompute = false;
 
-  /// Chains async recompute work so a later recompute does not interleave
-  /// while an earlier one still shows [LoadingNowDisplaying] or awaits cache —
-  /// otherwise fast-path checks would see the wrong [state].
-  Future<void>? _recomputeWorkTail;
+  /// True while [_runRecomputeLoop] is running; further [_enqueueRecompute]
+  /// calls only merge into the pending queue and are drained by the loop.
+  bool _recomputeLoopRunning = false;
 
   void _clearPlaybackIdentity() {
     _lastFullComputeIdentity = null;
     _lastFullSuccessPlaylistItems = null;
     _lastFullSuccessIndex = null;
     _lastFullSuccessIsSleeping = null;
+    _lastFullSuccessDeviceId = null;
     _lastFullComputeWindow = null;
   }
 
   /// Merges [incoming] into [_pendingRecomputeCause] and runs a single async
-  /// loop so `await` phases do not interleave with a second token bump (which
-  /// would skip `state = computed` and strand the notifier on loading).
+  /// loop so newer FF1 updates can invalidate stale async work without being
+  /// blocked behind it.
   ///
   /// Increments [_recomputeToken] on every call so any in-flight compute that
   /// started with an older epoch is discarded after await (newer FF1 updates
   /// must not lose to a slow cache/enrichment pass).
   void _enqueueRecompute(_NowDisplayingRecomputeCause incoming) {
-    _pendingRecomputeCause = _mergeRecomputeCauses(
-      _pendingRecomputeCause,
-      incoming,
-    );
+    if (_hasPendingRecompute) {
+      _pendingRecomputeCause = _mergeRecomputeCauses(
+        _pendingRecomputeCause,
+        incoming,
+      );
+    } else {
+      _pendingRecomputeCause = incoming;
+      _hasPendingRecompute = true;
+    }
     _recomputeToken++;
     if (_recomputeLoopRunning) {
       return;
     }
     _recomputeLoopRunning = true;
-    unawaited(
-      _runAfterPriorRecomputeWork(_runRecomputeLoop),
-    );
+    unawaited(_runRecomputeLoop());
   }
 
   Future<void> _runRecomputeLoop() async {
@@ -296,8 +315,12 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         if (!ref.mounted) {
           return;
         }
+        if (!_hasPendingRecompute) {
+          break;
+        }
         final cause = _pendingRecomputeCause;
         _pendingRecomputeCause = _NowDisplayingRecomputeCause.generic;
+        _hasPendingRecompute = false;
         // Epoch is bumped on every [_enqueueRecompute], not here, so a newer
         // player/device update during await invalidates this iteration.
         final epoch = _recomputeToken;
@@ -322,7 +345,7 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
           continue;
         }
         state = computed;
-        if (_pendingRecomputeCause == _NowDisplayingRecomputeCause.generic) {
+        if (!_hasPendingRecompute) {
           break;
         }
       }
@@ -332,27 +355,11 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     if (!ref.mounted) {
       return;
     }
-    // Wake up another loop pass if a listener merged a cause while we exited
-    // early (e.g. ref disposed mid-await). Incoming [generic] is merged with
-    // [_pendingRecomputeCause] and does not erase requestedRange.
-    if (_pendingRecomputeCause != _NowDisplayingRecomputeCause.generic) {
-      _enqueueRecompute(_NowDisplayingRecomputeCause.generic);
-    }
-  }
-
-  Future<void> _runAfterPriorRecomputeWork(Future<void> Function() work) async {
-    final previous = _recomputeWorkTail;
-    final completer = Completer<void>();
-    _recomputeWorkTail = completer.future;
-    if (previous != null) {
-      await previous;
-    }
-    try {
-      await work();
-    } finally {
-      if (!completer.isCompleted) {
-        completer.complete();
-      }
+    // Wake up another loop pass if a listener queued work while we were
+    // tearing down this loop instance.
+    if (_hasPendingRecompute && !_recomputeLoopRunning) {
+      _recomputeLoopRunning = true;
+      unawaited(_runRecomputeLoop());
     }
   }
 
@@ -369,7 +376,14 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     ref
       ..listen<AsyncValue<FF1Device?>>(
         activeFF1BluetoothDeviceProvider,
-        (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
+        (previous, next) {
+          final previousDeviceId = _deviceIdFromAsync(previous);
+          final nextDeviceId = _deviceIdFromAsync(next);
+          if (previousDeviceId != nextDeviceId) {
+            _clearPlaybackIdentity();
+          }
+          _enqueueRecompute(_NowDisplayingRecomputeCause.generic);
+        },
       )
       ..listen<AsyncValue<FF1PlayerStatus>>(
         ff1PlayerStatusStreamProvider,
@@ -442,11 +456,9 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     final isConnected = ref.read(ff1DeviceConnectedProvider);
     final isConnecting = ref.read(ff1WifiConnectingProvider);
     if (isConnecting) {
-      _clearPlaybackIdentity();
       return DeviceConnecting(device);
     }
     if (!isConnected) {
-      _clearPlaybackIdentity();
       return DeviceDisconnected(device);
     }
 
@@ -484,6 +496,14 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     // Explicit loading state when a playlist is selected but items are still
     // being fetched on the device side.
     if (status.playlistId != null && status.items == null) {
+      final lastSuccess = _buildLastSuccessStatus(device);
+      final lastIdentity = _lastFullComputeIdentity;
+      if (lastSuccess != null &&
+          lastIdentity != null &&
+          lastIdentity.playlistId == status.playlistId) {
+        return lastSuccess;
+      }
+
       _clearPlaybackIdentity();
       return LoadingNowDisplaying(
         device: device,
@@ -521,6 +541,13 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       final items = status.items!;
       final index = status.currentWorkIndex;
       if (index != null && index >= 0 && index < items.length) {
+        // Keep the "last known good" snapshot aligned with the latest
+        // fast-pathed device state so a transient
+        // `data -> null -> same data` reconnect gap does not regress the UI to
+        // an older index/sleep state.
+        _lastFullSuccessIndex = index;
+        _lastFullSuccessIsSleeping = status.isSleeping;
+        _lastFullSuccessDeviceId = device.deviceId;
         return NowDisplayingSuccess(
           DP1NowDisplayingObject(
             connectedDevice: device,
@@ -607,6 +634,7 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     _lastFullSuccessPlaylistItems = playlistItems;
     _lastFullSuccessIndex = index;
     _lastFullSuccessIsSleeping = status.isSleeping;
+    _lastFullSuccessDeviceId = device.deviceId;
     _lastFullComputeWindow = (start: start, end: end);
 
     return NowDisplayingSuccess(
@@ -615,6 +643,33 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         index: index,
         items: playlistItems,
         isSleeping: status.isSleeping,
+      ),
+    );
+  }
+
+  NowDisplayingSuccess? _buildLastSuccessStatus(FF1Device device) {
+    final lastIdentity = _lastFullComputeIdentity;
+    final lastItems = _lastFullSuccessPlaylistItems;
+    final lastIndex = _lastFullSuccessIndex;
+    final lastIsSleeping = _lastFullSuccessIsSleeping;
+    final lastDeviceId = _lastFullSuccessDeviceId;
+    if (lastIdentity == null ||
+        lastItems == null ||
+        lastIndex == null ||
+        lastIsSleeping == null ||
+        lastDeviceId == null ||
+        lastDeviceId != device.deviceId ||
+        lastIndex < 0 ||
+        lastIndex >= lastItems.length) {
+      return null;
+    }
+
+    return NowDisplayingSuccess(
+      DP1NowDisplayingObject(
+        connectedDevice: device,
+        index: lastIndex,
+        items: lastItems,
+        isSleeping: lastIsSleeping,
       ),
     );
   }

@@ -11,6 +11,11 @@
 /// so it works with any adapter (Relayer, LAN, etc.)
 library;
 
+// This file predates the stricter lint profile. The new device-switch fix only
+// touches connection-state caching, so we keep the existing command-surface
+// debt isolated instead of refactoring the entire control layer here.
+// ignore_for_file: avoid_dynamic_calls, comment_references, discarded_futures, lines_longer_than_80_chars
+
 import 'dart:async';
 import 'dart:ui' show Offset;
 
@@ -127,9 +132,21 @@ class FF1WifiControl {
     required String apiKey,
   }) async {
     final flowId = _nextFlowId('connect');
+    final previousDeviceId = _device?.deviceId;
     _device = device;
     _userId = userId;
     _apiKey = apiKey;
+
+    // Clear cached status before the new transport session starts.
+    //
+    // Why: `playerStatusStream` is a BehaviorSubject and will continue to hold
+    // the previous device's last payload until the new device emits a fresh
+    // player-status notification. Clearing the live cache here prevents app
+    // providers from reusing device A's playback state for device B during the
+    // switch-over gap.
+    _currentPlayerStatus = null;
+    _currentDeviceStatus = null;
+    _isDeviceConnected = false;
 
     _log.info('Connecting to ${device.deviceId}');
     _slog.info(
@@ -139,6 +156,7 @@ class FF1WifiControl {
       payload: {
         'flowId': flowId,
         'deviceId': device.deviceId,
+        'previousDeviceId': previousDeviceId,
         'topicId': device.topicId,
         'transportConnected': _transport.isConnected,
         'transportConnecting': _transport.isConnecting,

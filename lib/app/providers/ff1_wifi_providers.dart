@@ -1,5 +1,10 @@
 import 'dart:async';
 
+// This provider layer already carries lint debt unrelated to the stale-status
+// bug. The current change is intentionally narrow: keep live status aligned
+// with the current FF1 connection session without refactoring the whole file.
+// ignore_for_file: avoid_equals_and_hash_code_on_mutable_classes, cascade_invocations, comment_references, discarded_futures, implementation_imports, lines_longer_than_80_chars, public_member_api_docs, unawaited_futures
+
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/version_provider.dart';
 import 'package:app/domain/models/ff1_device.dart';
@@ -390,25 +395,29 @@ final ff1SupportsPlaybackModesProvider = Provider<bool>((ref) {
 /// Current player status provider (last received value)
 ///
 /// Returns the most recent player status or null if none received.
+///
+/// This watches the stream only for invalidation and reads the control-layer
+/// cache for the actual value. `FF1WifiControl.playerStatusStream` replays the
+/// last payload, so after a device switch the stream may still hold device A's
+/// status until device B emits its first player-status notification.
 final ff1CurrentPlayerStatusProvider = Provider<FF1PlayerStatus?>((ref) {
-  final controlAsync = ref.watch(ff1PlayerStatusStreamProvider);
-  return controlAsync.when(
-    data: (status) => status,
-    loading: () => null,
-    error: (_, _) => null,
-  );
+  final control = ref.watch(ff1WifiControlProvider);
+  ref.watch(ff1PlayerStatusStreamProvider);
+  ref.watch(ff1WifiConnectionProvider);
+  return control.currentPlayerStatus;
 });
 
 /// Current device status provider (last received value)
 ///
 /// Returns the most recent device status or null if none received.
+///
+/// Mirrors [ff1CurrentPlayerStatusProvider] so device switches do not expose
+/// replayed device-status data from the previous control session.
 final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
-  final controlAsync = ref.watch(ff1DeviceStatusStreamProvider);
-  return controlAsync.when(
-    data: (status) => status,
-    loading: () => null,
-    error: (_, _) => null,
-  );
+  final control = ref.watch(ff1WifiControlProvider);
+  ref.watch(ff1DeviceStatusStreamProvider);
+  ref.watch(ff1WifiConnectionProvider);
+  return control.currentDeviceStatus;
 });
 
 /// Device connected provider (per connection notification)
