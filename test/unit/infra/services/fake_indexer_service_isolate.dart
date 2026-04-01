@@ -28,6 +28,10 @@ class FakeIndexerServiceIsolate implements IndexerServiceIsolateOperations {
   /// `addresses` argument for each [fetchTokensPageByAddresses] call (tests).
   final List<List<String>> fetchTokensAddresses = <List<String>>[];
 
+  /// Optional async hook invoked after recording a fetch call and before
+  /// returning the configured page. The argument is the 1-based fetch count.
+  Future<void> Function(int fetchCount)? beforeFetchTokensPageReturn;
+
   AssetToken? rebuildMetadataAndFetchTokenResult;
 
   @override
@@ -63,6 +67,10 @@ class FakeIndexerServiceIsolate implements IndexerServiceIsolateOperations {
     fetchTokensPageLimits.add(limit);
     fetchTokensPageOffsets.add(offset);
     fetchTokensAddresses.add(List<String>.from(addresses));
+    final hook = beforeFetchTokensPageReturn;
+    if (hook != null) {
+      await hook(fetchTokensPageOffsets.length);
+    }
     if (fetchTokensPageSequence.isNotEmpty &&
         _fetchTokensPageSequenceIndex < fetchTokensPageSequence.length) {
       return fetchTokensPageSequence[_fetchTokensPageSequenceIndex++];

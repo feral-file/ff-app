@@ -4,6 +4,7 @@ import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_service.dart';
+import 'package:app/infra/services/address_tokens_sync_lock.dart';
 import 'package:app/infra/services/indexer_service.dart';
 import 'package:logging/logging.dart';
 
@@ -51,69 +52,32 @@ class PersonalTokensSyncService {
     if (addresses.isEmpty) return;
 
     final playlists = await _databaseService.getAddressPlaylists();
-    final offsetByAddressKey = <String, int>{};
-    for (final playlist in playlists) {
-      final owner = playlist.ownerAddress;
-      if (owner == null) continue;
-      final key = _addressKey(owner);
-      final canonicalOwner = owner.toNormalizedAddress();
-      // Cursor lookups use toNormalizedAddress (same key as playlist rows and
-      // token ingest) so they align with AddressService.syncTokens.
-      final persisted = await _appStateService.getPersonalTokensListFetchOffset(
-        canonicalOwner,
-      );
-      offsetByAddressKey[key] = persisted ?? playlist.itemCount;
-    }
     final playlistAddressByKey = <String, String>{
       for (final playlist in playlists)
         if (playlist.ownerAddress != null)
           _addressKey(playlist.ownerAddress!): playlist.ownerAddress!,
     };
-
-    final active = <String, int>{
+    final requestedKeys = <String>{
       for (final address in addresses.map((e) => e.trim()))
-        if (offsetByAddressKey.containsKey(_addressKey(address)))
-          _addressKey(address): offsetByAddressKey[_addressKey(address)]!,
+        if (playlistAddressByKey.containsKey(_addressKey(address)))
+          _addressKey(address),
     };
 
-    if (active.isEmpty) return;
+    if (requestedKeys.isEmpty) return;
 
-    while (active.isNotEmpty) {
-      final currentAddressKeys = active.keys.toList(growable: false);
-      for (final addressKey in currentAddressKeys) {
-        final offset = active[addressKey];
-        if (offset == null) continue;
-        final playlistAddress = playlistAddressByKey[addressKey];
-        if (playlistAddress == null) {
-          active.remove(addressKey);
-          continue;
-        }
-        final queryAddress = playlistAddress.toNormalizedAddress();
-
-        final page = await _indexerService.fetchTokensPageByAddresses(
-          addresses: <String>[queryAddress],
-          limit: indexerTokensPageSize,
-          offset: offset,
+    for (final addressKey in requestedKeys) {
+      final playlistAddress = playlistAddressByKey[addressKey];
+      if (playlistAddress == null) continue;
+      final queryAddress = playlistAddress.toNormalizedAddress();
+      await addressTokensSyncLock(queryAddress).synchronized(() async {
+        await _syncAddress(
+          queryAddress: queryAddress,
+          initialOffset: await _initialOffsetForAddress(
+            queryAddress: queryAddress,
+            playlistItemCount: await _playlistItemCountForAddress(queryAddress),
+          ),
         );
-
-        if (page.tokens.isNotEmpty) {
-          await _databaseService.ingestTokensForAddress(
-            address: queryAddress,
-            tokens: page.tokens,
-          );
-        }
-
-        final next = page.nextOffset;
-        await _appStateService.setPersonalTokensListFetchOffset(
-          address: queryAddress,
-          nextFetchOffset: next,
-        );
-        if (next == null) {
-          active.remove(addressKey);
-        } else {
-          active[addressKey] = next;
-        }
-      }
+      });
     }
 
     await _databaseService.checkpoint();
@@ -123,4 +87,53 @@ class PersonalTokensSyncService {
   }
 
   String _addressKey(String address) => address.toNormalizedAddress();
+
+  Future<int> _initialOffsetForAddress({
+    required String queryAddress,
+    required int playlistItemCount,
+  }) async {
+    final persisted = await _appStateService.getPersonalTokensListFetchOffset(
+      queryAddress,
+    );
+    return persisted ?? playlistItemCount;
+  }
+
+  Future<int> _playlistItemCountForAddress(String queryAddress) async {
+    final playlists = await _databaseService.getAddressPlaylists();
+    for (final playlist in playlists) {
+      if (playlist.ownerAddress?.toNormalizedAddress() == queryAddress) {
+        return playlist.itemCount;
+      }
+    }
+    return 0;
+  }
+
+  Future<void> _syncAddress({
+    required String queryAddress,
+    required int initialOffset,
+  }) async {
+    var nextOffset = initialOffset;
+    while (true) {
+      final page = await _indexerService.fetchTokensPageByAddresses(
+        addresses: <String>[queryAddress],
+        limit: indexerTokensPageSize,
+        offset: nextOffset,
+      );
+
+      if (page.tokens.isNotEmpty) {
+        await _databaseService.ingestTokensForAddress(
+          address: queryAddress,
+          tokens: page.tokens,
+        );
+      }
+
+      final next = page.nextOffset;
+      await _appStateService.setPersonalTokensListFetchOffset(
+        address: queryAddress,
+        nextFetchOffset: next,
+      );
+      if (next == null) return;
+      nextOffset = next;
+    }
+  }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
@@ -82,6 +84,28 @@ class _FakeAppStateService implements AppStateServiceBase {
 class _FakePersonalTokensSyncService implements PersonalTokensSyncService {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _RecordingIndexerService extends IndexerService {
+  _RecordingIndexerService()
+    : super(client: IndexerClient(endpoint: 'https://example.invalid'));
+
+  final List<int?> fetchOffsets = <int?>[];
+  final List<TokensPage> responseSequence = <TokensPage>[];
+  int _responseIndex = 0;
+
+  @override
+  Future<TokensPage> fetchTokensPageByAddresses({
+    required List<String> addresses,
+    int? limit,
+    int? offset,
+  }) async {
+    fetchOffsets.add(offset);
+    if (_responseIndex < responseSequence.length) {
+      return responseSequence[_responseIndex++];
+    }
+    return const TokensPage(tokens: []);
+  }
 }
 
 /// Mirrors [AppStateService.setPersonalTokensListFetchOffset]: cursor writes
@@ -209,6 +233,52 @@ void main() {
         fakeAppState.personalTokensOffsets[addr.toNormalizedAddress()],
         isNull,
       );
+    },
+  );
+
+  test(
+    'syncTokens falls back to playlist itemCount when no cursor is stored',
+    () async {
+      const address = '0xabc';
+      await databaseService.ingestPlaylist(
+        const Playlist(
+          id: 'addr:eth:0xabc',
+          name: 'Personal',
+          type: PlaylistType.addressBased,
+          channelId: Channel.myCollectionId,
+          ownerAddress: address,
+          ownerChain: 'eth',
+          itemCount: 3,
+        ),
+      );
+
+      final fakeIsolate = FakeIndexerServiceIsolate()
+        ..fetchTokensPageSequence = [
+          const TokensPage(tokens: []),
+        ];
+
+      final indexerSyncService = IndexerSyncService(
+        indexerService: IndexerService(
+          client: IndexerClient(endpoint: 'https://example.invalid'),
+        ),
+        databaseService: databaseService,
+      );
+
+      final service = AddressService(
+        databaseService: databaseService,
+        indexerSyncService: indexerSyncService,
+        domainAddressService: DomainAddressService(
+          resolverUrl: '',
+          resolverApiKey: '',
+        ),
+        personalTokensSyncService: _FakePersonalTokensSyncService(),
+        indexerServiceIsolate: fakeIsolate,
+        appStateService: fakeAppState,
+      );
+
+      await service.syncTokens(address);
+
+      expect(fakeIsolate.fetchTokensPageOffsets.single, 3);
     },
   );
 
@@ -408,6 +478,160 @@ void main() {
       expect(
         fakeIsolate.fetchTokensPageOffsets,
         equals(const <int?>[42]),
+      );
+    },
+  );
+
+  test('syncTokens runs single-flight per address', () async {
+    const address = '0xabc';
+    await databaseService.ingestPlaylist(
+      const Playlist(
+        id: 'addr:eth:0xabc',
+        name: 'Personal',
+        type: PlaylistType.addressBased,
+        channelId: Channel.myCollectionId,
+        ownerAddress: address,
+        ownerChain: 'eth',
+      ),
+    );
+
+    final firstFetchGate = Completer<void>();
+    final fakeIsolate = FakeIndexerServiceIsolate()
+      ..beforeFetchTokensPageReturn = (fetchCount) async {
+        if (fetchCount == 1 && !firstFetchGate.isCompleted) {
+          await firstFetchGate.future;
+        }
+      }
+      ..fetchTokensPageSequence = [
+        const TokensPage(tokens: [], nextOffset: 100),
+        const TokensPage(tokens: []),
+        const TokensPage(tokens: []),
+      ];
+
+    final indexerSyncService = IndexerSyncService(
+      indexerService: IndexerService(
+        client: IndexerClient(endpoint: 'https://example.invalid'),
+      ),
+      databaseService: databaseService,
+    );
+
+    final service = AddressService(
+      databaseService: databaseService,
+      indexerSyncService: indexerSyncService,
+      domainAddressService: DomainAddressService(
+        resolverUrl: '',
+        resolverApiKey: '',
+      ),
+      personalTokensSyncService: _FakePersonalTokensSyncService(),
+      indexerServiceIsolate: fakeIsolate,
+      appStateService: fakeAppState,
+    );
+
+    final firstRun = service.syncTokens(address);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(fakeIsolate.fetchTokensPageOffsets, equals(const <int?>[0]));
+
+    final secondRun = service.syncTokens(address);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(
+      fakeIsolate.fetchTokensPageOffsets,
+      equals(const <int?>[0]),
+      reason: 'the second same-address run must wait for the first to finish',
+    );
+
+    firstFetchGate.complete();
+    await Future.wait<void>([firstRun, secondRun]);
+  });
+
+  test(
+    'personal token sync re-reads playlist tail after waiting on shared '
+    'address lock',
+    () async {
+      const address = '0xabc';
+      await databaseService.ingestPlaylist(
+        const Playlist(
+          id: 'addr:eth:0xabc',
+          name: 'Personal',
+          type: PlaylistType.addressBased,
+          channelId: Channel.myCollectionId,
+          ownerAddress: address,
+          ownerChain: 'eth',
+        ),
+      );
+
+      final firstFetchGate = Completer<void>();
+      final addressIsolate = FakeIndexerServiceIsolate()
+        ..beforeFetchTokensPageReturn = (fetchCount) async {
+          if (fetchCount == 1 && !firstFetchGate.isCompleted) {
+            await firstFetchGate.future;
+          }
+        }
+        ..fetchTokensPageSequence = [
+          const TokensPage(tokens: []),
+        ];
+      final personalIndexer = _RecordingIndexerService()
+        ..responseSequence.add(const TokensPage(tokens: []));
+
+      final indexerSyncService = IndexerSyncService(
+        indexerService: IndexerService(
+          client: IndexerClient(endpoint: 'https://example.invalid'),
+        ),
+        databaseService: databaseService,
+      );
+
+      final addressService = AddressService(
+        databaseService: databaseService,
+        indexerSyncService: indexerSyncService,
+        domainAddressService: DomainAddressService(
+          resolverUrl: '',
+          resolverApiKey: '',
+        ),
+        personalTokensSyncService: _FakePersonalTokensSyncService(),
+        indexerServiceIsolate: addressIsolate,
+        appStateService: fakeAppState,
+      );
+      final personalService = PersonalTokensSyncService(
+        indexerService: personalIndexer,
+        databaseService: databaseService,
+        appStateService: fakeAppState,
+      );
+
+      final addressRun = addressService.syncTokens(address);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(addressIsolate.fetchTokensPageOffsets, equals(const <int?>[0]));
+
+      final personalRun = personalService.syncAddresses(
+        addresses: const <String>[address],
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(
+        personalIndexer.fetchOffsets,
+        isEmpty,
+        reason: 'personal sync must wait on the shared per-address lock',
+      );
+
+      await databaseService.ingestPlaylist(
+        const Playlist(
+          id: 'addr:eth:0xabc',
+          name: 'Personal',
+          type: PlaylistType.addressBased,
+          channelId: Channel.myCollectionId,
+          ownerAddress: address,
+          ownerChain: 'eth',
+          itemCount: 1,
+        ),
+      );
+
+      firstFetchGate.complete();
+      await addressRun;
+      await personalRun;
+
+      expect(
+        personalIndexer.fetchOffsets.single,
+        1,
+        reason:
+            'queued personal sync must re-read the playlist tail after the '
+            'address sync ingests new tokens',
       );
     },
   );

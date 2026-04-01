@@ -7,6 +7,7 @@ import 'package:app/domain/models/models.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/database_service.dart';
+import 'package:app/infra/services/address_tokens_sync_lock.dart';
 import 'package:app/infra/services/domain_address_service.dart';
 import 'package:app/infra/services/indexer_service_isolate.dart';
 import 'package:app/infra/services/indexer_sync_service.dart';
@@ -75,40 +76,54 @@ class AddressService {
   /// writes the next cursor so restarts during `syncingTokens` resume where
   /// the last page left off instead of replaying from the start.
   Future<int> syncTokens(String address, {int startOffset = 0}) async {
-    const pageSize = indexerTokensPageSize;
-    // Canonical form matches playlist owner + ingest (toNormalizedAddress) so
-    // indexer queries and cursor keys stay aligned with SQLite rows.
     final queryAddress = _addressForIndexer(address);
-    final persisted = await _appStateService.getPersonalTokensListFetchOffset(
-      queryAddress,
-    );
-    // Non-zero startOffset is for tests or explicit overrides; default path
-    // prefers the stored cursor over replaying from 0 after process restart.
-    var total = 0;
-    int? nextOffset =
-        startOffset != 0 ? startOffset : (persisted ?? 0);
-    while (true) {
-      final page = await _indexerServiceIsolate.fetchTokensPageByAddresses(
-        addresses: [queryAddress],
-        limit: pageSize,
-        offset: nextOffset,
+    return addressTokensSyncLock(queryAddress).synchronized(() async {
+      const pageSize = indexerTokensPageSize;
+      final persisted = await _appStateService.getPersonalTokensListFetchOffset(
+        queryAddress,
       );
-      if (page.tokens.isNotEmpty) {
-        await _databaseService.ingestTokensForAddress(
-          address: queryAddress,
-          tokens: page.tokens,
+      final playlistItemCount = await _playlistItemCountForAddress(
+        queryAddress,
+      );
+      // Non-zero startOffset is for tests or explicit overrides. Otherwise,
+      // resume from the persisted cursor when present, or continue from the
+      // current playlist tail when no cursor is stored.
+      var total = 0;
+      int? nextOffset =
+          startOffset != 0 ? startOffset : (persisted ?? playlistItemCount);
+      while (true) {
+        final page = await _indexerServiceIsolate.fetchTokensPageByAddresses(
+          addresses: [queryAddress],
+          limit: pageSize,
+          offset: nextOffset,
         );
-        total += page.tokens.length;
+        if (page.tokens.isNotEmpty) {
+          await _databaseService.ingestTokensForAddress(
+            address: queryAddress,
+            tokens: page.tokens,
+          );
+          total += page.tokens.length;
+        }
+        final cursor = page.nextOffset;
+        await _appStateService.setPersonalTokensListFetchOffset(
+          address: queryAddress,
+          nextFetchOffset: cursor,
+        );
+        if (cursor == null) break;
+        nextOffset = cursor;
       }
-      final cursor = page.nextOffset;
-      await _appStateService.setPersonalTokensListFetchOffset(
-        address: queryAddress,
-        nextFetchOffset: cursor,
-      );
-      if (cursor == null) break;
-      nextOffset = cursor;
+      return total;
+    });
+  }
+
+  Future<int> _playlistItemCountForAddress(String normalizedAddress) async {
+    final playlists = await _databaseService.getAddressPlaylists();
+    for (final playlist in playlists) {
+      if (playlist.ownerAddress?.toNormalizedAddress() == normalizedAddress) {
+        return playlist.itemCount;
+      }
     }
-    return total;
+    return 0;
   }
 
   /// Runs indexing flow: index → poll → fetch+ingest.

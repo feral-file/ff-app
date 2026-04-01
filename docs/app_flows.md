@@ -92,7 +92,7 @@
   - indexing workflow resumes after app restarts via persisted app state
 - key screens involved: Add Address, Add Alias, Playlist screens (Me)
 - key modules/services involved: `add_address_provider`, `address_service`, `domain_address_service`, `indexer_service_isolate`, `personal_tokens_sync_service`
-- indexer list-tokens pagination: default page size `indexerTokensPageSize` (255); advance pages using response `nextOffset` until null. Personal token sync stores the next indexer offset in app state so resume after restart follows the indexer cursor (see `lib/domain/constants/indexer_constants.dart` and `.cursor/rules/50-indexing-address-flow.mdc`).
+- indexer list-tokens pagination: default page size `indexerTokensPageSize` (255); advance pages using response `nextOffset` until null. Personal token sync stores the next indexer offset in app state so resume after restart follows the indexer cursor; when no cursor is stored, catch-up resumes from the local playlist `itemCount` (see `lib/domain/constants/indexer_constants.dart` and `.cursor/rules/50-indexing-address-flow.mdc`).
 
 ## Flow: Browse Content and Open Details
 

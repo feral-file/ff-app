@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
@@ -55,6 +57,7 @@ class _RecordingIndexerService extends IndexerService {
   /// When non-empty, returns successive pages (cursor tests). Otherwise empty.
   List<TokensPage> responseSequence = const [];
   int _responseIndex = 0;
+  Future<void> Function(int fetchCount)? beforeFetchPageReturn;
 
   final List<int?> fetchLimits = <int?>[];
 
@@ -67,6 +70,10 @@ class _RecordingIndexerService extends IndexerService {
     requestedAddresses.addAll(addresses);
     fetchOffsets.add(offset);
     fetchLimits.add(limit);
+    final hook = beforeFetchPageReturn;
+    if (hook != null) {
+      await hook(fetchOffsets.length);
+    }
     final hasMore =
         responseSequence.isNotEmpty && _responseIndex < responseSequence.length;
     if (hasMore) {
@@ -353,4 +360,61 @@ void main() {
       );
     },
   );
+
+  test('syncAddresses runs single-flight per address', () async {
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(database.close);
+    final databaseService = DatabaseService(database);
+    const playlistOwner = '0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8';
+
+    await databaseService.ingestPlaylist(
+      const Playlist(
+        id: 'addr:eth:0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8',
+        name: 'Personal',
+        type: PlaylistType.addressBased,
+        channelId: Channel.myCollectionId,
+        ownerAddress: playlistOwner,
+        ownerChain: 'eth',
+      ),
+    );
+
+    final firstFetchGate = Completer<void>();
+    final indexer = _RecordingIndexerService()
+      ..beforeFetchPageReturn = (fetchCount) async {
+        if (fetchCount == 1 && !firstFetchGate.isCompleted) {
+          await firstFetchGate.future;
+        }
+      }
+      ..responseSequence = [
+        const TokensPage(tokens: [], nextOffset: 100),
+        const TokensPage(tokens: []),
+        const TokensPage(tokens: []),
+      ];
+
+    final appState = _FakeAppStateService();
+    final service = PersonalTokensSyncService(
+      indexerService: indexer,
+      databaseService: databaseService,
+      appStateService: appState,
+    );
+
+    final firstRun = service.syncAddresses(
+      addresses: const <String>[playlistOwner],
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(indexer.fetchOffsets, equals(const <int?>[0]));
+
+    final secondRun = service.syncAddresses(
+      addresses: const <String>[playlistOwner],
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(
+      indexer.fetchOffsets,
+      equals(const <int?>[0]),
+      reason: 'the second same-address run must wait for the first to finish',
+    );
+
+    firstFetchGate.complete();
+    await Future.wait<void>([firstRun, secondRun]);
+  });
 }
