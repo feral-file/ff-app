@@ -272,6 +272,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         // defer snapshot to pending and restore with the winning session or in
         // [finally] when no sync remains in flight.
         if (updated) {
+          await appStateService.clearAllPersonalTokensListFetchOffsets();
           await seedReadyNotifier.setReady();
           _appendSessionSnapshotToPendingFavorites(session);
         }
@@ -279,6 +280,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       }
       if (updated) {
         await appStateService.setHasCompletedSeedDownload(completed: true);
+        await appStateService.clearAllPersonalTokensListFetchOffsets();
         await seedReadyNotifier.setReady();
         await _restorePreservedFavoritesAfterSuccessfulSeedReplace(session);
         notifyForceReplaceFinished();

@@ -79,26 +79,9 @@ class AddressService {
     // Canonical form matches playlist owner + ingest (toNormalizedAddress) so
     // indexer queries and cursor keys stay aligned with SQLite rows.
     final queryAddress = _addressForIndexer(address);
-    var persisted = await _appStateService.getPersonalTokensListFetchOffset(
+    final persisted = await _appStateService.getPersonalTokensListFetchOffset(
       queryAddress,
     );
-    // Stale cursor: ObjectBox offset from before SQLite was replaced while the
-    // address playlist has no rows yet — do not skip the head of the list.
-    if (persisted != null && startOffset == 0) {
-      final playlists = await _databaseService.getAddressPlaylists();
-      for (final p in playlists) {
-        if (p.ownerAddress?.toNormalizedAddress() == queryAddress) {
-          if (p.itemCount == 0) {
-            await _appStateService.setPersonalTokensListFetchOffset(
-              address: queryAddress,
-              nextFetchOffset: null,
-            );
-            persisted = null;
-          }
-          break;
-        }
-      }
-    }
     // Non-zero startOffset is for tests or explicit overrides; default path
     // prefers the stored cursor over replaying from 0 after process restart.
     var total = 0;

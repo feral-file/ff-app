@@ -390,11 +390,14 @@ void main() {
       final fakeSyncService = _FakeSeedDatabaseSyncService();
       final fakeAppStateService = _FakeAppStateService();
       var onReadyCalled = false;
+      var cursorClearObservedBeforeReady = false;
       final actions = SeedDatabaseReadyActions(
-        onNotReady: () async {
-          await fakeAppStateService.clearAllPersonalTokensListFetchOffsets();
-        },
+        onNotReady: _noOpFuture,
         onReady: () async {
+          cursorClearObservedBeforeReady =
+              fakeAppStateService
+                  .clearAllPersonalTokensListFetchOffsetsCallCount ==
+              1;
           onReadyCalled = true;
         },
       );
@@ -422,7 +425,14 @@ void main() {
         1,
         reason:
             'successful seed replacement must invalidate persisted '
-            'personal-token list cursors before the DB is rebound',
+            'personal-token list cursors',
+      );
+      expect(
+        cursorClearObservedBeforeReady,
+        isTrue,
+        reason:
+            'cursor invalidation must happen before readiness is restored so '
+            'resume sync cannot consume a stale offset on rebind',
       );
     },
   );

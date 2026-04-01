@@ -164,7 +164,7 @@ void main() {
   });
 
   test(
-    'syncTokens drops stale cursor when playlist itemCount is zero',
+    'syncTokens preserves persisted cursor when playlist itemCount is zero',
     () async {
       const addr = '0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8';
       await databaseService.ingestPlaylist(
@@ -204,7 +204,7 @@ void main() {
       );
 
       await service.syncTokens(addr);
-      expect(fakeIsolate.fetchTokensPageOffsets.single, 0);
+      expect(fakeIsolate.fetchTokensPageOffsets.single, 500);
       expect(
         fakeAppState.personalTokensOffsets[addr.toNormalizedAddress()],
         isNull,
@@ -347,6 +347,68 @@ void main() {
       await service.syncTokens(mixed);
       expect(fakeIsolate.fetchTokensPageOffsets.single, 701);
       expect(fakeIsolate.fetchTokensAddresses.single, <String>[canonical]);
+    },
+  );
+
+  test(
+    'syncTokens preserves persisted cursor when playlist is empty but resume '
+    'cursor is valid',
+    () async {
+      const address = '0xabc';
+      await databaseService.ingestPlaylist(
+        const Playlist(
+          id: 'addr:eth:0xabc',
+          name: 'Personal',
+          type: PlaylistType.addressBased,
+          channelId: Channel.myCollectionId,
+          ownerAddress: address,
+          ownerChain: 'eth',
+        ),
+      );
+
+      fakeAppState.personalTokensOffsets[address] = 42;
+
+      final fakeIsolate = FakeIndexerServiceIsolate()
+        ..fetchTokensPageSequence = [
+          TokensPage(
+            tokens: [
+              AssetToken(
+                id: 1,
+                cid: 'cid1',
+                chain: 'eip155:1',
+                standard: 'ERC-721',
+                contractAddress: '0xabc',
+                tokenNumber: '1',
+              ),
+            ],
+          ),
+        ];
+
+      final indexerSyncService = IndexerSyncService(
+        indexerService: IndexerService(
+          client: IndexerClient(endpoint: 'https://example.invalid'),
+        ),
+        databaseService: databaseService,
+      );
+
+      final service = AddressService(
+        databaseService: databaseService,
+        indexerSyncService: indexerSyncService,
+        domainAddressService: DomainAddressService(
+          resolverUrl: '',
+          resolverApiKey: '',
+        ),
+        personalTokensSyncService: _FakePersonalTokensSyncService(),
+        indexerServiceIsolate: fakeIsolate,
+        appStateService: fakeAppState,
+      );
+
+      await service.syncTokens(address);
+
+      expect(
+        fakeIsolate.fetchTokensPageOffsets,
+        equals(const <int?>[42]),
+      );
     },
   );
 

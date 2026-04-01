@@ -245,47 +245,6 @@ void main() {
     },
   );
 
-  test(
-    'clears stale persisted offset when playlist itemCount is zero',
-    () async {
-      final database = AppDatabase.forTesting(NativeDatabase.memory());
-      addTearDown(database.close);
-      final databaseService = DatabaseService(database);
-      const playlistOwner = '0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8';
-
-      await databaseService.ingestPlaylist(
-        const Playlist(
-          id: 'addr:eth:0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8',
-          name: 'Personal',
-          type: PlaylistType.addressBased,
-          channelId: Channel.myCollectionId,
-          ownerAddress: playlistOwner,
-          ownerChain: 'eth',
-        ),
-      );
-
-      final appState = _FakeAppStateService()
-        ..personalTokensOffsets[playlistOwner.toNormalizedAddress()] = 500;
-
-      final indexer = _RecordingIndexerService()
-        ..responseSequence = [
-          const TokensPage(tokens: []),
-        ];
-
-      await PersonalTokensSyncService(
-        indexerService: indexer,
-        databaseService: databaseService,
-        appStateService: appState,
-      ).syncAddresses(addresses: const <String>[playlistOwner]);
-
-      expect(indexer.fetchOffsets, equals(const <int?>[0]));
-      expect(
-        appState.personalTokensOffsets[playlistOwner.toNormalizedAddress()],
-        isNull,
-      );
-    },
-  );
-
   test('continues after empty page when nextOffset is non-null', () async {
     final database = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(database.close);
@@ -335,4 +294,63 @@ void main() {
       isNull,
     );
   });
+
+  test(
+    'preserves persisted cursor across restart when playlist is empty but '
+    'resume cursor is valid',
+    () async {
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(database.close);
+      final databaseService = DatabaseService(database);
+      const playlistOwner = '0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8';
+
+      await databaseService.ingestPlaylist(
+        const Playlist(
+          id: 'addr:eth:0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8',
+          name: 'Personal',
+          type: PlaylistType.addressBased,
+          channelId: Channel.myCollectionId,
+          ownerAddress: playlistOwner,
+          ownerChain: 'eth',
+        ),
+      );
+
+      final appState = _FakeAppStateService()
+        ..personalTokensOffsets[playlistOwner.toNormalizedAddress()] = 42;
+
+      final indexer = _RecordingIndexerService()
+        ..responseSequence = [
+          TokensPage(
+            tokens: [
+              AssetToken(
+                id: 1,
+                cid: 'cid1',
+                chain: 'eip155:1',
+                standard: 'ERC-721',
+                contractAddress: '0xabc',
+                tokenNumber: '1',
+              ),
+            ],
+          ),
+        ];
+
+      await PersonalTokensSyncService(
+        indexerService: indexer,
+        databaseService: databaseService,
+        appStateService: appState,
+      ).syncAddresses(addresses: const <String>[playlistOwner]);
+
+      expect(
+        indexer.fetchOffsets,
+        equals(const <int?>[42]),
+        reason:
+            'an empty playlist is not enough to prove the persisted cursor '
+            'is stale',
+      );
+      expect(
+        appState.personalTokensOffsets[playlistOwner.toNormalizedAddress()],
+        isNull,
+      );
+    },
+  );
 }

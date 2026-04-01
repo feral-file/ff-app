@@ -59,19 +59,9 @@ class PersonalTokensSyncService {
       final canonicalOwner = owner.toNormalizedAddress();
       // Cursor lookups use toNormalizedAddress (same key as playlist rows and
       // token ingest) so they align with AddressService.syncTokens.
-      var persisted = await _appStateService.getPersonalTokensListFetchOffset(
+      final persisted = await _appStateService.getPersonalTokensListFetchOffset(
         canonicalOwner,
       );
-      // Stale cursor: ObjectBox still holds an offset from before SQLite was
-      // replaced (rebuild metadata) while the playlist row has no items yet.
-      // Starting at a non-zero offset would skip the head of the token list.
-      if (persisted != null && playlist.itemCount == 0) {
-        await _appStateService.setPersonalTokensListFetchOffset(
-          address: canonicalOwner,
-          nextFetchOffset: null,
-        );
-        persisted = null;
-      }
       offsetByAddressKey[key] = persisted ?? playlist.itemCount;
     }
     final playlistAddressByKey = <String, String>{
