@@ -210,7 +210,7 @@
 ### Screen group: FF1 setup (FF1DeviceScan, StartSetupFf1, ConnectFF1, ScanWiFi, EnterWiFiPassword, DeviceConfig, FF1Updating)
 - Purpose: discover/pair FF1 and configure connectivity/device settings.
 - Entry points: onboarding setup, menu FF1 Settings, QR deeplinks.
-- Key actions: BLE scan/connect, Wi-Fi selection/credentials, finalize pairing, adjust orientation/scaling/audio.
+- Key actions: BLE scan/connect, Wi-Fi selection/credentials, finalize pairing, adjust orientation/scaling/audio, adjust FFP/DDC monitor brightness/contrast/volume/power.
 - Important data: BLE state, FF1 device info/topicId, device/player status streams.
 - Related modules: FF1 providers (BLE + Wi-Fi), FF1 services, ObjectBox device store.
 

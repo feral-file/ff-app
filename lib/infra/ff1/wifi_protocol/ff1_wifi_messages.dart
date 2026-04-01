@@ -43,13 +43,19 @@ enum FF1WifiMessageType {
   }
 }
 
-/// Notification subtypes (player_status, device_status, connection).
+/// Notification subtypes (player_status, device_status, connection, FFP DDC).
 enum FF1NotificationType {
   /// Player status notification (playback state, current work).
   playerStatus('player_status'),
 
   /// Device status notification (WiFi, internet, version).
   deviceStatus('device_status'),
+
+  /// FFP display / DDC panel status notification.
+  ffpDdcPanelStatus('ddcPanelStatus'),
+
+  /// Same payload as [ffpDdcPanelStatus]; relayer uses this `notification_type`.
+  ffpStatusDefault('default'),
 
   /// Connection status notification (device online/offline).
   connection('connection')

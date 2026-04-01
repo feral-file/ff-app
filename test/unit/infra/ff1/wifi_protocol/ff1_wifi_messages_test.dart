@@ -54,6 +54,20 @@ void main() {
       );
     });
 
+    test('fromString parses ddcPanelStatus correctly', () {
+      expect(
+        FF1NotificationType.fromString('ddcPanelStatus'),
+        FF1NotificationType.ffpDdcPanelStatus,
+      );
+    });
+
+    test('fromString parses default (relayer FFP status) correctly', () {
+      expect(
+        FF1NotificationType.fromString('default'),
+        FF1NotificationType.ffpStatusDefault,
+      );
+    });
+
     test('fromString throws on unknown type', () {
       expect(
         () => FF1NotificationType.fromString('unknown'),
@@ -64,6 +78,8 @@ void main() {
     test('value returns correct string', () {
       expect(FF1NotificationType.playerStatus.value, 'player_status');
       expect(FF1NotificationType.deviceStatus.value, 'device_status');
+      expect(FF1NotificationType.ffpDdcPanelStatus.value, 'ddcPanelStatus');
+      expect(FF1NotificationType.ffpStatusDefault.value, 'default');
       expect(FF1NotificationType.connection.value, 'connection');
     });
   });
@@ -91,6 +107,35 @@ void main() {
       expect(
         message.timestamp,
         DateTime.fromMillisecondsSinceEpoch(1704067200000),
+      );
+    });
+
+    test('fromJson parses relayer default FFP status envelope', () {
+      final json = {
+        'type': 'notification',
+        'notification_type': 'default',
+        'timestamp': 1775038389754,
+        'message': {
+          'brightness': 82,
+          'contrast': 25,
+          'volume': 77,
+          'power': 'on',
+          'monitor': 'DEL:DELL S2721QS',
+          'errors': {
+            'mute': 'VCP reported ERR',
+          },
+        },
+      };
+
+      final message = FF1NotificationMessage.fromJson(json);
+
+      expect(message.type, FF1WifiMessageType.notification);
+      expect(message.notificationType, FF1NotificationType.ffpStatusDefault);
+      expect(message.message['brightness'], 82);
+      expect(message.message['errors'], isA<Map>());
+      expect(
+        (message.message['errors'] as Map)['mute'],
+        'VCP reported ERR',
       );
     });
 

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:app/app/providers/ff1_device_provider.dart';
+import 'package:app/app/providers/ff1_control_surface_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -147,7 +147,7 @@ class _ArtworkPlayingControlsState
   }
 }
 
-class _FfpMonitorQuickControls extends ConsumerStatefulWidget {
+class _FfpMonitorQuickControls extends ConsumerWidget {
   const _FfpMonitorQuickControls({
     required this.topicId,
   });
@@ -155,151 +155,76 @@ class _FfpMonitorQuickControls extends ConsumerStatefulWidget {
   final String topicId;
 
   @override
-  ConsumerState<_FfpMonitorQuickControls> createState() =>
-      _FfpMonitorQuickControlsState();
-}
-
-class _FfpMonitorQuickControlsState
-    extends ConsumerState<_FfpMonitorQuickControls> {
-  FfpDdcPanelStatus? _status;
-  bool _syncedFromDevice = false;
-
-  String _monitorId(FfpDdcPanelStatus s) =>
-      s.monitor?.trim().isNotEmpty ?? false ? s.monitor!.trim() : 'default';
-
-  void _applyDeviceStatus(FfpDdcPanelStatus? status) {
-    if (status == null || !status.hasData || _syncedFromDevice) {
-      return;
-    }
-    _status = status;
-    _syncedFromDevice = true;
-  }
-
-  void _setStatus(FfpDdcPanelStatus status) {
-    if (!mounted) return;
-    setState(() => _status = status);
-  }
-
-  Future<void> _runBrightness(FfpDdcPanelStatus s, double v) async {
-    final control = ref.read(ff1WifiControlProvider);
-    final mid = _monitorId(s);
-    final prev = _status ?? s;
-    _setStatus(prev.copyWith(brightness: v.round()));
-    try {
-      await control.setFfpMonitorBrightness(
-        topicId: widget.topicId,
-        monitorId: mid,
-        percent: v.round(),
-      );
-    } on FfpDdcUnsupportedException catch (e) {
-      // Some panels report brightness support inconsistently. Surface the error
-      // and revert to the last confirmed value.
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
-      }
-      _setStatus(prev);
-    } on Exception catch (_) {
-      _setStatus(prev);
-    }
-  }
-
-  Future<void> _runContrast(FfpDdcPanelStatus s, double v) async {
-    final control = ref.read(ff1WifiControlProvider);
-    final mid = _monitorId(s);
-    final prev = _status ?? s;
-    _setStatus(prev.copyWith(contrast: v.round()));
-    try {
-      await control.setFfpMonitorContrast(
-        topicId: widget.topicId,
-        monitorId: mid,
-        percent: v.round(),
-      );
-    } on Exception catch (_) {
-      _setStatus(prev);
-    }
-  }
-
-  Future<void> _runMonitorVolume(FfpDdcPanelStatus s, double v) async {
-    final control = ref.read(ff1WifiControlProvider);
-    final mid = _monitorId(s);
-    final prev = _status ?? s;
-    _setStatus(prev.copyWith(volume: v.round()));
-    try {
-      await control.setFfpMonitorVolume(
-        topicId: widget.topicId,
-        monitorId: mid,
-        percent: v.round(),
-      );
-    } on Exception catch (_) {
-      _setStatus(prev);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.topicId.isEmpty) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (topicId.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final statusProvider = ff1FfpDdcPanelStatusStreamProvider(widget.topicId);
-    ref.listen<AsyncValue<FfpDdcPanelStatus>>(statusProvider, (_, next) {
-      next.whenData((status) {
-        if (!_syncedFromDevice) {
-          setState(() => _applyDeviceStatus(status));
-        }
-      });
-    });
-
-    final async = ref.watch(statusProvider);
-    return async.when(
-      data: (status) {
-        final display = _status ?? status;
-        if (!display.hasData) {
-          return const SizedBox.shrink();
-        }
-        return _content(display);
-      },
-      loading: () => _status == null || !_status!.hasData
-          ? const SizedBox.shrink()
-          : _content(_status!),
-      error: (error, stackTrace) => _status == null || !_status!.hasData
-          ? const SizedBox.shrink()
-          : _content(_status!),
-    );
+    final status = ref.watch(ff1FfpDdcControlProvider(topicId));
+    if (!status.hasData) {
+      return const SizedBox.shrink();
+    }
+    return _content(context, ref, status);
   }
 
-  Widget _content(FfpDdcPanelStatus status) {
+  Widget _content(
+    BuildContext context,
+    WidgetRef ref,
+    FfpDdcPanelStatus status,
+  ) {
     final err = status.errors;
     final showBrightness = err?.containsKey('brightness') != true;
     final showContrast = err?.containsKey('contrast') != true;
     final showVol = err?.containsKey('volume') != true;
+    final notifier = ref.read(ff1FfpDdcControlProvider(topicId).notifier);
 
     final controls = <Widget>[
       if (showBrightness)
         _ControlPill(
           child: FfpBrightnessControl(
             value: (status.brightness ?? 0).toDouble(),
-            onChanged: (v) =>
-                _setStatus(status.copyWith(brightness: v.round())),
-            onChangeEnd: (v) => _runBrightness(status, v),
+            onChanged: notifier.setBrightnessDraft,
+            onChangeEnd: (v) async {
+              try {
+                await notifier.commitBrightness(v);
+              } on FfpDdcUnsupportedException catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(e.message)),
+                  );
+                }
+              } on Exception {
+                // The provider owns rollback and reconciliation.
+              }
+            },
           ),
         ),
       if (showContrast)
         _ControlPill(
           child: FfpContrastControl(
             value: (status.contrast ?? 0).toDouble(),
-            onChanged: (v) => _setStatus(status.copyWith(contrast: v.round())),
-            onChangeEnd: (v) => _runContrast(status, v),
+            onChanged: notifier.setContrastDraft,
+            onChangeEnd: (v) async {
+              try {
+                await notifier.commitContrast(v);
+              } on Exception {
+                // The provider owns rollback and reconciliation.
+              }
+            },
           ),
         ),
       if (showVol)
         _ControlPill(
           child: FfpMonitorVolumeControl(
             value: (status.volume ?? 0).toDouble(),
-            onChanged: (v) => _setStatus(status.copyWith(volume: v.round())),
-            onChangeEnd: (v) => _runMonitorVolume(status, v),
+            onChanged: notifier.setVolumeDraft,
+            onChangeEnd: (v) async {
+              try {
+                await notifier.commitVolume(v);
+              } on Exception {
+                // The provider owns rollback and reconciliation.
+              }
+            },
           ),
         ),
     ];

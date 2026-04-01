@@ -66,11 +66,13 @@ class FF1WifiControl {
   // Stream controllers for state changes
   final _playerStatusController = BehaviorSubject<FF1PlayerStatus>();
   final _deviceStatusController = BehaviorSubject<FF1DeviceStatus>();
+  final _ffpDdcPanelStatusController = BehaviorSubject<FfpDdcPanelStatus>();
   final _connectionStatusController = BehaviorSubject<FF1ConnectionStatus>();
 
   // Current device state
   FF1PlayerStatus? _currentPlayerStatus;
   FF1DeviceStatus? _currentDeviceStatus;
+  FfpDdcPanelStatus? _currentFfpDdcPanelStatus;
   bool _isDeviceConnected = false;
 
   // Stream subscriptions
@@ -131,6 +133,19 @@ class FF1WifiControl {
     required String apiKey,
   }) async {
     final flowId = _nextFlowId('connect');
+    final switchingDevice =
+        _device != null && _device!.deviceId != device.deviceId;
+    if (switchingDevice) {
+      _currentPlayerStatus = null;
+      _currentDeviceStatus = null;
+      _deviceStatusController.add(const FF1DeviceStatus());
+      _clearFfpDdcPanelStatus();
+      _isDeviceConnected = false;
+      _connectionStatusController.add(
+        const FF1ConnectionStatus(isConnected: false),
+      );
+    }
+
     _device = device;
     _userId = userId;
     _apiKey = apiKey;
@@ -195,17 +210,16 @@ class FF1WifiControl {
       },
     );
 
-    await _transport.disconnect();
-
-    // Clear cached connection params
-    _device = null;
-    _userId = null;
-    _apiKey = null;
-
-    // Clear current state
+    // Clear current state immediately so the UI cannot keep rendering stale
+    // values while the relayer transport finishes shutting down.
     _currentPlayerStatus = null;
     _currentDeviceStatus = null;
+    _deviceStatusController.add(const FF1DeviceStatus());
+    _clearFfpDdcPanelStatus();
     _isDeviceConnected = false;
+    _connectionStatusController.add(
+      const FF1ConnectionStatus(isConnected: false),
+    );
     _slog.info(
       category: LogCategory.wifi,
       event: 'control_disconnect_completed',
@@ -216,6 +230,13 @@ class FF1WifiControl {
         'transportConnecting': _transport.isConnecting,
       },
     );
+
+    await _transport.disconnect();
+
+    // Clear cached connection params so the next connect starts clean.
+    _device = null;
+    _userId = null;
+    _apiKey = null;
   }
 
   /// Check if transport is connected
@@ -241,6 +262,9 @@ class FF1WifiControl {
   /// Current device status (last received)
   FF1DeviceStatus? get currentDeviceStatus => _currentDeviceStatus;
 
+  /// Current FFP DDC panel status (last received).
+  FfpDdcPanelStatus? get currentFfpDdcPanelStatus => _currentFfpDdcPanelStatus;
+
   /// Whether device is connected (per connection notification)
   bool get isDeviceConnected => _isDeviceConnected;
 
@@ -252,9 +276,21 @@ class FF1WifiControl {
   Stream<FF1DeviceStatus> get deviceStatusStream =>
       _deviceStatusController.stream;
 
+  /// Stream of FFP DDC panel status updates.
+  Stream<FfpDdcPanelStatus> get ffpDdcPanelStatusStream =>
+      _ffpDdcPanelStatusController.stream;
+
   /// Stream of connection status updates
   Stream<FF1ConnectionStatus> get connectionStatusStream =>
       _connectionStatusController.stream;
+
+  /// Emits an empty status to flush replayed FFP state across disconnects and
+  /// device switches. Without this, new subscribers can immediately render the
+  /// previous device's monitor snapshot before the relayer pushes fresh data.
+  void _clearFfpDdcPanelStatus() {
+    _currentFfpDdcPanelStatus = null;
+    _ffpDdcPanelStatusController.add(const FfpDdcPanelStatus());
+  }
 
   /// Handle incoming notification from transport
   void _handleNotification(FF1NotificationMessage notification) {
@@ -273,6 +309,14 @@ class FF1WifiControl {
         final deviceStatus = FF1DeviceStatus.fromJson(notification.message);
         _currentDeviceStatus = deviceStatus;
         _deviceStatusController.add(deviceStatus);
+
+      case FF1NotificationType.ffpDdcPanelStatus:
+      case FF1NotificationType.ffpStatusDefault:
+        final panelStatus = FfpDdcPanelStatus.fromRelayerPayload(
+          notification.message,
+        );
+        _currentFfpDdcPanelStatus = panelStatus;
+        _ffpDdcPanelStatusController.add(panelStatus);
 
       case FF1NotificationType.connection:
         final connectionStatus = FF1ConnectionStatus.fromJson(
@@ -332,6 +376,7 @@ class FF1WifiControl {
       );
       _currentPlayerStatus = null;
       _currentDeviceStatus = null;
+      _clearFfpDdcPanelStatus();
       _isDeviceConnected = false;
       _connectionStatusController.add(
         FF1ConnectionStatus(isConnected: isConnected),
@@ -521,6 +566,8 @@ transport reconnected — waiting for device connection notification''',
     // Clear current state but preserve _device, _userId, _apiKey for reconnect
     _currentPlayerStatus = null;
     _currentDeviceStatus = null;
+    _deviceStatusController.add(const FF1DeviceStatus());
+    _clearFfpDdcPanelStatus();
     _isDeviceConnected = false;
     _connectionStatusController.add(
       const FF1ConnectionStatus(isConnected: false),
@@ -559,6 +606,7 @@ transport reconnected — waiting for device connection notification''',
     await Future.wait<void>([
       _playerStatusController.close(),
       _deviceStatusController.close(),
+      _ffpDdcPanelStatusController.close(),
       _connectionStatusController.close(),
     ]);
 

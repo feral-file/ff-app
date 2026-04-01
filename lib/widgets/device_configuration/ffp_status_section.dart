@@ -1,4 +1,4 @@
-import 'package:app/app/providers/ff1_device_provider.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
@@ -22,7 +22,7 @@ class FfpStatusSection extends ConsumerWidget {
     super.key,
   });
 
-  /// Relayer topic id for FFP DDC status polling.
+  /// Relayer topic id for FFP DDC status notifications.
   final String topicId;
 
   /// Whether the device is connected; disables the section when false.

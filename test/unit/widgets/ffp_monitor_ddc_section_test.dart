@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:app/app/providers/ff1_device_provider.dart';
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/domain/models/ff1_device.dart';
@@ -14,10 +14,91 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('later relayer pushes replace the initial device state', (
+    tester,
+  ) async {
+    const topicId = 'topic-1';
+    const device = FF1Device(
+      name: 'FF1 Test',
+      remoteId: 'remote-id',
+      deviceId: 'device-id',
+      topicId: topicId,
+    );
+    final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
+
+    addTearDown(statuses.close);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+            return Stream.value(device);
+          }),
+          ff1WifiControlProvider.overrideWithValue(
+            _FakeWifiControl(
+              resyncedStatus: const FfpDdcPanelStatus(
+                brightness: 20,
+                monitor: 'Test Monitor',
+              ),
+            ),
+          ),
+          ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith((ref) {
+            return statuses.stream;
+          }),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: FfpMonitorDdcSection(
+              topicId: topicId,
+              isConnected: true,
+              isControllable: true,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    statuses.add(
+      const FfpDdcPanelStatus(
+        brightness: 20,
+        monitor: 'Test Monitor',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final sliderFinder = find.descendant(
+      of: find.byKey(const ValueKey('ffp_brightness_slider')),
+      matching: find.byType(Slider),
+    );
+    expect(tester.widget<Slider>(sliderFinder).value, 20);
+
+    statuses.add(
+      const FfpDdcPanelStatus(
+        brightness: 55,
+        monitor: 'Test Monitor',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      tester.widget<Slider>(sliderFinder).value,
+      55,
+      reason: 'A later relayer push must replace the initial device state.',
+    );
+  });
+
   testWidgets(
     'brightness slider keeps the requested value when resync reads stale data',
     (tester) async {
       const topicId = 'topic-1';
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: topicId,
+      );
       const oldStatus = FfpDdcPanelStatus(
         brightness: 20,
         monitor: 'Test Monitor',
@@ -31,10 +112,13 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
             ff1WifiControlProvider.overrideWithValue(control),
-            ff1FfpDdcPanelStatusStreamProvider(
-              topicId,
-            ).overrideWith((ref) => Stream.value(oldStatus)),
+            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith(
+              (ref) => Stream.value(oldStatus),
+            ),
           ],
           child: const MaterialApp(
             home: Scaffold(
@@ -71,7 +155,97 @@ void main() {
         reason:
             'The immediate resync can still report the pre-write brightness. '
             'The widget must keep the requested value until '
-            'polling catches up.',
+            'the relayer-pushed status catches up.',
+      );
+    },
+  );
+
+  testWidgets(
+    'relayer status resumes updating after the optimistic value is confirmed',
+    (tester) async {
+      const topicId = 'topic-1';
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: topicId,
+      );
+      final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
+      final control = _FakeWifiControl(
+        resyncedStatus: const FfpDdcPanelStatus(
+          brightness: 20,
+          monitor: 'Test Monitor',
+        ),
+      );
+
+      addTearDown(statuses.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(control),
+            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith((ref) {
+              return statuses.stream;
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: FfpMonitorDdcSection(
+                topicId: topicId,
+                isConnected: true,
+                isControllable: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 20,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final sliderFinder = find.descendant(
+        of: find.byKey(const ValueKey('ffp_brightness_slider')),
+        matching: find.byType(Slider),
+      );
+      final slider = tester.widget<Slider>(sliderFinder);
+      slider.onChanged!(80);
+      await tester.pump();
+      slider.onChangeEnd!(80);
+      await tester.pump();
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 80,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 65,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        tester.widget<Slider>(sliderFinder).value,
+        65,
+        reason:
+            'Once the device confirms the optimistic value, later relayer '
+            'pushes must update the control again.',
       );
     },
   );

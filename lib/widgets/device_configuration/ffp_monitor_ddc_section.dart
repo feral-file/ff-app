@@ -1,19 +1,16 @@
-import 'package:app/app/providers/ff1_device_provider.dart';
-import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/app/providers/ff1_control_surface_providers.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1/ffp_ddc_command_errors.dart';
 import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/widgets/device_configuration/device_info_box.dart';
 import 'package:app/widgets/device_configuration/ffp_slider_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:logging/logging.dart';
-
-final Logger _log = Logger('FfpMonitorDdcSection');
 
 /// FFP display / DDC monitor controls (not FF1 system audio).
-class FfpMonitorDdcSection extends ConsumerStatefulWidget {
+class FfpMonitorDdcSection extends ConsumerWidget {
   /// Creates the FFP monitor section.
   const FfpMonitorDdcSection({
     required this.topicId,
@@ -25,165 +22,31 @@ class FfpMonitorDdcSection extends ConsumerStatefulWidget {
   /// Relayer topic id for FFP DDC commands.
   final String topicId;
 
-  /// When false, section does not poll or render controls.
+  /// When false, section does not render controls.
   final bool isConnected;
 
   /// When false, sliders are disabled (same gating as other device actions).
   final bool isControllable;
 
   @override
-  ConsumerState<FfpMonitorDdcSection> createState() =>
-      _FfpMonitorDdcSectionState();
-}
-
-class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
-  FfpDdcPanelStatus? _status;
-  bool _syncedFromDevice = false;
-
-  String _monitorId(FfpDdcPanelStatus s) =>
-      s.monitor?.trim().isNotEmpty ?? false ? s.monitor!.trim() : 'default';
-
-  void _applyDeviceStatus(FfpDdcPanelStatus? status) {
-    if (status == null || !status.hasData || _syncedFromDevice) {
-      return;
-    }
-    _status = status;
-    _syncedFromDevice = true;
-  }
-
-  void _setStatus(FfpDdcPanelStatus status) {
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _status = status;
-    });
-  }
-
-  Future<void> _runBrightness(FfpDdcPanelStatus s, double v) async {
-    final control = ref.read(ff1WifiControlProvider);
-    final mid = _monitorId(s);
-    final prev = _status ?? s;
-    _setStatus(prev.copyWith(brightness: v.round()));
-    try {
-      await control.setFfpMonitorBrightness(
-        topicId: widget.topicId,
-        monitorId: mid,
-        percent: v.round(),
-      );
-    } on FfpDdcUnsupportedException catch (e) {
-      _log.info('Brightness unsupported: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
-      }
-      _setStatus(prev);
-    } on Exception catch (e) {
-      _log.warning('setFfpMonitorBrightness: $e');
-      _setStatus(prev);
-    }
-  }
-
-  Future<void> _runContrast(FfpDdcPanelStatus s, double v) async {
-    final control = ref.read(ff1WifiControlProvider);
-    final mid = _monitorId(s);
-    final prev = _status ?? s;
-    _setStatus(prev.copyWith(contrast: v.round()));
-    try {
-      await control.setFfpMonitorContrast(
-        topicId: widget.topicId,
-        monitorId: mid,
-        percent: v.round(),
-      );
-    } on Exception catch (e) {
-      _log.warning('setFfpMonitorContrast: $e');
-      _setStatus(prev);
-    }
-  }
-
-  Future<void> _runMonitorVolume(FfpDdcPanelStatus s, double v) async {
-    final control = ref.read(ff1WifiControlProvider);
-    final mid = _monitorId(s);
-    final prev = _status ?? s;
-    _setStatus(prev.copyWith(volume: v.round()));
-    try {
-      await control.setFfpMonitorVolume(
-        topicId: widget.topicId,
-        monitorId: mid,
-        percent: v.round(),
-      );
-    } on Exception catch (e) {
-      _log.warning('setFfpMonitorVolume: $e');
-      _setStatus(prev);
-    }
-  }
-
-  /// `ddcPanelControl` with action `power` (wire: on / off / standby).
-  Future<void> _runPower(FfpDdcPanelStatus s, String powerState) async {
-    final control = ref.read(ff1WifiControlProvider);
-    final mid = _monitorId(s);
-    final prev = _status ?? s;
-    _setStatus(prev.copyWith(power: powerState));
-    try {
-      await control.setFfpMonitorPower(
-        topicId: widget.topicId,
-        monitorId: mid,
-        powerState: powerState,
-      );
-      try {
-        final fresh = await control.getFfpDdcPanelStatus(
-          topicId: widget.topicId,
-        );
-        if (mounted) {
-          _setStatus(fresh);
-        }
-      } on Exception catch (e) {
-        _log.fine('getFfpDdcPanelStatus after power: $e');
-      }
-    } on Exception catch (e) {
-      _log.warning('setFfpMonitorPower: $e');
-      _setStatus(prev);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!widget.isConnected || widget.topicId.isEmpty) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!isConnected || topicId.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final statusProvider = ff1FfpDdcPanelStatusStreamProvider(widget.topicId);
-    ref.listen<AsyncValue<FfpDdcPanelStatus>>(statusProvider, (_, next) {
-      next.whenData((status) {
-        if (!_syncedFromDevice) {
-          setState(() => _applyDeviceStatus(status));
-        }
-      });
-    });
-    final async = ref.watch(statusProvider);
+    final status = ref.watch(ff1FfpDdcControlProvider(topicId));
+    if (!status.hasData) {
+      return const SizedBox.shrink();
+    }
 
-    return async.when(
-      data: (status) {
-        final display = _status ?? status;
-        if (!display.hasData) {
-          return const SizedBox.shrink();
-        }
-        return _statusContent(context, display);
-      },
-      loading: () => _status == null || !_status!.hasData
-          ? const SizedBox.shrink()
-          : _statusContent(context, _status!),
-      error: (e, _) {
-        _log.fine('Ffp DDC panel status unavailable: $e');
-        return _status == null || !_status!.hasData
-            ? const SizedBox.shrink()
-            : _statusContent(context, _status!);
-      },
-    );
+    return _statusContent(context, ref, status);
   }
 
-  Widget _statusContent(BuildContext context, FfpDdcPanelStatus status) {
+  Widget _statusContent(
+    BuildContext context,
+    WidgetRef ref,
+    FfpDdcPanelStatus status,
+  ) {
     final err = status.errors;
     final showBrightness = err?.containsKey('brightness') != true;
     final showContrast = err?.containsKey('contrast') != true;
@@ -194,7 +57,8 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
         ? status.monitor!.trim()
         : 'Display';
     final power = _powerLabel(status.power);
-    final enable = widget.isControllable;
+    final enable = isControllable;
+    final notifier = ref.read(ff1FfpDdcControlProvider(topicId).notifier);
 
     const divider = Divider(
       height: 16,
@@ -211,8 +75,8 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _KeyValueRow(
-            title: 'Monitor:',
+          DeviceInfoItem(
+            title: 'Monitor',
             child: Text(
               name,
               style: AppTypography.body(context).white,
@@ -220,8 +84,8 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
             ),
           ),
           divider,
-          _KeyValueRow(
-            title: 'Power:',
+          DeviceInfoItem(
+            title: 'Power',
             child: Row(
               children: [
                 Container(
@@ -241,7 +105,7 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
                   ),
                 ),
                 if (showPowerControl && enable)
-                  ..._otherPowerModeButtons(context, status),
+                  ..._otherPowerModeButtons(context, notifier, status),
               ],
             ),
           ),
@@ -251,9 +115,20 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
               key: const ValueKey('ffp_brightness_slider'),
               value: (status.brightness ?? 0).toDouble(),
               enabled: enable,
-              onChanged: (v) =>
-                  _setStatus(status.copyWith(brightness: v.round())),
-              onChangeEnd: (v) => _runBrightness(status, v),
+              onChanged: notifier.setBrightnessDraft,
+              onChangeEnd: (v) async {
+                try {
+                  await notifier.commitBrightness(v);
+                } on FfpDdcUnsupportedException catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.message)),
+                    );
+                  }
+                } on Exception {
+                  // The provider owns rollback and reconciliation.
+                }
+              },
             ),
           ],
           if (showContrast) ...[
@@ -262,9 +137,14 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
               key: const ValueKey('ffp_contrast_slider'),
               value: (status.contrast ?? 0).toDouble(),
               enabled: enable,
-              onChanged: (v) =>
-                  _setStatus(status.copyWith(contrast: v.round())),
-              onChangeEnd: (v) => _runContrast(status, v),
+              onChanged: notifier.setContrastDraft,
+              onChangeEnd: (v) async {
+                try {
+                  await notifier.commitContrast(v);
+                } on Exception {
+                  // The provider owns rollback and reconciliation.
+                }
+              },
             ),
           ],
           if (showVol) ...[
@@ -274,9 +154,14 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
               value: (status.volume ?? 0).toDouble(),
               enabled: enable && showVol,
               iconEnabled: enable,
-              onChanged: (v) =>
-                  _setStatus(status.copyWith(volume: v.round())),
-              onChangeEnd: (v) => _runMonitorVolume(status, v),
+              onChanged: notifier.setVolumeDraft,
+              onChangeEnd: (v) async {
+                try {
+                  await notifier.commitVolume(v);
+                } on Exception {
+                  // The provider owns rollback and reconciliation.
+                }
+              },
             ),
           ],
         ],
@@ -299,6 +184,25 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
       ];
     }
     return all.where((m) => m.wire != c).toList();
+  }
+
+  /// Puts the power-off action at index 1 so it is always the second control.
+  List<({String wire, Color color})> _powerModesWithOffSecond(
+    List<({String wire, Color color})> modes,
+  ) {
+    if (modes.length < 2) {
+      return modes;
+    }
+    final offIndex = modes.indexWhere((m) => m.wire == 'off');
+    if (offIndex < 0) {
+      return modes;
+    }
+    if (offIndex == 1) {
+      return modes;
+    }
+    final off = modes[offIndex];
+    final rest = List<({String wire, Color color})>.from(modes)..removeAt(offIndex);
+    return [rest.first, off, ...rest.sublist(1)];
   }
 
   IconData _powerModeIcon(String _) {
@@ -336,9 +240,10 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
 
   List<Widget> _otherPowerModeButtons(
     BuildContext context,
+    FF1FfpDdcControlNotifier notifier,
     FfpDdcPanelStatus status,
   ) {
-    return _otherPowerModes(status.power)
+    return _powerModesWithOffSecond(_otherPowerModes(status.power))
         .map(
           (m) => Padding(
             padding: const EdgeInsets.only(left: 4),
@@ -353,7 +258,13 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
                   maximumSize: const Size(44, 44),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                onPressed: () => _runPower(status, m.wire),
+                onPressed: () async {
+                  try {
+                    await notifier.setPower(m.wire);
+                  } on Exception {
+                    // The provider owns rollback and reconciliation.
+                  }
+                },
                 icon: Icon(
                   _powerModeIcon(m.wire),
                   color: m.color,
@@ -402,37 +313,5 @@ class _FfpMonitorDdcSectionState extends ConsumerState<FfpMonitorDdcSection> {
       default:
         return p ?? 'Unknown';
     }
-  }
-}
-
-class _KeyValueRow extends StatelessWidget {
-  const _KeyValueRow({
-    required this.title,
-    required this.child,
-  });
-
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: AppTypography.body(context).grey,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: child,
-          ),
-        ),
-      ],
-    );
   }
 }

@@ -155,4 +155,62 @@ void main() {
       expect(wifiControl.disconnectCalled, isTrue);
     },
   );
+
+  test(
+    'ff1AutoConnectWatcherProvider disconnects the old device before switching',
+    () async {
+      await ensureDotEnvLoaded();
+
+      final deviceService = MockFF1BluetoothDeviceService();
+      final wifiControl = FakeWifiControl();
+      const deviceA = FF1Device(
+        name: 'FF1 A',
+        remoteId: 'remote-a',
+        deviceId: 'device-a',
+        topicId: 'topic-a',
+      );
+      const deviceB = FF1Device(
+        name: 'FF1 B',
+        remoteId: 'remote-b',
+        deviceId: 'device-b',
+        topicId: 'topic-b',
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1BluetoothDeviceServiceProvider.overrideWithValue(deviceService),
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      deviceService.devices = [deviceA];
+      deviceService.activeDeviceId = deviceA.deviceId;
+
+      container.listen(
+        ff1AutoConnectWatcherProvider,
+        (previous, next) {},
+      );
+
+      await container.read(activeFF1BluetoothDeviceProvider.future);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      expect(wifiControl.connectCalled, isTrue);
+      expect(wifiControl.lastConnectedDevice?.deviceId, deviceA.deviceId);
+      expect(wifiControl.disconnectCalled, isFalse);
+
+      deviceService.devices = [deviceA, deviceB];
+      deviceService.activeDeviceId = deviceB.deviceId;
+      container.invalidate(activeFF1BluetoothDeviceProvider);
+
+      await container.read(activeFF1BluetoothDeviceProvider.future);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      expect(wifiControl.disconnectCalled, isTrue);
+      expect(wifiControl.lastConnectedDevice?.deviceId, deviceB.deviceId);
+    },
+  );
 }

@@ -1,5 +1,8 @@
 /// Snapshot from FF1 `ddcPanelStatus` command (flat `message`, ffos#84).
 ///
+/// Relayer may send `notification_type: "default"` with the same flat `message`
+/// shape (brightness, contrast, volume, power, monitor, errors, …).
+///
 /// Distinct from FF1 system audio (`FF1DeviceStatus.volume` / `setVolume`).
 library;
 

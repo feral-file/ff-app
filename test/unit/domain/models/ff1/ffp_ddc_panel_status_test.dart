@@ -32,6 +32,26 @@ void main() {
       expect(s.hasData, isTrue);
     });
 
+    test('relayer sample: mute error string without top-level mute value', () {
+      final json = {
+        'brightness': 82,
+        'contrast': 25,
+        'volume': 77,
+        'power': 'on',
+        'monitor': 'DEL:DELL S2721QS',
+        'errors': {'mute': 'VCP reported ERR'},
+      };
+      final s = FfpDdcPanelStatus.fromRelayerPayload(json);
+      expect(s.brightness, 82);
+      expect(s.contrast, 25);
+      expect(s.volume, 77);
+      expect(s.power, 'on');
+      expect(s.monitor, 'DEL:DELL S2721QS');
+      expect(s.mute, isNull);
+      expect(s.errors?['mute'], 'VCP reported ERR');
+      expect(s.hasData, isTrue);
+    });
+
     test('nested ddcPanelStatus map', () {
       final json = {
         'ddcPanelStatus': {
