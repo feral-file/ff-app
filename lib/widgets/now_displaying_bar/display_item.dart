@@ -1,5 +1,6 @@
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/content_rhythm.dart';
+import 'package:app/design/image_decode_cache.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/extensions.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -107,22 +108,26 @@ class _Thumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    const thumbW = LayoutConstants.nowDisplayingDisplayItemThumbWidth;
+    const thumbH = LayoutConstants.nowDisplayingDisplayItemThumbHeight;
+
     return SizedBox(
-      width: LayoutConstants.nowDisplayingDisplayItemThumbWidth,
-      height: LayoutConstants.nowDisplayingDisplayItemThumbHeight,
+      width: thumbW,
+      height: thumbH,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(LayoutConstants.space1),
         child: url == null || url!.isEmpty
             ? const GalleryNoThumbnailWidget()
             : CachedNetworkImage(
                 imageUrl: url!,
-                memCacheWidth: (LayoutConstants.nowDisplayingDisplayItemThumbWidth *
-                        2)
-                    .round(),
-                memCacheHeight: (LayoutConstants.nowDisplayingDisplayItemThumbHeight *
-                        2)
-                    .round(),
+                width: thumbW,
+                height: thumbH,
+                memCacheWidth: decodePixelsForLogicalSize(thumbW, dpr),
+                memCacheHeight: decodePixelsForLogicalSize(thumbH, dpr),
                 fit: BoxFit.cover,
+                // Avoid default low filter — cover looks soft on small tiles.
+                filterQuality: FilterQuality.high,
                 placeholder: (_, _) => const GalleryThumbnailPlaceholder(),
                 errorWidget: (_, _, _) => const GalleryThumbnailErrorWidget(),
               ),

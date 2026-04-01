@@ -26,6 +26,8 @@ class _FakeAppStateServiceForResume implements AppStateServiceBase {
   final Map<String, AddressIndexingProcessStatus> statuses;
   final List<String> trackedAddresses;
   final List<String> setStatusCalls = <String>[];
+  final List<AddressIndexingProcessStatus> recordedStatuses =
+      <AddressIndexingProcessStatus>[];
 
   @override
   Future<Map<String, AddressIndexingProcessStatus>>
@@ -37,6 +39,7 @@ class _FakeAppStateServiceForResume implements AppStateServiceBase {
     required String address,
     required AddressIndexingProcessStatus status,
   }) async {
+    recordedStatuses.add(status);
     setStatusCalls.add('$address:${status.state.name}');
   }
 
@@ -118,6 +121,55 @@ void main() {
         appStateService: fakeAppState,
       );
     }
+
+    test(
+        'indexAndSyncAddress sets indexingTriggeredPending then workflow id '
+        'when runTriggerIndex',
+        () async {
+      const address = '0xabc';
+      fakeIndexer.pullStatusResult = const AddressIndexingJobResponse(
+        workflowId: 'wf-1',
+        address: address,
+        status: IndexingJobStatus.completed,
+        totalTokensIndexed: 2,
+        totalTokensViewable: 2,
+      );
+      fakeIndexer.fetchTokensResult = TokensPage(
+        tokens: [
+          AssetToken(
+            id: 1,
+            cid: 'cid1',
+            chain: 'eip155:1',
+            standard: 'ERC-721',
+            contractAddress: address,
+            tokenNumber: '1',
+          ),
+        ],
+      );
+
+      final playlist = PlaylistExt.fromWalletAddress(
+        WalletAddress(
+          address: address,
+          createdAt: DateTime.now(),
+          name: 'Test',
+        ),
+      );
+      await databaseService.ingestPlaylist(playlist);
+
+      final service = createAddressService();
+      await service.indexAndSyncAddress(address);
+
+      expect(fakeAppState.recordedStatuses.first.state,
+          AddressIndexingProcessState.indexingTriggered);
+      expect(fakeAppState.recordedStatuses.first.workflowId, isNull);
+      final withWorkflowId = fakeAppState.recordedStatuses
+          .where((s) => s.workflowId == 'wf-1')
+          .toList();
+      expect(withWorkflowId, isNotEmpty);
+      expect(withWorkflowId.first.state,
+          AddressIndexingProcessState.indexingTriggered);
+      expect(fakeIndexer.callSequence, contains('index'));
+    });
 
     test('indexAndSyncAddress with resumeFrom.poll calls poll and completes',
         () async {

@@ -5,9 +5,6 @@ inputs:
   platform:
     description: ios or android
     required: true
-  soak_minutes:
-    description: GOLD_PATH_SOAK_MINUTES passed to the test
-    required: true
   artifact_prefix:
     description: Prefix for uploaded iOS xcresult (e.g. gold-path-smoke)
     required: true
@@ -54,7 +51,17 @@ runs:
       if: ${{ inputs.platform == 'android' }}
       shell: bash
       run: |
+        # `yes` exits with SIGPIPE once `sdkmanager` stops reading after accepting
+        # all licenses. We only care whether `sdkmanager` succeeded, so capture its
+        # exit code explicitly instead of letting `pipefail` treat the broken pipe
+        # from `yes` as a workflow failure.
+        set +o pipefail
         yes | sdkmanager --licenses >/dev/null
+        license_status=${PIPESTATUS[1]}
+        set -o pipefail
+        if [ "$license_status" -ne 0 ]; then
+          exit "$license_status"
+        fi
         sdkmanager \
           "platform-tools" \
           "platforms;android-$ANDROID_API_LEVEL" \
@@ -198,8 +205,13 @@ runs:
       if: ${{ inputs.platform == 'ios' }}
       shell: bash
       run: |
-        xcrun simctl boot "$SIMULATOR_DEVICE" || true
+        # Patrol can inherit a wedged simulator from prior runs on the self-hosted
+        # runner. Reset the target device first so xcodebuild does not fail with
+        # "Invalid device state" before the UI test bundle even launches.
+        xcrun simctl shutdown "$SIMULATOR_DEVICE" || true
+        xcrun simctl erase "$SIMULATOR_DEVICE" || true
         open -a Simulator
+        xcrun simctl boot "$SIMULATOR_DEVICE" || true
         xcrun simctl bootstatus "$SIMULATOR_DEVICE" -b
 
     - name: Boot Android emulator
@@ -319,7 +331,7 @@ runs:
     - name: Run gold path Patrol test
       shell: bash
       env:
-        GOLD_PATH_SOAK_MINUTES: ${{ inputs.soak_minutes }}
+        GOLD_PATH_SOAK_MINUTES: "1"
         GOLD_PATH_CANARY_CHANNEL_TITLE: ${{ inputs.canary_channel_title }}
       run: |
         export PATH="$PATH:$HOME/.pub-cache/bin"

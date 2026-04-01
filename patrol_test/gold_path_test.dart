@@ -16,43 +16,40 @@ const _personalAddressName = 'reas.eth';
 const _personalAddressFallbackName = '0x457e...eea6';
 
 void main() {
-  patrolTest(
-    'gold path patrol',
-    ($) async {
-      final config = GoldPathPatrolConfig.fromDartDefines();
+  patrolTest('gold path patrol', ($) async {
+    final config = GoldPathPatrolConfig.fromDartDefines();
 
-      _logStep('boot app');
-      await createAppForPatrol($, config: config);
-      _logStep('complete onboarding');
-      await _completeOnboardingIfNeeded($);
-      _logStep('verify personal playlist');
-      await _assertPersonalPlaylistOnHomeAndPlaylistsTab($);
+    _logStep('boot app');
+    await createAppForPatrol($, config: config);
+    _logStep('complete onboarding');
+    await _completeOnboardingIfNeeded($);
+    _logStep('verify personal playlist');
+    await _assertPersonalPlaylistOnHomeAndPlaylistsTab($);
 
-      _logStep('open channels');
-      await $(GoldPathPatrolKeys.channelsTab).tap();
-      await $(GoldPathPatrolKeys.curatedChannelsSection).waitUntilExists(
-        timeout: const Duration(minutes: 2),
-      );
+    _logStep('open channels');
+    await $(GoldPathPatrolKeys.channelsTab).tap();
+    await $(
+      GoldPathPatrolKeys.curatedChannelsSection,
+    ).waitUntilExists(timeout: const Duration(minutes: 2));
 
-      _logStep('locate canary');
-      await _assertCanaryVisible($, config);
-      _logStep('open canary work');
-      await _openCanaryWork($, config);
+    _logStep('locate canary');
+    await _assertCanaryVisible($, config);
+    _logStep('open canary work');
+    await _openCanaryWork($, config);
 
-      _logStep('reassert active FF1 device');
-      await ensurePatrolActiveDevice(config);
-      _logStep('tap FF1 play');
-      await _tapPlayOnFf1($);
+    _logStep('reassert active FF1 device');
+    await ensurePatrolActiveDevice(config);
+    _logStep('tap FF1 play');
+    await _tapPlayOnFf1($);
 
-      _logStep('wait for playback state');
-      await _waitForNowDisplayingOrPlayableState($);
+    _logStep('wait for playback state');
+    await _waitForNowDisplayingOrPlayableState($);
 
-      if (config.soakDuration > Duration.zero) {
-        _logStep('soak for ${config.soakDuration.inSeconds}s');
-        await Future<void>.delayed(config.soakDuration);
-      }
-    },
-  );
+    if (config.soakDuration > Duration.zero) {
+      _logStep('soak for ${config.soakDuration.inSeconds}s');
+      await Future<void>.delayed(config.soakDuration);
+    }
+  });
 }
 
 Future<void> _completeOnboardingIfNeeded(PatrolIntegrationTester $) async {
@@ -122,21 +119,35 @@ Future<void> _submitPersonalAddressInOnboarding(
   await _openAddAddressFromOnboarding($);
   await _enterAddressAndSubmit($, address);
 
-  await $('See the art you already own').waitUntilVisible(
-    timeout: const Duration(minutes: 1),
-  );
-  await $(address).waitUntilExists(
-    timeout: const Duration(minutes: 1),
-  );
+  await $(
+    'See the art you already own',
+  ).waitUntilVisible(timeout: const Duration(minutes: 1));
+  await $(address).waitUntilExists(timeout: const Duration(minutes: 1));
 }
 
 Future<void> _openAddAddressFromOnboarding(PatrolIntegrationTester $) async {
-  final addAddressButton = $(GoldPathPatrolKeys.onboardingAddAddressPrimary);
-  await _waitForOnboardingAddressActionsReady($);
-  await addAddressButton.waitUntilVisible(
-    timeout: const Duration(seconds: 30),
+  final textFieldFinder = $(find.byType(TextField));
+  final submitButtonFinder = $(GoldPathPatrolKeys.onboardingAddAddressSubmit);
+  final deadline = DateTime.now().add(const Duration(seconds: 45));
+
+  while (DateTime.now().isBefore(deadline)) {
+    await _waitForOnboardingAddressActionsReady($);
+    await _tapOnboardingAction(
+      $,
+      actionKey: GoldPathPatrolKeys.onboardingAddAddressPrimary,
+      actionLabel: 'Add Address',
+    );
+
+    await $.pump(const Duration(milliseconds: 500));
+
+    if (await _exists(textFieldFinder) || await _exists(submitButtonFinder)) {
+      return;
+    }
+  }
+
+  throw TimeoutException(
+    'Timed out waiting for add-address screen after tapping onboarding action.',
   );
-  await addAddressButton.tap();
 }
 
 Future<void> _waitForOnboardingAddressActionsReady(
@@ -181,9 +192,7 @@ Future<void> _enterAddressAndSubmit(
   final inputFinder = find.byType(TextField);
   final inputField = $(inputFinder);
 
-  await inputField.waitUntilExists(
-    timeout: const Duration(seconds: 30),
-  );
+  await inputField.waitUntilExists(timeout: const Duration(seconds: 30));
 
   await $.tester.tap(inputFinder);
   await $.pump(const Duration(milliseconds: 300));
@@ -210,16 +219,16 @@ Future<void> _assertCanaryVisible(
   GoldPathPatrolConfig config,
 ) async {
   if (config.canaryChannelId case final channelId?) {
-    await $(GoldPathPatrolKeys.channelRow(channelId)).waitUntilVisible(
-      timeout: const Duration(minutes: 2),
-    );
+    await $(
+      GoldPathPatrolKeys.channelRow(channelId),
+    ).waitUntilVisible(timeout: const Duration(minutes: 2));
     expect($(GoldPathPatrolKeys.channelRow(channelId)), findsOneWidget);
     return;
   }
 
-  await $(config.canaryChannelTitle).waitUntilVisible(
-    timeout: const Duration(minutes: 2),
-  );
+  await $(
+    config.canaryChannelTitle,
+  ).waitUntilVisible(timeout: const Duration(minutes: 2));
   expect($(config.canaryChannelTitle), findsWidgets);
 }
 
@@ -264,7 +273,11 @@ Future<void> _openCanaryWork(
   await _openCanaryWorkUntilPlayTargetVisible(
     $,
     tapWork: () async {
-      await workThumbnails.at(0).tap();
+      await _tapVisibleInScrollableContext(
+        $,
+        workThumbnails.at(0),
+        description: 'first canary work thumbnail',
+      );
     },
   );
 }
@@ -291,10 +304,35 @@ Future<void> _openCanaryWorkUntilPlayTargetVisible(
   );
 }
 
+Future<void> _tapVisibleInScrollableContext(
+  PatrolIntegrationTester $,
+  PatrolFinder finder, {
+  required String description,
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+
+  while (DateTime.now().isBefore(deadline)) {
+    try {
+      await finder.waitUntilExists(timeout: const Duration(seconds: 2));
+      await $.tester.ensureVisible(finder.first);
+      await $.pump(const Duration(milliseconds: 250));
+    } on Exception {
+      await $.pump(const Duration(milliseconds: 250));
+    }
+
+    if (await _tryTapVisible($, finder, timeout: const Duration(seconds: 2))) {
+      return;
+    }
+  }
+
+  throw TimeoutException(
+    'Timed out tapping $description after waiting for a hit-testable target.',
+  );
+}
+
 Future<bool> _isAnyFf1PlayTargetVisible(PatrolIntegrationTester $) async {
-  if (await _isVisible(
-    $(GoldPathPatrolKeys.ffDisplayTooltipButton),
-  )) {
+  if (await _isVisible($(GoldPathPatrolKeys.ffDisplayTooltipButton))) {
     return true;
   }
   return _isVisible($(GoldPathPatrolKeys.ffDisplayButton));
@@ -306,6 +344,20 @@ Future<bool> _isVisible(
 }) async {
   try {
     await finder.waitUntilVisible(timeout: timeout);
+    return true;
+  } on TimeoutException {
+    return false;
+  } on Exception {
+    return false;
+  }
+}
+
+Future<bool> _exists(
+  PatrolFinder finder, {
+  Duration timeout = const Duration(seconds: 2),
+}) async {
+  try {
+    await finder.waitUntilExists(timeout: timeout);
     return true;
   } on TimeoutException {
     return false;
@@ -354,14 +406,14 @@ Future<bool> _tryTapVisible(
 
 Future<void> _waitForPersonalPlaylistLabel(PatrolIntegrationTester $) async {
   try {
-    await $(_personalAddressName).waitUntilVisible(
-      timeout: const Duration(minutes: 3),
-    );
+    await $(
+      _personalAddressName,
+    ).waitUntilVisible(timeout: const Duration(minutes: 3));
     return;
   } on TimeoutException {
-    await $(_personalAddressFallbackName).waitUntilVisible(
-      timeout: const Duration(minutes: 1),
-    );
+    await $(
+      _personalAddressFallbackName,
+    ).waitUntilVisible(timeout: const Duration(minutes: 1));
   }
 }
 
@@ -369,9 +421,9 @@ Future<void> _waitForNowDisplayingOrPlayableState(
   PatrolIntegrationTester $,
 ) async {
   try {
-    await $(GoldPathPatrolKeys.nowDisplayingBar).waitUntilExists(
-      timeout: const Duration(seconds: 45),
-    );
+    await $(
+      GoldPathPatrolKeys.nowDisplayingBar,
+    ).waitUntilExists(timeout: const Duration(seconds: 45));
     return;
   } on TimeoutException {
     // Some CI runs cast successfully but the global now-displaying overlay
