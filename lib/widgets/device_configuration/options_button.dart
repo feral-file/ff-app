@@ -10,6 +10,7 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control_verifier.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
@@ -545,12 +546,26 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
                       switch (outcome) {
                         case Ff1RelayerFirmwareUpdateOutcome.success:
                           _log.info('[Update Firmware] Relayer OK');
+                          // Persist the accepted latest version so Device
+                          // Configuration does not auto-prompt again for the
+                          // same build while OTA is still catching up.
+                          if (latest != null) {
+                            await ref
+                                .read(appStateServiceProvider)
+                                .setDismissedUpdateVersion(
+                                  deviceId: device.deviceId,
+                                  version: latest,
+                                );
+                          }
+                          if (!context.mounted) return;
                           Navigator.pop(context, true);
+                          return;
                         case Ff1RelayerFirmwareUpdateOutcome.missingTopic:
                           _log.warning(
                             '[Update Firmware] Missing topicId',
                           );
                           Navigator.pop(context, Exception('missing topic'));
+                          return;
                         case Ff1RelayerFirmwareUpdateOutcome.relayerRejected:
                           _log.warning(
                             '[Update Firmware] Relayer returned unsuccessful '
@@ -560,9 +575,11 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
                             context,
                             Exception('relayer rejected'),
                           );
+                          return;
                         case Ff1RelayerFirmwareUpdateOutcome.commandFailed:
                           _log.warning('[Update Firmware] Command failed');
                           Navigator.pop(context, Exception('command failed'));
+                          return;
                       }
                     },
                   ),

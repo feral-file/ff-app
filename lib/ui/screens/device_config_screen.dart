@@ -5,6 +5,7 @@ import 'package:app/app/ff1/ff1_relayer_firmware_update_service.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_device_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/app/route_observer.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -61,6 +62,7 @@ final _log = Logger('DeviceConfigScreen');
 class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     with RouteAware {
   bool _isShowingQRCode = false;
+  bool _isRouteVisible = false;
 
   /// App-layer session for auto firmware prompt (dedupe, in-flight guard).
   Ff1FirmwarePromptSessionState _promptSession =
@@ -72,6 +74,48 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     // Schedule an initial check after the first frame; device status may
     // already be available if the screen is opened while WiFi is connected.
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdatePrompt());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is ModalRoute<void>) {
+      routeObserver.subscribe(this, route);
+      _isRouteVisible = route.isCurrent;
+    }
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPush() {
+    super.didPush();
+    _isRouteVisible = true;
+    _checkUpdatePrompt();
+  }
+
+  @override
+  void didPopNext() {
+    super.didPopNext();
+    _isRouteVisible = true;
+    _checkUpdatePrompt();
+  }
+
+  @override
+  void didPushNext() {
+    super.didPushNext();
+    _isRouteVisible = false;
+  }
+
+  @override
+  void didPop() {
+    super.didPop();
+    _isRouteVisible = false;
   }
 
   @override
@@ -357,7 +401,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   /// Session dedupe tracks which latest version we already prompted for so a
   /// newer reported latest can show again without leaving this screen.
   void _checkUpdatePrompt() {
-    if (!mounted) return;
+    if (!mounted || !_isRouteVisible) return;
 
     final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
     final device = ref
@@ -388,7 +432,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || !_isRouteVisible) return;
       unawaited(
         _showUpdatePromptDialog(
           device: device,
@@ -488,18 +532,22 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                             );
                         if (!mounted) return;
                         Navigator.pop(context, true);
+                        return;
                       case Ff1RelayerFirmwareUpdateOutcome.missingTopic:
                         _log.warning('[Update Prompt] Missing topicId');
                         Navigator.pop(context, Exception('missing topic'));
+                        return;
                       case Ff1RelayerFirmwareUpdateOutcome.relayerRejected:
                         _log.warning(
                           '[Update Prompt] Relayer returned unsuccessful '
                           'response',
                         );
                         Navigator.pop(context, Exception('relayer rejected'));
+                        return;
                       case Ff1RelayerFirmwareUpdateOutcome.commandFailed:
                         _log.warning('[Update Prompt] Update command failed');
                         Navigator.pop(context, Exception('command failed'));
+                        return;
                     }
                   },
                 ),

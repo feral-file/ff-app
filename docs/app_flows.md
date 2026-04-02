@@ -253,11 +253,28 @@
 
 ## Screen: DeviceConfigScreen
 
-- role in the flow: post-pairing control surface for orientation/scaling/audio/device info
+- role in the flow: post-pairing control surface for orientation/scaling/audio/device info and post-setup firmware update entry/prompt orchestration
 - route / entry point: `/device-configuration`
-- important actions: adjust display settings, switch device/options, finish setup flow
+- important actions: adjust display settings, switch device/options, finish setup flow, start **Update FF1**
 - dependencies: active FF1 provider, `ff1DeviceDataProvider`, FF1 Wi-Fi control
-- notes / caveats: setup mode hides some advanced sections until post-setup use
+- notes / caveats:
+  - setup mode hides advanced sections and suppresses the firmware auto-prompt
+    during the initial setup visit
+  - manual **Update FF1** and the auto-prompt both require relayer
+    connectivity and start the same relayer-only firmware update path; the app
+    does not start FF1 firmware updates over BLE
+  - firmware update eligibility is re-checked when active device, relayer
+    connection, or reported version fields change, so a late relayer
+    connection can still surface the prompt
+  - the auto-prompt only appears while Device Configuration is the visible
+    route; relayer updates that arrive while another route covers the screen
+    must wait until the user returns
+  - prompt/session dedupe allows only one in-flight firmware prompt at a time;
+    if the device later reports a different `latestVersion` during the same
+    visit, the screen may prompt again for that newer build
+  - both the auto-prompt and the manual options entry persist the accepted or
+    dismissed `latestVersion` for that device so the same build is not shown
+    again while OTA install status is catching up
 
 ## Screen: KeyboardControlScreen
 

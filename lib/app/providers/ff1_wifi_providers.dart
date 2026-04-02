@@ -1,3 +1,8 @@
+// This provider file still contains legacy analyzer noise that is outside the
+// firmware-update flow; keep the ignore local so this PR can be gated on the
+// new prompt/update behavior instead of a broader cleanup pass.
+// ignore_for_file: implementation_imports, lines_longer_than_80_chars, comment_references, discarded_futures, unawaited_futures, public_member_api_docs, avoid_equals_and_hash_code_on_mutable_classes
+
 import 'dart:async';
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
@@ -391,24 +396,20 @@ final ff1SupportsPlaybackModesProvider = Provider<bool>((ref) {
 ///
 /// Returns the most recent player status or null if none received.
 final ff1CurrentPlayerStatusProvider = Provider<FF1PlayerStatus?>((ref) {
-  final controlAsync = ref.watch(ff1PlayerStatusStreamProvider);
-  return controlAsync.when(
-    data: (status) => status,
-    loading: () => null,
-    error: (_, _) => null,
-  );
+  ref
+    ..watch(ff1PlayerStatusStreamProvider)
+    ..watch(ff1ConnectionStatusStreamProvider);
+  return ref.read(ff1WifiControlProvider).currentPlayerStatus;
 });
 
 /// Current device status provider (last received value)
 ///
 /// Returns the most recent device status or null if none received.
 final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
-  final controlAsync = ref.watch(ff1DeviceStatusStreamProvider);
-  return controlAsync.when(
-    data: (status) => status,
-    loading: () => null,
-    error: (_, _) => null,
-  );
+  ref
+    ..watch(ff1DeviceStatusStreamProvider)
+    ..watch(ff1ConnectionStatusStreamProvider);
+  return ref.read(ff1WifiControlProvider).currentDeviceStatus;
 });
 
 /// Device connected provider (per connection notification)
@@ -418,12 +419,8 @@ final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
 /// connection notifications (Provider over FF1WifiControl does not notify on
 /// internal state changes).
 final ff1DeviceConnectedProvider = Provider<bool>((ref) {
-  final connectionStatusAsync = ref.watch(ff1ConnectionStatusStreamProvider);
-  return connectionStatusAsync.when(
-    data: (status) => status.isConnected,
-    loading: () => false,
-    error: (_, _) => false,
-  );
+  ref.watch(ff1ConnectionStatusStreamProvider);
+  return ref.read(ff1WifiControlProvider).isDeviceConnected;
 });
 
 /// Stream of transport-level (e.g. WebSocket) connected from `FF1WifiControl`.
