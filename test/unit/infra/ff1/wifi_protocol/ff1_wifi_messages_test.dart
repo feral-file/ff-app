@@ -61,13 +61,6 @@ void main() {
       );
     });
 
-    test('fromString parses default (relayer FFP status) correctly', () {
-      expect(
-        FF1NotificationType.fromString('default'),
-        FF1NotificationType.ffpStatusDefault,
-      );
-    });
-
     test('fromString throws on unknown type', () {
       expect(
         () => FF1NotificationType.fromString('unknown'),
@@ -79,7 +72,6 @@ void main() {
       expect(FF1NotificationType.playerStatus.value, 'player_status');
       expect(FF1NotificationType.deviceStatus.value, 'device_status');
       expect(FF1NotificationType.ffpDdcPanelStatus.value, 'ddc_status');
-      expect(FF1NotificationType.ffpStatusDefault.value, 'default');
       expect(FF1NotificationType.connection.value, 'connection');
     });
   });
@@ -110,10 +102,10 @@ void main() {
       );
     });
 
-    test('fromJson parses relayer default FFP status envelope', () {
+    test('fromJson parses ddc_status FFP panel envelope', () {
       final json = {
         'type': 'notification',
-        'notification_type': 'default',
+        'notification_type': 'ddc_status',
         'timestamp': 1775038389754,
         'message': {
           'brightness': 82,
@@ -121,22 +113,15 @@ void main() {
           'volume': 77,
           'power': 'on',
           'monitor': 'DEL:DELL S2721QS',
-          'errors': {
-            'mute': 'VCP reported ERR',
-          },
         },
       };
 
       final message = FF1NotificationMessage.fromJson(json);
 
       expect(message.type, FF1WifiMessageType.notification);
-      expect(message.notificationType, FF1NotificationType.ffpStatusDefault);
+      expect(message.notificationType, FF1NotificationType.ffpDdcPanelStatus);
       expect(message.message['brightness'], 82);
-      expect(message.message['errors'], isA<Map>());
-      expect(
-        (message.message['errors'] as Map)['mute'],
-        'VCP reported ERR',
-      );
+      expect(message.message['monitor'], 'DEL:DELL S2721QS');
     });
 
     test('toJson serializes correctly', () {

@@ -22,41 +22,11 @@ void main() {
           type: FF1WifiMessageType.notification,
           notificationType: FF1NotificationType.ffpDdcPanelStatus,
           message: const {
-            'monitor': 'Studio Display',
-            'brightness': 64,
-            'power': 'on',
-          },
-          timestamp: DateTime.fromMillisecondsSinceEpoch(1704067200000),
-        ),
-      );
-
-      final status = await nextStatus;
-
-      expect(status.monitor, 'Studio Display');
-      expect(status.brightness, 64);
-      expect(status.power, 'on');
-      expect(control.currentFfpDdcPanelStatus?.brightness, 64);
-    });
-
-    test('publishes FFP panel status for notification_type default (relayer)',
-        () async {
-      final transport = _NotificationTestTransport();
-      final control = FF1WifiControl(transport: transport);
-
-      addTearDown(control.dispose);
-
-      final nextStatus = control.ffpDdcPanelStatusStream.first;
-      transport.emitNotification(
-        FF1NotificationMessage(
-          type: FF1WifiMessageType.notification,
-          notificationType: FF1NotificationType.ffpStatusDefault,
-          message: const {
             'brightness': 82,
             'contrast': 25,
             'volume': 77,
             'power': 'on',
             'monitor': 'DEL:DELL S2721QS',
-            'errors': {'mute': 'VCP reported ERR'},
           },
           timestamp: DateTime.fromMillisecondsSinceEpoch(1775038389754),
         ),
@@ -65,8 +35,8 @@ void main() {
       final status = await nextStatus;
 
       expect(status.brightness, 82);
-      expect(status.errors?['mute'], 'VCP reported ERR');
-      expect(control.currentFfpDdcPanelStatus?.monitor, 'DEL:DELL S2721QS');
+      expect(status.monitor, 'DEL:DELL S2721QS');
+      expect(control.currentFfpDdcPanelStatus?.brightness, 82);
     });
 
     test(

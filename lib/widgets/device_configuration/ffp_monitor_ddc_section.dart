@@ -47,11 +47,10 @@ class FfpMonitorDdcSection extends ConsumerWidget {
     WidgetRef ref,
     FfpDdcPanelStatus status,
   ) {
-    final err = status.errors;
-    final showBrightness = err?.containsKey('brightness') != true;
-    final showContrast = err?.containsKey('contrast') != true;
-    final showVol = err?.containsKey('volume') != true;
-    final showPowerControl = err?.containsKey('power') != true;
+    final showBrightness = status.brightness != null;
+    final showContrast = status.contrast != null;
+    final showVol = status.volume != null;
+    final showPowerControl = status.power != null;
 
     final name = status.monitor?.trim().isNotEmpty ?? false
         ? status.monitor!.trim()
@@ -92,7 +91,8 @@ class FfpMonitorDdcSection extends ConsumerWidget {
                   width: 12,
                   height: 12,
                   decoration: BoxDecoration(
-                    color: _powerDotColor(status.power),
+                    color:
+                        status.power?.monitorPowerAccentColor ?? Colors.grey,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -169,31 +169,23 @@ class FfpMonitorDdcSection extends ConsumerWidget {
     );
   }
 
-  /// The two modes not currently active (on=green, off=red, standby=yellow).
-  List<({String wire, Color color})> _otherPowerModes(String? powerRaw) {
-    final c = _normalizePowerKey(powerRaw);
-    const all = <({String wire, Color color})>[
-      (wire: 'on', color: Colors.green),
-      (wire: 'off', color: Colors.red),
-      (wire: 'standby', color: Colors.amber),
-    ];
-    if (c == null) {
-      return [
-        (wire: 'on', color: Colors.green),
-        (wire: 'off', color: Colors.red),
-      ];
+  /// The two modes not currently active.
+  List<FfpDdcPanelPower> _otherPowerModes(FfpDdcPanelPower? current) {
+    const all = FfpDdcPanelPower.values;
+    if (current == null) {
+      return [FfpDdcPanelPower.on, FfpDdcPanelPower.off];
     }
-    return all.where((m) => m.wire != c).toList();
+    return all.where((m) => m != current).toList();
   }
 
   /// Puts the power-off action at index 1 so it is always the second control.
-  List<({String wire, Color color})> _powerModesWithOffSecond(
-    List<({String wire, Color color})> modes,
+  List<FfpDdcPanelPower> _powerModesWithOffSecond(
+    List<FfpDdcPanelPower> modes,
   ) {
     if (modes.length < 2) {
       return modes;
     }
-    final offIndex = modes.indexWhere((m) => m.wire == 'off');
+    final offIndex = modes.indexWhere((m) => m == FfpDdcPanelPower.off);
     if (offIndex < 0) {
       return modes;
     }
@@ -201,40 +193,22 @@ class FfpMonitorDdcSection extends ConsumerWidget {
       return modes;
     }
     final off = modes[offIndex];
-    final rest = List<({String wire, Color color})>.from(modes)..removeAt(offIndex);
+    final rest = List<FfpDdcPanelPower>.from(modes)..removeAt(offIndex);
     return [rest.first, off, ...rest.sublist(1)];
   }
 
-  IconData _powerModeIcon(String _) {
+  IconData _powerModeIcon(FfpDdcPanelPower _) {
     return Icons.power_settings_new;
   }
 
-  String _powerModeSemanticLabel(String wire) {
-    switch (wire) {
-      case 'on':
+  String _powerModeSemanticLabel(FfpDdcPanelPower mode) {
+    switch (mode) {
+      case FfpDdcPanelPower.on:
         return 'On';
-      case 'off':
+      case FfpDdcPanelPower.off:
         return 'Off';
-      case 'standby':
+      case FfpDdcPanelPower.standby:
         return 'Standby';
-      default:
-        return 'Power';
-    }
-  }
-
-  String? _normalizePowerKey(String? p) {
-    switch (p?.trim().toLowerCase()) {
-      case 'on':
-      case 'poweron':
-        return 'on';
-      case 'off':
-      case 'poweroff':
-        return 'off';
-      case 'standby':
-      case 'suspend':
-        return 'standby';
-      default:
-        return null;
     }
   }
 
@@ -245,11 +219,11 @@ class FfpMonitorDdcSection extends ConsumerWidget {
   ) {
     return _powerModesWithOffSecond(_otherPowerModes(status.power))
         .map(
-          (m) => Padding(
+          (mode) => Padding(
             padding: const EdgeInsets.only(left: 4),
             child: Semantics(
               button: true,
-              label: _powerModeSemanticLabel(m.wire),
+              label: _powerModeSemanticLabel(mode),
               child: IconButton(
                 padding: EdgeInsets.zero,
                 style: IconButton.styleFrom(
@@ -260,14 +234,14 @@ class FfpMonitorDdcSection extends ConsumerWidget {
                 ),
                 onPressed: () async {
                   try {
-                    await notifier.setPower(m.wire);
+                    await notifier.setPower(mode);
                   } on Exception {
                     // The provider owns rollback and reconciliation.
                   }
                 },
                 icon: Icon(
-                  _powerModeIcon(m.wire),
-                  color: m.color,
+                  _powerModeIcon(mode),
+                  color: mode.monitorPowerAccentColor,
                   size: 24,
                 ),
               ),
@@ -277,41 +251,31 @@ class FfpMonitorDdcSection extends ConsumerWidget {
         .toList();
   }
 
-  Color _powerDotColor(String? p) {
-    switch (p?.trim().toLowerCase()) {
-      case 'on':
-      case 'poweron':
-        return Colors.green;
-      case 'off':
-      case 'poweroff':
-        return Colors.red;
-      case 'standby':
-      case 'suspend':
-        return Colors.amber;
-      case null:
-      case '':
-        return Colors.grey;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  String _powerLabel(String? p) {
-    switch (p?.trim().toLowerCase()) {
-      case 'on':
-      case 'poweron':
+  String _powerLabel(FfpDdcPanelPower? p) {
+    switch (p) {
+      case FfpDdcPanelPower.on:
         return 'On';
-      case 'off':
-      case 'poweroff':
+      case FfpDdcPanelPower.off:
         return 'Off';
-      case 'standby':
-      case 'suspend':
+      case FfpDdcPanelPower.standby:
         return 'Standby';
       case null:
-      case '':
         return 'Unknown';
-      default:
-        return p ?? 'Unknown';
+    }
+  }
+}
+
+/// UI accent for this section (domain [FfpDdcPanelPower] stays Flutter-free).
+extension FfpDdcPanelPowerMonitorUi on FfpDdcPanelPower {
+  /// Color for the status dot and mode switch icons.
+  Color get monitorPowerAccentColor {
+    switch (this) {
+      case FfpDdcPanelPower.on:
+        return Colors.green;
+      case FfpDdcPanelPower.off:
+        return Colors.red;
+      case FfpDdcPanelPower.standby:
+        return Colors.amber;
     }
   }
 }

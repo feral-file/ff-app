@@ -1,15 +1,52 @@
 /// DDC panel snapshot from relayer notifications only (`notification_type`
-/// `ddc_status` or `default`), flat `message` (ffos#84).
-///
-/// Relayer may use `notification_type: "default"` with the same flat `message`
-/// shape (brightness, contrast, volume, power, monitor, errors, …).
+/// `ddc_status`), flat `message` (ffos#84).
 ///
 /// Distinct from FF1 system audio (`FF1DeviceStatus.volume` / `setVolume`).
 library;
 
-/// Parsed `ddc_status` / unwrapped relayer `message` for the connected display.
+/// DDC monitor power state from relayer `power` (ffos#84).
+enum FfpDdcPanelPower {
+  /// Powered on.
+  on,
+
+  /// Powered off.
+  off,
+
+  /// Standby or suspend.
+  standby;
+
+  /// Canonical wire string for REST/commands.
+  String get wireValue => switch (this) {
+        FfpDdcPanelPower.on => 'on',
+        FfpDdcPanelPower.off => 'off',
+        FfpDdcPanelPower.standby => 'standby',
+      };
+
+  /// Parses relayer/command strings (case-insensitive; accepts `poweron`, etc.).
+  static FfpDdcPanelPower? tryParse(Object? raw) {
+    if (raw == null) {
+      return null;
+    }
+    final s = raw.toString().trim().toLowerCase();
+    switch (s) {
+      case 'on':
+      case 'poweron':
+        return FfpDdcPanelPower.on;
+      case 'off':
+      case 'poweroff':
+        return FfpDdcPanelPower.off;
+      case 'standby':
+      case 'suspend':
+        return FfpDdcPanelPower.standby;
+      default:
+        return null;
+    }
+  }
+}
+
+/// Parsed relayer `message` for the connected display (flat JSON).
 class FfpDdcPanelStatus {
-  /// Creates a DDC panel snapshot (typically from `fromRelayerPayload`).
+  /// Creates a DDC panel snapshot (typically deserialized with `fromJson`).
   const FfpDdcPanelStatus({
     this.brightness,
     this.contrast,
@@ -17,42 +54,33 @@ class FfpDdcPanelStatus {
     this.mute,
     this.power,
     this.monitor,
-    this.errors,
   });
 
-  /// After relayer unwrap: flat `message`, or nested `ddc_status` map
-  /// (legacy key `ddcPanelStatus` still accepted).
-  factory FfpDdcPanelStatus.fromRelayerPayload(Map<String, dynamic> json) {
+  /// Parses flat relayer `message` JSON (ffos#84).
+  factory FfpDdcPanelStatus.fromJson(Map<String, dynamic> json) {
     if (json.isEmpty) {
       return const FfpDdcPanelStatus();
     }
-    final nested = json['ddc_status'] ?? json['ddcPanelStatus'];
-    if (nested is Map) {
-      return FfpDdcPanelStatus._fromWireMap(
-        Map<String, dynamic>.from(nested),
-      );
-    }
-    return FfpDdcPanelStatus._fromWireMap(json);
+    return FfpDdcPanelStatus(
+      brightness: _parsePercent(json['brightness']),
+      contrast: _parsePercent(json['contrast']),
+      volume: _parsePercent(json['volume']),
+      mute: _parseMute(json['mute']),
+      power: FfpDdcPanelPower.tryParse(json['power']),
+      monitor: json['monitor'] as String?,
+    );
   }
 
-  factory FfpDdcPanelStatus._fromWireMap(Map<String, dynamic> m) {
-    final errRaw = m['errors'];
-    Map<String, String>? errMap;
-    if (errRaw is Map) {
-      errMap = {};
-      for (final e in errRaw.entries) {
-        errMap[e.key.toString()] = e.value?.toString() ?? '';
-      }
-    }
-    return FfpDdcPanelStatus(
-      brightness: _parsePercent(m['brightness']),
-      contrast: _parsePercent(m['contrast']),
-      volume: _parsePercent(m['volume']),
-      mute: _parseMute(m['mute']),
-      power: m['power']?.toString(),
-      monitor: m['monitor'] as String?,
-      errors: errMap,
-    );
+  /// Serializes panel fields for debugging or round-trip tests.
+  Map<String, dynamic> toJson() {
+    return {
+      'brightness': brightness,
+      'contrast': contrast,
+      'volume': volume,
+      'mute': mute == null ? null : (mute! ? 'on' : 'off'),
+      'power': power?.wireValue,
+      'monitor': monitor,
+    };
   }
 
   /// 0–100 when read succeeded.
@@ -67,24 +95,20 @@ class FfpDdcPanelStatus {
   /// Mute when read succeeded (`mute` wire: `on` / `off`).
   final bool? mute;
 
-  /// Wire values: `on`, `off`, `standby`, etc.
-  final String? power;
+  /// Power state when read succeeded.
+  final FfpDdcPanelPower? power;
 
   /// `Vendor:Model` from controld (`ddcutil detect --brief`).
   final String? monitor;
 
-  /// Field name → error message when that VCP read failed.
-  final Map<String, String>? errors;
-
-  /// True when there is anything to show (values, monitor id, or read errors).
+  /// True when there is any field to show (non-null values or monitor name).
   bool get hasData =>
       brightness != null ||
       contrast != null ||
       volume != null ||
       mute != null ||
       power != null ||
-      (monitor != null && monitor!.trim().isNotEmpty) ||
-      (errors != null && errors!.isNotEmpty);
+      (monitor != null && monitor!.trim().isNotEmpty);
 
   /// Merge updates (e.g. after a DDC write while a refresh is in flight).
   FfpDdcPanelStatus copyWith({
@@ -92,9 +116,8 @@ class FfpDdcPanelStatus {
     int? contrast,
     int? volume,
     bool? mute,
-    String? power,
+    FfpDdcPanelPower? power,
     String? monitor,
-    Map<String, String>? errors,
   }) {
     return FfpDdcPanelStatus(
       brightness: brightness ?? this.brightness,
@@ -103,7 +126,6 @@ class FfpDdcPanelStatus {
       mute: mute ?? this.mute,
       power: power ?? this.power,
       monitor: monitor ?? this.monitor,
-      errors: errors ?? this.errors,
     );
   }
 }

@@ -245,7 +245,7 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
   int? _pendingBrightness;
   int? _pendingContrast;
   int? _pendingVolume;
-  String? _pendingPower;
+  FfpDdcPanelPower? _pendingPower;
 
   @override
   FfpDdcPanelStatus build() {
@@ -373,7 +373,7 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
   }
 
   /// Optimistically updates monitor power and reconciles with a follow-up read.
-  Future<void> setPower(String powerState) async {
+  Future<void> setPower(FfpDdcPanelPower powerState) async {
     if (!_isActiveTopic()) {
       return;
     }
@@ -387,7 +387,7 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
       await control.setFfpMonitorPower(
         topicId: _topicId,
         monitorId: _monitorId(state),
-        powerState: powerState,
+        powerState: powerState.wireValue,
       );
       // Panel snapshot only arrives via relayer notification; `_deviceStatus`
       // updates from `ff1FfpDdcPanelStatusStreamProvider` when the device
@@ -482,27 +482,12 @@ int? _resolvePendingInt(int? pending, int? actual) {
   return pending == actual ? null : pending;
 }
 
-String? _resolvePendingPower(String? pending, String? actual) {
+FfpDdcPanelPower? _resolvePendingPower(
+  FfpDdcPanelPower? pending,
+  FfpDdcPanelPower? actual,
+) {
   if (pending == null) {
     return null;
   }
-  return _normalizePowerKey(pending) == _normalizePowerKey(actual)
-      ? null
-      : pending;
-}
-
-String? _normalizePowerKey(String? value) {
-  switch (value?.trim().toLowerCase()) {
-    case 'on':
-    case 'poweron':
-      return 'on';
-    case 'off':
-    case 'poweroff':
-      return 'off';
-    case 'standby':
-    case 'suspend':
-      return 'standby';
-    default:
-      return null;
-  }
+  return pending == actual ? null : pending;
 }

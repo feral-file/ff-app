@@ -54,9 +54,6 @@ enum FF1NotificationType {
   /// FFP display / DDC panel status notification.
   ffpDdcPanelStatus('ddc_status'),
 
-  /// Same payload as [ffpDdcPanelStatus]; relayer uses this `notification_type`.
-  ffpStatusDefault('default'),
-
   /// Connection status notification (device online/offline).
   connection('connection')
   ;
@@ -743,8 +740,8 @@ class FF1WifiSetLoopRequest extends FF1WifiCommandRequest {
 // FFP / DDC monitor (controld via relayer) — not FF1 system audio (ffos#84)
 // ============================================================================
 //
-// Panel snapshot is delivered only via relayer notifications (`ddc_status` /
-// `default`); there is no separate read/poll command.
+// Panel snapshot is delivered only via relayer notifications (`ddc_status`);
+// there is no separate read/poll command.
 
 /// Set monitor brightness (VCP) — may return explicit unsupported on FFP.
 ///

@@ -311,10 +311,7 @@ class FF1WifiControl {
         _deviceStatusController.add(deviceStatus);
 
       case FF1NotificationType.ffpDdcPanelStatus:
-      case FF1NotificationType.ffpStatusDefault:
-        final panelStatus = FfpDdcPanelStatus.fromRelayerPayload(
-          notification.message,
-        );
+        final panelStatus = FfpDdcPanelStatus.fromJson(notification.message);
         _currentFfpDdcPanelStatus = panelStatus;
         _ffpDdcPanelStatusController.add(panelStatus);
 

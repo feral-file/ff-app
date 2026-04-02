@@ -172,10 +172,9 @@ class _FfpMonitorQuickControls extends ConsumerWidget {
     WidgetRef ref,
     FfpDdcPanelStatus status,
   ) {
-    final err = status.errors;
-    final showBrightness = err?.containsKey('brightness') != true;
-    final showContrast = err?.containsKey('contrast') != true;
-    final showVol = err?.containsKey('volume') != true;
+    final showBrightness = status.brightness != null;
+    final showContrast = status.contrast != null;
+    final showVol = status.volume != null;
     final notifier = ref.read(ff1FfpDdcControlProvider(topicId).notifier);
 
     final controls = <Widget>[
