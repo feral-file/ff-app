@@ -529,7 +529,16 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
               'Active device switched from ${previousDevice.deviceId} to '
               '${device.deviceId}, disconnecting old device first...',
             );
-            await connectionNotifier.disconnect();
+            try {
+              await connectionNotifier.disconnect();
+            } on Exception catch (error, stackTrace) {
+              logger.warning(
+                'Disconnect failed during active-device switch; '
+                'continuing with connect attempt.',
+                error,
+                stackTrace,
+              );
+            }
           }
 
           if (device != null) {

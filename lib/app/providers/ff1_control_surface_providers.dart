@@ -44,6 +44,7 @@ class FF1AudioControlState {
 }
 
 /// Family provider for the shared FF1 audio control surface state.
+// ignore: specify_nonobvious_property_types
 final ff1AudioControlProvider = NotifierProvider.autoDispose
     .family<FF1AudioControlNotifier, FF1AudioControlState, String>(
       FF1AudioControlNotifier.new,
@@ -92,16 +93,28 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
       return;
     }
 
-    final previousState = state;
+    final shouldBeMuted = value <= 0;
+    final shouldToggleMute = shouldBeMuted != state.isMuted;
     _pendingVolume = value;
-    state = state.copyWith(volume: value);
+    if (shouldToggleMute) {
+      _pendingMuted = shouldBeMuted;
+    }
+    state = _deriveState();
 
     final control = ref.read(ff1WifiControlProvider);
     try {
+      // Preserve legacy slider zero-crossing contract:
+      // >0 -> 0 toggles mute on, 0 -> >0 toggles mute off.
+      if (shouldToggleMute) {
+        await control.toggleMute(topicId: _topicId);
+      }
       await control.setVolume(topicId: _topicId, percent: value.round());
     } on Exception {
+      // Roll back to the last confirmed device status, not the optimistic
+      // draft.
       _pendingVolume = null;
-      state = previousState;
+      _pendingMuted = null;
+      state = _deriveState();
       rethrow;
     }
   }
@@ -158,7 +171,9 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
         isTopicActive: true,
       );
     }
-    if (_pendingVolume != null && actualVolume == _pendingVolume) {
+    if (_pendingVolume != null &&
+        actualVolume != null &&
+        _pendingVolume!.roundToDouble() == actualVolume.roundToDouble()) {
       _pendingVolume = null;
     }
     if (_pendingMuted != null && actualMuted == _pendingMuted) {
@@ -213,6 +228,7 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
 }
 
 /// Family provider for the shared FFP/DDC control surface state.
+// ignore: specify_nonobvious_property_types
 final ff1FfpDdcControlProvider = NotifierProvider.autoDispose
     .family<FF1FfpDdcControlNotifier, FfpDdcPanelStatus, String>(
       FF1FfpDdcControlNotifier.new,
@@ -275,7 +291,6 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
       return;
     }
 
-    final previousPending = _pendingBrightness;
     _pendingBrightness = value.round();
     state = _deriveState();
 
@@ -287,7 +302,7 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
         percent: value.round(),
       );
     } on Exception {
-      _pendingBrightness = previousPending;
+      _pendingBrightness = null;
       state = _deriveState();
       rethrow;
     }
@@ -308,7 +323,6 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
       return;
     }
 
-    final previousPending = _pendingContrast;
     _pendingContrast = value.round();
     state = _deriveState();
 
@@ -320,7 +334,7 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
         percent: value.round(),
       );
     } on Exception {
-      _pendingContrast = previousPending;
+      _pendingContrast = null;
       state = _deriveState();
       rethrow;
     }
@@ -341,7 +355,6 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
       return;
     }
 
-    final previousPending = _pendingVolume;
     _pendingVolume = value.round();
     state = _deriveState();
 
@@ -353,7 +366,7 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
         percent: value.round(),
       );
     } on Exception {
-      _pendingVolume = previousPending;
+      _pendingVolume = null;
       state = _deriveState();
       rethrow;
     }

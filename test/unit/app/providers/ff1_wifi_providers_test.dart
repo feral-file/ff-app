@@ -213,4 +213,65 @@ void main() {
       expect(wifiControl.lastConnectedDevice?.deviceId, deviceB.deviceId);
     },
   );
+
+  test(
+    'ff1AutoConnectWatcherProvider still connects next device when disconnect fails',
+    () async {
+      await ensureDotEnvLoaded();
+
+      final deviceService = MockFF1BluetoothDeviceService();
+      final wifiControl = FakeWifiControl()..disconnectShouldThrow = true;
+      const deviceA = FF1Device(
+        name: 'FF1 A',
+        remoteId: 'remote-a',
+        deviceId: 'device-a',
+        topicId: 'topic-a',
+      );
+      const deviceB = FF1Device(
+        name: 'FF1 B',
+        remoteId: 'remote-b',
+        deviceId: 'device-b',
+        topicId: 'topic-b',
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1BluetoothDeviceServiceProvider.overrideWithValue(deviceService),
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      deviceService.devices = [deviceA];
+      deviceService.activeDeviceId = deviceA.deviceId;
+
+      container.listen(
+        ff1AutoConnectWatcherProvider,
+        (previous, next) {},
+      );
+
+      await container.read(activeFF1BluetoothDeviceProvider.future);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      expect(wifiControl.lastConnectedDevice?.deviceId, deviceA.deviceId);
+
+      deviceService.devices = [deviceA, deviceB];
+      deviceService.activeDeviceId = deviceB.deviceId;
+      container.invalidate(activeFF1BluetoothDeviceProvider);
+
+      await container.read(activeFF1BluetoothDeviceProvider.future);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      expect(wifiControl.disconnectCalled, isTrue);
+      expect(
+        wifiControl.lastConnectedDevice?.deviceId,
+        deviceB.deviceId,
+        reason:
+            'Switch flow must still connect the new device on disconnect error.',
+      );
+    },
+  );
 }
