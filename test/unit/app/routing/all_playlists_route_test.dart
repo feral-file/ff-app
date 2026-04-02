@@ -108,7 +108,10 @@ void main() {
       );
       final m = deriveAllPlaylistsMetadata(params);
       expect(m.title, 'Address');
-      expect(m.description, 'Content from wallet addresses you add to these channels.');
+      expect(
+        m.description,
+        'Content from wallet addresses you add to these channels.',
+      );
       expect(m.iconAsset, 'assets/images/icon_account.svg');
     });
 

@@ -7,6 +7,7 @@ import 'package:app/app/routing/all_playlists_route.dart'
 import 'package:app/app/routing/app_navigator_key.dart';
 import 'package:app/app/routing/app_route_observer.dart';
 import 'package:app/app/routing/page_transitions.dart';
+import 'package:app/app/routing/previous_page_title_extra.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/infra/logging/structured_log_context.dart';
 import 'package:app/infra/logging/structured_logger.dart';
@@ -350,7 +351,10 @@ routerProvider = Provider.family<GoRouter, String>((
           return buildCupertinoTransitionPage(
             context,
             state,
-            AllChannelsScreen(filter: filter),
+            AllChannelsScreen(
+              filter: filter,
+              backTitle: previousPageTitleFromExtra(state.extra),
+            ),
           );
         },
       ),
@@ -364,7 +368,10 @@ routerProvider = Provider.family<GoRouter, String>((
           return buildCupertinoTransitionPage(
             context,
             state,
-            ChannelDetailScreen(channelId: channelId),
+            ChannelDetailScreen(
+              channelId: channelId,
+              backTitle: previousPageTitleFromExtra(state.extra),
+            ),
           );
         },
       ),
@@ -387,6 +394,7 @@ routerProvider = Provider.family<GoRouter, String>((
               title: metadata.title,
               description: metadata.description,
               iconAsset: metadata.iconAsset,
+              backTitle: previousPageTitleFromExtra(state.extra),
             ),
           );
         },
@@ -401,7 +409,10 @@ routerProvider = Provider.family<GoRouter, String>((
           return buildCupertinoTransitionPage(
             context,
             state,
-            PlaylistDetailScreen(playlistId: playlistId),
+            PlaylistDetailScreen(
+              playlistId: playlistId,
+              backTitle: previousPageTitleFromExtra(state.extra),
+            ),
           );
         },
       ),
@@ -415,7 +426,10 @@ routerProvider = Provider.family<GoRouter, String>((
           return buildCupertinoTransitionPage(
             context,
             state,
-            WorkDetailScreen(workId: workId),
+            WorkDetailScreen(
+              workId: workId,
+              backTitle: previousPageTitleFromExtra(state.extra),
+            ),
           );
         },
       ),

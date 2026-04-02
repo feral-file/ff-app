@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
+import 'package:app/app/routing/navigation_extensions.dart';
+import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
@@ -11,7 +13,6 @@ import 'package:app/widgets/load_more_indicator.dart';
 import 'package:app/widgets/seed_sync_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 /// Works tab page with grid view of all works.
 class WorksTabPage extends ConsumerStatefulWidget {
@@ -74,7 +75,7 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
     // Handle scroll position update from parent
     if (position.pixels + 100 >= position.maxScrollExtent &&
         position.maxScrollExtent > 0) {
-      _worksNotifier.loadMore();
+      unawaited(_worksNotifier.loadMore());
     }
   }
 
@@ -114,25 +115,37 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
           worksState.works.isEmpty &&
           worksState.isLoading;
       if (shouldKeepSnapshot) {
-        return RefreshIndicator(
-          onRefresh: _onRefresh,
-          backgroundColor: AppColor.primaryBlack,
-          color: AppColor.white,
-          child: _buildContent(_cachedState),
+        return PreviousPageTitleScope(
+          title: 'Works',
+          publishToNavigationMirror: widget.isActive,
+          child: Builder(
+            builder: (scopedContext) => RefreshIndicator(
+              onRefresh: _onRefresh,
+              backgroundColor: AppColor.primaryBlack,
+              color: AppColor.white,
+              child: _buildContent(scopedContext, _cachedState),
+            ),
+          ),
         );
       }
       _cachedState = worksState;
     }
 
-    return RefreshIndicator(
-      onRefresh: _onRefresh,
-      backgroundColor: AppColor.primaryBlack,
-      color: AppColor.white,
-      child: _buildContent(worksState),
+    return PreviousPageTitleScope(
+      title: 'Works',
+      publishToNavigationMirror: widget.isActive,
+      child: Builder(
+        builder: (scopedContext) => RefreshIndicator(
+          onRefresh: _onRefresh,
+          backgroundColor: AppColor.primaryBlack,
+          color: AppColor.white,
+          child: _buildContent(scopedContext, worksState),
+        ),
+      ),
     );
   }
 
-  Widget _buildContent(WorksState state) {
+  Widget _buildContent(BuildContext context, WorksState state) {
     if (state.error != null && state.works.isEmpty) {
       return CustomScrollView(
         physics: const NeverScrollableScrollPhysics(),
@@ -149,10 +162,10 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
       );
     }
 
-    return _buildWorksGridView(state);
+    return _buildWorksGridView(context, state);
   }
 
-  Widget _buildWorksGridView(WorksState state) {
+  Widget _buildWorksGridView(BuildContext context, WorksState state) {
     final works = state.works;
     final hasMore = state.hasMore;
     final isLoadingMore = state.isLoadingMore;
@@ -168,12 +181,13 @@ class WorksTabPageState extends ConsumerState<WorksTabPage>
           // Works grid - domain PlaylistItem only
           UIHelper.worksSliverGrid(
             works: works,
-            onItemTap: (item) => context.pushNamed(
+            onItemTap: (item) => context.pushNamedWithPreviousTitle(
               RouteNames.workDetail,
               pathParameters: {'workId': item.id},
             ),
           ),
-          // Load more indicator at end of list when hasMore or loading next page
+          // Load more indicator at end of list when hasMore or loading next
+          // page
           if (hasMore || isLoadingMore)
             SliverToBoxAdapter(
               child: LoadMoreIndicator(
@@ -249,19 +263,17 @@ class _LoadMoreListenerState extends State<_LoadMoreListener> {
   }
 
   void _setupScrollListener() {
-    try {
-      // Remove old listener if exists
-      _scrollPosition?.removeListener(_onScroll);
+    // Remove old listener if exists.
+    _scrollPosition?.removeListener(_onScroll);
 
-      // Get parent Scrollable position
-      final scrollableState = Scrollable.of(context);
-      _scrollPosition = scrollableState.position;
+    final scrollableState = Scrollable.maybeOf(context);
+    if (scrollableState == null) return;
 
-      // Add listener
-      _scrollPosition?.addListener(_onScroll);
-    } catch (e) {
-      // Scrollable not found in widget tree
-    }
+    // Get parent Scrollable position.
+    _scrollPosition = scrollableState.position;
+
+    // Add listener.
+    _scrollPosition?.addListener(_onScroll);
   }
 
   void _onScroll() {

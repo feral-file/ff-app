@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:app/app/providers/search_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
+import 'package:app/app/routing/navigation_extensions.dart';
+import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
@@ -24,7 +26,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:go_router/go_router.dart';
 
 /// Search screen matching the old repo `SearchPage` UI.
 class SearchTabPage extends ConsumerStatefulWidget {
@@ -105,7 +106,7 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
       SearchResultKind.work => '${Routes.works}/${suggestion.id}',
     };
 
-    unawaited(context.push(route));
+    unawaited(context.pushWithPreviousTitle(route));
   }
 
   @override
@@ -136,88 +137,97 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
         selectInitialType(available: availableTypes, current: _filterType) ??
         _filterType;
 
-    final resultsContent = SizedBox.expand(
-      child: Column(
-        children: [
-          FilterBar(
-            selectedFilterType: safeFilterType,
-            onFilterTypeChanged: (type) {
-              setState(() => _filterType = type);
-            },
-            availableTypes: availableTypes,
-            sortOrder: _sortOrder,
-            onSortOrderChanged: (order) {
-              setState(() => _sortOrder = order);
-            },
-            sourceFilter: _sourceFilter,
-            onSourceFilterChanged: (source) {
-              setState(() => _sourceFilter = source);
-            },
-            dateFilter: _dateFilter,
-            onDateFilterChanged: (date) {
-              setState(() => _dateFilter = date);
-            },
-          ),
-          Expanded(
-            child: _buildResultsSection(
-              context: context,
-              query: query,
-              resultsAsync: resultsAsync,
-              facetedResults: facetedResults,
-              filterType: safeFilterType,
-            ),
-          ),
-        ],
-      ),
-    );
-
-    final resultsWithOverlay = (query.isNotEmpty && resultsAsync.isLoading)
-        ? Stack(
-            children: [
-              resultsContent,
-              Positioned.fill(
-                child: ColoredBox(
-                  color: AppColor.auGreyBackground.withValues(alpha: 0.6),
-                  child: Center(
-                    child: LoadingWidget(
-                      backgroundColor: AppColor.auGreyBackground.withValues(
-                        alpha: 0.8,
-                      ),
-                      text: 'Searching...',
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          )
-        : resultsContent;
-
     final shouldShowSuggestions = inputQuery.isNotEmpty && inputQuery != query;
 
-    final resultsBody = shouldShowSuggestions
-        ? _buildSuggestionSection(
-            context: context,
-            suggestionsState: suggestionsAsync,
-            query: inputQuery,
-          )
-        : resultsWithOverlay;
-
-    return Scaffold(
-      backgroundColor: AppColor.auGreyBackground,
-      appBar: _buildOldStyleSearchAppBar(context),
-      body: Column(
-        children: [
-          Padding(
-            padding: EdgeInsets.all(LayoutConstants.pageHorizontalDefault),
-            child: search_widgets.SearchBar(
-              controller: _searchController,
-              onSubmitted: _onSearchSubmitted,
-              onChanged: _onSearchTextChanged,
-              autoFocus: true,
+    return PreviousPageTitleScope(
+      title: 'Search',
+      child: Builder(
+        builder: (scopedContext) {
+          final resultsContent = SizedBox.expand(
+            child: Column(
+              children: [
+                FilterBar(
+                  selectedFilterType: safeFilterType,
+                  onFilterTypeChanged: (type) {
+                    setState(() => _filterType = type);
+                  },
+                  availableTypes: availableTypes,
+                  sortOrder: _sortOrder,
+                  onSortOrderChanged: (order) {
+                    setState(() => _sortOrder = order);
+                  },
+                  sourceFilter: _sourceFilter,
+                  onSourceFilterChanged: (source) {
+                    setState(() => _sourceFilter = source);
+                  },
+                  dateFilter: _dateFilter,
+                  onDateFilterChanged: (date) {
+                    setState(() => _dateFilter = date);
+                  },
+                ),
+                Expanded(
+                  child: _buildResultsSection(
+                    context: scopedContext,
+                    query: query,
+                    resultsAsync: resultsAsync,
+                    facetedResults: facetedResults,
+                    filterType: safeFilterType,
+                  ),
+                ),
+              ],
             ),
-          ),
-          Expanded(child: resultsBody),
-        ],
+          );
+
+          final resultsWithOverlay =
+              (query.isNotEmpty && resultsAsync.isLoading)
+              ? Stack(
+                  children: [
+                    resultsContent,
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: AppColor.auGreyBackground.withValues(alpha: 0.6),
+                        child: Center(
+                          child: LoadingWidget(
+                            backgroundColor: AppColor.auGreyBackground
+                                .withValues(alpha: 0.8),
+                            text: 'Searching...',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : resultsContent;
+
+          final resultsBody = shouldShowSuggestions
+              ? _buildSuggestionSection(
+                  context: scopedContext,
+                  suggestionsState: suggestionsAsync,
+                  query: inputQuery,
+                )
+              : resultsWithOverlay;
+
+          return Scaffold(
+            backgroundColor: AppColor.auGreyBackground,
+            appBar: _buildOldStyleSearchAppBar(scopedContext),
+            body: Column(
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(
+                    LayoutConstants.pageHorizontalDefault,
+                  ),
+                  child: search_widgets.SearchBar(
+                    controller: _searchController,
+                    onSubmitted: _onSearchSubmitted,
+                    onChanged: _onSearchTextChanged,
+                    autoFocus: true,
+                  ),
+                ),
+                Expanded(child: resultsBody),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -530,7 +540,9 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
             style: AppTypography.caption(context).grey,
           ),
           onTap: () {
-            unawaited(context.push('${Routes.works}/${work.id}'));
+            unawaited(
+              context.pushWithPreviousTitle('${Routes.works}/${work.id}'),
+            );
           },
         );
       },
@@ -555,7 +567,9 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
               works: const <PlaylistItem>[],
             ),
             onItemTap: (item) {
-              unawaited(context.push('${Routes.works}/${item.id}'));
+              unawaited(
+                context.pushWithPreviousTitle('${Routes.works}/${item.id}'),
+              );
             },
           ),
         ),
@@ -579,7 +593,9 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
           itemBuilder: (context, index) => PlaylistRowItem(
             playlist: playlists[index],
             onItemTap: (item) {
-              unawaited(context.push('${Routes.works}/${item.id}'));
+              unawaited(
+                context.pushWithPreviousTitle('${Routes.works}/${item.id}'),
+              );
             },
           ),
         ),
@@ -601,7 +617,9 @@ class _SearchTabPageState extends ConsumerState<SearchTabPage>
         UIHelper.worksSliverGrid(
           works: works,
           onItemTap: (item) {
-            unawaited(context.push('${Routes.works}/${item.id}'));
+            unawaited(
+              context.pushWithPreviousTitle('${Routes.works}/${item.id}'),
+            );
           },
         ),
         SliverToBoxAdapter(

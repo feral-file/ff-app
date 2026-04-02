@@ -1,3 +1,5 @@
+// ignore_for_file: public_member_api_docs, lines_longer_than_80_chars // Reason: legacy-derived UI file; this change is narrowly scoped to navigation.
+
 // Copied from old repo ArtworkBackLayer + ArtworkPreviewWidget + NoPreviewWidget + PreviewPlaceholder.
 // Data source: PlaylistItem + nullable mimeType; preview URL and thumbnail from item.
 // Preview rendering uses NFT rendering widgets from lib/nft_rendering/.
@@ -6,6 +8,7 @@ import 'dart:math';
 
 import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/playlist_details_provider.dart';
+import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/playlist_item_ext.dart';
@@ -32,14 +35,15 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:go_router/go_router.dart';
 
-/// Back layer for work detail. Structure copied from old repo [ArtworkBackLayer];
+/// Back layer for work detail. Structure copied from old repo
+/// `ArtworkBackLayer`;
 /// only renamed and data from [PlaylistItem].
 ///
-/// When the work identified by [item.id] is currently playing on FF1, the back
+/// When the work identified by `item.id` is currently playing on FF1, the back
 /// layer switches from the live preview to a dimmed thumbnail with an
-/// [ArtworkPlayingControls] overlay matching the old [ArtworkBackLayer] behavior.
+/// [ArtworkPlayingControls] overlay matching the old
+/// `ArtworkBackLayer` behavior.
 class WorkDetailBackLayer extends ConsumerWidget {
   const WorkDetailBackLayer({
     required this.item,
@@ -132,8 +136,9 @@ class WorkDetailBackLayer extends ConsumerWidget {
               primaryText: playlist.name,
               secondaryText: '',
             ),
-            onItemTap: (tappedItem) =>
-                context.push('${Routes.works}/${tappedItem.id}'),
+            onItemTap: (tappedItem) => context.pushWithPreviousTitle(
+              '${Routes.works}/${tappedItem.id}',
+            ),
           ),
           const Divider(
             height: 1,
@@ -161,7 +166,7 @@ class WorkDetailBackLayer extends ConsumerWidget {
   }
 }
 
-/// Copied from old repo [ArtworkThumbnailView]; data from [PlaylistItem].
+/// Copied from old repo `ArtworkThumbnailView`; data from [PlaylistItem].
 class WorkDetailThumbnailView extends StatelessWidget {
   const WorkDetailThumbnailView({required this.item, super.key});
 
@@ -260,8 +265,9 @@ class NoPreviewWidget extends StatelessWidget {
   }
 }
 
-/// Copied from old repo [ArtworkPreviewWidget]. Build structure and switch unchanged;
-/// data source: item (preview URL, thumbnail) + mimeType from parent.
+/// Copied from old repo `ArtworkPreviewWidget`. Build structure and switch
+/// unchanged; data source: item (preview URL, thumbnail) + mimeType from
+/// parent.
 class WorkPreviewWidget extends StatefulWidget {
   const WorkPreviewWidget({
     required this.item,
