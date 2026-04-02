@@ -33,7 +33,7 @@ void main() {
   });
 
   test(
-    'indexes reas.eth and paginates token pages without duplicate CIDs',
+    'indexes einstein-rosen.eth and paginates token pages without duplicate CIDs',
     () async {
       expect(
         AppConfig.domainResolverUrl,
@@ -57,9 +57,9 @@ void main() {
       );
 
       final resolved = await domainAddressService.verifyAddressOrDomain(
-        'reas.eth',
+        'einstein-rosen.eth',
       );
-      expect(resolved, isNotNull, reason: 'Failed to resolve reas.eth');
+      expect(resolved, isNotNull, reason: 'Failed to resolve einstein-rosen.eth');
 
       final address = resolved!.address;
 
@@ -76,7 +76,7 @@ void main() {
       expect(
         tokens.length,
         greaterThan(indexerTokensPageSize),
-        reason: 'Expected more than one page for reas.eth after indexing.',
+        reason: 'Expected more than one page for einstein-rosen.eth after indexing.',
       );
       expect(
         tokens.map((token) => token.cid).toSet().length,
