@@ -624,6 +624,61 @@ void main() {
       expect(versionService.deviceVersions, ['1.0.0', '2.0.0']);
     },
   );
+
+  test(
+    'auto-connect version check waits for later fresh status with '
+    'device version',
+    () async {
+      await ensureDotEnvLoaded();
+
+      final deviceService = MockFF1BluetoothDeviceService();
+      final wifiControl = FakeWifiControl();
+      final versionService = _RecordingVersionService();
+      const device = FF1Device(
+        name: 'FF1-A',
+        remoteId: 'remote-a',
+        deviceId: 'device-a',
+        topicId: 'topic-a',
+        branchName: 'main',
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1BluetoothDeviceServiceProvider.overrideWithValue(deviceService),
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+          versionServiceProvider.overrideWithValue(versionService),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.listen(
+        ff1AutoConnectWatcherProvider,
+        (_, _) {},
+      );
+
+      deviceService
+        ..devices = [device]
+        ..activeDeviceId = device.deviceId;
+      container.invalidate(activeFF1BluetoothDeviceProvider);
+      await container.read(activeFF1BluetoothDeviceProvider.future);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      wifiControl.emitDeviceStatus(const FF1DeviceStatus());
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(versionService.deviceVersions, isEmpty);
+
+      wifiControl.emitDeviceStatus(
+        const FF1DeviceStatus(latestVersion: '2.0.0'),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(versionService.deviceVersions, ['2.0.0']);
+    },
+  );
 }
 
 class _RecordingVersionService extends VersionService {

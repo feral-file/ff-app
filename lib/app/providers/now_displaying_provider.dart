@@ -201,42 +201,61 @@ final nowDisplayingRequestedRangeProvider =
 class NowDisplayingRequestedRangeNotifier
     extends Notifier<({int start, int end})?> {
   _PlaylistIdentity? _lastConfirmedIdentity;
+  String? _lastConfirmedDeviceId;
 
   @override
   ({int start, int end})? build() {
     _lastConfirmedIdentity = _playlistIdentityFromStatus(
       ref.read(ff1CurrentPlayerStatusProvider),
     );
+    _lastConfirmedDeviceId = _deviceIdFromAsync(
+      ref.read(activeFF1BluetoothDeviceProvider),
+    );
 
     // Drop monotonic scroll expansion when the playing list identity changes
     // (new playlist / ordered items) or playback clears, so playlist B does
     // not inherit A's widened range.
-    ref.listen<FF1PlayerStatus?>(
-      ff1CurrentPlayerStatusProvider,
-      (prev, next) {
-        // Clear when playback is explicitly cleared (playlistId == null).
-        // A transient provider null (loading/error/reconnect) does not map to
-        // a real playback clear and must not clear the expanded range.
-        if (next != null && next.playlistId == null) {
-          _lastConfirmedIdentity = null;
-          state = null;
-          return;
-        }
+    ref
+      ..listen<FF1PlayerStatus?>(
+        ff1CurrentPlayerStatusProvider,
+        (prev, next) {
+          // Clear when playback is explicitly cleared (playlistId == null).
+          // A transient provider null (loading/error/reconnect) does not map
+          // to a real playback clear and must not clear the expanded range.
+          if (next != null && next.playlistId == null) {
+            _lastConfirmedIdentity = null;
+            state = null;
+            return;
+          }
 
-        // Only clear on confirmed playing-list identity change. Identity is
-        // considered "confirmed" only when FF1 provides an item list; gaps
-        // where items are null (device still fetching) or provider is null
-        // (reconnect) should not clear on their own.
-        final after = _playlistIdentityFromStatus(next);
-        if (after == null) return;
+          // Only clear on confirmed playing-list identity change. Identity is
+          // considered "confirmed" only when FF1 provides an item list; gaps
+          // where items are null (device still fetching) or provider is null
+          // (reconnect) should not clear on their own.
+          final after = _playlistIdentityFromStatus(next);
+          if (after == null) return;
 
-        final last = _lastConfirmedIdentity;
-        if (last != null && !_playlistIdentitiesEqual(last, after)) {
-          state = null;
-        }
-        _lastConfirmedIdentity = after;
-      },
-    );
+          final last = _lastConfirmedIdentity;
+          if (last != null && !_playlistIdentitiesEqual(last, after)) {
+            state = null;
+          }
+          _lastConfirmedIdentity = after;
+        },
+      )
+      ..listen<AsyncValue<FF1Device?>>(
+        activeFF1BluetoothDeviceProvider,
+        (prev, next) {
+          final afterDeviceId = _deviceIdFromAsync(next);
+          if (afterDeviceId == null) return;
+
+          final lastDeviceId = _lastConfirmedDeviceId;
+          if (lastDeviceId != null && lastDeviceId != afterDeviceId) {
+            _lastConfirmedIdentity = null;
+            state = null;
+          }
+          _lastConfirmedDeviceId = afterDeviceId;
+        },
+      );
     return null;
   }
 

@@ -74,6 +74,7 @@ class FF1WifiControl {
   FF1DeviceStatus? _currentDeviceStatus;
   bool _isDeviceConnected = false;
   Completer<FF1DeviceStatus?>? _freshDeviceStatusCompleter;
+  Completer<FF1DeviceStatus?>? _freshDeviceVersionCompleter;
 
   // Stream subscriptions
   StreamSubscription<FF1NotificationMessage>? _notificationSub;
@@ -135,6 +136,7 @@ class FF1WifiControl {
     final flowId = _nextFlowId('connect');
     final previousDeviceId = _device?.deviceId;
     _freshDeviceStatusCompleter?.complete(null);
+    _freshDeviceVersionCompleter?.complete(null);
     _device = device;
     _userId = userId;
     _apiKey = apiKey;
@@ -150,6 +152,7 @@ class FF1WifiControl {
     _currentDeviceStatus = null;
     _isDeviceConnected = false;
     _freshDeviceStatusCompleter = Completer<FF1DeviceStatus?>();
+    _freshDeviceVersionCompleter = Completer<FF1DeviceStatus?>();
     _connectionStatusController.add(
       const FF1ConnectionStatus(isConnected: false),
     );
@@ -228,6 +231,8 @@ class FF1WifiControl {
     _isDeviceConnected = false;
     _freshDeviceStatusCompleter?.complete(null);
     _freshDeviceStatusCompleter = null;
+    _freshDeviceVersionCompleter?.complete(null);
+    _freshDeviceVersionCompleter = null;
     _slog.info(
       category: LogCategory.wifi,
       event: 'control_disconnect_completed',
@@ -287,6 +292,24 @@ class FF1WifiControl {
     return completer.future;
   }
 
+  /// Future for the first device status in the current session that carries a
+  /// usable device version.
+  ///
+  /// Why: the required-update gate must not treat a version-less status as
+  /// terminal for the session, because FF1 can emit a later fresh status that
+  /// fills in `latestVersion` after the initial connect handshake.
+  Future<FF1DeviceStatus?> freshDeviceVersionFuture() {
+    final completer = _freshDeviceVersionCompleter;
+    if (completer == null) {
+      final deviceStatus = _currentDeviceStatus;
+      if (deviceStatus?.latestVersion?.isNotEmpty == true) {
+        return Future<FF1DeviceStatus?>.value(deviceStatus);
+      }
+      return Future<FF1DeviceStatus?>.value();
+    }
+    return completer.future;
+  }
+
   /// Whether device is connected (per connection notification)
   bool get isDeviceConnected => _isDeviceConnected;
 
@@ -321,6 +344,10 @@ class FF1WifiControl {
         _deviceStatusController.add(deviceStatus);
         _freshDeviceStatusCompleter?.complete(deviceStatus);
         _freshDeviceStatusCompleter = null;
+        if (deviceStatus.latestVersion?.isNotEmpty == true) {
+          _freshDeviceVersionCompleter?.complete(deviceStatus);
+          _freshDeviceVersionCompleter = null;
+        }
 
       case FF1NotificationType.connection:
         final connectionStatus = FF1ConnectionStatus.fromJson(
@@ -383,6 +410,8 @@ class FF1WifiControl {
       _isDeviceConnected = false;
       _freshDeviceStatusCompleter?.complete(null);
       _freshDeviceStatusCompleter = null;
+      _freshDeviceVersionCompleter?.complete(null);
+      _freshDeviceVersionCompleter = null;
       _connectionStatusController.add(
         FF1ConnectionStatus(isConnected: isConnected),
       );
@@ -574,6 +603,8 @@ transport reconnected — waiting for device connection notification''',
     _isDeviceConnected = false;
     _freshDeviceStatusCompleter?.complete(null);
     _freshDeviceStatusCompleter = null;
+    _freshDeviceVersionCompleter?.complete(null);
+    _freshDeviceVersionCompleter = null;
     _connectionStatusController.add(
       const FF1ConnectionStatus(isConnected: false),
     );

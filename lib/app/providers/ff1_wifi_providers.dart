@@ -499,10 +499,10 @@ Future<void> _scheduleRequiredDeviceVersionCheck({
 }) async {
   final control = ref.read(ff1WifiControlProvider);
   // This runs in an unawaited background task, so do not impose an arbitrary
-  // timeout. We want the required-update gate to fire when the first fresh
-  // status for this connection session arrives, and FF1WifiControl resolves
-  // this future with null automatically on teardown / device switch.
-  final deviceStatus = await control.freshDeviceStatusFuture();
+  // timeout. We want the required-update gate to wait until this connection
+  // session publishes a usable device version, and FF1WifiControl resolves
+  // the future with null automatically on teardown / device switch.
+  final deviceStatus = await control.freshDeviceVersionFuture();
   if (!ref.mounted) {
     return;
   }

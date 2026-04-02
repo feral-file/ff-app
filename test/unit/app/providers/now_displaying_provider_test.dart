@@ -2309,6 +2309,98 @@ void main() {
     );
 
     test(
+      'active device switch clears requested range even when playlist identity '
+      'stays the same',
+      () async {
+        const deviceA = FF1Device(
+          name: 'FF1-A',
+          remoteId: 'r1',
+          deviceId: 'device_a',
+          topicId: 'topic_a',
+        );
+        const deviceB = FF1Device(
+          name: 'FF1-B',
+          remoteId: 'r2',
+          deviceId: 'device_b',
+          topicId: 'topic_b',
+        );
+
+        final items = [
+          const DP1PlaylistItem(id: 'a0', duration: 60, title: 'A'),
+        ];
+
+        final status = FF1PlayerStatus(
+          playlistId: 'pl_same',
+          currentWorkIndex: 0,
+          items: items,
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        addTearDown(playerStatusController.close);
+        final activeDeviceController = StreamController<FF1Device?>(
+          sync: true,
+        );
+        addTearDown(activeDeviceController.close);
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => recordingDb),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWith(
+              (ref) => activeDeviceController.stream,
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            streamBackedCurrentPlayerStatusOverride,
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container
+          ..listen<AsyncValue<FF1Device?>>(
+            activeFF1BluetoothDeviceProvider,
+            (_, _) {},
+          )
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        activeDeviceController.add(deviceA);
+        playerStatusController.add(status);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        container
+            .read(nowDisplayingRequestedRangeProvider.notifier)
+            .expandTo(0, 500);
+        expect(container.read(nowDisplayingRequestedRangeProvider), isNotNull);
+
+        activeDeviceController.add(deviceB);
+        playerStatusController.add(status);
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        expect(
+          container.read(nowDisplayingRequestedRangeProvider),
+          isNull,
+          reason:
+              'Requested scroll range must reset when the active device '
+              'changes, even if the playlist identity and items are reused',
+        );
+      },
+    );
+
+    test(
       'transient null player status does not clear requested range or flash '
       'loading',
       () async {
