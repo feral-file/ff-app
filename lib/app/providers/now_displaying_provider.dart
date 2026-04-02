@@ -754,20 +754,50 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
               start: start,
               end: end,
             );
-            if (!ref.mounted || token != _recomputeToken) {
+            if (!ref.mounted || _inFlightComputeToken != token) {
               return;
             }
-            _lastFullComputeIdentity = identity;
+
+            final liveStatus = ref.read(ff1CurrentPlayerStatusProvider);
+            final liveIdentity = _playlistIdentityFromStatus(liveStatus);
+            final liveWindow = ref.read(nowDisplayingWindowProvider);
+            final activeDevice = ref
+                .read(activeFF1BluetoothDeviceProvider)
+                .when(
+                  data: (value) => value,
+                  loading: () => null,
+                  error: (_, _) => null,
+                );
+            if (liveStatus == null ||
+                liveIdentity == null ||
+                !_playlistIdentitiesEqual(liveIdentity, identity) ||
+                activeDevice?.deviceId != device.deviceId ||
+                liveWindow == null ||
+                liveWindow.start != start ||
+                liveWindow.end != end) {
+              return;
+            }
+            final liveItems = liveStatus.items;
+            final liveIndex = liveStatus.currentWorkIndex;
+            if (liveItems == null ||
+                liveItems.isEmpty ||
+                liveIndex == null ||
+                liveIndex < 0 ||
+                liveIndex >= liveItems.length) {
+              return;
+            }
+
+            _lastFullComputeIdentity = liveIdentity;
             _lastFullSuccessPlaylistItems = playlistItems;
-            _lastFullSuccessIndex = index;
-            _lastFullSuccessIsSleeping = status.isSleeping;
+            _lastFullSuccessIndex = liveIndex;
+            _lastFullSuccessIsSleeping = liveStatus.isSleeping;
             _lastFullComputeWindow = (start: start, end: end);
             state = NowDisplayingSuccess(
               DP1NowDisplayingObject(
                 connectedDevice: device,
-                index: index,
+                index: liveIndex,
                 items: playlistItems,
-                isSleeping: status.isSleeping,
+                isSleeping: liveStatus.isSleeping,
               ),
             );
           } on Object {

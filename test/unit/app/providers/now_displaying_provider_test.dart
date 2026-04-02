@@ -1175,6 +1175,157 @@ void main() {
     );
 
     test(
+      'same-window generic recompute does not strand shifted-window enrichment',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        const n = 200;
+        final dp1Items = List<DP1PlaylistItem>.generate(
+          n,
+          (i) => DP1PlaylistItem(
+            id: 'item_$i',
+            duration: 60,
+            title: 'T$i',
+          ),
+        );
+        final token150 = AssetToken(
+          id: 150,
+          cid: 'eip155:1:erc721:0xabc:150',
+          chain: 'eip155:1',
+          standard: 'ERC-721',
+          contractAddress: '0xabc',
+          tokenNumber: '150',
+          display: TokenMetadata(
+            name: 'Enriched 150',
+            imageUrl: 'https://example.com/150.jpg',
+          ),
+        );
+        dp1Items[150] = DP1PlaylistItem(
+          id: 'item_150',
+          duration: 60,
+          title: 'T150',
+          provenance: DP1Provenance(
+            type: DP1ProvenanceType.onChain,
+            contract: DP1Contract(
+              chain: DP1ProvenanceChain.evm,
+              standard: DP1ProvenanceStandard.erc721,
+              address: '0xabc',
+              tokenId: '150',
+            ),
+          ),
+        );
+        final indexer = FakeIndexerService(tokensByCid: [token150]);
+
+        final statusIndex100 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 100,
+          items: dp1Items,
+        );
+        final statusIndex150 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 150,
+          items: dp1Items,
+        );
+        final statusIndex150Paused = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 150,
+          items: dp1Items,
+          isPaused: true,
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        addTearDown(playerStatusController.close);
+
+        final slowDb = _RecordingDatabaseService(
+          db,
+          cacheDelay: const Duration(milliseconds: 250),
+        );
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => slowDb),
+            indexerServiceProvider.overrideWithValue(indexer),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            streamBackedCurrentPlayerStatusOverride,
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        playerStatusController.add(statusIndex100);
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+
+        playerStatusController.add(statusIndex150);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+
+        final callsBeforePausedUpdate =
+            slowDb.getPlaylistItemsByIdsCalls.length;
+        playerStatusController.add(statusIndex150Paused);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+
+        expect(
+          slowDb.getPlaylistItemsByIdsCalls.length,
+          callsBeforePausedUpdate,
+          reason:
+              'Same-window generic update should not start a replacement '
+              'cache load while shifted-window enrichment is in flight',
+        );
+
+        await slowDb.enrichmentDone.future.timeout(
+          const Duration(seconds: 5),
+        );
+        final deadline = DateTime.now().add(const Duration(seconds: 5));
+        DP1NowDisplayingObject? finalObject;
+        while (DateTime.now().isBefore(deadline)) {
+          final finalState = container.read(nowDisplayingProvider);
+          if (finalState is NowDisplayingSuccess &&
+              finalState.object is DP1NowDisplayingObject) {
+            final candidate = finalState.object as DP1NowDisplayingObject;
+            if (candidate.currentItem.id == 'item_150' &&
+                candidate.currentItem.thumbnailUrl != null) {
+              finalObject = candidate;
+              break;
+            }
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+        }
+        expect(finalObject, isNotNull);
+        expect(
+          finalObject!.currentItem.thumbnailUrl,
+          'https://example.com/150.jpg',
+          reason:
+              'The in-flight shifted-window enrichment must still publish '
+              'after a same-window generic update arrives',
+        );
+      },
+    );
+
+    test(
       'pause toggle with same playlist identity skips extra DB cache read',
       () async {
         const device = FF1Device(
