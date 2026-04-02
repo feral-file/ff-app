@@ -364,6 +364,21 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   /// Fast path is invalid if the index window shifts (new slice needs cache/enrich).
   ({int start, int end})? _lastFullComputeWindow;
 
+  /// Window currently being computed in the background.
+  ///
+  /// Why: same-playlist window shifts publish an immediate DP-1 fallback and
+  /// then finish cache/enrichment asynchronously. While that pass is in
+  /// flight, we must remember the target slice so a duplicate recompute does
+  /// not launch a second DB/indexer read for the same window.
+  ({int start, int end})? _inFlightComputeWindow;
+
+  /// Token that owns [_inFlightComputeWindow].
+  ///
+  /// Why: async passes can finish out of order. We only clear the in-flight
+  /// marker when the compute that created it completes, so an older pass does
+  /// not erase a newer target.
+  int? _inFlightComputeToken;
+
   _NowDisplayingRecomputeCause _pendingRecomputeCause =
       _NowDisplayingRecomputeCause.generic;
 
@@ -384,6 +399,8 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     _lastFullSuccessIsSleeping = null;
     _lastFullSuccessDeviceId = null;
     _lastFullComputeWindow = null;
+    _inFlightComputeWindow = null;
+    _inFlightComputeToken = null;
   }
 
   /// Merges [incoming] into [_pendingRecomputeCause] and runs a single async
@@ -638,6 +655,7 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     final token = _recomputeToken;
     final databaseService = ref.read(databaseServiceProvider);
     final indexerService = ref.read(indexerServiceProvider);
+    final window = ref.read(nowDisplayingWindowProvider);
     // Fast path: same playlist + same ordered item ids, and the same visible
     // index window as the last full compute (pause / sleep / tiny index nudge
     // that does not move [start,end)). Skip SQLite + indexer.
@@ -684,6 +702,22 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       }
     }
 
+    final inFlightWindow = _inFlightComputeWindow;
+    final inFlightToken = _inFlightComputeToken;
+    if (cause == _NowDisplayingRecomputeCause.generic &&
+        identity != null &&
+        _lastFullComputeIdentity != null &&
+        _playlistIdentitiesEqual(identity, _lastFullComputeIdentity) &&
+        window != null &&
+        inFlightWindow != null &&
+        inFlightToken != null &&
+        _windowsEqual(window, inFlightWindow)) {
+      final currentState = state;
+      if (currentState is NowDisplayingSuccess) {
+        return currentState;
+      }
+    }
+
     final items = status.items;
     final index = status.currentWorkIndex;
     if (items == null || items.isEmpty || index == null) {
@@ -700,7 +734,6 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     }
 
     // Window for pagination: only load cache and enrich items in [start, end).
-    final window = ref.read(nowDisplayingWindowProvider);
     final start = window?.start ?? 0;
     final end = window?.end ?? items.length;
     final fallbackPlaylistItems = _buildDp1FallbackPlaylistItems(items);
@@ -722,44 +755,51 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         ),
       );
       state = fallbackState;
+      _inFlightComputeToken = token;
+      _inFlightComputeWindow = (start: start, end: end);
       unawaited(
         () async {
-          List<PlaylistItem> playlistItems;
           try {
-            playlistItems = await _buildNowDisplayingPlaylistItems(
+            final playlistItems = await _buildNowDisplayingPlaylistItems(
               databaseService: databaseService,
               indexerService: indexerService,
               items: items,
               start: start,
               end: end,
             );
+            if (!ref.mounted || token != _recomputeToken) {
+              return;
+            }
+            _lastFullComputeIdentity = identity;
+            _lastFullSuccessPlaylistItems = playlistItems;
+            _lastFullSuccessIndex = index;
+            _lastFullSuccessIsSleeping = status.isSleeping;
+            _lastFullSuccessDeviceId = device.deviceId;
+            _lastFullComputeWindow = (start: start, end: end);
+            state = NowDisplayingSuccess(
+              DP1NowDisplayingObject(
+                connectedDevice: device,
+                index: index,
+                items: playlistItems,
+                isSleeping: status.isSleeping,
+              ),
+            );
           } on Object {
             // Keep the immediate DP-1 fallback state if cache/enrichment fails.
-            return;
+          } finally {
+            if (_inFlightComputeToken == token) {
+              _inFlightComputeWindow = null;
+              _inFlightComputeToken = null;
+            }
           }
-          if (!ref.mounted || token != _recomputeToken) {
-            return;
-          }
-          _lastFullComputeIdentity = identity;
-          _lastFullSuccessPlaylistItems = playlistItems;
-          _lastFullSuccessIndex = index;
-          _lastFullSuccessIsSleeping = status.isSleeping;
-          _lastFullSuccessDeviceId = device.deviceId;
-          _lastFullComputeWindow = (start: start, end: end);
-          state = NowDisplayingSuccess(
-            DP1NowDisplayingObject(
-              connectedDevice: device,
-              index: index,
-              items: playlistItems,
-              isSleeping: status.isSleeping,
-            ),
-          );
         }(),
       );
       return fallbackState;
     }
 
     List<PlaylistItem> playlistItems;
+    _inFlightComputeToken = token;
+    _inFlightComputeWindow = (start: start, end: end);
     try {
       playlistItems = await _buildNowDisplayingPlaylistItems(
         databaseService: databaseService,
@@ -772,27 +812,34 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       // Keep now-displaying aligned with FF1 even if cache/enrichment fails.
       playlistItems = fallbackPlaylistItems;
     }
-    if (!ref.mounted || token != _recomputeToken) {
-      return state;
+    try {
+      if (!ref.mounted || token != _recomputeToken) {
+        return state;
+      }
+
+      // Full compute succeeded; record identity + items + window for loading +
+      // fast-path.
+      _lastFullComputeIdentity = identity;
+      _lastFullSuccessPlaylistItems = playlistItems;
+      _lastFullSuccessIndex = index;
+      _lastFullSuccessIsSleeping = status.isSleeping;
+      _lastFullSuccessDeviceId = device.deviceId;
+      _lastFullComputeWindow = (start: start, end: end);
+
+      return NowDisplayingSuccess(
+        DP1NowDisplayingObject(
+          connectedDevice: device,
+          index: index,
+          items: playlistItems,
+          isSleeping: status.isSleeping,
+        ),
+      );
+    } finally {
+      if (_inFlightComputeToken == token) {
+        _inFlightComputeWindow = null;
+        _inFlightComputeToken = null;
+      }
     }
-
-    // Full compute succeeded; record identity + items + window for loading +
-    // fast-path.
-    _lastFullComputeIdentity = identity;
-    _lastFullSuccessPlaylistItems = playlistItems;
-    _lastFullSuccessIndex = index;
-    _lastFullSuccessIsSleeping = status.isSleeping;
-    _lastFullSuccessDeviceId = device.deviceId;
-    _lastFullComputeWindow = (start: start, end: end);
-
-    return NowDisplayingSuccess(
-      DP1NowDisplayingObject(
-        connectedDevice: device,
-        index: index,
-        items: playlistItems,
-        isSleeping: status.isSleeping,
-      ),
-    );
   }
 
   NowDisplayingSuccess? _buildLastSuccessStatus(FF1Device device) {

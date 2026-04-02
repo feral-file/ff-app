@@ -972,6 +972,18 @@ void main() {
         );
         expect(emitted.whereType<LoadingNowDisplaying>(), isEmpty);
 
+        final callsBeforeDuplicate175 =
+            slowDb.getPlaylistItemsByIdsCalls.length;
+        playerStatusController.add(statusIndex175);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        expect(
+          slowDb.getPlaylistItemsByIdsCalls.length,
+          callsBeforeDuplicate175,
+          reason:
+              'The same in-flight window must not launch a second cache read '
+              'before the first one finishes',
+        );
+
         await Future<void>.delayed(const Duration(milliseconds: 260));
         final finalState = container.read(nowDisplayingProvider);
         expect(finalState, isA<NowDisplayingSuccess>());
