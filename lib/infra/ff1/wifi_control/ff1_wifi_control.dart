@@ -194,6 +194,22 @@ class FF1WifiControl {
     }
   }
 
+  /// Clears replayed realtime state before switching to a different device.
+  ///
+  /// This is a handoff guard for the auto-connect watcher: consumers must
+  /// stop seeing the previous device's relayer state before the new device's
+  /// connection attempt begins.
+  void prepareForDeviceSwitch(FF1Device device) {
+    if (_device?.deviceId == device.deviceId) {
+      return;
+    }
+
+    _clearRealtimeState(
+      emitDisconnectedStatus: true,
+      reason: 'watcher_device_switch',
+    );
+  }
+
   /// Disconnect from device
   Future<void> disconnect() async {
     final flowId = _nextFlowId('disconnect');

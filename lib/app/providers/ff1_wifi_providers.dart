@@ -483,6 +483,7 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
             logger.info(
               'Active device changed: ${device.toJson()}, connecting...',
             );
+            ref.read(ff1WifiControlProvider).prepareForDeviceSwitch(device);
             // Intentionally not awaiting to avoid blocking
             await connectionNotifier.connect(
               device: device,

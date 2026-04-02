@@ -156,6 +156,88 @@ void main() {
       await cancelAction;
     },
   );
+
+  testWidgets(
+    'OptionsButton hides Update FF1 until version info is available',
+    (tester) async {
+      final wifiControl = FakeWifiControl();
+
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1CurrentDeviceStatusProvider.overrideWith((ref) => null),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+            ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: Center(child: OptionsButton()),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byType(SvgPicture));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Send Log'), findsOneWidget);
+      expect(find.text('Update FF1'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'DeviceConfigScreen ignores blank firmware versions for auto-prompt',
+    (tester) async {
+      final appState = _BlockingAppStateService(Completer<void>());
+      final wifiControl = FakeWifiControl();
+
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+      const deviceStatus = FF1DeviceStatus(
+        installedVersion: '   ',
+        latestVersion: '2.0.0',
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1CurrentDeviceStatusProvider.overrideWithValue(deviceStatus),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+            ff1WifiControlProvider.overrideWithValue(wifiControl),
+            appStateServiceProvider.overrideWithValue(appState),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: DeviceConfigScreen(
+                payload: DeviceConfigPayload(isInSetupProcess: false),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Update Available'), findsNothing);
+    },
+  );
 }
 
 Future<void> _pumpUntilVisible(WidgetTester tester, String text) async {

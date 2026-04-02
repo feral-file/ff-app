@@ -13,7 +13,6 @@ import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control_verifier.dart';
-import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/scan_wifi_network_screen.dart';
 import 'package:app/ui/ui_helper.dart';
@@ -82,6 +81,9 @@ class OptionsButton extends ConsumerWidget {
 
     // Read version info so the update dialog can display current/latest.
     final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
+    final hasVersionInfo =
+        deviceStatus?.installedVersion != null &&
+        deviceStatus?.latestVersion != null;
 
     final options = [
       if (isDeviceConnected) ...[
@@ -113,18 +115,20 @@ class OptionsButton extends ConsumerWidget {
             ),
           ),
         ),
-        OptionItem(
-          title: 'Update FF1',
-          icon: const Icon(Icons.system_update_alt),
-          onTap: () => unawaited(
-            _onUpdateFirmwareSelected(
-              context,
-              ref,
-              device,
-              deviceStatus,
+        if (hasVersionInfo)
+          OptionItem(
+            title: 'Update FF1',
+            icon: const Icon(Icons.system_update_alt),
+            onTap: () => unawaited(
+              _onUpdateFirmwareSelected(
+                context,
+                ref,
+                device,
+                installedVersion: deviceStatus!.installedVersion!,
+                latestVersion: deviceStatus.latestVersion!,
+              ),
             ),
           ),
-        ),
       ],
       OptionItem(
         title: 'Send Log',
@@ -485,14 +489,14 @@ class OptionsButton extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     FF1Device device,
-    FF1DeviceStatus? deviceStatus,
+    {
+    required String installedVersion,
+    required String latestVersion,
+  }
   ) async {
     final topicId = device.topicId;
     // Build version detail line for the dialog only when version info is known.
-    final installed = deviceStatus?.installedVersion;
-    final latest = deviceStatus?.latestVersion;
-    final hasVersionInfo = installed != null && latest != null;
-    final isUpToDate = hasVersionInfo && installed == latest;
+    final isUpToDate = installedVersion == latestVersion;
 
     final result = await UIHelper.showCenterDialog(
       context,
@@ -506,7 +510,7 @@ class OptionsButton extends ConsumerWidget {
           SizedBox(height: LayoutConstants.space4),
           if (isUpToDate)
             Text(
-              'Your FF1 is already on the latest version ($installed).',
+              'Your FF1 is already on the latest version ($installedVersion).',
               style: AppTypography.body(context).white,
             )
           else ...[
@@ -525,8 +529,7 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
                   textColor: AppColor.white,
                   color: Colors.transparent,
                   borderColor: AppColor.white,
-                  onTap: () async {
-                    if (latest != null) {
+                    onTap: () async {
                       // Manual cancel counts as dismissing this version so the
                       // same stale build is not shown again while OTA catches
                       // up and the device still reports the old version.
@@ -534,14 +537,13 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
                           .read(appStateServiceProvider)
                           .setDismissedUpdateVersion(
                             deviceId: device.deviceId,
-                            version: latest,
+                            version: latestVersion,
                           );
                       if (!context.mounted) return;
-                    }
-                    Navigator.pop(context, false);
-                  },
+                      Navigator.pop(context, false);
+                    },
+                  ),
                 ),
-              ),
               if (!isUpToDate) ...[
                 SizedBox(width: LayoutConstants.space4),
                 Expanded(
@@ -561,14 +563,12 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
                           // Persist the accepted latest version so Device
                           // Configuration does not auto-prompt again for the
                           // same build while OTA is still catching up.
-                          if (latest != null) {
-                            await ref
-                                .read(appStateServiceProvider)
-                                .setDismissedUpdateVersion(
-                                  deviceId: device.deviceId,
-                                  version: latest,
-                                );
-                          }
+                          await ref
+                              .read(appStateServiceProvider)
+                              .setDismissedUpdateVersion(
+                                deviceId: device.deviceId,
+                                version: latestVersion,
+                              );
                           if (!context.mounted) return;
                           Navigator.pop(context, true);
                           return;

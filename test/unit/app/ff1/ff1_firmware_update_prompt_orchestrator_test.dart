@@ -168,5 +168,20 @@ void main() {
       );
       expect(out.show, isNull);
     });
+
+    test('trims whitespace before computing prompt eligibility', () {
+      final out = computeFirmwareUpdatePromptTick(
+        session: baseSession,
+        activeDeviceId: 'd1',
+        isInSetupProcess: false,
+        isRelayerConnected: true,
+        installedVersion: ' 1.0.0 ',
+        latestVersion: ' 2.0.0 ',
+        dismissedLatestVersionForDevice: '   ',
+      );
+      expect(out.show, isNotNull);
+      expect(out.show!.installedVersion, '1.0.0');
+      expect(out.show!.latestVersion, '2.0.0');
+    });
   });
 }

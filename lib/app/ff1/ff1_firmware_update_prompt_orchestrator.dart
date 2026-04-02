@@ -118,19 +118,24 @@ Ff1FirmwareUpdatePromptTickResult computeFirmwareUpdatePromptTick({
     );
   }
 
+  final normalizedInstalled =
+      normalizeFirmwareUpdateVersion(installedVersion);
+  final normalizedLatest = normalizeFirmwareUpdateVersion(latestVersion);
+  final normalizedDismissed = normalizeFirmwareUpdateVersion(
+    dismissedLatestVersionForDevice,
+  );
+
   if (!shouldOfferFirmwareUpdateAutoPrompt(
     isInSetupProcess: isInSetupProcess,
     isRelayerConnected: isRelayerConnected,
-    installedVersion: installedVersion,
-    latestVersion: latestVersion,
-    dismissedLatestVersionForDevice: dismissedLatestVersionForDevice,
+    installedVersion: normalizedInstalled,
+    latestVersion: normalizedLatest,
+    dismissedLatestVersionForDevice: normalizedDismissed ?? '',
   )) {
     return Ff1FirmwareUpdatePromptTickResult(session: next);
   }
 
-  final latest = latestVersion;
-  final installed = installedVersion;
-  if (latest == null || installed == null) {
+  if (normalizedLatest == null || normalizedInstalled == null) {
     return Ff1FirmwareUpdatePromptTickResult(session: next);
   }
 
@@ -138,18 +143,18 @@ Ff1FirmwareUpdatePromptTickResult computeFirmwareUpdatePromptTick({
     return Ff1FirmwareUpdatePromptTickResult(session: next);
   }
 
-  if (next.sessionPromptedForLatestVersion == latest) {
+  if (next.sessionPromptedForLatestVersion == normalizedLatest) {
     return Ff1FirmwareUpdatePromptTickResult(session: next);
   }
 
   return Ff1FirmwareUpdatePromptTickResult(
     session: next.copyWith(
-      sessionPromptedForLatestVersion: latest,
+      sessionPromptedForLatestVersion: normalizedLatest,
       isPromptInFlight: true,
     ),
     show: Ff1FirmwareUpdatePromptShowRequest(
-      installedVersion: installed,
-      latestVersion: latest,
+      installedVersion: normalizedInstalled,
+      latestVersion: normalizedLatest,
     ),
   );
 }
