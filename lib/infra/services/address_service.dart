@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
@@ -43,7 +44,9 @@ class AddressService {
 
   /// Sets a callback that receives real-time indexer job status updates.
   ///
-  /// The callback is invoked when [pullStatus] returns during [indexAndSyncAddress].
+  /// The callback is invoked when [pullStatus] returns during
+  /// [indexAndSyncAddress].
+  // ignore: use_setters_to_change_properties // Callback registration API; not a property setter.
   void setIndexingJobStatusCallback(
     void Function(AddressIndexingJobResponse) callback,
   ) {
@@ -68,7 +71,7 @@ class AddressService {
   ///
   /// Paginates from [startOffset] until no more tokens. Returns total ingested.
   Future<int> syncTokens(String address, {int startOffset = 0}) async {
-    const pageSize = 50;
+    const pageSize = indexerTokensPageSize;
     var offset = startOffset;
     var total = 0;
     while (true) {
@@ -93,8 +96,8 @@ class AddressService {
   /// Runs indexing flow: index → poll → fetch+ingest.
   ///
   /// Single flow. Each step has a flag — set to false when that step was
-  /// already done (e.g. on app restart). Pass [workflowId] when [runTriggerIndex]
-  /// is false and [runPoll] is true.
+  /// already done (e.g. on app restart). Pass [workflowId] when
+  /// [runTriggerIndex] is false and [runPoll] is true.
   ///
   /// Steps: (1) fast-path fetch, (2) trigger index, (3) poll until done,
   /// (4) final fetch+ingest.
@@ -107,7 +110,10 @@ class AddressService {
     String? workflowId,
   }) async {
     _log.info(
-      'Indexing and syncing address: $address, runFastPathFetch: $runFastPathFetch, runTriggerIndex: $runTriggerIndex, runPoll: $runPoll, runFinalFetch: $runFinalFetch, workflowId: $workflowId',
+      'Indexing and syncing address: $address, runFastPathFetch: '
+      '$runFastPathFetch, runTriggerIndex: $runTriggerIndex, '
+      'runPoll: $runPoll, runFinalFetch: $runFinalFetch, '
+      'workflowId: $workflowId',
     );
     final queryAddress = _addressForIndexer(address);
     var effectiveWorkflowId = workflowId;
@@ -179,7 +185,8 @@ class AddressService {
       const maxAttempts = 60;
 
       _log.info(
-        'Polling for address indexing status for $queryAddress with workflowId: $wfId',
+        'Polling for address indexing status for $queryAddress '
+        'with workflowId: $wfId',
       );
 
       await _appStateService.setAddressIndexingStatus(
@@ -242,7 +249,7 @@ class AddressService {
 
   /// Resumes indexing for addresses with non-completed status.
   ///
-  /// Called by [ensureTrackedAddressesHavePlaylistsAndResumeProvider] after
+  /// Called by ensureTrackedAddressesHavePlaylistsAndResumeProvider after
   /// playlists are ensured. Fetches status per address from [AppStateService];
   /// each address is processed according to its status (idle→trigger index,
   /// indexingTriggered→poll, etc.).
@@ -334,7 +341,7 @@ class AddressService {
   ///
   /// If duplicate, throws Exception('Address already added').
   /// Playlist creation and indexing are triggered by
-  /// [ensureTrackedAddressesHavePlaylistsAndResumeProvider].
+  /// ensureTrackedAddressesHavePlaylistsAndResumeProvider.
   Future<void> addAddress({
     required WalletAddress walletAddress,
   }) async {
