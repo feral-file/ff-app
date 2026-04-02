@@ -56,7 +56,7 @@ void main() {
       find.byType(IconSliderControl),
     );
     expect(widget.iconAsset, 'assets/images/icon_volume_muted.svg');
-    expect(widget.value, 25);
+    expect(widget.value, 0);
   });
 
   testWidgets('tapping the icon routes to toggleMute', (tester) async {
@@ -93,6 +93,11 @@ void main() {
 
     expect(control.toggleMuteTopicId, device.topicId);
     expect(control.lastSetVolume, isNull);
+    expect(
+      tester.widget<IconSliderControl>(find.byType(IconSliderControl)).value,
+      0,
+      reason: 'Muting should move the slider thumb to 0 to match the muted icon.',
+    );
   });
 
   testWidgets(

@@ -123,7 +123,7 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
 
     final previousState = state;
     _pendingMuted = !state.isMuted;
-    state = state.copyWith(isMuted: _pendingMuted);
+    state = _deriveState();
 
     final control = ref.read(ff1WifiControlProvider);
     try {
@@ -150,9 +150,11 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
     final actualVolume = _deviceStatus?.volume?.toDouble();
     final actualMuted = _deviceStatus?.isMuted;
     if (actualVolume == null && actualMuted == null) {
+      final resolvedMuted = _pendingMuted ?? false;
+      final rawVolume = _pendingVolume ?? 50;
       return FF1AudioControlState(
-        volume: _pendingVolume ?? 50,
-        isMuted: _pendingMuted ?? false,
+        volume: resolvedMuted ? 0 : rawVolume,
+        isMuted: resolvedMuted,
         isTopicActive: true,
       );
     }
@@ -163,9 +165,13 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
       _pendingMuted = null;
     }
 
+    final resolvedMuted = _pendingMuted ?? actualMuted ?? false;
+    final rawVolume = _pendingVolume ?? actualVolume ?? 50;
+    // When muted, the device may still report the pre-mute level; the slider
+    // should read as 0 so the thumb matches the muted icon tap.
     return FF1AudioControlState(
-      volume: _pendingVolume ?? actualVolume ?? 50,
-      isMuted: _pendingMuted ?? actualMuted ?? false,
+      volume: resolvedMuted ? 0 : rawVolume,
+      isMuted: resolvedMuted,
       isTopicActive: true,
     );
   }
