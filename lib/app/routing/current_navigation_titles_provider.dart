@@ -23,9 +23,20 @@ class CurrentVisiblePageTitleNotifier extends Notifier<String?> {
     required String? title,
   }) {
     if (!ref.mounted) return;
-    _entries.removeWhere((entry) => identical(entry.token, token));
+    final index = _entries.indexWhere((entry) => identical(entry.token, token));
     if (title != null && title.isNotEmpty) {
-      _entries.add(_NavigationTitleEntry(token: token, title: title));
+      // Keep each scope's original stack position when its title changes.
+      // Re-appending a lower route during rebuild turns the mirror into
+      // "last writer wins", which lets background routes steal the back label
+      // from the top-most visible route.
+      final nextEntry = _NavigationTitleEntry(token: token, title: title);
+      if (index == -1) {
+        _entries.add(nextEntry);
+      } else {
+        _entries[index] = nextEntry;
+      }
+    } else if (index != -1) {
+      _entries.removeAt(index);
     }
     state = _entries.isEmpty ? null : _entries.last.title;
   }

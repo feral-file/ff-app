@@ -20,5 +20,21 @@ void main() {
       notifier.remove(tokenB);
       expect(container.read(currentVisiblePageTitleProvider), 'Playlists');
     });
+
+    test('updating a lower entry does not displace the current top title', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final notifier = container.read(currentVisiblePageTitleProvider.notifier);
+      final tokenA = Object();
+      final tokenB = Object();
+
+      notifier
+        ..upsert(token: tokenA, title: 'Playlists')
+        ..upsert(token: tokenB, title: 'Work A')
+        ..upsert(token: tokenA, title: 'Playlists Updated');
+
+      expect(container.read(currentVisiblePageTitleProvider), 'Work A');
+    });
   });
 }

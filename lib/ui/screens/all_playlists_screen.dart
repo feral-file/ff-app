@@ -341,7 +341,6 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
     final title = widget.title;
     final description = widget.description;
     final iconAsset = widget.iconAsset;
-    final backLabel = widget.backTitle ?? '';
     final pageTitle = title ?? 'Playlists';
 
     return PreviousPageTitleScope(
@@ -350,7 +349,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
         backgroundColor: AppColor.auGreyBackground,
         appBar: MainAppBar.preferred(
           context,
-          backTitle: backLabel,
+          backTitle: widget.backTitle,
         ),
         body: SafeArea(
           child: RefreshIndicator(

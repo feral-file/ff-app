@@ -51,22 +51,19 @@ String buildAllPlaylistsQuery({
 }) {
   final params = <String, String>{};
   if (channelTypes != null && channelTypes.isNotEmpty) {
-    params['channelTypes'] = channelTypes
-        .map((t) => t.toQueryParamString())
-        .join(',');
+    params['channelTypes'] =
+        channelTypes.map((t) => t.toQueryParamString()).join(',');
   }
   if (channelIds != null && channelIds.isNotEmpty) {
     params['channelIds'] = channelIds.join(',');
   }
   if (playlistTypes != null && playlistTypes.isNotEmpty) {
-    params['playlistTypes'] = playlistTypes
-        .map((t) => t.toQueryParamString())
-        .join(',');
+    params['playlistTypes'] =
+        playlistTypes.map((t) => t.toQueryParamString()).join(',');
   }
   if (params.isEmpty) return '';
-  final encoded = params.entries.map(
-    (e) => '${e.key}=${Uri.encodeComponent(e.value)}',
-  );
+  final encoded =
+      params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}');
   return '?${encoded.join('&')}';
 }
 
@@ -76,8 +73,7 @@ AllPlaylistsQueryParams parseAllPlaylistsQuery(Map<String, String>? query) {
   if (query == null || query.isEmpty) {
     return (channelTypes: null, channelIds: null, playlistTypes: null);
   }
-  final channelIds =
-      parseChannelIds(query['channelIds']) ??
+  final channelIds = parseChannelIds(query['channelIds']) ??
       (query['channelId'] != null ? [query['channelId']!] : null);
   return (
     channelTypes: parseChannelTypes(query['channelTypes']),
@@ -106,8 +102,7 @@ AllPlaylistsMetadata deriveAllPlaylistsMetadata(
   // Channel-scoped: single or multi-channel View all for Playlists or Address.
   if (ids != null && ids.isNotEmpty) {
     final isSingleChannel = ids.length == 1;
-    final isAddressOnly =
-        playlistTypes != null &&
+    final isAddressOnly = playlistTypes != null &&
         playlistTypes.length == 1 &&
         playlistTypes.contains(PlaylistType.addressBased);
     if (isAddressOnly) {

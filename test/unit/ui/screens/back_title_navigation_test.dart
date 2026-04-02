@@ -154,6 +154,43 @@ class _ScopedTitlePage extends StatelessWidget {
   }
 }
 
+class _MutableScopedTitlePage extends StatefulWidget {
+  const _MutableScopedTitlePage({
+    required this.initialTitle,
+    required this.updatedTitle,
+  });
+
+  final String initialTitle;
+  final String updatedTitle;
+
+  @override
+  State<_MutableScopedTitlePage> createState() =>
+      _MutableScopedTitlePageState();
+}
+
+class _MutableScopedTitlePageState extends State<_MutableScopedTitlePage> {
+  late String _title = widget.initialTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return PreviousPageTitleScope(
+      title: _title,
+      child: Scaffold(
+        body: Center(
+          child: ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _title = widget.updatedTitle;
+              });
+            },
+            child: const Text('Update title'),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 Widget _appWithNowDisplayingOverlay({
   required GoRouter router,
 }) {
@@ -427,6 +464,8 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text(channelName), findsNothing);
+        expect(find.text('Back'), findsNothing);
+        expect(find.bySemanticsLabel('Back Button'), findsOneWidget);
       },
     );
 
@@ -553,6 +592,67 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(previousPageTitleFromExtra(pushedExtra), 'Channels');
+      },
+    );
+
+    testWidgets(
+      'now displaying bar reads the latest mirrored title on the same route',
+      (tester) async {
+        Object? pushedExtra;
+        late GoRouter router;
+
+        router = GoRouter(
+          initialLocation: '/playlists',
+          routes: [
+            GoRoute(
+              path: '/playlists',
+              builder: (context, state) => const _MutableScopedTitlePage(
+                initialTitle: 'Playlists',
+                updatedTitle: 'Loaded Playlists',
+              ),
+            ),
+            GoRoute(
+              path: '/works/:workId',
+              builder: (context, state) {
+                pushedExtra = state.extra;
+                return const SizedBox.shrink();
+              },
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              nowDisplayingProvider.overrideWith(
+                () => _StaticNowDisplayingNotifier(
+                  _nowDisplayingSuccess(
+                    workId: 'work_2',
+                    title: 'Overlay Work 2',
+                  ),
+                ),
+              ),
+              nowDisplayingVisibilityProvider.overrideWith(
+                () => _StaticNowDisplayingVisibilityNotifier(
+                  _visibleNowDisplayingState,
+                ),
+              ),
+              ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+              ff1SupportsPlaybackModesProvider.overrideWithValue(false),
+            ],
+            child: _appWithNowDisplayingOverlay(router: router),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Update title'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Overlay Work 2'));
+        await tester.pumpAndSettle();
+
+        expect(previousPageTitleFromExtra(pushedExtra), 'Loaded Playlists');
       },
     );
 

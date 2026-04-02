@@ -39,6 +39,21 @@ void main() {
       );
     });
 
+    test('returns false for settings and release-notes routes', () {
+      expect(
+        shouldShowNowDisplayingForRoute(
+          const AppRouteState(path: Routes.settings, currentRoute: null),
+        ),
+        isFalse,
+      );
+      expect(
+        shouldShowNowDisplayingForRoute(
+          const AppRouteState(path: Routes.releaseNotes, currentRoute: null),
+        ),
+        isFalse,
+      );
+    });
+
     test('returns true for home and DP-1 browsing routes', () {
       expect(
         shouldShowNowDisplayingForRoute(
