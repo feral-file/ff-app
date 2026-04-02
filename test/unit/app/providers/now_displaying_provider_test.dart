@@ -2532,7 +2532,7 @@ void main() {
     );
 
     test(
-      'same playlist items-null refetch gap does not flash loading',
+      'same playlist items-null refetch gap shows loading until items return',
       () async {
         const device = FF1Device(
           name: 'FF1',
@@ -2601,10 +2601,17 @@ void main() {
 
         playerStatusController.add(statusFetching);
         await Future<void>.delayed(const Duration(milliseconds: 80));
+        expect(
+          container.read(nowDisplayingProvider),
+          isA<LoadingNowDisplaying>(),
+          reason:
+              'playlistId-only fetching gap must not reuse stale success '
+              'because item identity is unknown',
+        );
         playerStatusController.add(statusReady);
         await Future<void>.delayed(const Duration(milliseconds: 80));
 
-        expect(emitted.whereType<LoadingNowDisplaying>(), isEmpty);
+        expect(emitted.whereType<LoadingNowDisplaying>(), isNotEmpty);
         expect(
           container.read(nowDisplayingProvider),
           isA<NowDisplayingSuccess>(),

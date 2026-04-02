@@ -353,13 +353,6 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
   /// Sleep/paused flag from the last successful full compute.
   bool? _lastFullSuccessIsSleeping;
 
-  /// Device id associated with the last successful playback snapshot.
-  ///
-  /// Why: reconnect-style fallback must only reuse the last success state for
-  /// the same FF1 device. Reusing device A's snapshot for device B would show
-  /// stale playback from the wrong screen.
-  String? _lastFullSuccessDeviceId;
-
   /// [nowDisplayingWindowProvider] snapshot from the last full compute.
   /// Fast path is invalid if the index window shifts (new slice needs cache/enrich).
   ({int start, int end})? _lastFullComputeWindow;
@@ -397,7 +390,6 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     _lastFullSuccessPlaylistItems = null;
     _lastFullSuccessIndex = null;
     _lastFullSuccessIsSleeping = null;
-    _lastFullSuccessDeviceId = null;
     _lastFullComputeWindow = null;
     _inFlightComputeWindow = null;
     _inFlightComputeToken = null;
@@ -636,14 +628,10 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     // Explicit loading state when a playlist is selected but items are still
     // being fetched on the device side.
     if (status.playlistId != null && status.items == null) {
-      final lastSuccess = _buildLastSuccessStatus(device);
-      final lastIdentity = _lastFullComputeIdentity;
-      if (lastSuccess != null &&
-          lastIdentity != null &&
-          lastIdentity.playlistId == status.playlistId) {
-        return lastSuccess;
-      }
-
+      // We cannot prove playback identity from playlistId alone here.
+      // FF1 may refetch the same playlistId with a different item set/order,
+      // so reusing the previous success snapshot can show stale now-displaying
+      // data from a superseded list.
       _clearPlaybackIdentity();
       return LoadingNowDisplaying(
         device: device,
@@ -690,7 +678,6 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         // an older index/sleep state.
         _lastFullSuccessIndex = index;
         _lastFullSuccessIsSleeping = status.isSleeping;
-        _lastFullSuccessDeviceId = device.deviceId;
         return NowDisplayingSuccess(
           DP1NowDisplayingObject(
             connectedDevice: device,
@@ -774,7 +761,6 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
             _lastFullSuccessPlaylistItems = playlistItems;
             _lastFullSuccessIndex = index;
             _lastFullSuccessIsSleeping = status.isSleeping;
-            _lastFullSuccessDeviceId = device.deviceId;
             _lastFullComputeWindow = (start: start, end: end);
             state = NowDisplayingSuccess(
               DP1NowDisplayingObject(
@@ -823,7 +809,6 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       _lastFullSuccessPlaylistItems = playlistItems;
       _lastFullSuccessIndex = index;
       _lastFullSuccessIsSleeping = status.isSleeping;
-      _lastFullSuccessDeviceId = device.deviceId;
       _lastFullComputeWindow = (start: start, end: end);
 
       return NowDisplayingSuccess(
@@ -840,33 +825,6 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         _inFlightComputeToken = null;
       }
     }
-  }
-
-  NowDisplayingSuccess? _buildLastSuccessStatus(FF1Device device) {
-    final lastIdentity = _lastFullComputeIdentity;
-    final lastItems = _lastFullSuccessPlaylistItems;
-    final lastIndex = _lastFullSuccessIndex;
-    final lastIsSleeping = _lastFullSuccessIsSleeping;
-    final lastDeviceId = _lastFullSuccessDeviceId;
-    if (lastIdentity == null ||
-        lastItems == null ||
-        lastIndex == null ||
-        lastIsSleeping == null ||
-        lastDeviceId == null ||
-        lastDeviceId != device.deviceId ||
-        lastIndex < 0 ||
-        lastIndex >= lastItems.length) {
-      return null;
-    }
-
-    return NowDisplayingSuccess(
-      DP1NowDisplayingObject(
-        connectedDevice: device,
-        index: lastIndex,
-        items: lastItems,
-        isSleeping: lastIsSleeping,
-      ),
-    );
   }
 }
 
