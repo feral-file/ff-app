@@ -6,8 +6,8 @@
 
 import 'dart:math';
 
+import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
-import 'package:app/app/providers/playlist_details_provider.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
@@ -15,6 +15,7 @@ import 'package:app/domain/extensions/playlist_item_ext.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/domain/utils/work_detail_favorite_playlist_row.dart';
 import 'package:app/nft_rendering/audio_rendering_widget.dart';
 import 'package:app/nft_rendering/gif_rendering_widget.dart';
 import 'package:app/nft_rendering/image_rendering_widget.dart';
@@ -75,15 +76,14 @@ class WorkDetailBackLayer extends ConsumerWidget {
 
     final isPlayingOnFF1 = playingObject != null;
 
-    final favoriteDetailsAsync = ref.watch(
-      playlistDetailsProvider(Playlist.favoriteId),
+    final isWorkFavoriteAsync = ref.watch(
+      isWorkInFavoriteProvider(item.id),
     );
-    final showFavoriteRow =
-        !isFullScreen &&
-        (favoriteDetailsAsync.whenOrNull(
-              data: (state) => state.items.isNotEmpty,
-            ) ??
-            false);
+    final showFavoriteRow = shouldShowFavoritePlaylistRowOnWorkDetail(
+      isFullScreen: isFullScreen,
+      isCurrentWorkInFavorite:
+          isWorkFavoriteAsync.whenOrNull(data: (v) => v) ?? false,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -128,7 +128,8 @@ class WorkDetailBackLayer extends ConsumerWidget {
           ),
         ),
         // SizedBox(height: LayoutConstants.space4),
-        // Favorite playlist row (same UI as Playlist tab). Only when not empty.
+        // Favorite playlist row (same UI as Playlist tab). Only when this work
+        // is in Favorites (not merely when Favorite has other items).
         if (showFavoriteRow) ...[
           PlaylistRowItem(
             playlist: Playlist.favorite(),
