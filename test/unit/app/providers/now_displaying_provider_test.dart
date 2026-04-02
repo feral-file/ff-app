@@ -930,9 +930,26 @@ void main() {
           )
           ..read(nowDisplayingProvider);
 
+        Future<void> waitForItem(String itemId) async {
+          final deadline = DateTime.now().add(const Duration(seconds: 5));
+          while (DateTime.now().isBefore(deadline)) {
+            final currentState = container.read(nowDisplayingProvider);
+            if (currentState is NowDisplayingSuccess &&
+                currentState.object is DP1NowDisplayingObject) {
+              final currentObject =
+                  currentState.object as DP1NowDisplayingObject;
+              if (currentObject.currentItem.id == itemId) {
+                return;
+              }
+            }
+            await Future<void>.delayed(const Duration(milliseconds: 40));
+          }
+          throw TimeoutException('Timed out waiting for $itemId');
+        }
+
         await Future<void>.delayed(Duration.zero);
         playerStatusController.add(statusIndex100);
-        await Future<void>.delayed(const Duration(milliseconds: 300));
+        await waitForItem('item_100');
 
         emitted.clear();
         playerStatusController.add(statusIndex150);
@@ -1100,9 +1117,26 @@ void main() {
           )
           ..read(nowDisplayingProvider);
 
+        Future<void> waitForItem(String itemId) async {
+          final deadline = DateTime.now().add(const Duration(seconds: 5));
+          while (DateTime.now().isBefore(deadline)) {
+            final currentState = container.read(nowDisplayingProvider);
+            if (currentState is NowDisplayingSuccess &&
+                currentState.object is DP1NowDisplayingObject) {
+              final currentObject =
+                  currentState.object as DP1NowDisplayingObject;
+              if (currentObject.currentItem.id == itemId) {
+                return;
+              }
+            }
+            await Future<void>.delayed(const Duration(milliseconds: 40));
+          }
+          throw TimeoutException('Timed out waiting for $itemId');
+        }
+
         await Future<void>.delayed(Duration.zero);
         playerStatusController.add(statusIndex100);
-        await Future<void>.delayed(const Duration(milliseconds: 300));
+        await waitForItem('item_100');
 
         emitted.clear();
         playerStatusController.add(statusIndex150);
@@ -1278,7 +1312,9 @@ void main() {
 
         await Future<void>.delayed(Duration.zero);
         playerStatusController.add(statusIndex100);
-        await Future<void>.delayed(const Duration(milliseconds: 300));
+        await slowDb.enrichmentDone.future.timeout(
+          const Duration(seconds: 5),
+        );
 
         playerStatusController.add(statusIndex150);
         await Future<void>.delayed(const Duration(milliseconds: 40));

@@ -700,8 +700,24 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         inFlightToken != null &&
         _windowsEqual(window, inFlightWindow)) {
       final currentState = state;
-      if (currentState is NowDisplayingSuccess) {
-        return currentState;
+      if (currentState is NowDisplayingSuccess &&
+          currentState.object is DP1NowDisplayingObject) {
+        final currentObject = currentState.object as DP1NowDisplayingObject;
+        final items = currentObject.items;
+        final liveIndex = status.currentWorkIndex;
+        if (items.isNotEmpty &&
+            liveIndex != null &&
+            liveIndex >= 0 &&
+            liveIndex < items.length) {
+          return NowDisplayingSuccess(
+            DP1NowDisplayingObject(
+              connectedDevice: device,
+              index: liveIndex,
+              items: items,
+              isSleeping: status.isSleeping,
+            ),
+          );
+        }
       }
     }
 
