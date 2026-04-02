@@ -525,7 +525,19 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
                   textColor: AppColor.white,
                   color: Colors.transparent,
                   borderColor: AppColor.white,
-                  onTap: () {
+                  onTap: () async {
+                    if (latest != null) {
+                      // Manual cancel counts as dismissing this version so the
+                      // same stale build is not shown again while OTA catches
+                      // up and the device still reports the old version.
+                      await ref
+                          .read(appStateServiceProvider)
+                          .setDismissedUpdateVersion(
+                            deviceId: device.deviceId,
+                            version: latest,
+                          );
+                      if (!context.mounted) return;
+                    }
                     Navigator.pop(context, false);
                   },
                 ),

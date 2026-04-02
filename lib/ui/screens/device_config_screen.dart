@@ -491,18 +491,18 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                   textColor: AppColor.white,
                   color: Colors.transparent,
                   borderColor: AppColor.white,
-                  onTap: () {
+                  onTap: () async {
+                    final navigator = Navigator.of(context);
                     // Save the dismissed version so the prompt won't reappear
                     // until latestVersion changes on the device.
-                    unawaited(
-                      ref
-                          .read(appStateServiceProvider)
-                          .setDismissedUpdateVersion(
-                            deviceId: device.deviceId,
-                            version: latestVersion,
-                          ),
-                    );
-                    Navigator.pop(context, false);
+                    await ref
+                        .read(appStateServiceProvider)
+                        .setDismissedUpdateVersion(
+                          deviceId: device.deviceId,
+                          version: latestVersion,
+                        );
+                    if (!context.mounted) return;
+                    navigator.pop(false);
                   },
                 ),
               ),
