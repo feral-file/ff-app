@@ -58,6 +58,7 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
   final String _topicId;
   String? _activeTopicId;
   FF1DeviceStatus? _deviceStatus;
+  double? _volumeBeforeMute;
   double? _pendingVolume;
   bool? _pendingMuted;
 
@@ -95,6 +96,16 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
 
     final shouldBeMuted = value <= 0;
     final shouldToggleMute = shouldBeMuted != state.isMuted;
+    if (shouldBeMuted) {
+      final confirmedVolume = _deviceStatus?.volume?.toDouble();
+      if (confirmedVolume != null && confirmedVolume > 0) {
+        _volumeBeforeMute = confirmedVolume;
+      } else if (_volumeBeforeMute == null || _volumeBeforeMute! <= 0) {
+        _volumeBeforeMute = 50;
+      }
+    } else {
+      _volumeBeforeMute = value;
+    }
     _pendingVolume = value;
     if (shouldToggleMute) {
       _pendingMuted = shouldBeMuted;
@@ -135,7 +146,21 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
     }
 
     final previousState = state;
-    _pendingMuted = !state.isMuted;
+    if (state.isMuted) {
+      final restoredVolume = _restoredVolumeAfterMute();
+      _pendingVolume = restoredVolume;
+      _pendingMuted = false;
+    } else {
+      final confirmedVolume = _deviceStatus?.volume?.toDouble();
+      if (confirmedVolume != null && confirmedVolume > 0) {
+        _volumeBeforeMute = confirmedVolume;
+      } else if (_pendingVolume != null && _pendingVolume! > 0) {
+        _volumeBeforeMute = _pendingVolume;
+      } else if (_volumeBeforeMute == null || _volumeBeforeMute! <= 0) {
+        _volumeBeforeMute = 50;
+      }
+      _pendingMuted = true;
+    }
     state = _deriveState();
 
     final control = ref.read(ff1WifiControlProvider);
@@ -157,11 +182,15 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
     if (!isTopicActive) {
       _pendingVolume = null;
       _pendingMuted = null;
+      _volumeBeforeMute = null;
       return const FF1AudioControlState.initial();
     }
 
     final actualVolume = _deviceStatus?.volume?.toDouble();
     final actualMuted = _deviceStatus?.isMuted;
+    if (actualVolume != null && actualVolume > 0) {
+      _volumeBeforeMute = actualVolume;
+    }
     if (actualVolume == null && actualMuted == null) {
       final resolvedMuted = _pendingMuted ?? false;
       final rawVolume = _pendingVolume ?? 50;
@@ -181,7 +210,10 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
     }
 
     final resolvedMuted = _pendingMuted ?? actualMuted ?? false;
-    final rawVolume = _pendingVolume ?? actualVolume ?? 50;
+    final rawVolume = _resolvedVolume(
+      resolvedMuted: resolvedMuted,
+      actualVolume: actualVolume,
+    );
     // When muted, the device may still report the pre-mute level; the slider
     // should read as 0 so the thumb matches the muted icon tap.
     return FF1AudioControlState(
@@ -205,6 +237,7 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
 
     _activeTopicId = activeTopicId;
     _deviceStatus = null;
+    _volumeBeforeMute = null;
     _pendingVolume = null;
     _pendingMuted = null;
   }
@@ -224,6 +257,42 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
       orElse: () => '',
     );
     return activeTopicId == _topicId;
+  }
+
+  double _resolvedVolume({
+    required bool resolvedMuted,
+    required double? actualVolume,
+  }) {
+    final pendingVolume = _pendingVolume;
+    if (pendingVolume != null) {
+      if (!resolvedMuted && pendingVolume > 0) {
+        return pendingVolume;
+      }
+      if (resolvedMuted) {
+        return 0;
+      }
+    }
+
+    final deviceVolume = actualVolume ?? 50;
+    if (resolvedMuted) {
+      return 0;
+    }
+    if (deviceVolume > 0) {
+      return deviceVolume;
+    }
+    return _restoredVolumeAfterMute();
+  }
+
+  double _restoredVolumeAfterMute() {
+    final volume = _volumeBeforeMute;
+    if (volume != null && volume > 0) {
+      return volume;
+    }
+    final confirmedVolume = _deviceStatus?.volume?.toDouble();
+    if (confirmedVolume != null && confirmedVolume > 0) {
+      return confirmedVolume;
+    }
+    return 50;
   }
 }
 
@@ -268,11 +337,12 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
         },
       );
 
-    final streamState = ref.read(ff1FfpDdcPanelStatusStreamProvider(_topicId));
-    _deviceStatus = streamState.maybeWhen(
-      data: (status) => status,
-      orElse: () => const FfpDdcPanelStatus(),
-    );
+    _deviceStatus = ref
+        .read(ff1FfpDdcPanelStatusStreamProvider(_topicId))
+        .maybeWhen(
+          data: (status) => status,
+          orElse: () => const FfpDdcPanelStatus(),
+        );
     return _deriveState();
   }
 

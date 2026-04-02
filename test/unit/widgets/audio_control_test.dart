@@ -339,6 +339,80 @@ void main() {
     );
   });
 
+  testWidgets(
+    'unmuting restores the last non-zero volume immediately',
+    (tester) async {
+      final control = _FakeAudioWifiControl();
+      final deviceStatusStream = StreamController<FF1DeviceStatus>.broadcast();
+
+      addTearDown(deviceStatusStream.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ff1WifiControlProvider.overrideWithValue(control),
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1DeviceStatusStreamProvider.overrideWith(
+              (ref) => deviceStatusStream.stream,
+            ),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: AudioControl(topicId: device.topicId),
+            ),
+          ),
+        ),
+      );
+
+      deviceStatusStream.add(
+        const FF1DeviceStatus(
+          volume: 35,
+          isMuted: false,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final widget = tester.widget<IconSliderControl>(
+        find.byType(IconSliderControl),
+      );
+      widget.onIconTap?.call();
+      await tester.pumpAndSettle();
+
+      deviceStatusStream.add(
+        const FF1DeviceStatus(
+          volume: 0,
+          isMuted: true,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final mutedWidget = tester.widget<IconSliderControl>(
+        find.byType(IconSliderControl),
+      );
+      expect(mutedWidget.iconAsset, 'assets/images/icon_volume_muted.svg');
+      expect(mutedWidget.value, 0);
+
+      mutedWidget.onIconTap?.call();
+      await tester.pump();
+
+      final unmutedWidget = tester.widget<IconSliderControl>(
+        find.byType(IconSliderControl),
+      );
+      expect(unmutedWidget.iconAsset, 'assets/images/icon_volume.svg');
+      expect(
+        unmutedWidget.value,
+        35,
+        reason:
+            'The provider should keep the last confirmed non-zero volume and '
+            'restore it immediately when unmuting.',
+      );
+    },
+  );
+
   testWidgets('dragging from muted 0 to >0 unmutes before committing volume', (
     tester,
   ) async {

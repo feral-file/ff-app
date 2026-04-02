@@ -810,7 +810,7 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
               'notification_forwarded',
               'notification_type=${notification.notificationType.value}',
             );
-          } on Exception catch (e) {
+          } on Object catch (e) {
             _relayerIsolateLog('notification_parse_error', e.toString());
           }
         },
