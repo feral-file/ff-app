@@ -527,12 +527,21 @@ Future<void> _scheduleRequiredDeviceVersionCheck({
     );
     return;
   }
-  await _runRequiredDeviceVersionCheck(
-    ref: ref,
-    logger: logger,
-    device: device,
-    deviceStatus: deviceStatus,
-  );
+  try {
+    await _runRequiredDeviceVersionCheck(
+      ref: ref,
+      logger: logger,
+      device: device,
+      deviceStatus: deviceStatus,
+    );
+  } on Object catch (error, stack) {
+    logger.severe(
+      'Failed required device version compatibility check for '
+      '${device.deviceId}',
+      error,
+      stack,
+    );
+  }
 }
 
 // ============================================================================

@@ -249,7 +249,8 @@ void main() {
     );
 
     test(
-      'route top Route change resets nowDisplayingVisibility even if path is unchanged',
+      'route top Route change resets nowDisplayingVisibility '
+      'even if path is unchanged',
       () async {
         final container = ProviderContainer.test(
           overrides: [
@@ -294,13 +295,14 @@ void main() {
     );
 
     test(
-      'FF1 playlistId change through stream provider resets nowDisplayingVisibility',
+      'FF1 playlistId change through stream provider '
+      'resets nowDisplayingVisibility',
       () async {
         // [ff1CurrentPlayerStatusProvider] watches the stream for invalidation
         // but reads [FF1WifiControl.currentPlayerStatus]. Overriding only the
-        // stream without updating the control leaves playlistId stale — use
-        // [FakeWifiControl.emitPlayerStatus] so the stream and cache stay aligned
-        // (same as production notifications).
+        // stream without updating the control leaves playlistId stale. Use
+        // [FakeWifiControl.emitPlayerStatus] so the stream and cache stay
+        // aligned (same as production notifications).
         final fakeControl = FakeWifiControl();
 
         final container = ProviderContainer.test(
@@ -315,14 +317,14 @@ void main() {
 
         final resets = <bool>[];
 
-        container.listen<NowDisplayingVisibilityState>(
-          nowDisplayingVisibilityProvider,
-          (prev, next) {
-            resets.add(next.nowDisplayingVisibility);
-          },
-        );
-
-        container.read(nowDisplayingVisibilityProvider);
+        container
+          ..listen<NowDisplayingVisibilityState>(
+            nowDisplayingVisibilityProvider,
+            (prev, next) {
+              resets.add(next.nowDisplayingVisibility);
+            },
+          )
+          ..read(nowDisplayingVisibilityProvider);
 
         fakeControl.emitPlayerStatus(
           FF1PlayerStatus(
@@ -349,26 +351,32 @@ void main() {
         expect(
           resets,
           contains(true),
-          reason: 'Bar should be visible again after playlistId changed through stream',
+          reason:
+              'Bar should be visible again after playlistId changed '
+              'through stream',
         );
       },
     );
 
     test(
-      'FF1 player status stream reconnect transitions: known limitation documented',
+      'FF1 player status stream reconnect transitions: '
+      'known limitation documented',
       () async {
-        // LIMITATION: When listening to ff1CurrentPlayerStatusProvider (which collapses
-        // loading/error to null), playback changes may be missed during transient
-        // reconnect cycles. Example: data → null (on loading) → data again breaks our
-        // previous!=null guard because 'previous' becomes null during loading.
+        // LIMITATION: When listening to ff1CurrentPlayerStatusProvider (which
+        // collapses loading/error to null), playback changes may be missed
+        // during transient reconnect cycles. Example:
+        // data -> null (on loading) -> data again breaks our previous!=null
+        // guard because 'previous' becomes null during loading.
         //
         // This is acceptable because:
         // 1) Most reconnect cycles complete fast enough to avoid UI flicker
         // 2) The bar stays hidden during data load anyway
-        // 3) Full detection would require stream listener + mutable notifier state
+        // 3) Full detection would require stream listener + mutable notifier
+        //    state
         //
-        // Future: If reconnect UX becomes priority, listen to ff1PlayerStatusStreamProvider
-        // directly and track last data value in notifier state.
+        // Future: If reconnect UX becomes priority, listen to
+        // ff1PlayerStatusStreamProvider directly and track last data value in
+        // notifier state.
         final container = ProviderContainer.test(
           overrides: [
             allFF1BluetoothDevicesProvider.overrideWith(

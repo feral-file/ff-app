@@ -109,11 +109,6 @@ void main() {
             (ref) => Stream.value(const FF1ConnectionStatus(isConnected: true)),
           ),
           ff1DeviceConnectedProvider.overrideWithValue(true),
-          // Ensure cache is ready (empty) when _computeForDevice runs
-          // so missing = [dp1Item]
-          nowDisplayingCachedPlaylistItemsProvider.overrideWith(
-            (ref) => Future.value(<PlaylistItem>[]),
-          ),
         ],
       );
       addTearDown(container.dispose);
@@ -204,8 +199,7 @@ void main() {
           isA<LoadingNowDisplaying>(),
           reason:
               '_recompute sets Loading before _computeStatus; '
-              '_computeForDevice awaits '
-              'nowDisplayingCachedPlaylistItemsProvider.future before state = '
+              '_computeForDevice awaits the DB window read before state = '
               'success',
         );
 
@@ -747,6 +741,428 @@ void main() {
     );
 
     test(
+      'same playlist window shift updates current item '
+      'before slow cache completes',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        const n = 200;
+        final dp1Items = List<DP1PlaylistItem>.generate(
+          n,
+          (i) => DP1PlaylistItem(
+            id: 'item_$i',
+            duration: 60,
+            title: 'T$i',
+          ),
+        );
+
+        final statusIndex0 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 0,
+          items: dp1Items,
+        );
+        final statusIndex100 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 100,
+          items: dp1Items,
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        addTearDown(playerStatusController.close);
+
+        final slowDb = _RecordingDatabaseService(
+          db,
+          cacheDelay: const Duration(milliseconds: 250),
+        );
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => slowDb),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            streamBackedCurrentPlayerStatusOverride,
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final emitted = <NowDisplayingStatus>[];
+        final subscription = container.listen<NowDisplayingStatus>(
+          nowDisplayingProvider,
+          (_, next) => emitted.add(next),
+        );
+        addTearDown(subscription.close);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        playerStatusController.add(statusIndex0);
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+
+        emitted.clear();
+        final callsAfterFirstWindow = slowDb.getPlaylistItemsByIdsCalls.length;
+
+        playerStatusController.add(statusIndex100);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+
+        final stateWhileSlow = container.read(nowDisplayingProvider);
+        expect(stateWhileSlow, isA<NowDisplayingSuccess>());
+        final objectWhileSlow =
+            (stateWhileSlow as NowDisplayingSuccess).object
+                as DP1NowDisplayingObject;
+        expect(objectWhileSlow.currentItem.id, 'item_100');
+        expect(emitted.whereType<LoadingNowDisplaying>(), isEmpty);
+        expect(
+          slowDb.getPlaylistItemsByIdsCalls.length,
+          greaterThan(callsAfterFirstWindow),
+        );
+
+        await Future<void>.delayed(const Duration(milliseconds: 260));
+        final finalState = container.read(nowDisplayingProvider);
+        expect(finalState, isA<NowDisplayingSuccess>());
+        final finalObject =
+            (finalState as NowDisplayingSuccess).object
+                as DP1NowDisplayingObject;
+        expect(finalObject.currentItem.id, 'item_100');
+      },
+    );
+
+    test(
+      'newer same playlist window shift preempts older slow cache pass',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        const n = 200;
+        final dp1Items = List<DP1PlaylistItem>.generate(
+          n,
+          (i) => DP1PlaylistItem(
+            id: 'item_$i',
+            duration: 60,
+            title: 'T$i',
+          ),
+        );
+
+        final statusIndex100 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 100,
+          items: dp1Items,
+        );
+        final statusIndex150 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 150,
+          items: dp1Items,
+        );
+        final statusIndex175 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 175,
+          items: dp1Items,
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        addTearDown(playerStatusController.close);
+
+        final slowDb = _RecordingDatabaseService(
+          db,
+          cacheDelay: const Duration(milliseconds: 250),
+        );
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => slowDb),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            streamBackedCurrentPlayerStatusOverride,
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final emitted = <NowDisplayingStatus>[];
+        final subscription = container.listen<NowDisplayingStatus>(
+          nowDisplayingProvider,
+          (_, next) => emitted.add(next),
+        );
+        addTearDown(subscription.close);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        playerStatusController.add(statusIndex100);
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+
+        emitted.clear();
+        playerStatusController.add(statusIndex150);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        expect(
+          (container.read(nowDisplayingProvider) as NowDisplayingSuccess).object
+              as DP1NowDisplayingObject,
+          isNotNull,
+        );
+        expect(
+          ((container.read(nowDisplayingProvider) as NowDisplayingSuccess)
+                      .object
+                  as DP1NowDisplayingObject)
+              .currentItem
+              .id,
+          'item_150',
+        );
+
+        playerStatusController.add(statusIndex175);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+
+        final stateWhilePreempting = container.read(nowDisplayingProvider);
+        expect(stateWhilePreempting, isA<NowDisplayingSuccess>());
+        final objectWhilePreempting =
+            (stateWhilePreempting as NowDisplayingSuccess).object
+                as DP1NowDisplayingObject;
+        expect(
+          objectWhilePreempting,
+          isNotNull,
+        );
+        expect(
+          objectWhilePreempting.currentItem.id,
+          'item_175',
+          reason:
+              'The newer same-playlist update must publish immediately, '
+              'without waiting for the older slow cache pass to complete',
+        );
+        expect(emitted.whereType<LoadingNowDisplaying>(), isEmpty);
+
+        await Future<void>.delayed(const Duration(milliseconds: 260));
+        final finalState = container.read(nowDisplayingProvider);
+        expect(finalState, isA<NowDisplayingSuccess>());
+        expect(
+          ((finalState as NowDisplayingSuccess).object
+                  as DP1NowDisplayingObject)
+              .currentItem
+              .id,
+          'item_175',
+        );
+      },
+    );
+
+    test(
+      'same playlist window shift survives transient null while cache is slow',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        const n = 200;
+        final dp1Items = List<DP1PlaylistItem>.generate(
+          n,
+          (i) => DP1PlaylistItem(
+            id: 'item_$i',
+            duration: 60,
+            title: 'T$i',
+          ),
+        );
+        final token150 = AssetToken(
+          id: 150,
+          cid: 'eip155:1:erc721:0xabc:150',
+          chain: 'eip155:1',
+          standard: 'ERC-721',
+          contractAddress: '0xabc',
+          tokenNumber: '150',
+          display: TokenMetadata(
+            name: 'Enriched 150',
+            imageUrl: 'https://example.com/150.jpg',
+          ),
+        );
+        dp1Items[150] = DP1PlaylistItem(
+          id: 'item_150',
+          duration: 60,
+          title: 'T150',
+          provenance: DP1Provenance(
+            type: DP1ProvenanceType.onChain,
+            contract: DP1Contract(
+              chain: DP1ProvenanceChain.evm,
+              standard: DP1ProvenanceStandard.erc721,
+              address: '0xabc',
+              tokenId: '150',
+            ),
+          ),
+        );
+        final indexer = FakeIndexerService(tokensByCid: [token150]);
+
+        final statusIndex100 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 100,
+          items: dp1Items,
+        );
+        final statusIndex150 = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 150,
+          items: dp1Items,
+        );
+
+        final playerStatusController = StreamController<FF1PlayerStatus>(
+          sync: true,
+        );
+        addTearDown(playerStatusController.close);
+
+        final slowDb = _RecordingDatabaseService(
+          db,
+          cacheDelay: const Duration(milliseconds: 250),
+        );
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => slowDb),
+            indexerServiceProvider.overrideWithValue(indexer),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => playerStatusController.stream,
+            ),
+            streamBackedCurrentPlayerStatusOverride,
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final emitted = <NowDisplayingStatus>[];
+        final subscription = container.listen<NowDisplayingStatus>(
+          nowDisplayingProvider,
+          (_, next) => emitted.add(next),
+        );
+        addTearDown(subscription.close);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        playerStatusController.add(statusIndex100);
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+
+        emitted.clear();
+        playerStatusController.add(statusIndex150);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+
+        final stateDuringShift = container.read(nowDisplayingProvider);
+        expect(stateDuringShift, isA<NowDisplayingSuccess>());
+        final objectDuringShift =
+            (stateDuringShift as NowDisplayingSuccess).object
+                as DP1NowDisplayingObject;
+        expect(
+          objectDuringShift.currentItem.id,
+          'item_150',
+        );
+
+        playerStatusController.addError(StateError('transient reconnect'));
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+
+        final stateAfterNull = container.read(nowDisplayingProvider);
+        expect(stateAfterNull, isA<NowDisplayingSuccess>());
+        final objectAfterNull =
+            (stateAfterNull as NowDisplayingSuccess).object
+                as DP1NowDisplayingObject;
+        expect(
+          objectAfterNull.currentItem.id,
+          'item_150',
+          reason:
+              'Transient null must keep the just-published fallback window '
+              'instead of rewinding to the older success snapshot',
+        );
+        expect(emitted.whereType<LoadingNowDisplaying>(), isEmpty);
+        expect(
+          slowDb.getPlaylistItemsByIdsCalls,
+          isNotEmpty,
+          reason:
+              'The window cache read should still run for the shifted slice',
+        );
+        expect(
+          indexer.lastTokenCids,
+          isNotNull,
+          reason:
+              'The shifted window should request the token CID for the '
+              'enriched item',
+        );
+        expect(
+          indexer.lastTokenCids,
+          contains('eip155:1:erc721:0xabc:150'),
+        );
+        await slowDb.enrichmentDone.future.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => throw TimeoutException(
+            'Enrichment did not finish after the transient null gap; '
+            'savedEnriched=${slowDb.savedEnriched}',
+          ),
+        );
+        expect(slowDb.savedEnriched, isNotNull);
+        expect(
+          slowDb.savedEnriched!.any(
+            (item) =>
+                item.id == 'item_150' &&
+                item.thumbnailUrl == 'https://example.com/150.jpg',
+          ),
+          isTrue,
+          reason:
+              'The background enrichment pass should still complete and '
+              'persist the token-backed thumbnail even if the stream briefly '
+              'goes null',
+        );
+      },
+    );
+
+    test(
       'pause toggle with same playlist identity skips extra DB cache read',
       () async {
         const device = FF1Device(
@@ -905,6 +1321,112 @@ void main() {
               'requestedRange recompute must not use the identity fast-path; '
               'a wider scroll range needs another getPlaylistItemsByIds',
         );
+      },
+    );
+
+    test(
+      'expanded scroll range updates current item before slow cache completes',
+      () async {
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r1',
+          deviceId: 'device_1',
+          topicId: 'topic_1',
+        );
+
+        const n = 200;
+        final dp1Items = List<DP1PlaylistItem>.generate(
+          n,
+          (i) => DP1PlaylistItem(
+            id: 'item_$i',
+            duration: 60,
+            title: 'T$i',
+          ),
+        );
+
+        final status = FF1PlayerStatus(
+          playlistId: 'pl_1',
+          currentWorkIndex: 100,
+          items: dp1Items,
+        );
+
+        final slowDb = _RecordingDatabaseService(
+          db,
+          cacheDelay: const Duration(milliseconds: 250),
+        );
+
+        final container = ProviderContainer.test(
+          overrides: [
+            databaseServiceProvider.overrideWith((ref) => slowDb),
+            indexerServiceProvider.overrideWithValue(FakeIndexerService()),
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1PlayerStatusStreamProvider.overrideWith(
+              (ref) => Stream.value(status),
+            ),
+            streamBackedCurrentPlayerStatusOverride,
+            ff1ConnectionStatusStreamProvider.overrideWith(
+              (ref) =>
+                  Stream.value(const FF1ConnectionStatus(isConnected: true)),
+            ),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final emitted = <NowDisplayingStatus>[];
+        final subscription = container.listen<NowDisplayingStatus>(
+          nowDisplayingProvider,
+          (_, next) => emitted.add(next),
+        );
+        addTearDown(subscription.close);
+
+        container
+          ..listen<AsyncValue<FF1PlayerStatus>>(
+            ff1PlayerStatusStreamProvider,
+            (_, _) {},
+          )
+          ..read(nowDisplayingProvider);
+
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+
+        emitted.clear();
+        final callsBeforeExpand = slowDb.getPlaylistItemsByIdsCalls.length;
+
+        container
+            .read(nowDisplayingRequestedRangeProvider.notifier)
+            .expandTo(0, n);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+
+        final stateWhileSlow = container.read(nowDisplayingProvider);
+        expect(stateWhileSlow, isA<NowDisplayingSuccess>());
+        final objectWhileSlow =
+            (stateWhileSlow as NowDisplayingSuccess).object
+                as DP1NowDisplayingObject;
+        expect(objectWhileSlow.currentItem.id, 'item_100');
+        expect(
+          emitted.whereType<NowDisplayingSuccess>(),
+          isNotEmpty,
+          reason:
+              'Scroll expansion should publish a new success state immediately '
+              'instead of leaving the old state visible until cache completes',
+        );
+        expect(emitted.whereType<LoadingNowDisplaying>(), isEmpty);
+        expect(
+          slowDb.getPlaylistItemsByIdsCalls.length,
+          greaterThan(callsBeforeExpand),
+        );
+
+        await Future<void>.delayed(const Duration(milliseconds: 260));
+        final finalState = container.read(nowDisplayingProvider);
+        expect(finalState, isA<NowDisplayingSuccess>());
+        final finalObject =
+            (finalState as NowDisplayingSuccess).object
+                as DP1NowDisplayingObject;
+        expect(finalObject.currentItem.id, 'item_100');
       },
     );
 

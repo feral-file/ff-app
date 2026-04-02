@@ -130,7 +130,7 @@
   - no active device: now-displaying bar shows pair/connect guidance (invisible when not pairing)
   - disconnected state: now-displaying bar reflects connection transitions
   - enrichment failures do not block playback UI (fallback DP-1 item data remains)
-  - now-displaying stays aligned with live FF1 playback: enrichment uses local data when available and DP-1 fallback otherwise; the bar avoids a loading flash except when the playing **list** from FF1 changes (see `docs/app_flows.md` for window and overlay behavior).
+  - now-displaying stays aligned with live FF1 playback: enrichment uses local data when available and DP-1 fallback otherwise; same-playlist window changes (index shifts or scroll expansion) update immediately with DP-1 fallback rows while the cache/enrichment pass fills them in, and the bar avoids a loading flash except when the playing **list** from FF1 changes (see `docs/app_flows.md` for window and overlay behavior).
 
 ### Flow: Maintenance and recovery
 

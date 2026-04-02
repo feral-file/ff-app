@@ -9,7 +9,9 @@ import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
+import 'package:app/infra/services/indexer_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Half-size of the now-displaying items window (index ± this value).
@@ -59,6 +61,111 @@ bool _windowsEqual(
   return a.start == b.start && a.end == b.end;
 }
 
+List<PlaylistItem> _buildDp1FallbackPlaylistItems(
+  List<DP1PlaylistItem> items,
+) {
+  return [
+    for (final item in items)
+      PlaylistItem(
+        id: item.id,
+        kind: PlaylistItemKind.dp1Item,
+        title: item.title,
+        duration: item.duration,
+      ),
+  ];
+}
+
+Future<List<PlaylistItem>> _buildNowDisplayingPlaylistItems({
+  required DatabaseService databaseService,
+  required IndexerService indexerService,
+  required List<DP1PlaylistItem> items,
+  required int start,
+  required int end,
+}) async {
+  final windowItems = items.sublist(start, end);
+  final windowIds = [for (final item in windowItems) item.id];
+
+  List<PlaylistItem> cachedList;
+  if (windowIds.isEmpty) {
+    cachedList = <PlaylistItem>[];
+  } else {
+    try {
+      cachedList = await databaseService.getPlaylistItemsByIds(windowIds);
+    } on Object {
+      // Cache/enrichment failures must not block the playback UI; fall back to
+      // DP-1 fields and treat the cache as empty.
+      cachedList = <PlaylistItem>[];
+    }
+  }
+  final cachedById = <String, PlaylistItem>{
+    for (final p in cachedList) p.id: p,
+  };
+
+  // Enrich only items not already in cache to preserve offline-first
+  // contract.
+  // Cache misses are enriched from indexer; cache hits are served directly.
+  final missingItems = windowItems
+      .where((item) => !cachedById.containsKey(item.id))
+      .toList();
+  final enriched = missingItems.isNotEmpty
+      ? await _enrichMissingNowDisplayingItems(
+          databaseService: databaseService,
+          indexerService: indexerService,
+          missing: missingItems,
+        )
+      : <String, PlaylistItem>{};
+
+  final playlistItems = _buildDp1FallbackPlaylistItems(items);
+  for (var i = start; i < end; i++) {
+    playlistItems[i] =
+        enriched[items[i].id] ?? cachedById[items[i].id] ?? playlistItems[i];
+  }
+  return playlistItems;
+}
+
+/// Fetches tokens for missing DP1 items from the indexer and persists the
+/// missing window items to the local cache.
+///
+/// Only attempts enrichment for items not already in cache (cache-first
+/// contract). Items that do not resolve to an indexer token are persisted as
+/// DP-1 fallback rows, so subsequent passes can serve them from local state.
+///
+/// On indexer failure, returns empty map; cached items are served normally,
+/// preserving offline-first contract. Does not invalidate cache to avoid
+/// infinite recompute loops.
+///
+/// Returns a map of item id to enriched [PlaylistItem] for items successfully
+/// saved to cache.
+Future<Map<String, PlaylistItem>> _enrichMissingNowDisplayingItems({
+  required DatabaseService databaseService,
+  required IndexerService indexerService,
+  required List<DP1PlaylistItem> missing,
+}) async {
+  if (missing.isEmpty) return <String, PlaylistItem>{};
+
+  final cids = databaseService.extractDP1ItemCids(missing);
+  if (cids.isEmpty) return <String, PlaylistItem>{};
+
+  try {
+    final tokens = await indexerService.getManualTokens(tokenCids: cids);
+    final toSave = buildEnrichedPlaylistItemsToSave(
+      missingItems: missing,
+      tokens: tokens,
+    );
+    if (toSave.isEmpty) return <String, PlaylistItem>{};
+
+    await databaseService.upsertPlaylistItemsEnriched(
+      toSave,
+      shouldForce: false,
+    );
+    return {for (final p in toSave) p.id: p};
+  } on Exception {
+    // On indexer failure, return empty map; cache-first contract
+    // ensures cached items are served from local state.
+    return <String, PlaylistItem>{};
+  }
+}
+
 _NowDisplayingRecomputeCause _mergeRecomputeCauses(
   _NowDisplayingRecomputeCause a,
   _NowDisplayingRecomputeCause b,
@@ -77,14 +184,6 @@ String? _deviceIdFromAsync(AsyncValue<FF1Device?>? asyncValue) {
     error: (_, _) => null,
   );
 }
-
-/// Item IDs from current FF1 player status (for cache lookup).
-final nowDisplayingItemIdsProvider = Provider<List<String>>((ref) {
-  final status = ref.watch(ff1CurrentPlayerStatusProvider);
-  final items = status?.items;
-  if (items == null || items.isEmpty) return [];
-  return items.map((e) => e.id).toList();
-});
 
 /// User-requested range from scrolling in the expanded bar.
 /// When set, the effective window is merged with the base window
@@ -199,24 +298,6 @@ final nowDisplayingWindowProvider = Provider<({int start, int end})?>((ref) {
   return (start: start, end: end);
 });
 
-/// Item IDs in the current window only (for cache and enrichment).
-final nowDisplayingWindowItemIdsProvider = Provider<List<String>>((ref) {
-  final ids = ref.watch(nowDisplayingItemIdsProvider);
-  final window = ref.watch(nowDisplayingWindowProvider);
-  if (ids.isEmpty || window == null) return [];
-  return ids.sublist(window.start, window.end);
-});
-
-/// Cached [PlaylistItem]s for the current now-displaying item IDs in window
-/// only.
-/// Used to show enriched data (e.g. thumbnail, artists) when available locally.
-final nowDisplayingCachedPlaylistItemsProvider =
-    FutureProvider<List<PlaylistItem>>((ref) async {
-      final ids = ref.watch(nowDisplayingWindowItemIdsProvider);
-      if (ids.isEmpty) return [];
-      return ref.read(databaseServiceProvider).getPlaylistItemsByIds(ids);
-    });
-
 /// Now displaying state derived from FF1 device + player status.
 ///
 /// This replaces the legacy `NowDisplayingManager` stream-based implementation.
@@ -241,9 +322,10 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
 
   /// Index from the last successful full compute.
   ///
-  /// Why: ff1CurrentPlayerStatusProvider intentionally maps stream
-  /// loading/error to null. A reconnect/resubscribe can briefly produce:
-  /// `data -> null -> same data` without any playlist identity change.
+  /// Why: ff1CurrentPlayerStatusProvider can briefly become null during
+  /// reconnect/teardown or before the first player-status payload arrives. A
+  /// reconnect/resubscribe can produce `data -> null -> same data` without any
+  /// playlist identity change.
   ///
   /// We keep showing the last known now-displaying state across that transient
   /// gap so the UI does not flash loading or clear the expanded window.
@@ -388,7 +470,21 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
       )
       ..listen<AsyncValue<FF1PlayerStatus>>(
         ff1PlayerStatusStreamProvider,
-        (_, _) => _enqueueRecompute(_NowDisplayingRecomputeCause.generic),
+        (_, next) {
+          // A transient stream gap during reconnect should keep the current
+          // now-displaying snapshot alive. If we enqueue a fresh recompute
+          // here, we invalidate the in-flight same-playlist fallback/enrichment
+          // pass and risk dropping back to the older window until the stream
+          // resumes.
+          if (next.isLoading || next.hasError) {
+            final currentState = state;
+            if (currentState is NowDisplayingSuccess &&
+                currentState.object is DP1NowDisplayingObject) {
+              return;
+            }
+          }
+          _enqueueRecompute(_NowDisplayingRecomputeCause.generic);
+        },
       )
       ..listen<AsyncValue<FF1ConnectionStatus>>(
         ff1ConnectionStatusStreamProvider,
@@ -465,9 +561,8 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
 
     final status = ref.read(ff1CurrentPlayerStatusProvider);
     if (status == null) {
-      // ff1CurrentPlayerStatusProvider maps stream loading/error to null. A
-      // reconnect/resubscribe can briefly produce:
-      //   data -> null -> same data
+      // A reconnect/resubscribe can briefly produce `data -> null -> same data`
+      // without any playlist identity change.
       // This is not a playback reset and must not clear identity or flash a
       // loading overlay for the same playing list.
       final lastIdentity = _lastFullComputeIdentity;
@@ -480,6 +575,14 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
           lastIsSleeping != null &&
           lastIndex >= 0 &&
           lastIndex < lastItems.length) {
+        final currentState = state;
+        if (currentState is NowDisplayingSuccess &&
+            currentState.object is DP1NowDisplayingObject) {
+          final currentObject = currentState.object as DP1NowDisplayingObject;
+          if (currentObject.connectedDevice.deviceId == device.deviceId) {
+            return currentState;
+          }
+        }
         return NowDisplayingSuccess(
           DP1NowDisplayingObject(
             connectedDevice: device,
@@ -513,7 +616,9 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     }
 
     final identity = _playlistIdentityFromStatus(status);
-
+    final token = _recomputeToken;
+    final databaseService = ref.read(databaseServiceProvider);
+    final indexerService = ref.read(indexerServiceProvider);
     // Fast path: same playlist + same ordered item ids, and the same visible
     // index window as the last full compute (pause / sleep / tiny index nudge
     // that does not move [start,end)). Skip SQLite + indexer.
@@ -579,55 +684,78 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
     final window = ref.read(nowDisplayingWindowProvider);
     final start = window?.start ?? 0;
     final end = window?.end ?? items.length;
+    final fallbackPlaylistItems = _buildDp1FallbackPlaylistItems(items);
 
-    // Await DB-backed cache: a synchronous read of the FutureProvider only
-    // sees AsyncLoading while getPlaylistItemsByIds runs, which would leave
-    // cachedById empty and treat every window item as missing (extra indexer
-    // and enrichment work). Waiting for .future matches the actual cache state.
-    List<PlaylistItem> cachedList;
-    try {
-      cachedList = await ref.read(
-        nowDisplayingCachedPlaylistItemsProvider.future,
+    final shouldPublishImmediateFallback =
+        identity != null &&
+        _lastFullComputeIdentity != null &&
+        _playlistIdentitiesEqual(identity, _lastFullComputeIdentity) &&
+        window != null &&
+        _lastFullComputeWindow != null &&
+        !_windowsEqual(window, _lastFullComputeWindow!);
+    if (shouldPublishImmediateFallback) {
+      final fallbackState = NowDisplayingSuccess(
+        DP1NowDisplayingObject(
+          connectedDevice: device,
+          index: index,
+          items: fallbackPlaylistItems,
+          isSleeping: status.isSleeping,
+        ),
       );
-    } on Object catch (_) {
-      // Prior behavior: treat failed cache read like empty cache (no hits).
-      cachedList = <PlaylistItem>[];
+      state = fallbackState;
+      unawaited(
+        () async {
+          List<PlaylistItem> playlistItems;
+          try {
+            playlistItems = await _buildNowDisplayingPlaylistItems(
+              databaseService: databaseService,
+              indexerService: indexerService,
+              items: items,
+              start: start,
+              end: end,
+            );
+          } on Object {
+            // Keep the immediate DP-1 fallback state if cache/enrichment fails.
+            return;
+          }
+          if (!ref.mounted || token != _recomputeToken) {
+            return;
+          }
+          _lastFullComputeIdentity = identity;
+          _lastFullSuccessPlaylistItems = playlistItems;
+          _lastFullSuccessIndex = index;
+          _lastFullSuccessIsSleeping = status.isSleeping;
+          _lastFullSuccessDeviceId = device.deviceId;
+          _lastFullComputeWindow = (start: start, end: end);
+          state = NowDisplayingSuccess(
+            DP1NowDisplayingObject(
+              connectedDevice: device,
+              index: index,
+              items: playlistItems,
+              isSleeping: status.isSleeping,
+            ),
+          );
+        }(),
+      );
+      return fallbackState;
     }
-    final cachedById = <String, PlaylistItem>{
-      for (final p in cachedList) p.id: p,
-    };
 
-    // Enrich only items not already in cache to preserve offline-first
-    // contract.
-    // Cache misses are enriched from indexer; cache hits are served directly.
-    final windowItems = items.sublist(start, end);
-    final missingItems = windowItems
-        .where((item) => !cachedById.containsKey(item.id))
-        .toList();
-    final enriched = missingItems.isNotEmpty
-        ? await _enrichMissingNowDisplayingItems(missingItems)
-        : <String, PlaylistItem>{};
-
-    // Build full list: window = enriched/cached/fallback; outside window = DP1
-    // fallback only.
-    final playlistItems = [
-      for (var i = 0; i < items.length; i++)
-        (i >= start && i < end)
-            ? (enriched[items[i].id] ??
-                  cachedById[items[i].id] ??
-                  PlaylistItem(
-                    id: items[i].id,
-                    kind: PlaylistItemKind.dp1Item,
-                    title: items[i].title,
-                    duration: items[i].duration,
-                  ))
-            : PlaylistItem(
-                id: items[i].id,
-                kind: PlaylistItemKind.dp1Item,
-                title: items[i].title,
-                duration: items[i].duration,
-              ),
-    ];
+    List<PlaylistItem> playlistItems;
+    try {
+      playlistItems = await _buildNowDisplayingPlaylistItems(
+        databaseService: databaseService,
+        indexerService: indexerService,
+        items: items,
+        start: start,
+        end: end,
+      );
+    } on Object {
+      // Keep now-displaying aligned with FF1 even if cache/enrichment fails.
+      playlistItems = fallbackPlaylistItems;
+    }
+    if (!ref.mounted || token != _recomputeToken) {
+      return state;
+    }
 
     // Full compute succeeded; record identity + items + window for loading +
     // fast-path.
@@ -673,51 +801,6 @@ class NowDisplayingNotifier extends Notifier<NowDisplayingStatus> {
         isSleeping: lastIsSleeping,
       ),
     );
-  }
-
-  /// Fetches tokens for missing DP1 items from the indexer and persists only
-  /// items with successful enrichment (token found) to the local cache.
-  ///
-  /// Only attempts enrichment for items not already in cache (cache-first
-  /// contract). Items without CID or those not found by indexer are not cached;
-  /// they remain as DP1 fallback in now-displaying but are not persisted to
-  /// avoid stale data.
-  ///
-  /// On indexer failure, returns empty map; cached items are served normally,
-  /// preserving offline-first contract. Does not invalidate cache to avoid
-  /// infinite recompute loops.
-  ///
-  /// Returns a map of item id to enriched [PlaylistItem] for items successfully
-  /// saved to cache.
-  Future<Map<String, PlaylistItem>> _enrichMissingNowDisplayingItems(
-    List<DP1PlaylistItem> missing,
-  ) async {
-    if (missing.isEmpty) return <String, PlaylistItem>{};
-
-    final databaseService = ref.read(databaseServiceProvider);
-    final indexerService = ref.read(indexerServiceProvider);
-
-    final cids = databaseService.extractDP1ItemCids(missing);
-    if (cids.isEmpty) return <String, PlaylistItem>{};
-
-    try {
-      final tokens = await indexerService.getManualTokens(tokenCids: cids);
-      final toSave = buildEnrichedPlaylistItemsToSave(
-        missingItems: missing,
-        tokens: tokens,
-      );
-      if (toSave.isEmpty) return <String, PlaylistItem>{};
-
-      await databaseService.upsertPlaylistItemsEnriched(
-        toSave,
-        shouldForce: false,
-      );
-      return {for (final p in toSave) p.id: p};
-    } on Exception {
-      // On indexer failure, return empty map; cache-first contract
-      // ensures cached items are served from local state.
-      return <String, PlaylistItem>{};
-    }
   }
 }
 
