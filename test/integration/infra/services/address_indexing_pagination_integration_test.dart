@@ -1,3 +1,4 @@
+import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/services/domain_address_service.dart';
@@ -31,7 +32,6 @@ void main() {
     );
   });
 
-  // Integration test: resolves ENS to address, runs indexing, and validates offset-cursor pagination.
   test(
     'indexes reas.eth and paginates token pages without duplicate CIDs',
     () async {
@@ -75,7 +75,7 @@ void main() {
 
       expect(
         tokens.length,
-        greaterThan(50),
+        greaterThan(indexerTokensPageSize),
         reason: 'Expected more than one page for reas.eth after indexing.',
       );
       expect(
