@@ -157,8 +157,7 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
       try {
         final next = await control.deviceStatusStream
             .firstWhere(
-              (status) =>
-                  !_ff1DeviceAudioSnapshotsEqual(baseline, status),
+              (status) => !_ff1DeviceAudioSnapshotsEqual(baseline, status),
             )
             .timeout(const Duration(seconds: 3));
         _deviceStatus = next;
@@ -206,6 +205,7 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
       await control.toggleMute(topicId: _topicId);
     } on Exception {
       _pendingMuted = null;
+      _pendingVolume = null;
       state = previousState;
       rethrow;
     }

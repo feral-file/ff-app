@@ -80,6 +80,7 @@ void main() {
         );
         addTearDown(container.dispose);
 
+        await wifi.connect(device: device, userId: 'user', apiKey: 'key');
         wifi.emitDeviceStatus(
           const FF1DeviceStatus(volume: 50, isMuted: true),
         );
@@ -160,8 +161,7 @@ void main() {
           topicId: topicId,
         );
 
-        final wifi = _VolumeCommitTestWifiControl()
-          ..failToggleMute = true;
+        final wifi = _VolumeCommitTestWifiControl()..failToggleMute = true;
 
         final container = ProviderContainer.test(
           overrides: [
@@ -193,6 +193,58 @@ void main() {
 
         expect(wifi.toggleMuteCount, 1);
         expect(wifi.setVolumeCallCount, 0);
+      },
+    );
+
+    test(
+      'toggleMute failure clears restored volume draft before later status '
+      'updates',
+      () async {
+        const topicId = 'topic-tr';
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r5',
+          deviceId: 'd5',
+          topicId: topicId,
+        );
+
+        final wifi = _VolumeCommitTestWifiControl()..failToggleMute = true;
+        FF1DeviceStatus? currentDeviceStatus = const FF1DeviceStatus(
+          volume: 50,
+          isMuted: true,
+        );
+
+        final container = ProviderContainer.test(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData<FF1Device?>(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(wifi),
+            ff1CurrentDeviceStatusProvider.overrideWith(
+              (ref) => currentDeviceStatus,
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await Future<void>.delayed(Duration.zero);
+
+        final notifier = container.read(
+          ff1AudioControlProvider(topicId).notifier,
+        );
+
+        await expectLater(
+          notifier.toggleMute(),
+          throwsException,
+        );
+
+        currentDeviceStatus = const FF1DeviceStatus(volume: 40, isMuted: false);
+        container.invalidate(ff1CurrentDeviceStatusProvider);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        final state = container.read(ff1AudioControlProvider(topicId));
+        expect(state.isMuted, isFalse);
+        expect(state.volume, 40);
       },
     );
   });
