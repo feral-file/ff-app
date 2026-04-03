@@ -1,6 +1,12 @@
+import 'dart:async';
+
+import 'package:app/app/ff1/ff1_firmware_update_prompt_orchestrator.dart';
+import 'package:app/app/ff1/ff1_firmware_update_prompt_service.dart';
+import 'package:app/app/ff1/ff1_relayer_firmware_update_service.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_device_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/app/route_observer.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
@@ -10,6 +16,7 @@ import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/custom_app_bar.dart';
 import 'package:app/widgets/buttons/primary_button.dart';
 import 'package:app/widgets/device_configuration/audio_control.dart';
@@ -22,6 +29,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:logging/logging.dart';
 
 /// Payload for the device config screen
 class DeviceConfigPayload {
@@ -49,17 +57,83 @@ class DeviceConfigScreen extends ConsumerStatefulWidget {
   ConsumerState<DeviceConfigScreen> createState() => _DeviceConfigScreenState();
 }
 
+final _log = Logger('DeviceConfigScreen');
+
 class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     with RouteAware {
   bool _isShowingQRCode = false;
+  bool _isRouteVisible = false;
+
+  /// App-layer session for auto firmware prompt (dedupe, in-flight guard).
+  Ff1FirmwarePromptSessionState _promptSession =
+      const Ff1FirmwarePromptSessionState();
 
   @override
   void initState() {
     super.initState();
+    // Schedule an initial check after the first frame; device status may
+    // already be available if the screen is opened while WiFi is connected.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdatePrompt());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is ModalRoute<void>) {
+      routeObserver.subscribe(this, route);
+      _isRouteVisible = route.isCurrent;
+    }
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPush() {
+    super.didPush();
+    _isRouteVisible = true;
+    _checkUpdatePrompt();
+  }
+
+  @override
+  void didPopNext() {
+    super.didPopNext();
+    _isRouteVisible = true;
+    _checkUpdatePrompt();
+  }
+
+  @override
+  void didPushNext() {
+    super.didPushNext();
+    _isRouteVisible = false;
+  }
+
+  @override
+  void didPop() {
+    super.didPop();
+    _isRouteVisible = false;
   }
 
   @override
   Widget build(BuildContext context) {
+    // Prompt only on fresh relayer/connectivity updates. Active-device changes
+    // alone can race with the auto-connect handoff and briefly expose stale
+    // status from the previous device, so we avoid using them as a prompt
+    // trigger.
+    ref
+      ..listen(
+        ff1CurrentDeviceStatusProvider,
+        (_, _) => _checkUpdatePrompt(),
+      )
+      ..listen(
+        ff1DeviceConnectedProvider,
+        (_, _) => _checkUpdatePrompt(),
+      );
+
     return ref
         .watch(activeFF1BluetoothDeviceProvider)
         .maybeWhen(
@@ -315,6 +389,210 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ],
       ),
     );
+  }
+
+  // ===========================================================================
+  // Update prompt
+  // ===========================================================================
+
+  /// Checks whether an update prompt should be shown and schedules it.
+  ///
+  /// Called after the first frame and on each device status notification.
+  /// Session dedupe tracks which latest version we already prompted for so a
+  /// newer reported latest can show again without leaving this screen.
+  void _checkUpdatePrompt() {
+    if (!mounted || !_isRouteVisible) return;
+
+    final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
+    final device = ref
+        .read(activeFF1BluetoothDeviceProvider)
+        .maybeWhen(data: (d) => d, orElse: () => null);
+
+    final dismissedVersion = device == null
+        ? ''
+        : ref
+              .read(ff1FirmwareUpdatePromptServiceProvider)
+              .getDismissedLatestVersionForDevice(device.deviceId);
+
+    final output = computeFirmwareUpdatePromptTick(
+      session: _promptSession,
+      activeDeviceId: device?.deviceId,
+      isInSetupProcess: widget.payload.isInSetupProcess,
+      isRelayerConnected: ref.read(ff1DeviceConnectedProvider),
+      installedVersion: deviceStatus?.installedVersion,
+      latestVersion: deviceStatus?.latestVersion,
+      dismissedLatestVersionForDevice: dismissedVersion,
+    );
+
+    _promptSession = output.session;
+
+    final show = output.show;
+    if (show == null || device == null) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isRouteVisible) {
+        _promptSession = Ff1FirmwarePromptSessionState(
+          lastDeviceId: device.deviceId,
+        );
+        return;
+      }
+
+      final currentDevice = ref
+          .read(activeFF1BluetoothDeviceProvider)
+          .maybeWhen(data: (d) => d, orElse: () => null);
+      if (currentDevice?.deviceId != device.deviceId) {
+        _promptSession = Ff1FirmwarePromptSessionState(
+          lastDeviceId: currentDevice?.deviceId,
+        );
+        return;
+      }
+
+      unawaited(
+        _showUpdatePromptDialog(
+          device: device,
+          installedVersion: show.installedVersion,
+          latestVersion: show.latestVersion,
+        ),
+      );
+    });
+  }
+
+  Future<void> _showUpdatePromptDialog({
+    required FF1Device device,
+    required String installedVersion,
+    required String latestVersion,
+  }) async {
+    try {
+      await _runUpdatePromptDialog(
+        device: device,
+        installedVersion: installedVersion,
+        latestVersion: latestVersion,
+      );
+    } finally {
+      if (mounted) {
+        _promptSession = clearFirmwareUpdatePromptInFlight(_promptSession);
+        _checkUpdatePrompt();
+      }
+    }
+  }
+
+  Future<void> _runUpdatePromptDialog({
+    required FF1Device device,
+    required String installedVersion,
+    required String latestVersion,
+  }) async {
+    final result = await UIHelper.showCenterDialog(
+      context,
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Update Available',
+            style: AppTypography.body(context).bold.white,
+          ),
+          SizedBox(height: LayoutConstants.space4),
+          Text(
+            'A new version of FF1 firmware is available. '
+            'Update now to get the latest improvements.',
+            style: AppTypography.body(context).white,
+          ),
+          SizedBox(height: LayoutConstants.space10),
+          Row(
+            children: [
+              Expanded(
+                child: PrimaryAsyncButton(
+                  text: 'Later',
+                  textColor: AppColor.white,
+                  color: Colors.transparent,
+                  borderColor: AppColor.white,
+                  onTap: () async {
+                    final navigator = Navigator.of(context);
+                    // Save the dismissed version so the prompt won't reappear
+                    // until latestVersion changes on the device.
+                    await ref
+                        .read(ff1FirmwareUpdatePromptServiceProvider)
+                        .dismissLatestVersionForDevice(
+                          deviceId: device.deviceId,
+                          version: latestVersion,
+                        );
+                    if (!context.mounted) return;
+                    navigator.pop(false);
+                  },
+                ),
+              ),
+              SizedBox(width: LayoutConstants.space4),
+              Expanded(
+                child: PrimaryAsyncButton(
+                  text: 'Update Now',
+                  textColor: AppColor.white,
+                  color: Colors.transparent,
+                  borderColor: AppColor.white,
+                  onTap: () async {
+                    final outcome = await ref
+                        .read(ff1RelayerFirmwareUpdateServiceProvider)
+                        .start(topicId: device.topicId);
+                    if (!mounted) return;
+                    switch (outcome) {
+                      case Ff1RelayerFirmwareUpdateOutcome.success:
+                        _log.info('[Update Prompt] Relayer accepted update');
+                        // Success = command accepted; installed lags until OTA
+                        // finishes. Dismiss like Later so finally does not
+                        // re-offer the same latest build.
+                        await ref
+                            .read(ff1FirmwareUpdatePromptServiceProvider)
+                            .dismissLatestVersionForDevice(
+                              deviceId: device.deviceId,
+                              version: latestVersion,
+                            );
+                        if (!mounted) return;
+                        Navigator.pop(context, true);
+                        return;
+                      case Ff1RelayerFirmwareUpdateOutcome.missingTopic:
+                        _log.warning('[Update Prompt] Missing topicId');
+                        Navigator.pop(context, Exception('missing topic'));
+                        return;
+                      case Ff1RelayerFirmwareUpdateOutcome.relayerRejected:
+                        _log.warning(
+                          '[Update Prompt] Relayer returned unsuccessful '
+                          'response',
+                        );
+                        Navigator.pop(context, Exception('relayer rejected'));
+                        return;
+                      case Ff1RelayerFirmwareUpdateOutcome.commandFailed:
+                        _log.warning('[Update Prompt] Update command failed');
+                        Navigator.pop(context, Exception('command failed'));
+                        return;
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (result is bool && result) {
+      // Do not pass onClose: showInfoDialog already pops the sheet; an extra
+      // context.pop() would remove DeviceConfigScreen underneath.
+      await UIHelper.showInfoDialog(
+        context,
+        'Update Started',
+        'The FF1 is now downloading and installing the latest '
+            'firmware. It will restart automatically when complete.',
+        closeButton: 'OK',
+      );
+    } else if (result is Exception || result is Error) {
+      await UIHelper.showInfoDialog(
+        context,
+        'Update Failed',
+        'Something went wrong while starting the update. Please try again.',
+      );
+    }
   }
 
   Widget _displayOrientationPreview(ScreenOrientation? screenOrientation) {

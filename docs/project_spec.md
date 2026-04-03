@@ -230,6 +230,7 @@
 - Purpose: discover/pair FF1 and configure connectivity/device settings.
 - Entry points: onboarding setup, menu FF1 Settings, QR deeplinks.
 - Key actions: BLE scan/connect, Wi-Fi selection/credentials, finalize pairing, adjust orientation/scaling/audio.
+- Firmware updates: Device Configuration can prompt when a newer version is reported (only after setup, not during the initial setup visit); eligibility is re-checked when relayer connectivity or version fields change so a late relayer connection still surfaces the prompt; at most one auto-prompt dialog is scheduled or open at a time. If the reported latest version changes during the same visit, the prompt may appear again for the new version (subject to dismissal). Manual **Update FF1** is shown only when the relayer has already reported both `installedVersion` and `latestVersion`; the prompt and manual action both start the update over Wi-Fi/relayer only (no Bluetooth firmware update from the app). Prompt orchestration (session dedupe, in-flight guard) and relayer update start live in app-layer code shared by the screen and options entry points.
 - Important data: BLE state, FF1 device info/topicId, device/player status streams.
 - Related modules: FF1 providers (BLE + Wi-Fi), FF1 services, ObjectBox device store.
 

@@ -234,7 +234,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(11, 4993529541343759207),
     name: 'AppStateEntity',
-    lastPropertyId: const obx_int.IdUid(11, 8754748133787260182),
+    lastPropertyId: const obx_int.IdUid(12, 2425657824502554571),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -296,6 +296,12 @@ final _entities = <obx_int.ModelEntity>[
         id: const obx_int.IdUid(11, 8754748133787260182),
         name: 'isMigratedV2',
         type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(12, 2425657824502554571),
+        name: 'dismissedUpdateVersionsJson',
+        type: 9,
         flags: 0,
       ),
     ],
@@ -724,7 +730,10 @@ obx_int.ModelDefinition getObjectBoxModel() {
       },
       objectToFB: (AppStateEntity object, fb.Builder fbb) {
         final scopeOffset = fbb.writeString(object.scope);
-        fbb.startTable(12);
+        final dismissedUpdateVersionsJsonOffset = fbb.writeString(
+          object.dismissedUpdateVersionsJson,
+        );
+        fbb.startTable(13);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, scopeOffset);
         fbb.addInt64(2, object.globalLastRefreshEpochUs);
@@ -735,6 +744,7 @@ obx_int.ModelDefinition getObjectBoxModel() {
         fbb.addInt64(7, object.updatedAtUs);
         fbb.addBool(9, object.hasCompletedSeedDownload);
         fbb.addBool(10, object.isMigratedV2);
+        fbb.addOffset(11, dismissedUpdateVersionsJsonOffset);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -786,6 +796,9 @@ obx_int.ModelDefinition getObjectBoxModel() {
           22,
           false,
         );
+        final dismissedUpdateVersionsJsonParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 26, '');
         final updatedAtUsParam = const fb.Int64Reader().vTableGet(
           buffer,
           rootOffset,
@@ -801,6 +814,7 @@ obx_int.ModelDefinition getObjectBoxModel() {
           hasSeenPlayToFf1Tooltip: hasSeenPlayToFf1TooltipParam,
           isMigratedV2: isMigratedV2Param,
           hasCompletedSeedDownload: hasCompletedSeedDownloadParam,
+          dismissedUpdateVersionsJson: dismissedUpdateVersionsJsonParam,
           updatedAtUs: updatedAtUsParam,
         )..id = const fb.Int64Reader().vTableGet(buffer, rootOffset, 4, 0);
 
@@ -1076,6 +1090,10 @@ class AppStateEntity_ {
   static final isMigratedV2 = obx.QueryBooleanProperty<AppStateEntity>(
     _entities[3].properties[9],
   );
+
+  /// See [AppStateEntity.dismissedUpdateVersionsJson].
+  static final dismissedUpdateVersionsJson =
+      obx.QueryStringProperty<AppStateEntity>(_entities[3].properties[10]);
 }
 
 /// [TrackedAddressEntity] entity fields to define ObjectBox queries.

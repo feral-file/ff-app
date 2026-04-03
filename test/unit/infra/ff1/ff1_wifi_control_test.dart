@@ -1,3 +1,8 @@
+// This test file keeps a few style lints suppressed so the regression test can
+// stay focused on the connection-state behavior added by the firmware-update
+// work.
+// ignore_for_file: lines_longer_than_80_chars, cascade_invocations
+
 import 'dart:async';
 
 import 'package:app/domain/models/ff1_device.dart';
@@ -102,6 +107,63 @@ void main() {
         expect(transportDisposeCalled, isTrue);
       },
     );
+  });
+
+  group('FF1WifiControl.connect', () {
+    test('clears replayed device state when switching to a different device', () async {
+      final transport = _SwitchingTransport();
+      final control = FF1WifiControl(transport: transport);
+
+      addTearDown(control.dispose);
+
+      const deviceA = FF1Device(
+        name: 'FF1 A',
+        remoteId: 'remote-a',
+        deviceId: 'device-a',
+        topicId: 'topic-a',
+      );
+      const deviceB = FF1Device(
+        name: 'FF1 B',
+        remoteId: 'remote-b',
+        deviceId: 'device-b',
+        topicId: 'topic-b',
+      );
+
+      await control.connect(device: deviceA, userId: 'u', apiKey: 'k');
+      transport.emitNotification(
+        FF1NotificationMessage(
+          type: FF1WifiMessageType.notification,
+          notificationType: FF1NotificationType.deviceStatus,
+          timestamp: DateTime.fromMillisecondsSinceEpoch(1),
+          message: const {
+            'installedVersion': '1.0.0',
+            'latestVersion': '2.0.0',
+          },
+        ),
+      );
+      transport.emitNotification(
+        FF1NotificationMessage(
+          type: FF1WifiMessageType.notification,
+          notificationType: FF1NotificationType.connection,
+          timestamp: DateTime.fromMillisecondsSinceEpoch(2),
+          message: const {'isConnected': true},
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(control.currentDeviceStatus?.latestVersion, '2.0.0');
+      expect(control.isDeviceConnected, isTrue);
+
+      final nextDisconnected = control.connectionStatusStream.firstWhere(
+        (status) => !status.isConnected,
+      );
+
+      await control.connect(device: deviceB, userId: 'u', apiKey: 'k');
+
+      expect(control.currentDeviceStatus, isNull);
+      expect(control.isDeviceConnected, isFalse);
+      expect((await nextDisconnected).isConnected, isFalse);
+    });
   });
 }
 
@@ -282,6 +344,61 @@ class _CustomDisposeTransport implements FF1WifiTransport {
   @override
   void dispose() {
     onDispose();
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
+}
+
+class _SwitchingTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => true;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {}
+
+  void emitNotification(FF1NotificationMessage notification) {
+    _notifications.add(notification);
+  }
+
+  @override
+  void pauseConnection() {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
   }
 
   @override

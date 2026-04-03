@@ -11,11 +11,6 @@
 /// so it works with any adapter (Relayer, LAN, etc.)
 library;
 
-// This file predates the stricter lint profile. The new device-switch fix only
-// touches connection-state caching, so we keep the existing command-surface
-// debt isolated instead of refactoring the entire control layer here.
-// ignore_for_file: avoid_dynamic_calls, comment_references, discarded_futures, lines_longer_than_80_chars
-
 import 'dart:async';
 import 'dart:ui' show Offset;
 
@@ -71,7 +66,9 @@ class FF1WifiControl {
 
   // Current device state
   FF1PlayerStatus? _currentPlayerStatus;
+  String? _currentPlayerStatusDeviceId;
   FF1DeviceStatus? _currentDeviceStatus;
+  String? _currentDeviceStatusDeviceId;
   bool _isDeviceConnected = false;
   Completer<FF1DeviceStatus?>? _freshDeviceStatusCompleter;
   Completer<FF1DeviceStatus?>? _freshDeviceVersionCompleter;
@@ -134,9 +131,22 @@ class FF1WifiControl {
     required String apiKey,
   }) async {
     final flowId = _nextFlowId('connect');
-    final previousDeviceId = _device?.deviceId;
+    final previousDevice = _device;
+    final previousDeviceId = previousDevice?.deviceId;
     _freshDeviceStatusCompleter?.complete(null);
     _freshDeviceVersionCompleter?.complete(null);
+
+    if (previousDevice != null && previousDevice.deviceId != device.deviceId) {
+      // Reset the last replayed state before the new device starts publishing.
+      // Without this handoff clear, provider consumers can evaluate the next
+      // active device against the previous device's relayer status/version.
+      _clearRealtimeState(
+        emitDisconnectedStatus: true,
+        flowId: flowId,
+        reason: 'switch_device',
+      );
+    }
+
     _device = device;
     _userId = userId;
     _apiKey = apiKey;
@@ -202,6 +212,22 @@ class FF1WifiControl {
     }
   }
 
+  /// Clears replayed realtime state before switching to a different device.
+  ///
+  /// This is a handoff guard for the auto-connect watcher: consumers must
+  /// stop seeing the previous device's relayer state before the new device's
+  /// connection attempt begins.
+  void prepareForDeviceSwitch(FF1Device device) {
+    if (_device?.deviceId == device.deviceId) {
+      return;
+    }
+
+    _clearRealtimeState(
+      emitDisconnectedStatus: true,
+      reason: 'watcher_device_switch',
+    );
+  }
+
   /// Disconnect from device
   Future<void> disconnect() async {
     final flowId = _nextFlowId('disconnect');
@@ -225,10 +251,7 @@ class FF1WifiControl {
     _userId = null;
     _apiKey = null;
 
-    // Clear current state
-    _currentPlayerStatus = null;
-    _currentDeviceStatus = null;
-    _isDeviceConnected = false;
+    _clearRealtimeState(flowId: flowId, reason: 'disconnect');
     _freshDeviceStatusCompleter?.complete(null);
     _freshDeviceStatusCompleter = null;
     _freshDeviceVersionCompleter?.complete(null);
@@ -267,6 +290,27 @@ class FF1WifiControl {
 
   /// Current device status (last received)
   FF1DeviceStatus? get currentDeviceStatus => _currentDeviceStatus;
+
+  /// Device id that produced [currentPlayerStatus].
+  String? get currentPlayerStatusDeviceId => _currentPlayerStatusDeviceId;
+
+  /// Device id that produced [currentDeviceStatus].
+  String? get currentDeviceStatusDeviceId => _currentDeviceStatusDeviceId;
+
+  /// Whether device is connected (per connection notification)
+  bool get isDeviceConnected => _isDeviceConnected;
+
+  /// Stream of player status updates
+  Stream<FF1PlayerStatus> get playerStatusStream =>
+      _playerStatusController.stream;
+
+  /// Stream of device status updates
+  Stream<FF1DeviceStatus> get deviceStatusStream =>
+      _deviceStatusController.stream;
+
+  /// Stream of connection status updates
+  Stream<FF1ConnectionStatus> get connectionStatusStream =>
+      _connectionStatusController.stream;
 
   /// Waits for the first device status observed after the most recent connect
   /// reset. Returns the already-received fresh status immediately when
@@ -310,21 +354,6 @@ class FF1WifiControl {
     return completer.future;
   }
 
-  /// Whether device is connected (per connection notification)
-  bool get isDeviceConnected => _isDeviceConnected;
-
-  /// Stream of player status updates
-  Stream<FF1PlayerStatus> get playerStatusStream =>
-      _playerStatusController.stream;
-
-  /// Stream of device status updates
-  Stream<FF1DeviceStatus> get deviceStatusStream =>
-      _deviceStatusController.stream;
-
-  /// Stream of connection status updates
-  Stream<FF1ConnectionStatus> get connectionStatusStream =>
-      _connectionStatusController.stream;
-
   /// Handle incoming notification from transport
   void _handleNotification(FF1NotificationMessage notification) {
     if (_isTearingDown) {
@@ -335,11 +364,13 @@ class FF1WifiControl {
     switch (notification.notificationType) {
       case FF1NotificationType.playerStatus:
         final playerStatus = FF1PlayerStatus.fromJson(notification.message);
+        _currentPlayerStatusDeviceId = _device?.deviceId;
         _currentPlayerStatus = playerStatus;
         _playerStatusController.add(playerStatus);
 
       case FF1NotificationType.deviceStatus:
         final deviceStatus = FF1DeviceStatus.fromJson(notification.message);
+        _currentDeviceStatusDeviceId = _device?.deviceId;
         _currentDeviceStatus = deviceStatus;
         _deviceStatusController.add(deviceStatus);
         _freshDeviceStatusCompleter?.complete(deviceStatus);
@@ -379,6 +410,7 @@ class FF1WifiControl {
     if (_isTearingDown) {
       return;
     }
+    final flowId = _nextFlowId('transport_state');
     _log.info('Connection state changed: $isConnected');
     _slog.info(
       category: LogCategory.wifi,
@@ -405,16 +437,15 @@ class FF1WifiControl {
           'deviceId': _device?.deviceId,
         },
       );
-      _currentPlayerStatus = null;
-      _currentDeviceStatus = null;
-      _isDeviceConnected = false;
+      _clearRealtimeState(
+        emitDisconnectedStatus: true,
+        flowId: flowId,
+        reason: 'transport_disconnect',
+      );
       _freshDeviceStatusCompleter?.complete(null);
       _freshDeviceStatusCompleter = null;
       _freshDeviceVersionCompleter?.complete(null);
       _freshDeviceVersionCompleter = null;
-      _connectionStatusController.add(
-        FF1ConnectionStatus(isConnected: isConnected),
-      );
       _slog.info(
         category: LogCategory.wifi,
         event: 'control_connection_status_emitted',
@@ -598,16 +629,15 @@ transport reconnected — waiting for device connection notification''',
     );
 
     // Clear current state but preserve _device, _userId, _apiKey for reconnect
-    _currentPlayerStatus = null;
-    _currentDeviceStatus = null;
-    _isDeviceConnected = false;
+    _clearRealtimeState(
+      emitDisconnectedStatus: true,
+      flowId: flowId,
+      reason: 'pause',
+    );
     _freshDeviceStatusCompleter?.complete(null);
     _freshDeviceStatusCompleter = null;
     _freshDeviceVersionCompleter?.complete(null);
     _freshDeviceVersionCompleter = null;
-    _connectionStatusController.add(
-      const FF1ConnectionStatus(isConnected: false),
-    );
     _slog.info(
       category: LogCategory.wifi,
       event: 'control_pause_state_cleared',
@@ -620,6 +650,39 @@ transport reconnected — waiting for device connection notification''',
   void dispose() {
     _ongoingDispose ??= _disposeAsync();
     unawaited(_ongoingDispose);
+  }
+
+  /// Clears replayed device/player state.
+  ///
+  /// When [emitDisconnectedStatus] is true, consumers that only react to the
+  /// connection stream are immediately told that any previous device-level
+  /// connection is no longer valid for the current handoff.
+  void _clearRealtimeState({
+    required String reason,
+    bool emitDisconnectedStatus = false,
+    String? flowId,
+  }) {
+    _currentPlayerStatus = null;
+    _currentPlayerStatusDeviceId = null;
+    _currentDeviceStatus = null;
+    _currentDeviceStatusDeviceId = null;
+    _isDeviceConnected = false;
+    if (emitDisconnectedStatus) {
+      _connectionStatusController.add(
+        const FF1ConnectionStatus(isConnected: false),
+      );
+    }
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'control_realtime_state_cleared',
+      message: 'cleared replayed realtime state',
+      payload: {
+        'flowId': flowId,
+        'reason': reason,
+        'deviceId': _device?.deviceId,
+        'emitDisconnectedStatus': emitDisconnectedStatus,
+      },
+    );
   }
 
   /// Cancels transport subscriptions before closing subjects so a delayed
@@ -1014,6 +1077,39 @@ transport reconnected — waiting for device connection notification''',
       return FF1CommandResponse.fromJson(response);
     } catch (e) {
       _log.severe('Failed to send reboot command: $e');
+      rethrow;
+    }
+  }
+
+  /// Trigger firmware update to the latest available version.
+  ///
+  /// Instructs the device to fetch and install the latest firmware. The device
+  /// reboots automatically on completion. Only succeeds when the device has an
+  /// active internet connection and a newer version is available.
+  ///
+  /// [topicId] — device topic ID
+  Future<FF1CommandResponse> updateToLatestVersion({
+    required String topicId,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending updateToLatestVersion command to device');
+
+      const request = FF1WifiUpdateToLatestVersionRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send updateToLatestVersion command: $e');
       rethrow;
     }
   }

@@ -66,6 +66,13 @@ class FF1BluetoothDeviceActionsNotifier extends Notifier<void> {
   /// WiFi auto-connect is handled separately by [ff1AutoConnectWatcherProvider]
   /// when [activeFF1BluetoothDeviceProvider] changes.
   Future<void> setActiveDevice(String deviceId) async {
+    // Clear the relayer cache before the active-device stream flips so UI
+    // consumers never evaluate the new selection against the previous
+    // device's status snapshot.
+    final device = _service.getDeviceById(deviceId);
+    if (device != null) {
+      ref.read(ff1WifiControlProvider).prepareForDeviceSwitch(device);
+    }
     await _service.setActiveDevice(deviceId);
     _log.info('Device set as active: $deviceId');
   }
