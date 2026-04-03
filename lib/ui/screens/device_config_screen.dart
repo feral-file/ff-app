@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/ff1/ff1_firmware_update_prompt_orchestrator.dart';
+import 'package:app/app/ff1/ff1_firmware_update_prompt_service.dart';
 import 'package:app/app/ff1/ff1_relayer_firmware_update_service.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_device_provider.dart';
@@ -13,7 +14,6 @@ import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:app/domain/models/models.dart';
-import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
@@ -120,11 +120,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Prompt only on fresh relayer/connectivity updates. Active-device changes
+    // alone can race with the auto-connect handoff and briefly expose stale
+    // status from the previous device, so we avoid using them as a prompt
+    // trigger.
     ref
-      ..listen(
-        activeFF1BluetoothDeviceProvider,
-        (_, _) => _checkUpdatePrompt(),
-      )
       ..listen(
         ff1CurrentDeviceStatusProvider,
         (_, _) => _checkUpdatePrompt(),
@@ -411,8 +411,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     final dismissedVersion = device == null
         ? ''
         : ref
-            .read(appStateServiceProvider)
-            .getDismissedUpdateVersion(device.deviceId);
+            .read(ff1FirmwareUpdatePromptServiceProvider)
+            .getDismissedLatestVersionForDevice(device.deviceId);
 
     final output = computeFirmwareUpdatePromptTick(
       session: _promptSession,
@@ -496,8 +496,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                     // Save the dismissed version so the prompt won't reappear
                     // until latestVersion changes on the device.
                     await ref
-                        .read(appStateServiceProvider)
-                        .setDismissedUpdateVersion(
+                        .read(ff1FirmwareUpdatePromptServiceProvider)
+                        .dismissLatestVersionForDevice(
                           deviceId: device.deviceId,
                           version: latestVersion,
                         );
@@ -524,12 +524,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                         // Success = command accepted; installed lags until OTA
                         // finishes. Dismiss like Later so finally does not
                         // re-offer the same latest build.
-                        await ref
-                            .read(appStateServiceProvider)
-                            .setDismissedUpdateVersion(
-                              deviceId: device.deviceId,
-                              version: latestVersion,
-                            );
+                          await ref
+                              .read(ff1FirmwareUpdatePromptServiceProvider)
+                              .dismissLatestVersionForDevice(
+                                deviceId: device.deviceId,
+                                version: latestVersion,
+                              );
                         if (!mounted) return;
                         Navigator.pop(context, true);
                         return;

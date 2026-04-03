@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/ff1/ff1_firmware_update_prompt_service.dart';
 import 'package:app/app/ff1/ff1_relayer_firmware_update_service.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
@@ -9,8 +10,8 @@ import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/ff1/firmware_update_prompt_policy.dart';
 import 'package:app/domain/models/ff1_device.dart';
-import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control_verifier.dart';
 import 'package:app/theme/app_color.dart';
@@ -81,9 +82,13 @@ class OptionsButton extends ConsumerWidget {
 
     // Read version info so the update dialog can display current/latest.
     final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
-    final hasVersionInfo =
-        deviceStatus?.installedVersion != null &&
-        deviceStatus?.latestVersion != null;
+    final installedVersion = normalizeFirmwareUpdateVersion(
+      deviceStatus?.installedVersion,
+    );
+    final latestVersion = normalizeFirmwareUpdateVersion(
+      deviceStatus?.latestVersion,
+    );
+    final hasVersionInfo = installedVersion != null && latestVersion != null;
 
     final options = [
       if (isDeviceConnected) ...[
@@ -124,8 +129,8 @@ class OptionsButton extends ConsumerWidget {
                 context,
                 ref,
                 device,
-                installedVersion: deviceStatus!.installedVersion!,
-                latestVersion: deviceStatus.latestVersion!,
+                installedVersion: installedVersion,
+                latestVersion: latestVersion,
               ),
             ),
           ),
@@ -464,8 +469,8 @@ class OptionsButton extends ConsumerWidget {
             context,
             'Restoring Factory Defaults',
             'The device is now restoring to factory settings. It may take '
-            'some time to complete. Please keep the FF1 powered on and wait '
-            'until the reset is finished.',
+            'some time to complete. Please keep the FF1 powered on '
+            'and wait until the reset is finished.',
             closeButton: 'Go Back',
             onClose: () {
               context.pop();
@@ -488,12 +493,10 @@ class OptionsButton extends ConsumerWidget {
   Future<void> _onUpdateFirmwareSelected(
     BuildContext context,
     WidgetRef ref,
-    FF1Device device,
-    {
+    FF1Device device, {
     required String installedVersion,
     required String latestVersion,
-  }
-  ) async {
+  }) async {
     final topicId = device.topicId;
     // Build version detail line for the dialog only when version info is known.
     final isUpToDate = installedVersion == latestVersion;
@@ -554,8 +557,8 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
                           // Configuration does not auto-prompt again for the
                           // same build while OTA is still catching up.
                           await ref
-                              .read(appStateServiceProvider)
-                              .setDismissedUpdateVersion(
+                              .read(ff1FirmwareUpdatePromptServiceProvider)
+                              .dismissLatestVersionForDevice(
                                 deviceId: device.deviceId,
                                 version: latestVersion,
                               );

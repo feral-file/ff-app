@@ -71,7 +71,9 @@ class FF1WifiControl {
 
   // Current device state
   FF1PlayerStatus? _currentPlayerStatus;
+  String? _currentPlayerStatusDeviceId;
   FF1DeviceStatus? _currentDeviceStatus;
+  String? _currentDeviceStatusDeviceId;
   bool _isDeviceConnected = false;
 
   // Stream subscriptions
@@ -269,6 +271,12 @@ class FF1WifiControl {
   /// Current device status (last received)
   FF1DeviceStatus? get currentDeviceStatus => _currentDeviceStatus;
 
+  /// Device id that produced [currentPlayerStatus].
+  String? get currentPlayerStatusDeviceId => _currentPlayerStatusDeviceId;
+
+  /// Device id that produced [currentDeviceStatus].
+  String? get currentDeviceStatusDeviceId => _currentDeviceStatusDeviceId;
+
   /// Whether device is connected (per connection notification)
   bool get isDeviceConnected => _isDeviceConnected;
 
@@ -294,11 +302,13 @@ class FF1WifiControl {
     switch (notification.notificationType) {
       case FF1NotificationType.playerStatus:
         final playerStatus = FF1PlayerStatus.fromJson(notification.message);
+        _currentPlayerStatusDeviceId = _device?.deviceId;
         _currentPlayerStatus = playerStatus;
         _playerStatusController.add(playerStatus);
 
       case FF1NotificationType.deviceStatus:
         final deviceStatus = FF1DeviceStatus.fromJson(notification.message);
+        _currentDeviceStatusDeviceId = _device?.deviceId;
         _currentDeviceStatus = deviceStatus;
         _deviceStatusController.add(deviceStatus);
 
@@ -576,7 +586,9 @@ transport reconnected — waiting for device connection notification''',
     String? flowId,
   }) {
     _currentPlayerStatus = null;
+    _currentPlayerStatusDeviceId = null;
     _currentDeviceStatus = null;
+    _currentDeviceStatusDeviceId = null;
     _isDeviceConnected = false;
     if (emitDisconnectedStatus) {
       _connectionStatusController.add(

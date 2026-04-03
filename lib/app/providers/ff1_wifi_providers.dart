@@ -399,7 +399,13 @@ final ff1CurrentPlayerStatusProvider = Provider<FF1PlayerStatus?>((ref) {
   ref
     ..watch(ff1PlayerStatusStreamProvider)
     ..watch(ff1ConnectionStatusStreamProvider);
-  return ref.read(ff1WifiControlProvider).currentPlayerStatus;
+  final device = ref
+      .watch(activeFF1BluetoothDeviceProvider)
+      .maybeWhen(data: (d) => d, orElse: () => null);
+  final control = ref.read(ff1WifiControlProvider);
+  return control.currentPlayerStatusDeviceId == device?.deviceId
+      ? control.currentPlayerStatus
+      : null;
 });
 
 /// Current device status provider (last received value)
@@ -409,7 +415,13 @@ final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
   ref
     ..watch(ff1DeviceStatusStreamProvider)
     ..watch(ff1ConnectionStatusStreamProvider);
-  return ref.read(ff1WifiControlProvider).currentDeviceStatus;
+  final device = ref
+      .watch(activeFF1BluetoothDeviceProvider)
+      .maybeWhen(data: (d) => d, orElse: () => null);
+  final control = ref.read(ff1WifiControlProvider);
+  return control.currentDeviceStatusDeviceId == device?.deviceId
+      ? control.currentDeviceStatus
+      : null;
 });
 
 /// Device connected provider (per connection notification)
@@ -475,6 +487,11 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
 
   activeDeviceAsync.when(
     data: (device) async {
+      if (device != null) {
+        // Clear stale relayer/device state synchronously so UI consumers see
+        // the handoff before the deferred connection attempt begins.
+        ref.read(ff1WifiControlProvider).prepareForDeviceSwitch(device);
+      }
       // Use Future.microtask to defer the connection call
       // to avoid modifying other providers during build phase
       unawaited(
@@ -483,7 +500,6 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
             logger.info(
               'Active device changed: ${device.toJson()}, connecting...',
             );
-            ref.read(ff1WifiControlProvider).prepareForDeviceSwitch(device);
             // Intentionally not awaiting to avoid blocking
             await connectionNotifier.connect(
               device: device,
