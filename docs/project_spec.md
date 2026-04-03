@@ -229,7 +229,7 @@
 
 - Purpose: discover/pair FF1 and configure connectivity/device settings.
 - Entry points: onboarding setup, menu FF1 Settings, QR deeplinks.
-- Key actions: BLE scan/connect, Wi-Fi selection/credentials, finalize pairing, adjust orientation/scaling/audio, adjust FFP/DDC monitor brightness/contrast/volume/power.
+- Key actions: BLE scan/connect, Wi-Fi selection/credentials, finalize pairing, adjust orientation/scaling/audio, adjust FFP/DDC monitor brightness/contrast/power.
 - Important data: BLE state, FF1 device info/topicId, device/player status streams.
 - Related modules: FF1 providers (BLE + Wi-Fi), FF1 services, ObjectBox device store.
 - Notes: DeviceConfig keeps the FFP/DDC monitor surface available once relayer status exists, including setup and sleeping/off states; the section still hides itself when no monitor status has arrived.

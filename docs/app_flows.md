@@ -258,7 +258,7 @@
 
 - role in the flow: post-pairing control surface for orientation/scaling/audio/display monitor controls/device info
 - route / entry point: `/device-configuration`
-- important actions: adjust display settings, monitor brightness/contrast/volume, switch device/options, finish setup flow
+- important actions: adjust display settings, monitor brightness/contrast, switch device/options, finish setup flow
 - dependencies: active FF1 provider, `ff1DeviceDataProvider`, FF1 Wi-Fi control
 - notes / caveats: FFP/DDC monitor controls are driven by relayer-pushed status updates and stay available during setup and sleeping/off states when the connected display exposes DDC capabilities; the section still hides itself when no relayer status has arrived
 
