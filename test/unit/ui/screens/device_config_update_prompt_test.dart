@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/ff1_device_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/app/ff1/ff1_firmware_update_prompt_service.dart';
 import 'package:app/app/providers/version_provider.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
 import 'package:app/infra/api/pubdoc_api.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
@@ -56,10 +59,23 @@ void main() {
             activeFF1BluetoothDeviceProvider.overrideWithValue(
               const AsyncData(device),
             ),
+            ff1DeviceDataProvider.overrideWithValue(
+              const FF1DeviceData(
+                deviceStatus: null,
+                playerStatus: null,
+                isConnected: false,
+              ),
+            ),
+            ff1LatestDeviceRealtimeMetricsProvider.overrideWithValue(null),
+            ff1DeviceRealtimeMetricsStreamProvider(device.topicId).overrideWith(
+              (ref) => const Stream<DeviceRealtimeMetrics>.empty(),
+            ),
             ff1CurrentDeviceStatusProvider.overrideWithValue(deviceStatus),
             ff1DeviceConnectedProvider.overrideWithValue(true),
             ff1WifiControlProvider.overrideWithValue(wifiControl),
-            appStateServiceProvider.overrideWithValue(appState),
+            ff1FirmwareUpdatePromptServiceProvider.overrideWith(
+              (ref) => Ff1FirmwareUpdatePromptService(appState),
+            ),
           ],
           child: MaterialApp(
             home: Scaffold(
@@ -122,10 +138,23 @@ void main() {
             activeFF1BluetoothDeviceProvider.overrideWithValue(
               const AsyncData(device),
             ),
+            ff1DeviceDataProvider.overrideWithValue(
+              const FF1DeviceData(
+                deviceStatus: null,
+                playerStatus: null,
+                isConnected: false,
+              ),
+            ),
+            ff1LatestDeviceRealtimeMetricsProvider.overrideWithValue(null),
+            ff1DeviceRealtimeMetricsStreamProvider(device.topicId).overrideWith(
+              (ref) => const Stream<DeviceRealtimeMetrics>.empty(),
+            ),
             ff1CurrentDeviceStatusProvider.overrideWithValue(deviceStatus),
             ff1DeviceConnectedProvider.overrideWithValue(true),
             ff1WifiControlProvider.overrideWithValue(wifiControl),
-            appStateServiceProvider.overrideWithValue(appState),
+            ff1FirmwareUpdatePromptServiceProvider.overrideWith(
+              (ref) => Ff1FirmwareUpdatePromptService(appState),
+            ),
           ],
           child: const MaterialApp(
             home: Scaffold(
@@ -176,6 +205,17 @@ void main() {
             activeFF1BluetoothDeviceProvider.overrideWithValue(
               const AsyncData(device),
             ),
+            ff1DeviceDataProvider.overrideWithValue(
+              const FF1DeviceData(
+                deviceStatus: null,
+                playerStatus: null,
+                isConnected: false,
+              ),
+            ),
+            ff1LatestDeviceRealtimeMetricsProvider.overrideWithValue(null),
+            ff1DeviceRealtimeMetricsStreamProvider(device.topicId).overrideWith(
+              (ref) => const Stream<DeviceRealtimeMetrics>.empty(),
+            ),
             ff1CurrentDeviceStatusProvider.overrideWith((ref) => null),
             ff1DeviceConnectedProvider.overrideWithValue(true),
             ff1WifiControlProvider.overrideWithValue(wifiControl),
@@ -219,10 +259,23 @@ void main() {
             activeFF1BluetoothDeviceProvider.overrideWithValue(
               const AsyncData(device),
             ),
+            ff1DeviceDataProvider.overrideWithValue(
+              const FF1DeviceData(
+                deviceStatus: null,
+                playerStatus: null,
+                isConnected: false,
+              ),
+            ),
+            ff1LatestDeviceRealtimeMetricsProvider.overrideWithValue(null),
+            ff1DeviceRealtimeMetricsStreamProvider(device.topicId).overrideWith(
+              (ref) => const Stream<DeviceRealtimeMetrics>.empty(),
+            ),
             ff1CurrentDeviceStatusProvider.overrideWithValue(deviceStatus),
             ff1DeviceConnectedProvider.overrideWithValue(true),
             ff1WifiControlProvider.overrideWithValue(wifiControl),
-            appStateServiceProvider.overrideWithValue(appState),
+            ff1FirmwareUpdatePromptServiceProvider.overrideWith(
+              (ref) => Ff1FirmwareUpdatePromptService(appState),
+            ),
           ],
           child: MaterialApp(
             home: Scaffold(
@@ -272,7 +325,16 @@ void main() {
           ff1WifiConnectionProvider.overrideWith(
             FF1WifiConnectionNotifier.new,
           ),
-          appStateServiceProvider.overrideWithValue(appState),
+          ff1LatestDeviceRealtimeMetricsProvider.overrideWithValue(null),
+          ff1DeviceRealtimeMetricsStreamProvider(deviceA.topicId).overrideWith(
+            (ref) => const Stream<DeviceRealtimeMetrics>.empty(),
+          ),
+          ff1DeviceRealtimeMetricsStreamProvider(deviceB.topicId).overrideWith(
+            (ref) => const Stream<DeviceRealtimeMetrics>.empty(),
+          ),
+          ff1FirmwareUpdatePromptServiceProvider.overrideWith(
+            (ref) => Ff1FirmwareUpdatePromptService(appState),
+          ),
           versionServiceProvider.overrideWithValue(versionService),
         ],
       );
@@ -314,7 +376,7 @@ void main() {
         );
       await tester.pumpAndSettle();
 
-      expect(find.text('Update Available'), findsNothing);
+      expect(find.text('Update Available'), findsOneWidget);
 
       appState.dismissedVersions[deviceA.deviceId] = '2.0.0';
       await container
@@ -369,7 +431,16 @@ void main() {
           ff1WifiConnectionProvider.overrideWith(
             FF1WifiConnectionNotifier.new,
           ),
-          appStateServiceProvider.overrideWithValue(appState),
+          ff1LatestDeviceRealtimeMetricsProvider.overrideWithValue(null),
+          ff1DeviceRealtimeMetricsStreamProvider(deviceA.topicId).overrideWith(
+            (ref) => const Stream<DeviceRealtimeMetrics>.empty(),
+          ),
+          ff1DeviceRealtimeMetricsStreamProvider(deviceB.topicId).overrideWith(
+            (ref) => const Stream<DeviceRealtimeMetrics>.empty(),
+          ),
+          ff1FirmwareUpdatePromptServiceProvider.overrideWith(
+            (ref) => Ff1FirmwareUpdatePromptService(appState),
+          ),
           versionServiceProvider.overrideWithValue(versionService),
         ],
       );
@@ -409,8 +480,6 @@ void main() {
           installedVersion: '1.0.0',
           latestVersion: '2.0.0',
         );
-      await tester.pump();
-
       await container
           .read(
             ff1BluetoothDeviceActionsProvider.notifier,
