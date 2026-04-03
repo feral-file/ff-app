@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
+import 'package:app/app/routing/navigation_extensions.dart';
+import 'package:app/app/routing/previous_page_title_extra.dart';
+import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
@@ -11,6 +14,7 @@ import 'package:app/ui/screens/tabs/tab_reload_guard.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/channels/channel_section.dart';
 import 'package:app/widgets/error_view.dart';
+import 'package:app/widgets/home_index_header.dart';
 import 'package:app/widgets/seed_sync_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -80,7 +84,9 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
       // Load more curated only (pagination applies to dp1).
-      ref.read(channelsProvider(ChannelType.dp1).notifier).loadMore();
+      unawaited(
+        ref.read(channelsProvider(ChannelType.dp1).notifier).loadMore(),
+      );
     }
   }
 
@@ -92,7 +98,9 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
       hasError: curatedState.error != null,
     );
     if (shouldLoadCurated) {
-      ref.read(channelsProvider(ChannelType.dp1).notifier).loadChannels();
+      unawaited(
+        ref.read(channelsProvider(ChannelType.dp1).notifier).loadChannels(),
+      );
     }
 
     final personalState = ref.read(channelsProvider(ChannelType.localVirtual));
@@ -102,9 +110,11 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
       hasError: personalState.error != null,
     );
     if (shouldLoadPersonal) {
-      ref
-          .read(channelsProvider(ChannelType.localVirtual).notifier)
-          .loadChannels();
+      unawaited(
+        ref
+            .read(channelsProvider(ChannelType.localVirtual).notifier)
+            .loadChannels(),
+      );
     }
   }
 
@@ -163,62 +173,84 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
 
     // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics
     // Parent NestedScrollView handles scrolling
-    return CustomScrollView(
-      shrinkWrap: true,
-      controller: _scrollController,
-      physics: const NeverScrollableScrollPhysics(),
-      slivers: [
-        // Error state
-        if (hasError)
-          SliverToBoxAdapter(
-            child: ErrorView(
-              error:
-                  'We couldn’t load channels. Check your connection, then Retry.',
-              onRetry: () {
-                ref
-                    .read(channelsProvider(ChannelType.dp1).notifier)
-                    .loadChannels();
-                ref
-                    .read(channelsProvider(ChannelType.localVirtual).notifier)
-                    .loadChannels();
-              },
-            ),
-          ),
+    return PreviousPageTitleScope(
+      title: HomeIndexHeaderTab.channels.label,
+      publishToNavigationMirror: widget.isActive,
+      child: Builder(
+        builder: (scopedContext) => CustomScrollView(
+          shrinkWrap: true,
+          controller: _scrollController,
+          physics: const NeverScrollableScrollPhysics(),
+          slivers: [
+            // Error state
+            if (hasError)
+              SliverToBoxAdapter(
+                child: ErrorView(
+                  error:
+                      'We couldn’t load channels. Check your connection, then '
+                      'Retry.',
+                  onRetry: () {
+                    unawaited(
+                      ref
+                          .read(channelsProvider(ChannelType.dp1).notifier)
+                          .loadChannels(),
+                    );
+                    unawaited(
+                      ref
+                          .read(
+                            channelsProvider(ChannelType.localVirtual).notifier,
+                          )
+                          .loadChannels(),
+                    );
+                  },
+                ),
+              ),
 
-        // Me section (localVirtual channels) - above Curated.
-        // Match Playlists tab: Column with trailing space12.
-        if (personalChannels.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Column(
-              children: [
-                _buildChannelSectionContent('Me', personalChannels),
-                SizedBox(height: LayoutConstants.space12),
-              ],
-            ),
-          ),
+            // Me section (localVirtual channels) - above Curated.
+            // Match Playlists tab: Column with trailing space12.
+            if (personalChannels.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    _buildChannelSectionContent(
+                      scopedContext,
+                      'Me',
+                      personalChannels,
+                    ),
+                    SizedBox(height: LayoutConstants.space12),
+                  ],
+                ),
+              ),
 
-        // Curated channels section. Same structure as Playlists tab.
-        if (curatedChannels.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Column(
-              children: [
-                _buildChannelSectionContent('Curated', curatedChannels),
-                SizedBox(height: LayoutConstants.space12),
-              ],
-            ),
-          ),
+            // Curated channels section. Same structure as Playlists tab.
+            if (curatedChannels.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    _buildChannelSectionContent(
+                      scopedContext,
+                      'Curated',
+                      curatedChannels,
+                    ),
+                    SizedBox(height: LayoutConstants.space12),
+                  ],
+                ),
+              ),
 
-        // Trailing spacing (matches Playlists tab).
-        SliverToBoxAdapter(
-          child: SizedBox(height: LayoutConstants.space12),
+            // Trailing spacing (matches Playlists tab).
+            SliverToBoxAdapter(
+              child: SizedBox(height: LayoutConstants.space12),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
   /// Builds ChannelSection content (non-sliver). Used in Column for spacing
   /// that matches Playlists tab.
   Widget _buildChannelSectionContent(
+    BuildContext context,
     String sectionName,
     List<Channel> channels,
   ) {
@@ -251,13 +283,20 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
       hasMore: hasMore,
       onViewAllTap: hasMore
           ? () {
-              context.push(
-                '${Routes.allChannels}?filter=${isMe ? 'personal' : 'curated'}',
+              final filter = isMe ? 'personal' : 'curated';
+              final location = '${Routes.allChannels}?filter=$filter';
+              unawaited(
+                context.push(
+                  location,
+                  extra: PreviousPageTitleExtra(
+                    HomeIndexHeaderTab.channels.label,
+                  ),
+                ),
               );
             }
           : null,
       onChannelItemTap: (item) {
-        context.push('${Routes.works}/${item.id}');
+        unawaited(context.pushWithPreviousTitle('${Routes.works}/${item.id}'));
       },
     );
   }

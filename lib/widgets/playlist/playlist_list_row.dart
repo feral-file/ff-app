@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:app/app/providers/address_indexing_job_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/playlist_details_provider.dart';
+import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
@@ -13,7 +16,6 @@ import 'package:app/widgets/error_view.dart';
 import 'package:app/widgets/playlist/playlist_title.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 /// Playlist List Row - Combines list item info with carousel content.
 /// Uses domain models (Playlist, PlaylistItem) only.
@@ -84,7 +86,11 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
     final scrollController = _carouselScrollController;
     if (scrollController.position.pixels >=
         scrollController.position.maxScrollExtent * 0.8) {
-      ref.read(playlistDetailsProvider(widget.playlist.id).notifier).loadMore();
+      unawaited(
+        ref
+            .read(playlistDetailsProvider(widget.playlist.id).notifier)
+            .loadMore(),
+      );
     }
   }
 
@@ -93,12 +99,15 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
     final playlist = widget.playlist;
     final playlistTitle = playlist.name;
     final isAddressPlaylist = playlist.isAddressPlaylist;
-    // For address playlists: use creator (address shorthand). For curated: use channel name.
+    // For address playlists: use creator (address shorthand).
+    // For curated: use channel name.
     final creator = widget.playlistCreator ?? '';
 
-    // For non-address playlists, resolve channel name for the right-side display.
+    // For non-address playlists, resolve channel name for the right-side
+    // display.
     final channelId = playlist.channelId;
-    final channelAsync = (!isAddressPlaylist &&
+    final channelAsync =
+        (!isAddressPlaylist &&
             channelId != null &&
             channelId.isNotEmpty &&
             widget.headerBuilder == null)
@@ -146,7 +155,11 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
       onTap: isLoading
           ? null
           : () {
-              context.push('${Routes.playlists}/${playlist.id}');
+              unawaited(
+                context.pushWithPreviousTitle(
+                  '${Routes.playlists}/${playlist.id}',
+                ),
+              );
             },
       child: Container(
         decoration: const BoxDecoration(
@@ -181,14 +194,14 @@ class _PlaylistRowItemState extends ConsumerState<PlaylistRowItem> {
             detailsAsync.when(
               data: (state) {
                 final itemsEmpty = state.items.isEmpty;
-                final showLoadingSkeleton = itemsEmpty &&
+                final showLoadingSkeleton =
+                    itemsEmpty &&
                     playlist.isAddressPlaylist &&
                     processStatus?.state !=
                         AddressIndexingProcessState.completed &&
                     processStatus?.state !=
                         AddressIndexingProcessState.failed &&
-                    processStatus?.state !=
-                        AddressIndexingProcessState.stopped;
+                    processStatus?.state != AddressIndexingProcessState.stopped;
                 return DP1Carousel(
                   items: state.items,
                   isLoading: showLoadingSkeleton,

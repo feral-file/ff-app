@@ -1,102 +1,148 @@
+import 'package:app/app/routing/previous_page_title_extra.dart';
+import 'package:app/app/routing/router_extensions.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+
+class _RouteHarness extends StatelessWidget {
+  const _RouteHarness({
+    required this.onNavigate,
+    required this.label,
+  });
+
+  final VoidCallback onNavigate;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: ElevatedButton(
+          onPressed: onNavigate,
+          child: Text(label),
+        ),
+      ),
+    );
+  }
+}
 
 void main() {
-  group('SmartNavigation._extractBaseRoute', () {
-    // Note: _extractBaseRoute is private, but we test it through smartPush
-    // behavior. These unit tests document the logic:
+  group('SmartNavigation.smartPush', () {
+    testWidgets('no-ops when pushing the same matched location', (
+      tester,
+    ) async {
+      late GoRouter router;
+      final visitedLocations = <String>[];
 
-    test('extracts base route from single segment', () {
-      // /_extractBaseRoute('/') should return '/'
-      // This is tested through: smartPush on '/' vs '/works' -> different base
-      expect(true, true);
+      router = GoRouter(
+        initialLocation: '/works/work-1',
+        routes: [
+          GoRoute(
+            path: '/works/:workId',
+            builder: (context, state) {
+              visitedLocations.add(state.matchedLocation);
+              return _RouteHarness(
+                label: 'Open current work',
+                onNavigate: () => router.smartPush('/works/work-1'),
+              );
+            },
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open current work'));
+      await tester.pumpAndSettle();
+
+      expect(router.routerDelegate.state.matchedLocation, '/works/work-1');
+      expect(visitedLocations, ['/works/work-1']);
     });
 
-    test('extracts base route from multi-segment path', () {
-      // /_extractBaseRoute('/works/item-123') should return '/works'
-      // /_extractBaseRoute('/works/item-456') should return '/works' (same base)
-      // This is tested through: smartPush('/works/item-123') then
-      // smartPush('/works/item-456') should replace (same base)
-      expect(true, true);
+    testWidgets('pushes a different work and forwards extra', (tester) async {
+      late GoRouter router;
+      final visitedLocations = <String>[];
+      Object? pushedExtra;
+
+      router = GoRouter(
+        initialLocation: '/works/work-1',
+        routes: [
+          GoRoute(
+            path: '/works/:workId',
+            builder: (context, state) {
+              visitedLocations.add(state.matchedLocation);
+              if (state.pathParameters['workId'] == 'work-2') {
+                pushedExtra = state.extra;
+              }
+              return _RouteHarness(
+                label: 'Open next work',
+                onNavigate: () => router.smartPush(
+                  '/works/work-2',
+                  extra: const PreviousPageTitleExtra('Work 1'),
+                ),
+              );
+            },
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open next work'));
+      await tester.pumpAndSettle();
+
+      expect(visitedLocations.first, '/works/work-1');
+      expect(visitedLocations, contains('/works/work-2'));
+      expect(router.routerDelegate.state.matchedLocation, '/works/work-2');
+      expect(previousPageTitleFromExtra(pushedExtra), 'Work 1');
     });
 
-    test('different base routes are treated as different families', () {
-      // /_extractBaseRoute('/works/item-1') -> '/works'
-      // /_extractBaseRoute('/playlists/list-1') -> '/playlists'
-      // This is tested through: smartPush from /playlists to /works should push
-      expect(true, true);
+    testWidgets('pushes across route families and forwards extra', (
+      tester,
+    ) async {
+      late GoRouter router;
+      final visitedLocations = <String>[];
+      Object? pushedExtra;
+
+      router = GoRouter(
+        initialLocation: '/playlists/list-1',
+        routes: [
+          GoRoute(
+            path: '/playlists/:playlistId',
+            builder: (context, state) {
+              visitedLocations.add(state.matchedLocation);
+              return _RouteHarness(
+                label: 'Open work',
+                onNavigate: () => router.smartPush(
+                  '/works/work-2',
+                  extra: const PreviousPageTitleExtra('Playlists'),
+                ),
+              );
+            },
+          ),
+          GoRoute(
+            path: '/works/:workId',
+            builder: (context, state) {
+              visitedLocations.add(state.matchedLocation);
+              pushedExtra = state.extra;
+              return const SizedBox.shrink();
+            },
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open work'));
+      await tester.pumpAndSettle();
+
+      expect(visitedLocations.first, '/playlists/list-1');
+      expect(visitedLocations, contains('/works/work-2'));
+      expect(router.routerDelegate.state.matchedLocation, '/works/work-2');
+      expect(previousPageTitleFromExtra(pushedExtra), 'Playlists');
     });
-  });
-
-  group('SmartNavigation.smartPush logic', () {
-    test('smartPush no-op condition: currentUri == location', () {
-      // When currentUri and location are identical, smartPush should not call
-      // push() or replace(). This guard prevents duplicate route stacking.
-      // Tested via: navigate to /works/item-123, then
-      // smartPush('/works/item-123'). Expected: no navigation occurs (no-op)
-      expect(true, true);
-    });
-
-    test(
-      'smartPush replace condition: same base, different location',
-      () {
-        // When currentUri and location have same base but different params,
-        // smartPush should call replace(). This keeps history clean when
-        // navigating between items in same family (e.g., work to work).
-        // Tested via: navigate to /works/item-123, then
-        // smartPush('/works/item-456')
-        // Expected: replace() called, not push()
-        expect(true, true);
-      },
-    );
-
-    test(
-      'smartPush push condition: different route family',
-      () {
-        // When currentUri and location have different bases,
-        // smartPush should call push(). This allows cross-family navigation.
-        // Tested via: navigate to /playlists/list-1, then
-        // smartPush('/works/item-123')
-        // Expected: push() called, not replace()
-        expect(true, true);
-      },
-    );
-  });
-
-  group('SmartNavigation integration scenarios', () {
-    test(
-      'Now Displaying bar tap from work detail should no-op if same work',
-      () {
-        // Scenario: User is viewing /works/item-123.
-        // User taps Now Displaying bar showing item-123.
-        // Expected: smartPush('/works/item-123') should not create new route.
-        // Guard against UX loop (tapping bar repeatedly stacking routes).
-        expect(true, true);
-      },
-    );
-
-    test(
-      'Now Displaying bar tap from work detail should replace if different '
-      'work',
-      () {
-        // Scenario: User is viewing /works/item-123.
-        // Now Displaying changes to item-456.
-        // User taps Now Displaying bar showing item-456.
-        // Expected: smartPush('/works/item-456') should replace route.
-        // No back navigation to item-123 from history.
-        expect(true, true);
-      },
-    );
-
-    test(
-      'Now Displaying bar tap from different screen should push',
-      () {
-        // Scenario: User is viewing /playlists/list-1.
-        // Now Displaying shows item-123.
-        // User taps Now Displaying bar.
-        // Expected: smartPush('/works/item-123') should push new route.
-        // User can back navigate to /playlists/list-1.
-        expect(true, true);
-      },
-    );
   });
 }

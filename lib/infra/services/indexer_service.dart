@@ -1,3 +1,4 @@
+import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/indexer/changes/change.dart';
 import 'package:app/domain/models/indexer/sync_collection.dart';
@@ -30,7 +31,7 @@ class IndexerService {
   // manual fetch by CID in batches of 40) to avoid overly large payloads.
   static const int _maxUint8Limit = 255;
   static const int _manualFetchCidsBatchSize = 40;
-  static const int _defaultTokensPageSize = 50;
+  static const int _defaultTokensPageSize = indexerTokensPageSize;
   static const List<String> _defaultChains = <String>[
     'eip155:1',
     'tezos:mainnet',
@@ -67,7 +68,8 @@ class IndexerService {
   Future<ChangeList> getChanges(QueryChangesRequest request) async {
     try {
       _log.info(
-        'Fetching changes (addresses: ${request.addresses.length}, tokenCids: ${request.tokenCids.length}, anchor: ${request.anchor})',
+        'Fetching changes (addresses: ${request.addresses.length}, '
+        'tokenCids: ${request.tokenCids.length}, anchor: ${request.anchor})',
       );
 
       final data = await _client.query(
@@ -116,8 +118,9 @@ class IndexerService {
     final results = <AssetToken>[];
 
     if (hasIds) {
-      // If tokenIds > 255, we must batch. We always fetch the full set then apply
-      // offset/limit on the merged result to keep caller semantics stable.
+      // If tokenIds > 255, we must batch. We always fetch the full set then
+      // apply offset/limit on the merged result to keep caller semantics
+      // stable.
       final fetched = <AssetToken>[];
       final effectiveOwners = owners ?? const <String>[];
       for (final batch in _batchesOf(ids, _maxUint8Limit)) {
@@ -142,8 +145,9 @@ class IndexerService {
         _log.info('Fetching ${cids.length} tokens by tokenCids');
         more = await _fetchTokensByCids(tokenCids: cids);
         _log.info('Fetched ${more.length} tokens');
-      } catch (e, stack) {
-        // Fail-open for enrichment flows: do not propagate indexer outages to UI.
+      } on Object catch (e, stack) {
+        // Fail-open for enrichment flows: do not propagate indexer outages to
+        // UI.
         _log.warning(
           'Failed to fetch tokens by CIDs; returning empty',
           e,
@@ -168,7 +172,7 @@ class IndexerService {
     int? offset,
   }) async {
     try {
-      // Default behavior: QueryListTokensRequest page size is 50.
+      // Default page size matches [indexerTokensPageSize].
       final effectiveLimit = limit ?? _defaultTokensPageSize;
       final page = await fetchTokensPageByAddresses(
         addresses: addresses,
@@ -243,7 +247,7 @@ class IndexerService {
           offset: 0,
         );
         results.addAll(tokens);
-      } catch (e, stack) {
+      } on Object catch (e, stack) {
         // Keep processing remaining batches when one request fails.
         _log.warning(
           'Failed token CID batch (${batch.length}); skipping batch',

@@ -1,3 +1,4 @@
+import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/models/indexer/changes/change.dart';
 import 'package:app/infra/graphql/indexer_client.dart';
 import 'package:app/infra/graphql/queries/token_queries.dart';
@@ -12,7 +13,7 @@ class FakeIndexerClient extends IndexerClient {
   Map<String, dynamic>? workflowStatusPayload;
   Map<String, dynamic>? triggerMetadataIndexingPayload;
   Map<String, dynamic>? Function(Map<String, dynamic> vars)?
-      tokensPayloadBuilder;
+  tokensPayloadBuilder;
 
   String? lastDoc;
   Map<String, dynamic> lastVars = const {};
@@ -131,7 +132,7 @@ void main() {
       expect(client.lastSubKey, equals('tokens'));
       expect(client.lastDoc, equals(getTokens));
       expect(client.lastVars['owners'], equals(['0x111', '0x222']));
-      expect(client.lastVars['limit'], equals(50));
+      expect(client.lastVars['limit'], equals(indexerTokensPageSize));
       expect(client.lastVars['chains'], equals(['eip155:1', 'tezos:mainnet']));
       expect(client.lastVars.containsKey('offset'), isFalse);
     },
@@ -447,23 +448,25 @@ void main() {
     },
   );
 
-  test('IndexerService.triggerMetadataIndexing returns workflow_id and run_id',
-      () async {
-    final client = FakeIndexerClient()
-      ..triggerMetadataIndexingPayload = const {
-        'workflow_id': 'wf-123',
-        'run_id': 'run-456',
-      };
+  test(
+    'IndexerService.triggerMetadataIndexing returns workflow_id and run_id',
+    () async {
+      final client = FakeIndexerClient()
+        ..triggerMetadataIndexingPayload = const {
+          'workflow_id': 'wf-123',
+          'run_id': 'run-456',
+        };
 
-    final service = IndexerService(client: client);
-    final result = await service.triggerMetadataIndexing(['bafy-test']);
+      final service = IndexerService(client: client);
+      final result = await service.triggerMetadataIndexing(['bafy-test']);
 
-    expect(result.workflowId, 'wf-123');
-    expect(result.runId, 'run-456');
-    expect(client.lastSubKey, equals('triggerMetadataIndexing'));
-    expect(client.lastDoc, contains('triggerMetadataIndexing'));
-    expect(client.lastVars['token_cids'], equals(['bafy-test']));
-  });
+      expect(result.workflowId, 'wf-123');
+      expect(result.runId, 'run-456');
+      expect(client.lastSubKey, equals('triggerMetadataIndexing'));
+      expect(client.lastDoc, contains('triggerMetadataIndexing'));
+      expect(client.lastVars['token_cids'], equals(['bafy-test']));
+    },
+  );
 
   test('IndexerService.getWorkflowStatus returns status', () async {
     final client = FakeIndexerClient()

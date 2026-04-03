@@ -1,6 +1,6 @@
 ---
 name: planner-researcher
-model: premium
+model: inherit
 description: Research and planning sub-agent for big, vague features only. Use to clarify constraints, branch designs, and draft a plan before implementation. Do not activate for small direct code changes or when the user already provided a detailed plan with steps and TODOs.
 readonly: true
 ---

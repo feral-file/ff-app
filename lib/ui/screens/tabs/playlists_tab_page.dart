@@ -5,6 +5,9 @@ import 'package:app/app/providers/playlists_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/all_playlists_route.dart';
+import 'package:app/app/routing/navigation_extensions.dart';
+import 'package:app/app/routing/previous_page_title_extra.dart';
+import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/playlist_ext.dart';
@@ -13,6 +16,7 @@ import 'package:app/domain/models/playlist.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/screens/tabs/tab_reload_guard.dart';
 import 'package:app/widgets/error_view.dart';
+import 'package:app/widgets/home_index_header.dart';
 import 'package:app/widgets/playlist/playlist_header_with_collection_state.dart';
 import 'package:app/widgets/playlist/playlist_section.dart';
 import 'package:app/widgets/playlist/playlist_title.dart';
@@ -75,8 +79,9 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
     super.dispose();
   }
 
@@ -85,7 +90,9 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
       // Load more curated only (pagination applies to dp1).
-      ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadMore();
+      unawaited(
+        ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadMore(),
+      );
     }
   }
 
@@ -93,13 +100,15 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     final address = playlist.ownerAddress;
     if (address == null || address.isEmpty) return '';
     if (address.length > 10) {
-      return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+      return '${address.substring(0, 6)}'
+          '...${address.substring(address.length - 4)}';
     }
     return address;
   }
 
   void _loadPlaylists() {
-    // Skip when seed DB is syncing (e.g. Forget I Exist); DB is closed during replace.
+    // Skip when seed DB is syncing (e.g. Forget I Exist); DB is closed during
+    // replace.
     if (ref.read(seedDownloadProvider).status == SeedDownloadStatus.syncing) {
       return;
     }
@@ -110,7 +119,9 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
       hasError: curatedState.error != null,
     );
     if (shouldLoadCurated) {
-      ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists();
+      unawaited(
+        ref.read(playlistsProvider(PlaylistType.dp1).notifier).loadPlaylists(),
+      );
     }
 
     // Me section uses meSectionPlaylistsProvider (auto-loads on watch).
@@ -197,133 +208,163 @@ class PlaylistsTabPageState extends ConsumerState<PlaylistsTabPage>
     final error = curatedState.error ?? displayMeSectionState.error;
     final curatedPlaylists = curatedState.playlists;
     final curatedSectionPlaylists = curatedPlaylists
-        .where((p) =>
-            p.channelId != null &&
-            p.channelId!.isNotEmpty &&
-            p.itemCount > 0)
+        .where(
+          (p) =>
+              p.channelId != null && p.channelId!.isNotEmpty && p.itemCount > 0,
+        )
         .toList();
 
     // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics.
     // Parent NestedScrollView handles scrolling.
-    return CustomScrollView(
-      shrinkWrap: true,
-      controller: _scrollController,
-      physics: const NeverScrollableScrollPhysics(),
-      slivers: [
-        // Error state
-        if (error != null &&
-            curatedSectionPlaylists.isEmpty &&
-            personalPlaylists.isEmpty)
-          SliverToBoxAdapter(
-            child: ErrorView(
-              error:
-                  'We couldn’t load playlists. Check your connection, then Retry.',
-              onRetry: () {
-                ref
-                    .read(playlistsProvider(PlaylistType.dp1).notifier)
-                    .loadPlaylists();
-                ref.invalidate(meSectionPlaylistsProvider);
-              },
-            ),
-          ),
-
-        // Me section (Favorite, address-based).
-        if (personalPlaylists.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Column(
-              children: [
-                PlaylistSection(
-                  sectionName: 'Me',
-                  playlistHeaderBuilder: (playlist, itemCount) {
-                    // Favorite playlist: simple title.
-                    if (playlist.type == PlaylistType.favorite) {
-                      return PlaylistTitle(
-                        primaryText: playlist.name,
-                        secondaryText: '',
-                      );
-                    }
-                    // Address playlists: collection state header.
-                    final ownerAddress = playlist.ownerAddress;
-                    if (ownerAddress == null || ownerAddress.isEmpty) {
-                      return null;
-                    }
-                    final creator = _creatorForAddressPlaylist(playlist);
-                    return PlaylistHeaderWithCollectionState(
-                      primaryText: playlist.name,
-                      secondaryText: creator,
-                      total: itemCount,
-                      ownerAddress: ownerAddress,
-                      onRetry: () => ref
-                          .read(addressServiceProvider)
-                          .indexAndSyncAddress(ownerAddress),
+    return PreviousPageTitleScope(
+      title: HomeIndexHeaderTab.playlists.label,
+      publishToNavigationMirror: widget.isActive,
+      child: Builder(
+        builder: (scopedContext) => CustomScrollView(
+          shrinkWrap: true,
+          controller: _scrollController,
+          physics: const NeverScrollableScrollPhysics(),
+          slivers: [
+            // Error state
+            if (error != null &&
+                curatedSectionPlaylists.isEmpty &&
+                personalPlaylists.isEmpty)
+              SliverToBoxAdapter(
+                child: ErrorView(
+                  error:
+                      'We couldn’t load playlists. Check your connection, '
+                      'then Retry.',
+                  onRetry: () {
+                    unawaited(
+                      ref
+                          .read(playlistsProvider(PlaylistType.dp1).notifier)
+                          .loadPlaylists(),
                     );
-                  },
-                  sectionIcon: SvgPicture.asset(
-                    'assets/images/icon_account.svg',
-                    width: LayoutConstants.iconSizeDefault,
-                    height: LayoutConstants.iconSizeDefault,
-                    colorFilter: const ColorFilter.mode(
-                      AppColor.auQuickSilver,
-                      BlendMode.srcIn,
-                    ),
-                  ),
-                  playlists: personalPlaylists.take(_previewCount).toList(),
-                  isActive: widget.isActive,
-                  hasMore: personalPlaylists.length > _previewCount,
-                  onViewAllTap: personalPlaylists.length > _previewCount
-                      ? () => context.push(
-                          '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelTypes: [ChannelType.localVirtual])}',
-                        )
-                      : null,
-                  onPlaylistItemTap: (item) {
-                    context.push('${Routes.works}/${item.id}');
+                    ref.invalidate(meSectionPlaylistsProvider);
                   },
                 ),
-                SizedBox(height: LayoutConstants.space12),
-              ],
-            ),
-          ),
+              ),
 
-        // Curated playlists section (preview).
-        if (curatedSectionPlaylists.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Column(
-              children: [
-                PlaylistSection(
-                  sectionName: 'Curated',
-                  sectionIcon: SvgPicture.asset(
-                    'assets/images/D.svg',
-                    width: LayoutConstants.iconSizeDefault,
-                    height: LayoutConstants.iconSizeDefault,
-                    colorFilter: const ColorFilter.mode(
-                      AppColor.auQuickSilver,
-                      BlendMode.srcIn,
+            // Me section (Favorite, address-based).
+            if (personalPlaylists.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    PlaylistSection(
+                      sectionName: 'Me',
+                      playlistHeaderBuilder: (playlist, itemCount) {
+                        // Favorite playlist: simple title.
+                        if (playlist.type == PlaylistType.favorite) {
+                          return PlaylistTitle(
+                            primaryText: playlist.name,
+                            secondaryText: '',
+                          );
+                        }
+                        // Address playlists: collection state header.
+                        final ownerAddress = playlist.ownerAddress;
+                        if (ownerAddress == null || ownerAddress.isEmpty) {
+                          return null;
+                        }
+                        final creator = _creatorForAddressPlaylist(playlist);
+                        return PlaylistHeaderWithCollectionState(
+                          primaryText: playlist.name,
+                          secondaryText: creator,
+                          total: itemCount,
+                          ownerAddress: ownerAddress,
+                          onRetry: () => ref
+                              .read(addressServiceProvider)
+                              .indexAndSyncAddress(ownerAddress),
+                        );
+                      },
+                      sectionIcon: SvgPicture.asset(
+                        'assets/images/icon_account.svg',
+                        width: LayoutConstants.iconSizeDefault,
+                        height: LayoutConstants.iconSizeDefault,
+                        colorFilter: const ColorFilter.mode(
+                          AppColor.auQuickSilver,
+                          BlendMode.srcIn,
+                        ),
+                      ),
+                      playlists: personalPlaylists.take(_previewCount).toList(),
+                      isActive: widget.isActive,
+                      hasMore: personalPlaylists.length > _previewCount,
+                      onViewAllTap: personalPlaylists.length > _previewCount
+                          ? () => scopedContext.push(
+                              '${Routes.allPlaylists}'
+                              '${buildAllPlaylistsQuery(
+                                channelTypes: [ChannelType.localVirtual],
+                              )}',
+                              extra: PreviousPageTitleExtra(
+                                HomeIndexHeaderTab.playlists.label,
+                              ),
+                            )
+                          : null,
+                      onPlaylistItemTap: (item) {
+                        unawaited(
+                          scopedContext.pushWithPreviousTitle(
+                            '${Routes.works}/${item.id}',
+                          ),
+                        );
+                      },
                     ),
-                  ),
-                  playlists: curatedSectionPlaylists
-                      .take(_previewCount)
-                      .toList(),
-                  isActive: widget.isActive,
-                  hasMore: curatedSectionPlaylists.length > _previewCount,
-                  onViewAllTap: curatedSectionPlaylists.length > _previewCount
-                      ? () => context.push(
-                          '${Routes.allPlaylists}${buildAllPlaylistsQuery(channelTypes: [ChannelType.dp1])}',
-                        )
-                      : null,
-                  onPlaylistItemTap: (item) {
-                    context.push('${Routes.works}/${item.id}');
-                  },
+                    SizedBox(height: LayoutConstants.space12),
+                  ],
                 ),
-                SizedBox(height: LayoutConstants.space12),
-              ],
-            ),
-          ),
+              ),
 
-        // Spacing between sections.
-        SliverToBoxAdapter(
-          child: SizedBox(height: LayoutConstants.space12),
+            // Curated playlists section (preview).
+            if (curatedSectionPlaylists.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    PlaylistSection(
+                      sectionName: 'Curated',
+                      sectionIcon: SvgPicture.asset(
+                        'assets/images/D.svg',
+                        width: LayoutConstants.iconSizeDefault,
+                        height: LayoutConstants.iconSizeDefault,
+                        colorFilter: const ColorFilter.mode(
+                          AppColor.auQuickSilver,
+                          BlendMode.srcIn,
+                        ),
+                      ),
+                      playlists: curatedSectionPlaylists
+                          .take(_previewCount)
+                          .toList(),
+                      isActive: widget.isActive,
+                      hasMore: curatedSectionPlaylists.length > _previewCount,
+                      onViewAllTap:
+                          curatedSectionPlaylists.length > _previewCount
+                          ? () => scopedContext.push(
+                              '${Routes.allPlaylists}'
+                              '${buildAllPlaylistsQuery(
+                                channelTypes: [ChannelType.dp1],
+                              )}',
+                              extra: PreviousPageTitleExtra(
+                                HomeIndexHeaderTab.playlists.label,
+                              ),
+                            )
+                          : null,
+                      onPlaylistItemTap: (item) {
+                        unawaited(
+                          scopedContext.pushWithPreviousTitle(
+                            '${Routes.works}/${item.id}',
+                          ),
+                        );
+                      },
+                    ),
+                    SizedBox(height: LayoutConstants.space12),
+                  ],
+                ),
+              ),
+
+            // Spacing between sections.
+            SliverToBoxAdapter(
+              child: SizedBox(height: LayoutConstants.space12),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

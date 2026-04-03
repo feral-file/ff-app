@@ -78,7 +78,6 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     r.invalidate(worksProvider);
     r.invalidate(workDetailStateProvider);
     r.invalidate(favoritePlaylistServiceProvider);
-    r.invalidate(nowDisplayingCachedPlaylistItemsProvider);
     r.invalidate(nowDisplayingProvider);
   }
 

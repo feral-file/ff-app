@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:app/app/providers/channels_provider.dart';
+import 'package:app/app/routing/navigation_extensions.dart';
+import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
@@ -16,7 +18,6 @@ import 'package:app/widgets/playlist/section_details_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:go_router/go_router.dart';
 
 /// Filter for the "All channels" screen.
 enum AllChannelsFilter {
@@ -44,11 +45,15 @@ class AllChannelsScreen extends ConsumerStatefulWidget {
   /// Creates an [AllChannelsScreen].
   const AllChannelsScreen({
     required this.filter,
+    this.backTitle,
     super.key,
   });
 
   /// Which channels to show.
   final AllChannelsFilter filter;
+
+  /// Prior screen title for the back control.
+  final String? backTitle;
 
   @override
   ConsumerState<AllChannelsScreen> createState() => _AllChannelsScreenState();
@@ -120,93 +125,100 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
         ? 'assets/images/D.svg'
         : 'assets/images/icon_account.svg';
 
-    return Scaffold(
-      backgroundColor: AppColor.auGreyBackground,
-      appBar: MainAppBar.preferred(
-        context,
-        backTitle: 'Index',
-      ),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _onRefresh,
-          backgroundColor: AppColor.primaryBlack,
-          color: AppColor.white,
-          child: Builder(
-            builder: (context) {
-              if (isLoading && channels.isEmpty) {
-                return const LoadingView();
-              }
+    return PreviousPageTitleScope(
+      title: title,
+      child: Scaffold(
+        backgroundColor: AppColor.auGreyBackground,
+        appBar: MainAppBar.preferred(
+          context,
+          backTitle: widget.backTitle ?? '',
+        ),
+        body: SafeArea(
+          child: RefreshIndicator(
+            onRefresh: _onRefresh,
+            backgroundColor: AppColor.primaryBlack,
+            color: AppColor.white,
+            child: Builder(
+              builder: (context) {
+                if (isLoading && channels.isEmpty) {
+                  return const LoadingView();
+                }
 
-              if (state.error != null && channels.isEmpty) {
-                return ErrorView(
-                  error:
-                      'We couldn’t load channels. Check your connection, '
-                      'then Retry.',
-                  onRetry: () => unawaited(
-                    ref
-                        .read(channelsProvider(channelType).notifier)
-                        .loadChannels(),
-                  ),
-                );
-              }
-
-              if (channels.isEmpty) {
-                return Center(
-                  child: Text(
-                    'No channels found',
-                    style: AppTypography.body(context).grey,
-                  ),
-                );
-              }
-
-              final rowData = channels
-                  .map(
-                    (c) => ChannelRowData(
-                      channelId: c.id,
-                      channelTitle: c.name,
-                      channelSummary: c.description,
-                      works: const <PlaylistItem>[],
+                if (state.error != null && channels.isEmpty) {
+                  return ErrorView(
+                    error:
+                        'We couldn’t load channels. Check your connection, '
+                        'then Retry.',
+                    onRetry: () => unawaited(
+                      ref
+                          .read(channelsProvider(channelType).notifier)
+                          .loadChannels(),
                     ),
-                  )
-                  .toList();
+                  );
+                }
 
-              return CustomScrollView(
-                controller: _scrollController,
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: SectionDetailsHeader(
-                      icon: SvgPicture.asset(
-                        iconAsset,
-                        width: LayoutConstants.iconSizeDefault,
-                        height: LayoutConstants.iconSizeDefault,
-                        colorFilter: const ColorFilter.mode(
-                          AppColor.white,
-                          BlendMode.srcIn,
-                        ),
+                if (channels.isEmpty) {
+                  return Center(
+                    child: Text(
+                      'No channels found',
+                      style: AppTypography.body(context).grey,
+                    ),
+                  );
+                }
+
+                final rowData = channels
+                    .map(
+                      (c) => ChannelRowData(
+                        channelId: c.id,
+                        channelTitle: c.name,
+                        channelSummary: c.description,
+                        works: const <PlaylistItem>[],
                       ),
-                      title: title,
-                      description: description,
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: SizedBox(height: LayoutConstants.space6),
-                  ),
-                  SliverList.builder(
-                    itemCount: rowData.length,
-                    itemBuilder: (context, index) => ChannelListRow(
-                      channelData: rowData[index],
-                      onItemTap: (item) {
-                        unawaited(context.push('${Routes.works}/${item.id}'));
-                      },
-                    ),
-                  ),
-                  if (hasMore || isLoadingMore)
+                    )
+                    .toList();
+
+                return CustomScrollView(
+                  controller: _scrollController,
+                  slivers: [
                     SliverToBoxAdapter(
-                      child: LoadMoreIndicator(isLoadingMore: isLoadingMore),
+                      child: SectionDetailsHeader(
+                        icon: SvgPicture.asset(
+                          iconAsset,
+                          width: LayoutConstants.iconSizeDefault,
+                          height: LayoutConstants.iconSizeDefault,
+                          colorFilter: const ColorFilter.mode(
+                            AppColor.white,
+                            BlendMode.srcIn,
+                          ),
+                        ),
+                        title: title,
+                        description: description,
+                      ),
                     ),
-                ],
-              );
-            },
+                    SliverToBoxAdapter(
+                      child: SizedBox(height: LayoutConstants.space6),
+                    ),
+                    SliverList.builder(
+                      itemCount: rowData.length,
+                      itemBuilder: (context, index) => ChannelListRow(
+                        channelData: rowData[index],
+                        onItemTap: (item) {
+                          unawaited(
+                            context.pushWithPreviousTitle(
+                              '${Routes.works}/${item.id}',
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    if (hasMore || isLoadingMore)
+                      SliverToBoxAdapter(
+                        child: LoadMoreIndicator(isLoadingMore: isLoadingMore),
+                      ),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),
