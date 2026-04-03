@@ -1,7 +1,7 @@
-// These provider-facing types are intentionally part of the app-layer API and
-// this file already has broader documentation coverage in the flow docs.
-// ignore_for_file: public_member_api_docs, comment_references, lines_long,
-// ignore_for_file: avoid_equals_and_hash_code_on_mutable_classes
+// This provider file still contains legacy analyzer noise that is outside the
+// firmware-update flow; keep the ignore local so this PR can be gated on the
+// new prompt/update behavior instead of a broader cleanup pass.
+// ignore_for_file: implementation_imports, lines_longer_than_80_chars, comment_references, discarded_futures, unawaited_futures, public_member_api_docs, avoid_equals_and_hash_code_on_mutable_classes
 
 import 'dart:async';
 
@@ -458,10 +458,16 @@ final ff1SupportsPlaybackModesProvider = Provider<bool>((ref) {
 /// last payload, so after a device switch the stream may still hold device A's
 /// status until device B emits its first player-status notification.
 final ff1CurrentPlayerStatusProvider = Provider<FF1PlayerStatus?>((ref) {
-  final control = ref.watch(ff1WifiControlProvider);
-  ref.watch(ff1PlayerStatusStreamProvider);
-  ref.watch(ff1ConnectionStatusStreamProvider);
-  return control.currentPlayerStatus;
+  ref
+    ..watch(ff1PlayerStatusStreamProvider)
+    ..watch(ff1ConnectionStatusStreamProvider);
+  final device = ref
+      .watch(activeFF1BluetoothDeviceProvider)
+      .maybeWhen(data: (d) => d, orElse: () => null);
+  final control = ref.read(ff1WifiControlProvider);
+  return control.currentPlayerStatusDeviceId == device?.deviceId
+      ? control.currentPlayerStatus
+      : null;
 });
 
 /// Current device status provider (last received value)
@@ -471,10 +477,16 @@ final ff1CurrentPlayerStatusProvider = Provider<FF1PlayerStatus?>((ref) {
 /// Mirrors [ff1CurrentPlayerStatusProvider] so device switches do not expose
 /// replayed device-status data from the previous control session.
 final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
-  final control = ref.watch(ff1WifiControlProvider);
-  ref.watch(ff1DeviceStatusStreamProvider);
-  ref.watch(ff1ConnectionStatusStreamProvider);
-  return control.currentDeviceStatus;
+  ref
+    ..watch(ff1DeviceStatusStreamProvider)
+    ..watch(ff1ConnectionStatusStreamProvider);
+  final device = ref
+      .watch(activeFF1BluetoothDeviceProvider)
+      .maybeWhen(data: (d) => d, orElse: () => null);
+  final control = ref.read(ff1WifiControlProvider);
+  return control.currentDeviceStatusDeviceId == device?.deviceId
+      ? control.currentDeviceStatus
+      : null;
 });
 
 /// Device connected provider (per connection notification)
@@ -484,12 +496,8 @@ final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
 /// connection notifications (Provider over FF1WifiControl does not notify on
 /// internal state changes).
 final ff1DeviceConnectedProvider = Provider<bool>((ref) {
-  final connectionStatusAsync = ref.watch(ff1ConnectionStatusStreamProvider);
-  return connectionStatusAsync.when(
-    data: (status) => status.isConnected,
-    loading: () => false,
-    error: (_, _) => false,
-  );
+  ref.watch(ff1ConnectionStatusStreamProvider);
+  return ref.read(ff1WifiControlProvider).isDeviceConnected;
 });
 
 /// Stream of transport-level (e.g. WebSocket) connected from `FF1WifiControl`.
@@ -635,6 +643,12 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
           previousDevice != null &&
           device != null &&
           previousDevice.deviceId != device.deviceId;
+
+      if (device != null) {
+        // Clear stale relayer/device state synchronously so UI consumers see
+        // the handoff before the deferred connection attempt begins.
+        ref.read(ff1WifiControlProvider).prepareForDeviceSwitch(device);
+      }
 
       // Use Future.microtask to defer transport mutations out of the build
       // phase and preserve the existing provider-driven connect flow.

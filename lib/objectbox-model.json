@@ -186,7 +186,7 @@
     },
     {
       "id": "11:4993529541343759207",
-      "lastPropertyId": "11:8754748133787260182",
+      "lastPropertyId": "12:2425657824502554571",
       "name": "AppStateEntity",
       "properties": [
         {
@@ -241,6 +241,11 @@
           "id": "11:8754748133787260182",
           "name": "isMigratedV2",
           "type": 1
+        },
+        {
+          "id": "12:2425657824502554571",
+          "name": "dismissedUpdateVersionsJson",
+          "type": 9
         }
       ],
       "relations": []

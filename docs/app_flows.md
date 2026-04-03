@@ -256,12 +256,32 @@
 
 ## Screen: DeviceConfigScreen
 
-- role in the flow: post-pairing control surface for orientation/scaling/audio (FF1), FFP/DDC display brightness/contrast/power, and device info
+- role in the flow: post-pairing control surface for orientation/scaling/audio (FF1), FFP/DDC display brightness/contrast/power, device info, and post-setup firmware update entry/prompt orchestration
 - route / entry point: `/device-configuration`
-- important actions: adjust display settings, DDC brightness/contrast/power, switch device/options, finish setup flow
+- important actions: adjust display settings, DDC brightness/contrast/power, switch device/options, finish setup flow, start **Update FF1**
 - dependencies: active FF1 provider, `ff1DeviceDataProvider`, FF1 Wi-Fi control
-- notes / caveats: FFP/DDC UI is gated on **device connected** (same `ff1DeviceData` connection flag as the rest of DeviceConfig): when not connected, the screen does not watch `ff1FfpDdcPanelStatusStreamProvider` or show the FFP/DDC section. While connected, controls are driven by relayer-pushed status updates and can stay available during setup and sleeping/off when the display exposes DDC; there is no in-app monitor volume or mute. The section hides when no relayer status has arrived.
+- notes / caveats:
+  - setup mode hides advanced sections and suppresses the firmware auto-prompt
+    during the initial setup visit
+  - FFP/DDC UI is gated on **device connected** (same `ff1DeviceData` connection flag as the rest of DeviceConfig): when not connected, the screen does not watch `ff1FfpDdcPanelStatusStreamProvider` or show the FFP/DDC section. While connected, controls are driven by relayer-pushed status updates and can stay available during setup and sleeping/off when the display exposes DDC; there is no in-app monitor volume or mute. The section hides when no relayer status has arrived.
   - **Monitor power (DDC):** Optimistic power is cleared when the relayer omits `power` on a status push, so the effective value becomes unknown. The UI then shows **Unknown** and **no** power mode actions (`availableFfpMonitorPowerModes` is empty for null) until a later push includes `power` again. That avoids advertising On/Standby/Off when the backend has not confirmed power, but it also means an **incomplete snapshot after power-off** (relayer message without `power`) can temporarily remove wake/on controls until a complete status arrives. See `FF1FfpDdcControlNotifier` / `_resolvePendingPower` and widget tests in `test/unit/widgets/ffp_monitor_ddc_section_test.dart`.
+  - manual **Update FF1** appears only after relayer connectivity plus both
+    `installedVersion` and `latestVersion` are available; the auto-prompt can
+    still appear earlier once relayer/version fields are present
+  - manual **Update FF1** and the auto-prompt both start the same relayer-only
+    firmware update path; the app does not start FF1 firmware updates over BLE
+  - firmware update eligibility is re-checked when active device, relayer
+    connection, or reported version fields change, so a late relayer
+    connection can still surface the prompt
+  - the auto-prompt only appears while Device Configuration is the visible
+    route; relayer updates that arrive while another route covers the screen
+    must wait until the user returns
+  - prompt/session dedupe allows only one in-flight firmware prompt at a time;
+    if the device later reports a different `latestVersion` during the same
+    visit, the screen may prompt again for that newer build
+  - both the auto-prompt and the manual options entry persist the accepted or
+    dismissed `latestVersion` for that device so the same build is not shown
+    again while OTA install status is catching up
 
 ## Screen: KeyboardControlScreen
 

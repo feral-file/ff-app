@@ -84,4 +84,17 @@ void main() {
       expect(ff1CommandResponseHasOkFlag(response), isFalse);
     });
   });
+
+  group('firmware update WiFi success (shared rule)', () {
+    test('ambiguous WiFi payload without ok is not WiFi success', () {
+      final response = FF1CommandResponse(
+        data: <String, dynamic>{'unexpected': true},
+      );
+
+      final okFlag = ff1CommandResponseOkFlag(response);
+      final success = okFlag ?? ff1CommandResponseIsOk(response);
+
+      expect(success, isFalse);
+    });
+  });
 }

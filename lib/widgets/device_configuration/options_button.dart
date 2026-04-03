@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:app/app/ff1/ff1_firmware_update_prompt_service.dart';
+import 'package:app/app/ff1/ff1_relayer_firmware_update_service.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
@@ -8,6 +10,7 @@ import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/domain/ff1/firmware_update_prompt_policy.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control_verifier.dart';
@@ -77,45 +80,83 @@ class OptionsButton extends ConsumerWidget {
     final control = ref.read(ff1WifiControlProvider);
     final topicId = device.topicId;
 
+    // Read version info so the update dialog can display current/latest.
+    final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
+    final installedVersion = normalizeFirmwareUpdateVersion(
+      deviceStatus?.installedVersion,
+    );
+    final latestVersion = normalizeFirmwareUpdateVersion(
+      deviceStatus?.latestVersion,
+    );
+    final hasVersionInfo = installedVersion != null && latestVersion != null;
+
     final options = [
-      if (isDeviceConnected)
+      if (isDeviceConnected) ...[
         OptionItem(
           title: 'Power Off',
           icon: const Icon(
             Icons.power_settings_new,
             size: 24,
           ),
-          onTap: () {
-            _onPowerOffSelected(context, control, topicId);
-          },
+          onTap: () => unawaited(
+            _onPowerOffSelected(
+              context,
+              control,
+              topicId,
+            ),
+          ),
         ),
-      // reboot
-      if (isDeviceConnected)
         OptionItem(
           title: 'Restart',
           icon: const Icon(
             Icons.restart_alt,
             size: 24,
           ),
-          onTap: () {
+          onTap: () => unawaited(
             _onRebootSelected(
               context,
               control,
               topicId,
-            );
-          },
+            ),
+          ),
         ),
+        if (hasVersionInfo)
+          OptionItem(
+            title: 'Update FF1',
+            icon: const Icon(Icons.system_update_alt),
+            onTap: () => unawaited(
+              _onUpdateFirmwareSelected(
+                context,
+                ref,
+                device,
+                installedVersion: installedVersion,
+                latestVersion: latestVersion,
+              ),
+            ),
+          ),
+      ],
       OptionItem(
         title: 'Send Log',
         icon: const Icon(Icons.help),
-        onTap: () async {
-          await _onSendLogSelected(context, ref, device);
-        },
+        onTap: () => unawaited(
+          _onSendLogSelected(
+            context,
+            ref,
+            device,
+          ),
+        ),
       ),
       OptionItem(
         title: 'Factory Reset',
         icon: const Icon(Icons.factory),
-        onTap: () => _onFactoryResetSelected(context, ref, control, device),
+        onTap: () => unawaited(
+          _onFactoryResetSelected(
+            context,
+            ref,
+            control,
+            device,
+          ),
+        ),
       ),
       OptionItem(
         title: 'FF1 Guide',
@@ -141,80 +182,150 @@ class OptionsButton extends ConsumerWidget {
     );
   }
 
-  void _onPowerOffSelected(
+  Future<void> _onPowerOffSelected(
     BuildContext context,
     FF1WifiControl control,
     String topicId,
-  ) {
-    unawaited(
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: AppColor.primaryBlack,
-          title: Text(
+  ) async {
+    final result = await UIHelper.showCenterDialog(
+      context,
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
             'Power Off',
-            style: AppTypography.body(context).bold.white,
+            style: AppTypography.h2(context).bold.white,
           ),
-          content: Text(
+          SizedBox(height: LayoutConstants.space4),
+          Text(
             'Are you sure you want to power off the device?',
             style: AppTypography.body(context).white,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cancel', style: AppTypography.body(context).white),
-            ),
-            TextButton(
-              onPressed: () async {
-                await control.shutdown(topicId: topicId);
-                if (context.mounted) {
-                  context.pop();
-                }
-              },
-              child: Text('OK', style: AppTypography.body(context).white),
-            ),
-          ],
-        ),
+          SizedBox(height: LayoutConstants.space10),
+          Row(
+            children: [
+              Expanded(
+                child: PrimaryAsyncButton(
+                  text: 'Cancel',
+                  textColor: AppColor.white,
+                  color: Colors.transparent,
+                  borderColor: AppColor.white,
+                  onTap: () {
+                    Navigator.pop(context, false);
+                  },
+                ),
+              ),
+              SizedBox(width: LayoutConstants.space4),
+              Expanded(
+                child: PrimaryAsyncButton(
+                  text: 'Power Off',
+                  textColor: AppColor.white,
+                  color: Colors.transparent,
+                  borderColor: AppColor.white,
+                  onTap: () async {
+                    try {
+                      await control.shutdown(topicId: topicId);
+                      if (context.mounted) {
+                        Navigator.pop(context, true);
+                      }
+                    } on Exception catch (e) {
+                      _log.warning('[Power Off] Failed: $e');
+                      if (context.mounted) {
+                        Navigator.pop(context, e);
+                      }
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
+
+    if (result is Exception || result is Error) {
+      if (context.mounted) {
+        await UIHelper.showInfoDialog(
+          context,
+          'Power Off Failed',
+          'Something went wrong while trying to power off the device. '
+              'Please try again.',
+        );
+      }
+    }
   }
 
-  void _onRebootSelected(
+  Future<void> _onRebootSelected(
     BuildContext context,
     FF1WifiControl control,
     String topicId,
-  ) {
-    unawaited(
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: AppColor.primaryBlack,
-          title: Text(
+  ) async {
+    final result = await UIHelper.showCenterDialog(
+      context,
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
             'Restart',
-            style: AppTypography.body(context).bold.white,
+            style: AppTypography.h2(context).bold.white,
           ),
-          content: Text(
+          SizedBox(height: LayoutConstants.space4),
+          Text(
             'Are you sure you want to restart the device?',
             style: AppTypography.body(context).white,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cancel', style: AppTypography.body(context).white),
-            ),
-            TextButton(
-              onPressed: () async {
-                await control.reboot(topicId: topicId);
-                if (context.mounted) {
-                  context.pop();
-                }
-              },
-              child: Text('OK', style: AppTypography.body(context).white),
-            ),
-          ],
-        ),
+          SizedBox(height: LayoutConstants.space10),
+          Row(
+            children: [
+              Expanded(
+                child: PrimaryAsyncButton(
+                  text: 'Cancel',
+                  textColor: AppColor.white,
+                  color: Colors.transparent,
+                  borderColor: AppColor.white,
+                  onTap: () {
+                    Navigator.pop(context, false);
+                  },
+                ),
+              ),
+              SizedBox(width: LayoutConstants.space4),
+              Expanded(
+                child: PrimaryAsyncButton(
+                  text: 'Restart',
+                  textColor: AppColor.white,
+                  color: Colors.transparent,
+                  borderColor: AppColor.white,
+                  onTap: () async {
+                    try {
+                      await control.reboot(topicId: topicId);
+                      if (context.mounted) {
+                        Navigator.pop(context, true);
+                      }
+                    } on Exception catch (e) {
+                      _log.warning('[Restart] Failed: $e');
+                      if (context.mounted) {
+                        Navigator.pop(context, e);
+                      }
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
+
+    if (result is Exception || result is Error) {
+      if (context.mounted) {
+        await UIHelper.showInfoDialog(
+          context,
+          'Restart Failed',
+          'Something went wrong while trying to restart the device. '
+              'Please try again.',
+        );
+      }
+    }
   }
 
   Future<void> _onSendLogSelected(
@@ -269,14 +380,15 @@ class OptionsButton extends ConsumerWidget {
         children: [
           Text(
             'Factory Reset',
-            style: AppTypography.body(context).bold.white,
+            style: AppTypography.h2(context).bold.white,
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: LayoutConstants.space4),
           Text(
-            'Are you sure you want to reset the device to factory settings? This will erase all data and cannot be undone.',
+            'Are you sure you want to reset the device to factory settings? '
+            'This will erase all data and cannot be undone.',
             style: AppTypography.body(context).white,
           ),
-          const SizedBox(height: 36),
+          SizedBox(height: LayoutConstants.space10),
           Row(
             children: [
               Expanded(
@@ -290,7 +402,7 @@ class OptionsButton extends ConsumerWidget {
                   },
                 ),
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: LayoutConstants.space4),
               Expanded(
                 child: PrimaryAsyncButton(
                   text: 'Reset',
@@ -311,12 +423,14 @@ class OptionsButton extends ConsumerWidget {
                           success = okFlag ?? ff1CommandResponseIsOk(response);
                           if (!success) {
                             _log.warning(
-                              '[Factory Reset] WiFi returned unsuccessful response, fallback to BLE',
+                              '[Factory Reset] WiFi returned unsuccessful '
+                              'response, fallback to BLE',
                             );
                           }
-                        } catch (e) {
+                        } on Exception catch (e) {
                           _log.warning(
-                            '[Factory Reset] WiFi error: $e, falling back to BLE',
+                            '[Factory Reset] WiFi error: $e, '
+                            'falling back to BLE',
                           );
                         }
                       }
@@ -332,7 +446,7 @@ class OptionsButton extends ConsumerWidget {
                       if (context.mounted) {
                         Navigator.pop(context, success);
                       }
-                    } catch (e) {
+                    } on Exception catch (e) {
                       _log.warning('[Factory Reset] Failed: $e');
                       if (context.mounted) {
                         Navigator.pop(context, e);
@@ -354,7 +468,9 @@ class OptionsButton extends ConsumerWidget {
           await UIHelper.showInfoDialog(
             context,
             'Restoring Factory Defaults',
-            'The device is now restoring to factory settings. It may take some time to complete. Please keep the FF1 powered on and wait until the reset is finished.',
+            'The device is now restoring to factory settings. It may take '
+                'some time to complete. Please keep the FF1 powered on '
+                'and wait until the reset is finished.',
             closeButton: 'Go Back',
             onClose: () {
               context.pop();
@@ -367,7 +483,136 @@ class OptionsButton extends ConsumerWidget {
         await UIHelper.showInfoDialog(
           context,
           'Factory Reset Failed',
-          'Something went wrong while trying to restore the device to factory settings. $result',
+          'Something went wrong while trying to restore the device to '
+              'factory settings. Please try again.',
+        );
+      }
+    }
+  }
+
+  Future<void> _onUpdateFirmwareSelected(
+    BuildContext context,
+    WidgetRef ref,
+    FF1Device device, {
+    required String installedVersion,
+    required String latestVersion,
+  }) async {
+    final topicId = device.topicId;
+    // Build version detail line for the dialog only when version info is known.
+    final isUpToDate = installedVersion == latestVersion;
+
+    final result = await UIHelper.showCenterDialog(
+      context,
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Update FF1',
+            style: AppTypography.h2(context).bold.white,
+          ),
+          SizedBox(height: LayoutConstants.space4),
+          if (isUpToDate)
+            Text(
+              'Your FF1 is already on the latest version ($installedVersion).',
+              style: AppTypography.body(context).white,
+            )
+          else ...[
+            Text(
+              '''
+Update your FF1 to the latest version. Keep the device connected and powered on during the update. It will restart automatically when the update is complete.''',
+              style: AppTypography.body(context).white,
+            ),
+          ],
+          SizedBox(height: LayoutConstants.space10),
+          Row(
+            children: [
+              Expanded(
+                child: PrimaryAsyncButton(
+                  text: 'Cancel',
+                  textColor: AppColor.white,
+                  color: Colors.transparent,
+                  borderColor: AppColor.white,
+                  onTap: () {
+                    Navigator.pop(context, false);
+                  },
+                ),
+              ),
+              if (!isUpToDate) ...[
+                SizedBox(width: LayoutConstants.space4),
+                Expanded(
+                  child: PrimaryAsyncButton(
+                    text: 'Update',
+                    textColor: AppColor.white,
+                    color: Colors.transparent,
+                    borderColor: AppColor.white,
+                    onTap: () async {
+                      final outcome = await ref
+                          .read(ff1RelayerFirmwareUpdateServiceProvider)
+                          .start(topicId: topicId);
+                      if (!context.mounted) return;
+                      switch (outcome) {
+                        case Ff1RelayerFirmwareUpdateOutcome.success:
+                          _log.info('[Update Firmware] Relayer OK');
+                          // Persist the accepted latest version so Device
+                          // Configuration does not auto-prompt again for the
+                          // same build while OTA is still catching up.
+                          await ref
+                              .read(ff1FirmwareUpdatePromptServiceProvider)
+                              .dismissLatestVersionForDevice(
+                                deviceId: device.deviceId,
+                                version: latestVersion,
+                              );
+                          if (!context.mounted) return;
+                          Navigator.pop(context, true);
+                          return;
+                        case Ff1RelayerFirmwareUpdateOutcome.missingTopic:
+                          _log.warning(
+                            '[Update Firmware] Missing topicId',
+                          );
+                          Navigator.pop(context, Exception('missing topic'));
+                          return;
+                        case Ff1RelayerFirmwareUpdateOutcome.relayerRejected:
+                          _log.warning(
+                            '[Update Firmware] Relayer returned unsuccessful '
+                            'response',
+                          );
+                          Navigator.pop(
+                            context,
+                            Exception('relayer rejected'),
+                          );
+                          return;
+                        case Ff1RelayerFirmwareUpdateOutcome.commandFailed:
+                          _log.warning('[Update Firmware] Command failed');
+                          Navigator.pop(context, Exception('command failed'));
+                          return;
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (result is bool && result) {
+      if (context.mounted) {
+        await UIHelper.showInfoDialog(
+          context,
+          'Update Started',
+          'The FF1 is now downloading and installing the latest firmware. '
+              'It will restart automatically when the update is complete.',
+          closeButton: 'OK',
+        );
+      }
+    } else if (result is Exception || result is Error) {
+      if (context.mounted) {
+        await UIHelper.showInfoDialog(
+          context,
+          'Update Failed',
+          'Something went wrong while trying to start the update. '
+              'Please try again.',
         );
       }
     }
@@ -396,5 +641,4 @@ class OptionsButton extends ConsumerWidget {
       ),
     );
   }
-
 }
