@@ -263,9 +263,11 @@
 - notes / caveats:
   - setup mode hides advanced sections and suppresses the firmware auto-prompt
     during the initial setup visit
-  - manual **Update FF1** and the auto-prompt both require relayer
-    connectivity and start the same relayer-only firmware update path; the app
-    does not start FF1 firmware updates over BLE
+  - manual **Update FF1** appears only after relayer connectivity plus both
+    `installedVersion` and `latestVersion` are available; the auto-prompt can
+    still appear earlier once relayer/version fields are present
+  - manual **Update FF1** and the auto-prompt both start the same relayer-only
+    firmware update path; the app does not start FF1 firmware updates over BLE
   - firmware update eligibility is re-checked when active device, relayer
     connection, or reported version fields change, so a late relayer
     connection can still surface the prompt
