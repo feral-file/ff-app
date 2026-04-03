@@ -480,10 +480,8 @@ void main() {
         final playerStatusController = StreamController<FF1PlayerStatus>(
           sync: true,
         );
-        final connectionStatusController =
-            StreamController<FF1ConnectionStatus>(sync: true);
+        final wifiControl = FakeWifiControl();
         addTearDown(playerStatusController.close);
-        addTearDown(connectionStatusController.close);
 
         final container = ProviderContainer.test(
           overrides: [
@@ -492,14 +490,11 @@ void main() {
             activeFF1BluetoothDeviceProvider.overrideWithValue(
               const AsyncData(device),
             ),
-            ff1WifiControlProvider.overrideWithValue(FakeWifiControl()),
+            ff1WifiControlProvider.overrideWithValue(wifiControl),
             ff1PlayerStatusStreamProvider.overrideWith(
               (ref) => playerStatusController.stream,
             ),
             streamBackedCurrentPlayerStatusOverride,
-            ff1ConnectionStatusStreamProvider.overrideWith(
-              (ref) => connectionStatusController.stream,
-            ),
           ],
         );
         addTearDown(container.dispose);
@@ -516,28 +511,18 @@ void main() {
             ff1PlayerStatusStreamProvider,
             (_, _) {},
           )
-          ..listen<AsyncValue<FF1ConnectionStatus>>(
-            ff1ConnectionStatusStreamProvider,
-            (_, _) {},
-          )
           ..read(nowDisplayingProvider);
 
         await Future<void>.delayed(Duration.zero);
-        connectionStatusController.add(
-          const FF1ConnectionStatus(isConnected: true),
-        );
+        wifiControl.emitConnectionStatus(isConnected: true);
         playerStatusController.add(status);
         await Future<void>.delayed(const Duration(milliseconds: 120));
 
         emitted.clear();
 
-        connectionStatusController.add(
-          const FF1ConnectionStatus(isConnected: false),
-        );
+        wifiControl.emitConnectionStatus(isConnected: false);
         await Future<void>.delayed(const Duration(milliseconds: 80));
-        connectionStatusController.add(
-          const FF1ConnectionStatus(isConnected: true),
-        );
+        wifiControl.emitConnectionStatus(isConnected: true);
         await Future<void>.delayed(const Duration(milliseconds: 80));
 
         expect(emitted.whereType<LoadingNowDisplaying>(), isEmpty);
