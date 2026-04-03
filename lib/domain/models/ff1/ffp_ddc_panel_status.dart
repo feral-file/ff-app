@@ -105,7 +105,6 @@ class FfpDdcPanelStatus {
   bool get hasData =>
       brightness != null ||
       contrast != null ||
-      volume != null ||
       mute != null ||
       power != null ||
       (monitor != null && monitor!.trim().isNotEmpty);

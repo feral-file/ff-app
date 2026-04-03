@@ -174,7 +174,6 @@ class _FfpMonitorQuickControls extends ConsumerWidget {
   ) {
     final showBrightness = status.brightness != null;
     final showContrast = status.contrast != null;
-    final showVol = status.volume != null;
     final hideLevelSliders = status.power == FfpDdcPanelPower.off;
     final notifier = ref.read(ff1FfpDdcControlProvider(topicId).notifier);
 
@@ -207,20 +206,6 @@ class _FfpMonitorQuickControls extends ConsumerWidget {
             onChangeEnd: (v) async {
               try {
                 await notifier.commitContrast(v);
-              } on Exception {
-                // The provider owns rollback and reconciliation.
-              }
-            },
-          ),
-        ),
-      if (showVol && !hideLevelSliders)
-        _ControlPill(
-          child: FfpMonitorVolumeControl(
-            value: (status.volume ?? 0).toDouble(),
-            onChanged: notifier.setVolumeDraft,
-            onChangeEnd: (v) async {
-              try {
-                await notifier.commitVolume(v);
               } on Exception {
                 // The provider owns rollback and reconciliation.
               }

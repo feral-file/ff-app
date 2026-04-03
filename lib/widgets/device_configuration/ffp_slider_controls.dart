@@ -57,35 +57,3 @@ class FfpContrastControl extends StatelessWidget {
   }
 }
 
-/// FFP monitor volume slider (DDC panel control).
-class FfpMonitorVolumeControl extends StatelessWidget {
-  const FfpMonitorVolumeControl({
-    required this.value,
-    required this.onChanged,
-    super.key,
-    this.enabled = true,
-    this.iconEnabled,
-    this.onChangeEnd,
-  });
-
-  final double value;
-  final bool enabled;
-  final bool? iconEnabled;
-  final ValueChanged<double> onChanged;
-  final ValueChanged<double>? onChangeEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    return ZeroToggleIconSliderControl(
-      iconAsset: 'assets/images/icon_volume.svg',
-      zeroIconAsset: 'assets/images/icon_volume_muted.svg',
-      semanticLabel: 'Monitor volume',
-      value: value,
-      enabled: enabled,
-      iconEnabled: iconEnabled,
-      onChanged: onChanged,
-      onChangeEnd: onChangeEnd,
-    );
-  }
-}
-

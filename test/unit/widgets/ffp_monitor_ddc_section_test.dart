@@ -23,7 +23,7 @@ void main() {
   });
 
   testWidgets(
-    'hides brightness, contrast, and volume sliders when power is off',
+    'hides brightness and contrast sliders when power is off',
     (tester) async {
       const topicId = 'topic-1';
       const device = FF1Device(
@@ -72,10 +72,6 @@ void main() {
 
       expect(find.byKey(const ValueKey('ffp_brightness_slider')), findsNothing);
       expect(find.byKey(const ValueKey('ffp_contrast_slider')), findsNothing);
-      expect(
-        find.byKey(const ValueKey('ffp_monitor_volume_slider')),
-        findsNothing,
-      );
       expect(find.text('Off'), findsOneWidget);
       expect(find.byType(IconButton), findsWidgets);
     },
@@ -146,10 +142,6 @@ void main() {
       expect(find.text('Off'), findsNothing);
       expect(find.byKey(const ValueKey('ffp_brightness_slider')), findsNothing);
       expect(find.byKey(const ValueKey('ffp_contrast_slider')), findsNothing);
-      expect(
-        find.byKey(const ValueKey('ffp_monitor_volume_slider')),
-        findsNothing,
-      );
     },
   );
 
@@ -501,69 +493,6 @@ void main() {
     },
   );
 
-  testWidgets(
-    'monitor-volume commit failure rolls back to confirmed relayer value',
-    (tester) async {
-      const topicId = 'topic-1';
-      const device = FF1Device(
-        name: 'FF1 Test',
-        remoteId: 'remote-id',
-        deviceId: 'device-id',
-        topicId: topicId,
-      );
-      final control = _FakeWifiControl()..volumeShouldThrow = true;
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
-              return Stream.value(device);
-            }),
-            ff1WifiControlProvider.overrideWithValue(control),
-            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith(
-              (ref) => Stream.value(
-                const FfpDdcPanelStatus(
-                  brightness: 20,
-                  contrast: 30,
-                  volume: 40,
-                  monitor: 'Test Monitor',
-                ),
-              ),
-            ),
-          ],
-          child: const MaterialApp(
-            home: Scaffold(
-              body: FfpMonitorDdcSection(
-                topicId: topicId,
-                isConnected: true,
-                isControllable: true,
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final sliderFinder = find.descendant(
-        of: find.byKey(const ValueKey('ffp_monitor_volume_slider')),
-        matching: find.byType(Slider),
-      );
-      final slider = tester.widget<Slider>(sliderFinder);
-      slider.onChanged!(90);
-      await tester.pump();
-      expect(tester.widget<Slider>(sliderFinder).value, 90);
-
-      slider.onChangeEnd!(90);
-      await tester.pumpAndSettle();
-
-      expect(control.lastVolume, 90);
-      expect(
-        tester.widget<Slider>(sliderFinder).value,
-        40,
-        reason: 'Failed write must roll back to the last confirmed status.',
-      );
-    },
-  );
 }
 
 class _FakeWifiControl extends FF1WifiControl {
@@ -575,10 +504,8 @@ class _FakeWifiControl extends FF1WifiControl {
 
   int? lastBrightness;
   int? lastContrast;
-  int? lastVolume;
   bool brightnessShouldThrow = false;
   bool contrastShouldThrow = false;
-  bool volumeShouldThrow = false;
 
   @override
   Future<void> setFfpMonitorBrightness({
@@ -601,18 +528,6 @@ class _FakeWifiControl extends FF1WifiControl {
     lastContrast = percent;
     if (contrastShouldThrow) {
       throw Exception('contrast failed');
-    }
-  }
-
-  @override
-  Future<void> setFfpMonitorVolume({
-    required String topicId,
-    required String monitorId,
-    required int percent,
-  }) async {
-    lastVolume = percent;
-    if (volumeShouldThrow) {
-      throw Exception('volume failed');
     }
   }
 }

@@ -446,8 +446,9 @@ class FF1WifiControl {
   /// Reconnect to device (using cached connection params)
   ///
   /// Useful for app lifecycle changes (foreground/background).
-  /// Uses [forceReconnect] to bypass "already connected" check when connection
-  /// may be stale (e.g. app was suspended, Timer-based reconnect did not fire).
+  /// Uses the `forceReconnect` flag to bypass the "already connected" check
+  /// when the connection may be stale (e.g. the app was suspended and the
+  /// timer-based reconnect did not fire).
   Future<void> reconnect() async {
     final flowId = _nextFlowId('reconnect');
     if (_device == null || _userId == null || _apiKey == null) {
@@ -1223,22 +1224,6 @@ transport reconnected — waiting for device connection notification''',
       ),
     );
     _throwIfFfpCommandFailed(r, 'setFfpMonitorContrast');
-  }
-
-  /// FFP / DDC: set monitor (speaker) volume — not FF1 `setVolume` audio.
-  Future<void> setFfpMonitorVolume({
-    required String topicId,
-    required String monitorId,
-    required int percent,
-  }) async {
-    final r = await _sendFfpDdcCommand(
-      topicId: topicId,
-      request: FfpDdcMonitorSetVolumeRequest(
-        monitorId: monitorId,
-        percent: percent.clamp(0, 100),
-      ),
-    );
-    _throwIfFfpCommandFailed(r, 'setFfpMonitorVolume');
   }
 
   /// FFP / DDC: set monitor mute.

@@ -313,7 +313,6 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
   FfpDdcPanelStatus _deviceStatus = const FfpDdcPanelStatus();
   int? _pendingBrightness;
   int? _pendingContrast;
-  int? _pendingVolume;
   FfpDdcPanelPower? _pendingPower;
 
   @override
@@ -410,38 +409,6 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
     }
   }
 
-  /// Updates the optimistic monitor-volume value during slider drag.
-  void setVolumeDraft(double value) {
-    if (!_isActiveTopic()) {
-      return;
-    }
-    _pendingVolume = value.round();
-    state = _deriveState();
-  }
-
-  /// Commits a monitor-volume write and rolls back on failure.
-  Future<void> commitVolume(double value) async {
-    if (!_isActiveTopic()) {
-      return;
-    }
-
-    _pendingVolume = value.round();
-    state = _deriveState();
-
-    final control = ref.read(ff1WifiControlProvider);
-    try {
-      await control.setFfpMonitorVolume(
-        topicId: _topicId,
-        monitorId: _monitorId(state),
-        percent: value.round(),
-      );
-    } on Exception {
-      _pendingVolume = null;
-      state = _deriveState();
-      rethrow;
-    }
-  }
-
   /// Optimistically updates monitor power and reconciles with a follow-up read.
   Future<void> setPower(FfpDdcPanelPower powerState) async {
     if (!_isActiveTopic()) {
@@ -478,7 +445,6 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
     if (!_isActiveTopic()) {
       _pendingBrightness = null;
       _pendingContrast = null;
-      _pendingVolume = null;
       _pendingPower = null;
       return const FfpDdcPanelStatus();
     }
@@ -491,13 +457,11 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
       _pendingContrast,
       _deviceStatus.contrast,
     );
-    _pendingVolume = _resolvePendingInt(_pendingVolume, _deviceStatus.volume);
     _pendingPower = _resolvePendingPower(_pendingPower, _deviceStatus.power);
 
     return _deviceStatus.copyWith(
       brightness: _pendingBrightness ?? _deviceStatus.brightness,
       contrast: _pendingContrast ?? _deviceStatus.contrast,
-      volume: _pendingVolume ?? _deviceStatus.volume,
       power: _pendingPower ?? _deviceStatus.power,
     );
   }
@@ -532,7 +496,6 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
     _deviceStatus = const FfpDdcPanelStatus();
     _pendingBrightness = null;
     _pendingContrast = null;
-    _pendingVolume = null;
     _pendingPower = null;
   }
 

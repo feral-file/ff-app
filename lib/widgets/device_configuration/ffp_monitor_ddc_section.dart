@@ -49,7 +49,6 @@ class FfpMonitorDdcSection extends ConsumerWidget {
   ) {
     final showBrightness = status.brightness != null;
     final showContrast = status.contrast != null;
-    final showVol = status.volume != null;
     final hideLevelSliders = status.power == FfpDdcPanelPower.off;
 
     final name = status.monitor?.trim().isNotEmpty ?? false
@@ -140,23 +139,6 @@ class FfpMonitorDdcSection extends ConsumerWidget {
               onChangeEnd: (v) async {
                 try {
                   await notifier.commitContrast(v);
-                } on Exception {
-                  // The provider owns rollback and reconciliation.
-                }
-              },
-            ),
-          ],
-          if (showVol && !hideLevelSliders) ...[
-            SizedBox(height: LayoutConstants.space4),
-            FfpMonitorVolumeControl(
-              key: const ValueKey('ffp_monitor_volume_slider'),
-              value: (status.volume ?? 0).toDouble(),
-              enabled: enable && showVol,
-              iconEnabled: enable,
-              onChanged: notifier.setVolumeDraft,
-              onChangeEnd: (v) async {
-                try {
-                  await notifier.commitVolume(v);
                 } on Exception {
                   // The provider owns rollback and reconciliation.
                 }

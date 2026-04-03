@@ -30,7 +30,18 @@ void main() {
       expect(s.hasData, isTrue);
     });
 
-    test('relayer sample with only errors in JSON still parses null values', () {
+    test('volume-only payload does not count as displayable status', () {
+      final json = {
+        'volume': 77,
+      };
+      final s = FfpDdcPanelStatus.fromJson(json);
+      expect(s.volume, 77);
+      expect(s.hasData, isFalse);
+    });
+
+    test(
+      'relayer sample with only errors in JSON still parses null values',
+      () {
       final json = {
         'brightness': 82,
         'contrast': 25,
@@ -47,7 +58,8 @@ void main() {
       expect(s.monitor, 'DEL:DELL S2721QS');
       expect(s.mute, isNull);
       expect(s.hasData, isTrue);
-    });
+      },
+    );
 
     test('FfpDdcPanelPower.tryParse accepts wire aliases', () {
       expect(FfpDdcPanelPower.tryParse('poweron'), FfpDdcPanelPower.on);

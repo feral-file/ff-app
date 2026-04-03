@@ -61,7 +61,6 @@ void main() {
 
       expect(find.bySemanticsLabel('Brightness'), findsNothing);
       expect(find.bySemanticsLabel('Contrast'), findsNothing);
-      expect(find.bySemanticsLabel('Monitor volume'), findsNothing);
       expect(find.byType(ArtworkPlayingControls), findsOneWidget);
     },
   );
@@ -114,7 +113,6 @@ void main() {
 
       expect(find.bySemanticsLabel('Brightness'), findsNothing);
       expect(find.bySemanticsLabel('Contrast'), findsNothing);
-      expect(find.bySemanticsLabel('Monitor volume'), findsNothing);
 
       statuses.add(
         const FfpDdcPanelStatus(
@@ -126,7 +124,6 @@ void main() {
 
       expect(find.bySemanticsLabel('Brightness'), findsNothing);
       expect(find.bySemanticsLabel('Contrast'), findsNothing);
-      expect(find.bySemanticsLabel('Monitor volume'), findsNothing);
     },
   );
 
