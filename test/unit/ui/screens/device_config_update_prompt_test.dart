@@ -88,13 +88,12 @@ void main() {
   );
 
   testWidgets(
-    'OptionsButton Cancel persists the dismissed firmware version',
+    'OptionsButton Cancel does not persist a dismissed firmware version',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1200, 12000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final dismissalGate = Completer<void>();
-      final appState = _BlockingAppStateService(dismissalGate);
+      final appState = _BlockingAppStateService(Completer<void>());
       final wifiControl = FakeWifiControl();
 
       const device = FF1Device(
@@ -136,24 +135,17 @@ void main() {
       expect(find.text(updateDescription), findsOneWidget);
 
       final cancelButton = _primaryAsyncButton('Cancel');
-      final cancelAction =
-          tester.widget<PrimaryAsyncButton>(cancelButton).onTap!();
-      await tester.pump();
-
-      expect(appState.calls, 1);
-      expect(appState.lastDeviceId, device.deviceId);
-      expect(appState.lastVersion, deviceStatus.latestVersion);
-      expect(find.text(updateDescription), findsOneWidget);
-
-      dismissalGate.complete();
+      await tester.widget<PrimaryAsyncButton>(cancelButton).onTap!();
       await tester.pumpAndSettle();
 
-      expect(find.text(updateDescription), findsNothing);
+      expect(appState.calls, 0);
+      expect(appState.lastDeviceId, isNull);
+      expect(appState.lastVersion, isNull);
       expect(
         appState.dismissedVersions[device.deviceId],
-        deviceStatus.latestVersion,
+        isNull,
       );
-      await cancelAction;
+      expect(find.text(updateDescription), findsNothing);
     },
   );
 
