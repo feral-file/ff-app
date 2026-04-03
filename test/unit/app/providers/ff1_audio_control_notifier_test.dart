@@ -11,6 +11,64 @@ import 'provider_test_helpers.dart';
 void main() {
   group('FF1AudioControlNotifier.commitVolume', () {
     test(
+      'later volume failure preserves an earlier optimistic write',
+      () async {
+        const topicId = 'topic-preserve';
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'r0',
+          deviceId: 'd0',
+          topicId: topicId,
+        );
+
+        final wifi = _VolumeCommitTestWifiControl();
+        FF1DeviceStatus? currentDeviceStatus = const FF1DeviceStatus(
+          volume: 50,
+          isMuted: false,
+        );
+
+        final container = ProviderContainer.test(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWithValue(
+              const AsyncData<FF1Device?>(device),
+            ),
+            ff1WifiControlProvider.overrideWithValue(wifi),
+            ff1CurrentDeviceStatusProvider.overrideWith(
+              (ref) => currentDeviceStatus,
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await Future<void>.delayed(Duration.zero);
+
+        final notifier = container.read(
+          ff1AudioControlProvider(topicId).notifier,
+        );
+
+        await notifier.commitVolume(80);
+        expect(
+          container.read(ff1AudioControlProvider(topicId)).volume,
+          80,
+        );
+
+        wifi.failSetVolume = true;
+        await expectLater(
+          notifier.commitVolume(60),
+          throwsException,
+        );
+
+        expect(
+          container.read(ff1AudioControlProvider(topicId)).volume,
+          80,
+          reason:
+              'A later failed commit must not snap the slider back to the '
+              'stale confirmed device snapshot.',
+        );
+      },
+    );
+
+    test(
       'zero-crossing to zero: setVolume failure after toggleMute undoes mute',
       () async {
         const topicId = 'topic-z1';

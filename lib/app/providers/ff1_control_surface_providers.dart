@@ -62,6 +62,7 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
   double? _volumeBeforeMute;
   double? _pendingVolume;
   bool? _pendingMuted;
+  bool _hasPendingVolumeCommit = false;
 
   @override
   FF1AudioControlState build() {
@@ -95,6 +96,10 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
       return;
     }
 
+    final previousVolumeBeforeMute = _volumeBeforeMute;
+    final previousPendingVolume = _pendingVolume;
+    final previousPendingMuted = _pendingMuted;
+    final previousHasPendingVolumeCommit = _hasPendingVolumeCommit;
     final shouldBeMuted = value <= 0;
     final shouldToggleMute = shouldBeMuted != state.isMuted;
     if (shouldBeMuted) {
@@ -111,6 +116,7 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
     if (shouldToggleMute) {
       _pendingMuted = shouldBeMuted;
     }
+    _hasPendingVolumeCommit = true;
     state = _deriveState();
 
     final control = ref.read(ff1WifiControlProvider);
@@ -131,8 +137,14 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
       if (muteToggleApplied) {
         await _reconcileMuteToggleAfterVolumeFailure(control);
       }
-      _pendingVolume = null;
-      _pendingMuted = null;
+      _volumeBeforeMute = previousVolumeBeforeMute;
+      _pendingVolume = previousHasPendingVolumeCommit
+          ? previousPendingVolume
+          : null;
+      _pendingMuted = previousHasPendingVolumeCommit
+          ? previousPendingMuted
+          : null;
+      _hasPendingVolumeCommit = previousHasPendingVolumeCommit;
       state = _deriveState();
       rethrow;
     }
@@ -183,6 +195,10 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
     }
 
     final previousState = state;
+    final previousVolumeBeforeMute = _volumeBeforeMute;
+    final previousPendingVolume = _pendingVolume;
+    final previousPendingMuted = _pendingMuted;
+    final previousHasPendingVolumeCommit = _hasPendingVolumeCommit;
     if (state.isMuted) {
       final restoredVolume = _restoredVolumeAfterMute();
       _pendingVolume = restoredVolume;
@@ -198,14 +214,17 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
       }
       _pendingMuted = true;
     }
+    _hasPendingVolumeCommit = true;
     state = _deriveState();
 
     final control = ref.read(ff1WifiControlProvider);
     try {
       await control.toggleMute(topicId: _topicId);
     } on Exception {
-      _pendingMuted = null;
-      _pendingVolume = null;
+      _hasPendingVolumeCommit = previousHasPendingVolumeCommit;
+      _volumeBeforeMute = previousVolumeBeforeMute;
+      _pendingVolume = previousPendingVolume;
+      _pendingMuted = previousPendingMuted;
       state = previousState;
       rethrow;
     }
@@ -245,6 +264,9 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
     }
     if (_pendingMuted != null && actualMuted == _pendingMuted) {
       _pendingMuted = null;
+    }
+    if (_pendingVolume == null && _pendingMuted == null) {
+      _hasPendingVolumeCommit = false;
     }
 
     final resolvedMuted = _pendingMuted ?? actualMuted ?? false;
@@ -362,6 +384,8 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
   int? _pendingBrightness;
   int? _pendingContrast;
   FfpDdcPanelPower? _pendingPower;
+  bool _hasPendingBrightnessCommit = false;
+  bool _hasPendingContrastCommit = false;
 
   @override
   FfpDdcPanelStatus build() {
@@ -408,7 +432,10 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
       return;
     }
 
+    final previousPendingBrightness = _pendingBrightness;
+    final previousHasPendingBrightnessCommit = _hasPendingBrightnessCommit;
     _pendingBrightness = value.round();
+    _hasPendingBrightnessCommit = true;
     state = _deriveState();
 
     final control = ref.read(ff1WifiControlProvider);
@@ -419,7 +446,10 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
         percent: value.round(),
       );
     } on Exception {
-      _pendingBrightness = null;
+      _pendingBrightness = previousHasPendingBrightnessCommit
+          ? previousPendingBrightness
+          : null;
+      _hasPendingBrightnessCommit = previousHasPendingBrightnessCommit;
       state = _deriveState();
       rethrow;
     }
@@ -440,7 +470,10 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
       return;
     }
 
+    final previousPendingContrast = _pendingContrast;
+    final previousHasPendingContrastCommit = _hasPendingContrastCommit;
     _pendingContrast = value.round();
+    _hasPendingContrastCommit = true;
     state = _deriveState();
 
     final control = ref.read(ff1WifiControlProvider);
@@ -451,7 +484,10 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
         percent: value.round(),
       );
     } on Exception {
-      _pendingContrast = null;
+      _pendingContrast = previousHasPendingContrastCommit
+          ? previousPendingContrast
+          : null;
+      _hasPendingContrastCommit = previousHasPendingContrastCommit;
       state = _deriveState();
       rethrow;
     }
@@ -506,6 +542,12 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
       _deviceStatus.contrast,
     );
     _pendingPower = _resolvePendingPower(_pendingPower, _deviceStatus.power);
+    if (_pendingBrightness == null) {
+      _hasPendingBrightnessCommit = false;
+    }
+    if (_pendingContrast == null) {
+      _hasPendingContrastCommit = false;
+    }
 
     return _deviceStatus.copyWith(
       brightness: _pendingBrightness ?? _deviceStatus.brightness,
