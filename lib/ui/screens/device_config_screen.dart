@@ -160,12 +160,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 
     final control = ref.read(ff1WifiControlProvider);
 
+    // DDC monitor controls are driven by relayer status, not playback state.
+    // Keep them available while the panel is sleeping/off so users can wake or
+    // recover the display from the same surface.
     final isControllable =
-        isDeviceConnected &&
-        deviceStatus != null &&
-        playerStatus != null &&
-        !playerStatus.isSleeping &&
-        topicId.isNotEmpty;
+        isDeviceConnected && deviceStatus != null && topicId.isNotEmpty;
 
     return Padding(
       padding: EdgeInsets.zero,
@@ -251,21 +250,22 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
               child: SizedBox(height: LayoutConstants.space5),
             ),
           ],
-          const SliverToBoxAdapter(
-            child: Divider(
-              color: AppColor.primaryBlack,
-              thickness: 1,
-              height: 1,
+          if (isDeviceConnected) ...[
+            SliverToBoxAdapter(
+              child: FfpStatusSection(
+                topicId: topicId,
+                isConnected: isDeviceConnected,
+                isControllable: isControllable,
+              ),
             ),
-          ),
+          ],
           if (widget.payload.isInSetupProcess) ...[
             SliverToBoxAdapter(
               child: SizedBox(
                 height: LayoutConstants.space20,
               ),
             ),
-          ],
-          if (!widget.payload.isInSetupProcess) ...[
+          ] else ...[
             SliverToBoxAdapter(
               child: SizedBox(
                 height: LayoutConstants.space5,
@@ -285,15 +285,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 ),
               ),
             ),
-            if (isDeviceConnected) ...[
-              SliverToBoxAdapter(
-                child: FfpStatusSection(
-                  topicId: topicId,
-                  isConnected: isDeviceConnected,
-                  isControllable: isControllable,
-                ),
-              ),
-            ],
             const SliverToBoxAdapter(
               child: Divider(
                 color: AppColor.primaryBlack,
@@ -301,7 +292,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 height: 40,
               ),
             ),
-
             if (isDeviceConnected) ...[
               SliverToBoxAdapter(
                 child: Padding(
