@@ -14,6 +14,65 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets(
+    'hides brightness, contrast, and volume sliders when power is off',
+    (tester) async {
+      const topicId = 'topic-1';
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: topicId,
+      );
+      final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
+
+      addTearDown(statuses.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(_FakeWifiControl()),
+            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith((ref) {
+              return statuses.stream;
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: FfpMonitorDdcSection(
+                topicId: topicId,
+                isConnected: true,
+                isControllable: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 20,
+          contrast: 30,
+          volume: 40,
+          power: FfpDdcPanelPower.off,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('ffp_brightness_slider')), findsNothing);
+      expect(find.byKey(const ValueKey('ffp_contrast_slider')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('ffp_monitor_volume_slider')),
+        findsNothing,
+      );
+      expect(find.text('Off'), findsOneWidget);
+      expect(find.byType(IconButton), findsWidgets);
+    },
+  );
+
   testWidgets('later relayer pushes replace the initial device state', (
     tester,
   ) async {

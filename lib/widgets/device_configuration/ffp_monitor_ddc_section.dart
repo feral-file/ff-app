@@ -51,6 +51,7 @@ class FfpMonitorDdcSection extends ConsumerWidget {
     final showContrast = status.contrast != null;
     final showVol = status.volume != null;
     final showPowerControl = status.power != null;
+    final hideLevelSliders = status.power == FfpDdcPanelPower.off;
 
     final name = status.monitor?.trim().isNotEmpty ?? false
         ? status.monitor!.trim()
@@ -91,8 +92,7 @@ class FfpMonitorDdcSection extends ConsumerWidget {
                   width: 12,
                   height: 12,
                   decoration: BoxDecoration(
-                    color:
-                        status.power?.monitorPowerAccentColor ?? Colors.grey,
+                    color: status.power?.monitorPowerAccentColor ?? Colors.grey,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -109,7 +109,7 @@ class FfpMonitorDdcSection extends ConsumerWidget {
               ],
             ),
           ),
-          if (showBrightness) ...[
+          if (showBrightness && !hideLevelSliders) ...[
             SizedBox(height: LayoutConstants.space4),
             FfpBrightnessControl(
               key: const ValueKey('ffp_brightness_slider'),
@@ -131,7 +131,7 @@ class FfpMonitorDdcSection extends ConsumerWidget {
               },
             ),
           ],
-          if (showContrast) ...[
+          if (showContrast && !hideLevelSliders) ...[
             SizedBox(height: LayoutConstants.space4),
             FfpContrastControl(
               key: const ValueKey('ffp_contrast_slider'),
@@ -147,7 +147,7 @@ class FfpMonitorDdcSection extends ConsumerWidget {
               },
             ),
           ],
-          if (showVol) ...[
+          if (showVol && !hideLevelSliders) ...[
             SizedBox(height: LayoutConstants.space4),
             FfpMonitorVolumeControl(
               key: const ValueKey('ffp_monitor_volume_slider'),
