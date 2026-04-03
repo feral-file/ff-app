@@ -819,9 +819,9 @@ FF1NotificationMessage _playerStatusNotification({
 
 class _InspectableWifiTransport implements FF1WifiTransport {
   _InspectableWifiTransport()
-      : _notifications = StreamController<FF1NotificationMessage>.broadcast(),
-        _connections = StreamController<bool>.broadcast(),
-        _errors = StreamController<FF1WifiTransportError>.broadcast();
+    : _notifications = StreamController<FF1NotificationMessage>.broadcast(),
+      _connections = StreamController<bool>.broadcast(),
+      _errors = StreamController<FF1WifiTransportError>.broadcast();
 
   final StreamController<FF1NotificationMessage> _notifications;
   final StreamController<bool> _connections;
@@ -890,8 +890,8 @@ class _InspectableWifiControl extends FF1WifiControl {
     required super.transport,
     required this.switchDeviceId,
   }) : super(
-          logger: Logger('_InspectableWifiControl'),
-        );
+         logger: Logger('_InspectableWifiControl'),
+       );
 
   final String switchDeviceId;
   FF1DeviceStatus? switchConnectDeviceStatus;

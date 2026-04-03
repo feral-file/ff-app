@@ -128,7 +128,7 @@ abstract class AppStateServiceBase {
 
   /// Persists [version] as the dismissed firmware update version for
   /// [deviceId]. The update prompt will not reappear for this device until
-  /// the device reports a different [latestVersion].
+  /// the device reports a different latestVersion.
   Future<void> setDismissedUpdateVersion({
     required String deviceId,
     required String version,

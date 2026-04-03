@@ -48,5 +48,5 @@ class Ff1RelayerFirmwareUpdateService {
 /// App-layer entry for relayer-only firmware update start.
 final ff1RelayerFirmwareUpdateServiceProvider =
     Provider<Ff1RelayerFirmwareUpdateService>((ref) {
-  return Ff1RelayerFirmwareUpdateService(ref.watch(ff1WifiControlProvider));
-});
+      return Ff1RelayerFirmwareUpdateService(ref.watch(ff1WifiControlProvider));
+    });

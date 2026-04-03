@@ -30,7 +30,8 @@ class Ff1FirmwarePromptSessionState {
   }) {
     return Ff1FirmwarePromptSessionState(
       lastDeviceId: lastDeviceId ?? this.lastDeviceId,
-      sessionPromptedForLatestVersion: sessionPromptedForLatestVersion ??
+      sessionPromptedForLatestVersion:
+          sessionPromptedForLatestVersion ??
           this.sessionPromptedForLatestVersion,
       isPromptInFlight: isPromptInFlight ?? this.isPromptInFlight,
     );
@@ -47,10 +48,10 @@ class Ff1FirmwarePromptSessionState {
 
   @override
   int get hashCode => Object.hash(
-        lastDeviceId,
-        sessionPromptedForLatestVersion,
-        isPromptInFlight,
-      );
+    lastDeviceId,
+    sessionPromptedForLatestVersion,
+    isPromptInFlight,
+  );
 }
 
 /// When non-null, the UI should show the auto-prompt for these versions.
@@ -118,8 +119,7 @@ Ff1FirmwareUpdatePromptTickResult computeFirmwareUpdatePromptTick({
     );
   }
 
-  final normalizedInstalled =
-      normalizeFirmwareUpdateVersion(installedVersion);
+  final normalizedInstalled = normalizeFirmwareUpdateVersion(installedVersion);
   final normalizedLatest = normalizeFirmwareUpdateVersion(latestVersion);
   final normalizedDismissed = normalizeFirmwareUpdateVersion(
     dismissedLatestVersionForDevice,

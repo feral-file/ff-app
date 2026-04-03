@@ -249,7 +249,7 @@ class OptionsButton extends ConsumerWidget {
           context,
           'Power Off Failed',
           'Something went wrong while trying to power off the device. '
-          'Please try again.',
+              'Please try again.',
         );
       }
     }
@@ -322,7 +322,7 @@ class OptionsButton extends ConsumerWidget {
           context,
           'Restart Failed',
           'Something went wrong while trying to restart the device. '
-          'Please try again.',
+              'Please try again.',
         );
       }
     }
@@ -469,8 +469,8 @@ class OptionsButton extends ConsumerWidget {
             context,
             'Restoring Factory Defaults',
             'The device is now restoring to factory settings. It may take '
-            'some time to complete. Please keep the FF1 powered on '
-            'and wait until the reset is finished.',
+                'some time to complete. Please keep the FF1 powered on '
+                'and wait until the reset is finished.',
             closeButton: 'Go Back',
             onClose: () {
               context.pop();
@@ -484,7 +484,7 @@ class OptionsButton extends ConsumerWidget {
           context,
           'Factory Reset Failed',
           'Something went wrong while trying to restore the device to '
-          'factory settings. Please try again.',
+              'factory settings. Please try again.',
         );
       }
     }
@@ -602,7 +602,7 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
           context,
           'Update Started',
           'The FF1 is now downloading and installing the latest firmware. '
-          'It will restart automatically when the update is complete.',
+              'It will restart automatically when the update is complete.',
           closeButton: 'OK',
         );
       }
@@ -612,7 +612,7 @@ Update your FF1 to the latest version. Keep the device connected and powered on 
           context,
           'Update Failed',
           'Something went wrong while trying to start the update. '
-          'Please try again.',
+              'Please try again.',
         );
       }
     }

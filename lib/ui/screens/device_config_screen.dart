@@ -411,8 +411,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     final dismissedVersion = device == null
         ? ''
         : ref
-            .read(ff1FirmwareUpdatePromptServiceProvider)
-            .getDismissedLatestVersionForDevice(device.deviceId);
+              .read(ff1FirmwareUpdatePromptServiceProvider)
+              .getDismissedLatestVersionForDevice(device.deviceId);
 
     final output = computeFirmwareUpdatePromptTick(
       session: _promptSession,
@@ -540,12 +540,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                         // Success = command accepted; installed lags until OTA
                         // finishes. Dismiss like Later so finally does not
                         // re-offer the same latest build.
-                          await ref
-                              .read(ff1FirmwareUpdatePromptServiceProvider)
-                              .dismissLatestVersionForDevice(
-                                deviceId: device.deviceId,
-                                version: latestVersion,
-                              );
+                        await ref
+                            .read(ff1FirmwareUpdatePromptServiceProvider)
+                            .dismissLatestVersionForDevice(
+                              deviceId: device.deviceId,
+                              version: latestVersion,
+                            );
                         if (!mounted) return;
                         Navigator.pop(context, true);
                         return;

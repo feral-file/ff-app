@@ -421,7 +421,6 @@ void main() {
       expect(find.text('Update Available'), findsNothing);
     },
   );
-
 }
 
 Future<void> _pumpUntilVisible(WidgetTester tester, String text) async {
