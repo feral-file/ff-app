@@ -154,7 +154,7 @@ jobs:
           sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" new "$SENTRY_RELEASE" || \
             sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" info "$SENTRY_RELEASE"
           sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" set-commits "$SENTRY_RELEASE" --auto || true
-          sentry-cli debug-files --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" upload \
+          sentry-cli debug-files upload --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" \
             --include-sources \
             --wait \
             build/app/intermediates/merged_native_libs/productionRelease/mergeProductionReleaseNativeLibs/out/lib

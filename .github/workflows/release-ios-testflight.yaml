@@ -284,7 +284,7 @@ jobs:
           if [[ -d "$ARCHIVE_PATH/BCSymbolMaps" ]]; then
             SYMBOL_UPLOAD_ARGS+=(--symbol-maps "$ARCHIVE_PATH/BCSymbolMaps")
           fi
-          sentry-cli debug-files --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" upload \
+          sentry-cli debug-files upload --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" \
             "${SYMBOL_UPLOAD_ARGS[@]}" \
             "$ARCHIVE_PATH/dSYMs"
           sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" finalize "$SENTRY_RELEASE"
