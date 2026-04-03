@@ -1,3 +1,4 @@
+import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
@@ -57,6 +58,7 @@ void main() {
   late DatabaseService databaseService;
   late AddressService addressService;
   late _FakeAppStateService fakeAppState;
+  late FakeIndexerServiceIsolate fakeIndexerIsolate;
 
   setUpAll(() {
     dotenv.testLoad(fileInput: 'INDEXER_API_URL=https://example.invalid');
@@ -68,6 +70,7 @@ void main() {
     database = AppDatabase.forTesting(NativeDatabase.memory());
     databaseService = DatabaseService(database);
     fakeAppState = _FakeAppStateService();
+    fakeIndexerIsolate = FakeIndexerServiceIsolate();
 
     final indexerSyncService = IndexerSyncService(
       indexerService: IndexerService(
@@ -84,15 +87,29 @@ void main() {
         resolverApiKey: '',
       ),
       personalTokensSyncService: _FakePersonalTokensSyncService(),
-      indexerServiceIsolate: FakeIndexerServiceIsolate(),
-        appStateService: fakeAppState,
-      );
+      indexerServiceIsolate: fakeIndexerIsolate,
+      appStateService: fakeAppState,
+    );
   });
 
   tearDown(() async {
     await database.close();
     SeedDatabaseGate.resetForTesting();
   });
+
+  test(
+    'syncTokens requests fetchTokensPageByAddresses with indexerTokensPageSize',
+    () async {
+      const addr = '0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8';
+      fakeIndexerIsolate.fetchTokensResult = const TokensPage(tokens: []);
+
+      final total = await addressService.syncTokens(addr);
+
+      expect(total, 0);
+      expect(fakeIndexerIsolate.fetchTokensPageLimits, [indexerTokensPageSize]);
+      expect(fakeIndexerIsolate.fetchTokensPageOffsets, [0]);
+    },
+  );
 
   test('addAddress writes to ObjectBox and sets idle status', () async {
     final walletAddress = WalletAddress(

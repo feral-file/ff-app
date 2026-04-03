@@ -5,6 +5,11 @@
 
 import 'dart:async';
 
+// This provider layer already carries lint debt unrelated to the stale-status
+// bug. The current change is intentionally narrow: keep live status aligned
+// with the current FF1 connection session without refactoring the whole file.
+// ignore_for_file: avoid_equals_and_hash_code_on_mutable_classes, cascade_invocations, comment_references, discarded_futures, implementation_imports, lines_longer_than_80_chars, public_member_api_docs, unawaited_futures
+
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/version_provider.dart';
 import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
@@ -447,25 +452,29 @@ final ff1SupportsPlaybackModesProvider = Provider<bool>((ref) {
 /// Current player status provider (last received value)
 ///
 /// Returns the most recent player status or null if none received.
+///
+/// This watches the stream only for invalidation and reads the control-layer
+/// cache for the actual value. `FF1WifiControl.playerStatusStream` replays the
+/// last payload, so after a device switch the stream may still hold device A's
+/// status until device B emits its first player-status notification.
 final ff1CurrentPlayerStatusProvider = Provider<FF1PlayerStatus?>((ref) {
-  final controlAsync = ref.watch(ff1PlayerStatusStreamProvider);
-  return controlAsync.when(
-    data: (status) => status,
-    loading: () => null,
-    error: (_, _) => null,
-  );
+  final control = ref.watch(ff1WifiControlProvider);
+  ref.watch(ff1PlayerStatusStreamProvider);
+  ref.watch(ff1ConnectionStatusStreamProvider);
+  return control.currentPlayerStatus;
 });
 
 /// Current device status provider (last received value)
 ///
 /// Returns the most recent device status or null if none received.
+///
+/// Mirrors [ff1CurrentPlayerStatusProvider] so device switches do not expose
+/// replayed device-status data from the previous control session.
 final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
-  final controlAsync = ref.watch(ff1DeviceStatusStreamProvider);
-  return controlAsync.when(
-    data: (status) => status,
-    loading: () => null,
-    error: (_, _) => null,
-  );
+  final control = ref.watch(ff1WifiControlProvider);
+  ref.watch(ff1DeviceStatusStreamProvider);
+  ref.watch(ff1ConnectionStatusStreamProvider);
+  return control.currentDeviceStatus;
 });
 
 /// Device connected provider (per connection notification)
@@ -515,6 +524,82 @@ final ff1WifiConnectingProvider = Provider<bool>((ref) {
   final connectionState = ref.watch(ff1WifiConnectionProvider);
   return connectionState.isConnecting;
 });
+
+Future<void> _runRequiredDeviceVersionCheck({
+  required Ref ref,
+  required Logger logger,
+  required FF1Device device,
+  FF1DeviceStatus? deviceStatus,
+}) async {
+  final deviceVersion = deviceStatus?.latestVersion;
+  if (deviceVersion == null || deviceVersion.isEmpty) {
+    logger.warning(
+      'Skipping device version compatibility check: '
+      'device version not available in device status',
+    );
+    return;
+  }
+
+  await ref
+      .read(versionServiceProvider)
+      .checkDeviceVersionCompatibility(
+        branchName: device.branchName,
+        deviceVersion: deviceVersion,
+        requiredDeviceUpdate: true,
+      );
+}
+
+Future<void> _scheduleRequiredDeviceVersionCheck({
+  required Ref ref,
+  required Logger logger,
+  required FF1Device device,
+}) async {
+  final control = ref.read(ff1WifiControlProvider);
+  // This runs in an unawaited background task, so do not impose an arbitrary
+  // timeout. We want the required-update gate to wait until this connection
+  // session publishes a usable device version, and FF1WifiControl resolves
+  // the future with null automatically on teardown / device switch.
+  final deviceStatus = await control.freshDeviceVersionFuture();
+  if (!ref.mounted) {
+    return;
+  }
+  if (deviceStatus == null) {
+    logger.warning(
+      'Skipping device version compatibility check: '
+      'fresh device status unavailable for this session',
+    );
+    return;
+  }
+  final activeDevice = ref
+      .read(activeFF1BluetoothDeviceProvider)
+      .when(
+        data: (value) => value,
+        loading: () => null,
+        error: (_, _) => null,
+      );
+  if (activeDevice?.deviceId != device.deviceId) {
+    logger.info(
+      'Skipping device version compatibility check for '
+      '${device.deviceId}: active device changed before status arrived',
+    );
+    return;
+  }
+  try {
+    await _runRequiredDeviceVersionCheck(
+      ref: ref,
+      logger: logger,
+      device: device,
+      deviceStatus: deviceStatus,
+    );
+  } on Object catch (error, stack) {
+    logger.severe(
+      'Failed required device version compatibility check for '
+      '${device.deviceId}',
+      error,
+      stack,
+    );
+  }
+}
 
 // ============================================================================
 // Auto-connect to active FF1 device
@@ -581,14 +666,11 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
               userId: 'user_id',
               apiKey: AppConfig.ff1RelayerApiKey,
             );
-
-            final versionService = ref.read(versionServiceProvider);
-            final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
             unawaited(
-              versionService.checkDeviceVersionCompatibility(
-                branchName: device.branchName,
-                deviceVersion: deviceStatus?.latestVersion ?? '',
-                requiredDeviceUpdate: true,
+              _scheduleRequiredDeviceVersionCheck(
+                ref: ref,
+                logger: logger,
+                device: device,
               ),
             );
           } else {

@@ -171,7 +171,7 @@ Once the user has answered open questions and chosen a direction, implementation
 4. Run tests and fix failures.
 5. Wire providers and orchestration.
 6. Compose UI and route-level behavior.
-7. Run `scripts/agent-helpers/post-implementation-checks HEAD`.
+7. Run `scripts/agent-helpers/post-implementation-checks.sh HEAD`.
 8. Run the relevant `flutter` validation, including `flutter build`.
 9. Run the review loop described in `AGENTS.md` and `prompts/code-review.md`.
 

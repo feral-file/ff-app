@@ -38,6 +38,12 @@ class FakeIndexerServiceIsolate implements IndexerServiceIsolateOperations {
     );
   }
 
+  /// Captures [limit] passed to each [fetchTokensPageByAddresses] call (tests).
+  final List<int?> fetchTokensPageLimits = <int?>[];
+
+  /// Captures [offset] passed to each [fetchTokensPageByAddresses] call (tests).
+  final List<int?> fetchTokensPageOffsets = <int?>[];
+
   @override
   Future<TokensPage> fetchTokensPageByAddresses({
     required List<String> addresses,
@@ -45,6 +51,8 @@ class FakeIndexerServiceIsolate implements IndexerServiceIsolateOperations {
     int? offset,
   }) async {
     callSequence.add('fetchTokens');
+    fetchTokensPageLimits.add(limit);
+    fetchTokensPageOffsets.add(offset);
     return fetchTokensResult;
   }
 

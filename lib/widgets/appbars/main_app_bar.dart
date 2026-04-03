@@ -9,6 +9,11 @@ import 'package:go_router/go_router.dart';
 /// Main app bar for detail screens (playlist, channel, work, etc.).
 /// Adapted from Feral File old repo MainAppBar.
 /// Has back button with optional label, optional centered title, and actions.
+/// When [backTitle] is null, renders a blank label intentionally.
+///
+/// Direct or deep-linked entries do not have a real previous-page title, so we
+/// keep the label empty rather than inventing a generic fallback that implies
+/// navigation history the user never took.
 ///
 /// Use [MainAppBar.preferred] when placing in [Scaffold.appBar] so height
 /// adapts to [MediaQuery.textScalerOf] for accessibility (larger text).
@@ -22,7 +27,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.actions = const [],
   });
 
-  /// Label shown next to the back arrow (e.g. 'Index', 'Playlists').
+  /// Label shown next to the back arrow (e.g. tab name, channel name).
   final String? backTitle;
 
   /// Optional centered title in the app bar.
@@ -75,7 +80,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: _BackButton(
-                      title: backTitle ?? 'Index',
+                      title: backTitle ?? '',
                       onTap: () => context.pop(),
                     ),
                   ),

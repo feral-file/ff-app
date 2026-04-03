@@ -1,3 +1,4 @@
+import 'package:app/domain/constants/indexer_constants.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/app_database.dart';
@@ -24,6 +25,8 @@ class _RecordingIndexerService extends IndexerService {
     : super(client: IndexerClient(endpoint: 'https://example.invalid'));
 
   final List<String> requestedAddresses = <String>[];
+  final List<int?> recordedLimits = <int?>[];
+  final List<int?> recordedOffsets = <int?>[];
 
   @override
   Future<List<AssetToken>> fetchTokensByAddresses({
@@ -32,12 +35,16 @@ class _RecordingIndexerService extends IndexerService {
     int? offset = 0,
   }) async {
     requestedAddresses.addAll(addresses);
+    recordedLimits.add(limit);
+    recordedOffsets.add(offset);
     return <AssetToken>[];
   }
 }
 
 void main() {
-  test('sync uses lowercased 0x address format for indexer fetch', () async {
+  test(
+    'syncAddresses uses normalized address and indexerTokensPageSize for fetch',
+    () async {
     final database = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(database.close);
     final databaseService = DatabaseService(database);
@@ -67,5 +74,7 @@ void main() {
       indexer.requestedAddresses,
       equals(const <String>['0x99fc8ad516fbcc9ba3123d56e63a35d05aa9efb8']),
     );
+    expect(indexer.recordedLimits, [indexerTokensPageSize]);
+    expect(indexer.recordedOffsets, [0]);
   });
 }

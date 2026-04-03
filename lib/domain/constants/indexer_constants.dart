@@ -7,7 +7,7 @@
 
 // ignore_for_file: public_member_api_docs // Reason: copied from the legacy mobile app to keep the DP-1 dynamic query surface stable.
 
-const indexerTokensPageSize = 50;
+const indexerTokensPageSize = 255;
 
 enum IndexerAssetTokenSortBy {
   lastActivityTime,

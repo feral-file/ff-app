@@ -1,6 +1,7 @@
 # Project Spec
 
 ## Document contract
+
 - This document is the canonical product contract for the mobile app.
 - It defines product intent, system boundaries, flow outcomes, and invariants.
 - When `project_spec.md` conflicts with lower-level docs, this file wins.
@@ -10,6 +11,7 @@
   first, then update `docs/app_flows.md` in the same change.
 
 ## 1. Purpose of the app
+
 - The app is the mobile controller and library browser for The Digital Art System.
 - It solves two practical problems for users:
   - reliably browsing and selecting digital art content (DP-1 Channel/Playlist/Work) even when network conditions vary
@@ -20,6 +22,7 @@
   - FF1 owners pairing devices, configuring display settings, and controlling playback
 
 ## 2. Product/system context
+
 - This repository is a Band 4 Presentation App in the Feral File multi-band system.
 - It consumes data and services from other bands:
   - Discovery/content and indexer APIs (read/search/enrichment)
@@ -34,6 +37,7 @@
 ## 3. Main user flows
 
 ### Flow: App startup and bootstrap
+
 - Trigger: app launch or app resume.
 - Key steps:
   - load env config and initialize logging/Sentry
@@ -56,6 +60,7 @@
   - legacy data exists: onboarding is marked seen and migration runs in background
 
 ### Flow: Onboarding and first-use setup
+
 - Trigger: user without onboarding completion (or forced reset path).
 - Key steps:
   - onboarding introduce page
@@ -71,6 +76,7 @@
   - if onboarding is entered from device-connect deep link, flow branches to connect FF1
 
 ### Flow: Browse and discover content
+
 - Trigger: user opens home index.
 - Key steps:
   - browse tabs (Playlists, Channels, Works)
@@ -82,6 +88,7 @@
   - search is local-DB driven; no remote conversational/voice agent path currently implemented
 
 ### Flow: Add wallet/domain address and build personal collection
+
 - Trigger: add address from onboarding or home menu.
 - Key steps:
   - validate Ethereum/Tezos address or ENS/TNS domain
@@ -95,6 +102,7 @@
   - remove address deletes playlist + related local token items and clears app state anchors/status
 
 ### Flow: FF1 setup and connection
+
 - Trigger: FF1 setup from onboarding/device menu/deep link/QR.
 - Key steps:
   - discover FF1 via BLE scan or resolve from deeplink info
@@ -109,6 +117,7 @@
   - device-updating/version errors route to dedicated update handling
 
 ### Flow: Play and control on FF1
+
 - Trigger: user taps Play/Display from work or playlist detail; or uses now-displaying controls.
 - Key steps:
   - build DP-1 playlist payload (single work or full playlist)
@@ -121,8 +130,10 @@
   - no active device: now-displaying bar shows pair/connect guidance (invisible when not pairing)
   - disconnected state: now-displaying bar reflects connection transitions
   - enrichment failures do not block playback UI (fallback DP-1 item data remains)
+  - now-displaying stays aligned with live FF1 playback: enrichment uses local data when available and DP-1 fallback otherwise; same-playlist window changes (index shifts or scroll expansion) update immediately with DP-1 fallback rows while the cache/enrichment pass fills them in, and the bar avoids a loading flash except when the playing **list** from FF1 changes (see `docs/app_flows.md` for window and overlay behavior).
 
 ### Flow: Maintenance and recovery
+
 - Trigger: settings actions or remote config checks.
 - Key steps:
   - force-update check from remote config and blocking update overlay
@@ -135,6 +146,7 @@
   - rebuild metadata preserves known personal addresses before refetch
 
 ## 4. Major functionalities
+
 - DP-1 browsing (Channels/Playlists/Works)
   - What: home tab browsing, list/detail pages, local search.
   - Who: all app users.
@@ -166,6 +178,7 @@
 ## 5. Important screens
 
 ### Screen: HomeIndexPage
+
 - Purpose: main content entry with tabbed browsing and utility menu.
 - Entry points: `/`.
 - Key actions: switch tabs, open search, open settings/release notes/support, open add-address, open FF1 config.
@@ -173,6 +186,7 @@
 - Related modules: `home_index_page.dart`, tab screens, `seedDownloadProvider`, `activeFF1BluetoothDeviceProvider`.
 
 ### Screen: SearchTabPage
+
 - Purpose: search channels/playlists/works from local model with filters/suggestions.
 - Entry points: search icon in home header.
 - Key actions: submit query, tap suggestions/results, apply type/source/date/sort filters.
@@ -180,6 +194,7 @@
 - Related modules: `search_provider.dart`, search filter widgets/models.
 
 ### Screen: AllChannels / ChannelDetail
+
 - Purpose: browse full channel lists and inspect one channel's playlists.
 - Entry points: curated/personal "View all", `/channels/:channelId`.
 - Key actions: refresh/load more/open playlist or work.
@@ -187,6 +202,7 @@
 - Related modules: `channels_provider`, `channel_detail_provider`, DB service.
 
 ### Screen: AllPlaylists / PlaylistDetail
+
 - Purpose: browse full playlists and inspect one playlist's works.
 - Entry points: curated/personal "View all", `/playlists/:playlistId`.
 - Key actions: refresh/load more, play on FF1, open work, delete personal playlist/address mapping.
@@ -194,6 +210,7 @@
 - Related modules: `playlists_provider`, `playlist_details_provider`, `canvasClientServiceV2`, address service.
 
 ### Screen: WorkDetail
+
 - Purpose: detailed work view with back-layer media preview and metadata/provenance sections.
 - Entry points: `/works/:workId` from tabs/search/details.
 - Key actions: play on FF1, open external links, rebuild metadata for work, expand info panel.
@@ -201,6 +218,7 @@
 - Related modules: `workDetailStateProvider`, `IndexerService`, DB converters, FF display button.
 
 ### Screen group: Onboarding (Introduce, OnboardingAddAddress, OnboardingSetupFf1)
+
 - Purpose: first-use orientation, optional personal collection seeding, optional FF1 setup.
 - Entry points: `/onboarding/*`, startup routing.
 - Key actions: add/remove addresses, skip/next, launch FF1 setup path, finish onboarding.
@@ -208,6 +226,7 @@
 - Related modules: onboarding providers, add-address flow, token sync coordinator.
 
 ### Screen group: FF1 setup (FF1DeviceScan, StartSetupFf1, ConnectFF1, ScanWiFi, EnterWiFiPassword, DeviceConfig, FF1Updating)
+
 - Purpose: discover/pair FF1 and configure connectivity/device settings.
 - Entry points: onboarding setup, menu FF1 Settings, QR deeplinks.
 - Key actions: BLE scan/connect, Wi-Fi selection/credentials, finalize pairing, adjust orientation/scaling/audio, adjust FFP/DDC monitor brightness/contrast/volume/power.
@@ -216,13 +235,15 @@
 - Notes: DeviceConfig keeps the FFP/DDC monitor surface available once relayer status exists, including setup and sleeping/off states; the section still hides itself when no monitor status has arrived.
 
 ### Screen group: NowDisplaying + KeyboardControl
+
 - Purpose: monitor current playback and send interaction commands.
 - Entry points: global now-displaying bar (navigates to work detail), `/keyboard-control`.
 - Key actions: view current work/device state, open interact mode, send keyboard/touchpad commands.
-- Important data: active device, connection state, player status item list/current index, cached enrichment window.
+- Important data: active device, connection state, current item list/index, and enough metadata to keep playback UI usable when enrichment is incomplete.
 - Related modules: `now_displaying_provider`, `ff1_wifi_providers`, touchpad/keyboard events.
 
 ### Screen group: Settings / Release Notes / Document Viewer
+
 - Purpose: account and app maintenance utilities.
 - Entry points: home hamburger menu.
 - Key actions: rebuild metadata, forget local data, open EULA/privacy, view release notes.
@@ -230,6 +251,7 @@
 - Related modules: local cleanup providers/services, release notes service, remote docs fetch.
 
 ## 6. Architecture overview
+
 - Navigation/routing
   - `GoRouter` via `routerProvider`, with typed route constants and guarded payload checks.
   - Deep links are handled by `DeeplinkHandler` (app links + QR path), then routed into app actions.
@@ -262,6 +284,7 @@
   - app lifecycle triggers seed sync and token sync coordination/resume.
 
 ## 7. Domain concepts
+
 - Channel
   - DP-1 source of playlists. Includes pinned local-virtual personal "My Collection" channel.
 - Playlist
@@ -277,6 +300,7 @@
   - Derived runtime view of active device + currently playing items/index.
 
 ## 8. Key constraints and invariants
+
 - Riverpod remains the single flow driver for shared app/business state and FF1 external events.
 - DP-1 vocabulary lock: do not introduce new first-class entities beyond Channel/Playlist/Work.
 - Offline-first behavior is required: local DB is primary read path; network enriches/synchronizes.
@@ -290,9 +314,11 @@
     usable local read path when the file is still valid (see seed sync service).
   - pending addresses added before seed readiness must be migrated post-seed
 - Playback/control flows should remain resilient to enrichment failures (fallback item data still usable).
+- Now-displaying must remain aligned with live FF1 playback while keeping playback UI usable when enrichment is slow or fails.
 - Large flow/screen changes must preserve existing onboarding, address-indexing, and FF1 setup reliability paths.
 
 ## 9. Verification strategy
+
 - Test structure
   - unit tests: `test/unit/{app,domain,infra,ui,widgets,...}`
   - integration tests: `test/integration/{app,infra,theme,...}`
@@ -300,7 +326,7 @@
   - `flutter pub get`
   - `flutter test`
   - `flutter analyze`
-  - `scripts/agent-helpers/post-implementation-checks [--dir DIR] [--all] [git-ref]`
+  - `scripts/agent-helpers/post-implementation-checks.sh [--dir DIR] [--all] [git-ref]`
   - `scripts/report_business_coverage.sh`
   - `flutter build apk --flavor development --release`
   - `flutter build apk --flavor production --release`
