@@ -2,6 +2,7 @@ import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -113,20 +114,57 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
     state = _deriveState();
 
     final control = ref.read(ff1WifiControlProvider);
+    var muteToggleApplied = false;
     try {
       // Preserve legacy slider zero-crossing contract:
       // >0 -> 0 toggles mute on, 0 -> >0 toggles mute off.
       if (shouldToggleMute) {
         await control.toggleMute(topicId: _topicId);
+        muteToggleApplied = true;
       }
       await control.setVolume(topicId: _topicId, percent: value.round());
     } on Exception {
-      // Roll back to the last confirmed device status, not the optimistic
-      // draft.
+      // If [setVolume] failed after [toggleMute] succeeded, the device mute
+      // line may already match the intended commit while [_deviceStatus] is
+      // still the pre-commit relayer snapshot. Clearing pending state alone
+      // would re-derive from that stale snapshot and invert mute vs device.
+      if (muteToggleApplied) {
+        await _reconcileMuteToggleAfterVolumeFailure(control);
+      }
       _pendingVolume = null;
       _pendingMuted = null;
       state = _deriveState();
       rethrow;
+    }
+  }
+
+  /// Zero-crossing commits apply mute toggle before volume set. When the
+  /// second step fails, undo the mute transition when possible so local state
+  /// matches hardware without waiting for a relayer push. If undo fails,
+  /// align local device status from the next device status notification.
+  Future<void> _reconcileMuteToggleAfterVolumeFailure(
+    FF1WifiControl control,
+  ) async {
+    try {
+      await control.toggleMute(topicId: _topicId);
+    } on Exception {
+      // A one-shot "fresh status" future can resolve immediately to the cached
+      // snapshot when the post-connect completer is already cleared, which
+      // would not reflect a relayer push after the failed undo. Wait for the
+      // next device status payload that differs from the snapshot at
+      // subscription time instead.
+      final baseline = control.currentDeviceStatus;
+      try {
+        final next = await control.deviceStatusStream
+            .firstWhere(
+              (status) =>
+                  !_ff1DeviceAudioSnapshotsEqual(baseline, status),
+            )
+            .timeout(const Duration(seconds: 3));
+        _deviceStatus = next;
+      } on Object {
+        // Timeout or stream error: leave [_deviceStatus] unchanged.
+      }
     }
   }
 
@@ -294,6 +332,16 @@ class FF1AudioControlNotifier extends Notifier<FF1AudioControlState> {
     }
     return 50;
   }
+}
+
+bool _ff1DeviceAudioSnapshotsEqual(
+  FF1DeviceStatus? a,
+  FF1DeviceStatus b,
+) {
+  if (a == null) {
+    return false;
+  }
+  return a.isMuted == b.isMuted && a.volume == b.volume;
 }
 
 /// Family provider for the shared FFP/DDC control surface state.
