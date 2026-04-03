@@ -227,6 +227,8 @@ jobs:
             archive
 
           echo "ARCHIVE_PATH=$ARCHIVE_PATH" >> "$GITHUB_ENV"
+          echo "SENTRY_RELEASE=com.feralfile.app@$BUILD_NAME+$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "SENTRY_DIST=$BUILD_NUMBER" >> "$GITHUB_ENV"
 
       - name: Export IPA
         run: |
@@ -268,20 +270,24 @@ jobs:
           IPA_PATH="$(ls "$EXPORT_PATH"/*.ipa | head -1)"
           echo "IOS_IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
 
-      # - name: Install sentry-cli & create Sentry release and upload iOS debug symbols
-      #   env:
-      #     SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-      #     SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-      #     SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-      #   run: |
-      #     curl -sL https://sentry.io/get-cli/ | bash
-      #     sentry-cli --version
-      #     RELEASE="com.feralfile.app@${IOS_BUILD_NAME}+${IOS_BUILD_NUMBER}"
-      #     echo "Sentry release: $RELEASE"
-      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases new "$RELEASE"
-      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases set-commits "$RELEASE" --auto || true
-      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" debug-files upload --include-sources --wait "$ARCHIVE_PATH/dSYMs"
-      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases finalize "$RELEASE"
+      - name: Create Sentry release and upload iOS debug symbols
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          echo "Sentry release: $SENTRY_RELEASE"
+          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases new "$SENTRY_RELEASE" || \
+            sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases info "$SENTRY_RELEASE"
+          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases set-commits "$SENTRY_RELEASE" --auto || true
+          SYMBOL_UPLOAD_ARGS=(--include-sources --wait --type dsym)
+          if [[ -d "$ARCHIVE_PATH/BCSymbolMaps" ]]; then
+            SYMBOL_UPLOAD_ARGS+=(--symbol-maps "$ARCHIVE_PATH/BCSymbolMaps")
+          fi
+          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" debug-files upload \
+            "${SYMBOL_UPLOAD_ARGS[@]}" \
+            "$ARCHIVE_PATH/dSYMs"
+          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases finalize "$SENTRY_RELEASE"
 
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v3
