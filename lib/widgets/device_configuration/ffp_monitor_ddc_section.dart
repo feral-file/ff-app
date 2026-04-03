@@ -50,7 +50,6 @@ class FfpMonitorDdcSection extends ConsumerWidget {
     final showBrightness = status.brightness != null;
     final showContrast = status.contrast != null;
     final showVol = status.volume != null;
-    final showPowerControl = status.power != null;
     final hideLevelSliders = status.power == FfpDdcPanelPower.off;
 
     final name = status.monitor?.trim().isNotEmpty ?? false
@@ -104,7 +103,7 @@ class FfpMonitorDdcSection extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (showPowerControl && enable)
+                if (enable)
                   ..._otherPowerModeButtons(context, notifier, status),
               ],
             ),
@@ -171,11 +170,7 @@ class FfpMonitorDdcSection extends ConsumerWidget {
 
   /// The two modes not currently active.
   List<FfpDdcPanelPower> _otherPowerModes(FfpDdcPanelPower? current) {
-    const all = FfpDdcPanelPower.values;
-    if (current == null) {
-      return [FfpDdcPanelPower.on, FfpDdcPanelPower.off];
-    }
-    return all.where((m) => m != current).toList();
+    return availableFfpMonitorPowerModes(current);
   }
 
   /// Puts the power-off action at index 1 so it is always the second control.
@@ -278,4 +273,19 @@ extension FfpDdcPanelPowerMonitorUi on FfpDdcPanelPower {
         return Colors.amber;
     }
   }
+}
+
+/// Power actions that should remain available for the current DDC snapshot.
+///
+/// Unknown power means the relayer could not confirm the panel state
+/// (typically because the display is already offline), so we expose the two
+/// wake paths instead of implying that "Off" is currently selected.
+List<FfpDdcPanelPower> availableFfpMonitorPowerModes(
+  FfpDdcPanelPower? current,
+) {
+  const all = FfpDdcPanelPower.values;
+  if (current == null) {
+    return [FfpDdcPanelPower.on, FfpDdcPanelPower.standby];
+  }
+  return all.where((m) => m != current).toList();
 }

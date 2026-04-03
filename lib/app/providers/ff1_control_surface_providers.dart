@@ -546,6 +546,12 @@ class FF1FfpDdcControlNotifier extends Notifier<FfpDdcPanelStatus> {
 }
 
 int? _resolvePendingInt(int? pending, int? actual) {
+  // When the relayer omits a field, treat the value as unknown rather than
+  // keeping an optimistic write alive. That prevents stale off-state snapshots
+  // from masquerading as confirmed power/level values.
+  if (actual == null) {
+    return null;
+  }
   if (pending == null) {
     return null;
   }
@@ -556,6 +562,9 @@ FfpDdcPanelPower? _resolvePendingPower(
   FfpDdcPanelPower? pending,
   FfpDdcPanelPower? actual,
 ) {
+  if (actual == null) {
+    return null;
+  }
   if (pending == null) {
     return null;
   }

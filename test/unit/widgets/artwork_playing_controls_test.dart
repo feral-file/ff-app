@@ -67,6 +67,70 @@ void main() {
   );
 
   testWidgets(
+    'drops shared monitor sliders after an incomplete off snapshot',
+    (tester) async {
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: 'topic-1',
+      );
+      final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
+
+      addTearDown(statuses.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(_FakeWifiControl()),
+            ff1FfpDdcPanelStatusStreamProvider(device.topicId).overrideWith((
+              ref,
+            ) {
+              return statuses.stream;
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: ArtworkPlayingControls(playingDevice: device),
+            ),
+          ),
+        ),
+      );
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 20,
+          contrast: 30,
+          volume: 40,
+          power: FfpDdcPanelPower.off,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.bySemanticsLabel('Brightness'), findsNothing);
+      expect(find.bySemanticsLabel('Contrast'), findsNothing);
+      expect(find.bySemanticsLabel('Monitor volume'), findsNothing);
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.bySemanticsLabel('Brightness'), findsNothing);
+      expect(find.bySemanticsLabel('Contrast'), findsNothing);
+      expect(find.bySemanticsLabel('Monitor volume'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'later relayer pushes replace optimistic FFP state in artwork controls',
     (tester) async {
       const device = FF1Device(

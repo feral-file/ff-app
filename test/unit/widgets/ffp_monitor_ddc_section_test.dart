@@ -14,6 +14,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('available monitor power modes keep wake actions for unknown power', () {
+    expect(
+      availableFfpMonitorPowerModes(null),
+      [FfpDdcPanelPower.on, FfpDdcPanelPower.standby],
+    );
+    expect(
+      availableFfpMonitorPowerModes(FfpDdcPanelPower.off),
+      [FfpDdcPanelPower.on, FfpDdcPanelPower.standby],
+    );
+  });
+
   testWidgets(
     'hides brightness, contrast, and volume sliders when power is off',
     (tester) async {
@@ -70,6 +81,78 @@ void main() {
       );
       expect(find.text('Off'), findsOneWidget);
       expect(find.byType(IconButton), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'shows unknown power with on and standby buttons after incomplete off snapshot',
+    (tester) async {
+      const topicId = 'topic-1';
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: topicId,
+      );
+      final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
+
+      addTearDown(statuses.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(_FakeWifiControl()),
+            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith((ref) {
+              return statuses.stream;
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: FfpMonitorDdcSection(
+                topicId: topicId,
+                isConnected: true,
+                isControllable: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 20,
+          contrast: 30,
+          volume: 40,
+          power: FfpDdcPanelPower.off,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Off'), findsOneWidget);
+      expect(find.byKey(const ValueKey('ffp_brightness_slider')), findsNothing);
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Unknown'), findsOneWidget);
+      expect(find.byType(IconButton), findsNWidgets(2));
+      expect(find.text('Off'), findsNothing);
+      expect(find.byKey(const ValueKey('ffp_brightness_slider')), findsNothing);
+      expect(find.byKey(const ValueKey('ffp_contrast_slider')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('ffp_monitor_volume_slider')),
+        findsNothing,
+      );
     },
   );
 
