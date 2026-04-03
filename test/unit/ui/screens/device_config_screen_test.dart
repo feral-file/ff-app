@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
-import 'package:app/app/providers/ff1_control_surface_providers.dart';
 import 'package:app/app/providers/ff1_device_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
@@ -22,8 +21,8 @@ void main() {
       await tester.pumpWidget(
         _wrapScreen(
           isInSetupProcess: true,
-          deviceData: FF1DeviceData(
-            deviceStatus: const FF1DeviceStatus(
+          deviceData: const FF1DeviceData(
+            deviceStatus: FF1DeviceStatus(
               volume: 40,
               isMuted: false,
             ),
@@ -38,7 +37,7 @@ void main() {
           panelStatus: const FfpDdcPanelStatus(
             brightness: 25,
             contrast: 60,
-            power: FfpDdcPanelPower.off,
+            power: FfpDdcPanelPower.on,
             monitor: 'Test Monitor',
           ),
         ),
@@ -125,13 +124,66 @@ void main() {
   );
 
   testWidgets(
+    'renders device information before FFP status in the main layout',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 5000));
+      addTearDown(() async {
+        await tester.binding.setSurfaceSize(null);
+      });
+
+      await tester.pumpWidget(
+        _wrapScreen(
+          isInSetupProcess: false,
+          deviceData: FF1DeviceData(
+            deviceStatus: const FF1DeviceStatus(
+              volume: 40,
+              isMuted: false,
+            ),
+            playerStatus: FF1PlayerStatus(
+              playlistId: 'playlist-1',
+              sleepMode: false,
+            ),
+            isConnected: true,
+          ),
+          currentDeviceStatus: const FF1DeviceStatus(
+            volume: 40,
+            isMuted: false,
+          ),
+          currentPlayerStatus: FF1PlayerStatus(
+            playlistId: 'playlist-1',
+            sleepMode: false,
+          ),
+          panelStatus: const FfpDdcPanelStatus(
+            brightness: 25,
+            contrast: 60,
+            power: FfpDdcPanelPower.off,
+            monitor: 'Test Monitor',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final deviceInfoTop = tester.getTopLeft(
+        find.text('Device Information'),
+      );
+      final ffpStatusTop = tester.getTopLeft(find.text('FFP Status'));
+
+      expect(
+        deviceInfoTop.dy < ffpStatusTop.dy,
+        isTrue,
+        reason: 'FFP Status should render after Device Information.',
+      );
+    },
+  );
+
+  testWidgets(
     'hides the monitor section until relayer status is available',
     (tester) async {
       await tester.pumpWidget(
         _wrapScreen(
           isInSetupProcess: true,
-          deviceData: FF1DeviceData(
-            deviceStatus: const FF1DeviceStatus(
+          deviceData: const FF1DeviceData(
+            deviceStatus: FF1DeviceStatus(
               volume: 40,
               isMuted: false,
             ),

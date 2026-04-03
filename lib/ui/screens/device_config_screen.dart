@@ -250,16 +250,16 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
               child: SizedBox(height: LayoutConstants.space5),
             ),
           ],
-          if (isDeviceConnected) ...[
-            SliverToBoxAdapter(
-              child: FfpStatusSection(
-                topicId: topicId,
-                isConnected: isDeviceConnected,
-                isControllable: isControllable,
-              ),
-            ),
-          ],
           if (widget.payload.isInSetupProcess) ...[
+            if (isDeviceConnected) ...[
+              SliverToBoxAdapter(
+                child: FfpStatusSection(
+                  topicId: topicId,
+                  isConnected: isDeviceConnected,
+                  isControllable: isControllable,
+                ),
+              ),
+            ],
             SliverToBoxAdapter(
               child: SizedBox(
                 height: LayoutConstants.space20,
@@ -303,6 +303,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                     topicId: topicId,
                     isConnected: isDeviceConnected,
                   ),
+                ),
+              ),
+            ],
+            if (isDeviceConnected) ...[
+              SliverToBoxAdapter(
+                child: FfpStatusSection(
+                  topicId: topicId,
+                  isConnected: isDeviceConnected,
+                  isControllable: isControllable,
                 ),
               ),
             ],
