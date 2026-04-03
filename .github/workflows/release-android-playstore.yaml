@@ -141,10 +141,24 @@ jobs:
           # Keep a root pointer for any scripts/checks that resolve from repo root.
           ln -sf android/release.keystore release.keystore
 
-      - name: Build appbundle
-        run: flutter build appbundle --flavor production --release --build-name "${{ env.FLUTTER_VERSION_NAME }}" --build-number "${{ env.FLUTTER_VERSION_CODE }}"
+      - name: Prepare Flutter symbol paths
+        run: |
+          mkdir -p build/sentry/flutter-debug-symbols/android
+          echo "FLUTTER_SYMBOLS_DIR=build/sentry/flutter-debug-symbols/android" >> "$GITHUB_ENV"
+          echo "DART_OBFUSCATION_MAP=build/sentry/flutter-debug-symbols/android/obfuscation-map.json" >> "$GITHUB_ENV"
 
-      - name: Create Sentry release and upload Android debug symbols
+      - name: Build appbundle
+        run: |
+          flutter build appbundle \
+            --flavor production \
+            --release \
+            --build-name "${{ env.FLUTTER_VERSION_NAME }}" \
+            --build-number "${{ env.FLUTTER_VERSION_CODE }}" \
+            --obfuscate \
+            --split-debug-info="$FLUTTER_SYMBOLS_DIR" \
+            --extra-gen-snapshot-options=--save-obfuscation-map="$DART_OBFUSCATION_MAP"
+
+      - name: Create Sentry release and upload Android and Flutter debug symbols
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
@@ -158,6 +172,20 @@ jobs:
             --include-sources \
             --wait \
             build/app/intermediates/merged_native_libs/productionRelease/mergeProductionReleaseNativeLibs/out/lib
+          if [[ ! -f "$DART_OBFUSCATION_MAP" ]]; then
+            echo "Missing Dart obfuscation map at $DART_OBFUSCATION_MAP"
+            exit 1
+          fi
+          mapfile -t DART_DEBUG_FILES < <(find "$FLUTTER_SYMBOLS_DIR" -type f -name 'app*.symbols' ! -name '*darwin*' ! -name '*ios*' | sort)
+          if [[ ${#DART_DEBUG_FILES[@]} -eq 0 ]]; then
+            echo "No Flutter Android .symbols files found under $FLUTTER_SYMBOLS_DIR"
+            exit 1
+          fi
+          for debug_file in "${DART_DEBUG_FILES[@]}"; do
+            sentry-cli dart-symbol-map upload --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" \
+              "$DART_OBFUSCATION_MAP" \
+              "$debug_file"
+          done
           sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" finalize "$SENTRY_RELEASE"
 
       - name: Release notes
