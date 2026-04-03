@@ -152,6 +152,45 @@ void main() {
         expect(clearedStatus.hasData, isFalse);
       },
     );
+
+    test(
+      'clears FFP panel status when device connection notification is false',
+      () async {
+        final transport = _NotificationTestTransport();
+        final control = FF1WifiControl(transport: transport);
+
+        addTearDown(control.dispose);
+
+        transport.emitNotification(
+          FF1NotificationMessage(
+            type: FF1WifiMessageType.notification,
+            notificationType: FF1NotificationType.ffpDdcPanelStatus,
+            message: const {
+              'monitor': 'Studio Display',
+              'brightness': 64,
+              'power': 'on',
+            },
+            timestamp: DateTime.fromMillisecondsSinceEpoch(1704067200000),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(control.currentFfpDdcPanelStatus?.brightness, 64);
+
+        transport.emitNotification(
+          FF1NotificationMessage(
+            type: FF1WifiMessageType.notification,
+            notificationType: FF1NotificationType.connection,
+            message: const {'isConnected': false},
+            timestamp: DateTime.fromMillisecondsSinceEpoch(1704067200001),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(control.isDeviceConnected, isFalse);
+        expect(control.currentFfpDdcPanelStatus, isNull);
+      },
+    );
   });
 
   group('FF1WifiControl.getDeviceRealtimeMetrics', () {

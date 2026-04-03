@@ -33,6 +33,7 @@ void main() {
               return Stream.value(device);
             }),
             ff1WifiControlProvider.overrideWithValue(_FakeWifiControl()),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
             ff1FfpDdcPanelStatusStreamProvider(device.topicId).overrideWith((
               ref,
             ) {
@@ -65,6 +66,56 @@ void main() {
   );
 
   testWidgets(
+    'hides monitor quick controls when FF1 device reports disconnected',
+    (tester) async {
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: 'topic-1',
+      );
+      final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
+
+      addTearDown(statuses.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(_FakeWifiControl()),
+            ff1DeviceConnectedProvider.overrideWithValue(false),
+            ff1FfpDdcPanelStatusStreamProvider(device.topicId).overrideWith((
+              ref,
+            ) {
+              return statuses.stream;
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: ArtworkPlayingControls(playingDevice: device),
+            ),
+          ),
+        ),
+      );
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 50,
+          contrast: 60,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.bySemanticsLabel('Brightness'), findsNothing);
+      expect(find.bySemanticsLabel('Contrast'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'drops shared monitor sliders after an incomplete off snapshot',
     (tester) async {
       const device = FF1Device(
@@ -84,6 +135,7 @@ void main() {
               return Stream.value(device);
             }),
             ff1WifiControlProvider.overrideWithValue(_FakeWifiControl()),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
             ff1FfpDdcPanelStatusStreamProvider(device.topicId).overrideWith((
               ref,
             ) {
@@ -146,6 +198,7 @@ void main() {
               return Stream.value(device);
             }),
             ff1WifiControlProvider.overrideWithValue(control),
+            ff1DeviceConnectedProvider.overrideWithValue(true),
             ff1FfpDdcPanelStatusStreamProvider(device.topicId).overrideWith((
               ref,
             ) {

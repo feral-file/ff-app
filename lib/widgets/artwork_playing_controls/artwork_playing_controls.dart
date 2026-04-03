@@ -163,6 +163,11 @@ class _FfpMonitorQuickControls extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
+    final isFf1DeviceConnected = ref.watch(ff1DeviceConnectedProvider);
+    if (!isFf1DeviceConnected) {
+      return const SizedBox.shrink();
+    }
+
     final status = ref.watch(ff1FfpDdcControlProvider(topicId));
     if (!status.hasData) {
       return const SizedBox.shrink();

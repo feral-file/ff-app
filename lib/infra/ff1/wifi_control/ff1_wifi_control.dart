@@ -388,24 +388,9 @@ class FF1WifiControl {
   /// Current FFP DDC panel status (last received).
   FfpDdcPanelStatus? get currentFfpDdcPanelStatus => _currentFfpDdcPanelStatus;
 
-  /// Whether device is connected (per connection notification)
-  bool get isDeviceConnected => _isDeviceConnected;
-
-  /// Stream of player status updates
-  Stream<FF1PlayerStatus> get playerStatusStream =>
-      _playerStatusController.stream;
-
-  /// Stream of device status updates
-  Stream<FF1DeviceStatus> get deviceStatusStream =>
-      _deviceStatusController.stream;
-
   /// Stream of FFP DDC panel status updates.
   Stream<FfpDdcPanelStatus> get ffpDdcPanelStatusStream =>
       _ffpDdcPanelStatusController.stream;
-
-  /// Stream of connection status updates
-  Stream<FF1ConnectionStatus> get connectionStatusStream =>
-      _connectionStatusController.stream;
 
   /// Emits an empty status to flush replayed FFP state across disconnects and
   /// device switches. Without this, new subscribers can immediately render the
@@ -453,6 +438,11 @@ class FF1WifiControl {
         final prev = _isDeviceConnected;
         _isDeviceConnected = connectionStatus.isConnected;
         _connectionStatusController.add(connectionStatus);
+        if (!connectionStatus.isConnected) {
+          // Transport can still be up while the device reports disconnected;
+          // clear cached FFP/DDC snapshot so UI cannot drive stale controls.
+          _clearFfpDdcPanelStatus();
+        }
         // Track every device-level connection notification so we can see
         // when the device sends "connected" vs "disconnected" and correlate
         // with the WebSocket transport state.
