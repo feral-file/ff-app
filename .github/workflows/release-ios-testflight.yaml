@@ -211,6 +211,9 @@ jobs:
           echo "Using iOS build number: $BUILD_NUMBER"
           echo "IOS_BUILD_NAME=$BUILD_NAME" >> "$GITHUB_ENV"
           echo "IOS_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          mkdir -p build/sentry/flutter-debug-symbols/ios
+          echo "IOS_FLUTTER_SYMBOLS_DIR=build/sentry/flutter-debug-symbols/ios" >> "$GITHUB_ENV"
+          echo "IOS_DART_OBFUSCATION_MAP=build/sentry/flutter-debug-symbols/ios/obfuscation-map.json" >> "$GITHUB_ENV"
 
           ARCHIVE_PATH="$RUNNER_TEMP/Runner.xcarchive"
           # Don't specify DEVELOPMENT_TEAM, CODE_SIGN_STYLE, or PROVISIONING_PROFILE
@@ -224,6 +227,9 @@ jobs:
             -archivePath "$ARCHIVE_PATH" \
             FLUTTER_BUILD_NAME="$BUILD_NAME" \
             FLUTTER_BUILD_NUMBER="$BUILD_NUMBER" \
+            SPLIT_DEBUG_INFO="build/sentry/flutter-debug-symbols/ios" \
+            DART_OBFUSCATION=true \
+            EXTRA_GEN_SNAPSHOT_OPTIONS="--save-obfuscation-map=build/sentry/flutter-debug-symbols/ios/obfuscation-map.json" \
             archive
 
           echo "ARCHIVE_PATH=$ARCHIVE_PATH" >> "$GITHUB_ENV"
@@ -270,24 +276,38 @@ jobs:
           IPA_PATH="$(ls "$EXPORT_PATH"/*.ipa | head -1)"
           echo "IOS_IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
 
-      - name: Create Sentry release and upload iOS debug symbols
+      - name: Create Sentry release and upload iOS and Flutter debug symbols
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
           echo "Sentry release: $SENTRY_RELEASE"
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases new "$SENTRY_RELEASE" || \
-            sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases info "$SENTRY_RELEASE"
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases set-commits "$SENTRY_RELEASE" --auto || true
+          sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" new "$SENTRY_RELEASE" || \
+            sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" info "$SENTRY_RELEASE"
+          sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" set-commits "$SENTRY_RELEASE" --auto || true
           SYMBOL_UPLOAD_ARGS=(--include-sources --wait --type dsym)
           if [[ -d "$ARCHIVE_PATH/BCSymbolMaps" ]]; then
             SYMBOL_UPLOAD_ARGS+=(--symbol-maps "$ARCHIVE_PATH/BCSymbolMaps")
           fi
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" debug-files upload \
+          sentry-cli debug-files upload --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" \
             "${SYMBOL_UPLOAD_ARGS[@]}" \
             "$ARCHIVE_PATH/dSYMs"
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases finalize "$SENTRY_RELEASE"
+          if [[ ! -f "$IOS_DART_OBFUSCATION_MAP" ]]; then
+            echo "Missing Dart obfuscation map at $IOS_DART_OBFUSCATION_MAP"
+            exit 1
+          fi
+          mapfile -t DART_DEBUG_FILES < <(find "$ARCHIVE_PATH/dSYMs" -type f -path '*/App.framework.dSYM/Contents/Resources/DWARF/App' | sort)
+          if [[ ${#DART_DEBUG_FILES[@]} -eq 0 ]]; then
+            echo "No Flutter iOS App.framework dSYM debug files found under $ARCHIVE_PATH/dSYMs"
+            exit 1
+          fi
+          for debug_file in "${DART_DEBUG_FILES[@]}"; do
+            sentry-cli dart-symbol-map upload --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" \
+              "$IOS_DART_OBFUSCATION_MAP" \
+              "$debug_file"
+          done
+          sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" finalize "$SENTRY_RELEASE"
 
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v3
