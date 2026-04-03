@@ -277,17 +277,17 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
           echo "Sentry release: $SENTRY_RELEASE"
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases new "$SENTRY_RELEASE" || \
-            sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases info "$SENTRY_RELEASE"
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases set-commits "$SENTRY_RELEASE" --auto || true
+          sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" new "$SENTRY_RELEASE" || \
+            sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" info "$SENTRY_RELEASE"
+          sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" set-commits "$SENTRY_RELEASE" --auto || true
           SYMBOL_UPLOAD_ARGS=(--include-sources --wait --type dsym)
           if [[ -d "$ARCHIVE_PATH/BCSymbolMaps" ]]; then
             SYMBOL_UPLOAD_ARGS+=(--symbol-maps "$ARCHIVE_PATH/BCSymbolMaps")
           fi
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" debug-files upload \
+          sentry-cli debug-files --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" upload \
             "${SYMBOL_UPLOAD_ARGS[@]}" \
             "$ARCHIVE_PATH/dSYMs"
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases finalize "$SENTRY_RELEASE"
+          sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" finalize "$SENTRY_RELEASE"
 
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v3

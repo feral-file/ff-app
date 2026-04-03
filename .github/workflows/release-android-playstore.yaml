@@ -151,14 +151,14 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
           echo "Sentry release: $SENTRY_RELEASE"
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases new "$SENTRY_RELEASE" || \
-            sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases info "$SENTRY_RELEASE"
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases set-commits "$SENTRY_RELEASE" --auto || true
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" debug-files upload \
+          sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" new "$SENTRY_RELEASE" || \
+            sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" info "$SENTRY_RELEASE"
+          sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" set-commits "$SENTRY_RELEASE" --auto || true
+          sentry-cli debug-files --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" upload \
             --include-sources \
             --wait \
             build/app/intermediates/merged_native_libs/productionRelease/mergeProductionReleaseNativeLibs/out/lib
-          sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases finalize "$SENTRY_RELEASE"
+          sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" finalize "$SENTRY_RELEASE"
 
       - name: Release notes
         run: |
