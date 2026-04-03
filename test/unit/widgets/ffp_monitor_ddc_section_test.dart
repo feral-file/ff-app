@@ -14,11 +14,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('available monitor power modes keep wake actions for unknown power', () {
-    expect(
-      availableFfpMonitorPowerModes(null),
-      [FfpDdcPanelPower.on, FfpDdcPanelPower.standby],
-    );
+  test('available monitor power modes hide actions for unknown power', () {
+    expect(availableFfpMonitorPowerModes(null), isEmpty);
     expect(
       availableFfpMonitorPowerModes(FfpDdcPanelPower.off),
       [FfpDdcPanelPower.on, FfpDdcPanelPower.standby],
@@ -85,7 +82,7 @@ void main() {
   );
 
   testWidgets(
-    'shows unknown power with on and standby buttons after incomplete off snapshot',
+    'shows unknown power without wake buttons after incomplete off snapshot',
     (tester) async {
       const topicId = 'topic-1';
       const device = FF1Device(
@@ -145,7 +142,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('Unknown'), findsOneWidget);
-      expect(find.byType(IconButton), findsNWidgets(2));
+      expect(find.byType(IconButton), findsNothing);
       expect(find.text('Off'), findsNothing);
       expect(find.byKey(const ValueKey('ffp_brightness_slider')), findsNothing);
       expect(find.byKey(const ValueKey('ffp_contrast_slider')), findsNothing);

@@ -277,15 +277,15 @@ extension FfpDdcPanelPowerMonitorUi on FfpDdcPanelPower {
 
 /// Power actions that should remain available for the current DDC snapshot.
 ///
-/// Unknown power means the relayer could not confirm the panel state
-/// (typically because the display is already offline), so we expose the two
-/// wake paths instead of implying that "Off" is currently selected.
+/// When the relayer cannot confirm power state, we intentionally render no
+/// action buttons. That keeps the UI from advertising a wake path the backend
+/// cannot currently validate.
 List<FfpDdcPanelPower> availableFfpMonitorPowerModes(
   FfpDdcPanelPower? current,
 ) {
-  const all = FfpDdcPanelPower.values;
   if (current == null) {
-    return [FfpDdcPanelPower.on, FfpDdcPanelPower.standby];
+    return const [];
   }
+  const all = FfpDdcPanelPower.values;
   return all.where((m) => m != current).toList();
 }
