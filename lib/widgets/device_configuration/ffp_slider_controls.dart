@@ -18,6 +18,9 @@ class FfpBrightnessControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Keep the shared zero-toggle helper here so DDC level controls can use
+    // the same quick tap-to-zero / restore shortcut as audio while the slider
+    // still owns the committed value and rollback path.
     return ZeroToggleIconSliderControl(
       iconAsset: 'assets/images/icon_brightness.svg',
       semanticLabel: 'Brightness',
@@ -46,6 +49,9 @@ class FfpContrastControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Keep the shared zero-toggle helper here so DDC level controls can use
+    // the same quick tap-to-zero / restore shortcut as audio while the slider
+    // still owns the committed value and rollback path.
     return ZeroToggleIconSliderControl(
       iconAsset: 'assets/images/icon_contrast.svg',
       semanticLabel: 'Contrast',
@@ -56,4 +62,3 @@ class FfpContrastControl extends StatelessWidget {
     );
   }
 }
-

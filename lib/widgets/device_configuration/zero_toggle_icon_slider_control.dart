@@ -101,9 +101,7 @@ class _ZeroToggleIconSliderControlState
   @override
   Widget build(BuildContext context) {
     final iconIsEnabled = widget.iconEnabled ?? widget.enabled;
-    final shouldDimIcon = widget.enabled && widget.dimIconWhenZero
-        ? widget.value <= 0
-        : false;
+    final shouldDimIcon = (widget.enabled && widget.dimIconWhenZero) && widget.value <= 0;
 
     return IconSliderControl(
       iconAsset: widget.value <= 0 && widget.zeroIconAsset != null
@@ -114,9 +112,7 @@ class _ZeroToggleIconSliderControlState
       max: widget.max,
       enabled: widget.enabled,
       iconEnabled: iconIsEnabled,
-      iconColor: shouldDimIcon
-          ? AppColor.white.withValues(alpha: 0.4)
-          : null,
+      iconColor: shouldDimIcon ? AppColor.white.withValues(alpha: 0.4) : null,
       gap: widget.gap,
       iconSize: widget.iconSize,
       onChanged: widget.onChanged,
