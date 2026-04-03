@@ -9,6 +9,7 @@ import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:app/ui/screens/device_config_screen.dart';
+import 'package:app/widgets/buttons/primary_button.dart';
 import 'package:app/widgets/device_configuration/ffp_status_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -102,6 +103,20 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+
+      final rotateButton = tester.widget<PrimaryAsyncButton>(
+        find.ancestor(
+          of: find.text('Rotate'),
+          matching: find.byType(PrimaryAsyncButton),
+        ),
+      );
+      expect(
+        rotateButton.enabled,
+        isFalse,
+        reason:
+            'Legacy FF1 actions stay disabled while sleeping; DDC uses its own gate.',
+      );
+
       await tester.dragUntilVisible(
         find.text('FFP Status'),
         find.byType(CustomScrollView),
@@ -238,6 +253,48 @@ void main() {
   );
 
   testWidgets(
+    'allows FFP DDC controls when device status is missing but relayer has DDC',
+    (tester) async {
+      await tester.pumpWidget(
+        _wrapScreen(
+          isInSetupProcess: false,
+          deviceData: const FF1DeviceData(
+            deviceStatus: null,
+            playerStatus: null,
+            isConnected: true,
+          ),
+          currentDeviceStatus: null,
+          currentPlayerStatus: null,
+          panelStatus: const FfpDdcPanelStatus(
+            brightness: 25,
+            contrast: 60,
+            power: FfpDdcPanelPower.on,
+            monitor: 'Test Monitor',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final rotateButton = tester.widget<PrimaryAsyncButton>(
+        find.ancestor(
+          of: find.text('Rotate'),
+          matching: find.byType(PrimaryAsyncButton),
+        ),
+      );
+      expect(rotateButton.enabled, isFalse);
+
+      await tester.dragUntilVisible(
+        find.text('FFP Status'),
+        find.byType(CustomScrollView),
+        const Offset(0, -300),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('ffp_brightness_slider')), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'hides the monitor section until relayer status is available',
     (tester) async {
       await tester.pumpWidget(
@@ -270,7 +327,7 @@ void main() {
 Widget _wrapScreen({
   required bool isInSetupProcess,
   required FF1DeviceData deviceData,
-  required FF1DeviceStatus currentDeviceStatus,
+  required FF1DeviceStatus? currentDeviceStatus,
   required FF1PlayerStatus? currentPlayerStatus,
   required FfpDdcPanelStatus? panelStatus,
 }) {

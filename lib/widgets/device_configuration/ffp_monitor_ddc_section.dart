@@ -8,6 +8,9 @@ import 'package:app/widgets/device_configuration/device_info_box.dart';
 import 'package:app/widgets/device_configuration/ffp_slider_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
+
+final _log = Logger('FfpMonitorDdcSection');
 
 /// FFP display / DDC monitor controls (not FF1 system audio).
 class FfpMonitorDdcSection extends ConsumerWidget {
@@ -139,6 +142,8 @@ class FfpMonitorDdcSection extends ConsumerWidget {
               onChangeEnd: (v) async {
                 try {
                   await notifier.commitContrast(v);
+                } on FfpDdcUnsupportedException catch (e) {
+                  _log.info('DDC contrast unsupported: ${e.message}');
                 } on Exception {
                   // The provider owns rollback and reconciliation.
                 }
@@ -212,6 +217,10 @@ class FfpMonitorDdcSection extends ConsumerWidget {
                 onPressed: () async {
                   try {
                     await notifier.setPower(mode);
+                  } on FfpDdcUnsupportedException catch (e) {
+                    _log.info(
+                      'DDC power unsupported (mode=${mode.name}): ${e.message}',
+                    );
                   } on Exception {
                     // The provider owns rollback and reconciliation.
                   }

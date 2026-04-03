@@ -17,6 +17,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:logging/logging.dart';
+
+final _log = Logger('ArtworkPlayingControls');
 
 /// Playback controls overlay shown when a work is actively playing on FF1.
 ///
@@ -206,6 +209,8 @@ class _FfpMonitorQuickControls extends ConsumerWidget {
             onChangeEnd: (v) async {
               try {
                 await notifier.commitContrast(v);
+              } on FfpDdcUnsupportedException catch (e) {
+                _log.info('DDC contrast unsupported: ${e.message}');
               } on Exception {
                 // The provider owns rollback and reconciliation.
               }

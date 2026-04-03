@@ -27,7 +27,8 @@ class FfpStatusSection extends ConsumerWidget {
   /// Whether the device is connected; disables the section when false.
   final bool isConnected;
 
-  /// Whether the device is currently controllable (not sleeping, etc).
+  /// Whether relayer-driven DDC controls may send commands (independent of
+  /// legacy FF1 rotate/canvas/audio gating).
   final bool isControllable;
 
   @override

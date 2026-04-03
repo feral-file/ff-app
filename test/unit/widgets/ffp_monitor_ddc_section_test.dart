@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/domain/models/ff1/ffp_ddc_command_errors.dart';
 import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
@@ -489,6 +490,62 @@ void main() {
     },
   );
 
+  testWidgets(
+    'unsupported power write does not throw (logged at widget layer)',
+    (tester) async {
+      const topicId = 'topic-1';
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: topicId,
+      );
+      final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
+      final control = _FakeWifiControl()..powerShouldThrowUnsupported = true;
+
+      addTearDown(statuses.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(control),
+            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith((ref) {
+              return statuses.stream;
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: FfpMonitorDdcSection(
+                topicId: topicId,
+                isConnected: true,
+                isControllable: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 20,
+          contrast: 30,
+          power: FfpDdcPanelPower.on,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.byType(IconButton).first);
+      await tester.pumpAndSettle();
+
+      expect(control.lastPowerWire, isNotNull);
+    },
+  );
+
 }
 
 class _FakeWifiControl extends FF1WifiControl {
@@ -500,8 +557,10 @@ class _FakeWifiControl extends FF1WifiControl {
 
   int? lastBrightness;
   int? lastContrast;
+  String? lastPowerWire;
   bool brightnessShouldThrow = false;
   bool contrastShouldThrow = false;
+  bool powerShouldThrowUnsupported = false;
 
   @override
   Future<void> setFfpMonitorBrightness({
@@ -524,6 +583,18 @@ class _FakeWifiControl extends FF1WifiControl {
     lastContrast = percent;
     if (contrastShouldThrow) {
       throw Exception('contrast failed');
+    }
+  }
+
+  @override
+  Future<void> setFfpMonitorPower({
+    required String topicId,
+    required String monitorId,
+    required String powerState,
+  }) async {
+    lastPowerWire = powerState;
+    if (powerShouldThrowUnsupported) {
+      throw FfpDdcUnsupportedException('power not supported');
     }
   }
 }

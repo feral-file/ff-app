@@ -168,11 +168,20 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ) ??
         false;
 
-    // DDC monitor controls are driven by relayer status, not playback state.
-    // Keep them available while the panel is sleeping/off so users can wake or
-    // recover the display from the same surface.
-    final isControllable =
-        isDeviceConnected && deviceStatus != null && topicId.isNotEmpty;
+    // Legacy FF1 actions (rotate, canvas, system audio, pairing QR) follow the
+    // normal playback/device-status gate — do not enable them while sleeping
+    // or before player status exists.
+    final isFf1DeviceConfigActionsControllable =
+        isDeviceConnected &&
+        deviceStatus != null &&
+        playerStatus != null &&
+        !(playerStatus.sleepMode ?? false) &&
+        topicId.isNotEmpty;
+
+    // FFP / DDC monitor controls are relayer-driven; keep them interactive
+    // whenever we have a usable panel snapshot, including setup and sleeping.
+    final isFfpDdcControllable =
+        isDeviceConnected && topicId.isNotEmpty && hasFfpStatus;
 
     return Padding(
       padding: EdgeInsets.zero,
@@ -192,7 +201,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 control,
                 topicId: topicId,
                 screenOrientation: deviceStatus?.screenRotation,
-                isControllable: isControllable,
+                isControllable: isFf1DeviceConfigActionsControllable,
               ),
             ),
           ),
@@ -213,7 +222,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 control,
                 scaling: playerStatus?.deviceSettings?.scaling,
                 topicId: topicId,
-                isControllable: isControllable,
+                isControllable: isFf1DeviceConfigActionsControllable,
               ),
             ),
           ),
@@ -248,7 +257,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                     SizedBox(height: LayoutConstants.space3),
                     AudioControl(
                       topicId: topicId,
-                      isEnable: isControllable,
+                      isEnable: isFf1DeviceConfigActionsControllable,
                     ),
                   ],
                 ),
@@ -264,7 +273,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 child: FfpStatusSection(
                   topicId: topicId,
                   isConnected: isDeviceConnected,
-                  isControllable: isControllable,
+                  isControllable: isFfpDdcControllable,
                 ),
               ),
             ],
@@ -289,7 +298,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                   control,
                   device: device,
                   deviceData: deviceData,
-                  isControllable: isControllable,
+                  isControllable: isFf1DeviceConfigActionsControllable,
                 ),
               ),
             ),
@@ -305,7 +314,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 child: FfpStatusSection(
                   topicId: topicId,
                   isConnected: isDeviceConnected,
-                  isControllable: isControllable,
+                  isControllable: isFfpDdcControllable,
                 ),
               ),
             ],
