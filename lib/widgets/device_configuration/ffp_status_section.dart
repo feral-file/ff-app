@@ -1,7 +1,6 @@
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
-import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/device_configuration/ffp_monitor_ddc_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,37 +46,27 @@ class FfpStatusSection extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Divider(
-          color: AppColor.primaryBlack,
-          thickness: 1,
-          height: LayoutConstants.space10,
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: LayoutConstants.pageHorizontalDefault,
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: LayoutConstants.pageHorizontalDefault,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'FFP Status',
+            style: AppTypography.body(context).white,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'FFP Status',
-                style: AppTypography.body(context).white,
-              ),
-              SizedBox(height: LayoutConstants.space3),
-              FfpMonitorDdcSection(
-                key: ValueKey(topicId),
-                topicId: topicId,
-                isConnected: isConnected,
-                isControllable: isControllable,
-              ),
-              SizedBox(height: LayoutConstants.space5),
-            ],
+          SizedBox(height: LayoutConstants.space3),
+          FfpMonitorDdcSection(
+            key: ValueKey(topicId),
+            topicId: topicId,
+            isConnected: isConnected,
+            isControllable: isControllable,
           ),
-        ),
-      ],
+          SizedBox(height: LayoutConstants.space5),
+        ],
+      ),
     );
   }
 }

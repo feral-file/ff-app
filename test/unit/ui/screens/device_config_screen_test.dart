@@ -167,7 +167,9 @@ void main() {
         find.text('Device Information'),
       );
       final ffpStatusTop = tester.getTopLeft(find.text('FFP Status'));
-      final performanceTop = tester.getTopLeft(find.text('Performance Monitoring'));
+      final performanceTop = tester.getTopLeft(
+        find.text('Performance Monitoring'),
+      );
 
       expect(
         deviceInfoTop.dy < ffpStatusTop.dy,

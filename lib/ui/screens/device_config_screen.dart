@@ -302,6 +302,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
               ),
             ],
             if (isDeviceConnected) ...[
+              const SliverToBoxAdapter(
+                child: Divider(
+                  color: AppColor.primaryBlack,
+                  thickness: 1,
+                  height: 40,
+                ),
+              ),
+            ],
+            if (isDeviceConnected) ...[
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.symmetric(
