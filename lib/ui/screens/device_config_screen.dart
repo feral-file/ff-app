@@ -432,7 +432,23 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_isRouteVisible) return;
+      if (!mounted || !_isRouteVisible) {
+        _promptSession = Ff1FirmwarePromptSessionState(
+          lastDeviceId: device.deviceId,
+        );
+        return;
+      }
+
+      final currentDevice = ref
+          .read(activeFF1BluetoothDeviceProvider)
+          .maybeWhen(data: (d) => d, orElse: () => null);
+      if (currentDevice?.deviceId != device.deviceId) {
+        _promptSession = Ff1FirmwarePromptSessionState(
+          lastDeviceId: currentDevice?.deviceId,
+        );
+        return;
+      }
+
       unawaited(
         _showUpdatePromptDialog(
           device: device,

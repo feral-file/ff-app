@@ -337,6 +337,91 @@ void main() {
       expect(find.text('Update Available'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'DeviceConfigScreen skips prompt when active device changes before show',
+    (tester) async {
+      await ensureDotEnvLoaded();
+
+      final deviceService = _MutableBluetoothDeviceService();
+      final transport = _PromptRaceTransport();
+      final wifiControl = wifi_control.FF1WifiControl(transport: transport);
+      final appState = _BlockingAppStateService(Completer<void>());
+      final versionService = _fakeCompatibleVersionService();
+
+      const deviceA = FF1Device(
+        name: 'FF1-A',
+        remoteId: 'remote-a',
+        deviceId: 'device-a',
+        topicId: 'topic-a',
+      );
+      const deviceB = FF1Device(
+        name: 'FF1-B',
+        remoteId: 'remote-b',
+        deviceId: 'device-b',
+        topicId: 'topic-b',
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1BluetoothDeviceServiceProvider.overrideWithValue(deviceService),
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+          appStateServiceProvider.overrideWithValue(appState),
+          versionServiceProvider.overrideWithValue(versionService),
+        ],
+      );
+      addTearDown(() async {
+        await deviceService.dispose();
+        container.dispose();
+      });
+
+      container.listen(ff1AutoConnectWatcherProvider, (previous, next) {});
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: DeviceConfigScreen(
+                payload: DeviceConfigPayload(isInSetupProcess: false),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      deviceService
+        ..devices = [deviceA, deviceB]
+        ..activeDeviceId = deviceA.deviceId;
+      await container
+          .read(
+            ff1BluetoothDeviceActionsProvider.notifier,
+          )
+          .setActiveDevice(deviceA.deviceId);
+      await tester.pump();
+
+      transport
+        ..emitDeviceConnection(isConnected: true)
+        ..emitDeviceStatus(
+          installedVersion: '1.0.0',
+          latestVersion: '2.0.0',
+        );
+      await tester.pump();
+
+      await container
+          .read(
+            ff1BluetoothDeviceActionsProvider.notifier,
+          )
+          .setActiveDevice(deviceB.deviceId);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Update Available'), findsNothing);
+    },
+  );
+
 }
 
 Future<void> _pumpUntilVisible(WidgetTester tester, String text) async {
