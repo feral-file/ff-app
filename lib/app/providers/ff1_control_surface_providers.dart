@@ -576,10 +576,10 @@ int? _resolvePendingInt(int? pending, int? actual) {
 /// derives effective `power` as null until a later status includes `power`
 /// again (`FfpDdcPanelStatus`: unknown power, not "assume last known").
 ///
-/// UI: `availableFfpMonitorPowerModes` in `ffp_monitor_ddc_section.dart` shows
-/// no On/Standby/Off actions when power is null—avoiding a wake path the
-/// relayer has not confirmed. A common trigger is an incomplete snapshot after
-/// power-off (e.g. only monitor name, no `power` field); control is one-way
+/// UI: `availableFfpMonitorPowerModes` in `ffp_monitor_ddc_section.dart` keeps
+/// a conservative wake action available when power is null. A common trigger
+/// is an incomplete snapshot after power-off (e.g. only monitor name, no
+/// `power` field); the UI should show "Unknown" without stranding the user
 /// until a complete push restores `power`. Widget regression:
 /// `test/unit/widgets/ffp_monitor_ddc_section_test.dart` (incomplete off
 /// snapshot).

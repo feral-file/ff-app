@@ -161,6 +161,7 @@ void main() {
         ),
       );
 
+      await control.connect(device: device, userId: 'user', apiKey: 'key');
       activeDeviceStream.add(device);
       control.emitDeviceStatus(
         const FF1DeviceStatus(
@@ -242,6 +243,7 @@ void main() {
         ),
       );
 
+      await control.connect(device: device, userId: 'user', apiKey: 'key');
       activeDeviceStream.add(device);
       control.emitDeviceStatus(
         const FF1DeviceStatus(
@@ -350,6 +352,7 @@ void main() {
         ),
       );
 
+      await control.connect(device: device, userId: 'user', apiKey: 'key');
       control.emitDeviceStatus(
         const FF1DeviceStatus(
           volume: 35,
