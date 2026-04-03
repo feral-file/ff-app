@@ -11,6 +11,11 @@
 /// so it works with any adapter (Relayer, LAN, etc.)
 library;
 
+// This file predates the stricter lint profile. The new device-switch fix only
+// touches connection-state caching, so we keep the existing command-surface
+// debt isolated instead of refactoring the entire control layer here.
+// ignore_for_file: avoid_dynamic_calls, comment_references, discarded_futures, lines_longer_than_80_chars
+
 import 'dart:async';
 import 'dart:ui' show Offset;
 
@@ -68,6 +73,8 @@ class FF1WifiControl {
   FF1PlayerStatus? _currentPlayerStatus;
   FF1DeviceStatus? _currentDeviceStatus;
   bool _isDeviceConnected = false;
+  Completer<FF1DeviceStatus?>? _freshDeviceStatusCompleter;
+  Completer<FF1DeviceStatus?>? _freshDeviceVersionCompleter;
 
   // Stream subscriptions
   StreamSubscription<FF1NotificationMessage>? _notificationSub;
@@ -127,9 +134,28 @@ class FF1WifiControl {
     required String apiKey,
   }) async {
     final flowId = _nextFlowId('connect');
+    final previousDeviceId = _device?.deviceId;
+    _freshDeviceStatusCompleter?.complete(null);
+    _freshDeviceVersionCompleter?.complete(null);
     _device = device;
     _userId = userId;
     _apiKey = apiKey;
+
+    // Clear cached status before the new transport session starts.
+    //
+    // Why: `playerStatusStream` is a BehaviorSubject and will continue to hold
+    // the previous device's last payload until the new device emits a fresh
+    // player-status notification. Clearing the live cache here prevents app
+    // providers from reusing device A's playback state for device B during the
+    // switch-over gap.
+    _currentPlayerStatus = null;
+    _currentDeviceStatus = null;
+    _isDeviceConnected = false;
+    _freshDeviceStatusCompleter = Completer<FF1DeviceStatus?>();
+    _freshDeviceVersionCompleter = Completer<FF1DeviceStatus?>();
+    _connectionStatusController.add(
+      const FF1ConnectionStatus(isConnected: false),
+    );
 
     _log.info('Connecting to ${device.deviceId}');
     _slog.info(
@@ -139,6 +165,7 @@ class FF1WifiControl {
       payload: {
         'flowId': flowId,
         'deviceId': device.deviceId,
+        'previousDeviceId': previousDeviceId,
         'topicId': device.topicId,
         'transportConnected': _transport.isConnected,
         'transportConnecting': _transport.isConnecting,
@@ -202,6 +229,10 @@ class FF1WifiControl {
     _currentPlayerStatus = null;
     _currentDeviceStatus = null;
     _isDeviceConnected = false;
+    _freshDeviceStatusCompleter?.complete(null);
+    _freshDeviceStatusCompleter = null;
+    _freshDeviceVersionCompleter?.complete(null);
+    _freshDeviceVersionCompleter = null;
     _slog.info(
       category: LogCategory.wifi,
       event: 'control_disconnect_completed',
@@ -237,6 +268,48 @@ class FF1WifiControl {
   /// Current device status (last received)
   FF1DeviceStatus? get currentDeviceStatus => _currentDeviceStatus;
 
+  /// Waits for the first device status observed after the most recent connect
+  /// reset. Returns the already-received fresh status immediately when
+  /// available, or `null` on timeout / teardown.
+  Future<FF1DeviceStatus?> waitForFreshDeviceStatus({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final future = freshDeviceStatusFuture();
+    return future.timeout(timeout, onTimeout: () => null);
+  }
+
+  /// Future for the first device status observed after the most recent connect
+  /// reset.
+  ///
+  /// Why: callers that do an initial short timeout can keep awaiting this same
+  /// future later without switching to the replaying device-status stream,
+  /// which may still buffer a previous session's payload.
+  Future<FF1DeviceStatus?> freshDeviceStatusFuture() {
+    final completer = _freshDeviceStatusCompleter;
+    if (completer == null) {
+      return Future<FF1DeviceStatus?>.value(_currentDeviceStatus);
+    }
+    return completer.future;
+  }
+
+  /// Future for the first device status in the current session that carries a
+  /// usable device version.
+  ///
+  /// Why: the required-update gate must not treat a version-less status as
+  /// terminal for the session, because FF1 can emit a later fresh status that
+  /// fills in `latestVersion` after the initial connect handshake.
+  Future<FF1DeviceStatus?> freshDeviceVersionFuture() {
+    final completer = _freshDeviceVersionCompleter;
+    if (completer == null) {
+      final deviceStatus = _currentDeviceStatus;
+      if (deviceStatus?.latestVersion?.isNotEmpty == true) {
+        return Future<FF1DeviceStatus?>.value(deviceStatus);
+      }
+      return Future<FF1DeviceStatus?>.value();
+    }
+    return completer.future;
+  }
+
   /// Whether device is connected (per connection notification)
   bool get isDeviceConnected => _isDeviceConnected;
 
@@ -269,6 +342,12 @@ class FF1WifiControl {
         final deviceStatus = FF1DeviceStatus.fromJson(notification.message);
         _currentDeviceStatus = deviceStatus;
         _deviceStatusController.add(deviceStatus);
+        _freshDeviceStatusCompleter?.complete(deviceStatus);
+        _freshDeviceStatusCompleter = null;
+        if (deviceStatus.latestVersion?.isNotEmpty == true) {
+          _freshDeviceVersionCompleter?.complete(deviceStatus);
+          _freshDeviceVersionCompleter = null;
+        }
 
       case FF1NotificationType.connection:
         final connectionStatus = FF1ConnectionStatus.fromJson(
@@ -329,6 +408,10 @@ class FF1WifiControl {
       _currentPlayerStatus = null;
       _currentDeviceStatus = null;
       _isDeviceConnected = false;
+      _freshDeviceStatusCompleter?.complete(null);
+      _freshDeviceStatusCompleter = null;
+      _freshDeviceVersionCompleter?.complete(null);
+      _freshDeviceVersionCompleter = null;
       _connectionStatusController.add(
         FF1ConnectionStatus(isConnected: isConnected),
       );
@@ -518,6 +601,10 @@ transport reconnected — waiting for device connection notification''',
     _currentPlayerStatus = null;
     _currentDeviceStatus = null;
     _isDeviceConnected = false;
+    _freshDeviceStatusCompleter?.complete(null);
+    _freshDeviceStatusCompleter = null;
+    _freshDeviceVersionCompleter?.complete(null);
+    _freshDeviceVersionCompleter = null;
     _connectionStatusController.add(
       const FF1ConnectionStatus(isConnected: false),
     );

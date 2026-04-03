@@ -159,6 +159,7 @@
   - build DP-1 payload and cast via canvas client to selected device
   - now-displaying state derives from active device + relayer player/device streams
   - now-displaying bar displays current item and appears as floating overlay
+  - for the visible index window, the app reads matching rows from local SQLite to avoid redundant enrichment, then may call the indexer only for items still missing after that read; live DP-1 fields from the device fill gaps and cover enrichment failures, and same-playlist window changes (index shifts or scroll expansion) update immediately with DP-1 fallback rows while enrichment catches up
   - user taps bar to navigate to current work detail (or already there)
   - optional: user opens Interact screen for keyboard/touchpad control
 - success state: active playback visible and controllable from app
@@ -166,6 +167,8 @@
   - no paired device -> bar hidden (invisible, no guidance shown)
   - disconnected device -> bar shows disconnected state
   - enrichment/cache misses fall back to basic DP-1 item fields
+  - loading overlay only when playlist id or item list from FF1 changes; pause/sleep or index nudges that keep the same visible index window reuse rows without flashing loading; if the index moves enough to shift the window on a long playlist, or the user expands the range, the app updates immediately with DP-1 fallback rows and enriches that new slice in the background without a loading flash
+  - expanded-bar scroll expansion is scoped to the current playing list: switching playlist or ordered items clears the widened range so the next window is not inflated by a previous session
 - key screens involved: Work Detail, Playlist Detail, Keyboard Control, Now Displaying Bar (overlay)
 - key modules/services involved: `canvas_client_service_v2`, `now_displaying_provider`, `ff1_wifi_providers`, `ff1_device_provider`
 

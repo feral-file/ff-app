@@ -214,6 +214,8 @@ class FakeWifiTransport implements FF1WifiTransport {
   final _notifications = StreamController<FF1NotificationMessage>.broadcast();
   final _connections = StreamController<bool>.broadcast();
   final _errors = StreamController<FF1WifiTransportError>.broadcast();
+  bool _isConnected = false;
+  bool _isConnecting = false;
 
   @override
   Stream<bool> get connectionStateStream => _connections.stream;
@@ -226,10 +228,10 @@ class FakeWifiTransport implements FF1WifiTransport {
   Stream<FF1WifiTransportError> get errorStream => _errors.stream;
 
   @override
-  bool get isConnected => false;
+  bool get isConnected => _isConnected;
 
   @override
-  bool get isConnecting => false;
+  bool get isConnecting => _isConnecting;
 
   @override
   Future<void> connect({
@@ -237,13 +239,65 @@ class FakeWifiTransport implements FF1WifiTransport {
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    _isConnecting = true;
+    _isConnected = true;
+    _isConnecting = false;
+    _connections.add(true);
+  }
 
   @override
-  void pauseConnection() {}
+  void pauseConnection() {
+    _isConnected = false;
+    _isConnecting = false;
+    _connections.add(false);
+  }
 
   @override
-  Future<void> disconnect() async {}
+  Future<void> disconnect() async {
+    _isConnected = false;
+    _isConnecting = false;
+    _connections.add(false);
+  }
+
+  void emitTransportConnection({required bool isConnected}) {
+    _isConnected = isConnected;
+    _isConnecting = false;
+    _connections.add(isConnected);
+  }
+
+  void emitPlayerStatus(FF1PlayerStatus status) {
+    _notifications.add(
+      FF1NotificationMessage(
+        type: FF1WifiMessageType.notification,
+        message: status.toJson(),
+        notificationType: FF1NotificationType.playerStatus,
+        timestamp: DateTime.now(),
+      ),
+    );
+  }
+
+  void emitDeviceStatus(FF1DeviceStatus status) {
+    _notifications.add(
+      FF1NotificationMessage(
+        type: FF1WifiMessageType.notification,
+        message: status.toJson(),
+        notificationType: FF1NotificationType.deviceStatus,
+        timestamp: DateTime.now(),
+      ),
+    );
+  }
+
+  void emitConnectionStatus({required bool isConnected}) {
+    _notifications.add(
+      FF1NotificationMessage(
+        type: FF1WifiMessageType.notification,
+        message: {'isConnected': isConnected},
+        notificationType: FF1NotificationType.connection,
+        timestamp: DateTime.now(),
+      ),
+    );
+  }
 
   @override
   Future<void> sendCommand(Map<String, dynamic> command) async {}
@@ -262,11 +316,17 @@ class FakeWifiTransport implements FF1WifiTransport {
 }
 
 class FakeWifiControl extends FF1WifiControl {
-  FakeWifiControl()
+  FakeWifiControl({
+    FakeWifiTransport? transport,
+  }) : this._(transport ?? FakeWifiTransport());
+
+  FakeWifiControl._(this._transport)
     : super(
-        transport: FakeWifiTransport(),
+        transport: _transport,
         logger: Logger('FakeWifiControl'),
       );
+
+  final FakeWifiTransport _transport;
 
   bool connectCalled = false;
   bool disconnectCalled = false;
@@ -287,5 +347,21 @@ class FakeWifiControl extends FF1WifiControl {
   Future<void> disconnect() async {
     disconnectCalled = true;
     await super.disconnect();
+  }
+
+  void emitPlayerStatus(FF1PlayerStatus status) {
+    _transport.emitPlayerStatus(status);
+  }
+
+  void emitDeviceStatus(FF1DeviceStatus status) {
+    _transport.emitDeviceStatus(status);
+  }
+
+  void emitConnectionStatus({required bool isConnected}) {
+    _transport.emitConnectionStatus(isConnected: isConnected);
+  }
+
+  void emitTransportConnection({required bool isConnected}) {
+    _transport.emitTransportConnection(isConnected: isConnected);
   }
 }
