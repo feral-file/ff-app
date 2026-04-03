@@ -77,6 +77,9 @@ void main() {
     },
   );
 
+  // Intentional product behavior: relayer omits `power` → null effective power →
+  // "Unknown" and no power IconButtons (see `availableFfpMonitorPowerModes`,
+  // `_resolvePendingPower`). Docs: app_flows.md DeviceConfig, project_spec FF1 setup.
   testWidgets(
     'shows unknown power without wake buttons after incomplete off snapshot',
     (tester) async {

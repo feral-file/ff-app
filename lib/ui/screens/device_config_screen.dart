@@ -178,8 +178,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         !(playerStatus.sleepMode ?? false) &&
         topicId.isNotEmpty;
 
-    // FFP / DDC monitor controls are relayer-driven; keep them interactive
-    // whenever we have a usable panel snapshot, including setup and sleeping.
+    // FFP/DDC: require device-connected first (no panel stream or section when
+    // disconnected). When connected, relayer-driven snapshot enables controls,
+    // including setup and sleeping when status exists.
     final isFfpDdcControllable =
         isDeviceConnected && topicId.isNotEmpty && hasFfpStatus;
 

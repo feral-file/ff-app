@@ -13,6 +13,12 @@ import 'package:logging/logging.dart';
 final _log = Logger('FfpMonitorDdcSection');
 
 /// FFP display / DDC monitor controls (not FF1 system audio).
+///
+/// Power mode buttons come from `availableFfpMonitorPowerModes`. When effective
+/// power is null (relayer omitted `power`; see `FF1FfpDdcControlNotifier` and
+/// `_resolvePendingPower` in `ff1_control_surface_providers.dart`), the label
+/// is "Unknown" and no wake/on/standby actions are shown until status includes
+/// `power` again.
 class FfpMonitorDdcSection extends ConsumerWidget {
   /// Creates the FFP monitor section.
   const FfpMonitorDdcSection({
@@ -268,9 +274,17 @@ extension FfpDdcPanelPowerMonitorUi on FfpDdcPanelPower {
 
 /// Power actions that should remain available for the current DDC snapshot.
 ///
-/// When the relayer cannot confirm power state, we intentionally render no
-/// action buttons. That keeps the UI from advertising a wake path the backend
-/// cannot currently validate.
+/// When [current] is null, returns an empty list: the relayer has not confirmed
+/// power on the latest merged status, so we render no On/Standby/Off buttons.
+/// That avoids advertising a wake path the backend has not validated.
+///
+/// This pairs with `FF1FfpDdcControlNotifier` / `_resolvePendingPower` in
+/// `ff1_control_surface_providers.dart`: when the relayer omits `power`, after
+/// power-off a partial push (no `power` field) yields null effective power and
+/// this empty list, so the UI can show "Unknown" with no controls until a
+/// complete snapshot arrives. See `docs/app_flows.md` (DeviceConfig) and
+/// `docs/project_spec.md` (FF1 setup). Regression:
+/// `test/unit/widgets/ffp_monitor_ddc_section_test.dart`.
 List<FfpDdcPanelPower> availableFfpMonitorPowerModes(
   FfpDdcPanelPower? current,
 ) {

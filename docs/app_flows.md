@@ -260,7 +260,8 @@
 - route / entry point: `/device-configuration`
 - important actions: adjust display settings, DDC brightness/contrast/power, switch device/options, finish setup flow
 - dependencies: active FF1 provider, `ff1DeviceDataProvider`, FF1 Wi-Fi control
-- notes / caveats: FFP/DDC controls are driven by relayer-pushed status updates and stay available during setup and sleeping/off states when the connected display exposes DDC; there is no in-app monitor volume or mute. The section hides itself when no relayer status has arrived
+- notes / caveats: FFP/DDC UI is gated on **device connected** (same `ff1DeviceData` connection flag as the rest of DeviceConfig): when not connected, the screen does not watch `ff1FfpDdcPanelStatusStreamProvider` or show the FFP/DDC section. While connected, controls are driven by relayer-pushed status updates and can stay available during setup and sleeping/off when the display exposes DDC; there is no in-app monitor volume or mute. The section hides when no relayer status has arrived.
+  - **Monitor power (DDC):** Optimistic power is cleared when the relayer omits `power` on a status push, so the effective value becomes unknown. The UI then shows **Unknown** and **no** power mode actions (`availableFfpMonitorPowerModes` is empty for null) until a later push includes `power` again. That avoids advertising On/Standby/Off when the backend has not confirmed power, but it also means an **incomplete snapshot after power-off** (relayer message without `power`) can temporarily remove wake/on controls until a complete status arrives. See `FF1FfpDdcControlNotifier` / `_resolvePendingPower` and widget tests in `test/unit/widgets/ffp_monitor_ddc_section_test.dart`.
 
 ## Screen: KeyboardControlScreen
 

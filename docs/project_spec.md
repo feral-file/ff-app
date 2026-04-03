@@ -232,7 +232,7 @@
 - Key actions: BLE scan/connect, Wi-Fi selection/credentials, finalize pairing, adjust orientation/scaling/audio (FF1 system), adjust FFP/DDC display brightness/contrast/power (no monitor volume/mute in app).
 - Important data: BLE state, FF1 device info/topicId, device/player status streams.
 - Related modules: FF1 providers (BLE + Wi-Fi), FF1 services, ObjectBox device store.
-- Notes: DeviceConfig keeps the FFP/DDC surface (brightness, contrast, power) available once relayer status exists, including setup and sleeping/off states; the section still hides itself when no monitor status has arrived.
+- Notes: The FFP/DDC block is shown only when the app’s FF1 connection state reports **connected** (`ff1DeviceDataProvider`); when the device is not connected, DeviceConfig does not subscribe to the panel status stream or render FFP/DDC UI. While connected, brightness/contrast/power remain **relayer-driven** (pushed panel snapshots and commands); the surface can stay available during setup and sleeping/off when monitor status exists. The section hides when no relayer monitor status has arrived yet. For monitor **power**, if the relayer omits `power` on a push, the app treats power as unknown, clears optimistic power, and the UI shows **Unknown** with **no** power mode buttons until `power` appears again—so a partial post-power-off snapshot can briefly hide wake/on controls (intentional trade-off: do not offer power actions without relayer-confirmed power). Implementation: `_resolvePendingPower` and `availableFfpMonitorPowerModes` in `ff1_control_surface_providers.dart` / `ffp_monitor_ddc_section.dart`; regression: `ffp_monitor_ddc_section_test.dart` (“incomplete off snapshot”).
 
 ### Screen group: NowDisplaying + KeyboardControl
 
