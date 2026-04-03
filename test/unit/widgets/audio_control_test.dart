@@ -3,14 +3,14 @@ import 'dart:async';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/domain/models/ff1_device.dart';
-import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
-import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:app/widgets/device_configuration/audio_control.dart';
 import 'package:app/widgets/device_configuration/icon_slider_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../app/providers/provider_test_helpers.dart';
 
 void main() {
   const device = FF1Device(
@@ -138,21 +138,16 @@ void main() {
     (tester) async {
       final control = _FakeAudioWifiControl();
       final activeDeviceStream = StreamController<FF1Device?>.broadcast();
-      final deviceStatusStream = StreamController<FF1DeviceStatus>.broadcast();
       final container = ProviderContainer(
         overrides: [
           ff1WifiControlProvider.overrideWithValue(control),
           activeFF1BluetoothDeviceProvider.overrideWith((ref) {
             return activeDeviceStream.stream;
           }),
-          ff1DeviceStatusStreamProvider.overrideWith(
-            (ref) => deviceStatusStream.stream,
-          ),
         ],
       );
 
       addTearDown(activeDeviceStream.close);
-      addTearDown(deviceStatusStream.close);
       addTearDown(container.dispose);
 
       await tester.pumpWidget(
@@ -167,7 +162,7 @@ void main() {
       );
 
       activeDeviceStream.add(device);
-      deviceStatusStream.add(
+      control.emitDeviceStatus(
         const FF1DeviceStatus(
           volume: 20,
           isMuted: false,
@@ -192,7 +187,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(control.lastSetVolume, 80);
 
-      deviceStatusStream.add(
+      control.emitDeviceStatus(
         const FF1DeviceStatus(
           volume: 80,
           isMuted: false,
@@ -200,7 +195,7 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
-      deviceStatusStream.add(
+      control.emitDeviceStatus(
         const FF1DeviceStatus(
           volume: 65,
           isMuted: false,
@@ -224,21 +219,16 @@ void main() {
     (tester) async {
       final control = _FakeAudioWifiControl();
       final activeDeviceStream = StreamController<FF1Device?>.broadcast();
-      final deviceStatusStream = StreamController<FF1DeviceStatus>.broadcast();
       final container = ProviderContainer(
         overrides: [
           ff1WifiControlProvider.overrideWithValue(control),
           activeFF1BluetoothDeviceProvider.overrideWith((ref) {
             return activeDeviceStream.stream;
           }),
-          ff1DeviceStatusStreamProvider.overrideWith(
-            (ref) => deviceStatusStream.stream,
-          ),
         ],
       );
 
       addTearDown(activeDeviceStream.close);
-      addTearDown(deviceStatusStream.close);
       addTearDown(container.dispose);
 
       await tester.pumpWidget(
@@ -253,7 +243,7 @@ void main() {
       );
 
       activeDeviceStream.add(device);
-      deviceStatusStream.add(
+      control.emitDeviceStatus(
         const FF1DeviceStatus(
           volume: 20,
           isMuted: false,
@@ -270,7 +260,7 @@ void main() {
       controlWidget.onChangeEnd?.call(80.4);
       await tester.pumpAndSettle();
 
-      deviceStatusStream.add(
+      control.emitDeviceStatus(
         const FF1DeviceStatus(
           volume: 80,
           isMuted: false,
@@ -278,7 +268,7 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
-      deviceStatusStream.add(
+      control.emitDeviceStatus(
         const FF1DeviceStatus(
           volume: 65,
           isMuted: false,
@@ -343,9 +333,6 @@ void main() {
     'unmuting restores the last non-zero volume immediately',
     (tester) async {
       final control = _FakeAudioWifiControl();
-      final deviceStatusStream = StreamController<FF1DeviceStatus>.broadcast();
-
-      addTearDown(deviceStatusStream.close);
 
       await tester.pumpWidget(
         ProviderScope(
@@ -354,9 +341,6 @@ void main() {
             activeFF1BluetoothDeviceProvider.overrideWith((ref) {
               return Stream.value(device);
             }),
-            ff1DeviceStatusStreamProvider.overrideWith(
-              (ref) => deviceStatusStream.stream,
-            ),
           ],
           child: MaterialApp(
             home: Scaffold(
@@ -366,7 +350,7 @@ void main() {
         ),
       );
 
-      deviceStatusStream.add(
+      control.emitDeviceStatus(
         const FF1DeviceStatus(
           volume: 35,
           isMuted: false,
@@ -381,7 +365,7 @@ void main() {
       widget.onIconTap?.call();
       await tester.pumpAndSettle();
 
-      deviceStatusStream.add(
+      control.emitDeviceStatus(
         const FF1DeviceStatus(
           volume: 0,
           isMuted: true,
@@ -606,12 +590,8 @@ void main() {
   });
 }
 
-class _FakeAudioWifiControl extends FF1WifiControl {
-  _FakeAudioWifiControl()
-    : super(
-        transport: _FakeWifiTransport(),
-        restClient: null,
-      );
+class _FakeAudioWifiControl extends FakeWifiControl {
+  _FakeAudioWifiControl();
 
   String? toggleMuteTopicId;
   int? lastSetVolume;
@@ -638,46 +618,4 @@ class _FakeAudioWifiControl extends FF1WifiControl {
     lastSetVolume = percent;
     return FF1CommandResponse(status: 'ok');
   }
-}
-
-class _FakeWifiTransport implements FF1WifiTransport {
-  @override
-  Stream<bool> get connectionStateStream => const Stream<bool>.empty();
-
-  @override
-  Stream<FF1WifiTransportError> get errorStream =>
-      const Stream<FF1WifiTransportError>.empty();
-
-  @override
-  bool get isConnected => true;
-
-  @override
-  bool get isConnecting => false;
-
-  @override
-  Stream<FF1NotificationMessage> get notificationStream =>
-      const Stream<FF1NotificationMessage>.empty();
-
-  @override
-  Future<void> connect({
-    required FF1Device device,
-    required String userId,
-    required String apiKey,
-    bool forceReconnect = false,
-  }) async {}
-
-  @override
-  void dispose() {}
-
-  @override
-  Future<void> disconnect() async {}
-
-  @override
-  Future<void> disposeFuture() async {}
-
-  @override
-  void pauseConnection() {}
-
-  @override
-  Future<void> sendCommand(Map<String, dynamic> command) async {}
 }
