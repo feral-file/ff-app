@@ -171,6 +171,7 @@
   - expanded-bar scroll expansion is scoped to the current playing list: switching playlist or ordered items clears the widened range so the next window is not inflated by a previous session
 - key screens involved: Work Detail, Playlist Detail, Keyboard Control, Now Displaying Bar (overlay)
 - key modules/services involved: `canvas_client_service_v2`, `now_displaying_provider`, `ff1_wifi_providers`, `ff1_device_provider`
+- notes: The quick DDC brightness/contrast controls shown in Now Displaying reuse the same shared zero-toggle helper as DeviceConfig, so icon taps jump to `0` and restore the previous non-zero value while slider drags still commit the final level normally.
 
 ## Flow: Settings Recovery and Support
 
@@ -256,13 +257,15 @@
 
 ## Screen: DeviceConfigScreen
 
-- role in the flow: post-pairing control surface for orientation/scaling/audio/device info and post-setup firmware update entry/prompt orchestration
+- role in the flow: post-pairing control surface for orientation/scaling/audio (FF1), FFP/DDC display brightness/contrast/power, device info, and post-setup firmware update entry/prompt orchestration
 - route / entry point: `/device-configuration`
-- important actions: adjust display settings, switch device/options, finish setup flow, start **Update FF1**
+- important actions: adjust display settings, DDC brightness/contrast/power, switch device/options, finish setup flow, start **Update FF1**
 - dependencies: active FF1 provider, `ff1DeviceDataProvider`, FF1 Wi-Fi control
 - notes / caveats:
   - setup mode hides advanced sections and suppresses the firmware auto-prompt
     during the initial setup visit
+  - FFP/DDC UI is gated on **device connected** (same `ff1DeviceData` connection flag as the rest of DeviceConfig): when not connected, the screen does not watch `ff1FfpDdcPanelStatusStreamProvider` or show the FFP/DDC section. While connected, controls are driven by relayer-pushed status updates and can stay available during setup and sleeping/off when the display exposes DDC; there is no in-app monitor volume or mute. Brightness/contrast icon taps use the shared zero-toggle helper: tap once to jump to `0`, tap again from `0` to restore the last non-zero value. The section hides when no relayer status has arrived.
+  - **Monitor power (DDC):** Optimistic power is cleared when the relayer omits `power` on a status push, so the effective value becomes unknown. The UI then shows **Unknown** and **no** power mode actions (`availableFfpMonitorPowerModes` is empty for null) until a later push includes `power` again. **Why this is OK:** After FFP power-off, many monitors do not support reading power status over DDC, so the relayer often sends DDC notifications **without** `power`. The app must not guess On/Standby/Off in that case. **Reviewer note:** Unknown with no power buttons when `power` is absent is **specified, accepted behavior**—not a bug. Do not request wake/on controls or inferred power while `power` is null unless product requirements change. Code: `FF1FfpDdcControlNotifier` / `_resolvePendingPower`; widget tests: `test/unit/widgets/ffp_monitor_ddc_section_test.dart`.
   - manual **Update FF1** appears only after relayer connectivity plus both
     `installedVersion` and `latestVersion` are available; the auto-prompt can
     still appear earlier once relayer/version fields are present

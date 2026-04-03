@@ -5,6 +5,7 @@
 
 import 'dart:async';
 
+import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
@@ -13,22 +14,204 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('FF1WifiControl.getDeviceRealtimeMetrics', () {
-    test('uses default 6 second timeout for realtime metrics request', () async {
-      final restClient = _RecordingRestClient();
-      final control = FF1WifiControl(
-        transport: _FakeWifiTransport(),
-        restClient: restClient,
-      );
+  group('FF1WifiControl notifications', () {
+    test('publishes relayer-pushed FFP panel status updates', () async {
+      final transport = _NotificationTestTransport();
+      final control = FF1WifiControl(transport: transport);
 
       addTearDown(control.dispose);
 
-      await control.getDeviceRealtimeMetrics(topicId: 'topic_1');
+      final nextStatus = control.ffpDdcPanelStatusStream.first;
+      transport.emitNotification(
+        FF1NotificationMessage(
+          type: FF1WifiMessageType.notification,
+          notificationType: FF1NotificationType.ffpDdcPanelStatus,
+          message: const {
+            'brightness': 82,
+            'contrast': 25,
+            'volume': 77,
+            'power': 'on',
+            'monitor': 'DEL:DELL S2721QS',
+          },
+          timestamp: DateTime.fromMillisecondsSinceEpoch(1775038389754),
+        ),
+      );
 
-      expect(restClient.lastTopicId, 'topic_1');
-      expect(restClient.lastCommand, 'deviceMetrics');
-      expect(restClient.lastTimeout, const Duration(seconds: 6));
+      final status = await nextStatus;
+
+      expect(status.brightness, 82);
+      expect(status.monitor, 'DEL:DELL S2721QS');
+      expect(control.currentFfpDdcPanelStatus?.brightness, 82);
     });
+
+    test(
+      'clears cached device and panel status when switching devices',
+      () async {
+        final transport = _NotificationTestTransport();
+        final control = FF1WifiControl(transport: transport);
+        const deviceA = FF1Device(
+          name: 'FF1 A',
+          remoteId: 'remote-a',
+          deviceId: 'device-a',
+          topicId: 'topic-a',
+        );
+        const deviceB = FF1Device(
+          name: 'FF1 B',
+          remoteId: 'remote-b',
+          deviceId: 'device-b',
+          topicId: 'topic-b',
+        );
+        final deviceStatuses = <FF1DeviceStatus>[];
+        final panelStatuses = <FfpDdcPanelStatus>[];
+
+        addTearDown(control.dispose);
+
+        final deviceStatusSub = control.deviceStatusStream.listen(
+          deviceStatuses.add,
+        );
+        final panelStatusSub = control.ffpDdcPanelStatusStream.listen(
+          panelStatuses.add,
+        );
+        addTearDown(deviceStatusSub.cancel);
+        addTearDown(panelStatusSub.cancel);
+
+        await control.connect(
+          device: deviceA,
+          userId: 'user',
+          apiKey: 'key',
+        );
+        transport.emitNotification(
+          FF1NotificationMessage(
+            type: FF1WifiMessageType.notification,
+            notificationType: FF1NotificationType.deviceStatus,
+            message: const {
+              'volume': 40,
+              'isMuted': true,
+            },
+            timestamp: DateTime.fromMillisecondsSinceEpoch(1704067200000),
+          ),
+        );
+        transport.emitNotification(
+          FF1NotificationMessage(
+            type: FF1WifiMessageType.notification,
+            notificationType: FF1NotificationType.ffpDdcPanelStatus,
+            message: const {
+              'brightness': 20,
+              'monitor': 'Studio Display',
+            },
+            timestamp: DateTime.fromMillisecondsSinceEpoch(1704067200000),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(control.currentDeviceStatus?.volume, 40);
+        expect(control.currentFfpDdcPanelStatus?.brightness, 20);
+
+        await control.connect(
+          device: deviceB,
+          userId: 'user',
+          apiKey: 'key',
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(control.currentDeviceStatus, isNull);
+        expect(control.currentFfpDdcPanelStatus, isNull);
+        expect(deviceStatuses.last.volume, isNull);
+        expect(panelStatuses.last.hasData, isFalse);
+      },
+    );
+
+    test(
+      'clears replayed FFP panel status after transport disconnect',
+      () async {
+        final transport = _NotificationTestTransport();
+        final control = FF1WifiControl(transport: transport);
+
+        addTearDown(control.dispose);
+
+        transport.emitNotification(
+          FF1NotificationMessage(
+            type: FF1WifiMessageType.notification,
+            notificationType: FF1NotificationType.ffpDdcPanelStatus,
+            message: const {
+              'monitor': 'Studio Display',
+              'brightness': 64,
+              'power': 'on',
+            },
+            timestamp: DateTime.fromMillisecondsSinceEpoch(1704067200000),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        transport.emitConnectionState(false);
+        await Future<void>.delayed(Duration.zero);
+
+        final clearedStatus = await control.ffpDdcPanelStatusStream.first;
+
+        expect(control.currentFfpDdcPanelStatus, isNull);
+        expect(clearedStatus.hasData, isFalse);
+      },
+    );
+
+    test(
+      'clears FFP panel status when device connection notification is false',
+      () async {
+        final transport = _NotificationTestTransport();
+        final control = FF1WifiControl(transport: transport);
+
+        addTearDown(control.dispose);
+
+        transport.emitNotification(
+          FF1NotificationMessage(
+            type: FF1WifiMessageType.notification,
+            notificationType: FF1NotificationType.ffpDdcPanelStatus,
+            message: const {
+              'monitor': 'Studio Display',
+              'brightness': 64,
+              'power': 'on',
+            },
+            timestamp: DateTime.fromMillisecondsSinceEpoch(1704067200000),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(control.currentFfpDdcPanelStatus?.brightness, 64);
+
+        transport.emitNotification(
+          FF1NotificationMessage(
+            type: FF1WifiMessageType.notification,
+            notificationType: FF1NotificationType.connection,
+            message: const {'isConnected': false},
+            timestamp: DateTime.fromMillisecondsSinceEpoch(1704067200001),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(control.isDeviceConnected, isFalse);
+        expect(control.currentFfpDdcPanelStatus, isNull);
+      },
+    );
+  });
+
+  group('FF1WifiControl.getDeviceRealtimeMetrics', () {
+    test(
+      'uses default 6 second timeout for realtime metrics request',
+      () async {
+        final restClient = _RecordingRestClient();
+        final control = FF1WifiControl(
+          transport: _FakeWifiTransport(),
+          restClient: restClient,
+        );
+
+        addTearDown(control.dispose);
+
+        await control.getDeviceRealtimeMetrics(topicId: 'topic_1');
+
+        expect(restClient.lastTopicId, 'topic_1');
+        expect(restClient.lastCommand, 'deviceMetrics');
+        expect(restClient.lastTimeout, const Duration(seconds: 6));
+      },
+    );
 
     test('rethrows TimeoutException from metrics request', () async {
       final control = FF1WifiControl(
@@ -301,6 +484,66 @@ class _FakeWifiTransport implements FF1WifiTransport {
   @override
   Future<void> disposeFuture() async {
     dispose();
+  }
+}
+
+class _NotificationTestTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+
+  void emitNotification(FF1NotificationMessage message) {
+    _notifications.add(message);
+  }
+
+  void emitConnectionState(bool connected) {
+    _connections.add(connected);
+  }
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => const Stream.empty();
+
+  @override
+  bool get isConnected => true;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {}
+
+  @override
+  void pauseConnection() {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    await Future.wait<void>([
+      _notifications.close(),
+      _connections.close(),
+    ]);
   }
 }
 

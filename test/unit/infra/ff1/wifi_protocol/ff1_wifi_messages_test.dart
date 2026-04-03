@@ -54,6 +54,13 @@ void main() {
       );
     });
 
+    test('fromString parses ddc_status correctly', () {
+      expect(
+        FF1NotificationType.fromString('ddc_status'),
+        FF1NotificationType.ffpDdcPanelStatus,
+      );
+    });
+
     test('fromString throws on unknown type', () {
       expect(
         () => FF1NotificationType.fromString('unknown'),
@@ -64,6 +71,7 @@ void main() {
     test('value returns correct string', () {
       expect(FF1NotificationType.playerStatus.value, 'player_status');
       expect(FF1NotificationType.deviceStatus.value, 'device_status');
+      expect(FF1NotificationType.ffpDdcPanelStatus.value, 'ddc_status');
       expect(FF1NotificationType.connection.value, 'connection');
     });
   });
@@ -92,6 +100,28 @@ void main() {
         message.timestamp,
         DateTime.fromMillisecondsSinceEpoch(1704067200000),
       );
+    });
+
+    test('fromJson parses ddc_status FFP panel envelope', () {
+      final json = {
+        'type': 'notification',
+        'notification_type': 'ddc_status',
+        'timestamp': 1775038389754,
+        'message': {
+          'brightness': 82,
+          'contrast': 25,
+          'volume': 77,
+          'power': 'on',
+          'monitor': 'DEL:DELL S2721QS',
+        },
+      };
+
+      final message = FF1NotificationMessage.fromJson(json);
+
+      expect(message.type, FF1WifiMessageType.notification);
+      expect(message.notificationType, FF1NotificationType.ffpDdcPanelStatus);
+      expect(message.message['brightness'], 82);
+      expect(message.message['monitor'], 'DEL:DELL S2721QS');
     });
 
     test('toJson serializes correctly', () {

@@ -203,8 +203,7 @@ class MockAppStateService implements AppStateService {
   @override
   Stream<AddressIndexingProcessStatus?> watchAddressIndexingStatus(
     String address,
-  ) =>
-      Stream.value(null);
+  ) => Stream.value(null);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
@@ -330,6 +329,7 @@ class FakeWifiControl extends FF1WifiControl {
 
   bool connectCalled = false;
   bool disconnectCalled = false;
+  bool disconnectShouldThrow = false;
   FF1Device? lastConnectedDevice;
 
   @override
@@ -346,6 +346,9 @@ class FakeWifiControl extends FF1WifiControl {
   @override
   Future<void> disconnect() async {
     disconnectCalled = true;
+    if (disconnectShouldThrow) {
+      throw Exception('disconnect failed');
+    }
     await super.disconnect();
   }
 

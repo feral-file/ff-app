@@ -23,6 +23,7 @@ import 'package:app/widgets/device_configuration/audio_control.dart';
 import 'package:app/widgets/device_configuration/canvas_setting.dart';
 import 'package:app/widgets/device_configuration/device_info_box.dart';
 import 'package:app/widgets/device_configuration/device_metrics_section.dart';
+import 'package:app/widgets/device_configuration/ffp_status_section.dart';
 import 'package:app/widgets/device_configuration/options_button.dart';
 import 'package:app/widgets/device_configuration/switch_device_button.dart';
 import 'package:flutter/material.dart';
@@ -63,6 +64,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     with RouteAware {
   bool _isShowingQRCode = false;
   bool _isRouteVisible = false;
+  bool _isUpdatePromptPending = false;
+  bool _isUpdatePromptDialogVisible = false;
+  int _updatePromptGeneration = 0;
 
   /// App-layer session for auto firmware prompt (dedupe, in-flight guard).
   Ff1FirmwarePromptSessionState _promptSession =
@@ -130,8 +134,32 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         (_, _) => _checkUpdatePrompt(),
       )
       ..listen(
-        ff1DeviceConnectedProvider,
-        (_, _) => _checkUpdatePrompt(),
+        activeFF1BluetoothDeviceProvider,
+        (previous, next) {
+          final previousDeviceId = previous?.maybeWhen(
+            data: (device) => device?.deviceId,
+            orElse: () => null,
+          );
+          final nextDeviceId = next.maybeWhen(
+            data: (device) => device?.deviceId,
+            orElse: () => null,
+          );
+          if (previousDeviceId != nextDeviceId) {
+            _updatePromptGeneration++;
+            _isUpdatePromptPending = false;
+            if (_isUpdatePromptDialogVisible && mounted) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted || !_isUpdatePromptDialogVisible) {
+                  return;
+                }
+                final navigator = Navigator.of(context, rootNavigator: true);
+                if (navigator.canPop()) {
+                  navigator.pop();
+                }
+              });
+            }
+          }
+        },
       );
 
     return ref
@@ -232,13 +260,31 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     final isDeviceConnected = deviceData.isConnected;
 
     final control = ref.read(ff1WifiControlProvider);
+    final ffpStatusAsync = isDeviceConnected
+        ? ref.watch(ff1FfpDdcPanelStatusStreamProvider(topicId))
+        : null;
+    final hasFfpStatus =
+        ffpStatusAsync?.maybeWhen(
+          data: (status) => status.hasData,
+          orElse: () => false,
+        ) ??
+        false;
 
-    final isControllable =
+    // Legacy FF1 actions (rotate, canvas, system audio, pairing QR) follow the
+    // normal playback/device-status gate — do not enable them while sleeping
+    // or before player status exists.
+    final isFf1DeviceConfigActionsControllable =
         isDeviceConnected &&
         deviceStatus != null &&
         playerStatus != null &&
-        !playerStatus.isSleeping &&
+        !(playerStatus.sleepMode ?? false) &&
         topicId.isNotEmpty;
+
+    // FFP/DDC: require device-connected first (no panel stream or section when
+    // disconnected). When connected, relayer-driven snapshot enables controls,
+    // including setup and sleeping when status exists.
+    final isFfpDdcControllable =
+        isDeviceConnected && topicId.isNotEmpty && hasFfpStatus;
 
     return Padding(
       padding: EdgeInsets.zero,
@@ -258,7 +304,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 control,
                 topicId: topicId,
                 screenOrientation: deviceStatus?.screenRotation,
-                isControllable: isControllable,
+                isControllable: isFf1DeviceConfigActionsControllable,
               ),
             ),
           ),
@@ -279,7 +325,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 control,
                 scaling: playerStatus?.deviceSettings?.scaling,
                 topicId: topicId,
-                isControllable: isControllable,
+                isControllable: isFf1DeviceConfigActionsControllable,
               ),
             ),
           ),
@@ -314,7 +360,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                     SizedBox(height: LayoutConstants.space3),
                     AudioControl(
                       topicId: topicId,
-                      isEnable: isControllable,
+                      isEnable: isFf1DeviceConfigActionsControllable,
                     ),
                   ],
                 ),
@@ -324,21 +370,22 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
               child: SizedBox(height: LayoutConstants.space5),
             ),
           ],
-          const SliverToBoxAdapter(
-            child: Divider(
-              color: AppColor.primaryBlack,
-              thickness: 1,
-              height: 1,
-            ),
-          ),
           if (widget.payload.isInSetupProcess) ...[
+            if (isDeviceConnected) ...[
+              SliverToBoxAdapter(
+                child: FfpStatusSection(
+                  topicId: topicId,
+                  isConnected: isDeviceConnected,
+                  isControllable: isFfpDdcControllable,
+                ),
+              ),
+            ],
             SliverToBoxAdapter(
               child: SizedBox(
                 height: LayoutConstants.space20,
               ),
             ),
-          ],
-          if (!widget.payload.isInSetupProcess) ...[
+          ] else ...[
             SliverToBoxAdapter(
               child: SizedBox(
                 height: LayoutConstants.space5,
@@ -354,7 +401,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                   control,
                   device: device,
                   deviceData: deviceData,
-                  isControllable: isControllable,
+                  isControllable: isFf1DeviceConfigActionsControllable,
                 ),
               ),
             ),
@@ -365,7 +412,25 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 height: 40,
               ),
             ),
-
+            if (isDeviceConnected) ...[
+              SliverToBoxAdapter(
+                child: FfpStatusSection(
+                  topicId: topicId,
+                  isConnected: isDeviceConnected,
+                  isControllable: isFfpDdcControllable,
+                ),
+              ),
+            ],
+            if (hasFfpStatus) ...[
+              const SliverToBoxAdapter(
+                child: Divider(
+                  key: ValueKey('ffp_status_to_performance_divider'),
+                  color: AppColor.primaryBlack,
+                  thickness: 1,
+                  height: 40,
+                ),
+              ),
+            ],
             if (isDeviceConnected) ...[
               SliverToBoxAdapter(
                 child: Padding(
@@ -402,6 +467,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   /// newer reported latest can show again without leaving this screen.
   void _checkUpdatePrompt() {
     if (!mounted || !_isRouteVisible) return;
+    if (_isUpdatePromptPending) return;
 
     final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
     final device = ref
@@ -431,21 +497,34 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
       return;
     }
 
+    // Keep one prompt request outstanding until the modal either shows or is
+    // explicitly canceled by a device switch. Without this guard, back-to-back
+    // status notifications can schedule duplicate dialogs before the first
+    // post-frame callback runs.
+    _isUpdatePromptPending = true;
+    final promptGeneration = _updatePromptGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_isRouteVisible) {
         _promptSession = Ff1FirmwarePromptSessionState(
           lastDeviceId: device.deviceId,
         );
+        _isUpdatePromptPending = false;
         return;
       }
 
-      final currentDevice = ref
-          .read(activeFF1BluetoothDeviceProvider)
-          .maybeWhen(data: (d) => d, orElse: () => null);
-      if (currentDevice?.deviceId != device.deviceId) {
+      if (promptGeneration != _updatePromptGeneration) {
         _promptSession = Ff1FirmwarePromptSessionState(
-          lastDeviceId: currentDevice?.deviceId,
+          lastDeviceId: device.deviceId,
         );
+        _isUpdatePromptPending = false;
+        return;
+      }
+
+      if (promptGeneration != _updatePromptGeneration) {
+        _promptSession = Ff1FirmwarePromptSessionState(
+          lastDeviceId: device.deviceId,
+        );
+        _isUpdatePromptPending = false;
         return;
       }
 
@@ -465,6 +544,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     required String latestVersion,
   }) async {
     try {
+      _isUpdatePromptDialogVisible = true;
       await _runUpdatePromptDialog(
         device: device,
         installedVersion: installedVersion,
@@ -473,6 +553,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     } finally {
       if (mounted) {
         _promptSession = clearFirmwareUpdatePromptInFlight(_promptSession);
+        _isUpdatePromptPending = false;
+        _isUpdatePromptDialogVisible = false;
         _checkUpdatePrompt();
       }
     }

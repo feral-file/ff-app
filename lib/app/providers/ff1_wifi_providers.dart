@@ -12,6 +12,7 @@ import 'dart:async';
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/version_provider.dart';
+import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
@@ -22,7 +23,7 @@ import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:app/infra/logging/structured_logger.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
-import 'package:riverpod/src/providers/future_provider.dart';
+import 'package:riverpod/riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 // ============================================================================
@@ -143,7 +144,8 @@ class FF1WifiConnectionState {
 
   @override
   String toString() =>
-      'FF1WifiConnectionState(connected: $isConnected, device: ${device?.deviceId})';
+      'FF1WifiConnectionState('
+      'connected: $isConnected, device: ${device?.deviceId})';
 }
 
 /// FF1 WiFi connection notifier
@@ -152,6 +154,7 @@ class FF1WifiConnectionState {
 class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   FF1WifiControl get _control => ref.read(ff1WifiControlProvider);
   late final StructuredLogger _slog;
+  int _connectEpoch = 0;
 
   @override
   FF1WifiConnectionState build() {
@@ -172,6 +175,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
     required String userId,
     required String apiKey,
   }) async {
+    final epoch = ++_connectEpoch;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_connect_requested',
@@ -202,6 +206,16 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         apiKey: apiKey,
       );
 
+      if (epoch != _connectEpoch) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_connect_canceled',
+          message: 'connect completed after a newer connection request',
+          payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
+        );
+        return;
+      }
+
       state = state.copyWith(
         isConnected: true,
         isConnecting: false,
@@ -214,6 +228,19 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
       );
     } on Exception catch (e) {
+      if (epoch != _connectEpoch) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_connect_canceled_error',
+          message: 'connect failed after cancellation; ignoring stale error',
+          payload: {
+            'deviceId': device.deviceId,
+            'topicId': device.topicId,
+            'error': e.toString(),
+          },
+        );
+        return;
+      }
       state = state.copyWith(
         isConnected: false,
         isConnecting: false,
@@ -228,7 +255,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       );
       rethrow;
     } finally {
-      if (state.isConnecting) {
+      if (epoch == _connectEpoch && state.isConnecting) {
         state = state.copyWith(isConnecting: false);
       }
     }
@@ -241,6 +268,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   /// backgrounded, the watcher calls disconnect(); without clearing state,
   /// reconnect() on resume would use the stale cached device.
   Future<void> disconnect() async {
+    _connectEpoch++;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_disconnect_requested',
@@ -251,7 +279,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         'stateConnecting': state.isConnecting,
       },
     );
-    if (state.isConnected) {
+    if (state.isConnected || state.isConnecting) {
       try {
         await _control.disconnect();
       } finally {
@@ -375,6 +403,30 @@ final ff1DeviceStatusStreamProvider = StreamProvider<FF1DeviceStatus>((ref) {
   final control = ref.watch(ff1WifiControlProvider);
   return control.deviceStatusStream;
 });
+
+/// Current FFP DDC panel status stream provider for a specific FF1 topic.
+///
+/// This is scoped by topic id so a stale widget cannot read panel state from
+/// one active FF1 and send writes to a different FF1 topic.
+// ignore: specify_nonobvious_property_types
+final ff1FfpDdcPanelStatusStreamProvider = StreamProvider.autoDispose
+    .family<FfpDdcPanelStatus, String>((ref, topicId) {
+      if (topicId.isEmpty) {
+        return const Stream<FfpDdcPanelStatus>.empty();
+      }
+
+      final activeDeviceAsync = ref.watch(activeFF1BluetoothDeviceProvider);
+      final activeTopicId = activeDeviceAsync.maybeWhen(
+        data: (device) => device?.topicId ?? '',
+        orElse: () => '',
+      );
+      if (activeTopicId != topicId) {
+        return Stream<FfpDdcPanelStatus>.value(const FfpDdcPanelStatus());
+      }
+
+      final control = ref.watch(ff1WifiControlProvider);
+      return control.ffpDdcPanelStatusStream;
+    });
 
 /// Current connection status stream provider.
 ///
@@ -571,25 +623,58 @@ Future<void> _scheduleRequiredDeviceVersionCheck({
 /// (e.g., in bootstrap or root).
 final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
   final logger = Logger('FF1AutoConnectWatcher');
-  final activeDeviceAsync = ref.watch(activeFF1BluetoothDeviceProvider);
   final connectionNotifier = ref.read(ff1WifiConnectionProvider.notifier);
 
-  activeDeviceAsync.when(
-    data: (device) async {
+  ref.listen<AsyncValue<FF1Device?>>(
+    activeFF1BluetoothDeviceProvider,
+    (previous, next) {
+      final previousDevice = previous?.maybeWhen(
+        data: (device) => device,
+        orElse: () => null,
+      );
+      final device = next.maybeWhen(
+        data: (device) => device,
+        orElse: () => null,
+      );
+      if (previousDevice == null && device == null) {
+        return;
+      }
+      final switchingDevice =
+          previousDevice != null &&
+          device != null &&
+          previousDevice.deviceId != device.deviceId;
+
       if (device != null) {
         // Clear stale relayer/device state synchronously so UI consumers see
         // the handoff before the deferred connection attempt begins.
         ref.read(ff1WifiControlProvider).prepareForDeviceSwitch(device);
       }
-      // Use Future.microtask to defer the connection call
-      // to avoid modifying other providers during build phase
+
+      // Use Future.microtask to defer transport mutations out of the build
+      // phase and preserve the existing provider-driven connect flow.
       unawaited(
         Future.microtask(() async {
+          if (switchingDevice) {
+            logger.info(
+              'Active device switched from ${previousDevice.deviceId} to '
+              '${device.deviceId}, disconnecting old device first...',
+            );
+            try {
+              await connectionNotifier.disconnect();
+            } on Exception catch (error, stackTrace) {
+              logger.warning(
+                'Disconnect failed during active-device switch; '
+                'continuing with connect attempt.',
+                error,
+                stackTrace,
+              );
+            }
+          }
+
           if (device != null) {
             logger.info(
               'Active device changed: ${device.toJson()}, connecting...',
             );
-            // Intentionally not awaiting to avoid blocking
             await connectionNotifier.connect(
               device: device,
               userId: 'user_id',
@@ -604,18 +689,12 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
             );
           } else {
             logger.info('No active device, disconnecting...');
-            // Intentionally not awaiting to avoid blocking
-            connectionNotifier.disconnect();
+            await connectionNotifier.disconnect();
           }
         }),
       );
     },
-    error: (error, stack) {
-      logger.severe('Error loading active device', error, stack);
-    },
-    loading: () {
-      logger.info('Loading active device...');
-    },
+    fireImmediately: true,
   );
 });
 
@@ -650,7 +729,8 @@ class FF1WifiConnectParams {
 /// Connect to FF1 device via WiFi (auto-dispose, with retry).
 ///
 /// This provider automatically disposes after use.
-/// Uses Riverpod's automatic retry mechanism (5 attempts with exponential backoff).
+/// Uses Riverpod's automatic retry mechanism (5 attempts with exponential
+/// backoff).
 ///
 /// Usage:
 /// ```dart
@@ -662,8 +742,8 @@ class FF1WifiConnectParams {
 ///   )).future,
 /// );
 /// ```
-final FutureProviderFamily<void, FF1WifiConnectParams>
-ff1WifiConnectOperationProvider = FutureProvider.autoDispose
+// ignore: specify_nonobvious_property_types
+final ff1WifiConnectOperationProvider = FutureProvider.autoDispose
     .family<void, FF1WifiConnectParams>(
       retry: _wifiRetry,
       (ref, params) async {
@@ -712,8 +792,8 @@ class FF1WifiCommandParams<T> {
 ///   )).future,
 /// );
 /// ```
-final FutureProviderFamily<dynamic, FF1WifiCommandParams<dynamic>>
-ff1WifiSendCommandProvider = FutureProvider.autoDispose
+// ignore: specify_nonobvious_property_types
+final ff1WifiSendCommandProvider = FutureProvider.autoDispose
     .family<dynamic, FF1WifiCommandParams<dynamic>>(
       retry: _wifiRetry,
       (ref, params) async {
@@ -795,8 +875,8 @@ class FF1ConnectionDiscrepancyWatcher extends Notifier<void> {
       event: 'connection_discrepancy',
       message:
           'transport connected but device-level not connected for '
-          '>${ff1ConnectionDiscrepancyThreshold.inSeconds}s — possible false '
-          '"Device not connected" in UI',
+          '>${ff1ConnectionDiscrepancyThreshold.inSeconds}s - possible '
+          'false "Device not connected" in UI',
       payload: {
         'thresholdSeconds': ff1ConnectionDiscrepancyThreshold.inSeconds,
       },
@@ -806,7 +886,8 @@ class FF1ConnectionDiscrepancyWatcher extends Notifier<void> {
         SentryEvent(
           message: SentryMessage(
             'FF1 connection discrepancy: transport up but device-level '
-            'not connected for >${ff1ConnectionDiscrepancyThreshold.inSeconds}s',
+            'not connected for >'
+            '${ff1ConnectionDiscrepancyThreshold.inSeconds}s',
           ),
           level: SentryLevel.warning,
           tags: {'component': 'ff1_wifi'},

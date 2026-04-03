@@ -43,13 +43,16 @@ enum FF1WifiMessageType {
   }
 }
 
-/// Notification subtypes (player_status, device_status, connection).
+/// Notification subtypes (player_status, device_status, connection, FFP DDC).
 enum FF1NotificationType {
   /// Player status notification (playback state, current work).
   playerStatus('player_status'),
 
   /// Device status notification (WiFi, internet, version).
   deviceStatus('device_status'),
+
+  /// FFP display / DDC panel status notification.
+  ffpDdcPanelStatus('ddc_status'),
 
   /// Connection status notification (device online/offline).
   connection('connection')
@@ -746,6 +749,89 @@ class FF1WifiSetLoopRequest extends FF1WifiCommandRequest {
 
   @override
   Map<String, dynamic> get params => {'mode': mode.wireValue};
+}
+
+// ============================================================================
+// FFP / DDC monitor (controld via relayer) — not FF1 system audio (ffos#84)
+// ============================================================================
+//
+// Panel snapshot is delivered only via relayer notifications (`ddc_status`);
+// there is no separate read/poll command.
+
+/// Set monitor brightness (VCP) — may return explicit unsupported on FFP.
+///
+/// Wire: `ddcPanelControl` with `action` + `value` (ffos issue 84 comment).
+/// [monitorId] is kept for call-site consistency; not sent until controld
+/// defines multi-monitor routing.
+class FfpDdcMonitorSetBrightnessRequest extends FF1WifiCommandRequest {
+  /// Creates set brightness request.
+  const FfpDdcMonitorSetBrightnessRequest({
+    required this.monitorId,
+    required this.percent,
+  });
+
+  /// Reserved for future multi-monitor routing; wire is `action`/`value` only.
+  final String monitorId;
+
+  /// 0–100.
+  final int percent;
+
+  @override
+  String get command => 'ddcPanelControl';
+
+  @override
+  Map<String, dynamic> get params => {
+    'action': 'brightness',
+    'value': percent,
+  };
+}
+
+/// Set monitor contrast (DDC).
+class FfpDdcMonitorSetContrastRequest extends FF1WifiCommandRequest {
+  /// Creates set contrast request.
+  const FfpDdcMonitorSetContrastRequest({
+    required this.monitorId,
+    required this.percent,
+  });
+
+  /// Target monitor id.
+  final String monitorId;
+
+  /// Contrast 0–100.
+  final int percent;
+
+  @override
+  String get command => 'ddcPanelControl';
+
+  @override
+  Map<String, dynamic> get params => {
+    'action': 'contrast',
+    'value': percent,
+  };
+}
+
+/// Power control for the display (on / off / standby).
+class FfpDdcMonitorSetPowerRequest extends FF1WifiCommandRequest {
+  /// Creates set power request.
+  const FfpDdcMonitorSetPowerRequest({
+    required this.monitorId,
+    required this.powerState,
+  });
+
+  /// Target monitor id.
+  final String monitorId;
+
+  /// Wire values: `on`, `off`, `standby`.
+  final String powerState;
+
+  @override
+  String get command => 'ddcPanelControl';
+
+  @override
+  Map<String, dynamic> get params => {
+    'action': 'power',
+    'value': powerState,
+  };
 }
 
 /// Base class for command responses.
