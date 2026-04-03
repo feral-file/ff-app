@@ -175,10 +175,11 @@ class _FfpMonitorQuickControls extends ConsumerWidget {
     final showBrightness = status.brightness != null;
     final showContrast = status.contrast != null;
     final showVol = status.volume != null;
+    final hideLevelSliders = status.power == FfpDdcPanelPower.off;
     final notifier = ref.read(ff1FfpDdcControlProvider(topicId).notifier);
 
     final controls = <Widget>[
-      if (showBrightness)
+      if (showBrightness && !hideLevelSliders)
         _ControlPill(
           child: FfpBrightnessControl(
             value: (status.brightness ?? 0).toDouble(),
@@ -198,7 +199,7 @@ class _FfpMonitorQuickControls extends ConsumerWidget {
             },
           ),
         ),
-      if (showContrast)
+      if (showContrast && !hideLevelSliders)
         _ControlPill(
           child: FfpContrastControl(
             value: (status.contrast ?? 0).toDouble(),
@@ -212,7 +213,7 @@ class _FfpMonitorQuickControls extends ConsumerWidget {
             },
           ),
         ),
-      if (showVol)
+      if (showVol && !hideLevelSliders)
         _ControlPill(
           child: FfpMonitorVolumeControl(
             value: (status.volume ?? 0).toDouble(),
