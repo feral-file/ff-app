@@ -124,7 +124,7 @@ void main() {
   );
 
   testWidgets(
-    'renders device information before FFP status in the main layout',
+    'renders FFP status between device information and performance',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 5000));
       addTearDown(() async {
@@ -167,11 +167,17 @@ void main() {
         find.text('Device Information'),
       );
       final ffpStatusTop = tester.getTopLeft(find.text('FFP Status'));
+      final performanceTop = tester.getTopLeft(find.text('Performance Monitoring'));
 
       expect(
         deviceInfoTop.dy < ffpStatusTop.dy,
         isTrue,
         reason: 'FFP Status should render after Device Information.',
+      );
+      expect(
+        ffpStatusTop.dy < performanceTop.dy,
+        isTrue,
+        reason: 'FFP Status should render before Performance Monitoring.',
       );
     },
   );

@@ -294,6 +294,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             ),
             if (isDeviceConnected) ...[
               SliverToBoxAdapter(
+                child: FfpStatusSection(
+                  topicId: topicId,
+                  isConnected: isDeviceConnected,
+                  isControllable: isControllable,
+                ),
+              ),
+            ],
+            if (isDeviceConnected) ...[
+              SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.symmetric(
                     horizontal: LayoutConstants.pageHorizontalDefault,
@@ -303,15 +312,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                     topicId: topicId,
                     isConnected: isDeviceConnected,
                   ),
-                ),
-              ),
-            ],
-            if (isDeviceConnected) ...[
-              SliverToBoxAdapter(
-                child: FfpStatusSection(
-                  topicId: topicId,
-                  isConnected: isDeviceConnected,
-                  isControllable: isControllable,
                 ),
               ),
             ],
