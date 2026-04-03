@@ -159,6 +159,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     final isDeviceConnected = deviceData.isConnected;
 
     final control = ref.read(ff1WifiControlProvider);
+    final ffpStatusAsync = isDeviceConnected
+        ? ref.watch(ff1FfpDdcPanelStatusStreamProvider(topicId))
+        : null;
+    final hasFfpStatus = ffpStatusAsync?.maybeWhen(
+          data: (status) => status.hasData,
+          orElse: () => false,
+        ) ??
+        false;
 
     // DDC monitor controls are driven by relayer status, not playback state.
     // Keep them available while the panel is sleeping/off so users can wake or
@@ -301,9 +309,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 ),
               ),
             ],
-            if (isDeviceConnected) ...[
+            if (hasFfpStatus) ...[
               const SliverToBoxAdapter(
                 child: Divider(
+                  key: ValueKey('ffp_status_to_performance_divider'),
                   color: AppColor.primaryBlack,
                   thickness: 1,
                   height: 40,

@@ -181,6 +181,59 @@ void main() {
         isTrue,
         reason: 'FFP Status should render before Performance Monitoring.',
       );
+      expect(
+        find.byKey(
+          const ValueKey('ffp_status_to_performance_divider'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'hides the divider before performance when FFP status is hidden',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 5000));
+      addTearDown(() async {
+        await tester.binding.setSurfaceSize(null);
+      });
+
+      await tester.pumpWidget(
+        _wrapScreen(
+          isInSetupProcess: false,
+          deviceData: FF1DeviceData(
+            deviceStatus: const FF1DeviceStatus(
+              volume: 40,
+              isMuted: false,
+            ),
+            playerStatus: FF1PlayerStatus(
+              playlistId: 'playlist-1',
+              sleepMode: false,
+            ),
+            isConnected: true,
+          ),
+          currentDeviceStatus: const FF1DeviceStatus(
+            volume: 40,
+            isMuted: false,
+          ),
+          currentPlayerStatus: FF1PlayerStatus(
+            playlistId: 'playlist-1',
+            sleepMode: false,
+          ),
+          panelStatus: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const ValueKey('ffp_status_to_performance_divider'),
+        ),
+        findsNothing,
+        reason:
+            'When FFP Status is hidden, the screen should not insert the extra '
+            'divider before Performance Monitoring.',
+      );
     },
   );
 
