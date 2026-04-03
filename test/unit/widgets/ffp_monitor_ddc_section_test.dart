@@ -62,7 +62,6 @@ void main() {
         const FfpDdcPanelStatus(
           brightness: 20,
           contrast: 30,
-          volume: 40,
           power: FfpDdcPanelPower.off,
           monitor: 'Test Monitor',
         ),
@@ -118,7 +117,6 @@ void main() {
         const FfpDdcPanelStatus(
           brightness: 20,
           contrast: 30,
-          volume: 40,
           power: FfpDdcPanelPower.off,
           monitor: 'Test Monitor',
         ),
@@ -389,7 +387,6 @@ void main() {
                 const FfpDdcPanelStatus(
                   brightness: 20,
                   contrast: 30,
-                  volume: 40,
                   monitor: 'Test Monitor',
                 ),
               ),
@@ -453,7 +450,6 @@ void main() {
                 const FfpDdcPanelStatus(
                   brightness: 20,
                   contrast: 30,
-                  volume: 40,
                   monitor: 'Test Monitor',
                 ),
               ),

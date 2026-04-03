@@ -7,8 +7,6 @@ void main() {
       final json = {
         'brightness': 50,
         'contrast': 50,
-        'volume': 50,
-        'mute': 'off',
         'power': 'on',
         'monitor': 'MSI:MSI MD272UPS',
       };
@@ -16,8 +14,6 @@ void main() {
       expect(s.hasData, isTrue);
       expect(s.brightness, 50);
       expect(s.contrast, 50);
-      expect(s.volume, 50);
-      expect(s.mute, isFalse);
       expect(s.power, FfpDdcPanelPower.on);
       expect(s.monitor, 'MSI:MSI MD272UPS');
     });
@@ -30,34 +26,22 @@ void main() {
       expect(s.hasData, isTrue);
     });
 
-    test('volume-only payload does not count as displayable status', () {
-      final json = {
-        'volume': 77,
-      };
-      final s = FfpDdcPanelStatus.fromJson(json);
-      expect(s.volume, 77);
-      expect(s.hasData, isFalse);
-    });
-
     test(
       'relayer sample with only errors in JSON still parses null values',
       () {
-      final json = {
-        'brightness': 82,
-        'contrast': 25,
-        'volume': 77,
-        'power': 'on',
-        'monitor': 'DEL:DELL S2721QS',
-        'errors': {'mute': 'VCP reported ERR'},
-      };
-      final s = FfpDdcPanelStatus.fromJson(json);
-      expect(s.brightness, 82);
-      expect(s.contrast, 25);
-      expect(s.volume, 77);
-      expect(s.power, FfpDdcPanelPower.on);
-      expect(s.monitor, 'DEL:DELL S2721QS');
-      expect(s.mute, isNull);
-      expect(s.hasData, isTrue);
+        final json = {
+          'brightness': 82,
+          'contrast': 25,
+          'power': 'on',
+          'monitor': 'DEL:DELL S2721QS',
+          'errors': {'power': 'VCP reported ERR'},
+        };
+        final s = FfpDdcPanelStatus.fromJson(json);
+        expect(s.brightness, 82);
+        expect(s.contrast, 25);
+        expect(s.power, FfpDdcPanelPower.on);
+        expect(s.monitor, 'DEL:DELL S2721QS');
+        expect(s.hasData, isTrue);
       },
     );
 
@@ -76,13 +60,11 @@ void main() {
     test('toJson roundtrips parsed fields', () {
       final s = FfpDdcPanelStatus.fromJson({
         'brightness': 10,
-        'mute': 'on',
         'power': 'standby',
         'monitor': 'X',
       });
       final s2 = FfpDdcPanelStatus.fromJson(s.toJson());
       expect(s2.brightness, s.brightness);
-      expect(s2.mute, s.mute);
       expect(s2.power, s.power);
       expect(s2.monitor, s.monitor);
     });

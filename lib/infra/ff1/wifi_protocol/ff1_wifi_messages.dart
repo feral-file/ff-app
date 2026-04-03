@@ -795,54 +795,6 @@ class FfpDdcMonitorSetContrastRequest extends FF1WifiCommandRequest {
   };
 }
 
-/// Set monitor speaker / DDC volume — not FF1 [FF1WifiSetVolumeRequest].
-class FfpDdcMonitorSetVolumeRequest extends FF1WifiCommandRequest {
-  /// Creates set monitor volume request.
-  const FfpDdcMonitorSetVolumeRequest({
-    required this.monitorId,
-    required this.percent,
-  });
-
-  /// Target monitor id.
-  final String monitorId;
-
-  /// Monitor output volume 0–100 (DDC, not FF1 player).
-  final int percent;
-
-  @override
-  String get command => 'ddcPanelControl';
-
-  @override
-  Map<String, dynamic> get params => {
-    'action': 'volume',
-    'value': percent,
-  };
-}
-
-/// Toggle or set DDC monitor mute.
-class FfpDdcMonitorSetMuteRequest extends FF1WifiCommandRequest {
-  /// Creates set mute request.
-  const FfpDdcMonitorSetMuteRequest({
-    required this.monitorId,
-    required this.muted,
-  });
-
-  /// Target monitor id.
-  final String monitorId;
-
-  /// Desired mute state for the monitor output.
-  final bool muted;
-
-  @override
-  String get command => 'ddcPanelControl';
-
-  @override
-  Map<String, dynamic> get params => {
-    'action': 'mute',
-    'value': muted ? 'on' : 'off',
-  };
-}
-
 /// Power control for the display (on / off / standby).
 class FfpDdcMonitorSetPowerRequest extends FF1WifiCommandRequest {
   /// Creates set power request.
@@ -851,6 +803,7 @@ class FfpDdcMonitorSetPowerRequest extends FF1WifiCommandRequest {
     required this.powerState,
   });
 
+  /// Target monitor id.
   final String monitorId;
 
   /// Wire values: `on`, `off`, `standby`.

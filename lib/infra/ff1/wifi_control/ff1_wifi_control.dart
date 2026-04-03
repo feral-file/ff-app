@@ -14,7 +14,7 @@ library;
 // This file predates the stricter lint profile. The new device-switch fix only
 // touches connection-state caching, so we keep the existing command-surface
 // debt isolated instead of refactoring the entire control layer here.
-// ignore_for_file: avoid_dynamic_calls, comment_references, discarded_futures, lines_longer_than_80_chars
+// ignore_for_file: avoid_dynamic_calls, discarded_futures, lines_longer_than_80_chars
 
 import 'dart:async';
 import 'dart:ui' show Offset;
@@ -1311,22 +1311,6 @@ transport reconnected — waiting for device connection notification''',
       ),
     );
     _throwIfFfpCommandFailed(r, 'setFfpMonitorContrast');
-  }
-
-  /// FFP / DDC: set monitor mute.
-  Future<void> setFfpMonitorMute({
-    required String topicId,
-    required String monitorId,
-    required bool muted,
-  }) async {
-    final r = await _sendFfpDdcCommand(
-      topicId: topicId,
-      request: FfpDdcMonitorSetMuteRequest(
-        monitorId: monitorId,
-        muted: muted,
-      ),
-    );
-    _throwIfFfpCommandFailed(r, 'setFfpMonitorMute');
   }
 
   /// FFP / DDC: power (on / off / standby).

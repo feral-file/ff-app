@@ -13,15 +13,6 @@ void main() {
       expect(r.params, {'action': 'brightness', 'value': 42});
     });
 
-    test('mute uses string on/off', () {
-      const r = FfpDdcMonitorSetMuteRequest(
-        monitorId: 'x',
-        muted: false,
-      );
-      expect(r.command, 'ddcPanelControl');
-      expect(r.params, {'action': 'mute', 'value': 'off'});
-    });
-
     test('power passes wire string', () {
       const r = FfpDdcMonitorSetPowerRequest(
         monitorId: 'x',

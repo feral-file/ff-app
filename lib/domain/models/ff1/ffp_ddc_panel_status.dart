@@ -1,7 +1,7 @@
 /// DDC panel snapshot from relayer notifications only (`notification_type`
 /// `ddc_status`), flat `message` (ffos#84).
 ///
-/// Distinct from FF1 system audio (`FF1DeviceStatus.volume` / `setVolume`).
+/// Distinct from FF1 system audio (`FF1DeviceStatus` / `setVolume`).
 library;
 
 /// DDC monitor power state from relayer `power` (ffos#84).
@@ -50,8 +50,6 @@ class FfpDdcPanelStatus {
   const FfpDdcPanelStatus({
     this.brightness,
     this.contrast,
-    this.volume,
-    this.mute,
     this.power,
     this.monitor,
   });
@@ -64,8 +62,6 @@ class FfpDdcPanelStatus {
     return FfpDdcPanelStatus(
       brightness: _parsePercent(json['brightness']),
       contrast: _parsePercent(json['contrast']),
-      volume: _parsePercent(json['volume']),
-      mute: _parseMute(json['mute']),
       power: FfpDdcPanelPower.tryParse(json['power']),
       monitor: json['monitor'] as String?,
     );
@@ -76,8 +72,6 @@ class FfpDdcPanelStatus {
     return {
       'brightness': brightness,
       'contrast': contrast,
-      'volume': volume,
-      'mute': mute == null ? null : (mute! ? 'on' : 'off'),
       'power': power?.wireValue,
       'monitor': monitor,
     };
@@ -89,12 +83,6 @@ class FfpDdcPanelStatus {
   /// 0–100 when read succeeded.
   final int? contrast;
 
-  /// DDC / monitor speaker volume 0–100 — not FF1 player volume.
-  final int? volume;
-
-  /// Mute when read succeeded (`mute` wire: `on` / `off`).
-  final bool? mute;
-
   /// Power state when read succeeded.
   final FfpDdcPanelPower? power;
 
@@ -105,7 +93,6 @@ class FfpDdcPanelStatus {
   bool get hasData =>
       brightness != null ||
       contrast != null ||
-      mute != null ||
       power != null ||
       (monitor != null && monitor!.trim().isNotEmpty);
 
@@ -113,37 +100,16 @@ class FfpDdcPanelStatus {
   FfpDdcPanelStatus copyWith({
     int? brightness,
     int? contrast,
-    int? volume,
-    bool? mute,
     FfpDdcPanelPower? power,
     String? monitor,
   }) {
     return FfpDdcPanelStatus(
       brightness: brightness ?? this.brightness,
       contrast: contrast ?? this.contrast,
-      volume: volume ?? this.volume,
-      mute: mute ?? this.mute,
       power: power ?? this.power,
       monitor: monitor ?? this.monitor,
     );
   }
-}
-
-bool? _parseMute(Object? raw) {
-  if (raw == null) {
-    return null;
-  }
-  if (raw is bool) {
-    return raw;
-  }
-  final s = raw.toString().trim().toLowerCase();
-  if (s == 'on') {
-    return true;
-  }
-  if (s == 'off') {
-    return false;
-  }
-  return null;
 }
 
 int? _parsePercent(Object? raw) {
