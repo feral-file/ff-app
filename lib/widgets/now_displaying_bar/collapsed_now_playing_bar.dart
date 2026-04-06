@@ -56,6 +56,12 @@ class CollapsedNowPlayingBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final supportsPlaybackModes = ref.watch(ff1SupportsPlaybackModesProvider);
+    // [playingObject.items] is the visible window only; FF1 status carries the
+    // full playlist length for shuffle/repeat semantics.
+    final playerStatus = ref.watch(ff1CurrentPlayerStatusProvider);
+    final playlistWorkCount =
+        playerStatus?.items?.length ?? playingObject.items.length;
+    final showPlaylistControls = playlistWorkCount > 1;
 
     return Container(
       padding: EdgeInsets.only(
@@ -87,7 +93,7 @@ class CollapsedNowPlayingBar extends ConsumerWidget {
                     ),
                   ),
                 ),
-                if (supportsPlaybackModes) ...[
+                if (supportsPlaybackModes && showPlaylistControls) ...[
                   const ShuffleButton(),
                   const LoopButton(),
                 ],

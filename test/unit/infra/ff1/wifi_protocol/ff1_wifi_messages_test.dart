@@ -1,4 +1,5 @@
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/ff1/loop_mode.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -206,6 +207,30 @@ void main() {
       expect(status.currentWorkIndex, isNull);
       expect(status.isPaused, false); // defaults to false
       expect(status.items, isNull);
+    });
+
+    test('fromJson parses loopMode none', () {
+      final json = {
+        'playlistId': 'pl_x',
+        'index': 0,
+        'loopMode': 'none',
+      };
+
+      final status = FF1PlayerStatus.fromJson(json);
+
+      expect(status.loopMode, LoopMode.none);
+    });
+
+    test('fromJson leaves loopMode null for unknown wire value', () {
+      final json = {
+        'playlistId': 'pl_x',
+        'index': 0,
+        'loopMode': 'future_mode',
+      };
+
+      final status = FF1PlayerStatus.fromJson(json);
+
+      expect(status.loopMode, isNull);
     });
 
     test('toJson serializes correctly', () {
