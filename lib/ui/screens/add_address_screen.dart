@@ -162,6 +162,7 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
                     children: [
                       Expanded(
                         child: TextField(
+                          key: GoldPathPatrolKeys.onboardingAddAddressInput,
                           focusNode: _addressFocusNode,
                           controller: _inputController,
                           enabled: !isSubmitting,

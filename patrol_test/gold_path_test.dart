@@ -6,7 +6,7 @@ import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/work_item_thumbnail.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart'
-    show TextField, TextInputAction, ValueKey;
+    show TextInputAction, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 
@@ -126,7 +126,7 @@ Future<void> _submitPersonalAddressInOnboarding(
 }
 
 Future<void> _openAddAddressFromOnboarding(PatrolIntegrationTester $) async {
-  final textFieldFinder = $(find.byType(TextField));
+  final textFieldFinder = $(GoldPathPatrolKeys.onboardingAddAddressInput);
   final submitButtonFinder = $(GoldPathPatrolKeys.onboardingAddAddressSubmit);
   final deadline = DateTime.now().add(const Duration(seconds: 45));
 
@@ -189,20 +189,28 @@ Future<void> _enterAddressAndSubmit(
   PatrolIntegrationTester $,
   String address,
 ) async {
-  final inputFinder = find.byType(TextField);
-  final inputField = $(inputFinder);
+  final inputFinder = $(GoldPathPatrolKeys.onboardingAddAddressInput);
 
-  await inputField.waitUntilExists(timeout: const Duration(seconds: 30));
+  await inputFinder.waitUntilExists(timeout: const Duration(seconds: 30));
 
-  await $.tester.tap(inputFinder);
+  await inputFinder.tap();
   await $.pump(const Duration(milliseconds: 300));
-  await $.tester.enterText(inputFinder, address);
+  await $.tester.enterText(
+    find.byKey(GoldPathPatrolKeys.onboardingAddAddressInput),
+    address,
+  );
   await $.pump(const Duration(milliseconds: 300));
   await $.tester.testTextInput.receiveAction(TextInputAction.done);
   await $.pump(const Duration(milliseconds: 500));
 
   if (await _isVisible($(GoldPathPatrolKeys.onboardingAddAddressSubmit))) {
     await $(GoldPathPatrolKeys.onboardingAddAddressSubmit).tap();
+  }
+
+  await $.pump(const Duration(milliseconds: 500));
+
+  if (await _isVisible($(GoldPathPatrolKeys.onboardingAddAliasSkip))) {
+    await $(GoldPathPatrolKeys.onboardingAddAliasSkip).tap();
   }
 }
 
@@ -321,7 +329,7 @@ Future<void> _tapVisibleInScrollableContext(
       await $.pump(const Duration(milliseconds: 250));
     }
 
-    if (await _tryTapVisible($, finder, timeout: const Duration(seconds: 2))) {
+    if (await _tryTapVisible($, finder)) {
       return;
     }
   }

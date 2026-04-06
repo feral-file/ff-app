@@ -45,10 +45,7 @@ class AppConfig {
   /// FF1 Relayer server URL (WebSocket endpoint for device communication).
   /// Converts scheme to wss:// for secure WebSocket if needed.
   static String get ff1RelayerUrl {
-    var url = dotenv.get(
-      'FF1_RELAYER_URL',
-      fallback: 'wss://relayer.feralfile.com',
-    );
+    var url = dotenv.get('FF1_RELAYER_URL', fallback: '');
 
     // Convert https:// to wss:// for WebSocket
     if (url.startsWith('https://')) {
@@ -79,7 +76,7 @@ class AppConfig {
   /// Uses FF1_RELAYER_URL as the base URL, converting scheme from
   /// ws:// to https://.
   static String get ff1CastApiUrl {
-    var url = dotenv.get('FF1_RELAYER_URL', fallback: '');
+    var url = ff1RelayerUrl;
 
     // Log warning if not configured
     if (url.isEmpty) {

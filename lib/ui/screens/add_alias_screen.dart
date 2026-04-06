@@ -7,6 +7,7 @@
 
 import 'dart:async';
 
+import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/add_address_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/design/app_typography.dart';
@@ -150,6 +151,7 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
                     children: [
                       Expanded(
                         child: TextField(
+                          key: GoldPathPatrolKeys.onboardingAddAliasInput,
                           controller: _inputController,
                           focusNode: _aliasFocusNode,
                           enabled: !isSubmitting,
@@ -190,6 +192,7 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
                   ? SizedBox(
                       width: double.infinity,
                       child: OutlineButton(
+                        key: GoldPathPatrolKeys.onboardingAddAliasSkip,
                         text: 'Skip',
                         textColor: PrimitivesTokens.colorsWhite,
                         borderColor: PrimitivesTokens.colorsWhite,
@@ -206,6 +209,7 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
                       ),
                     )
                   : PrimaryButton(
+                      key: GoldPathPatrolKeys.onboardingAddAliasSubmit,
                       text: 'Submit',
                       color: PrimitivesTokens.colorsWhite,
                       onTap: isSubmitEnabled
