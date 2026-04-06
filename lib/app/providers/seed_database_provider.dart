@@ -231,6 +231,13 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
           await seedReadyNotifier.setNotReady();
         },
         afterReplace: () async {
+          // Ref.onDispose does not await async AppDatabase.close. Invalidating
+          // appDatabaseProvider while the Drift isolate still releases the file
+          // can open a second native connection and hit SQLITE_BUSY (often on
+          // PRAGMA journal_mode = WAL).
+          if (ref.exists(appDatabaseProvider)) {
+            await ref.read(appDatabaseProvider).close();
+          }
           ref
               .read(localDataCleanupServiceProvider)
               .performReconnectInfraInvalidation();

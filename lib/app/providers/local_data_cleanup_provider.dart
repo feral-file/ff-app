@@ -161,6 +161,9 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
             ref
                 .read(isSeedDatabaseReadyProvider.notifier)
                 .setStateDirectly(true);
+            if (ref.exists(appDatabaseProvider)) {
+              await ref.read(appDatabaseProvider).close();
+            }
             r.invalidate(appDatabaseProvider);
             r.invalidate(databaseServiceProvider);
           }
