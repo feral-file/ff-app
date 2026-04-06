@@ -29,8 +29,28 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 
 // ignore_for_file: cascade_invocations // Reason: provider wiring uses concise imperative call order for cleanup flow.
+
+/// Same ordering as SeedDatabaseReadyActions.onReady: await AppDatabase.close
+/// when the provider exists, run rebind + reconnect invalidations, then set
+/// readiness true. Avoids a window where readiness is true while consumers
+/// still see a closing or closed Drift connection.
+Future<void> _restoreReadinessAfterResetRetryFailed(Ref ref) async {
+  if (ref.exists(appDatabaseProvider)) {
+    await ref.read(appDatabaseProvider).close();
+  }
+  final cleanup = ref.read(localDataCleanupServiceProvider);
+  cleanup.invalidateProvidersForRebind?.call();
+  cleanup.invalidateReconnectInfraProviders?.call();
+  ref.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(true);
+}
+
+/// Test hook for [_restoreReadinessAfterResetRetryFailed].
+@visibleForTesting
+Future<void> restoreReadinessAfterResetRetryFailedForTesting(Ref ref) =>
+    _restoreReadinessAfterResetRetryFailed(ref);
 
 /// Wires [LocalDataCleanupService] for two flows:
 ///
@@ -157,15 +177,9 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
           try {
             await retry();
           } on Object catch (_) {
-            // Retry failed; restore readiness so app can recover.
-            ref
-                .read(isSeedDatabaseReadyProvider.notifier)
-                .setStateDirectly(true);
-            if (ref.exists(appDatabaseProvider)) {
-              await ref.read(appDatabaseProvider).close();
-            }
-            r.invalidate(appDatabaseProvider);
-            r.invalidate(databaseServiceProvider);
+            // Retry failed; restore readiness. Ordering matches setReady:
+            // onReady invalidations before readiness true.
+            await _restoreReadinessAfterResetRetryFailed(ref);
           }
         })(),
       );
