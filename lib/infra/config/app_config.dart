@@ -120,12 +120,11 @@ class AppConfig {
     fallback: dotenv.get('PUBDOC_URL', fallback: ''),
   );
 
-  /// Base URL for feral-file-docs repo (e.g. raw GitHub).
+  /// Base URL for the public feral-file/docs repo (e.g. raw GitHub).
   /// EULA/Privacy docs use: {feralfileDocsUrl}/agreements/{docPath}/en_US.md
   static String get feralfileDocsUrl => dotenv.get(
     'FERALFILE_DOCS_URL',
-    fallback:
-        'https://raw.githubusercontent.com/bitmark-inc/feral-file-docs/main',
+    fallback: 'https://raw.githubusercontent.com/feral-file/docs/main',
   );
 
   /// Pubdoc URL.
