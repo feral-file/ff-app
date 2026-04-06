@@ -1432,7 +1432,7 @@ transport reconnected — waiting for device connection notification''',
   /// Set the loop (repeat) mode on the device.
   ///
   /// [topicId] — device identifier on the relayer
-  /// [mode] — playlist or one
+  /// [mode] — none, playlist, or one
   Future<FF1CommandResponse> setLoop({
     required String topicId,
     required LoopMode mode,
