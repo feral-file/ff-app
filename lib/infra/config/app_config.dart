@@ -43,16 +43,11 @@ class AppConfig {
   static String get assetUrl => dotenv.get('ASSET_URL', fallback: '');
 
   /// FF1 Relayer server URL (WebSocket endpoint for device communication).
-  /// Reads from FF1_RELAYER_URL (new naming), falls back to
-  /// TV_NOTIFICATION_URL (old naming).
   /// Converts scheme to wss:// for secure WebSocket if needed.
   static String get ff1RelayerUrl {
     var url = dotenv.get(
       'FF1_RELAYER_URL',
-      fallback: dotenv.get(
-        'TV_NOTIFICATION_URL',
-        fallback: 'wss://relayer.feralfile.com',
-      ),
+      fallback: 'wss://relayer.feralfile.com',
     );
 
     // Convert https:// to wss:// for WebSocket
@@ -66,11 +61,9 @@ class AppConfig {
   }
 
   /// FF1 Relayer API Key for authentication.
-  /// Reads from FF1_RELAYER_API_KEY (new naming), falls back to
-  /// TV_API_KEY (old naming).
   static String get ff1RelayerApiKey => dotenv.get(
     'FF1_RELAYER_API_KEY',
-    fallback: dotenv.get('TV_API_KEY', fallback: ''),
+    fallback: '',
   );
 
   /// Domain Resolver URL (Domain Resolver API endpoint
@@ -177,10 +170,10 @@ class AppConfig {
       errors.add('INDEXER_API_KEY is missing');
     }
     if (ff1RelayerUrl.isEmpty) {
-      errors.add('FF1_RELAYER_URL (or TV_NOTIFICATION_URL) is missing');
+      errors.add('FF1_RELAYER_URL is missing');
     }
     if (ff1RelayerApiKey.isEmpty) {
-      errors.add('FF1_RELAYER_API_KEY (or TV_API_KEY) is missing');
+      errors.add('FF1_RELAYER_API_KEY is missing');
     }
     return errors;
   }

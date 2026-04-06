@@ -52,8 +52,8 @@ bool hasValidS3SeedConfig(Map<String, String> env) {
 }
 
 bool hasValidFf1RelayerConfig(Map<String, String> env) {
-  final relayerUrl = env['FF1_RELAYER_URL'] ?? env['TV_NOTIFICATION_URL'] ?? '';
-  final relayerApiKey = env['FF1_RELAYER_API_KEY'] ?? env['TV_API_KEY'] ?? '';
+  final relayerUrl = env['FF1_RELAYER_URL'] ?? '';
+  final relayerApiKey = env['FF1_RELAYER_API_KEY'] ?? '';
   return relayerUrl.trim().isNotEmpty && relayerApiKey.trim().isNotEmpty;
 }
 

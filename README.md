@@ -90,11 +90,6 @@ Integration and seed-database tests:
 - `S3_REGION`
 - `S3_SEED_DATABASE_OBJECT_KEY`
 
-Legacy aliases still supported by the app:
-
-- `TV_NOTIFICATION_URL`
-- `TV_API_KEY`
-
 If the required startup keys are missing, the app will show a configuration error screen instead of booting into a broken state.
 
 ## Basic Setup Verification
