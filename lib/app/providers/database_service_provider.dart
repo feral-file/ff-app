@@ -32,6 +32,10 @@ final databaseServiceProvider = Provider<DatabaseService>((ref) {
 
 /// Empty in-memory DatabaseService for the not-ready window.
 /// Prevents new DB subscriptions while reset flows drain and close the real DB.
+///
+/// This creates a second [AppDatabase] (in-memory). [main] sets
+/// [driftRuntimeOptions.dontWarnAboutMultipleDatabases] because that is
+/// intentional for this gate.
 final _emptyDatabaseServiceProvider = Provider<DatabaseService>((ref) {
   final db = AppDatabase.forTesting(NativeDatabase.memory());
   ref.onDispose(() => unawaited(db.close()));

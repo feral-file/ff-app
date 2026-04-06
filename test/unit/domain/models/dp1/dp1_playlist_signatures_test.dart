@@ -1,47 +1,46 @@
 import 'package:app/domain/models/dp1/dp1_api_responses.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_signature.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('dp1PlaylistSignaturesFromWire', () {
     test('maps legacy singular signature when signatures missing', () {
-      expect(
-        dp1PlaylistSignaturesFromWire({'signature': 'a'}),
-        ['a'],
-      );
+      final r = dp1PlaylistSignaturesFromWire({'signature': 'a'});
+      expect(r.legacy, 'a');
+      expect(r.structured, isEmpty);
     });
 
     test('prefers non-empty signatures list over legacy signature', () {
-      expect(
-        dp1PlaylistSignaturesFromWire({
-          'signature': 'legacy',
-          'signatures': ['a', 'b'],
-        }),
-        ['a', 'b'],
-      );
+      final r = dp1PlaylistSignaturesFromWire({
+        'signature': 'legacy',
+        'signatures': ['a', 'b'],
+      });
+      expect(r.legacy, isNull);
+      expect(r.structured.map((s) => s.sig), ['a', 'b']);
     });
 
     test('uses legacy signature when signatures is empty list', () {
-      expect(
-        dp1PlaylistSignaturesFromWire({
-          'signature': 'legacy',
-          'signatures': <dynamic>[],
-        }),
-        ['legacy'],
-      );
+      final r = dp1PlaylistSignaturesFromWire({
+        'signature': 'legacy',
+        'signatures': <dynamic>[],
+      });
+      expect(r.legacy, 'legacy');
+      expect(r.structured, isEmpty);
     });
 
-    test('returns empty list when neither field provides values', () {
-      expect(dp1PlaylistSignaturesFromWire({}), isEmpty);
-      expect(
-        dp1PlaylistSignaturesFromWire({'signature': ''}),
-        isEmpty,
-      );
+    test('returns empty when neither field provides values', () {
+      final r = dp1PlaylistSignaturesFromWire({});
+      expect(r.legacy, isNull);
+      expect(r.structured, isEmpty);
+      final r2 = dp1PlaylistSignaturesFromWire({'signature': ''});
+      expect(r2.legacy, isNull);
+      expect(r2.structured, isEmpty);
     });
   });
 
   group('DP1Playlist JSON', () {
-    test('fromJson reads signatures array', () {
+    test('fromJson reads signatures array of strings as sig-only entries', () {
       final p = DP1Playlist.fromJson({
         'dpVersion': '1.0.0',
         'id': 'pl',
@@ -51,10 +50,10 @@ void main() {
         'items': <dynamic>[],
         'signatures': ['x', 'y'],
       });
-      expect(p.signatures, ['x', 'y']);
+      expect(p.signatures.map((s) => s.sig), ['x', 'y']);
     });
 
-    test('fromJson maps legacy signature string to signatures', () {
+    test('fromJson maps legacy signature string to legacySignature', () {
       final p = DP1Playlist.fromJson({
         'dpVersion': '1.0.0',
         'id': 'pl',
@@ -64,10 +63,11 @@ void main() {
         'items': <dynamic>[],
         'signature': 'only-legacy',
       });
-      expect(p.signatures, ['only-legacy']);
+      expect(p.legacySignature, 'only-legacy');
+      expect(p.signatures, isEmpty);
     });
 
-    test('toJson emits signatures only', () {
+    test('toJson emits structured signatures and omits empty legacy', () {
       final p = DP1Playlist(
         dpVersion: '1.0.0',
         id: 'pl',
@@ -75,11 +75,13 @@ void main() {
         title: 't',
         created: DateTime.parse('2025-01-01T00:00:00.000Z'),
         items: const [],
-        signatures: const ['a'],
+        signatures: const [DP1PlaylistSignature(sig: 'a')],
       );
       final map = p.toJson();
       expect(map.containsKey('signature'), isFalse);
-      expect(map['signatures'], ['a']);
+      expect(map['signatures'], [
+        {'sig': 'a'},
+      ]);
     });
   });
 
@@ -99,7 +101,8 @@ void main() {
         ],
         'hasMore': false,
       });
-      expect(r.items.single.signatures, ['wire']);
+      expect(r.items.single.legacySignature, 'wire');
+      expect(r.items.single.signatures, isEmpty);
     });
   });
 }

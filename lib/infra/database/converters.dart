@@ -5,6 +5,7 @@ import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_manifest.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_signature.dart';
 import 'package:app/domain/models/dp1/dp1_provenance.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -16,7 +17,8 @@ import 'package:drift/drift.dart';
 ///
 /// **Performance note:**
 /// - `*ToDomain()` methods perform full deserialization of all JSON fields.
-/// - `*ToDomainPreview()` methods skip heavy JSON fields for list UI performance.
+/// - `*ToDomainPreview()` methods skip heavy JSON fields for list UI
+///   performance.
 class DatabaseConverters {
   /// Convert ChannelData to Channel domain model.
   static Channel channelDataToDomain(ChannelData data) {
@@ -64,12 +66,24 @@ class DatabaseConverters {
   /// Performs JSON parsing for signatures, defaults, and dynamicQueries.
   /// Use [playlistDataToDomainPreview] for list UI to skip expensive JSON work.
   static Playlist playlistDataToDomain(PlaylistData data) {
-    List<String>? signatures;
-    if (data.signaturesJson.isNotEmpty) {
+    final legacySignature = data.signature;
+
+    List<DP1PlaylistSignature>? structuredSignatures;
+    if (data.signatures.isNotEmpty) {
       try {
-        final decoded = jsonDecode(data.signaturesJson);
-        signatures = (decoded as List).map((e) => e.toString()).toList();
-      } catch (_) {
+        final decoded = jsonDecode(data.signatures) as List;
+        final parsed = <DP1PlaylistSignature>[];
+        for (final e in decoded) {
+          if (e is Map) {
+            parsed.add(
+              DP1PlaylistSignature.fromJson(
+                Map<String, dynamic>.from(e),
+              ),
+            );
+          }
+        }
+        structuredSignatures = parsed.isEmpty ? null : parsed;
+      } on Object {
         // Ignore parsing errors
       }
     }
@@ -105,7 +119,8 @@ class DatabaseConverters {
       slug: data.slug,
       createdAt: DateTime.fromMicrosecondsSinceEpoch(data.createdAtUs.toInt()),
       updatedAt: DateTime.fromMicrosecondsSinceEpoch(data.updatedAtUs.toInt()),
-      signatures: signatures,
+      legacySignature: legacySignature,
+      signatures: structuredSignatures,
       defaults: defaults,
       dynamicQueries: dynamicQueries,
       ownerAddress: data.ownerAddress,
@@ -139,9 +154,11 @@ class DatabaseConverters {
 
   /// Convert Playlist domain model to PlaylistsCompanion.
   static PlaylistsCompanion playlistToCompanion(Playlist playlist) {
-    final signaturesJson = playlist.signatures != null
-        ? jsonEncode(playlist.signatures)
-        : jsonEncode([]);
+    final signaturesJson = jsonEncode(
+      (playlist.signatures ?? const <DP1PlaylistSignature>[])
+          .map((e) => e.toJson())
+          .toList(),
+    );
 
     final defaultsJson = playlist.defaults != null
         ? jsonEncode(playlist.defaults)
@@ -162,7 +179,8 @@ class DatabaseConverters {
       updatedAtUs: BigInt.from(
         playlist.updatedAt?.microsecondsSinceEpoch ?? nowUs.toInt(),
       ),
-      signaturesJson: signaturesJson,
+      signature: Value(playlist.legacySignature),
+      signatures: Value(signaturesJson),
       sortMode: playlist.sortMode.index,
       itemCount: Value(playlist.itemCount),
       channelId: Value(playlist.channelId),
@@ -370,6 +388,7 @@ class DatabaseConverters {
       created: playlist.createdAt ?? DateTime.now(),
       defaults: playlist.defaults,
       items: dp1Items,
+      legacySignature: playlist.legacySignature,
       signatures: playlist.signatures ?? const [],
       dynamicQueries: playlist.dynamicQueries ?? const [],
     );
@@ -378,7 +397,7 @@ class DatabaseConverters {
   /// Convert DP1Playlist (wire) to Playlist domain model.
   /// Used when creating PlaylistReference from API response.
   /// [channelId] must be set when playlist is ingested in channel context so
-  /// [getPlaylistItemsByChannel] can return items (playlists.channel_id in DB).
+  /// channel-scoped queries can resolve items (`playlists.channel_id` in DB).
   static Playlist dp1PlaylistToDomain(
     DP1Playlist dp1, {
     String? baseUrl,
@@ -388,6 +407,9 @@ class DatabaseConverters {
     final sortMode = dynamicQueries.isNotEmpty
         ? PlaylistSortMode.provenance
         : PlaylistSortMode.position;
+    final structuredSigs = dp1.signatures.isEmpty
+        ? null
+        : List<DP1PlaylistSignature>.from(dp1.signatures);
     return Playlist(
       id: dp1.id,
       name: dp1.title,
@@ -399,9 +421,8 @@ class DatabaseConverters {
       slug: dp1.slug,
       createdAt: dp1.created,
       updatedAt: dp1.created,
-      signatures: dp1.signatures.isNotEmpty
-          ? List<String>.from(dp1.signatures)
-          : null,
+      legacySignature: dp1.legacySignature,
+      signatures: structuredSigs,
       defaults: dp1.defaults,
       dynamicQueries: dynamicQueries,
       sortMode: sortMode,
@@ -417,13 +438,11 @@ class DatabaseConverters {
     AssetToken? token,
   }) {
     // Use item value when non-empty; otherwise fall back to token.
-    final title = _nonEmptyString(item.title) ??
-        token?.displayTitle ??
-        'Unknown';
+    final title =
+        _nonEmptyString(item.title) ?? token?.displayTitle ?? 'Unknown';
     final source = _nonEmptyString(item.source) ?? token?.getPreviewUrl();
     final ref = _nonEmptyString(item.ref);
-    final thumbnailUrl =
-        token?.getGalleryThumbnailUrl();
+    final thumbnailUrl = token?.getGalleryThumbnailUrl();
     final artists = (token?.getArtists ?? <Artist>[])
         .map((a) => DP1Artist(name: a.name, id: a.did))
         .toList();

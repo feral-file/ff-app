@@ -101,7 +101,7 @@ void main() {
           slug: 'test-playlist',
           sortMode: 0,
           itemCount: 5,
-          signaturesJson: '[]',
+          signatures: '[]',
           createdAtUs: BigInt.from(DateTime(2024).microsecondsSinceEpoch),
           updatedAtUs: BigInt.from(DateTime(2024, 1, 2).microsecondsSinceEpoch),
         );

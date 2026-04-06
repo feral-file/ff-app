@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:app/domain/models/playlist.dart';
@@ -18,7 +19,7 @@ final _log = Logger('AppDatabase');
 
 /// Large limit used when only offset is set (skip N rows, return the rest).
 const _maxLimitForOffset = 0x7FFFFFFF;
-const _schemaVersionV1 = 3;
+const _schemaVersionV1 = 4;
 const _dbResetReindexMarkerFile = 'db_reset_requires_reindex.flag';
 const _ftsMetadataFallbackRank = 500.0;
 
@@ -69,8 +70,14 @@ class AppDatabase extends _$AppDatabase {
         if (from < 3) {
           await m.addColumn(items, items.enrichmentStatus);
         }
+        if (from < 4) {
+          await _migratePlaylistsSignaturesJsonIfNeeded();
+        }
       },
       beforeOpen: (details) async {
+        // Repair DBs where user_version already advanced but `signatures_json`
+        // remains (failed migration, copied file, or pre-release builds).
+        await _migratePlaylistsSignaturesJsonIfNeeded();
         await _createIndexes();
         await _createFtsInfrastructure();
         if (details.wasCreated || details.hadUpgrade) {
@@ -78,6 +85,85 @@ class AppDatabase extends _$AppDatabase {
         }
       },
     );
+  }
+
+  /// Column names on `playlists` (for idempotent migrations).
+  Future<Set<String>> _playlistTableColumnNames() async {
+    final rows = await customSelect(
+      "SELECT name FROM pragma_table_info('playlists')",
+    ).get();
+    return rows.map((r) => r.read<String>('name')).toSet();
+  }
+
+  /// Migrates legacy `signatures_json` to `signature` + `signatures`.
+  ///
+  /// Idempotent: safe to call from [MigrationStrategy.onUpgrade] and
+  /// [MigrationStrategy.beforeOpen]. Legacy JSON arrays of strings move to
+  /// `signature` only; `signatures` stays `'[]'` until ingest fills objects.
+  ///
+  /// Also handles partial upgrades (new columns added but `signatures_json`
+  /// not dropped) and DBs whose `user_version` no longer triggers `onUpgrade`.
+  Future<void> _migratePlaylistsSignaturesJsonIfNeeded() async {
+    var cols = await _playlistTableColumnNames();
+    if (!cols.contains('signatures_json')) {
+      return;
+    }
+
+    if (!cols.contains('signature')) {
+      await customStatement('ALTER TABLE playlists ADD COLUMN signature TEXT');
+    }
+    if (!cols.contains('signatures')) {
+      await customStatement(
+        'ALTER TABLE playlists ADD COLUMN signatures TEXT NOT NULL '
+        "DEFAULT '[]'",
+      );
+    }
+
+    cols = await _playlistTableColumnNames();
+
+    final rows = await customSelect(
+      'SELECT id, signatures_json FROM playlists',
+      readsFrom: {playlists},
+    ).get();
+
+    for (final row in rows) {
+      final id = row.read<String>('id');
+      final signaturesJson = row.read<String>('signatures_json');
+      String? newSignature;
+      try {
+        final decoded = jsonDecode(signaturesJson);
+        if (decoded is List && decoded.isNotEmpty) {
+          final first = decoded.first;
+          if (first is String && first.trim().isNotEmpty) {
+            newSignature = first.trim();
+          }
+        }
+      } on Object {
+        // Leave newSignature null; keep default signatures column.
+      }
+
+      await customStatement(
+        'UPDATE playlists SET signature = ?, signatures = ? WHERE id = ?',
+        <Object?>[newSignature, '[]', id],
+      );
+    }
+
+    if (cols.contains('signatures_json')) {
+      try {
+        await customStatement(
+          'ALTER TABLE playlists DROP COLUMN signatures_json',
+        );
+      } on Object catch (e, st) {
+        // SQLite < 3.35 has no DROP COLUMN; table keeps an extra legacy column.
+        // Drift ignores unknown columns on read; playlists remain readable.
+        _log.warning(
+          'Could not DROP COLUMN signatures_json (old SQLite?). '
+          'Leaving legacy column in place.',
+          e,
+          st,
+        );
+      }
+    }
   }
 
   /// Creates performance indexes.
@@ -353,8 +439,8 @@ class AppDatabase extends _$AppDatabase {
   /// Emits publisher id → display title when the publishers table changes.
   Stream<Map<int, String>> watchPublisherTitles() {
     return select(publishers).watch().map(
-          (rows) => {for (final r in rows) r.id: r.title},
-        );
+      (rows) => {for (final r in rows) r.id: r.title},
+    );
   }
 
   /// Watch playlists ordered by publisher_id, created_at_us (canonical order).
@@ -1471,7 +1557,7 @@ Future<bool> _resetDatabaseIfSchemaConflicts(
     final rows = probeDb.select('PRAGMA user_version');
     final userVersion = rows.isEmpty ? 0 : (rows.first.columnAt(0) as int);
     final schemaCompatible = _isSchemaCompatibleV1(probeDb);
-    if (userVersion == _schemaVersionV1 && schemaCompatible) {
+    if (schemaCompatible) {
       return false;
     }
 
