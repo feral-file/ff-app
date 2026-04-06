@@ -1,0 +1,645 @@
+import 'dart:async';
+
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
+import 'package:app/domain/models/ff1/ffp_ddc_command_errors.dart';
+import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
+import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
+import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
+import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
+import 'package:app/widgets/device_configuration/ffp_monitor_ddc_section.dart';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('available monitor power modes hide actions for unknown power', () {
+    expect(availableFfpMonitorPowerModes(null), isEmpty);
+    expect(
+      availableFfpMonitorPowerModes(FfpDdcPanelPower.off),
+      [FfpDdcPanelPower.on, FfpDdcPanelPower.standby],
+    );
+  });
+
+  testWidgets(
+    'hides brightness and contrast sliders when power is off',
+    (tester) async {
+      const topicId = 'topic-1';
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: topicId,
+      );
+      final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
+
+      addTearDown(statuses.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(_FakeWifiControl()),
+            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith((ref) {
+              return statuses.stream;
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: FfpMonitorDdcSection(
+                topicId: topicId,
+                isConnected: true,
+                isControllable: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 20,
+          contrast: 30,
+          power: FfpDdcPanelPower.off,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('ffp_brightness_slider')), findsNothing);
+      expect(find.byKey(const ValueKey('ffp_contrast_slider')), findsNothing);
+      expect(find.text('Off'), findsOneWidget);
+      expect(find.byType(IconButton), findsWidgets);
+    },
+  );
+
+  // Intentional product behavior: relayer omits `power` → null effective
+  // power → "Unknown" and no power buttons. See
+  // `availableFfpMonitorPowerModes`, `_resolvePendingPower`,
+  // app_flows.md DeviceConfig, and project_spec FF1 setup.
+  testWidgets(
+    'shows unknown power without buttons after incomplete off snapshot',
+    (tester) async {
+      const topicId = 'topic-1';
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: topicId,
+      );
+      final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
+
+      addTearDown(statuses.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(_FakeWifiControl()),
+            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith((ref) {
+              return statuses.stream;
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: FfpMonitorDdcSection(
+                topicId: topicId,
+                isConnected: true,
+                isControllable: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 20,
+          contrast: 30,
+          power: FfpDdcPanelPower.off,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Off'), findsOneWidget);
+      expect(find.byKey(const ValueKey('ffp_brightness_slider')), findsNothing);
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Unknown'), findsOneWidget);
+      expect(find.byType(IconButton), findsNothing);
+      expect(find.text('Off'), findsNothing);
+      expect(find.byKey(const ValueKey('ffp_brightness_slider')), findsNothing);
+      expect(find.byKey(const ValueKey('ffp_contrast_slider')), findsNothing);
+    },
+  );
+
+  testWidgets('later relayer pushes replace the initial device state', (
+    tester,
+  ) async {
+    const topicId = 'topic-1';
+    const device = FF1Device(
+      name: 'FF1 Test',
+      remoteId: 'remote-id',
+      deviceId: 'device-id',
+      topicId: topicId,
+    );
+    final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
+
+    addTearDown(statuses.close);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+            return Stream.value(device);
+          }),
+          ff1WifiControlProvider.overrideWithValue(_FakeWifiControl()),
+          ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith((ref) {
+            return statuses.stream;
+          }),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: FfpMonitorDdcSection(
+              topicId: topicId,
+              isConnected: true,
+              isControllable: true,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    statuses.add(
+      const FfpDdcPanelStatus(
+        brightness: 20,
+        monitor: 'Test Monitor',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final sliderFinder = find.descendant(
+      of: find.byKey(const ValueKey('ffp_brightness_slider')),
+      matching: find.byType(Slider),
+    );
+    expect(tester.widget<Slider>(sliderFinder).value, 20);
+
+    statuses.add(
+      const FfpDdcPanelStatus(
+        brightness: 55,
+        monitor: 'Test Monitor',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      tester.widget<Slider>(sliderFinder).value,
+      55,
+      reason: 'A later relayer push must replace the initial device state.',
+    );
+  });
+
+  testWidgets(
+    'brightness slider keeps the requested value when resync reads stale data',
+    (tester) async {
+      const topicId = 'topic-1';
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: topicId,
+      );
+      const oldStatus = FfpDdcPanelStatus(
+        brightness: 20,
+        monitor: 'Test Monitor',
+      );
+      final control = _FakeWifiControl();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(control),
+            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith(
+              (ref) => Stream.value(oldStatus),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: FfpMonitorDdcSection(
+                topicId: topicId,
+                isConnected: true,
+                isControllable: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final sliderFinder = find.descendant(
+        of: find.byKey(const ValueKey('ffp_brightness_slider')),
+        matching: find.byType(Slider),
+      );
+      expect(sliderFinder, findsOneWidget);
+      expect(tester.widget<Slider>(sliderFinder).value, 20);
+
+      final slider = tester.widget<Slider>(sliderFinder);
+      slider.onChanged!(80);
+      await tester.pump();
+      expect(tester.widget<Slider>(sliderFinder).value, 80);
+
+      slider.onChangeEnd!(80);
+      await tester.pumpAndSettle();
+
+      expect(control.lastBrightness, 80);
+      expect(
+        tester.widget<Slider>(sliderFinder).value,
+        80,
+        reason:
+            'The immediate resync can still report the pre-write brightness. '
+            'The widget must keep the requested value until '
+            'the relayer-pushed status catches up.',
+      );
+    },
+  );
+
+  testWidgets(
+    'relayer status resumes updating after the optimistic value is confirmed',
+    (tester) async {
+      const topicId = 'topic-1';
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: topicId,
+      );
+      final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
+      final control = _FakeWifiControl();
+
+      addTearDown(statuses.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(control),
+            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith((ref) {
+              return statuses.stream;
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: FfpMonitorDdcSection(
+                topicId: topicId,
+                isConnected: true,
+                isControllable: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 20,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final sliderFinder = find.descendant(
+        of: find.byKey(const ValueKey('ffp_brightness_slider')),
+        matching: find.byType(Slider),
+      );
+      final slider = tester.widget<Slider>(sliderFinder);
+      slider.onChanged!(80);
+      await tester.pump();
+      slider.onChangeEnd!(80);
+      await tester.pump();
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 80,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 65,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        tester.widget<Slider>(sliderFinder).value,
+        65,
+        reason:
+            'Once the device confirms the optimistic value, later relayer '
+            'pushes must update the control again.',
+      );
+    },
+  );
+
+  testWidgets(
+    'brightness commit failure rolls back to confirmed relayer value',
+    (tester) async {
+      const topicId = 'topic-1';
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: topicId,
+      );
+      final control = _FakeWifiControl()..brightnessShouldThrow = true;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(control),
+            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith(
+              (ref) => Stream.value(
+                const FfpDdcPanelStatus(
+                  brightness: 20,
+                  contrast: 30,
+                  monitor: 'Test Monitor',
+                ),
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: FfpMonitorDdcSection(
+                topicId: topicId,
+                isConnected: true,
+                isControllable: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final sliderFinder = find.descendant(
+        of: find.byKey(const ValueKey('ffp_brightness_slider')),
+        matching: find.byType(Slider),
+      );
+      final slider = tester.widget<Slider>(sliderFinder);
+      slider.onChanged!(80);
+      await tester.pump();
+      expect(tester.widget<Slider>(sliderFinder).value, 80);
+
+      slider.onChangeEnd!(80);
+      await tester.pumpAndSettle();
+
+      expect(control.lastBrightness, 80);
+      expect(
+        tester.widget<Slider>(sliderFinder).value,
+        20,
+        reason: 'Failed write must roll back to the last confirmed status.',
+      );
+    },
+  );
+
+  testWidgets(
+    'contrast commit failure rolls back to confirmed relayer value',
+    (tester) async {
+      const topicId = 'topic-1';
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: topicId,
+      );
+      final control = _FakeWifiControl()..contrastShouldThrow = true;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(control),
+            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith(
+              (ref) => Stream.value(
+                const FfpDdcPanelStatus(
+                  brightness: 20,
+                  contrast: 30,
+                  monitor: 'Test Monitor',
+                ),
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: FfpMonitorDdcSection(
+                topicId: topicId,
+                isConnected: true,
+                isControllable: true,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final sliderFinder = find.descendant(
+        of: find.byKey(const ValueKey('ffp_contrast_slider')),
+        matching: find.byType(Slider),
+      );
+      final slider = tester.widget<Slider>(sliderFinder);
+      slider.onChanged!(85);
+      await tester.pump();
+      expect(tester.widget<Slider>(sliderFinder).value, 85);
+
+      slider.onChangeEnd!(85);
+      await tester.pumpAndSettle();
+
+      expect(control.lastContrast, 85);
+      expect(
+        tester.widget<Slider>(sliderFinder).value,
+        30,
+        reason: 'Failed write must roll back to the last confirmed status.',
+      );
+    },
+  );
+
+  testWidgets(
+    'unsupported power write does not throw (logged at widget layer)',
+    (tester) async {
+      const topicId = 'topic-1';
+      const device = FF1Device(
+        name: 'FF1 Test',
+        remoteId: 'remote-id',
+        deviceId: 'device-id',
+        topicId: topicId,
+      );
+      final statuses = StreamController<FfpDdcPanelStatus>.broadcast();
+      final control = _FakeWifiControl()..powerShouldThrowUnsupported = true;
+
+      addTearDown(statuses.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+              return Stream.value(device);
+            }),
+            ff1WifiControlProvider.overrideWithValue(control),
+            ff1FfpDdcPanelStatusStreamProvider(topicId).overrideWith((ref) {
+              return statuses.stream;
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: FfpMonitorDdcSection(
+                topicId: topicId,
+                isConnected: true,
+                isControllable: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      statuses.add(
+        const FfpDdcPanelStatus(
+          brightness: 20,
+          contrast: 30,
+          power: FfpDdcPanelPower.on,
+          monitor: 'Test Monitor',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.byType(IconButton).first);
+      await tester.pumpAndSettle();
+
+      expect(control.lastPowerWire, isNotNull);
+    },
+  );
+}
+
+class _FakeWifiControl extends FF1WifiControl {
+  _FakeWifiControl()
+    : super(
+        transport: _FakeWifiTransport(),
+        restClient: null,
+      );
+
+  int? lastBrightness;
+  int? lastContrast;
+  String? lastPowerWire;
+  bool brightnessShouldThrow = false;
+  bool contrastShouldThrow = false;
+  bool powerShouldThrowUnsupported = false;
+
+  @override
+  Future<void> setFfpMonitorBrightness({
+    required String topicId,
+    required String monitorId,
+    required int percent,
+  }) async {
+    lastBrightness = percent;
+    if (brightnessShouldThrow) {
+      throw Exception('brightness failed');
+    }
+  }
+
+  @override
+  Future<void> setFfpMonitorContrast({
+    required String topicId,
+    required String monitorId,
+    required int percent,
+  }) async {
+    lastContrast = percent;
+    if (contrastShouldThrow) {
+      throw Exception('contrast failed');
+    }
+  }
+
+  @override
+  Future<void> setFfpMonitorPower({
+    required String topicId,
+    required String monitorId,
+    required String powerState,
+  }) async {
+    lastPowerWire = powerState;
+    if (powerShouldThrowUnsupported) {
+      throw FfpDdcUnsupportedException('power not supported');
+    }
+  }
+}
+
+class _FakeWifiTransport implements FF1WifiTransport {
+  @override
+  Stream<bool> get connectionStateStream => const Stream<bool>.empty();
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream =>
+      const Stream<FF1WifiTransportError>.empty();
+
+  @override
+  bool get isConnected => true;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      const Stream<FF1NotificationMessage>.empty();
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {}
+
+  @override
+  void dispose() {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> disposeFuture() async {}
+
+  @override
+  void pauseConnection() {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+}

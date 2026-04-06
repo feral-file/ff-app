@@ -159,6 +159,7 @@
   - build DP-1 payload and cast via canvas client to selected device
   - now-displaying state derives from active device + relayer player/device streams
   - now-displaying bar displays current item and appears as floating overlay
+  - for the visible index window, the app reads matching rows from local SQLite to avoid redundant enrichment, then may call the indexer only for items still missing after that read; live DP-1 fields from the device fill gaps and cover enrichment failures, and same-playlist window changes (index shifts or scroll expansion) update immediately with DP-1 fallback rows while enrichment catches up
   - user taps bar to navigate to current work detail (or already there)
   - optional: user opens Interact screen for keyboard/touchpad control
 - success state: active playback visible and controllable from app
@@ -166,8 +167,11 @@
   - no paired device -> bar hidden (invisible, no guidance shown)
   - disconnected device -> bar shows disconnected state
   - enrichment/cache misses fall back to basic DP-1 item fields
+  - loading overlay only when playlist id or item list from FF1 changes; pause/sleep or index nudges that keep the same visible index window reuse rows without flashing loading; if the index moves enough to shift the window on a long playlist, or the user expands the range, the app updates immediately with DP-1 fallback rows and enriches that new slice in the background without a loading flash
+  - expanded-bar scroll expansion is scoped to the current playing list: switching playlist or ordered items clears the widened range so the next window is not inflated by a previous session
 - key screens involved: Work Detail, Playlist Detail, Keyboard Control, Now Displaying Bar (overlay)
 - key modules/services involved: `canvas_client_service_v2`, `now_displaying_provider`, `ff1_wifi_providers`, `ff1_device_provider`
+- notes: The quick DDC brightness/contrast controls shown in Now Displaying reuse the same shared zero-toggle helper as DeviceConfig, so icon taps jump to `0` and restore the previous non-zero value while slider drags still commit the final level normally.
 
 ## Flow: Settings Recovery and Support
 
@@ -253,11 +257,32 @@
 
 ## Screen: DeviceConfigScreen
 
-- role in the flow: post-pairing control surface for orientation/scaling/audio/device info
+- role in the flow: post-pairing control surface for orientation/scaling/audio (FF1), FFP/DDC display brightness/contrast/power, device info, and post-setup firmware update entry/prompt orchestration
 - route / entry point: `/device-configuration`
-- important actions: adjust display settings, switch device/options, finish setup flow
+- important actions: adjust display settings, DDC brightness/contrast/power, switch device/options, finish setup flow, start **Update FF1**
 - dependencies: active FF1 provider, `ff1DeviceDataProvider`, FF1 Wi-Fi control
-- notes / caveats: setup mode hides some advanced sections until post-setup use
+- notes / caveats:
+  - setup mode hides advanced sections and suppresses the firmware auto-prompt
+    during the initial setup visit
+  - FFP/DDC UI is gated on **device connected** (same `ff1DeviceData` connection flag as the rest of DeviceConfig): when not connected, the screen does not watch `ff1FfpDdcPanelStatusStreamProvider` or show the FFP/DDC section. While connected, controls are driven by relayer-pushed status updates and can stay available during setup and sleeping/off when the display exposes DDC; there is no in-app monitor volume or mute. Brightness/contrast icon taps use the shared zero-toggle helper: tap once to jump to `0`, tap again from `0` to restore the last non-zero value. The section hides when no relayer status has arrived.
+  - **Monitor power (DDC):** Optimistic power is cleared when the relayer omits `power` on a status push, so the effective value becomes unknown. The UI then shows **Unknown** and **no** power mode actions (`availableFfpMonitorPowerModes` is empty for null) until a later push includes `power` again. **Why this is OK:** After FFP power-off, many monitors do not support reading power status over DDC, so the relayer often sends DDC notifications **without** `power`. The app must not guess On/Standby/Off in that case. **Reviewer note:** Unknown with no power buttons when `power` is absent is **specified, accepted behavior**—not a bug. Do not request wake/on controls or inferred power while `power` is null unless product requirements change. Code: `FF1FfpDdcControlNotifier` / `_resolvePendingPower`; widget tests: `test/unit/widgets/ffp_monitor_ddc_section_test.dart`.
+  - manual **Update FF1** appears only after relayer connectivity plus both
+    `installedVersion` and `latestVersion` are available; the auto-prompt can
+    still appear earlier once relayer/version fields are present
+  - manual **Update FF1** and the auto-prompt both start the same relayer-only
+    firmware update path; the app does not start FF1 firmware updates over BLE
+  - firmware update eligibility is re-checked when active device, relayer
+    connection, or reported version fields change, so a late relayer
+    connection can still surface the prompt
+  - the auto-prompt only appears while Device Configuration is the visible
+    route; relayer updates that arrive while another route covers the screen
+    must wait until the user returns
+  - prompt/session dedupe allows only one in-flight firmware prompt at a time;
+    if the device later reports a different `latestVersion` during the same
+    visit, the screen may prompt again for that newer build
+  - both the auto-prompt and the manual options entry persist the accepted or
+    dismissed `latestVersion` for that device so the same build is not shown
+    again while OTA install status is catching up
 
 ## Screen: KeyboardControlScreen
 

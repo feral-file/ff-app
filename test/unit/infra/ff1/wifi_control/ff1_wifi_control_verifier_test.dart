@@ -17,6 +17,23 @@ void main() {
     });
   });
 
+  group('ff1CommandResponseSucceeded', () {
+    test('prefers explicit ok=false over status ok', () {
+      final response = FF1CommandResponse(
+        status: 'ok',
+        data: <String, dynamic>{'ok': false},
+      );
+
+      expect(ff1CommandResponseSucceeded(response), isFalse);
+    });
+
+    test('falls back to status when ok flag is absent', () {
+      final response = FF1CommandResponse(status: 'ok');
+
+      expect(ff1CommandResponseSucceeded(response), isTrue);
+    });
+  });
+
   group('ff1DeviceStatusHasSignal', () {
     test('returns true when wifi name exists', () {
       const status = FF1DeviceStatus(connectedWifi: 'Studio-Wifi');
@@ -65,6 +82,19 @@ void main() {
 
       expect(ff1CommandResponseOkFlag(response), isNull);
       expect(ff1CommandResponseHasOkFlag(response), isFalse);
+    });
+  });
+
+  group('firmware update WiFi success (shared rule)', () {
+    test('ambiguous WiFi payload without ok is not WiFi success', () {
+      final response = FF1CommandResponse(
+        data: <String, dynamic>{'unexpected': true},
+      );
+
+      final okFlag = ff1CommandResponseOkFlag(response);
+      final success = okFlag ?? ff1CommandResponseIsOk(response);
+
+      expect(success, isFalse);
     });
   });
 }
