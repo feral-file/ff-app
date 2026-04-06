@@ -5,8 +5,7 @@ import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/work_item_thumbnail.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart'
-    show TextInputAction, ValueKey;
+import 'package:flutter/material.dart' show TextInputAction, ValueKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 
@@ -190,15 +189,19 @@ Future<void> _enterAddressAndSubmit(
   String address,
 ) async {
   final inputFinder = $(GoldPathPatrolKeys.onboardingAddAddressInput);
+  final inputWidgetFinder = find.byKey(
+    GoldPathPatrolKeys.onboardingAddAddressInput,
+  );
 
   await inputFinder.waitUntilExists(timeout: const Duration(seconds: 30));
 
-  await inputFinder.tap();
-  await $.pump(const Duration(milliseconds: 300));
-  await $.tester.enterText(
-    find.byKey(GoldPathPatrolKeys.onboardingAddAddressInput),
-    address,
-  );
+  // The add-address screen requests focus on first frame. On Android the
+  // field can exist while the route transition is still settling, which makes
+  // Patrol's hit-test visibility check for `tap()` flaky even though the input
+  // is already the active text target. Enter text through the widget tester so
+  // we only require the field to exist, not to be tappable during animation.
+  await $.tester.showKeyboard(inputWidgetFinder);
+  await $.tester.enterText(inputWidgetFinder, address);
   await $.pump(const Duration(milliseconds: 300));
   await $.tester.testTextInput.receiveAction(TextInputAction.done);
   await $.pump(const Duration(milliseconds: 500));
