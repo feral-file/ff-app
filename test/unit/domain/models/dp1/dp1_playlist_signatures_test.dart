@@ -11,13 +11,24 @@ void main() {
       expect(r.structured, isEmpty);
     });
 
-    test('prefers non-empty signatures list over legacy signature', () {
+    test('ignores string elements in signatures array; falls back to legacy', () {
       final r = dp1PlaylistSignaturesFromWire({
         'signature': 'legacy',
         'signatures': ['a', 'b'],
       });
+      expect(r.legacy, 'legacy');
+      expect(r.structured, isEmpty);
+    });
+
+    test('prefers object signatures over legacy signature', () {
+      final r = dp1PlaylistSignaturesFromWire({
+        'signature': 'legacy',
+        'signatures': [
+          {'sig': 'x'},
+        ],
+      });
       expect(r.legacy, isNull);
-      expect(r.structured.map((s) => s.sig), ['a', 'b']);
+      expect(r.structured.single.sig, 'x');
     });
 
     test('uses legacy signature when signatures is empty list', () {
@@ -40,7 +51,7 @@ void main() {
   });
 
   group('DP1Playlist JSON', () {
-    test('fromJson reads signatures array of strings as sig-only entries', () {
+    test('fromJson ignores string-only signatures array', () {
       final p = DP1Playlist.fromJson({
         'dpVersion': '1.0.0',
         'id': 'pl',
@@ -49,6 +60,22 @@ void main() {
         'created': '2025-01-01T00:00:00.000Z',
         'items': <dynamic>[],
         'signatures': ['x', 'y'],
+      });
+      expect(p.signatures, isEmpty);
+    });
+
+    test('fromJson reads signatures array of objects', () {
+      final p = DP1Playlist.fromJson({
+        'dpVersion': '1.0.0',
+        'id': 'pl',
+        'slug': 's',
+        'title': 't',
+        'created': '2025-01-01T00:00:00.000Z',
+        'items': <dynamic>[],
+        'signatures': [
+          {'sig': 'x'},
+          {'sig': 'y'},
+        ],
       });
       expect(p.signatures.map((s) => s.sig), ['x', 'y']);
     });

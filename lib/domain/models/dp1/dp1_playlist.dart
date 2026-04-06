@@ -4,12 +4,13 @@ import 'package:app/domain/models/dp1/dp1_playlist_signature.dart';
 
 // ignore_for_file: public_member_api_docs, always_put_required_named_parameters_first, unnecessary_parenthesis, sort_constructors_first, avoid_equals_and_hash_code_on_mutable_classes, hash_and_equals, prefer_collection_literals // Reason: copied from the legacy mobile app; keep DP-1 playlist wire model stable.
 
-/// Parses DP-1 v1.1.0 `signatures` objects plus legacy
-/// `signature` string from wire JSON.
+/// Parses DP-1 v1.1.0 `signatures` plus legacy `signature` from wire JSON.
 ///
-/// Non-empty `signatures` wins for structured entries.
-/// String elements in `signatures` (deprecated) become
-/// [DP1PlaylistSignature] with only [DP1PlaylistSignature.sig] set.
+/// Only **object** elements in `signatures` are parsed (same rule as
+/// `scripts/build_feed_indexer_sqlite.js`). String elements in the array are
+/// ignored; use top-level `signature` for a single legacy string.
+///
+/// Non-empty structured `signatures` wins over `signature`.
 ({String? legacy, List<DP1PlaylistSignature> structured})
 dp1PlaylistSignaturesFromWire(Map<String, dynamic> json) {
   final structured = <DP1PlaylistSignature>[];
@@ -22,8 +23,6 @@ dp1PlaylistSignaturesFromWire(Map<String, dynamic> json) {
         structured.add(
           DP1PlaylistSignature.fromJson(Map<String, dynamic>.from(e)),
         );
-      } else if (e is String && e.isNotEmpty) {
-        structured.add(DP1PlaylistSignature(sig: e));
       }
     }
   }

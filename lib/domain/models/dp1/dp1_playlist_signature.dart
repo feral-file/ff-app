@@ -4,8 +4,9 @@ import 'package:flutter/foundation.dart';
 
 /// One DP-1 v1.1.0 playlist signature entry (wire object under `signatures[]`).
 ///
-/// Legacy v1.0.x single-string signatures are modeled on [DP1Playlist.legacySignature],
-/// not as instances of this class.
+/// Legacy v1.0.x single-string signatures use the top-level `signature` field on
+/// the playlist ([DP1Playlist.legacySignature]), not string elements inside
+/// `signatures[]` (those are ignored when parsing wire JSON).
 @immutable
 class DP1PlaylistSignature {
   const DP1PlaylistSignature({

@@ -103,6 +103,14 @@ class AppDatabase extends _$AppDatabase {
   ///
   /// Also handles partial upgrades (new columns added but `signatures_json`
   /// not dropped) and DBs whose `user_version` no longer triggers `onUpgrade`.
+  ///
+  /// **Operational note:** After a release we expect a **forced seed database
+  /// replace** (remote ETag / download) so local DP-1 rows match the shipped
+  /// artifact. This migration only needs to support the **upgrade window** from
+  /// installing the new app until that replace runs. If `DROP COLUMN` fails
+  /// (SQLite &lt; 3.35) and `signatures_json` remains, [beforeOpen] may re-apply
+  /// updates; that edge case is acceptable until the seed file is replaced—we
+  /// do not optimize for long-lived legacy files without a seed refresh.
   Future<void> _migratePlaylistsSignaturesJsonIfNeeded() async {
     var cols = await _playlistTableColumnNames();
     if (!cols.contains('signatures_json')) {
@@ -156,6 +164,7 @@ class AppDatabase extends _$AppDatabase {
       } on Object catch (e, st) {
         // SQLite < 3.35 has no DROP COLUMN; table keeps an extra legacy column.
         // Drift ignores unknown columns on read; playlists remain readable.
+        // See method doc: acceptable until forced seed replace post-release.
         _log.warning(
           'Could not DROP COLUMN signatures_json (old SQLite?). '
           'Leaving legacy column in place.',
