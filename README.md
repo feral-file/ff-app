@@ -134,4 +134,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the lightweight contributor checklist
 
 ## License
 
-Released under the BSD 2-Clause License. See [LICENSE](LICENSE).
+Released under the BSD-2-Clause Plus Patent License. See [LICENSE](LICENSE).
