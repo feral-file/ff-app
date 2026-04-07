@@ -168,10 +168,19 @@ void main() {
           file: dbFile,
           userVersion: 3,
           includePreparedColumns: false,
+          includeLegacySignaturesJson: true,
+          includeItemsEnrichmentStatus: true,
           signatureValue: null,
           signaturesValue: null,
           signaturesJsonValue: '["legacy-signature"]',
         );
+
+        final probeDb = sqlite3.sqlite3.open(dbFile.path);
+        try {
+          expect(isAppDatabaseSchemaCompatibleForReset(probeDb), isTrue);
+        } finally {
+          probeDb.dispose();
+        }
 
         final db = AppDatabase.forTesting(NativeDatabase(dbFile));
         try {
@@ -191,6 +200,67 @@ void main() {
       }
     });
 
+    test('requires the rest of the v3 schema to be intact', () async {
+      final tempDir = await Directory.systemTemp.createTemp('ff_playlist_sig_');
+      final dbFile = File(p.join(tempDir.path, 'damaged.sqlite'));
+      try {
+        _createPlaylistSchemaDatabase(
+          file: dbFile,
+          userVersion: 3,
+          includePreparedColumns: false,
+          includeLegacySignaturesJson: true,
+          includeItemsEnrichmentStatus: false,
+          signatureValue: null,
+          signaturesValue: null,
+          signaturesJsonValue: '["legacy-signature"]',
+        );
+
+        final probeDb = sqlite3.sqlite3.open(dbFile.path);
+        try {
+          expect(isAppDatabaseSchemaCompatibleForReset(probeDb), isFalse);
+        } finally {
+          probeDb.dispose();
+        }
+      } finally {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test(
+      'rejects schema-compatible files with the wrong user_version',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_sig_',
+        );
+        final dbFile = File(p.join(tempDir.path, 'version-mismatch.sqlite'));
+        try {
+          _createPlaylistSchemaDatabase(
+            file: dbFile,
+            userVersion: 2,
+            includePreparedColumns: true,
+            includeLegacySignaturesJson: false,
+            includeItemsEnrichmentStatus: true,
+            signatureValue: 'legacy-preexisting',
+            signaturesValue: '[{"sig":"keep"}]',
+            signaturesJsonValue: '[]',
+          );
+
+          final probeDb = sqlite3.sqlite3.open(dbFile.path);
+          try {
+            expect(isAppDatabaseSchemaCompatibleForReset(probeDb), isTrue);
+            expect(
+              shouldSkipDatabaseResetForSchemaConflict(2, probeDb),
+              isFalse,
+            );
+          } finally {
+            probeDb.dispose();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
     test('does not clobber prepopulated signatures during rerun', () async {
       final tempDir = await Directory.systemTemp.createTemp('ff_playlist_sig_');
       final dbFile = File(p.join(tempDir.path, 'partial.sqlite'));
@@ -199,6 +269,8 @@ void main() {
           file: dbFile,
           userVersion: 3,
           includePreparedColumns: true,
+          includeLegacySignaturesJson: true,
+          includeItemsEnrichmentStatus: true,
           signatureValue: 'legacy-preexisting',
           signaturesValue: '[{"sig":"keep"}]',
           signaturesJsonValue: '["legacy-json"]',
@@ -228,6 +300,8 @@ void _createPlaylistSchemaDatabase({
   required File file,
   required int userVersion,
   required bool includePreparedColumns,
+  required bool includeLegacySignaturesJson,
+  required bool includeItemsEnrichmentStatus,
   required String? signatureValue,
   required String? signaturesValue,
   required String signaturesJsonValue,
@@ -236,16 +310,28 @@ void _createPlaylistSchemaDatabase({
   try {
     db.execute('PRAGMA foreign_keys = ON;');
     final schemaStatements = <String>[
-      'CREATE TABLE publishers (id INTEGER PRIMARY KEY, title TEXT NOT NULL)',
+      '''
+      CREATE TABLE publishers (
+        id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL,
+        created_at_us INTEGER NOT NULL,
+        updated_at_us INTEGER NOT NULL
+      )
+      ''',
       '''
       CREATE TABLE channels (
         id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
         type INTEGER NOT NULL,
+        base_url TEXT,
+        slug TEXT,
         publisher_id INTEGER,
-        sort_order INTEGER,
+        title TEXT NOT NULL,
+        curator TEXT,
+        summary TEXT,
+        cover_image_uri TEXT,
         created_at_us INTEGER NOT NULL,
-        updated_at_us INTEGER NOT NULL
+        updated_at_us INTEGER NOT NULL,
+        sort_order INTEGER
       )
       ''',
       '''
@@ -253,7 +339,6 @@ void _createPlaylistSchemaDatabase({
         id TEXT PRIMARY KEY,
         kind INTEGER NOT NULL,
         title TEXT,
-        subtitle TEXT,
         thumbnail_uri TEXT,
         duration_sec INTEGER,
         provenance_json TEXT,
@@ -263,9 +348,7 @@ void _createPlaylistSchemaDatabase({
         repro_json TEXT,
         override_json TEXT,
         display_json TEXT,
-        token_data_json TEXT,
         list_artist_json TEXT,
-        enrichment_status INTEGER NOT NULL DEFAULT 0,
         updated_at_us INTEGER NOT NULL
       )
       ''',
@@ -304,10 +387,19 @@ void _createPlaylistSchemaDatabase({
         "signatures TEXT NOT NULL DEFAULT '[]'",
       ]);
     }
-    playlistColumns.add("signatures_json TEXT NOT NULL DEFAULT '[]'");
+    if (includeLegacySignaturesJson) {
+      playlistColumns.add("signatures_json TEXT NOT NULL DEFAULT '[]'");
+    }
     schemaStatements.add(
       'CREATE TABLE playlists (${playlistColumns.join(', ')})',
     );
+
+    if (includeItemsEnrichmentStatus) {
+      schemaStatements.add(
+        'ALTER TABLE items ADD COLUMN enrichment_status INTEGER NOT NULL '
+        'DEFAULT 0',
+      );
+    }
 
     void executeStatement(String statement) => db.execute(statement);
 
@@ -355,8 +447,10 @@ void _createPlaylistSchemaDatabase({
       columns.addAll(['signature', 'signatures']);
       values.addAll([signatureValue, signaturesValue ?? '[]']);
     }
-    columns.add('signatures_json');
-    values.add(signaturesJsonValue);
+    if (includeLegacySignaturesJson) {
+      columns.add('signatures_json');
+      values.add(signaturesJsonValue);
+    }
     final placeholders = List.filled(columns.length, '?').join(', ');
     db.execute(
       'INSERT INTO playlists (${columns.join(', ')}) VALUES ($placeholders)',

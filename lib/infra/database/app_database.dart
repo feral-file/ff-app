@@ -7,6 +7,7 @@ import 'package:app/infra/database/tables.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/isolate.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -1586,13 +1587,11 @@ Future<bool> _resetDatabaseIfSchemaConflicts(
     probeDb = sqlite3.sqlite3.open(dbFile.path);
     final rows = probeDb.select('PRAGMA user_version');
     final userVersion = rows.isEmpty ? 0 : (rows.first.columnAt(0) as int);
-    if (userVersion == _schemaVersionV1) {
+    if (shouldSkipDatabaseResetForSchemaConflict(userVersion, probeDb)) {
       return false;
     }
+
     final schemaCompatible = _isSchemaCompatibleV1(probeDb);
-    if (schemaCompatible) {
-      return false;
-    }
 
     _log.warning(
       'Schema conflict detected (found user_version=$userVersion, '
@@ -1616,6 +1615,30 @@ Future<bool> _resetDatabaseIfSchemaConflicts(
   }
 }
 
+/// Returns whether the on-disk schema matches the current app schema gate.
+///
+/// The legacy `playlists.signatures_json` layout remains acceptable because
+/// `beforeOpen` repairs it before the app starts reading rows, but any other
+/// missing table/column combination should force a reset.
+@visibleForTesting
+bool isAppDatabaseSchemaCompatibleForReset(sqlite3.Database db) {
+  return _isSchemaCompatibleV1(db);
+}
+
+/// Keeps the pre-open reset gate aligned with the current app schema version.
+///
+/// We only skip reset when the file reports the exact schema version the app
+/// knows how to open and the on-disk layout matches the expected tables and
+/// columns. Legacy `signatures_json` remains a narrow exception because
+/// `beforeOpen` repairs it before the first query reads playlist rows.
+@visibleForTesting
+bool shouldSkipDatabaseResetForSchemaConflict(
+  int userVersion,
+  sqlite3.Database db,
+) {
+  return userVersion == _schemaVersionV1 && _isSchemaCompatibleV1(db);
+}
+
 bool _isSchemaCompatibleV1(sqlite3.Database db) {
   const requiredTables = <String>{
     'publishers',
@@ -1633,34 +1656,118 @@ bool _isSchemaCompatibleV1(sqlite3.Database db) {
     return false;
   }
 
-  if (!_tableHasColumn(db, 'channels', 'publisher_id')) {
+  const requiredPublishersColumns = <String>{
+    'id',
+    'title',
+    'created_at_us',
+    'updated_at_us',
+  };
+  const requiredChannelsColumns = <String>{
+    'id',
+    'type',
+    'base_url',
+    'slug',
+    'publisher_id',
+    'title',
+    'curator',
+    'summary',
+    'cover_image_uri',
+    'created_at_us',
+    'updated_at_us',
+    'sort_order',
+  };
+  const requiredPlaylistsColumns = <String>{
+    'id',
+    'channel_id',
+    'type',
+    'base_url',
+    'dp_version',
+    'slug',
+    'title',
+    'created_at_us',
+    'updated_at_us',
+    'defaults_json',
+    'dynamic_queries_json',
+    'owner_address',
+    'owner_chain',
+    'sort_mode',
+    'item_count',
+  };
+  const requiredItemsColumns = <String>{
+    'id',
+    'kind',
+    'title',
+    'thumbnail_uri',
+    'duration_sec',
+    'provenance_json',
+    'source_uri',
+    'ref_uri',
+    'license',
+    'repro_json',
+    'override_json',
+    'display_json',
+    'list_artist_json',
+    'enrichment_status',
+    'updated_at_us',
+  };
+  const requiredPlaylistEntriesColumns = <String>{
+    'playlist_id',
+    'item_id',
+    'position',
+    'sort_key_us',
+    'updated_at_us',
+  };
+
+  if (!_tableHasColumns(db, 'publishers', requiredPublishersColumns)) {
     return false;
   }
-  if (!_tableHasColumn(db, 'items', 'list_artist_json')) {
+  if (!_tableHasColumns(db, 'channels', requiredChannelsColumns)) {
     return false;
   }
-  if (!_tableHasColumn(db, 'items', 'enrichment_status')) {
+  if (!_tableHasColumns(db, 'items', requiredItemsColumns)) {
     return false;
   }
-  if (!_tableHasColumn(db, 'playlists', 'signature')) {
+  if (!_tableHasColumns(
+    db,
+    'playlist_entries',
+    requiredPlaylistEntriesColumns,
+  )) {
     return false;
   }
-  if (!_tableHasColumn(db, 'playlists', 'signatures')) {
+  if (!_tableHasColumns(db, 'playlists', requiredPlaylistsColumns)) {
+    return false;
+  }
+
+  final hasCurrentPlaylistSignatureLayout =
+      _tableHasColumn(db, 'playlists', 'signature') &&
+      _tableHasColumn(db, 'playlists', 'signatures');
+  final hasLegacyPlaylistSignatureLayout = _tableHasColumn(
+    db,
+    'playlists',
+    'signatures_json',
+  );
+
+  if (!hasCurrentPlaylistSignatureLayout && !hasLegacyPlaylistSignatureLayout) {
     return false;
   }
 
   return true;
 }
 
+bool _tableHasColumns(
+  sqlite3.Database db,
+  String table,
+  Set<String> columns,
+) {
+  final existingColumns = db
+      .select('PRAGMA table_info($table)')
+      .map((row) => row.columnAt(1).toString())
+      .toSet();
+  return existingColumns.containsAll(columns);
+}
+
 bool _tableHasColumn(sqlite3.Database db, String table, String column) {
-  final rows = db.select('PRAGMA table_info($table)');
-  for (final row in rows) {
-    final name = row.columnAt(1).toString();
-    if (name == column) {
-      return true;
-    }
-  }
-  return false;
+  return _tableHasColumns(db, table, {column});
 }
 
 Future<void> _deleteDatabaseFiles(File dbFile) async {
