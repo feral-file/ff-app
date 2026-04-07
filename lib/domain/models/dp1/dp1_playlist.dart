@@ -10,7 +10,9 @@ import 'package:app/domain/models/dp1/dp1_playlist_signature.dart';
 /// `scripts/build_feed_indexer_sqlite.js`). String elements in the array are
 /// ignored; use top-level `signature` for a single legacy string.
 ///
-/// Non-empty structured `signatures` wins over `signature`.
+/// The parser preserves both fields when present so the Dart ingest path
+/// matches the shipped SQLite seed contract. Callers that need a precedence
+/// rule can decide at the point of use.
 ({String? legacy, List<DP1PlaylistSignature> structured})
 dp1PlaylistSignaturesFromWire(Map<String, dynamic> json) {
   final structured = <DP1PlaylistSignature>[];
@@ -33,13 +35,7 @@ dp1PlaylistSignaturesFromWire(Map<String, dynamic> json) {
     legacy = legacyRaw.trim();
   }
 
-  if (structured.isNotEmpty) {
-    return (legacy: null, structured: structured);
-  }
-  if (legacy != null) {
-    return (legacy: legacy, structured: const []);
-  }
-  return (legacy: null, structured: const []);
+  return (legacy: legacy, structured: structured);
 }
 
 class DP1Playlist {
@@ -90,7 +86,8 @@ class DP1Playlist {
   final DateTime created; // e.g., "2025-06-26T06:38:26.396Z"
   final Map<String, dynamic>? defaults; // e.g., {"display": {...}}
   final List<DP1PlaylistItem> items; // list of DP1PlaylistItem
-  /// v1.0.x single string, or when `signatures` was empty on wire.
+  /// v1.0.x single string preserved alongside structured signatures when both
+  /// are present on wire.
   final String? legacySignature;
   final List<DP1PlaylistSignature> signatures;
   final List<DynamicQuery> dynamicQueries;

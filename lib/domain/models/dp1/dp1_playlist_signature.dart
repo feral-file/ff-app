@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
 
-// ignore_for_file: public_member_api_docs
+// ignore_for_file: public_member_api_docs // Reason: this file mirrors the
+// legacy DP-1 wire shape and keeps only the fields needed for parsing and
+// serialization.
 
 /// One DP-1 v1.1.0 playlist signature entry (wire object under `signatures[]`).
 ///
-/// Legacy v1.0.x single-string signatures use the top-level `signature` field on
-/// the playlist ([DP1Playlist.legacySignature]), not string elements inside
+/// Legacy v1.0.x single-string signatures use the top-level `signature` field
+/// on the playlist's legacy signature property, not string elements inside
 /// `signatures[]` (those are ignored when parsing wire JSON).
 @immutable
 class DP1PlaylistSignature {

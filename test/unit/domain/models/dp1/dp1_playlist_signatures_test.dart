@@ -1,7 +1,13 @@
+import 'dart:io';
+
 import 'package:app/domain/models/dp1/dp1_api_responses.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_signature.dart';
+import 'package:app/infra/database/app_database.dart';
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
 void main() {
   group('dp1PlaylistSignaturesFromWire', () {
@@ -11,14 +17,17 @@ void main() {
       expect(r.structured, isEmpty);
     });
 
-    test('ignores string elements in signatures array; falls back to legacy', () {
-      final r = dp1PlaylistSignaturesFromWire({
-        'signature': 'legacy',
-        'signatures': ['a', 'b'],
-      });
-      expect(r.legacy, 'legacy');
-      expect(r.structured, isEmpty);
-    });
+    test(
+      'ignores string elements in signatures array; falls back to legacy',
+      () {
+        final r = dp1PlaylistSignaturesFromWire({
+          'signature': 'legacy',
+          'signatures': ['a', 'b'],
+        });
+        expect(r.legacy, 'legacy');
+        expect(r.structured, isEmpty);
+      },
+    );
 
     test('prefers object signatures over legacy signature', () {
       final r = dp1PlaylistSignaturesFromWire({
@@ -27,7 +36,7 @@ void main() {
           {'sig': 'x'},
         ],
       });
-      expect(r.legacy, isNull);
+      expect(r.legacy, 'legacy');
       expect(r.structured.single.sig, 'x');
     });
 
@@ -78,6 +87,23 @@ void main() {
         ],
       });
       expect(p.signatures.map((s) => s.sig), ['x', 'y']);
+    });
+
+    test('fromJson preserves legacy and structured signatures together', () {
+      final p = DP1Playlist.fromJson({
+        'dpVersion': '1.0.0',
+        'id': 'pl',
+        'slug': 's',
+        'title': 't',
+        'created': '2025-01-01T00:00:00.000Z',
+        'items': <dynamic>[],
+        'signature': 'legacy',
+        'signatures': [
+          {'sig': 'x'},
+        ],
+      });
+      expect(p.legacySignature, 'legacy');
+      expect(p.signatures.map((s) => s.sig), ['x']);
     });
 
     test('fromJson maps legacy signature string to legacySignature', () {
@@ -132,4 +158,211 @@ void main() {
       expect(r.items.single.signatures, isEmpty);
     });
   });
+
+  group('AppDatabase playlist signature migration', () {
+    test('migrates legacy signatures_json on first open', () async {
+      final tempDir = await Directory.systemTemp.createTemp('ff_playlist_sig_');
+      final dbFile = File(p.join(tempDir.path, 'legacy.sqlite'));
+      try {
+        _createPlaylistSchemaDatabase(
+          file: dbFile,
+          userVersion: 3,
+          includePreparedColumns: false,
+          signatureValue: null,
+          signaturesValue: null,
+          signaturesJsonValue: '["legacy-signature"]',
+        );
+
+        final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+        try {
+          final row = await db
+              .customSelect(
+                "SELECT signature, signatures FROM playlists WHERE id = 'pl'",
+              )
+              .getSingle();
+
+          expect(row.read<String?>('signature'), 'legacy-signature');
+          expect(row.read<String>('signatures'), '[]');
+        } finally {
+          await db.close();
+        }
+      } finally {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('does not clobber prepopulated signatures during rerun', () async {
+      final tempDir = await Directory.systemTemp.createTemp('ff_playlist_sig_');
+      final dbFile = File(p.join(tempDir.path, 'partial.sqlite'));
+      try {
+        _createPlaylistSchemaDatabase(
+          file: dbFile,
+          userVersion: 3,
+          includePreparedColumns: true,
+          signatureValue: 'legacy-preexisting',
+          signaturesValue: '[{"sig":"keep"}]',
+          signaturesJsonValue: '["legacy-json"]',
+        );
+
+        final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+        try {
+          final row = await db
+              .customSelect(
+                "SELECT signature, signatures FROM playlists WHERE id = 'pl'",
+              )
+              .getSingle();
+
+          expect(row.read<String?>('signature'), 'legacy-preexisting');
+          expect(row.read<String>('signatures'), '[{"sig":"keep"}]');
+        } finally {
+          await db.close();
+        }
+      } finally {
+        await tempDir.delete(recursive: true);
+      }
+    });
+  });
+}
+
+void _createPlaylistSchemaDatabase({
+  required File file,
+  required int userVersion,
+  required bool includePreparedColumns,
+  required String? signatureValue,
+  required String? signaturesValue,
+  required String signaturesJsonValue,
+}) {
+  final db = sqlite3.sqlite3.open(file.path);
+  try {
+    db.execute('PRAGMA foreign_keys = ON;');
+    final schemaStatements = <String>[
+      'CREATE TABLE publishers (id INTEGER PRIMARY KEY, title TEXT NOT NULL)',
+      '''
+      CREATE TABLE channels (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        type INTEGER NOT NULL,
+        publisher_id INTEGER,
+        sort_order INTEGER,
+        created_at_us INTEGER NOT NULL,
+        updated_at_us INTEGER NOT NULL
+      )
+      ''',
+      '''
+      CREATE TABLE items (
+        id TEXT PRIMARY KEY,
+        kind INTEGER NOT NULL,
+        title TEXT,
+        subtitle TEXT,
+        thumbnail_uri TEXT,
+        duration_sec INTEGER,
+        provenance_json TEXT,
+        source_uri TEXT,
+        ref_uri TEXT,
+        license TEXT,
+        repro_json TEXT,
+        override_json TEXT,
+        display_json TEXT,
+        token_data_json TEXT,
+        list_artist_json TEXT,
+        enrichment_status INTEGER NOT NULL DEFAULT 0,
+        updated_at_us INTEGER NOT NULL
+      )
+      ''',
+      '''
+      CREATE TABLE playlist_entries (
+        playlist_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        sort_key_us INTEGER NOT NULL,
+        updated_at_us INTEGER NOT NULL
+      )
+      ''',
+    ];
+
+    final playlistColumns = <String>[
+      'id TEXT PRIMARY KEY',
+      'channel_id TEXT',
+      'type INTEGER NOT NULL',
+      'base_url TEXT',
+      'dp_version TEXT',
+      'slug TEXT',
+      'title TEXT NOT NULL',
+      'created_at_us INTEGER NOT NULL',
+      'updated_at_us INTEGER NOT NULL',
+      'sort_mode INTEGER NOT NULL',
+      'item_count INTEGER NOT NULL',
+      'defaults_json TEXT',
+      'dynamic_queries_json TEXT',
+      'owner_address TEXT',
+      'owner_chain TEXT',
+      'owner_name TEXT',
+    ];
+    if (includePreparedColumns) {
+      playlistColumns.addAll([
+        'signature TEXT',
+        "signatures TEXT NOT NULL DEFAULT '[]'",
+      ]);
+    }
+    playlistColumns.add("signatures_json TEXT NOT NULL DEFAULT '[]'");
+    schemaStatements.add(
+      'CREATE TABLE playlists (${playlistColumns.join(', ')})',
+    );
+
+    void executeStatement(String statement) => db.execute(statement);
+
+    schemaStatements.forEach(executeStatement);
+
+    db.execute('PRAGMA user_version = $userVersion');
+
+    final columns = <String>[
+      'id',
+      'channel_id',
+      'type',
+      'base_url',
+      'dp_version',
+      'slug',
+      'title',
+      'created_at_us',
+      'updated_at_us',
+      'sort_mode',
+      'item_count',
+      'defaults_json',
+      'dynamic_queries_json',
+      'owner_address',
+      'owner_chain',
+      'owner_name',
+    ];
+    final values = <Object?>[
+      'pl',
+      null,
+      0,
+      null,
+      '1.0.0',
+      'slug',
+      'Playlist',
+      1,
+      1,
+      0,
+      0,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ];
+    if (includePreparedColumns) {
+      columns.addAll(['signature', 'signatures']);
+      values.addAll([signatureValue, signaturesValue ?? '[]']);
+    }
+    columns.add('signatures_json');
+    values.add(signaturesJsonValue);
+    final placeholders = List.filled(columns.length, '?').join(', ');
+    db.execute(
+      'INSERT INTO playlists (${columns.join(', ')}) VALUES ($placeholders)',
+      values,
+    );
+  } finally {
+    db.dispose();
+  }
 }

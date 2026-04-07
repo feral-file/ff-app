@@ -19,7 +19,7 @@ final _log = Logger('AppDatabase');
 
 /// Large limit used when only offset is set (skip N rows, return the rest).
 const _maxLimitForOffset = 0x7FFFFFFF;
-const _schemaVersionV1 = 4;
+const _schemaVersionV1 = 3;
 const _dbResetReindexMarkerFile = 'db_reset_requires_reindex.flag';
 const _ftsMetadataFallbackRank = 500.0;
 
@@ -70,9 +70,7 @@ class AppDatabase extends _$AppDatabase {
         if (from < 3) {
           await m.addColumn(items, items.enrichmentStatus);
         }
-        if (from < 4) {
-          await _migratePlaylistsSignaturesJsonIfNeeded();
-        }
+        await _migratePlaylistsSignaturesJsonIfNeeded();
       },
       beforeOpen: (details) async {
         // Repair DBs where user_version already advanced but `signatures_json`
@@ -104,13 +102,13 @@ class AppDatabase extends _$AppDatabase {
   /// Also handles partial upgrades (new columns added but `signatures_json`
   /// not dropped) and DBs whose `user_version` no longer triggers `onUpgrade`.
   ///
-  /// **Operational note:** After a release we expect a **forced seed database
-  /// replace** (remote ETag / download) so local DP-1 rows match the shipped
-  /// artifact. This migration only needs to support the **upgrade window** from
-  /// installing the new app until that replace runs. If `DROP COLUMN` fails
-  /// (SQLite &lt; 3.35) and `signatures_json` remains, [beforeOpen] may re-apply
-  /// updates; that edge case is acceptable until the seed file is replaced—we
-  /// do not optimize for long-lived legacy files without a seed refresh.
+  /// **Operational note:** After a release we only need to support the old
+  /// seed window until the next SQLite snapshot is published and downloaded
+  /// via the next ETag. That follow-up snapshot removes `signatures_json`
+  /// entirely, so `signature` and `signatures` here are transitional columns.
+  /// If a migration reruns while `signatures_json` still exists, the helper
+  /// keeps any already-populated `signature` / `signatures` values and only
+  /// backfills rows that still need the legacy data copied across.
   Future<void> _migratePlaylistsSignaturesJsonIfNeeded() async {
     var cols = await _playlistTableColumnNames();
     if (!cols.contains('signatures_json')) {
@@ -130,12 +128,14 @@ class AppDatabase extends _$AppDatabase {
     cols = await _playlistTableColumnNames();
 
     final rows = await customSelect(
-      'SELECT id, signatures_json FROM playlists',
+      'SELECT id, signature, signatures, signatures_json FROM playlists',
       readsFrom: {playlists},
     ).get();
 
     for (final row in rows) {
       final id = row.read<String>('id');
+      final currentSignature = row.read<String?>('signature');
+      final currentSignatures = row.read<String>('signatures');
       final signaturesJson = row.read<String>('signatures_json');
       String? newSignature;
       try {
@@ -150,9 +150,25 @@ class AppDatabase extends _$AppDatabase {
         // Leave newSignature null; keep default signatures column.
       }
 
+      final keepLegacySignature =
+          currentSignature != null && currentSignature.trim().isNotEmpty;
+      final keepStructuredSignatures =
+          currentSignatures.trim().isNotEmpty &&
+          currentSignatures.trim() != '[]';
+      if (keepLegacySignature && keepStructuredSignatures) {
+        continue;
+      }
+
+      final nextSignature = keepLegacySignature
+          ? currentSignature
+          : newSignature;
+      final nextSignatures = keepStructuredSignatures
+          ? currentSignatures
+          : '[]';
+
       await customStatement(
         'UPDATE playlists SET signature = ?, signatures = ? WHERE id = ?',
-        <Object?>[newSignature, '[]', id],
+        <Object?>[nextSignature, nextSignatures, id],
       );
     }
 
@@ -580,7 +596,8 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Watch channels by type, filtered to those with at least one playlist
-  /// entry. Emits when [channels], [playlists], or [playlist_entries] change.
+  /// entry. Emits when [channels] or [playlists] change, plus the
+  /// `playlist_entries` table used to determine whether a channel is visible.
   /// Use this instead of [watchChannels] when the UI must react to
   /// add/remove address or favorite changes.
   /// For localVirtual (type=1): also include channels with address playlists
@@ -593,8 +610,10 @@ class AppDatabase extends _$AppDatabase {
     final variables = <Variable>[Variable.withInt(type)];
     final limitClause = limit != null ? ' LIMIT ? OFFSET ?' : '';
     if (limit != null) {
-      variables.add(Variable.withInt(limit));
-      variables.add(Variable.withInt(offset));
+      variables.addAll([
+        Variable.withInt(limit),
+        Variable.withInt(offset),
+      ]);
     }
     // localVirtual (1): show channel if it has playlists with items OR
     // address-based playlists. dp1 (0): only playlists with items.
@@ -648,8 +667,10 @@ class AppDatabase extends _$AppDatabase {
     final variables = <Variable>[Variable.withInt(type)];
     final limitClause = limit != null ? ' LIMIT ? OFFSET ?' : '';
     if (limit != null) {
-      variables.add(Variable.withInt(limit));
-      variables.add(Variable.withInt(offset));
+      variables.addAll([
+        Variable.withInt(limit),
+        Variable.withInt(offset),
+      ]);
     }
     const addressBasedType = 1;
     final existsClause = type == addressBasedType
@@ -1565,6 +1586,9 @@ Future<bool> _resetDatabaseIfSchemaConflicts(
     probeDb = sqlite3.sqlite3.open(dbFile.path);
     final rows = probeDb.select('PRAGMA user_version');
     final userVersion = rows.isEmpty ? 0 : (rows.first.columnAt(0) as int);
+    if (userVersion == _schemaVersionV1) {
+      return false;
+    }
     final schemaCompatible = _isSchemaCompatibleV1(probeDb);
     if (schemaCompatible) {
       return false;
@@ -1616,6 +1640,12 @@ bool _isSchemaCompatibleV1(sqlite3.Database db) {
     return false;
   }
   if (!_tableHasColumn(db, 'items', 'enrichment_status')) {
+    return false;
+  }
+  if (!_tableHasColumn(db, 'playlists', 'signature')) {
+    return false;
+  }
+  if (!_tableHasColumn(db, 'playlists', 'signatures')) {
     return false;
   }
 
