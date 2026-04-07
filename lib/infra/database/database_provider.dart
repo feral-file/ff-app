@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
@@ -9,7 +11,13 @@ import 'package:objectbox/objectbox.dart';
 /// Override this in tests with a memory database.
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
-  ref.onDispose(db.close);
+  // Ref.onDispose invokes void callbacks only; do not rely on this for a full
+  // drain before the next AppDatabase is constructed. Reconnect paths that
+  // invalidate this provider must await AppDatabase.close first (see seed
+  // replace afterReplace).
+  ref.onDispose(() {
+    unawaited(db.close());
+  });
   return db;
 });
 

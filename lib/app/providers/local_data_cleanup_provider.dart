@@ -29,8 +29,28 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 
 // ignore_for_file: cascade_invocations // Reason: provider wiring uses concise imperative call order for cleanup flow.
+
+/// Same ordering as SeedDatabaseReadyActions.onReady: await AppDatabase.close
+/// when the provider exists, run rebind + reconnect invalidations, then set
+/// readiness true. Avoids a window where readiness is true while consumers
+/// still see a closing or closed Drift connection.
+Future<void> _restoreReadinessAfterResetRetryFailed(Ref ref) async {
+  if (ref.exists(appDatabaseProvider)) {
+    await ref.read(appDatabaseProvider).close();
+  }
+  final cleanup = ref.read(localDataCleanupServiceProvider);
+  cleanup.invalidateProvidersForRebind?.call();
+  cleanup.invalidateReconnectInfraProviders?.call();
+  ref.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(true);
+}
+
+/// Test hook for [_restoreReadinessAfterResetRetryFailed].
+@visibleForTesting
+Future<void> restoreReadinessAfterResetRetryFailedForTesting(Ref ref) =>
+    _restoreReadinessAfterResetRetryFailed(ref);
 
 /// Wires [LocalDataCleanupService] for two flows:
 ///
@@ -95,7 +115,9 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
   ///
   /// Uses unified [SeedDownloadNotifier.sync] with [setNotReady]/[setReady].
   /// Updates [seedDownloadProvider] so Home tabs show loading during download.
-  Future<void> forceReplaceDatabaseFromSeed() async {
+  Future<void> forceReplaceDatabaseFromSeed({
+    required void Function() onReplacePhaseStarted,
+  }) async {
     final log = Logger('LocalDataCleanupProvider');
     final seedNotifier = ref.read(seedDownloadProvider.notifier);
     seedNotifier.notifyForceReplaceStarted();
@@ -107,6 +129,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
         showLoadingInUI: false,
         completeSeedDatabaseGate: false,
         failSilently: false,
+        onBeforeReplaceStarted: onReplacePhaseStarted,
         onProgress: (progress) {
           seedNotifier.notifyForceReplaceProgress(progress);
           final pct = (progress * 100).round();
@@ -157,12 +180,9 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
           try {
             await retry();
           } on Object catch (_) {
-            // Retry failed; restore readiness so app can recover.
-            ref
-                .read(isSeedDatabaseReadyProvider.notifier)
-                .setStateDirectly(true);
-            r.invalidate(appDatabaseProvider);
-            r.invalidate(databaseServiceProvider);
+            // Retry failed; restore readiness. Ordering matches setReady:
+            // onReady invalidations before readiness true.
+            await _restoreReadinessAfterResetRetryFailed(ref);
           }
         })(),
       );
@@ -217,8 +237,13 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
 
     /// Replaces SQLite with seed. Used by forgetIExist and rebuildMetadata
     /// background retry.
-    recreateDatabaseFromSeed: () async {
-      await forceReplaceDatabaseFromSeed();
+    recreateDatabaseFromSeed: (onReplacePhaseStarted) async {
+      // This callback is invoked once the seed sync reaches beforeReplace.
+      // The cleanup service uses that edge to distinguish a healthy existing
+      // DB from a reset that has already crossed the teardown boundary.
+      await forceReplaceDatabaseFromSeed(
+        onReplacePhaseStarted: onReplacePhaseStarted,
+      );
     },
     pauseFeedWork: () {
       // No-op: feed manager removed; seed database is the source of DP1 data.

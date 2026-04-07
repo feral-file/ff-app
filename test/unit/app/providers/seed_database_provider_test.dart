@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/playlist.dart';
@@ -9,6 +10,7 @@ import 'package:app/infra/database/database_provider.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/favorite_history_snapshot.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
+import 'package:app/infra/services/local_data_cleanup_service.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
 import 'package:drift/native.dart';
@@ -92,8 +94,8 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   }
 }
 
-/// Sync 1 runs [beforeReplace], then waits on [blockAfterBeforeReplace] so sync
-/// 2 can interleave; the first session's snapshot must still restore later.
+/// Sync 1 runs beforeReplace, then waits on blockAfterBeforeReplace so sync 2
+/// can interleave; the first session's snapshot must still restore later.
 class _OverlappingSeedSyncRaceFake implements SeedDatabaseSyncService {
   _OverlappingSeedSyncRaceFake({
     required Completer<void> blockAfterBeforeReplace,
@@ -146,13 +148,18 @@ final _noOpActions = SeedDatabaseReadyActions(
 Future<void> _noOpFuture() async {}
 
 class _SpyDatabaseService extends DatabaseService {
-  _SpyDatabaseService(super.db);
+  // `DatabaseService` exposes a private constructor parameter name, so this
+  // test helper keeps the explicit forwarding constructor instead of the
+  // super-parameter shorthand.
+  // ignore: use_super_parameters
+  _SpyDatabaseService(AppDatabase db) : super(db);
 
   int snapshotCalls = 0;
   int restoreCalls = 0;
 
   /// When true, snapshot returns an empty list (restore is skipped). Use when
-  /// the test cannot survive provider invalidation closing the test [AppDatabase].
+  /// the test cannot survive provider invalidation closing the test
+  /// [AppDatabase].
   bool snapshotReturnsEmpty = false;
 
   @override
@@ -185,6 +192,29 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
   Future<bool> hasLocalDatabase() async => hasLocal;
 }
 
+/// Simulates a slow Drift/native shutdown: if reconnect invalidation ran
+/// without awaiting [close], [isClosedFully] would still be false when
+/// [LocalDataCleanupService.performReconnectInfraInvalidation] runs
+/// (SQLITE_BUSY regression on the real file DB).
+class _SlowClosingAppDatabase extends AppDatabase {
+  _SlowClosingAppDatabase({required this.closeDelay})
+    : super.forTesting(NativeDatabase.memory());
+
+  final Duration closeDelay;
+
+  /// Set to true only after [super.close] completes (and optional delay).
+  bool isClosedFully = false;
+
+  @override
+  Future<void> close() async {
+    if (closeDelay > Duration.zero) {
+      await Future<void>.delayed(closeDelay);
+    }
+    await super.close();
+    isClosedFully = true;
+  }
+}
+
 /// Avoids real SeedDatabaseService.hasLocalDatabase (path_provider) in tests.
 Override _fakeSeedDbSvc({required bool hasLocal}) {
   return seedDatabaseServiceProvider.overrideWithValue(
@@ -195,6 +225,68 @@ Override _fakeSeedDbSvc({required bool hasLocal}) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(SeedDatabaseGate.resetForTesting);
+
+  test(
+    'seed afterReplace awaits DB close before reconnect invalidation '
+    '(SQLITE_BUSY / dual AppDatabase regression)',
+    () async {
+      const slowClose = Duration(milliseconds: 25);
+      final db = _SlowClosingAppDatabase(closeDelay: slowClose);
+      addTearDown(() async {
+        try {
+          await db.close();
+        } on Object catch (_) {}
+      });
+
+      var reconnectInvalidationCalls = 0;
+
+      final cleanupSpy = LocalDataCleanupService(
+        closeAndDeleteDatabase: () async {},
+        clearObjectBoxData: () async {},
+        clearCachedImages: () async {},
+        recreateDatabaseFromSeed: (_) async {},
+        runBootstrap: () async {},
+        pauseFeedWork: () {},
+        pauseTokenPolling: () {},
+        invalidateReconnectInfraProviders: () {
+          reconnectInvalidationCalls++;
+          expect(
+            db.isClosedFully,
+            isTrue,
+            reason:
+                'Riverpod onDispose does not await async close. If we '
+                'invalidate appDatabaseProvider before await close() '
+                'completes, a second native open can race the first '
+                '(SQLITE_BUSY on e.g. PRAGMA journal_mode = WAL).',
+          );
+        },
+      );
+
+      final fakeSyncService = _FakeSeedDatabaseSyncService()
+        ..hasLocalDatabase = true;
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+          appDatabaseProvider.overrideWithValue(db),
+          rawDatabaseServiceProvider.overrideWithValue(DatabaseService(db)),
+          localDataCleanupServiceProvider.overrideWithValue(cleanupSpy),
+          _fakeSeedDbSvc(hasLocal: true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      // Warm up so ref.exists(appDatabaseProvider) is true in afterReplace.
+      expect(container.read(appDatabaseProvider), same(db));
+
+      await container.read(seedDownloadProvider.notifier).sync();
+
+      expect(reconnectInvalidationCalls, 1);
+      expect(db.isClosedFully, isTrue);
+    },
+  );
 
   test('seed sync can run again after the first completed run', () async {
     final fakeSyncService = _FakeSeedDatabaseSyncService();
@@ -633,8 +725,8 @@ void main() {
 }
 
 /// Wraps a sync service: delegates until onDownloadStarted, then awaits
-/// [beforeComplete] before continuing. Allows override to happen after
-/// syncing state is set but before completion.
+/// beforeComplete before continuing. Allows override to happen after syncing
+/// state is set but before completion.
 class _SlowFakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   _SlowFakeSeedDatabaseSyncService({
     required this.delegate,
