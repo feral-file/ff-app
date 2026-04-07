@@ -9,13 +9,26 @@ library;
 
 /// Available FF1 BLE commands
 enum FF1BleCommand {
+  /// Send WiFi credentials (SSID + password)
   sendWifiCredentials('connect_wifi'),
+
+  /// Scan for available WiFi networks
   scanWifi('scan_wifi'),
+
+  /// Keep current WiFi connection (get topicId)
   keepWifi('keep_wifi'),
+
+  /// Get device information
   getInfo('get_info'),
+
+  /// Factory reset device
   factoryReset('factory_reset'),
+
+  /// Send device logs to support
   sendLog('send_log'),
-  setTimezone('set_time')
+
+  /// Set device timezone
+  setTimezone('set_time'),
   ;
 
   const FF1BleCommand(this.wireName);

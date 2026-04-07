@@ -63,7 +63,7 @@ class DeviceInfoBox extends ConsumerWidget {
         children: [
           // connection status
           DeviceInfoItem(
-            title: 'Connection Status:',
+            title: 'Connection Status',
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -97,7 +97,7 @@ class DeviceInfoBox extends ConsumerWidget {
 
           // Device Id
           DeviceInfoItem(
-            title: 'Device Id:',
+            title: 'Device Id',
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -140,7 +140,7 @@ class DeviceInfoBox extends ConsumerWidget {
           // WiFi Network
           if (deviceStatus != null) ...[
             DeviceInfoItem(
-              title: 'Device Wifi Network',
+              title: 'WiFi Network',
               child: Text(
                 connectedWifi ?? '-',
                 style: AppTypography.body(context).white.copyWith(
@@ -253,13 +253,21 @@ class DeviceInfoItem extends StatelessWidget {
     return Row(
       children: [
         Expanded(
+          flex: 4,
           child: Text(
             title,
             style: AppTypography.body(context).grey,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         const SizedBox(width: 8),
-        Expanded(child: child),
+        Expanded(
+          flex: 6,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: child,
+          ),
+        ),
       ],
     );
   }

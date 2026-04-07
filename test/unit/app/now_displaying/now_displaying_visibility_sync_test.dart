@@ -139,4 +139,22 @@ void main() {
       );
     });
   });
+
+  group('isKeyboardVisibleForViewInsets', () {
+    test('returns false when bottom inset is zero', () {
+      expect(
+        isKeyboardVisibleForViewInsets(FakeViewPadding.zero),
+        isFalse,
+      );
+    });
+
+    test('returns true when bottom inset is non-zero', () {
+      expect(
+        isKeyboardVisibleForViewInsets(
+          const FakeViewPadding(bottom: 24),
+        ),
+        isTrue,
+      );
+    });
+  });
 }

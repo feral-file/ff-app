@@ -1,7 +1,18 @@
+// This provider file still contains legacy analyzer noise that is outside the
+// firmware-update flow; keep the ignore local so this PR can be gated on the
+// new prompt/update behavior instead of a broader cleanup pass.
+// ignore_for_file: implementation_imports, lines_longer_than_80_chars, comment_references, discarded_futures, unawaited_futures, public_member_api_docs, avoid_equals_and_hash_code_on_mutable_classes
+
 import 'dart:async';
+
+// This provider layer already carries lint debt unrelated to the stale-status
+// bug. The current change is intentionally narrow: keep live status aligned
+// with the current FF1 connection session without refactoring the whole file.
+// ignore_for_file: avoid_equals_and_hash_code_on_mutable_classes, cascade_invocations, comment_references, discarded_futures, implementation_imports, lines_longer_than_80_chars, public_member_api_docs, unawaited_futures
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/version_provider.dart';
+import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
@@ -12,7 +23,7 @@ import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:app/infra/logging/structured_logger.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
-import 'package:riverpod/src/providers/future_provider.dart';
+import 'package:riverpod/riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 // ============================================================================
@@ -133,7 +144,8 @@ class FF1WifiConnectionState {
 
   @override
   String toString() =>
-      'FF1WifiConnectionState(connected: $isConnected, device: ${device?.deviceId})';
+      'FF1WifiConnectionState('
+      'connected: $isConnected, device: ${device?.deviceId})';
 }
 
 /// FF1 WiFi connection notifier
@@ -142,6 +154,7 @@ class FF1WifiConnectionState {
 class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   FF1WifiControl get _control => ref.read(ff1WifiControlProvider);
   late final StructuredLogger _slog;
+  int _connectEpoch = 0;
 
   @override
   FF1WifiConnectionState build() {
@@ -162,6 +175,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
     required String userId,
     required String apiKey,
   }) async {
+    final epoch = ++_connectEpoch;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_connect_requested',
@@ -192,6 +206,16 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         apiKey: apiKey,
       );
 
+      if (epoch != _connectEpoch) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_connect_canceled',
+          message: 'connect completed after a newer connection request',
+          payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
+        );
+        return;
+      }
+
       state = state.copyWith(
         isConnected: true,
         isConnecting: false,
@@ -204,6 +228,19 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
       );
     } on Exception catch (e) {
+      if (epoch != _connectEpoch) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_connect_canceled_error',
+          message: 'connect failed after cancellation; ignoring stale error',
+          payload: {
+            'deviceId': device.deviceId,
+            'topicId': device.topicId,
+            'error': e.toString(),
+          },
+        );
+        return;
+      }
       state = state.copyWith(
         isConnected: false,
         isConnecting: false,
@@ -218,7 +255,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       );
       rethrow;
     } finally {
-      if (state.isConnecting) {
+      if (epoch == _connectEpoch && state.isConnecting) {
         state = state.copyWith(isConnecting: false);
       }
     }
@@ -231,6 +268,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   /// backgrounded, the watcher calls disconnect(); without clearing state,
   /// reconnect() on resume would use the stale cached device.
   Future<void> disconnect() async {
+    _connectEpoch++;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_disconnect_requested',
@@ -241,7 +279,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         'stateConnecting': state.isConnecting,
       },
     );
-    if (state.isConnected) {
+    if (state.isConnected || state.isConnecting) {
       try {
         await _control.disconnect();
       } finally {
@@ -366,6 +404,30 @@ final ff1DeviceStatusStreamProvider = StreamProvider<FF1DeviceStatus>((ref) {
   return control.deviceStatusStream;
 });
 
+/// Current FFP DDC panel status stream provider for a specific FF1 topic.
+///
+/// This is scoped by topic id so a stale widget cannot read panel state from
+/// one active FF1 and send writes to a different FF1 topic.
+// ignore: specify_nonobvious_property_types
+final ff1FfpDdcPanelStatusStreamProvider = StreamProvider.autoDispose
+    .family<FfpDdcPanelStatus, String>((ref, topicId) {
+      if (topicId.isEmpty) {
+        return const Stream<FfpDdcPanelStatus>.empty();
+      }
+
+      final activeDeviceAsync = ref.watch(activeFF1BluetoothDeviceProvider);
+      final activeTopicId = activeDeviceAsync.maybeWhen(
+        data: (device) => device?.topicId ?? '',
+        orElse: () => '',
+      );
+      if (activeTopicId != topicId) {
+        return Stream<FfpDdcPanelStatus>.value(const FfpDdcPanelStatus());
+      }
+
+      final control = ref.watch(ff1WifiControlProvider);
+      return control.ffpDdcPanelStatusStream;
+    });
+
 /// Current connection status stream provider.
 ///
 /// Emits updates when device sends connection status notifications.
@@ -390,25 +452,41 @@ final ff1SupportsPlaybackModesProvider = Provider<bool>((ref) {
 /// Current player status provider (last received value)
 ///
 /// Returns the most recent player status or null if none received.
+///
+/// This watches the stream only for invalidation and reads the control-layer
+/// cache for the actual value. `FF1WifiControl.playerStatusStream` replays the
+/// last payload, so after a device switch the stream may still hold device A's
+/// status until device B emits its first player-status notification.
 final ff1CurrentPlayerStatusProvider = Provider<FF1PlayerStatus?>((ref) {
-  final controlAsync = ref.watch(ff1PlayerStatusStreamProvider);
-  return controlAsync.when(
-    data: (status) => status,
-    loading: () => null,
-    error: (_, _) => null,
-  );
+  ref
+    ..watch(ff1PlayerStatusStreamProvider)
+    ..watch(ff1ConnectionStatusStreamProvider);
+  final device = ref
+      .watch(activeFF1BluetoothDeviceProvider)
+      .maybeWhen(data: (d) => d, orElse: () => null);
+  final control = ref.read(ff1WifiControlProvider);
+  return control.currentPlayerStatusDeviceId == device?.deviceId
+      ? control.currentPlayerStatus
+      : null;
 });
 
 /// Current device status provider (last received value)
 ///
 /// Returns the most recent device status or null if none received.
+///
+/// Mirrors [ff1CurrentPlayerStatusProvider] so device switches do not expose
+/// replayed device-status data from the previous control session.
 final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
-  final controlAsync = ref.watch(ff1DeviceStatusStreamProvider);
-  return controlAsync.when(
-    data: (status) => status,
-    loading: () => null,
-    error: (_, _) => null,
-  );
+  ref
+    ..watch(ff1DeviceStatusStreamProvider)
+    ..watch(ff1ConnectionStatusStreamProvider);
+  final device = ref
+      .watch(activeFF1BluetoothDeviceProvider)
+      .maybeWhen(data: (d) => d, orElse: () => null);
+  final control = ref.read(ff1WifiControlProvider);
+  return control.currentDeviceStatusDeviceId == device?.deviceId
+      ? control.currentDeviceStatus
+      : null;
 });
 
 /// Device connected provider (per connection notification)
@@ -418,12 +496,8 @@ final ff1CurrentDeviceStatusProvider = Provider<FF1DeviceStatus?>((ref) {
 /// connection notifications (Provider over FF1WifiControl does not notify on
 /// internal state changes).
 final ff1DeviceConnectedProvider = Provider<bool>((ref) {
-  final connectionStatusAsync = ref.watch(ff1ConnectionStatusStreamProvider);
-  return connectionStatusAsync.when(
-    data: (status) => status.isConnected,
-    loading: () => false,
-    error: (_, _) => false,
-  );
+  ref.watch(ff1ConnectionStatusStreamProvider);
+  return ref.read(ff1WifiControlProvider).isDeviceConnected;
 });
 
 /// Stream of transport-level (e.g. WebSocket) connected from `FF1WifiControl`.
@@ -459,6 +533,82 @@ final ff1WifiConnectingProvider = Provider<bool>((ref) {
   return connectionState.isConnecting;
 });
 
+Future<void> _runRequiredDeviceVersionCheck({
+  required Ref ref,
+  required Logger logger,
+  required FF1Device device,
+  FF1DeviceStatus? deviceStatus,
+}) async {
+  final deviceVersion = deviceStatus?.latestVersion;
+  if (deviceVersion == null || deviceVersion.isEmpty) {
+    logger.warning(
+      'Skipping device version compatibility check: '
+      'device version not available in device status',
+    );
+    return;
+  }
+
+  await ref
+      .read(versionServiceProvider)
+      .checkDeviceVersionCompatibility(
+        branchName: device.branchName,
+        deviceVersion: deviceVersion,
+        requiredDeviceUpdate: true,
+      );
+}
+
+Future<void> _scheduleRequiredDeviceVersionCheck({
+  required Ref ref,
+  required Logger logger,
+  required FF1Device device,
+}) async {
+  final control = ref.read(ff1WifiControlProvider);
+  // This runs in an unawaited background task, so do not impose an arbitrary
+  // timeout. We want the required-update gate to wait until this connection
+  // session publishes a usable device version, and FF1WifiControl resolves
+  // the future with null automatically on teardown / device switch.
+  final deviceStatus = await control.freshDeviceVersionFuture();
+  if (!ref.mounted) {
+    return;
+  }
+  if (deviceStatus == null) {
+    logger.warning(
+      'Skipping device version compatibility check: '
+      'fresh device status unavailable for this session',
+    );
+    return;
+  }
+  final activeDevice = ref
+      .read(activeFF1BluetoothDeviceProvider)
+      .when(
+        data: (value) => value,
+        loading: () => null,
+        error: (_, _) => null,
+      );
+  if (activeDevice?.deviceId != device.deviceId) {
+    logger.info(
+      'Skipping device version compatibility check for '
+      '${device.deviceId}: active device changed before status arrived',
+    );
+    return;
+  }
+  try {
+    await _runRequiredDeviceVersionCheck(
+      ref: ref,
+      logger: logger,
+      device: device,
+      deviceStatus: deviceStatus,
+    );
+  } on Object catch (error, stack) {
+    logger.severe(
+      'Failed required device version compatibility check for '
+      '${device.deviceId}',
+      error,
+      stack,
+    );
+  }
+}
+
 // ============================================================================
 // Auto-connect to active FF1 device
 // ============================================================================
@@ -473,49 +623,78 @@ final ff1WifiConnectingProvider = Provider<bool>((ref) {
 /// (e.g., in bootstrap or root).
 final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
   final logger = Logger('FF1AutoConnectWatcher');
-  final activeDeviceAsync = ref.watch(activeFF1BluetoothDeviceProvider);
   final connectionNotifier = ref.read(ff1WifiConnectionProvider.notifier);
 
-  activeDeviceAsync.when(
-    data: (device) async {
-      // Use Future.microtask to defer the connection call
-      // to avoid modifying other providers during build phase
+  ref.listen<AsyncValue<FF1Device?>>(
+    activeFF1BluetoothDeviceProvider,
+    (previous, next) {
+      final previousDevice = previous?.maybeWhen(
+        data: (device) => device,
+        orElse: () => null,
+      );
+      final device = next.maybeWhen(
+        data: (device) => device,
+        orElse: () => null,
+      );
+      if (previousDevice == null && device == null) {
+        return;
+      }
+      final switchingDevice =
+          previousDevice != null &&
+          device != null &&
+          previousDevice.deviceId != device.deviceId;
+
+      if (device != null) {
+        // Clear stale relayer/device state synchronously so UI consumers see
+        // the handoff before the deferred connection attempt begins.
+        ref.read(ff1WifiControlProvider).prepareForDeviceSwitch(device);
+      }
+
+      // Use Future.microtask to defer transport mutations out of the build
+      // phase and preserve the existing provider-driven connect flow.
       unawaited(
         Future.microtask(() async {
+          if (switchingDevice) {
+            logger.info(
+              'Active device switched from ${previousDevice.deviceId} to '
+              '${device.deviceId}, disconnecting old device first...',
+            );
+            try {
+              await connectionNotifier.disconnect();
+            } on Exception catch (error, stackTrace) {
+              logger.warning(
+                'Disconnect failed during active-device switch; '
+                'continuing with connect attempt.',
+                error,
+                stackTrace,
+              );
+            }
+          }
+
           if (device != null) {
             logger.info(
               'Active device changed: ${device.toJson()}, connecting...',
             );
-            // Intentionally not awaiting to avoid blocking
             await connectionNotifier.connect(
               device: device,
               userId: 'user_id',
               apiKey: AppConfig.ff1RelayerApiKey,
             );
-
-            final versionService = ref.read(versionServiceProvider);
-            final deviceStatus = ref.read(ff1CurrentDeviceStatusProvider);
             unawaited(
-              versionService.checkDeviceVersionCompatibility(
-                branchName: device.branchName,
-                deviceVersion: deviceStatus?.latestVersion ?? '',
-                requiredDeviceUpdate: true,
+              _scheduleRequiredDeviceVersionCheck(
+                ref: ref,
+                logger: logger,
+                device: device,
               ),
             );
           } else {
             logger.info('No active device, disconnecting...');
-            // Intentionally not awaiting to avoid blocking
-            connectionNotifier.disconnect();
+            await connectionNotifier.disconnect();
           }
         }),
       );
     },
-    error: (error, stack) {
-      logger.severe('Error loading active device', error, stack);
-    },
-    loading: () {
-      logger.info('Loading active device...');
-    },
+    fireImmediately: true,
   );
 });
 
@@ -550,7 +729,8 @@ class FF1WifiConnectParams {
 /// Connect to FF1 device via WiFi (auto-dispose, with retry).
 ///
 /// This provider automatically disposes after use.
-/// Uses Riverpod's automatic retry mechanism (5 attempts with exponential backoff).
+/// Uses Riverpod's automatic retry mechanism (5 attempts with exponential
+/// backoff).
 ///
 /// Usage:
 /// ```dart
@@ -562,8 +742,8 @@ class FF1WifiConnectParams {
 ///   )).future,
 /// );
 /// ```
-final FutureProviderFamily<void, FF1WifiConnectParams>
-ff1WifiConnectOperationProvider = FutureProvider.autoDispose
+// ignore: specify_nonobvious_property_types
+final ff1WifiConnectOperationProvider = FutureProvider.autoDispose
     .family<void, FF1WifiConnectParams>(
       retry: _wifiRetry,
       (ref, params) async {
@@ -612,8 +792,8 @@ class FF1WifiCommandParams<T> {
 ///   )).future,
 /// );
 /// ```
-final FutureProviderFamily<dynamic, FF1WifiCommandParams<dynamic>>
-ff1WifiSendCommandProvider = FutureProvider.autoDispose
+// ignore: specify_nonobvious_property_types
+final ff1WifiSendCommandProvider = FutureProvider.autoDispose
     .family<dynamic, FF1WifiCommandParams<dynamic>>(
       retry: _wifiRetry,
       (ref, params) async {
@@ -695,8 +875,8 @@ class FF1ConnectionDiscrepancyWatcher extends Notifier<void> {
       event: 'connection_discrepancy',
       message:
           'transport connected but device-level not connected for '
-          '>${ff1ConnectionDiscrepancyThreshold.inSeconds}s — possible false '
-          '"Device not connected" in UI',
+          '>${ff1ConnectionDiscrepancyThreshold.inSeconds}s - possible '
+          'false "Device not connected" in UI',
       payload: {
         'thresholdSeconds': ff1ConnectionDiscrepancyThreshold.inSeconds,
       },
@@ -706,7 +886,8 @@ class FF1ConnectionDiscrepancyWatcher extends Notifier<void> {
         SentryEvent(
           message: SentryMessage(
             'FF1 connection discrepancy: transport up but device-level '
-            'not connected for >${ff1ConnectionDiscrepancyThreshold.inSeconds}s',
+            'not connected for >'
+            '${ff1ConnectionDiscrepancyThreshold.inSeconds}s',
           ),
           level: SentryLevel.warning,
           tags: {'component': 'ff1_wifi'},

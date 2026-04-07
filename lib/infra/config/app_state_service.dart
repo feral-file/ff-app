@@ -6,6 +6,7 @@ import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/objectbox.g.dart'
     show AppStateAddressEntity_, AppStateEntity_, TrackedAddressEntity_;
+import 'package:app/util/json_string_map_codec.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:objectbox/objectbox.dart';
@@ -119,6 +120,19 @@ abstract class AppStateServiceBase {
   Future<void> setHasSeenPlayToFf1Tooltip({required bool hasSeen});
   Future<bool> hasCompletedSeedDownload();
   Future<void> setHasCompletedSeedDownload({required bool completed});
+
+  /// Returns the firmware version the user last dismissed for [deviceId].
+  ///
+  /// Returns an empty string when no version has been dismissed yet.
+  String getDismissedUpdateVersion(String deviceId);
+
+  /// Persists [version] as the dismissed firmware update version for
+  /// [deviceId]. The update prompt will not reappear for this device until
+  /// the device reports a different latestVersion.
+  Future<void> setDismissedUpdateVersion({
+    required String deviceId,
+    required String version,
+  });
   Future<SyncCheckpoint?> getAddressCheckpoint(String address);
   Future<void> setAddressCheckpoint({
     required String address,
@@ -306,6 +320,32 @@ class AppStateService extends AppStateServiceBase {
     await _lock.synchronized(() async {
       final app = _getOrCreateSingleton()
         ..hasCompletedSeedDownload = completed
+        ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
+      _appStateBox.put(app);
+    });
+  }
+
+  @override
+  String getDismissedUpdateVersion(String deviceId) {
+    final map = decodeJsonStringMap(
+      _getOrCreateSingleton().dismissedUpdateVersionsJson,
+    );
+    return map[deviceId] ?? '';
+  }
+
+  @override
+  Future<void> setDismissedUpdateVersion({
+    required String deviceId,
+    required String version,
+  }) async {
+    await _lock.synchronized(() async {
+      final app = _getOrCreateSingleton();
+      final map = decodeJsonStringMap(
+        app.dismissedUpdateVersionsJson,
+      );
+      map[deviceId] = version;
+      app
+        ..dismissedUpdateVersionsJson = encodeJsonStringMap(map)
         ..updatedAtUs = DateTime.now().toUtc().microsecondsSinceEpoch;
       _appStateBox.put(app);
     });

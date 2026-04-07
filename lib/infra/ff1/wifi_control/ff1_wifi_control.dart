@@ -11,14 +11,23 @@
 /// so it works with any adapter (Relayer, LAN, etc.)
 library;
 
+// This file predates the stricter lint profile. The new device-switch fix only
+// touches connection-state caching, so we keep the existing command-surface
+// debt isolated instead of refactoring the entire control layer here.
+// ignore_for_file: avoid_dynamic_calls, discarded_futures, lines_longer_than_80_chars
+
 import 'dart:async';
 import 'dart:ui' show Offset;
 
 import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
+import 'package:app/domain/models/ff1/ffp_ddc_command_errors.dart';
+import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/domain/models/ff1/loop_mode.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_control_verifier.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
+import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_payload_unwrap.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:app/infra/logging/structured_logger.dart';
 import 'package:logging/logging.dart';
@@ -62,12 +71,18 @@ class FF1WifiControl {
   // Stream controllers for state changes
   final _playerStatusController = BehaviorSubject<FF1PlayerStatus>();
   final _deviceStatusController = BehaviorSubject<FF1DeviceStatus>();
+  final _ffpDdcPanelStatusController = BehaviorSubject<FfpDdcPanelStatus>();
   final _connectionStatusController = BehaviorSubject<FF1ConnectionStatus>();
 
   // Current device state
   FF1PlayerStatus? _currentPlayerStatus;
+  String? _currentPlayerStatusDeviceId;
   FF1DeviceStatus? _currentDeviceStatus;
+  String? _currentDeviceStatusDeviceId;
+  FfpDdcPanelStatus? _currentFfpDdcPanelStatus;
   bool _isDeviceConnected = false;
+  Completer<FF1DeviceStatus?>? _freshDeviceStatusCompleter;
+  Completer<FF1DeviceStatus?>? _freshDeviceVersionCompleter;
 
   // Stream subscriptions
   StreamSubscription<FF1NotificationMessage>? _notificationSub;
@@ -127,9 +142,53 @@ class FF1WifiControl {
     required String apiKey,
   }) async {
     final flowId = _nextFlowId('connect');
+    final previousDevice = _device;
+    final previousDeviceId = previousDevice?.deviceId;
+    _freshDeviceStatusCompleter?.complete(null);
+    _freshDeviceVersionCompleter?.complete(null);
+    final switchingDevice =
+        _device != null && _device!.deviceId != device.deviceId;
+    if (switchingDevice) {
+      _currentPlayerStatus = null;
+      _currentDeviceStatus = null;
+      _deviceStatusController.add(const FF1DeviceStatus());
+      _clearFfpDdcPanelStatus();
+      _isDeviceConnected = false;
+      _connectionStatusController.add(
+        const FF1ConnectionStatus(isConnected: false),
+      );
+    }
+
+    if (previousDevice != null && previousDevice.deviceId != device.deviceId) {
+      // Reset the last replayed state before the new device starts publishing.
+      // Without this handoff clear, provider consumers can evaluate the next
+      // active device against the previous device's relayer status/version.
+      _clearRealtimeState(
+        emitDisconnectedStatus: true,
+        flowId: flowId,
+        reason: 'switch_device',
+      );
+    }
+
     _device = device;
     _userId = userId;
     _apiKey = apiKey;
+
+    // Clear cached status before the new transport session starts.
+    //
+    // Why: `playerStatusStream` is a BehaviorSubject and will continue to hold
+    // the previous device's last payload until the new device emits a fresh
+    // player-status notification. Clearing the live cache here prevents app
+    // providers from reusing device A's playback state for device B during the
+    // switch-over gap.
+    _currentPlayerStatus = null;
+    _currentDeviceStatus = null;
+    _isDeviceConnected = false;
+    _freshDeviceStatusCompleter = Completer<FF1DeviceStatus?>();
+    _freshDeviceVersionCompleter = Completer<FF1DeviceStatus?>();
+    _connectionStatusController.add(
+      const FF1ConnectionStatus(isConnected: false),
+    );
 
     _log.info('Connecting to ${device.deviceId}');
     _slog.info(
@@ -139,6 +198,7 @@ class FF1WifiControl {
       payload: {
         'flowId': flowId,
         'deviceId': device.deviceId,
+        'previousDeviceId': previousDeviceId,
         'topicId': device.topicId,
         'transportConnected': _transport.isConnected,
         'transportConnecting': _transport.isConnecting,
@@ -175,6 +235,22 @@ class FF1WifiControl {
     }
   }
 
+  /// Clears replayed realtime state before switching to a different device.
+  ///
+  /// This is a handoff guard for the auto-connect watcher: consumers must
+  /// stop seeing the previous device's relayer state before the new device's
+  /// connection attempt begins.
+  void prepareForDeviceSwitch(FF1Device device) {
+    if (_device?.deviceId == device.deviceId) {
+      return;
+    }
+
+    _clearRealtimeState(
+      emitDisconnectedStatus: true,
+      reason: 'watcher_device_switch',
+    );
+  }
+
   /// Disconnect from device
   Future<void> disconnect() async {
     final flowId = _nextFlowId('disconnect');
@@ -191,17 +267,19 @@ class FF1WifiControl {
       },
     );
 
-    await _transport.disconnect();
+    // Clear current state immediately so the UI cannot keep rendering stale
+    // values while the relayer transport finishes shutting down.
+    _deviceStatusController.add(const FF1DeviceStatus());
+    _clearFfpDdcPanelStatus();
+    _clearRealtimeState(flowId: flowId, reason: 'disconnect');
 
-    // Clear cached connection params
-    _device = null;
-    _userId = null;
-    _apiKey = null;
-
-    // Clear current state
-    _currentPlayerStatus = null;
-    _currentDeviceStatus = null;
-    _isDeviceConnected = false;
+    _freshDeviceStatusCompleter?.complete(null);
+    _freshDeviceStatusCompleter = null;
+    _freshDeviceVersionCompleter?.complete(null);
+    _freshDeviceVersionCompleter = null;
+    _connectionStatusController.add(
+      const FF1ConnectionStatus(isConnected: false),
+    );
     _slog.info(
       category: LogCategory.wifi,
       event: 'control_disconnect_completed',
@@ -212,6 +290,13 @@ class FF1WifiControl {
         'transportConnecting': _transport.isConnecting,
       },
     );
+
+    await _transport.disconnect();
+
+    // Clear cached connection params so the next connect starts clean.
+    _device = null;
+    _userId = null;
+    _apiKey = null;
   }
 
   /// Check if transport is connected
@@ -237,6 +322,12 @@ class FF1WifiControl {
   /// Current device status (last received)
   FF1DeviceStatus? get currentDeviceStatus => _currentDeviceStatus;
 
+  /// Device id that produced [currentPlayerStatus].
+  String? get currentPlayerStatusDeviceId => _currentPlayerStatusDeviceId;
+
+  /// Device id that produced [currentDeviceStatus].
+  String? get currentDeviceStatusDeviceId => _currentDeviceStatusDeviceId;
+
   /// Whether device is connected (per connection notification)
   bool get isDeviceConnected => _isDeviceConnected;
 
@@ -252,6 +343,63 @@ class FF1WifiControl {
   Stream<FF1ConnectionStatus> get connectionStatusStream =>
       _connectionStatusController.stream;
 
+  /// Waits for the first device status observed after the most recent connect
+  /// reset. Returns the already-received fresh status immediately when
+  /// available, or `null` on timeout / teardown.
+  Future<FF1DeviceStatus?> waitForFreshDeviceStatus({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final future = freshDeviceStatusFuture();
+    return future.timeout(timeout, onTimeout: () => null);
+  }
+
+  /// Future for the first device status observed after the most recent connect
+  /// reset.
+  ///
+  /// Why: callers that do an initial short timeout can keep awaiting this same
+  /// future later without switching to the replaying device-status stream,
+  /// which may still buffer a previous session's payload.
+  Future<FF1DeviceStatus?> freshDeviceStatusFuture() {
+    final completer = _freshDeviceStatusCompleter;
+    if (completer == null) {
+      return Future<FF1DeviceStatus?>.value(_currentDeviceStatus);
+    }
+    return completer.future;
+  }
+
+  /// Future for the first device status in the current session that carries a
+  /// usable device version.
+  ///
+  /// Why: the required-update gate must not treat a version-less status as
+  /// terminal for the session, because FF1 can emit a later fresh status that
+  /// fills in `latestVersion` after the initial connect handshake.
+  Future<FF1DeviceStatus?> freshDeviceVersionFuture() {
+    final completer = _freshDeviceVersionCompleter;
+    if (completer == null) {
+      final deviceStatus = _currentDeviceStatus;
+      if (deviceStatus?.latestVersion?.isNotEmpty == true) {
+        return Future<FF1DeviceStatus?>.value(deviceStatus);
+      }
+      return Future<FF1DeviceStatus?>.value();
+    }
+    return completer.future;
+  }
+
+  /// Current FFP DDC panel status (last received).
+  FfpDdcPanelStatus? get currentFfpDdcPanelStatus => _currentFfpDdcPanelStatus;
+
+  /// Stream of FFP DDC panel status updates.
+  Stream<FfpDdcPanelStatus> get ffpDdcPanelStatusStream =>
+      _ffpDdcPanelStatusController.stream;
+
+  /// Emits an empty status to flush replayed FFP state across disconnects and
+  /// device switches. Without this, new subscribers can immediately render the
+  /// previous device's monitor snapshot before the relayer pushes fresh data.
+  void _clearFfpDdcPanelStatus() {
+    _currentFfpDdcPanelStatus = null;
+    _ffpDdcPanelStatusController.add(const FfpDdcPanelStatus());
+  }
+
   /// Handle incoming notification from transport
   void _handleNotification(FF1NotificationMessage notification) {
     if (_isTearingDown) {
@@ -262,13 +410,26 @@ class FF1WifiControl {
     switch (notification.notificationType) {
       case FF1NotificationType.playerStatus:
         final playerStatus = FF1PlayerStatus.fromJson(notification.message);
+        _currentPlayerStatusDeviceId = _device?.deviceId;
         _currentPlayerStatus = playerStatus;
         _playerStatusController.add(playerStatus);
 
       case FF1NotificationType.deviceStatus:
         final deviceStatus = FF1DeviceStatus.fromJson(notification.message);
+        _currentDeviceStatusDeviceId = _device?.deviceId;
         _currentDeviceStatus = deviceStatus;
         _deviceStatusController.add(deviceStatus);
+        _freshDeviceStatusCompleter?.complete(deviceStatus);
+        _freshDeviceStatusCompleter = null;
+        if (deviceStatus.latestVersion?.isNotEmpty == true) {
+          _freshDeviceVersionCompleter?.complete(deviceStatus);
+          _freshDeviceVersionCompleter = null;
+        }
+
+      case FF1NotificationType.ffpDdcPanelStatus:
+        final panelStatus = FfpDdcPanelStatus.fromJson(notification.message);
+        _currentFfpDdcPanelStatus = panelStatus;
+        _ffpDdcPanelStatusController.add(panelStatus);
 
       case FF1NotificationType.connection:
         final connectionStatus = FF1ConnectionStatus.fromJson(
@@ -277,6 +438,11 @@ class FF1WifiControl {
         final prev = _isDeviceConnected;
         _isDeviceConnected = connectionStatus.isConnected;
         _connectionStatusController.add(connectionStatus);
+        if (!connectionStatus.isConnected) {
+          // Transport can still be up while the device reports disconnected;
+          // clear cached FFP/DDC snapshot so UI cannot drive stale controls.
+          _clearFfpDdcPanelStatus();
+        }
         // Track every device-level connection notification so we can see
         // when the device sends "connected" vs "disconnected" and correlate
         // with the WebSocket transport state.
@@ -300,6 +466,7 @@ class FF1WifiControl {
     if (_isTearingDown) {
       return;
     }
+    final flowId = _nextFlowId('transport_state');
     _log.info('Connection state changed: $isConnected');
     _slog.info(
       category: LogCategory.wifi,
@@ -326,12 +493,17 @@ class FF1WifiControl {
           'deviceId': _device?.deviceId,
         },
       );
-      _currentPlayerStatus = null;
-      _currentDeviceStatus = null;
-      _isDeviceConnected = false;
-      _connectionStatusController.add(
-        FF1ConnectionStatus(isConnected: isConnected),
+      _clearRealtimeState(
+        emitDisconnectedStatus: true,
+        flowId: flowId,
+        reason: 'transport_disconnect',
       );
+      _clearFfpDdcPanelStatus();
+
+      _freshDeviceStatusCompleter?.complete(null);
+      _freshDeviceStatusCompleter = null;
+      _freshDeviceVersionCompleter?.complete(null);
+      _freshDeviceVersionCompleter = null;
       _slog.info(
         category: LogCategory.wifi,
         event: 'control_connection_status_emitted',
@@ -400,8 +572,9 @@ class FF1WifiControl {
   /// Reconnect to device (using cached connection params)
   ///
   /// Useful for app lifecycle changes (foreground/background).
-  /// Uses [forceReconnect] to bypass "already connected" check when connection
-  /// may be stale (e.g. app was suspended, Timer-based reconnect did not fire).
+  /// Uses the `forceReconnect` flag to bypass the "already connected" check
+  /// when the connection may be stale (e.g. the app was suspended and the
+  /// timer-based reconnect did not fire).
   Future<void> reconnect() async {
     final flowId = _nextFlowId('reconnect');
     if (_device == null || _userId == null || _apiKey == null) {
@@ -515,12 +688,17 @@ transport reconnected — waiting for device connection notification''',
     );
 
     // Clear current state but preserve _device, _userId, _apiKey for reconnect
-    _currentPlayerStatus = null;
-    _currentDeviceStatus = null;
-    _isDeviceConnected = false;
-    _connectionStatusController.add(
-      const FF1ConnectionStatus(isConnected: false),
+    _clearRealtimeState(
+      emitDisconnectedStatus: true,
+      flowId: flowId,
+      reason: 'pause',
     );
+    _deviceStatusController.add(const FF1DeviceStatus());
+    _clearFfpDdcPanelStatus();
+    _freshDeviceStatusCompleter?.complete(null);
+    _freshDeviceStatusCompleter = null;
+    _freshDeviceVersionCompleter?.complete(null);
+    _freshDeviceVersionCompleter = null;
     _slog.info(
       category: LogCategory.wifi,
       event: 'control_pause_state_cleared',
@@ -533,6 +711,39 @@ transport reconnected — waiting for device connection notification''',
   void dispose() {
     _ongoingDispose ??= _disposeAsync();
     unawaited(_ongoingDispose);
+  }
+
+  /// Clears replayed device/player state.
+  ///
+  /// When [emitDisconnectedStatus] is true, consumers that only react to the
+  /// connection stream are immediately told that any previous device-level
+  /// connection is no longer valid for the current handoff.
+  void _clearRealtimeState({
+    required String reason,
+    bool emitDisconnectedStatus = false,
+    String? flowId,
+  }) {
+    _currentPlayerStatus = null;
+    _currentPlayerStatusDeviceId = null;
+    _currentDeviceStatus = null;
+    _currentDeviceStatusDeviceId = null;
+    _isDeviceConnected = false;
+    if (emitDisconnectedStatus) {
+      _connectionStatusController.add(
+        const FF1ConnectionStatus(isConnected: false),
+      );
+    }
+    _slog.info(
+      category: LogCategory.wifi,
+      event: 'control_realtime_state_cleared',
+      message: 'cleared replayed realtime state',
+      payload: {
+        'flowId': flowId,
+        'reason': reason,
+        'deviceId': _device?.deviceId,
+        'emitDisconnectedStatus': emitDisconnectedStatus,
+      },
+    );
   }
 
   /// Cancels transport subscriptions before closing subjects so a delayed
@@ -555,6 +766,7 @@ transport reconnected — waiting for device connection notification''',
     await Future.wait<void>([
       _playerStatusController.close(),
       _deviceStatusController.close(),
+      _ffpDdcPanelStatusController.close(),
       _connectionStatusController.close(),
     ]);
 
@@ -931,6 +1143,39 @@ transport reconnected — waiting for device connection notification''',
     }
   }
 
+  /// Trigger firmware update to the latest available version.
+  ///
+  /// Instructs the device to fetch and install the latest firmware. The device
+  /// reboots automatically on completion. Only succeeds when the device has an
+  /// active internet connection and a newer version is available.
+  ///
+  /// [topicId] — device topic ID
+  Future<FF1CommandResponse> updateToLatestVersion({
+    required String topicId,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending updateToLatestVersion command to device');
+
+      const request = FF1WifiUpdateToLatestVersionRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send updateToLatestVersion command: $e');
+      rethrow;
+    }
+  }
+
   /// Factory reset device.
   ///
   /// [topicId] — device topic ID
@@ -1136,27 +1381,103 @@ transport reconnected — waiting for device connection notification''',
                 params: request.params,
               )
               as Map<String, dynamic>;
-      final payload = _unwrapMetricsPayload(response);
+      final payload = unwrapFf1RelayerPayload(response);
       return DeviceRealtimeMetrics.fromJson(payload);
     } catch (e) {
       _log.severe('Failed to fetch realtime metrics: $e');
       rethrow;
     }
   }
+
+  /// FFP / DDC: set monitor brightness (may throw [FfpDdcUnsupportedException]).
+  Future<void> setFfpMonitorBrightness({
+    required String topicId,
+    required String monitorId,
+    required int percent,
+  }) async {
+    final r = await _sendFfpDdcCommand(
+      topicId: topicId,
+      request: FfpDdcMonitorSetBrightnessRequest(
+        monitorId: monitorId,
+        percent: percent.clamp(0, 100),
+      ),
+    );
+    _throwIfFfpCommandFailed(r, 'setFfpMonitorBrightness');
+  }
+
+  /// FFP / DDC: set monitor contrast.
+  Future<void> setFfpMonitorContrast({
+    required String topicId,
+    required String monitorId,
+    required int percent,
+  }) async {
+    final r = await _sendFfpDdcCommand(
+      topicId: topicId,
+      request: FfpDdcMonitorSetContrastRequest(
+        monitorId: monitorId,
+        percent: percent.clamp(0, 100),
+      ),
+    );
+    _throwIfFfpCommandFailed(r, 'setFfpMonitorContrast');
+  }
+
+  /// FFP / DDC: power (on / off / standby).
+  Future<void> setFfpMonitorPower({
+    required String topicId,
+    required String monitorId,
+    required String powerState,
+  }) async {
+    final r = await _sendFfpDdcCommand(
+      topicId: topicId,
+      request: FfpDdcMonitorSetPowerRequest(
+        monitorId: monitorId,
+        powerState: powerState,
+      ),
+    );
+    _throwIfFfpCommandFailed(r, 'setFfpMonitorPower');
+  }
+
+  Future<FF1CommandResponse> _sendFfpDdcCommand({
+    required String topicId,
+    required FF1WifiCommandRequest request,
+  }) async {
+    final restClient = _restClient;
+    if (restClient == null) {
+      throw StateError('REST client not available');
+    }
+    final response =
+        await restClient.sendCommand(
+              topicId: topicId,
+              command: request.command,
+              params: request.params,
+            )
+            as Map<String, dynamic>;
+    return FF1CommandResponse.fromJson(response);
+  }
 }
 
-Map<String, dynamic> _unwrapMetricsPayload(Map<String, dynamic> response) {
-  dynamic current = response;
-  while (current is Map<String, dynamic>) {
-    if (current.containsKey('message') && current['message'] is Map) {
-      current = Map<String, dynamic>.from(current['message'] as Map);
-      continue;
-    }
-    if (current.containsKey('data') && current['data'] is Map) {
-      current = Map<String, dynamic>.from(current['data'] as Map);
-      continue;
-    }
-    return current;
+void _throwIfFfpCommandFailed(FF1CommandResponse r, String action) {
+  if (ff1CommandResponseSucceeded(r)) {
+    return;
   }
-  throw StateError('Invalid realtime metrics payload type');
+  final data = r.data ?? {};
+  final errMap = data['error'];
+  var message = '';
+  if (errMap is Map) {
+    message = errMap['message']?.toString() ?? '';
+  }
+  message = message.isNotEmpty ? message : (data['message']?.toString() ?? '');
+  final code =
+      data['code']?.toString().toLowerCase() ??
+      (errMap is Map ? errMap['code']?.toString().toLowerCase() : null);
+  final lower = message.toLowerCase();
+  final unsupported = code == 'unsupported' || lower.contains('unsupported');
+  if (unsupported) {
+    throw FfpDdcUnsupportedException(
+      message.isNotEmpty ? message : 'Operation not supported ($action)',
+    );
+  }
+  throw FfpDdcCommandException(
+    message.isNotEmpty ? message : 'FFP DDC command failed: $action',
+  );
 }

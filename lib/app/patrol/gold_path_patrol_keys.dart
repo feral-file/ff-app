@@ -59,6 +59,26 @@ abstract final class GoldPathPatrolKeys {
     'gold_path.onboarding.add_address.submit',
   );
 
+  /// Add-address screen text input.
+  static const onboardingAddAddressInput = ValueKey<String>(
+    'gold_path.onboarding.add_address.input',
+  );
+
+  /// Add-alias screen text input.
+  static const onboardingAddAliasInput = ValueKey<String>(
+    'gold_path.onboarding.add_alias.input',
+  );
+
+  /// Add-alias screen skip action.
+  static const onboardingAddAliasSkip = ValueKey<String>(
+    'gold_path.onboarding.add_alias.skip',
+  );
+
+  /// Add-alias screen submit action.
+  static const onboardingAddAliasSubmit = ValueKey<String>(
+    'gold_path.onboarding.add_alias.submit',
+  );
+
   /// Connect FF1 page action to retry connection.
   static const connectFF1Retry = ValueKey<String>(
     'gold_path.ff1_setup.connect_ff1.retry',

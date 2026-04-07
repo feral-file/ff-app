@@ -101,6 +101,13 @@ jobs:
           echo "FLUTTER_VERSION_CODE=${{ steps.fetch_build_number.outputs.build_number }}" >> $GITHUB_ENV
           echo "NAME_SUFFIX=main-${{ steps.fetch_build_number.outputs.build_number }}" >> $GITHUB_ENV
 
+      - name: Prepare Sentry release metadata
+        run: |
+          # Keep the workflow-created release identical to the shipped app
+          # version so Sentry can match uploaded DIFs to production crashes.
+          echo "SENTRY_RELEASE=com.feralfile.app@${{ steps.fetch_build_number.outputs.version_name }}+${{ steps.fetch_build_number.outputs.build_number }}" >> "$GITHUB_ENV"
+          echo "SENTRY_DIST=${{ steps.fetch_build_number.outputs.build_number }}" >> "$GITHUB_ENV"
+
       - uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: |
@@ -137,20 +144,21 @@ jobs:
       - name: Build appbundle
         run: flutter build appbundle --flavor production --release --build-name "${{ env.FLUTTER_VERSION_NAME }}" --build-number "${{ env.FLUTTER_VERSION_CODE }}"
 
-      # - name: Install sentry-cli & create Sentry release and upload Android debug symbols
-      #   env:
-      #     SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-      #     SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-      #     SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-      #   run: |
-      #     curl -sL https://sentry.io/get-cli/ | bash
-      #     sentry-cli --version
-      #     RELEASE="com.feralfile.app@${FLUTTER_VERSION_NAME}+${FLUTTER_VERSION_CODE}"
-      #     echo "Sentry release: $RELEASE"
-      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases new "$RELEASE"
-      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases set-commits "$RELEASE" --auto || true
-      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" debug-files upload --include-sources --wait build/app/intermediates/merged_native_libs/productionRelease/mergeProductionReleaseNativeLibs/out/lib
-      #     sentry-cli --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" releases finalize "$RELEASE"
+      - name: Create Sentry release and upload Android debug symbols
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          echo "Sentry release: $SENTRY_RELEASE"
+          sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" new "$SENTRY_RELEASE" || \
+            sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" info "$SENTRY_RELEASE"
+          sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" set-commits "$SENTRY_RELEASE" --auto || true
+          sentry-cli debug-files upload --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" \
+            --include-sources \
+            --wait \
+            build/app/intermediates/merged_native_libs/productionRelease/mergeProductionReleaseNativeLibs/out/lib
+          sentry-cli releases --org "$SENTRY_ORG" --project "$SENTRY_PROJECT" finalize "$SENTRY_RELEASE"
 
       - name: Release notes
         run: |

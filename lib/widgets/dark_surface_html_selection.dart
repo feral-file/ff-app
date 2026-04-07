@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 /// [Theme] with [TextSelectionThemeData] plus [SelectionArea] for HTML on dark
 /// content surfaces (grey info panels).
 ///
-/// Keeps selection highlight and body copy readable (feralfile-app#2578).
+/// Keeps selection highlight and body copy readable on dark surfaces.
 class DarkSurfaceHtmlSelection extends StatelessWidget {
   /// Creates a wrapper that applies dark-surface text selection styling.
   const DarkSurfaceHtmlSelection({

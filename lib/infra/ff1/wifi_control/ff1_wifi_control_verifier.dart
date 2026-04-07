@@ -6,6 +6,15 @@ bool ff1CommandResponseIsOk(FF1CommandResponse response) {
   return status == 'ok';
 }
 
+/// Resolves command success using the explicit payload flag when present.
+///
+/// Some relayer responses include both `status: ok` and `ok: false`. When that
+/// happens the nested `ok` flag is the authoritative result because it carries
+/// the command-level accept/reject outcome.
+bool ff1CommandResponseSucceeded(FF1CommandResponse response) {
+  return ff1CommandResponseOkFlag(response) ?? ff1CommandResponseIsOk(response);
+}
+
 /// Extracts nested `ok` flag from command response payload when present.
 bool? ff1CommandResponseOkFlag(FF1CommandResponse response) {
   final data = response.data;

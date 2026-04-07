@@ -186,6 +186,15 @@ class AppStateEntity {
   /// When true, subsequent seed syncs run in background without showing loading.
   bool hasCompletedSeedDownload;
 
+  /// JSON-encoded map of `deviceId → latestVersion` for firmware update
+  /// prompts the user chose to dismiss ("Later"). When a device's
+  /// `latestVersion` changes, the stored entry no longer matches and the
+  /// prompt reappears automatically.
+  ///
+  /// Stored as a JSON string to avoid requiring a separate ObjectBox entity
+  /// or a schema migration for a simple key/value map.
+  String dismissedUpdateVersionsJson;
+
   /// Last write timestamp for this singleton state.
   int updatedAtUs;
 
@@ -198,6 +207,7 @@ class AppStateEntity {
     this.hasSeenPlayToFf1Tooltip = false,
     this.isMigratedV2 = false,
     this.hasCompletedSeedDownload = false,
+    this.dismissedUpdateVersionsJson = '{}',
     required this.updatedAtUs,
   });
 }
