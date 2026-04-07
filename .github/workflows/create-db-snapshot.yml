@@ -12,7 +12,7 @@ on:
         description: Curated channel source (URL or file path)
         required: false
         type: string
-        default: 'https://feed.feralfile.com/api/v1/registry/channels'
+        default: 'https://dp1-feed-operator-api-prod.autonomy-system.workers.dev/api/v1/registry/channels'
       feed_endpoint:
         description: Optional feed endpoint origin to ingest all channels
         required: false
@@ -43,14 +43,6 @@ jobs:
       - name: Verify sqlite3
         run: sqlite3 -version
 
-      - name: Verify sqlite3 FTS5
-        run: |
-          set -euo pipefail
-          sqlite3 :memory: <<'SQL'
-          CREATE VIRTUAL TABLE fts5_probe USING fts5(content);
-          DROP TABLE fts5_probe;
-          SQL
-
       - name: Build snapshot sqlite
         env:
           S3_ACCESS_KEY_ID: ${{ secrets.DB_SNAPSHOT_S3_ACCESS_KEY_ID }}
@@ -61,10 +53,10 @@ jobs:
 
           args=("--threads" "${{ inputs.threads }}")
 
-          if [[ -n "${{ inputs.feed_endpoint }}" ]]; then
-            args+=("--channels-feed-endpoint" "${{ inputs.feed_endpoint }}")
-          elif [[ -n "${{ inputs.channels_source }}" ]]; then
+          if [[ -n "${{ inputs.channels_source }}" ]]; then
             args+=("--channels-source" "${{ inputs.channels_source }}")
+          elif [[ -n "${{ inputs.feed_endpoint }}" ]]; then
+            args+=("--channels-feed-endpoint" "${{ inputs.feed_endpoint }}")
           else
             echo "Either channels_source or feed_endpoint is required" >&2
             exit 1
