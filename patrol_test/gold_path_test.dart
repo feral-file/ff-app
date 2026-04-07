@@ -170,17 +170,16 @@ Future<void> _waitForOnboardingAddressActionsReady(
 }
 
 Future<bool> _isOnboardingAddressGateBlocked(PatrolIntegrationTester $) async {
-  final waitingLabelVisible = await _isVisible(
-    $('Please wait'),
-    timeout: const Duration(milliseconds: 300),
-  );
-  if (waitingLabelVisible) {
+  // Patrol records a failed step every time waitUntilVisible times out, even if
+  // the exception is caught. The onboarding gate text is transient on Android,
+  // so probing with Patrol waits can make a healthy flow look like a failed
+  // smoke test. Use the widget tester directly for these presence checks.
+  if ($.tester.any(find.text('Please wait'))) {
     return true;
   }
 
-  return _isVisible(
-    $('Address adds stay disabled while startup sync settles.'),
-    timeout: const Duration(milliseconds: 300),
+  return $.tester.any(
+    find.text('Address adds stay disabled while startup sync settles.'),
   );
 }
 
