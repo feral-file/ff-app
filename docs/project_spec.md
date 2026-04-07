@@ -124,6 +124,7 @@
   - cast to selected device through canvas/relayer client
   - consume live player/device status via Wi-Fi control streams
   - now-displaying bar shows current item and allows navigation to work detail
+  - collapsed bar can send shuffle and repeat (`setShuffle`, `setLoop`) when the device reports the corresponding fields in `player_status`; repeat uses a three-state loop contract aligned with FF1 wire values `none` | `playlist` | `one` (repeat off, repeat all, repeat one)
   - optional: use keyboard/touchpad interactions for remote control
 - Outcome: art is playing on FF1 with live status visible in app overlays/screens.
 - Important edge cases:
@@ -131,6 +132,8 @@
   - disconnected state: now-displaying bar reflects connection transitions
   - enrichment failures do not block playback UI (fallback DP-1 item data remains)
   - now-displaying stays aligned with live FF1 playback: enrichment uses local data when available and DP-1 fallback otherwise; same-playlist window changes (index shifts or scroll expansion) update immediately with DP-1 fallback rows while the cache/enrichment pass fills them in, and the bar avoids a loading flash except when the playing **list** from FF1 changes (see `docs/app_flows.md` for window and overlay behavior).
+  - `player_status.loopMode` is parsed with tolerant mapping: unknown future wire strings must not fail the whole status payload; shuffle visibility is gated only on presence of the `shuffle` field, and repeat visibility only on a successfully parsed `loopMode`, so an unrecognized loop value does not hide shuffle.
+  - when the effective playlist has only one work (prefer full `items` length from live `player_status`, else the visible now-displaying window length), the collapsed bar does not show shuffle or repeat controls.
 
 ### Flow: Maintenance and recovery
 
@@ -160,9 +163,9 @@
   - Who: FF1 owners.
   - Touches: `ff1_providers`, `connect_ff1_providers`, `connect_wifi_provider`, ObjectBox device service.
 - FF1 playback and remote control
-  - What: cast DP-1 payloads, live device/player status, now-displaying + keyboard/touch controls.
+  - What: cast DP-1 payloads, live device/player status, now-displaying + keyboard/touch controls; FF1 loop modes (`none` / `playlist` / `one`) and shuffle via Wi-Fi control; collapsed now-playing shuffle/repeat gated independently and hidden for single-work playback.
   - Who: paired-device users.
-  - Touches: canvas client, `ff1_wifi_*` providers/control/transport, now-displaying providers/UI.
+  - Touches: canvas client, `ff1_wifi_*` providers/control/transport, now-displaying providers/UI, `LoopMode` / `FF1PlayerStatus` in domain + `ff1_wifi_protocol`.
 - Offline-first seed database lifecycle
   - What: startup seed download/swap by ETag, `SeedDatabaseGate`, first-install
     lightweight bootstrap vs full DP-1 bootstrap after the file exists, rebind/
@@ -239,9 +242,9 @@
 
 - Purpose: monitor current playback and send interaction commands.
 - Entry points: global now-displaying bar (navigates to work detail), `/keyboard-control`.
-- Key actions: view current work/device state, open interact mode, send keyboard/touchpad commands.
-- Important data: active device, connection state, current item list/index, and enough metadata to keep playback UI usable when enrichment is incomplete.
-- Related modules: `now_displaying_provider`, `ff1_wifi_providers`, touchpad/keyboard events.
+- Key actions: view current work/device state; when firmware reports shuffle/loop fields and the playlist has more than one work, toggle shuffle and cycle repeat off → repeat all → repeat one (`setShuffle`, `setLoop` with wire `none` | `playlist` | `one`); open interact mode; send keyboard/touchpad commands.
+- Important data: active device, connection state, current item list/index, `player_status.shuffle` / parsed `loopMode`, and enough metadata to keep playback UI usable when enrichment is incomplete.
+- Related modules: `now_displaying_provider`, `ff1_wifi_providers` (`ff1SupportsShuffleProvider`, `ff1SupportsLoopProvider`), `loop_button.dart`, `shuffle_button.dart`, `collapsed_now_playing_bar.dart`, touchpad/keyboard events.
 
 ### Screen group: Settings / Release Notes / Document Viewer
 
@@ -316,6 +319,7 @@
   - pending addresses added before seed readiness must be migrated post-seed
 - Playback/control flows should remain resilient to enrichment failures (fallback item data still usable).
 - Now-displaying must remain aligned with live FF1 playback while keeping playback UI usable when enrichment is slow or fails.
+- FF1 `player_status` parsing must remain tolerant of unknown `loopMode` wire values (do not fail the whole notification); shuffle and repeat UI gates stay independent.
 - Large flow/screen changes must preserve existing onboarding, address-indexing, and FF1 setup reliability paths.
 
 ## 9. Verification strategy
