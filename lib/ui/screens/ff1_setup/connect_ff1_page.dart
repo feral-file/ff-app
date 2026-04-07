@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -30,6 +31,16 @@ enum _ConnectFF1Status {
   error,
   success,
   portalIsSet,
+}
+
+/// After setup tear-down completes, orchestrator/connect providers reset to
+/// idle and connected state is cleared — without a latch the UI would briefly
+/// map to the connecting presentation. These values hold the last success
+/// presentation until navigation replaces this route.
+enum _ExitSuccessUiLatch {
+  none,
+  standard,
+  portal,
 }
 
 final _log = Logger('ConnectFF1Page');
@@ -69,6 +80,9 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   DateTime? _startTime;
   FF1SetupOrchestratorNotifier? _setupOrchestrator;
   ProviderSubscription<FF1SetupState>? _setupSub;
+
+  /// See [_ExitSuccessUiLatch].
+  _ExitSuccessUiLatch _exitSuccessUiLatch = _ExitSuccessUiLatch.none;
 
   @override
   void initState() {
@@ -118,6 +132,13 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
   /// Map provider state to UI status
   _ConnectFF1Status _getStatusFromSetupState(FF1SetupState state) {
+    if (_exitSuccessUiLatch == _ExitSuccessUiLatch.portal) {
+      return _ConnectFF1Status.portalIsSet;
+    }
+    if (_exitSuccessUiLatch == _ExitSuccessUiLatch.standard) {
+      return _ConnectFF1Status.success;
+    }
+
     if (state.connected?.portalIsSet == true) {
       return _ConnectFF1Status.portalIsSet;
     }
@@ -136,11 +157,27 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     switch (effect) {
       case FF1SetupInternetReady(:final connected):
         _recordDuration(success: true);
-        if (!connected.portalIsSet && context.mounted) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!context.mounted) return;
-            context.replace(Routes.deviceConfiguration);
-          });
+        await ref.read(onboardingActionsProvider).completeOnboarding();
+        if (!context.mounted) return false;
+        // Tear down BLE + setup notifier state when leaving the flow. When
+        // [portalIsSet] is true the user stays on this screen until "Go to
+        // Settings" — defer tearDown to that button so connect state remains
+        // for the success UI.
+        if (!connected.portalIsSet) {
+          if (mounted) {
+            setState(() {
+              _exitSuccessUiLatch = _ExitSuccessUiLatch.standard;
+            });
+          }
+          await ref
+              .read(ff1SetupOrchestratorProvider.notifier)
+              .tearDownAfterSetupComplete();
+          if (context.mounted) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!context.mounted) return;
+              context.replace(Routes.deviceConfiguration);
+            });
+          }
         }
         return true;
       case FF1SetupNeedsWiFi(:final device):
@@ -200,6 +237,11 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   }
 
   Future<void> _startConnectFlow() async {
+    if (_exitSuccessUiLatch != _ExitSuccessUiLatch.none) {
+      setState(() {
+        _exitSuccessUiLatch = _ExitSuccessUiLatch.none;
+      });
+    }
     _startTime = DateTime.now();
     _log.info('[ConnectFF1Page] Start connecting to FF1');
     final notifier = _setupOrchestrator;
@@ -324,11 +366,21 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
                                 SizedBox(height: LayoutConstants.space5),
                                 PrimaryButton(
                                   onTap: () async {
-                                    if (context.mounted) {
-                                      context.replace(
-                                        Routes.deviceConfiguration,
-                                      );
+                                    if (mounted) {
+                                      setState(() {
+                                        _exitSuccessUiLatch =
+                                            _ExitSuccessUiLatch.portal;
+                                      });
                                     }
+                                    await ref
+                                        .read(
+                                          ff1SetupOrchestratorProvider.notifier,
+                                        )
+                                        .tearDownAfterSetupComplete();
+                                    if (!context.mounted) return;
+                                    context.replace(
+                                      Routes.deviceConfiguration,
+                                    );
                                   },
                                   text: 'Go to Settings',
                                 ),

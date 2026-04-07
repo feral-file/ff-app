@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
+import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
@@ -8,9 +11,13 @@ import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/wifi_point.dart';
 import 'package:app/infra/config/app_state_service.dart';
+import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
+import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
+import 'package:app/infra/ff1/ble_transport/ff1_ble_transport.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:app/ui/screens/send_wifi_credentials_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -65,6 +72,15 @@ void main() {
   ) async {
     final container = ProviderContainer(
       overrides: [
+        ff1ControlProvider.overrideWithValue(
+          FF1BleControl(transport: _NoopBleTransport()),
+        ),
+        onboardingActionsProvider.overrideWith(
+          (ref) => OnboardingService(
+            ref: ref,
+            appStateService: _MockAppStateService(),
+          ),
+        ),
         ff1SetupOrchestratorProvider.overrideWith(
           _ScriptedOrchestratorNotifier.new,
         ),
@@ -109,12 +125,12 @@ void main() {
 
     expect(find.byType(EnterWiFiPasswordScreen), findsOneWidget);
 
-    final orchestrator =
-        container.read(ff1SetupOrchestratorProvider.notifier)
-            as _ScriptedOrchestratorNotifier;
-    orchestrator.emitNavigate();
+    (container.read(ff1SetupOrchestratorProvider.notifier)
+            as _ScriptedOrchestratorNotifier)
+        .emitNavigate();
 
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
     for (var i = 0; i < 200; i++) {
       if (find
           .text('DEVICE_CONFIGURATION_MARKER', skipOffstage: false)
@@ -188,6 +204,60 @@ class _StubWifiControl extends FakeWifiControl {
   }) async {
     return FF1CommandResponse(status: 'ok');
   }
+}
+
+/// Minimal BLE transport for widget tests (no radio).
+class _NoopBleTransport implements FF1BleTransport {
+  @override
+  BluetoothAdapterState get adapterState => BluetoothAdapterState.on;
+
+  @override
+  Stream<BluetoothAdapterState> get adapterStateStream =>
+      const Stream<BluetoothAdapterState>.empty();
+
+  @override
+  Future<void> connect({
+    required BluetoothDevice blDevice,
+    Duration timeout = const Duration(seconds: 30),
+    int maxRetries = 0,
+    bool Function()? shouldContinue,
+  }) async {}
+
+  @override
+  Future<void> disconnect(BluetoothDevice device) async {}
+
+  @override
+  Future<bool> get isSupported async => true;
+
+  @override
+  Future<void> scan({
+    required FutureOr<bool> Function(List<BluetoothDevice> devices) onDevice,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {}
+
+  @override
+  Future<BluetoothDevice?> scanForName({
+    required String name,
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    return null;
+  }
+
+  @override
+  Future<FF1BleResponse> sendCommand({
+    required BluetoothDevice blDevice,
+    required FF1BleCommand command,
+    required FF1BleRequest request,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    return const FF1BleResponse(topic: 'noop', errorCode: 0, data: <String>[]);
+  }
+
+  @override
+  Future<void> waitUntilReady({
+    required BluetoothDevice blDevice,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {}
 }
 
 class _ScriptedOrchestratorNotifier extends FF1SetupOrchestratorNotifier {

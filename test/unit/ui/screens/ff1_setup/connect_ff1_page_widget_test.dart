@@ -312,9 +312,10 @@ void main() {
   );
 
   // Note on default success path testing:
-  // The production success path calls addDevice, completeOnboarding, and
-  // navigates to device configuration. It is verified by direct navigation in
-  // this file and broader orchestration/provider tests elsewhere.
+  // The production success path calls addDevice, completeOnboarding,
+  // tearDownAfterSetupComplete, and navigates to device configuration. It is
+  // verified by direct navigation in this file and broader orchestration/provider
+  // tests elsewhere.
 }
 
 /// Wi‑Fi idle so setup derivation does not override connect with Wi‑Fi steps
