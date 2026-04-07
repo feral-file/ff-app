@@ -542,14 +542,34 @@ final ff1ConnectionStatusStreamProvider = StreamProvider<FF1ConnectionStatus>(
   },
 );
 
-/// Whether the connected FF1 device supports shuffle and loop modes.
+/// Whether the device includes a [FF1PlayerStatus.shuffle] field (any value).
 ///
-/// Returns true only when the device has sent a player status that includes
-/// both [FF1PlayerStatus.shuffle] and [FF1PlayerStatus.loopMode] — these fields
-/// are absent on older firmware that does not support playback modes.
-final ff1SupportsPlaybackModesProvider = Provider<bool>((ref) {
+/// Older firmware omits the key; presence indicates shuffle can be driven from
+/// the app. Independent of [FF1PlayerStatus.loopMode] so an unknown future
+/// `loopMode` wire string (parsed as null) does not hide shuffle.
+final ff1SupportsShuffleProvider = Provider<bool>((ref) {
   final status = ref.watch(ff1CurrentPlayerStatusProvider);
-  return status != null && status.shuffle != null && status.loopMode != null;
+  return status != null && status.shuffle != null;
+});
+
+/// Whether we have a parsed [FF1PlayerStatus.loopMode] from the device.
+///
+/// Unknown wire values are dropped by [LoopMode.tryParse], so this stays false
+/// until the app understands the mode — repeat stays hidden, shuffle can still
+/// show via [ff1SupportsShuffleProvider].
+final ff1SupportsLoopProvider = Provider<bool>((ref) {
+  final status = ref.watch(ff1CurrentPlayerStatusProvider);
+  return status != null && status.loopMode != null;
+});
+
+/// True when the device exposes at least one playback-mode field we can use.
+///
+/// Prefer [ff1SupportsShuffleProvider] and [ff1SupportsLoopProvider] in UI so
+/// shuffle and repeat gate independently. This aggregate remains for call
+/// sites that only need a single “any playback chrome” flag (e.g. tests).
+final ff1SupportsPlaybackModesProvider = Provider<bool>((ref) {
+  return ref.watch(ff1SupportsShuffleProvider) ||
+      ref.watch(ff1SupportsLoopProvider);
 });
 
 /// Current player status provider (last received value)
