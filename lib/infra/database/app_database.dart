@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:app/domain/models/playlist.dart';
@@ -6,6 +7,7 @@ import 'package:app/infra/database/tables.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/isolate.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -69,8 +71,12 @@ class AppDatabase extends _$AppDatabase {
         if (from < 3) {
           await m.addColumn(items, items.enrichmentStatus);
         }
+        await _migratePlaylistsSignaturesJsonIfNeeded();
       },
       beforeOpen: (details) async {
+        // Repair DBs where user_version already advanced but `signatures_json`
+        // remains (failed migration, copied file, or pre-release builds).
+        await _migratePlaylistsSignaturesJsonIfNeeded();
         await _createIndexes();
         await _createFtsInfrastructure();
         if (details.wasCreated || details.hadUpgrade) {
@@ -78,6 +84,112 @@ class AppDatabase extends _$AppDatabase {
         }
       },
     );
+  }
+
+  /// Column names on `playlists` (for idempotent migrations).
+  Future<Set<String>> _playlistTableColumnNames() async {
+    final rows = await customSelect(
+      "SELECT name FROM pragma_table_info('playlists')",
+    ).get();
+    return rows.map((r) => r.read<String>('name')).toSet();
+  }
+
+  /// Migrates legacy `signatures_json` to `signature` + `signatures`.
+  ///
+  /// Idempotent: safe to call from [MigrationStrategy.onUpgrade] and
+  /// [MigrationStrategy.beforeOpen]. Legacy JSON arrays of strings move to
+  /// `signature` only; `signatures` stays `'[]'` until ingest fills objects.
+  ///
+  /// Also handles partial upgrades (new columns added but `signatures_json`
+  /// not dropped) and DBs whose `user_version` no longer triggers `onUpgrade`.
+  ///
+  /// **Operational note:** After a release we only need to support the old
+  /// seed window until the next SQLite snapshot is published and downloaded
+  /// via the next ETag. That follow-up snapshot removes `signatures_json`
+  /// entirely, so `signature` and `signatures` here are transitional columns.
+  /// If a migration reruns while `signatures_json` still exists, the helper
+  /// keeps any already-populated `signature` / `signatures` values and only
+  /// backfills rows that still need the legacy data copied across.
+  Future<void> _migratePlaylistsSignaturesJsonIfNeeded() async {
+    var cols = await _playlistTableColumnNames();
+    if (!cols.contains('signatures_json')) {
+      return;
+    }
+
+    if (!cols.contains('signature')) {
+      await customStatement('ALTER TABLE playlists ADD COLUMN signature TEXT');
+    }
+    if (!cols.contains('signatures')) {
+      await customStatement(
+        'ALTER TABLE playlists ADD COLUMN signatures TEXT NOT NULL '
+        "DEFAULT '[]'",
+      );
+    }
+
+    cols = await _playlistTableColumnNames();
+
+    final rows = await customSelect(
+      'SELECT id, signature, signatures, signatures_json FROM playlists',
+      readsFrom: {playlists},
+    ).get();
+
+    for (final row in rows) {
+      final id = row.read<String>('id');
+      final currentSignature = row.read<String?>('signature');
+      final currentSignatures = row.read<String>('signatures');
+      final signaturesJson = row.read<String>('signatures_json');
+      String? newSignature;
+      try {
+        final decoded = jsonDecode(signaturesJson);
+        if (decoded is List && decoded.isNotEmpty) {
+          final first = decoded.first;
+          if (first is String && first.trim().isNotEmpty) {
+            newSignature = first.trim();
+          }
+        }
+      } on Object {
+        // Leave newSignature null; keep default signatures column.
+      }
+
+      final keepLegacySignature =
+          currentSignature != null && currentSignature.trim().isNotEmpty;
+      final keepStructuredSignatures =
+          currentSignatures.trim().isNotEmpty &&
+          currentSignatures.trim() != '[]';
+      if (keepLegacySignature && keepStructuredSignatures) {
+        continue;
+      }
+
+      final nextSignature = keepLegacySignature
+          ? currentSignature
+          : newSignature;
+      final nextSignatures = keepStructuredSignatures
+          ? currentSignatures
+          : '[]';
+
+      await customStatement(
+        'UPDATE playlists SET signature = ?, signatures = ? WHERE id = ?',
+        <Object?>[nextSignature, nextSignatures, id],
+      );
+    }
+
+    if (cols.contains('signatures_json')) {
+      try {
+        await customStatement(
+          'ALTER TABLE playlists DROP COLUMN signatures_json',
+        );
+      } on Object catch (e, st) {
+        // SQLite < 3.35 has no DROP COLUMN; table keeps an extra legacy column.
+        // Drift ignores unknown columns on read; playlists remain readable.
+        // See method doc: acceptable until forced seed replace post-release.
+        _log.warning(
+          'Could not DROP COLUMN signatures_json (old SQLite?). '
+          'Leaving legacy column in place.',
+          e,
+          st,
+        );
+      }
+    }
   }
 
   /// Creates performance indexes.
@@ -353,8 +465,8 @@ class AppDatabase extends _$AppDatabase {
   /// Emits publisher id → display title when the publishers table changes.
   Stream<Map<int, String>> watchPublisherTitles() {
     return select(publishers).watch().map(
-          (rows) => {for (final r in rows) r.id: r.title},
-        );
+      (rows) => {for (final r in rows) r.id: r.title},
+    );
   }
 
   /// Watch playlists ordered by publisher_id, created_at_us (canonical order).
@@ -485,7 +597,8 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Watch channels by type, filtered to those with at least one playlist
-  /// entry. Emits when [channels], [playlists], or [playlist_entries] change.
+  /// entry. Emits when [channels] or [playlists] change, plus the
+  /// `playlist_entries` table used to determine whether a channel is visible.
   /// Use this instead of [watchChannels] when the UI must react to
   /// add/remove address or favorite changes.
   /// For localVirtual (type=1): also include channels with address playlists
@@ -498,8 +611,10 @@ class AppDatabase extends _$AppDatabase {
     final variables = <Variable>[Variable.withInt(type)];
     final limitClause = limit != null ? ' LIMIT ? OFFSET ?' : '';
     if (limit != null) {
-      variables.add(Variable.withInt(limit));
-      variables.add(Variable.withInt(offset));
+      variables.addAll([
+        Variable.withInt(limit),
+        Variable.withInt(offset),
+      ]);
     }
     // localVirtual (1): show channel if it has playlists with items OR
     // address-based playlists. dp1 (0): only playlists with items.
@@ -553,8 +668,10 @@ class AppDatabase extends _$AppDatabase {
     final variables = <Variable>[Variable.withInt(type)];
     final limitClause = limit != null ? ' LIMIT ? OFFSET ?' : '';
     if (limit != null) {
-      variables.add(Variable.withInt(limit));
-      variables.add(Variable.withInt(offset));
+      variables.addAll([
+        Variable.withInt(limit),
+        Variable.withInt(offset),
+      ]);
     }
     const addressBasedType = 1;
     final existsClause = type == addressBasedType
@@ -1470,10 +1587,11 @@ Future<bool> _resetDatabaseIfSchemaConflicts(
     probeDb = sqlite3.sqlite3.open(dbFile.path);
     final rows = probeDb.select('PRAGMA user_version');
     final userVersion = rows.isEmpty ? 0 : (rows.first.columnAt(0) as int);
-    final schemaCompatible = _isSchemaCompatibleV1(probeDb);
-    if (userVersion == _schemaVersionV1 && schemaCompatible) {
+    if (shouldSkipDatabaseResetForSchemaConflict(userVersion, probeDb)) {
       return false;
     }
+
+    final schemaCompatible = _isSchemaCompatibleV1(probeDb);
 
     _log.warning(
       'Schema conflict detected (found user_version=$userVersion, '
@@ -1497,6 +1615,30 @@ Future<bool> _resetDatabaseIfSchemaConflicts(
   }
 }
 
+/// Returns whether the on-disk schema matches the current app schema gate.
+///
+/// The legacy `playlists.signatures_json` layout remains acceptable because
+/// `beforeOpen` repairs it before the app starts reading rows, but any other
+/// missing table/column combination should force a reset.
+@visibleForTesting
+bool isAppDatabaseSchemaCompatibleForReset(sqlite3.Database db) {
+  return _isSchemaCompatibleV1(db);
+}
+
+/// Keeps the pre-open reset gate aligned with the current app schema version.
+///
+/// We only skip reset when the file reports the exact schema version the app
+/// knows how to open and the on-disk layout matches the expected tables and
+/// columns. Legacy `signatures_json` remains a narrow exception because
+/// `beforeOpen` repairs it before the first query reads playlist rows.
+@visibleForTesting
+bool shouldSkipDatabaseResetForSchemaConflict(
+  int userVersion,
+  sqlite3.Database db,
+) {
+  return userVersion == _schemaVersionV1 && _isSchemaCompatibleV1(db);
+}
+
 bool _isSchemaCompatibleV1(sqlite3.Database db) {
   const requiredTables = <String>{
     'publishers',
@@ -1514,28 +1656,118 @@ bool _isSchemaCompatibleV1(sqlite3.Database db) {
     return false;
   }
 
-  if (!_tableHasColumn(db, 'channels', 'publisher_id')) {
+  const requiredPublishersColumns = <String>{
+    'id',
+    'title',
+    'created_at_us',
+    'updated_at_us',
+  };
+  const requiredChannelsColumns = <String>{
+    'id',
+    'type',
+    'base_url',
+    'slug',
+    'publisher_id',
+    'title',
+    'curator',
+    'summary',
+    'cover_image_uri',
+    'created_at_us',
+    'updated_at_us',
+    'sort_order',
+  };
+  const requiredPlaylistsColumns = <String>{
+    'id',
+    'channel_id',
+    'type',
+    'base_url',
+    'dp_version',
+    'slug',
+    'title',
+    'created_at_us',
+    'updated_at_us',
+    'defaults_json',
+    'dynamic_queries_json',
+    'owner_address',
+    'owner_chain',
+    'sort_mode',
+    'item_count',
+  };
+  const requiredItemsColumns = <String>{
+    'id',
+    'kind',
+    'title',
+    'thumbnail_uri',
+    'duration_sec',
+    'provenance_json',
+    'source_uri',
+    'ref_uri',
+    'license',
+    'repro_json',
+    'override_json',
+    'display_json',
+    'list_artist_json',
+    'enrichment_status',
+    'updated_at_us',
+  };
+  const requiredPlaylistEntriesColumns = <String>{
+    'playlist_id',
+    'item_id',
+    'position',
+    'sort_key_us',
+    'updated_at_us',
+  };
+
+  if (!_tableHasColumns(db, 'publishers', requiredPublishersColumns)) {
     return false;
   }
-  if (!_tableHasColumn(db, 'items', 'list_artist_json')) {
+  if (!_tableHasColumns(db, 'channels', requiredChannelsColumns)) {
     return false;
   }
-  if (!_tableHasColumn(db, 'items', 'enrichment_status')) {
+  if (!_tableHasColumns(db, 'items', requiredItemsColumns)) {
+    return false;
+  }
+  if (!_tableHasColumns(
+    db,
+    'playlist_entries',
+    requiredPlaylistEntriesColumns,
+  )) {
+    return false;
+  }
+  if (!_tableHasColumns(db, 'playlists', requiredPlaylistsColumns)) {
+    return false;
+  }
+
+  final hasCurrentPlaylistSignatureLayout =
+      _tableHasColumn(db, 'playlists', 'signature') &&
+      _tableHasColumn(db, 'playlists', 'signatures');
+  final hasLegacyPlaylistSignatureLayout = _tableHasColumn(
+    db,
+    'playlists',
+    'signatures_json',
+  );
+
+  if (!hasCurrentPlaylistSignatureLayout && !hasLegacyPlaylistSignatureLayout) {
     return false;
   }
 
   return true;
 }
 
+bool _tableHasColumns(
+  sqlite3.Database db,
+  String table,
+  Set<String> columns,
+) {
+  final existingColumns = db
+      .select('PRAGMA table_info($table)')
+      .map((row) => row.columnAt(1).toString())
+      .toSet();
+  return existingColumns.containsAll(columns);
+}
+
 bool _tableHasColumn(sqlite3.Database db, String table, String column) {
-  final rows = db.select('PRAGMA table_info($table)');
-  for (final row in rows) {
-    final name = row.columnAt(1).toString();
-    if (name == column) {
-      return true;
-    }
-  }
-  return false;
+  return _tableHasColumns(db, table, {column});
 }
 
 Future<void> _deleteDatabaseFiles(File dbFile) async {

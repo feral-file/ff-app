@@ -1,5 +1,6 @@
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_signature.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 
@@ -23,6 +24,7 @@ class Playlist {
     this.slug,
     this.createdAt,
     this.updatedAt,
+    this.legacySignature,
     this.signatures,
     this.defaults,
     this.dynamicQueries,
@@ -86,8 +88,11 @@ class Playlist {
   /// Last update timestamp.
   final DateTime? updatedAt;
 
-  /// DP1 signatures as JSON array.
-  final List<String>? signatures;
+  /// Legacy single signature string (v1.0.x wire), if present.
+  final String? legacySignature;
+
+  /// DP-1 v1.1.0 structured signatures (multi-sig).
+  final List<DP1PlaylistSignature>? signatures;
 
   /// DP1 defaults configuration.
   final Map<String, dynamic>? defaults;
@@ -136,6 +141,7 @@ class Playlist {
           slug == other.slug &&
           createdAt == other.createdAt &&
           updatedAt == other.updatedAt &&
+          legacySignature == other.legacySignature &&
           listEquals(signatures, other.signatures) &&
           _mapEquals(defaults, other.defaults) &&
           listEquals(dynamicQueries, other.dynamicQueries) &&
@@ -158,6 +164,7 @@ class Playlist {
     slug,
     createdAt,
     updatedAt,
+    legacySignature,
     Object.hashAll(signatures ?? []),
     defaults != null ? _deepEquality.hash(defaults) : null,
     Object.hashAll(dynamicQueries ?? []),
@@ -181,7 +188,8 @@ class Playlist {
     String? slug,
     DateTime? createdAt,
     DateTime? updatedAt,
-    List<String>? signatures,
+    String? legacySignature,
+    List<DP1PlaylistSignature>? signatures,
     Map<String, dynamic>? defaults,
     List<DynamicQuery>? dynamicQueries,
     String? ownerAddress,
@@ -203,6 +211,7 @@ class Playlist {
       slug: slug ?? this.slug,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      legacySignature: legacySignature ?? this.legacySignature,
       signatures: signatures ?? this.signatures,
       defaults: defaults ?? this.defaults,
       dynamicQueries: dynamicQueries ?? this.dynamicQueries,
@@ -227,8 +236,10 @@ enum PlaylistType {
   favorite(2),
   ;
 
+  /// Stored column value for [Playlist.type] in SQLite.
   final int value;
 
+  // ignore: sort_constructors_first - enum field must precede generative constructor.
   const PlaylistType(this.value);
 
   /// Serializes to string for query params / persistence.

@@ -134,9 +134,9 @@ void main() {
       '''
       INSERT OR IGNORE INTO playlists (
         id, channel_id, type, base_url, dp_version, slug, title,
-        created_at_us, updated_at_us, signatures_json, defaults_json,
+        created_at_us, updated_at_us, signature, signatures, defaults_json,
         dynamic_queries_json, owner_address, owner_chain, sort_mode, item_count
-      ) VALUES (?, NULL, 1, NULL, NULL, NULL, ?, ?, ?, '[]', NULL, NULL, ?, NULL, 1, 0)
+      ) VALUES (?, NULL, 1, NULL, NULL, NULL, ?, ?, ?, NULL, '[]', NULL, NULL, ?, NULL, 1, 0)
       ''',
       <Object>[
         'pl_$address',

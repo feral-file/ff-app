@@ -96,8 +96,11 @@ class Playlists extends Table {
   /// Last update timestamp in microseconds.
   Int64Column get updatedAtUs => int64()();
 
-  /// DP1 signatures stored as JSON array.
-  TextColumn get signaturesJson => text()();
+  /// Legacy single-signature string (v1.0.x), e.g. `ed25519:<hex>`.
+  TextColumn get signature => text().nullable()();
+
+  /// DP-1 v1.1.0 `signatures` array as JSON (list of signature objects).
+  TextColumn get signatures => text().withDefault(const Constant('[]'))();
 
   /// DP1 defaults configuration.
   TextColumn get defaultsJson => text().nullable()();
@@ -164,7 +167,7 @@ class Items extends Table {
   /// Display configuration as JSON.
   TextColumn get displayJson => text().nullable()();
 
-  /// List of artists as JSON (List<DP1Artist>).
+  /// List of artists as JSON (list of DP1Artist).
   TextColumn get listArtistJson => text().nullable()();
 
   /// Enrichment status: 0 = pending, 1 = enriched, 2 = failed.

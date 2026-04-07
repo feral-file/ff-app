@@ -6,6 +6,7 @@ import 'package:app/infra/logging/app_logger.dart';
 import 'package:app/infra/logging/structured_logger.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:dio/dio.dart';
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
@@ -20,6 +21,12 @@ final StructuredLogger _startupLog = AppStructuredLog.forLogger(
 Future<void> main() async {
   // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  // [database_service_provider] intentionally opens a second in-memory
+  // [AppDatabase] while the seed database is not ready, alongside the
+  // on-disk instance. Drift warns on multiple [AppDatabase] instances by
+  // default; that pattern is expected here.
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
   // Load configuration.
   await AppConfig.initialize();

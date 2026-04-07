@@ -350,6 +350,61 @@ ORDER BY c.id;
   }
 });
 
+test('dryrun feed-endpoint ingest preserves legacy and structured playlist signatures', async () => {
+  const server = await startFeedServer({
+    channels: [
+      {
+        id: 'channel-a',
+        title: 'Channel A',
+        playlists: [
+          {
+            id: 'playlist-a',
+            title: 'Playlist A',
+            signature: 'legacy-signature',
+            signatures: [{sig: 'structured-signature'}],
+          },
+        ],
+      },
+    ],
+  });
+
+  try {
+    cleanupOutputDatabase();
+    await runBuilder(['--channels-feed-endpoint', server.origin, '--dryrun', '--threads', '1']);
+
+    const signatures = queryRows(
+      "SELECT COALESCE(signature, 'NULL') || '|' || signatures FROM playlists WHERE id = 'playlist-a';",
+    );
+    assert.deepEqual(signatures, ['legacy-signature|[{"sig":"structured-signature"}]']);
+  } finally {
+    await server.close();
+    cleanupOutputDatabase();
+  }
+});
+
+test('dryrun feed-endpoint emits schema version 3', async () => {
+  const server = await startFeedServer({
+    channels: [
+      {
+        id: 'channel-a',
+        title: 'Channel A',
+        playlists: [{id: 'playlist-a', title: 'Playlist A'}],
+      },
+    ],
+  });
+
+  try {
+    cleanupOutputDatabase();
+    await runBuilder(['--channels-feed-endpoint', server.origin, '--dryrun', '--threads', '1']);
+
+    const userVersion = queryRows('PRAGMA user_version;');
+    assert.deepEqual(userVersion, ['3']);
+  } finally {
+    await server.close();
+    cleanupOutputDatabase();
+  }
+});
+
 test('dryrun registry ingest keeps a multi-origin registry publisher unified', async () => {
   const serverA = await startFeedServer({
     channels: [
@@ -582,6 +637,12 @@ async function startFeedServer({channels}) {
           title: playlist.title,
           created: '2024-01-02T00:00:00Z',
           items: [],
+          signature: playlist.signature,
+          signatures: playlist.signatures,
+          dpVersion: playlist.dpVersion,
+          slug: playlist.slug,
+          defaults: playlist.defaults,
+          dynamicQueries: playlist.dynamicQueries,
         })),
         hasMore: false,
       }));

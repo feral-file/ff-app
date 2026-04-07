@@ -1162,16 +1162,28 @@ class $PlaylistsTable extends Playlists
     type: DriftSqlType.bigInt,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _signaturesJsonMeta = const VerificationMeta(
-    'signaturesJson',
+  static const VerificationMeta _signatureMeta = const VerificationMeta(
+    'signature',
   );
   @override
-  late final GeneratedColumn<String> signaturesJson = GeneratedColumn<String>(
-    'signatures_json',
+  late final GeneratedColumn<String> signature = GeneratedColumn<String>(
+    'signature',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _signaturesMeta = const VerificationMeta(
+    'signatures',
+  );
+  @override
+  late final GeneratedColumn<String> signatures = GeneratedColumn<String>(
+    'signatures',
     aliasedName,
     false,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
   );
   static const VerificationMeta _defaultsJsonMeta = const VerificationMeta(
     'defaultsJson',
@@ -1251,7 +1263,8 @@ class $PlaylistsTable extends Playlists
     title,
     createdAtUs,
     updatedAtUs,
-    signaturesJson,
+    signature,
+    signatures,
     defaultsJson,
     dynamicQueriesJson,
     ownerAddress,
@@ -1338,16 +1351,17 @@ class $PlaylistsTable extends Playlists
     } else if (isInserting) {
       context.missing(_updatedAtUsMeta);
     }
-    if (data.containsKey('signatures_json')) {
+    if (data.containsKey('signature')) {
       context.handle(
-        _signaturesJsonMeta,
-        signaturesJson.isAcceptableOrUnknown(
-          data['signatures_json']!,
-          _signaturesJsonMeta,
-        ),
+        _signatureMeta,
+        signature.isAcceptableOrUnknown(data['signature']!, _signatureMeta),
       );
-    } else if (isInserting) {
-      context.missing(_signaturesJsonMeta);
+    }
+    if (data.containsKey('signatures')) {
+      context.handle(
+        _signaturesMeta,
+        signatures.isAcceptableOrUnknown(data['signatures']!, _signaturesMeta),
+      );
     }
     if (data.containsKey('defaults_json')) {
       context.handle(
@@ -1441,9 +1455,13 @@ class $PlaylistsTable extends Playlists
         DriftSqlType.bigInt,
         data['${effectivePrefix}updated_at_us'],
       )!,
-      signaturesJson: attachedDatabase.typeMapping.read(
+      signature: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}signatures_json'],
+        data['${effectivePrefix}signature'],
+      ),
+      signatures: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}signatures'],
       )!,
       defaultsJson: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -1506,8 +1524,11 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
   /// Last update timestamp in microseconds.
   final BigInt updatedAtUs;
 
-  /// DP1 signatures stored as JSON array.
-  final String signaturesJson;
+  /// Legacy single-signature string (v1.0.x), e.g. `ed25519:<hex>`.
+  final String? signature;
+
+  /// DP-1 v1.1.0 `signatures` array as JSON (list of signature objects).
+  final String signatures;
 
   /// DP1 defaults configuration.
   final String? defaultsJson;
@@ -1536,7 +1557,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
     required this.title,
     required this.createdAtUs,
     required this.updatedAtUs,
-    required this.signaturesJson,
+    this.signature,
+    required this.signatures,
     this.defaultsJson,
     this.dynamicQueriesJson,
     this.ownerAddress,
@@ -1564,7 +1586,10 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
     map['title'] = Variable<String>(title);
     map['created_at_us'] = Variable<BigInt>(createdAtUs);
     map['updated_at_us'] = Variable<BigInt>(updatedAtUs);
-    map['signatures_json'] = Variable<String>(signaturesJson);
+    if (!nullToAbsent || signature != null) {
+      map['signature'] = Variable<String>(signature);
+    }
+    map['signatures'] = Variable<String>(signatures);
     if (!nullToAbsent || defaultsJson != null) {
       map['defaults_json'] = Variable<String>(defaultsJson);
     }
@@ -1599,7 +1624,10 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
       title: Value(title),
       createdAtUs: Value(createdAtUs),
       updatedAtUs: Value(updatedAtUs),
-      signaturesJson: Value(signaturesJson),
+      signature: signature == null && nullToAbsent
+          ? const Value.absent()
+          : Value(signature),
+      signatures: Value(signatures),
       defaultsJson: defaultsJson == null && nullToAbsent
           ? const Value.absent()
           : Value(defaultsJson),
@@ -1632,7 +1660,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
       title: serializer.fromJson<String>(json['title']),
       createdAtUs: serializer.fromJson<BigInt>(json['createdAtUs']),
       updatedAtUs: serializer.fromJson<BigInt>(json['updatedAtUs']),
-      signaturesJson: serializer.fromJson<String>(json['signaturesJson']),
+      signature: serializer.fromJson<String?>(json['signature']),
+      signatures: serializer.fromJson<String>(json['signatures']),
       defaultsJson: serializer.fromJson<String?>(json['defaultsJson']),
       dynamicQueriesJson: serializer.fromJson<String?>(
         json['dynamicQueriesJson'],
@@ -1656,7 +1685,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
       'title': serializer.toJson<String>(title),
       'createdAtUs': serializer.toJson<BigInt>(createdAtUs),
       'updatedAtUs': serializer.toJson<BigInt>(updatedAtUs),
-      'signaturesJson': serializer.toJson<String>(signaturesJson),
+      'signature': serializer.toJson<String?>(signature),
+      'signatures': serializer.toJson<String>(signatures),
       'defaultsJson': serializer.toJson<String?>(defaultsJson),
       'dynamicQueriesJson': serializer.toJson<String?>(dynamicQueriesJson),
       'ownerAddress': serializer.toJson<String?>(ownerAddress),
@@ -1676,7 +1706,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
     String? title,
     BigInt? createdAtUs,
     BigInt? updatedAtUs,
-    String? signaturesJson,
+    Value<String?> signature = const Value.absent(),
+    String? signatures,
     Value<String?> defaultsJson = const Value.absent(),
     Value<String?> dynamicQueriesJson = const Value.absent(),
     Value<String?> ownerAddress = const Value.absent(),
@@ -1693,7 +1724,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
     title: title ?? this.title,
     createdAtUs: createdAtUs ?? this.createdAtUs,
     updatedAtUs: updatedAtUs ?? this.updatedAtUs,
-    signaturesJson: signaturesJson ?? this.signaturesJson,
+    signature: signature.present ? signature.value : this.signature,
+    signatures: signatures ?? this.signatures,
     defaultsJson: defaultsJson.present ? defaultsJson.value : this.defaultsJson,
     dynamicQueriesJson: dynamicQueriesJson.present
         ? dynamicQueriesJson.value
@@ -1718,9 +1750,10 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
       updatedAtUs: data.updatedAtUs.present
           ? data.updatedAtUs.value
           : this.updatedAtUs,
-      signaturesJson: data.signaturesJson.present
-          ? data.signaturesJson.value
-          : this.signaturesJson,
+      signature: data.signature.present ? data.signature.value : this.signature,
+      signatures: data.signatures.present
+          ? data.signatures.value
+          : this.signatures,
       defaultsJson: data.defaultsJson.present
           ? data.defaultsJson.value
           : this.defaultsJson,
@@ -1750,7 +1783,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
           ..write('title: $title, ')
           ..write('createdAtUs: $createdAtUs, ')
           ..write('updatedAtUs: $updatedAtUs, ')
-          ..write('signaturesJson: $signaturesJson, ')
+          ..write('signature: $signature, ')
+          ..write('signatures: $signatures, ')
           ..write('defaultsJson: $defaultsJson, ')
           ..write('dynamicQueriesJson: $dynamicQueriesJson, ')
           ..write('ownerAddress: $ownerAddress, ')
@@ -1772,7 +1806,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
     title,
     createdAtUs,
     updatedAtUs,
-    signaturesJson,
+    signature,
+    signatures,
     defaultsJson,
     dynamicQueriesJson,
     ownerAddress,
@@ -1793,7 +1828,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
           other.title == this.title &&
           other.createdAtUs == this.createdAtUs &&
           other.updatedAtUs == this.updatedAtUs &&
-          other.signaturesJson == this.signaturesJson &&
+          other.signature == this.signature &&
+          other.signatures == this.signatures &&
           other.defaultsJson == this.defaultsJson &&
           other.dynamicQueriesJson == this.dynamicQueriesJson &&
           other.ownerAddress == this.ownerAddress &&
@@ -1812,7 +1848,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
   final Value<String> title;
   final Value<BigInt> createdAtUs;
   final Value<BigInt> updatedAtUs;
-  final Value<String> signaturesJson;
+  final Value<String?> signature;
+  final Value<String> signatures;
   final Value<String?> defaultsJson;
   final Value<String?> dynamicQueriesJson;
   final Value<String?> ownerAddress;
@@ -1830,7 +1867,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
     this.title = const Value.absent(),
     this.createdAtUs = const Value.absent(),
     this.updatedAtUs = const Value.absent(),
-    this.signaturesJson = const Value.absent(),
+    this.signature = const Value.absent(),
+    this.signatures = const Value.absent(),
     this.defaultsJson = const Value.absent(),
     this.dynamicQueriesJson = const Value.absent(),
     this.ownerAddress = const Value.absent(),
@@ -1849,7 +1887,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
     required String title,
     required BigInt createdAtUs,
     required BigInt updatedAtUs,
-    required String signaturesJson,
+    this.signature = const Value.absent(),
+    this.signatures = const Value.absent(),
     this.defaultsJson = const Value.absent(),
     this.dynamicQueriesJson = const Value.absent(),
     this.ownerAddress = const Value.absent(),
@@ -1862,7 +1901,6 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
        title = Value(title),
        createdAtUs = Value(createdAtUs),
        updatedAtUs = Value(updatedAtUs),
-       signaturesJson = Value(signaturesJson),
        sortMode = Value(sortMode);
   static Insertable<PlaylistData> custom({
     Expression<String>? id,
@@ -1874,7 +1912,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
     Expression<String>? title,
     Expression<BigInt>? createdAtUs,
     Expression<BigInt>? updatedAtUs,
-    Expression<String>? signaturesJson,
+    Expression<String>? signature,
+    Expression<String>? signatures,
     Expression<String>? defaultsJson,
     Expression<String>? dynamicQueriesJson,
     Expression<String>? ownerAddress,
@@ -1893,7 +1932,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
       if (title != null) 'title': title,
       if (createdAtUs != null) 'created_at_us': createdAtUs,
       if (updatedAtUs != null) 'updated_at_us': updatedAtUs,
-      if (signaturesJson != null) 'signatures_json': signaturesJson,
+      if (signature != null) 'signature': signature,
+      if (signatures != null) 'signatures': signatures,
       if (defaultsJson != null) 'defaults_json': defaultsJson,
       if (dynamicQueriesJson != null)
         'dynamic_queries_json': dynamicQueriesJson,
@@ -1915,7 +1955,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
     Value<String>? title,
     Value<BigInt>? createdAtUs,
     Value<BigInt>? updatedAtUs,
-    Value<String>? signaturesJson,
+    Value<String?>? signature,
+    Value<String>? signatures,
     Value<String?>? defaultsJson,
     Value<String?>? dynamicQueriesJson,
     Value<String?>? ownerAddress,
@@ -1934,7 +1975,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
       title: title ?? this.title,
       createdAtUs: createdAtUs ?? this.createdAtUs,
       updatedAtUs: updatedAtUs ?? this.updatedAtUs,
-      signaturesJson: signaturesJson ?? this.signaturesJson,
+      signature: signature ?? this.signature,
+      signatures: signatures ?? this.signatures,
       defaultsJson: defaultsJson ?? this.defaultsJson,
       dynamicQueriesJson: dynamicQueriesJson ?? this.dynamicQueriesJson,
       ownerAddress: ownerAddress ?? this.ownerAddress,
@@ -1975,8 +2017,11 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
     if (updatedAtUs.present) {
       map['updated_at_us'] = Variable<BigInt>(updatedAtUs.value);
     }
-    if (signaturesJson.present) {
-      map['signatures_json'] = Variable<String>(signaturesJson.value);
+    if (signature.present) {
+      map['signature'] = Variable<String>(signature.value);
+    }
+    if (signatures.present) {
+      map['signatures'] = Variable<String>(signatures.value);
     }
     if (defaultsJson.present) {
       map['defaults_json'] = Variable<String>(defaultsJson.value);
@@ -2014,7 +2059,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
           ..write('title: $title, ')
           ..write('createdAtUs: $createdAtUs, ')
           ..write('updatedAtUs: $updatedAtUs, ')
-          ..write('signaturesJson: $signaturesJson, ')
+          ..write('signature: $signature, ')
+          ..write('signatures: $signatures, ')
           ..write('defaultsJson: $defaultsJson, ')
           ..write('dynamicQueriesJson: $dynamicQueriesJson, ')
           ..write('ownerAddress: $ownerAddress, ')
@@ -4108,7 +4154,8 @@ typedef $$PlaylistsTableCreateCompanionBuilder =
       required String title,
       required BigInt createdAtUs,
       required BigInt updatedAtUs,
-      required String signaturesJson,
+      Value<String?> signature,
+      Value<String> signatures,
       Value<String?> defaultsJson,
       Value<String?> dynamicQueriesJson,
       Value<String?> ownerAddress,
@@ -4128,7 +4175,8 @@ typedef $$PlaylistsTableUpdateCompanionBuilder =
       Value<String> title,
       Value<BigInt> createdAtUs,
       Value<BigInt> updatedAtUs,
-      Value<String> signaturesJson,
+      Value<String?> signature,
+      Value<String> signatures,
       Value<String?> defaultsJson,
       Value<String?> dynamicQueriesJson,
       Value<String?> ownerAddress,
@@ -4192,8 +4240,13 @@ class $$PlaylistsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get signaturesJson => $composableBuilder(
-    column: $table.signaturesJson,
+  ColumnFilters<String> get signature => $composableBuilder(
+    column: $table.signature,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get signatures => $composableBuilder(
+    column: $table.signatures,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4282,8 +4335,13 @@ class $$PlaylistsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get signaturesJson => $composableBuilder(
-    column: $table.signaturesJson,
+  ColumnOrderings<String> get signature => $composableBuilder(
+    column: $table.signature,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get signatures => $composableBuilder(
+    column: $table.signatures,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -4358,8 +4416,11 @@ class $$PlaylistsTableAnnotationComposer
     builder: (column) => column,
   );
 
-  GeneratedColumn<String> get signaturesJson => $composableBuilder(
-    column: $table.signaturesJson,
+  GeneratedColumn<String> get signature =>
+      $composableBuilder(column: $table.signature, builder: (column) => column);
+
+  GeneratedColumn<String> get signatures => $composableBuilder(
+    column: $table.signatures,
     builder: (column) => column,
   );
 
@@ -4430,7 +4491,8 @@ class $$PlaylistsTableTableManager
                 Value<String> title = const Value.absent(),
                 Value<BigInt> createdAtUs = const Value.absent(),
                 Value<BigInt> updatedAtUs = const Value.absent(),
-                Value<String> signaturesJson = const Value.absent(),
+                Value<String?> signature = const Value.absent(),
+                Value<String> signatures = const Value.absent(),
                 Value<String?> defaultsJson = const Value.absent(),
                 Value<String?> dynamicQueriesJson = const Value.absent(),
                 Value<String?> ownerAddress = const Value.absent(),
@@ -4448,7 +4510,8 @@ class $$PlaylistsTableTableManager
                 title: title,
                 createdAtUs: createdAtUs,
                 updatedAtUs: updatedAtUs,
-                signaturesJson: signaturesJson,
+                signature: signature,
+                signatures: signatures,
                 defaultsJson: defaultsJson,
                 dynamicQueriesJson: dynamicQueriesJson,
                 ownerAddress: ownerAddress,
@@ -4468,7 +4531,8 @@ class $$PlaylistsTableTableManager
                 required String title,
                 required BigInt createdAtUs,
                 required BigInt updatedAtUs,
-                required String signaturesJson,
+                Value<String?> signature = const Value.absent(),
+                Value<String> signatures = const Value.absent(),
                 Value<String?> defaultsJson = const Value.absent(),
                 Value<String?> dynamicQueriesJson = const Value.absent(),
                 Value<String?> ownerAddress = const Value.absent(),
@@ -4486,7 +4550,8 @@ class $$PlaylistsTableTableManager
                 title: title,
                 createdAtUs: createdAtUs,
                 updatedAtUs: updatedAtUs,
-                signaturesJson: signaturesJson,
+                signature: signature,
+                signatures: signatures,
                 defaultsJson: defaultsJson,
                 dynamicQueriesJson: dynamicQueriesJson,
                 ownerAddress: ownerAddress,

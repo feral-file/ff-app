@@ -71,6 +71,7 @@ class DP1PlaylistResponse {
           .map(DP1PlaylistItem.fromJson)
           .toList();
 
+      final wireSigs = dp1PlaylistSignaturesFromWire(json);
       return DP1Playlist(
         dpVersion: (json['dpVersion'] as String?) ?? '',
         id: (json['id'] as String?) ?? '',
@@ -79,7 +80,8 @@ class DP1PlaylistResponse {
         created: created,
         defaults: json['defaults'] as Map<String, dynamic>?,
         items: items,
-        signatures: dp1PlaylistSignaturesFromWire(json),
+        legacySignature: wireSigs.legacy,
+        signatures: wireSigs.structured,
         dynamicQueries: (json['dynamicQueries'] == null)
             ? []
             : (List<dynamic>.from(json['dynamicQueries'] as List))

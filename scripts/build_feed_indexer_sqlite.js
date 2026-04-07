@@ -75,10 +75,10 @@ query getTokens(
 }
 `;
 const REMOTE_CONFIG_URL =
-  'https://dp1-feed-operator-api-prod.autonomy-system.workers.dev/api/v1/registry/channels';
+  'https://feed.feralfile.com/api/v1/registry/channels';
 const DEFAULT_CHANNEL_SOURCE = REMOTE_CONFIG_URL;
 const INDEXER_API_URL = 'https://indexer-v2.feralfile.com';
-const INDEXER_BATCH_SIZE = 50;
+const INDEXER_BATCH_SIZE = 255;
 
 const ARGS = parseArgs(process.argv.slice(2));
 
@@ -828,17 +828,41 @@ function isUnscopedExplicitPublisherKey(publisherKey) {
   return isExplicitPublisherKey(publisherKey) && !publisherKey.includes('::origin:');
 }
 
+/**
+ * DP-1 playlist core schema (e.g. v1.1.0 playlist.json):
+ * - `signature`: legacy single string (`ed25519:<hex>`), deprecated.
+ * - `signatures`: array of Signature objects { alg, kid, ts, payload_hash, role, sig }.
+ *
+ * Returns DB columns: legacy string (or null) and JSON array of objects only (never stringified legacy inside the array).
+ */
+function parsePlaylistSignatureColumns(playlist) {
+  const legacy =
+    typeof playlist.signature === 'string' && playlist.signature.trim() !== ''
+      ? playlist.signature.trim()
+      : null;
+
+  const objects = [];
+  if (Array.isArray(playlist.signatures)) {
+    for (const entry of playlist.signatures) {
+      if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+        objects.push(entry);
+      }
+    }
+  }
+
+  return {
+    signature: legacy,
+    signatures: JSON.stringify(objects),
+  };
+}
+
 function ingestChannelPlaylists(data, channel, playlists, baseUrl) {
   for (const playlist of playlists) {
     if (!playlist?.id) {
       continue;
     }
     const createdAtUs = toMicros(playlist.created) || NOW_US;
-    const signature = typeof playlist.signature === 'string' ? playlist.signature : '';
-    const signaturesRaw = Array.isArray(playlist.signatures)
-      ? playlist.signatures
-      : (signature ? [signature] : []);
-    const signatures = signaturesRaw.map((s) => String(s));
+    const {signature, signatures} = parsePlaylistSignatureColumns(playlist);
     const dynamicQueries = Array.isArray(playlist.dynamicQueries)
       ? playlist.dynamicQueries
       : [];
@@ -855,7 +879,8 @@ function ingestChannelPlaylists(data, channel, playlists, baseUrl) {
       title: playlist.title || '',
       created_at_us: createdAtUs,
       updated_at_us: createdAtUs,
-      signatures_json: JSON.stringify(signatures),
+      signature,
+      signatures,
       defaults_json: playlist.defaults ? JSON.stringify(playlist.defaults) : null,
       dynamic_queries_json: dynamicQueries.length > 0 ? JSON.stringify(dynamicQueries) : null,
       owner_address: null,
@@ -995,7 +1020,7 @@ function provenanceToCid(provenance) {
 async function fetchIndexerTokensByCids({
   indexerApiUrl,
   cids,
-  batchSize = 50,
+  batchSize = 255,
   channelId = '',
 }) {
   const out = new Map();
@@ -1269,7 +1294,8 @@ CREATE TABLE IF NOT EXISTS playlists (
   title TEXT NOT NULL,
   created_at_us INTEGER NOT NULL,
   updated_at_us INTEGER NOT NULL,
-  signatures_json TEXT NOT NULL,
+  signature TEXT,
+  signatures TEXT NOT NULL,
   defaults_json TEXT,
   dynamic_queries_json TEXT,
   owner_address TEXT,
@@ -1462,7 +1488,8 @@ END;`);
       'title',
       'created_at_us',
       'updated_at_us',
-      'signatures_json',
+      'signature',
+      'signatures',
       'defaults_json',
       'dynamic_queries_json',
       'owner_address',

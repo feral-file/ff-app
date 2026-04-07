@@ -162,7 +162,6 @@ void main() {
         title: 'Playlist 1',
         createdAtUs: nowUs,
         updatedAtUs: nowUs,
-        signaturesJson: '[]',
         sortMode: 0,
       ),
     );
