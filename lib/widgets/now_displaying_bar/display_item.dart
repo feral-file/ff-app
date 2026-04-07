@@ -32,69 +32,75 @@ class NowDisplayingDisplayItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final opacity = isPlaying ? 1.0 : 0.5;
 
+    // Transparent fill matches e.g. [WorkGridCard]: full-bounds hit target so
+    // taps register outside text/thumbnail (Row flex padding).
     return GestureDetector(
       onTap: onTap,
       child: Opacity(
         opacity: opacity,
-        child: Row(
-          crossAxisAlignment: isInExpandedView
-              ? CrossAxisAlignment.center
-              : CrossAxisAlignment.start,
-          children: [
-            _Thumbnail(url: item.thumbnailUrl),
-            SizedBox(width: LayoutConstants.nowDisplayingDisplayItemGap),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (deviceName != null)
-                    Text(
-                      deviceName!.toUpperCase(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.displayItemDeviceName(context).white,
-                    ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+        child: ColoredBox(
+          color: Colors.transparent,
+          child: Row(
+            crossAxisAlignment: isInExpandedView
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
+            children: [
+              _Thumbnail(url: item.thumbnailUrl),
+              SizedBox(width: LayoutConstants.nowDisplayingDisplayItemGap),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (deviceName != null)
                       Text(
-                        item.artistName,
+                        deviceName!.toUpperCase(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: ContentRhythm.supporting(
-                          context,
-                        ).copyWith(color: Colors.white),
+                        style:
+                            AppTypography.displayItemDeviceName(context).white,
                       ),
-                      Transform.translate(
-                        offset: const Offset(
-                          0,
-                          LayoutConstants
-                              .nowDisplayingDisplayItemTextArtworkGap,
-                        ),
-                        child: Text(
-                          item.title ?? 'Unknown title',
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.artistName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: isInExpandedView
-                              ? ContentRhythm.supporting(
-                                  context,
-                                ).copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                  fontStyle: FontStyle.italic,
-                                )
-                              : ContentRhythm.supporting(
-                                  context,
-                                ).copyWith(color: Colors.white),
+                          style: ContentRhythm.supporting(
+                            context,
+                          ).copyWith(color: Colors.white),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        Transform.translate(
+                          offset: const Offset(
+                            0,
+                            LayoutConstants
+                                .nowDisplayingDisplayItemTextArtworkGap,
+                          ),
+                          child: Text(
+                            item.title ?? 'Unknown title',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: isInExpandedView
+                                ? ContentRhythm.supporting(
+                                    context,
+                                  ).copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontStyle: FontStyle.italic,
+                                  )
+                                : ContentRhythm.supporting(
+                                    context,
+                                  ).copyWith(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
