@@ -93,7 +93,7 @@ Improvements.
       final client = MockClient((request) async {
         expect(
           request.url.toString(),
-          'https://raw.githubusercontent.com/bitmark-inc/feral-file-docs/master/docs/changelog.md',
+          'https://raw.githubusercontent.com/feral-file/docs/main/docs/changelog.md',
         );
         return http.Response('## February 24, 2026', 200);
       });
@@ -101,7 +101,7 @@ Improvements.
       final service = ReleaseNotesService(
         httpClient: client,
         baseUri: Uri.parse(
-          'https://raw.githubusercontent.com/bitmark-inc/feral-file-docs/master',
+          'https://raw.githubusercontent.com/feral-file/docs/main',
         ),
       );
 
@@ -111,12 +111,13 @@ Improvements.
     });
 
     test(
-      'uses markdown URL directly when RELEASE_NOTES_MARKDOWN_URL points to .md',
+      'uses markdown URL directly when '
+      'RELEASE_NOTES_MARKDOWN_URL points to .md',
       () async {
         final client = MockClient((request) async {
           expect(
             request.url.toString(),
-            'https://raw.githubusercontent.com/feral-file/docs/refs/heads/main/docs/changelog.md',
+            'https://raw.githubusercontent.com/feral-file/docs/main/docs/changelog.md',
           );
           return http.Response('## February 24, 2026', 200);
         });
@@ -124,7 +125,7 @@ Improvements.
         final service = ReleaseNotesService(
           httpClient: client,
           baseUri: Uri.parse(
-            'https://raw.githubusercontent.com/feral-file/docs/refs/heads/main/docs/changelog.md',
+            'https://raw.githubusercontent.com/feral-file/docs/main/docs/changelog.md',
           ),
         );
 

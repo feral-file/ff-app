@@ -1,87 +1,51 @@
-# Feral File — Mobile App (Flutter)
+# Feral File Mobile App
 
-The Feral File mobile app is the controller for the **Feral File Art System**:
-- **FF1** (art computer) + any screen, or **FF1 + FFP** (full system)
-- Setup, pairing, remote control, and library/discovery surfaces
+Canonical Flutter mobile controller and library app for FF1 and The Digital Art System.
 
-Product goal: make it *silly-easy* to live with digital art every day.
+This repository is the canonical source for the Feral File mobile app. The app is a Band 4 presentation surface in the broader Feral File stack: it browses DP-1 Channels, Playlists, and Works, helps users build a personal collection, pairs and controls FF1 devices, and sends play and control requests into the rest of the system.
 
----
+## How It Fits FF1 And The Digital Art System
 
-## What the app does
+- `FF1` is the art computer that plays art on a screen.
+- `FFP` is the reference panel for the full system experience.
+- This mobile app is the handheld setup, library, and remote-control surface.
+- The app consumes discovery, indexing, and device-control services, but it does not own publication backoffice, device runtime, or private operational policy.
 
-Core concepts are aligned with **DP-1** (Display Protocol 1). The app is a **presentation surface** that browses and controls DP-1 objects (Channels, Playlists, Works) and sends explicit play commands to a paired device.
+In product terms: FF1 is the engine, the mobile app is setup plus remote control plus library, and DP-1 is the compatibility layer that keeps Channels, Playlists, and Works portable.
 
-### Primary surfaces
+## Scope And Vocabulary
 
-- **Channels** (with pinned **My Collection**)
-  - Sub-sections: **Me / Curated / Global**
-- **Playlists**
-  - Sub-sections: **Me / Curated / Global**
-- **Works**
-  - Sub-sections: **Me / Curated / Global**
-- **Explore**
-  - Conversational search + Faceted search over the same DP-1 scopes and facets
+- Domain vocabulary is locked to `Channel`, `Playlist`, and `Work`.
+- The app is offline-first: a local seed database is the default read path.
+- The app focuses on browsing, personal collection, pairing, and playback control.
+- Exhibitions and programs are expressed through channel and playlist presentation, not new protocol object types.
 
-### Core actions (DP-1-rooted)
+## Public Repo Boundary
 
-- **Play** — “Play on FF1 now” (or queue)
-- **Follow**
-- **Add to Collection** — saves to the user’s personal Channel (**My Collection**)
-- **Share**
-- **Star** — curator endorsement used for discovery “bubbling” (Feral File/commissioned curators)
+This repo is prepared to be the public, canonical app repository.
 
-> Terminology lock: **Channels** and **Playlists** are DP-1 objects. “Exhibitions/Seasons/Programs” are **playlist roles** surfaced with curated chrome inside the Feral File channel (not new protocol object types).
+- Public here: Flutter source, tests, public contributor docs, example configuration, and CI workflows.
+- Not public here: secrets, production credentials, private strategy docs, unpublished operational runbooks, or internal service data.
+- If a change depends on private infrastructure, document the interface and expected contract without committing secret values or private documents.
 
----
+## Prerequisites
 
-## Trust & security model (high level)
+- Flutter stable
+- Xcode for iOS builds
+- Android Studio and Android SDK for Android builds
+- Optional FF1 hardware for end-to-end pairing and playback checks
 
-The app participates in the **trust path**: pairing, authentication, and (by Orbit) increasingly verifiable authorship/endorsement and licensing—without breaking earlier content. Non‑negotiables: the trust path is **vendor‑neutral**, **portable**, and **key‑controlled**.
+## Local Setup
 
-Key concepts:
-- **Passkey** — device-based auth used during onboarding/pairing
-- **DeviceKey** — device identity anchor (Ed25519)
-- **Multi-signature DP-1 envelopes** — roll out Orbit-by-Orbit (additive, forward compatible)
-
----
-
-## Architecture (conceptual)
-
-Feral File uses “bands” to reason about the system. The mobile app lives in **Band 4: Presentation Apps** and talks to:
-- **Band 3: Discovery & Content APIs** (read/search)
-- **Band 5: Display Protocol** (play/control semantics)
-- **Band 8: Ownership & Identity** (passkeys, address indexing, verification)
-
----
-
-## Design & engineering principles
-
-We default to:
-- **Deletion-first**
-- **Reality-first**
-- **Reliability before novelty**
-
-If a flow feels complex, assume the constraints are wrong and simplify until the core path is obvious and reversible.
-
----
-
-## Getting started
-
-### Prerequisites
-- Flutter SDK (stable)
-- Xcode (iOS) / Android Studio (Android)
-- A dev/test backend environment
-- Optional: an **FF1** device for full end-to-end testing
-
-### Clone & install
 ```bash
-git clone <REPO_URL>
+git clone https://github.com/feral-file/ff-app.git
 cd ff-app
+cp .env.example .env
 flutter pub get
 ```
 
-### Run (dev)
+Run the app:
+
 ```bash
 # Android (development flavor)
 flutter run --flavor development
@@ -90,153 +54,79 @@ flutter run --flavor development
 flutter run
 ```
 
-### Build
+For iOS CocoaPods setup:
+
 ```bash
-# Android (production)
-flutter build apk --flavor production --release
-
-# Android (development)
-flutter build apk --flavor development --release
-
-# iOS
-flutter build ios --release
+cd ios
+pod install --repo-update
+cd ..
 ```
 
----
+## Environment Variable Contract
 
-## Configuration
+Copy `.env.example` to `.env` and fill only the values needed for your workflow.
 
-> **Note:** Keep secrets out of git. Use per-environment configs.
+Required for app startup:
 
-Required keys (ask team for dev/staging values):
-- `DP1_FEED_URL`
 - `INDEXER_API_URL`
-- `DP1_FEED_API_KEY`
 - `INDEXER_API_KEY`
-- `FF1_RELAYER_API_KEY` (or `TV_API_KEY`)
+- `FF1_RELAYER_URL`
+- `FF1_RELAYER_API_KEY`
 
-Optional feature keys (feature degrades gracefully if absent):
-- `SUPPORT_API_KEY` (required for the Send Log feature in device options)
+Optional runtime integrations:
 
-Optional tooling key:
-- `FIGMA_API_KEY` (required only if using the Figma MCP server configured in `opencode.json`)
+- `DP1_FEED_URL` and `DP1_FEED_API_KEY` for feed-backed or integration flows
+- `DOMAIN_RESOLVER_URL` and `DOMAIN_RESOLVER_API_KEY` for ENS and TNS resolution
+- `REMOTE_CONFIG_URL` to override the default remote-config document
+- `RELEASE_NOTES_MARKDOWN_URL` or `PUBDOC_URL` to load release notes
+- `FERALFILE_DOCS_URL` to override the default public legal-docs base
+- `SUPPORT_API_KEY`, `SENTRY_DSN`, `ASSET_URL`, `INDEXER_ENRICHMENT_MAX_THREADS`
 
-If any required key is missing, the app will show a configuration error screen on launch.
+Integration and seed-database tests:
 
-Starter template: copy `.env.example` to `.env` and fill in values.
-
-Typical values (names are illustrative—use your repo’s actual config system):
-- `API_BASE_URL` — Discovery/Content API base URL
-- `DP1_BASE_URL` — DP-1 endpoints (e.g., play)
-- `FEATURE_FLAGS` — enable/disable Orbit features (e.g., curator Star tools)
-- `LOG_LEVEL` — debug/info/warn/error
-
-### Local dev quickstart
- 1) Create `.env` with the required keys above (do not commit).
- 2) `flutter pub get`
- 3) `flutter run --flavor development`
-
-#### Seed DB S3 integration tests
-
-The following additional variables are required when running S3-backed seed integration
-tests:
-
-- `S3_BUCKET` (must be a valid URL including a bucket path, e.g. `https://s3.amazonaws.com/<bucket-name>`)
+- `S3_BUCKET`
 - `S3_ACCESS_KEY_ID`
 - `S3_SECRET_ACCESS_KEY`
 - `S3_REGION`
 - `S3_SEED_DATABASE_OBJECT_KEY`
 
-If any value is missing or malformed, those tests are skipped at runtime with a
-clear message rather than failing app startup.
+If the required startup keys are missing, the app will show a configuration error screen instead of booting into a broken state.
 
-### Orbit 2 seed snapshot build inputs
+## Basic Setup Verification
 
-`scripts/build_feed_indexer_sqlite.js` supports authoritative channel sources while keeping runtime seed-DB-first.
-
-Primary flags:
-
-- `--channels-feed-endpoint <origin>`: source channels from feed `/api/v1/channels`
-- `--channels-source <url-or-file>`: source channels from legacy config or publish artifact JSON
-- `--require-channel-id <id>`: fail build if required channel is missing
-
-The snapshot workflow (`.github/workflows/create-db-snapshot.yml`) now exposes:
-
-- `channels_source` (default curated selector source)
-- `feed_endpoint` (optional, for full-feed ingestion runs)
-- `required_channel_ids` (comma-separated)
-
-Default operation remains curated-channel selection. The canary gate still fails clearly when required channel IDs are missing.
-
----
-
-## Key flows to test
-
-### Gold Path
-A new person should go from power-on → pairing → playing a meaningful artwork quickly, with obvious success and reversible steps. (Exact readiness thresholds live in business gates.)
-
-### Pairing & device management (FF1 / FFP)
-- Pair FF1 via QR (and recovery reconnect flows)
-- Control path validation for FFP (sleep/wake + brightness, with documented behavior)
-
-### Collection & indexing
-- “Add Address” and large-wallet indexing behavior (progress is clear; no stalls/loops)
-
-### Sleep/resume
-- FF1 sleep/resume acceptance tests across real installs
-
----
-
-## Testing
-
-Recommended layers:
-- Unit tests for core state and parsing
-- Widget tests for navigation + key screens
-- **Golden tests** for visual regressions (mobile quality guardrail)
-- Integration tests against a test backend and (when possible) real FF1 hardware
-
-Run:
-```bash
-flutter test
-```
-
-### Casey canary preflight (Orbit 2)
-
-Use this preflight before running the >4h hardware soak:
+Run the quick local verification script:
 
 ```bash
-node scripts/run_casey_canary_soak.js \
-  --db scripts/ff_feed_indexer_seed.sqlite \
-  --channel-id <CASEY_CHANNEL_ID> \
-  --report ./casey-canary-report.json
+./scripts/verify_local_setup.sh
 ```
 
-What it enforces:
+That script runs:
 
-- canary channel exists in seed DB
-- minimum playlist/item thresholds are met
-- reproducible report file includes required evidence checklist for the >=4h soak run
+- `flutter pub get`
+- `flutter test test/unit/infra/services/release_notes_service_test.dart`
 
-### Gold Path UI (CI): smoke vs endurance
+It is intentionally a lightweight smoke test for public contributors: dependency resolution plus a public-safe unit-test path that does not require private credentials or hardware.
 
-The GitHub Actions workflow **Gold Path UI Test** keeps two separate evidence streams:
-
-- **Smoke** (`gold-path-smoke` job): runs on pull requests (and optional manual dispatch with profile `smoke`). Uses a **1 minute** soak. iOS xcresult artifacts are named `gold-path-smoke-ios-xcresult`.
-- **Endurance** (`gold-path-endurance` job): runs on the **same nightly schedule** as [Nightly integration tests](.github/workflows/nightly-integration.yml) (`0 9 * * *`, 09:00 UTC) and on manual dispatch with profile `endurance`. Default soak is **240 minutes** (override via workflow input). Artifacts: `gold-path-endurance-ios-xcresult`.
-
-Shared steps live in [.github/actions/gold-path-patrol](.github/actions/gold-path-patrol/action.yml).
-
----
+Hardware-dependent FF1 flows, S3-backed seed tests, and broader integration checks need additional environment variables and are not part of the default public setup verification.
 
 ## Contributing
 
-- Keep changes aligned with DP-1 concepts and terminology (Channel / Playlist / Work).
-- Prefer fewer surfaces and fewer states over adding new flows.
-- Document user-visible changes in release notes conventions when applicable.
+- Keep terminology aligned with `Channel`, `Playlist`, and `Work`.
+- Keep changes scoped; this repo is the canonical mobile app repo, not a place for speculative system rewrites.
+- Add or update tests for behavior changes.
+- Keep `README.md` and `.env.example` in sync when setup or configuration changes.
+- Do not commit `.env`, secrets, private planning docs, or generated artifacts.
+- Use the GitHub issue and pull-request templates when opening work.
 
----
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the lightweight contributor checklist.
 
-## Support & feedback
+## Related Repositories
 
-- File reproducible bugs as Known Issues (if applicable in your org workflow)
-- Include device + OS versions, steps to reproduce, and screen recordings when possible
+- [display-protocol/dp1](https://github.com/display-protocol/dp1) for the protocol and schemas
+- [feral-file/docs](https://github.com/feral-file/docs) for public product and legal reference material
+- [feral-file/ff-indexer-v2](https://github.com/feral-file/ff-indexer-v2) for indexing and enrichment
+- [feral-file/ff-relayer](https://github.com/feral-file/ff-relayer) for device relay and connectivity
+
+## License
+
+Released under the BSD-2-Clause Plus Patent License. See [LICENSE](LICENSE).
