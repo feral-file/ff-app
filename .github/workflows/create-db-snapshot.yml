@@ -12,7 +12,7 @@ on:
         description: Curated channel source (URL or file path)
         required: false
         type: string
-        default: 'https://dp1-feed-operator-api-prod.autonomy-system.workers.dev/api/v1/registry/channels'
+        default: 'https://feed.feralfile.com/api/v1/registry/channels'
       feed_endpoint:
         description: Optional feed endpoint origin to ingest all channels
         required: false
