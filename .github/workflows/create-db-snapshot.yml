@@ -27,7 +27,7 @@ on:
         description: Dry run mode (skip S3 upload, artifact only)
         required: false
         type: boolean
-        default: false
+        default: true
 
 jobs:
   snapshot:
