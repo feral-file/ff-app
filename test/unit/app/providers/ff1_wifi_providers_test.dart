@@ -4,6 +4,7 @@ import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/version_provider.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/ff1/loop_mode.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/api/pubdoc_api.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
@@ -984,6 +985,57 @@ void main() {
     },
   );
 
+  group('playback mode support providers', () {
+    test('shuffle support is independent of parsed loopMode', () {
+      final statusUnknownLoop = FF1PlayerStatus(
+        playlistId: 'pl',
+        shuffle: false,
+      );
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1CurrentPlayerStatusProvider.overrideWith(
+            (ref) => statusUnknownLoop,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(ff1SupportsShuffleProvider), isTrue);
+      expect(container.read(ff1SupportsLoopProvider), isFalse);
+      expect(container.read(ff1SupportsPlaybackModesProvider), isTrue);
+    });
+
+    test('loop support requires non-null parsed loopMode', () {
+      final status = FF1PlayerStatus(
+        playlistId: 'pl',
+        loopMode: LoopMode.playlist,
+      );
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1CurrentPlayerStatusProvider.overrideWith((ref) => status),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(ff1SupportsShuffleProvider), isFalse);
+      expect(container.read(ff1SupportsLoopProvider), isTrue);
+      expect(container.read(ff1SupportsPlaybackModesProvider), isTrue);
+    });
+
+    test('aggregate false when neither shuffle nor loop field is usable', () {
+      final status = FF1PlayerStatus(playlistId: 'pl');
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1CurrentPlayerStatusProvider.overrideWith((ref) => status),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(ff1SupportsShuffleProvider), isFalse);
+      expect(container.read(ff1SupportsLoopProvider), isFalse);
+      expect(container.read(ff1SupportsPlaybackModesProvider), isFalse);
+    });
+  });
 }
 
 FF1NotificationMessage _connectionNotification({required bool isConnected}) {
