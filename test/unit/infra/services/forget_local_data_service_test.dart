@@ -7,8 +7,9 @@ void main() {
 
     final service = LocalDataCleanupService(
       closeAndDeleteDatabase: () async {
-        events.add('close-delete-db');
-        events.add('clear-objectbox-light');
+        events
+          ..add('close-delete-db')
+          ..add('clear-objectbox-light');
       },
       clearObjectBoxData: () async {
         events.add('clear-objectbox');
@@ -16,7 +17,7 @@ void main() {
       clearCachedImages: () async {
         events.add('clear-cached-images');
       },
-      recreateDatabaseFromSeed: () async {
+      recreateDatabaseFromSeed: (_) async {
         events.add('recreate-db-from-seed');
       },
       runBootstrap: () async {
@@ -39,7 +40,8 @@ void main() {
 
     await service.forgetIExist();
 
-    // forgetIExist returns after fullClear; recreate+bootstrap run in background.
+    // forgetIExist returns after fullClear; recreate+bootstrap run in
+    // background.
     // fullClear: lightClear (pause + cache), then close-delete, then rest.
     expect(events, <String>[
       'pause-feed',
@@ -56,14 +58,16 @@ void main() {
   });
 
   test(
-    'forgetIExist returns after fullClear; background tasks run fire-and-forget',
+    'forgetIExist returns after fullClear; background tasks are '
+    'fire-and-forget',
     () async {
       final events = <String>[];
 
       final service = LocalDataCleanupService(
         closeAndDeleteDatabase: () async {
-          events.add('close-delete-db');
-          events.add('clear-objectbox-light');
+          events
+            ..add('close-delete-db')
+            ..add('clear-objectbox-light');
         },
         clearObjectBoxData: () async {
           events.add('clear-objectbox');
@@ -71,7 +75,7 @@ void main() {
         clearCachedImages: () async {
           events.add('clear-cached-images');
         },
-        recreateDatabaseFromSeed: () async {
+        recreateDatabaseFromSeed: (_) async {
           events.add('recreate-db-from-seed');
         },
         runBootstrap: () async {
@@ -90,8 +94,8 @@ void main() {
 
       await service.forgetIExist();
 
-      // forgetIExist returns after fullClear; post-drain calls close/delete again
-      // (includes objectbox light clear in the same callback).
+      // forgetIExist returns after fullClear; post-drain calls close/delete
+      // again (includes objectbox light clear in the same callback).
       expect(events.last, equals('clear-objectbox-light'));
     },
   );
@@ -103,8 +107,9 @@ void main() {
 
       final service = LocalDataCleanupService(
         closeAndDeleteDatabase: () async {
-          events.add('close-delete-db');
-          events.add('clear-objectbox-light');
+          events
+            ..add('close-delete-db')
+            ..add('clear-objectbox-light');
         },
         clearObjectBoxData: () async {
           events.add('clear-objectbox');
@@ -112,7 +117,7 @@ void main() {
         clearCachedImages: () async {
           events.add('clear-cached-images');
         },
-        recreateDatabaseFromSeed: () async {
+        recreateDatabaseFromSeed: (_) async {
           events.add('recreate-db-from-seed');
         },
         runBootstrap: () async {
@@ -134,8 +139,72 @@ void main() {
         'pause-token-polling',
         'clear-cached-images',
       ]);
-      expect(events.where((e) => e == 'close-delete-db'), isEmpty);
-      expect(events.where((e) => e == 'clear-objectbox'), isEmpty);
+      expect(events.contains('close-delete-db'), isFalse);
+      expect(events.contains('clear-objectbox'), isFalse);
+    },
+  );
+
+  test(
+    'rebuildMetadata skips reset recovery when retry fails before replace',
+    () async {
+      var resetRecoveryCalls = 0;
+      var recreateCalls = 0;
+
+      final service = LocalDataCleanupService(
+        closeAndDeleteDatabase: () async {},
+        clearObjectBoxData: () async {},
+        clearCachedImages: () async {},
+        recreateDatabaseFromSeed: (_) async {
+          recreateCalls++;
+          throw StateError('download failed before replace');
+        },
+        runBootstrap: () async {},
+        pauseFeedWork: () {},
+        pauseTokenPolling: () {},
+        onResetFailed: (_) {
+          resetRecoveryCalls++;
+        },
+        postDrainSettleDuration: Duration.zero,
+      );
+
+      await service.rebuildMetadata();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(recreateCalls, 1);
+      expect(resetRecoveryCalls, 0);
+    },
+  );
+
+  test(
+    'forgetIExist recovery still runs when retry fails before replace',
+    () async {
+      var resetRecoveryCalls = 0;
+      var recreateCalls = 0;
+
+      final service = LocalDataCleanupService(
+        closeAndDeleteDatabase: () async {},
+        clearObjectBoxData: () async {},
+        clearCachedImages: () async {},
+        recreateDatabaseFromSeed: (_) async {
+          recreateCalls++;
+          throw StateError('download failed before replace');
+        },
+        runBootstrap: () async {},
+        pauseFeedWork: () {},
+        pauseTokenPolling: () {},
+        clearLegacySqlite: () async {},
+        clearLegacyHive: () async {},
+        onResetFailed: (_) {
+          resetRecoveryCalls++;
+        },
+        postDrainSettleDuration: Duration.zero,
+      );
+
+      await service.forgetIExist();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(recreateCalls, 1);
+      expect(resetRecoveryCalls, 1);
     },
   );
 }

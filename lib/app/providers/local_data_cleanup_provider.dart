@@ -115,7 +115,9 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
   ///
   /// Uses unified [SeedDownloadNotifier.sync] with [setNotReady]/[setReady].
   /// Updates [seedDownloadProvider] so Home tabs show loading during download.
-  Future<void> forceReplaceDatabaseFromSeed() async {
+  Future<void> forceReplaceDatabaseFromSeed({
+    required void Function() onReplacePhaseStarted,
+  }) async {
     final log = Logger('LocalDataCleanupProvider');
     final seedNotifier = ref.read(seedDownloadProvider.notifier);
     seedNotifier.notifyForceReplaceStarted();
@@ -127,6 +129,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
         showLoadingInUI: false,
         completeSeedDatabaseGate: false,
         failSilently: false,
+        onBeforeReplaceStarted: onReplacePhaseStarted,
         onProgress: (progress) {
           seedNotifier.notifyForceReplaceProgress(progress);
           final pct = (progress * 100).round();
@@ -234,8 +237,13 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
 
     /// Replaces SQLite with seed. Used by forgetIExist and rebuildMetadata
     /// background retry.
-    recreateDatabaseFromSeed: () async {
-      await forceReplaceDatabaseFromSeed();
+    recreateDatabaseFromSeed: (onReplacePhaseStarted) async {
+      // This callback is invoked once the seed sync reaches beforeReplace.
+      // The cleanup service uses that edge to distinguish a healthy existing
+      // DB from a reset that has already crossed the teardown boundary.
+      await forceReplaceDatabaseFromSeed(
+        onReplacePhaseStarted: onReplacePhaseStarted,
+      );
     },
     pauseFeedWork: () {
       // No-op: feed manager removed; seed database is the source of DP1 data.

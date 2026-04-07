@@ -74,7 +74,8 @@ class SeedDownloadState {
 }
 
 /// Session for a single sync run. A newer sync overrides the previous by
-/// replacing [_activeSession]; callbacks check [isActive] before updating.
+/// replacing the active session; callbacks check the session state before
+/// updating.
 class _SyncSession {
   _SyncSession(this.id);
 
@@ -93,7 +94,7 @@ class _SyncSession {
 /// it opens `SeedDatabaseGate` so Drift can proceed.
 ///
 /// Uses a session model: a newer sync request overrides the current one by
-/// replacing [_activeSession]. When overridden, the running sync must not
+/// replacing the active session. When overridden, the running sync must not
 /// update state, callbacks, or UI on completion.
 class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   _SyncSession? _activeSession;
@@ -129,7 +130,8 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   }
 
   /// Moves this [session]'s snapshot into [_pendingFavoriteSnapshots] for a
-  /// later restore (superseded session must not restore before the final replace).
+  /// later restore. A superseded session must not restore before the final
+  /// replace.
   void _appendSessionSnapshotToPendingFavorites(_SyncSession session) {
     final s = session.favoritesSnapshotBeforeReplace;
     session.favoritesSnapshotBeforeReplace = null;
@@ -146,7 +148,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     await db.restoreFavoritePlaylistsSnapshot(snapshots);
   }
 
-  /// Restores favorites from [session] plus any [_pendingFavoriteSnapshots],
+  /// Restores favorites from [session] plus any pending snapshots,
   /// then clears both. Used only when this [session] is still the active one.
   ///
   /// Uses `rawDatabaseServiceProvider` from `database_provider.dart` so this
@@ -166,8 +168,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     await _bootstrapAndRestoreFavoriteSnapshots(combined);
   }
 
-  /// When no [sync] is in flight, restores snapshots left in [_pendingFavoriteSnapshots]
-  /// (e.g. only overridden sessions ran a replace).
+  /// When no [sync] is in flight, restores snapshots left in
+  /// [_pendingFavoriteSnapshots] (e.g. only overridden sessions ran a
+  /// replace).
   Future<void> _drainPendingFavoriteRestoreIfIdle() async {
     if (_syncInProgressCount != 0) return;
     final snapshots = _pendingFavoriteSnapshots;
@@ -176,24 +179,33 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     await _bootstrapAndRestoreFavoriteSnapshots(snapshots);
   }
 
-  /// Syncs seed DB from remote. Passes [setNotReady] as beforeReplace; passes
-  /// [performReconnectInfraInvalidation] as afterReplace. Calls [setReady] after
-  /// sync when updated. The actual replace is in [replaceDatabaseFromTemporaryFile].
+  /// Syncs seed DB from remote. Passes setNotReady as beforeReplace; passes
+  /// performReconnectInfraInvalidation as afterReplace. Calls setReady after
+  /// sync when updated. The actual replace is in
+  /// `replaceDatabaseFromTemporaryFile`.
   ///
-  /// Always starts a new session; a newer session overrides the previous. Inactive
-  /// sessions must not update state, provider, or UI on completion.
+  /// `onBeforeReplaceStarted` fires at the moment the sync enters the replace
+  /// phase, after the download has succeeded but before teardown begins.
+  /// Cleanup recovery uses this edge to decide whether the old DB is still the
+  /// active source of truth.
   ///
-  /// Emits [SeedDownloadStatus.syncing] only when [showLoadingInUI] and a download
-  /// starts for first install (!hasLocalDatabase). For updates, status stays idle.
+  /// Always starts a new session; a newer session overrides the previous.
+  /// Inactive sessions must not update state, provider, or UI on completion.
+  ///
+  /// Emits [SeedDownloadStatus.syncing] only when [showLoadingInUI] and a
+  /// download starts for first install (!hasLocalDatabase). For updates, status
+  /// stays idle.
   Future<bool> sync({
     bool forceReplace = false,
     bool showLoadingInUI = true,
     bool completeSeedDatabaseGate = true,
     bool failSilently = true,
+    void Function()? onBeforeReplaceStarted,
     void Function(double progress)? onProgress,
 
     /// Called when a download will actually occur (after ETag check).
-    /// Use to show UI (e.g. toast) only when download starts, not on ETag-unchanged skip.
+    /// Use to show UI (e.g. toast) only when download starts, not on
+    /// ETag-unchanged skip.
     void Function()? onDownloadStarted,
   }) async {
     final session = _beginSession();
@@ -213,6 +225,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         forceReplace: forceReplace,
         beforeReplace: () async {
           final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+          onBeforeReplaceStarted?.call();
           if (await seedDatabaseService.hasLocalDatabase()) {
             try {
               session.favoritesSnapshotBeforeReplace = await ref
@@ -275,9 +288,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         // Overridden session must not update state, UI, or gate. But if it
         // completed replace+afterReplace (updated==true), we must restore
         // readiness: no other path will, and DB consumers stay gated otherwise.
-        // Do not restore favorites here: a newer session may still replace the DB;
-        // defer snapshot to pending and restore with the winning session or in
-        // [finally] when no sync remains in flight.
+        // Do not restore favorites here: a newer session may still replace the
+        // DB; defer snapshot to pending and restore with the winning session or
+        // in finally when no sync remains in flight.
         if (updated) {
           await seedReadyNotifier.setReady();
           _appendSessionSnapshotToPendingFavorites(session);

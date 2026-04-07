@@ -9,7 +9,10 @@ class LocalDataCleanupService {
     required Future<void> Function() closeAndDeleteDatabase,
     required Future<void> Function() clearObjectBoxData,
     required Future<void> Function() clearCachedImages,
-    required Future<void> Function() recreateDatabaseFromSeed,
+    required Future<void> Function(
+      void Function() onReplacePhaseStarted,
+    )
+    recreateDatabaseFromSeed,
     required Future<void> Function() runBootstrap,
     required void Function() pauseFeedWork,
     required void Function() pauseTokenPolling,
@@ -56,7 +59,8 @@ class LocalDataCleanupService {
   final Future<void> Function() _closeAndDeleteDatabase;
   final Future<void> Function() _clearObjectBoxData;
   final Future<void> Function() _clearCachedImages;
-  final Future<void> Function() _recreateDatabaseFromSeed;
+  final Future<void> Function(void Function() onReplacePhaseStarted)
+  _recreateDatabaseFromSeed;
   final Future<void> Function() _runBootstrap;
   final void Function() _pauseFeedWork;
   final void Function() _pauseTokenPolling;
@@ -108,8 +112,13 @@ class LocalDataCleanupService {
     _log.info('forgetIExist: local data cleared; replacing seed in background');
     unawaited(
       Future(() async {
+        var replacePhaseStarted = false;
+
         Future<void> fullRetry() async {
-          await _recreateDatabaseFromSeed();
+          replacePhaseStarted = false;
+          await _recreateDatabaseFromSeed(() {
+            replacePhaseStarted = true;
+          });
           await _runBootstrap();
         }
 
@@ -118,6 +127,15 @@ class LocalDataCleanupService {
           _log.info('forgetIExist: background seed+bootstrap done');
         } on Object catch (e, st) {
           _log.warning('forgetIExist: background seed replace failed', e, st);
+          if (!replacePhaseStarted) {
+            // The destructive reset already removed local data, so a failure
+            // before beforeReplace still needs the recovery path to reopen the
+            // app with a usable ready state.
+            _log.info(
+              'forgetIExist: seed replace failed before beforeReplace; '
+              'recovering the reset path anyway because the old DB is gone.',
+            );
+          }
           _onResetFailed?.call(fullRetry);
         }
       }),
@@ -141,8 +159,13 @@ class LocalDataCleanupService {
     _log.info('rebuildMetadata: seed replace scheduled in background');
     unawaited(
       Future(() async {
+        var replacePhaseStarted = false;
+
         Future<void> fullRetry() async {
-          await _recreateDatabaseFromSeed();
+          replacePhaseStarted = false;
+          await _recreateDatabaseFromSeed(() {
+            replacePhaseStarted = true;
+          });
           await _runBootstrap();
         }
 
@@ -155,7 +178,14 @@ class LocalDataCleanupService {
             e,
             st,
           );
-          _onResetFailed?.call(fullRetry);
+          if (replacePhaseStarted) {
+            _onResetFailed?.call(fullRetry);
+          } else {
+            _log.info(
+              'rebuildMetadata: seed replace failed before beforeReplace; '
+              'keeping the existing DB open and skipping recovery.',
+            );
+          }
         }
       }),
     );

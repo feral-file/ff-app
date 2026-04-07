@@ -45,7 +45,7 @@ void main() {
         closeAndDeleteDatabase: () async {},
         clearObjectBoxData: () async {},
         clearCachedImages: () async {},
-        recreateDatabaseFromSeed: () async {},
+        recreateDatabaseFromSeed: (_) async {},
         runBootstrap: () async {},
         pauseFeedWork: () {},
         pauseTokenPolling: () {},
@@ -71,8 +71,9 @@ void main() {
           .setStateDirectly(false);
       expect(container.read(isSeedDatabaseReadyProvider), isFalse);
 
-      final restoreFuture =
-          restoreReadinessAfterResetRetryFailedForTesting(ref);
+      final restoreFuture = restoreReadinessAfterResetRetryFailedForTesting(
+        ref,
+      );
 
       await Future<void>.delayed(const Duration(milliseconds: 15));
       expect(container.read(isSeedDatabaseReadyProvider), isFalse);

@@ -94,8 +94,8 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   }
 }
 
-/// Sync 1 runs [beforeReplace], then waits on [blockAfterBeforeReplace] so sync
-/// 2 can interleave; the first session's snapshot must still restore later.
+/// Sync 1 runs beforeReplace, then waits on blockAfterBeforeReplace so sync 2
+/// can interleave; the first session's snapshot must still restore later.
 class _OverlappingSeedSyncRaceFake implements SeedDatabaseSyncService {
   _OverlappingSeedSyncRaceFake({
     required Completer<void> blockAfterBeforeReplace,
@@ -148,13 +148,18 @@ final _noOpActions = SeedDatabaseReadyActions(
 Future<void> _noOpFuture() async {}
 
 class _SpyDatabaseService extends DatabaseService {
-  _SpyDatabaseService(super.db);
+  // `DatabaseService` exposes a private constructor parameter name, so this
+  // test helper keeps the explicit forwarding constructor instead of the
+  // super-parameter shorthand.
+  // ignore: use_super_parameters
+  _SpyDatabaseService(AppDatabase db) : super(db);
 
   int snapshotCalls = 0;
   int restoreCalls = 0;
 
   /// When true, snapshot returns an empty list (restore is skipped). Use when
-  /// the test cannot survive provider invalidation closing the test [AppDatabase].
+  /// the test cannot survive provider invalidation closing the test
+  /// [AppDatabase].
   bool snapshotReturnsEmpty = false;
 
   @override
@@ -187,10 +192,10 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
   Future<bool> hasLocalDatabase() async => hasLocal;
 }
 
-/// Simulates a slow Drift/native shutdown: if reconnect invalidation ran without
-/// awaiting [close], [isClosedFully] would still be false when
-/// [LocalDataCleanupService.performReconnectInfraInvalidation] runs (SQLITE_BUSY
-/// regression on the real file DB).
+/// Simulates a slow Drift/native shutdown: if reconnect invalidation ran
+/// without awaiting [close], [isClosedFully] would still be false when
+/// [LocalDataCleanupService.performReconnectInfraInvalidation] runs
+/// (SQLITE_BUSY regression on the real file DB).
 class _SlowClosingAppDatabase extends AppDatabase {
   _SlowClosingAppDatabase({required this.closeDelay})
     : super.forTesting(NativeDatabase.memory());
@@ -239,7 +244,7 @@ void main() {
         closeAndDeleteDatabase: () async {},
         clearObjectBoxData: () async {},
         clearCachedImages: () async {},
-        recreateDatabaseFromSeed: () async {},
+        recreateDatabaseFromSeed: (_) async {},
         runBootstrap: () async {},
         pauseFeedWork: () {},
         pauseTokenPolling: () {},
@@ -250,9 +255,9 @@ void main() {
             isTrue,
             reason:
                 'Riverpod onDispose does not await async close. If we '
-                'invalidate appDatabaseProvider before await close() completes, '
-                'a second native open can race the first (SQLITE_BUSY on e.g. '
-                'PRAGMA journal_mode = WAL).',
+                'invalidate appDatabaseProvider before await close() '
+                'completes, a second native open can race the first '
+                '(SQLITE_BUSY on e.g. PRAGMA journal_mode = WAL).',
           );
         },
       );
@@ -720,8 +725,8 @@ void main() {
 }
 
 /// Wraps a sync service: delegates until onDownloadStarted, then awaits
-/// [beforeComplete] before continuing. Allows override to happen after
-/// syncing state is set but before completion.
+/// beforeComplete before continuing. Allows override to happen after syncing
+/// state is set but before completion.
 class _SlowFakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   _SlowFakeSeedDatabaseSyncService({
     required this.delegate,
