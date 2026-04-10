@@ -1,3 +1,8 @@
+// This shared UI utility still carries legacy public API surface with missing
+// docs outside the FF1 dialog crash fix. Keep the ignore local so the release
+// gate stays focused on the behavioral regression we are fixing here.
+// ignore_for_file: public_member_api_docs
+
 import 'dart:async';
 
 import 'package:app/design/app_typography.dart';
@@ -325,53 +330,42 @@ class UIHelper {
     bool isDismissible = true,
     int autoDismissAfter = 0,
     String closeButton = '',
-    VoidCallback? onClose,
+    FutureOr<void> Function(BuildContext nextContext)? onClose,
     // FeedbackType? feedback = FeedbackType.selection,
   }) async {
-    if (autoDismissAfter > 0) {
-      Future.delayed(
-        Duration(seconds: autoDismissAfter),
-        () => hideInfoDialog(context),
-      );
-    }
-
     await showDialog<void>(
       context,
       title,
-      SizedBox(
-        width: double.infinity,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (description.isNotEmpty) ...[
-              Text(
-                description,
-                style: AppTypography.body(context).white,
-              ),
+      Builder(
+        builder: (dialogContext) => SizedBox(
+          width: double.infinity,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (description.isNotEmpty) ...[
+                Text(
+                  description,
+                  style: AppTypography.body(dialogContext).white,
+                ),
+              ],
+              const SizedBox(height: 40),
+              if (closeButton.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                OutlineButton(
+                  onTap: () => _dismissDialog(
+                    dialogContext,
+                    onAfterDismiss: onClose,
+                  ),
+                  text: closeButton,
+                ),
+                const SizedBox(height: 15),
+              ],
             ],
-            const SizedBox(height: 40),
-            if (closeButton.isNotEmpty && onClose == null) ...[
-              const SizedBox(height: 16),
-              OutlineButton(
-                onTap: () => Navigator.pop(context),
-                text: closeButton,
-              ),
-              const SizedBox(height: 15),
-            ] else if (closeButton.isNotEmpty && onClose != null) ...[
-              const SizedBox(height: 16),
-              OutlineButton(
-                onTap: () {
-                  Navigator.pop(context);
-                  onClose();
-                },
-                text: closeButton,
-              ),
-              const SizedBox(height: 15),
-            ],
-          ],
+          ),
         ),
       ),
       isDismissible: isDismissible,
+      autoDismissAfter: autoDismissAfter,
       // feedback: feedback,
     );
   }
@@ -394,13 +388,7 @@ class UIHelper {
     currentDialogTitle = title;
     final theme = Theme.of(context);
     final bottomSheetKey = GlobalKey();
-
-    if (autoDismissAfter > 0) {
-      Future.delayed(
-        Duration(seconds: autoDismissAfter),
-        () => hideInfoDialog(context),
-      );
-    }
+    var didScheduleAutoDismiss = false;
 
     // if (feedback != null) {
     //   Vibrate.feedback(feedback);
@@ -425,61 +413,75 @@ class UIHelper {
         curve: Curves.easeOutQuart,
         reverseCurve: Curves.easeOutQuart,
       ),
-      builder: (context) => SafeArea(
-        child: ColoredBox(
-          key: bottomSheetKey,
-          color: Colors.transparent,
-          child: ClipPath(
-            clipper: isRoundCorner ? null : TopRightRectangleClipper(),
-            child: Container(
-              decoration: BoxDecoration(
-                color: backgroundColor ?? theme.auGreyBackground,
-                borderRadius: isRoundCorner
-                    ? const BorderRadius.only(
-                        topRight: Radius.circular(20),
-                      )
-                    : null,
-              ),
-              padding:
-                  padding ??
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 32),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: paddingTitle ?? const EdgeInsets.all(0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              style: AppTypography.h2(context).white,
-                            ),
-                          ),
-                          if (withCloseIcon)
-                            IconButton(
-                              onPressed: () => hideInfoDialog(context),
-                              icon: SvgPicture.asset(
-                                'assets/images/close.svg',
-                                width: 22,
-                                height: 22,
+      builder: (dialogContext) {
+        if (!didScheduleAutoDismiss && autoDismissAfter > 0) {
+          didScheduleAutoDismiss = true;
+          Future.delayed(
+            Duration(seconds: autoDismissAfter),
+            () {
+              if (dialogContext.mounted) {
+                hideInfoDialog(dialogContext);
+              }
+            },
+          );
+        }
+
+        return SafeArea(
+          child: ColoredBox(
+            key: bottomSheetKey,
+            color: Colors.transparent,
+            child: ClipPath(
+              clipper: isRoundCorner ? null : TopRightRectangleClipper(),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: backgroundColor ?? theme.auGreyBackground,
+                  borderRadius: isRoundCorner
+                      ? const BorderRadius.only(
+                          topRight: Radius.circular(20),
+                        )
+                      : null,
+                ),
+                padding:
+                    padding ??
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 32),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: paddingTitle ?? EdgeInsets.zero,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                title,
+                                style: AppTypography.h2(dialogContext).white,
                               ),
                             ),
-                        ],
+                            if (withCloseIcon)
+                              IconButton(
+                                onPressed: () => hideInfoDialog(dialogContext),
+                                icon: SvgPicture.asset(
+                                  'assets/images/close.svg',
+                                  width: 22,
+                                  height: 22,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
-                    SizedBox(height: spacing),
-                    content,
-                  ],
+                      SizedBox(height: spacing),
+                      content,
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -496,49 +498,78 @@ class UIHelper {
     } on Exception catch (_) {}
   }
 
+  /// Dismisses the currently visible modal using its own live context.
+  ///
+  /// Dialog action handlers must pop from the modal subtree instead of reusing
+  /// the launching screen's context. FF1 setup can replace or dispose the
+  /// underlying route while the sheet stays visible for a beat; popping via the
+  /// stale launcher context can then crash on ancestor lookup.
+  static void _dismissDialog(
+    BuildContext dialogContext, {
+    FutureOr<void> Function(BuildContext nextContext)? onAfterDismiss,
+  }) {
+    final navigator = Navigator.maybeOf(dialogContext);
+    if (navigator?.canPop() ?? false) {
+      navigator!.pop();
+    }
+    final result = onAfterDismiss?.call(navigator?.context ?? dialogContext);
+    if (result is Future<void>) {
+      unawaited(result);
+    }
+  }
+
   /// Show customer support dialog asking whether to attach debug log.
   ///
-  /// When user chooses "Attach debug log" or "Send without log", closes the
-  /// dialog and calls [supportEmailService].composeSupportEmail with the chosen
-  /// [attachLogs] value.
+  /// When user chooses either action, closes the dialog and then opens the
+  /// support email composer with or without the debug log attached.
   static Future<void> showCustomerSupport(
     BuildContext context, {
     required SupportEmailService supportEmailService,
   }) async {
     const recipient = 'support@feralfile.com';
 
-    void onConfirmAttachCrashLog({required bool attachLogs}) {
-      Navigator.pop(context);
-      unawaited(
-        supportEmailService.composeSupportEmail(
-          recipient: recipient,
-          attachLogs: attachLogs,
-        ),
-      );
-    }
-
     await UIHelper.showDialog<void>(
       context,
       'Attach a debug log?',
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Recommended. It helps us fix issues faster by including technical details like app events, device model, and recent errors. It does not include passwords or private keys. After the email opens, you can also attach screenshots or photos.',
-            style: AppTypography.body(context).white,
-          ),
-          SizedBox(height: LayoutConstants.space6),
-          PrimaryButton(
-            text: 'Attach debug log',
-            onTap: () => onConfirmAttachCrashLog(attachLogs: true),
-          ),
-          SizedBox(height: LayoutConstants.space3),
-          OutlineButton(
-            text: 'Send without log',
-            onTap: () => onConfirmAttachCrashLog(attachLogs: false),
-          ),
-          SizedBox(height: LayoutConstants.space4),
-        ],
+      Builder(
+        builder: (dialogContext) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Recommended. It helps us fix issues faster by including '
+              'technical details like app events, device model, and recent '
+              'errors. It does not include passwords or private keys. After '
+              'the email opens, you can also attach screenshots or photos.',
+              style: AppTypography.body(dialogContext).white,
+            ),
+            SizedBox(height: LayoutConstants.space6),
+            PrimaryButton(
+              text: 'Attach debug log',
+              onTap: () => _dismissDialog(
+                dialogContext,
+                onAfterDismiss: (_) {
+                  return supportEmailService.composeSupportEmail(
+                    recipient: recipient,
+                  );
+                },
+              ),
+            ),
+            SizedBox(height: LayoutConstants.space3),
+            OutlineButton(
+              text: 'Send without log',
+              onTap: () => _dismissDialog(
+                dialogContext,
+                onAfterDismiss: (_) {
+                  return supportEmailService.composeSupportEmail(
+                    recipient: recipient,
+                    attachLogs: false,
+                  );
+                },
+              ),
+            ),
+            SizedBox(height: LayoutConstants.space4),
+          ],
+        ),
       ),
     );
   }

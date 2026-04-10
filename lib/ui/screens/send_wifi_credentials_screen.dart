@@ -229,20 +229,19 @@ class _EnterWiFiPasswordScreenState
         :final showSupportCta,
       ):
         if (!mounted) return false;
+        final supportEmailService = showSupportCta
+            ? ref.read(supportEmailServiceProvider)
+            : null;
         await UIHelper.showInfoDialog(
           context,
           title,
           message,
           closeButton: showSupportCta ? 'Contact support' : '',
           onClose: showSupportCta
-              ? () {
-                  unawaited(
-                    UIHelper.showCustomerSupport(
-                      context,
-                      supportEmailService: ref.read(
-                        supportEmailServiceProvider,
-                      ),
-                    ),
+              ? (nextContext) {
+                  return UIHelper.showCustomerSupport(
+                    nextContext,
+                    supportEmailService: supportEmailService!,
                   );
                 }
               : null,
