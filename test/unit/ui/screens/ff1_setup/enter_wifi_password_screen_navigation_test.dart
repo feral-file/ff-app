@@ -130,7 +130,73 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('open network: password field absent, SizedBox shown', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        ff1SetupOrchestratorProvider.overrideWith(
+          _NoOpOrchestratorNotifier.new,
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final router = GoRouter(
+      initialLocation: Routes.enterWifiPassword,
+      routes: [
+        GoRoute(
+          path: Routes.enterWifiPassword,
+          builder: (context, state) {
+            final payload = EnterWifiPasswordPagePayload(
+              device: const FF1Device(
+                name: 'FF1',
+                remoteId: '00:11',
+                deviceId: 'FF1-1',
+                topicId: 'topic-1',
+              ),
+              wifiAccessPoint: const WifiPoint('Cafe', isOpenNetwork: true),
+            );
+            return EnterWiFiPasswordScreen(payload: payload);
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+
+    // Open networks must never render the password input.
+    expect(find.byType(PasswordTextField), findsNothing);
+  });
 }
+
+class _NoOpOrchestratorNotifier extends FF1SetupOrchestratorNotifier {
+  @override
+  FF1SetupState build() => FF1SetupState(
+    step: FF1SetupStep.idle,
+    effectId: 0,
+    effect: null,
+  );
+
+  @override
+  Future<void> sendWifiCredentialsAndConnect({
+    required FF1Device device,
+    required String ssid,
+    required String password,
+  }) async {}
+
+  @override
+  void ackEffect({required int effectId}) {}
+}
+
+// ---------------------------------------------------------------------------
 
 class _FakeConnectNotifier extends ConnectFF1Notifier {
   _FakeConnectNotifier(this._state);
