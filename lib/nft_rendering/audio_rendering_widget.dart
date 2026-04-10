@@ -33,7 +33,8 @@ class AudioNFTRenderingWidget extends NFTRenderingWidget {
 }
 
 class _AudioNFTRenderingWidgetState
-    extends NFTRenderingWidgetState<AudioNFTRenderingWidget> {
+    extends NFTRenderingWidgetState<AudioNFTRenderingWidget>
+    with WidgetsBindingObserver, LifecycleAwarePlaybackMixin {
   AudioPlayer? _player;
   String? _thumbnailURL;
   final _progressStreamController = StreamController<double>();
@@ -41,12 +42,14 @@ class _AudioNFTRenderingWidgetState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _thumbnailURL = widget.thumbnailURL;
     unawaited(_initializeAudioPlayer());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(_disposeAudioPlayer());
     unawaited(_progressStreamController.close());
     super.dispose();

@@ -44,7 +44,7 @@ class VideoNFTRenderingWidget extends NFTRenderingWidget {
 
 class _VideoNFTRenderingWidgetState
     extends NFTRenderingWidgetState<VideoNFTRenderingWidget>
-    with RouteAware, WidgetsBindingObserver {
+    with RouteAware, WidgetsBindingObserver, LifecycleAwarePlaybackMixin {
   VideoPlayerController? _controller;
   bool _isPreviewLoaded = false;
   bool _isPlayingFailed = false;

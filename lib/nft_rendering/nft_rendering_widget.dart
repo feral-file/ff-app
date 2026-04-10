@@ -132,6 +132,27 @@ abstract class NFTRenderingWidgetState<T extends NFTRenderingWidget>
   void unmute() {}
 }
 
+/// Mixin that pauses playback when the app moves to background and resumes
+/// it when the app returns to foreground. Apply alongside [WidgetsBindingObserver].
+///
+/// Only reacts to [AppLifecycleState.paused] (not [AppLifecycleState.inactive])
+/// to avoid spurious pauses during in-app navigation transitions.
+mixin LifecycleAwarePlaybackMixin<T extends NFTRenderingWidget>
+    on NFTRenderingWidgetState<T>, WidgetsBindingObserver {
+  bool _pausedForBackground = false;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _pausedForBackground = true;
+      pause();
+    } else if (state == AppLifecycleState.resumed && _pausedForBackground) {
+      _pausedForBackground = false;
+      resume();
+    }
+  }
+}
+
 class NoPreviewUrlWidget extends StatelessWidget {
   const NoPreviewUrlWidget({super.key});
 

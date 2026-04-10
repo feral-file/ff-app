@@ -225,7 +225,11 @@ class _WebviewNFTRenderingWidgetState
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.detached) {
+    if (state == AppLifecycleState.paused) {
+      unawaited(onPause());
+    } else if (state == AppLifecycleState.resumed) {
+      unawaited(onResume());
+    } else if (state == AppLifecycleState.detached) {
       // App is being terminated - dispose WebView immediately
       // to prevent native crashes during finalization
       try {
