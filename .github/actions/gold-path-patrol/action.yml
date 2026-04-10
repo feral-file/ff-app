@@ -201,6 +201,68 @@ runs:
       shell: bash
       run: dart pub global activate patrol_cli
 
+    - name: Resolve iOS simulator device
+      if: ${{ inputs.platform == 'ios' }}
+      shell: bash
+      run: |
+        requested_device="$SIMULATOR_DEVICE"
+        available_devices="$(flutter --no-version-check --suppress-analytics devices --machine)"
+
+        selected_device="$(
+          AVAILABLE_DEVICES_JSON="$available_devices" REQUESTED_DEVICE="$requested_device" python3 -c '
+import json
+import os
+
+try:
+    devices = json.loads(os.environ["AVAILABLE_DEVICES_JSON"])
+except Exception:
+    devices = []
+
+requested = os.environ["REQUESTED_DEVICE"]
+preferred = [
+    "iPhone 16",
+    "iPhone 16 Pro",
+    "iPhone 16 Plus",
+    "iPhone 16 Pro Max",
+    "iPhone 15",
+    "iPhone 15 Pro",
+]
+
+names = [
+    device.get("name", "")
+    for device in devices
+    if device.get("platformType") == "ios"
+]
+
+if requested in names:
+    print(requested)
+    raise SystemExit
+
+for candidate in preferred:
+    if candidate in names:
+        print(candidate)
+        raise SystemExit
+
+for name in names:
+    if name.startswith("iPhone"):
+        print(name)
+        raise SystemExit
+'
+        )"
+
+        if [ -z "$selected_device" ]; then
+          echo "No available iOS simulator was found for Patrol."
+          exit 1
+        fi
+
+        if [ "$selected_device" = "$requested_device" ]; then
+          echo "Using requested iOS simulator: $requested_device"
+          exit 0
+        fi
+
+        echo "Requested iOS simulator '$requested_device' was unavailable; falling back to '$selected_device'."
+        echo "SIMULATOR_DEVICE=$selected_device" >> "$GITHUB_ENV"
+
     - name: Boot iOS simulator
       if: ${{ inputs.platform == 'ios' }}
       shell: bash
