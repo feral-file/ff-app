@@ -64,17 +64,25 @@ void scheduleRequestFocusWhenLaidOut({
   tryFocus();
 }
 
-/// Runs [action] on the next frame if [context] is still mounted.
+/// Runs [action] on the next frame if [context] is still mounted and the
+/// nearest [ModalRoute] is still [ModalRoute.isCurrent].
 ///
-/// Defers `go_router` navigation triggered from Riverpod listeners so it does
-/// not interleave with focus or route transition work in the same frame.
+/// Matches [scheduleRequestFocusWhenLaidOut] so deferred `go_router`
+/// navigation from Riverpod listeners does not run after the user has left the
+/// screen (another route on top, or route replaced) while still interleaving
+/// safely with layout/focus work in the originating frame.
 void schedulePostFrameIfMounted(
   BuildContext context,
   VoidCallback action,
 ) {
   WidgetsBinding.instance.addPostFrameCallback((_) {
-    if (context.mounted) {
-      action();
+    if (!context.mounted) {
+      return;
     }
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) {
+      return;
+    }
+    action();
   });
 }
