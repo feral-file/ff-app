@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/app/utils/safe_focus_request.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -69,10 +71,12 @@ void main() {
                     schedulePostFrameIfMounted(context, () {
                       ran = true;
                     });
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const Scaffold(
-                          body: Text('second'),
+                    unawaited(
+                      Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const Scaffold(
+                            body: Text('second'),
+                          ),
                         ),
                       ),
                     );
