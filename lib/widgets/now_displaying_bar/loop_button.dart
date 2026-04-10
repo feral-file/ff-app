@@ -13,7 +13,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 /// Loop (repeat) button for the now displaying bar.
 ///
-/// Cycles through [LoopMode.playlist] → [LoopMode.one] on each tap.
+/// Cycles [LoopMode.none] → [LoopMode.playlist] → [LoopMode.one] on each tap.
 /// Sends [FF1WifiControl.setLoop] via WiFi.
 /// On error the state is reverted (optimistic update).
 class LoopButton extends ConsumerStatefulWidget {
@@ -72,17 +72,21 @@ class _LoopButtonState extends ConsumerState<LoopButton> {
       _syncFromPlayerStatus(next);
     });
 
-    const color = PrimitivesTokens.colorsWhite;
-
     final semanticsLabel = switch (_mode) {
-      LoopMode.playlist => 'Looping playlist — tap to loop one',
-      LoopMode.one => 'Looping one — tap to loop playlist',
+      LoopMode.none => 'Repeat off — tap to repeat playlist',
+      LoopMode.playlist => 'Repeat playlist — tap to repeat one',
+      LoopMode.one => 'Repeat one — tap to turn repeat off',
+    };
+
+    final iconColor = switch (_mode) {
+      LoopMode.none => PrimitivesTokens.colorsGrey,
+      LoopMode.playlist || LoopMode.one => PrimitivesTokens.colorsWhite,
     };
 
     final icon = SvgPicture.asset(
       'assets/images/loop.svg',
       width: 20,
-      colorFilter: const ColorFilter.mode(color, BlendMode.srcIn),
+      colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
     );
 
     return Semantics(
@@ -96,6 +100,7 @@ class _LoopButtonState extends ConsumerState<LoopButton> {
           height: LayoutConstants.minTouchTarget * 0.75,
           child: Center(
             child: switch (_mode) {
+              LoopMode.none => icon,
               LoopMode.playlist => Stack(
                 alignment: Alignment.center,
                 children: [
