@@ -149,22 +149,32 @@ abstract class NFTRenderingWidgetState<T extends NFTRenderingWidget>
 mixin LifecycleAwarePlaybackMixin<T extends NFTRenderingWidget>
     on NFTRenderingWidgetState<T>, WidgetsBindingObserver {
   bool _pausedForBackground = false;
+  bool _isInBackground = false;
 
   /// Whether this mixin paused playback due to the app going to background.
   /// Subclasses can read this during async initialization to avoid starting
   /// playback while the app is already in the background.
   bool get isBackgroundPaused => _pausedForBackground;
 
+  /// Whether the app is currently in the background, regardless of whether
+  /// media was playing at the time of backgrounding. Use this to guard
+  /// async initialization code that should not start playback while backgrounded.
+  bool get isInBackground => _isInBackground;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
+      _isInBackground = true;
       if (isPlaying) {
         _pausedForBackground = true;
         pause();
       }
-    } else if (state == AppLifecycleState.resumed && _pausedForBackground) {
-      _pausedForBackground = false;
-      resume();
+    } else if (state == AppLifecycleState.resumed) {
+      _isInBackground = false;
+      if (_pausedForBackground) {
+        _pausedForBackground = false;
+        resume();
+      }
     }
   }
 }

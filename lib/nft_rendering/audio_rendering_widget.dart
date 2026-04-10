@@ -80,7 +80,7 @@ class _AudioNFTRenderingWidgetState
       }
 
       widget.onLoaded?.call(time: _player?.duration?.inSeconds);
-      if (!isBackgroundPaused) {
+      if (!isInBackground) {
         await _player?.play();
       }
     } catch (e) {

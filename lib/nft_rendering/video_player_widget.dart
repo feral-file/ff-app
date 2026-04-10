@@ -110,7 +110,7 @@ class _VideoNFTRenderingWidgetState
       }
       await _controller?.setLooping(true);
       if (shouldPauseOrResume) {
-        if (_isPlaying && !isBackgroundPaused) {
+        if (_isPlaying && !isInBackground) {
           await resume();
         } else {
           await pause();

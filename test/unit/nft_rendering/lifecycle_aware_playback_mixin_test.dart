@@ -75,6 +75,39 @@ void main() {
       renderer.simulateLifecycle(AppLifecycleState.resumed);
       expect(renderer.isBackgroundPaused, isFalse);
     });
+
+    group('isInBackground', () {
+      test('is false initially', () {
+        expect(renderer.isInBackground, isFalse);
+      });
+
+      test('is true after paused lifecycle event', () {
+        renderer.simulateLifecycle(AppLifecycleState.paused);
+        expect(renderer.isInBackground, isTrue);
+      });
+
+      test('is true even when media was not playing at backgrounding time', () {
+        // Simulates the async-init race: app goes to background while media
+        // is still loading (isPlaying is false). isInBackground must still
+        // be true so that the init completion guard can skip play().
+        renderer.simulatePlaying(false);
+        renderer.simulateLifecycle(AppLifecycleState.paused);
+
+        expect(renderer.isInBackground, isTrue);
+        expect(renderer.isBackgroundPaused, isFalse); // mixin didn't call pause()
+      });
+
+      test('is false after resumed lifecycle event', () {
+        renderer.simulateLifecycle(AppLifecycleState.paused);
+        renderer.simulateLifecycle(AppLifecycleState.resumed);
+        expect(renderer.isInBackground, isFalse);
+      });
+
+      test('inactive does not set isInBackground', () {
+        renderer.simulateLifecycle(AppLifecycleState.inactive);
+        expect(renderer.isInBackground, isFalse);
+      });
+    });
   });
 }
 
