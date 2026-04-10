@@ -472,8 +472,8 @@ class OptionsButton extends ConsumerWidget {
                 'some time to complete. Please keep the FF1 powered on '
                 'and wait until the reset is finished.',
             closeButton: 'Go Back',
-            onClose: () {
-              context.pop();
+            onClose: (nextContext) {
+              nextContext.pop();
             },
           );
         }

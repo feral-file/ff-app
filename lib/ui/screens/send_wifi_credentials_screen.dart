@@ -235,13 +235,11 @@ class _EnterWiFiPasswordScreenState
           message,
           closeButton: showSupportCta ? 'Contact support' : '',
           onClose: showSupportCta
-              ? () {
-                  unawaited(
-                    UIHelper.showCustomerSupport(
-                      context,
-                      supportEmailService: ref.read(
-                        supportEmailServiceProvider,
-                      ),
+              ? (nextContext) {
+                  return UIHelper.showCustomerSupport(
+                    nextContext,
+                    supportEmailService: ref.read(
+                      supportEmailServiceProvider,
                     ),
                   );
                 }

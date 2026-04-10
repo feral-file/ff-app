@@ -180,13 +180,11 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           message,
           closeButton: showSupportCta ? 'Contact support' : '',
           onClose: showSupportCta
-              ? () {
-                  unawaited(
-                    UIHelper.showCustomerSupport(
-                      context,
-                      supportEmailService: ref.read(
-                        supportEmailServiceProvider,
-                      ),
+              ? (nextContext) {
+                  return UIHelper.showCustomerSupport(
+                    nextContext,
+                    supportEmailService: ref.read(
+                      supportEmailServiceProvider,
                     ),
                   );
                 }
