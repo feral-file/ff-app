@@ -130,6 +130,53 @@ abstract class NFTRenderingWidgetState<T extends NFTRenderingWidget>
   void mute() {}
 
   void unmute() {}
+
+  /// Whether media is currently playing. Subclasses should override this to
+  /// reflect actual playback state so that [LifecycleAwarePlaybackMixin] can
+  /// avoid resuming content that was already paused before backgrounding.
+  bool get isPlaying => false;
+}
+
+/// Mixin that pauses playback when the app moves to background and resumes
+/// it when the app returns to foreground. Apply alongside [WidgetsBindingObserver].
+///
+/// Only reacts to [AppLifecycleState.paused] (not [AppLifecycleState.inactive])
+/// to avoid spurious pauses during in-app navigation transitions.
+///
+/// The mixin only sets its background-pause flag when [isPlaying] is true at
+/// the moment of backgrounding, so manually paused content stays paused after
+/// the app returns to foreground.
+mixin LifecycleAwarePlaybackMixin<T extends NFTRenderingWidget>
+    on NFTRenderingWidgetState<T>, WidgetsBindingObserver {
+  bool _pausedForBackground = false;
+  bool _isInBackground = false;
+
+  /// Whether this mixin paused playback due to the app going to background.
+  /// Subclasses can read this during async initialization to avoid starting
+  /// playback while the app is already in the background.
+  bool get isBackgroundPaused => _pausedForBackground;
+
+  /// Whether the app is currently in the background, regardless of whether
+  /// media was playing at the time of backgrounding. Use this to guard
+  /// async initialization code that should not start playback while backgrounded.
+  bool get isInBackground => _isInBackground;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _isInBackground = true;
+      if (isPlaying) {
+        _pausedForBackground = true;
+        pause();
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      _isInBackground = false;
+      if (_pausedForBackground) {
+        _pausedForBackground = false;
+        resume();
+      }
+    }
+  }
 }
 
 class NoPreviewUrlWidget extends StatelessWidget {
