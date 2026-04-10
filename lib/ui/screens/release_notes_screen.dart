@@ -2,6 +2,7 @@ import 'package:app/app/providers/release_notes_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
+import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:flutter/material.dart';
@@ -43,7 +44,7 @@ class ReleaseNotesScreen extends ConsumerWidget {
           }
 
           return ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 24),
+            padding: EdgeInsets.symmetric(vertical: LayoutConstants.space6),
             itemCount: releaseNotes.length,
             separatorBuilder: (context, index) => const Divider(
               height: 1,
@@ -52,9 +53,9 @@ class ReleaseNotesScreen extends ConsumerWidget {
             itemBuilder: (context, index) {
               final releaseNote = releaseNotes[index];
               return ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: LayoutConstants.space5,
+                  vertical: LayoutConstants.space2,
                 ),
                 title: Text(
                   releaseNote.date,
@@ -66,7 +67,7 @@ class ReleaseNotesScreen extends ConsumerWidget {
                     releaseNote.ffOsTitle != null ||
                         releaseNote.mobileAppTitle != null
                     ? Padding(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: EdgeInsets.only(top: LayoutConstants.space2),
                         child: Text(
                           [
                             if (releaseNote.ffOsTitle != null)

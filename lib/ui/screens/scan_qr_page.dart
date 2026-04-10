@@ -201,7 +201,7 @@ class _ScanQrPageState extends ConsumerState<ScanQrPage>
         : 'Scan a Feral File deeplink or wallet address';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 70),
+      padding: EdgeInsets.symmetric(horizontal: LayoutConstants.space18),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.62),

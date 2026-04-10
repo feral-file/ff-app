@@ -98,28 +98,6 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
     super.dispose();
   }
 
-  /// Parse SSID from scan result (may contain "ssid|security" format)
-  String _parseSSID(String result) {
-    if (result.contains('|')) {
-      final parts = result.split('|');
-      return parts.isNotEmpty ? parts.first : result;
-    }
-    return result;
-  }
-
-  /// Check if network is open (from "ssid|security" format)
-  bool _isOpenNetwork(String result) {
-    if (!result.contains('|')) {
-      return false;
-    }
-    final parts = result.split('|');
-    if (parts.length > 1) {
-      final security = parts[1].trim().toUpperCase();
-      return security == 'OPEN';
-    }
-    return false;
-  }
-
   @override
   Widget build(BuildContext context) {
     final setupState = ref.watch(ff1SetupOrchestratorProvider);
@@ -138,7 +116,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.symmetric(
-            horizontal: LayoutConstants.setupPageHorizontal,
+            horizontal: LayoutConstants.pageHorizontalDefault,
           ),
           child: KeyboardVisibilityBuilder(
             builder: (context, isKeyboardVisible) {
@@ -255,9 +233,9 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
   }
 
   Widget _networkItem(BuildContext context, WiFiNetwork network) {
-    // Parse SSID and check if open (if scan result contains security info)
-    final ssid = _parseSSID(network.ssid);
-    final isOpen = _isOpenNetwork(network.ssid);
+    final wifiPoint = WifiPoint.fromWifiScanResult(network.ssid);
+    final ssid = wifiPoint.ssid;
+    final isOpen = wifiPoint.isOpenNetwork ?? false;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -288,7 +266,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
                 .read(ff1SetupOrchestratorProvider.notifier)
                 .requestEnterWifiPassword(
                   device: deviceToPass,
-                  wifiAccessPoint: WifiPoint(ssid),
+                  wifiAccessPoint: wifiPoint,
                 );
           },
           child: SizedBox(

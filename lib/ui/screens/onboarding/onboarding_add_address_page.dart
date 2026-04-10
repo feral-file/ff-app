@@ -47,6 +47,8 @@ class OnboardingAddAddressPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final actionGate = ref.watch(onboardingAddAddressActionGateProvider);
+    final addresses = ref.watch(addressesProvider).value ?? [];
+    final hasAddresses = addresses.isNotEmpty;
 
     return Scaffold(
       backgroundColor: PrimitivesTokens.colorsDarkGrey,
@@ -58,15 +60,18 @@ class OnboardingAddAddressPage extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'See the art you already own',
+              hasAddresses ? 'Your addresses' : 'See the art you already own',
               style: AppTypography.h2(context).white,
             ),
             SizedBox(height: ContentRhythm.titleSupportGap),
             Text(
-              'Add your Ethereum and Tezos addresses to pull in the works '
-              'you collect. Use the app as a clear lens on your digital '
-              'collection, '
-              'even before you connect a device.',
+              hasAddresses
+                  ? "We'll sync your collection when you continue. "
+                      'Add more if you collect across multiple wallets.'
+                  : 'Add your Ethereum and Tezos addresses to pull in the works '
+                      'you collect. Use the app as a clear lens on your digital '
+                      'collection, '
+                      'even before you connect a device.',
               style: ContentRhythm.title(context),
             ),
             SizedBox(height: ContentRhythm.titleSupportGap),
@@ -107,34 +112,23 @@ class OnboardingAddAddressPage extends ConsumerWidget {
           key: GoldPathPatrolKeys.onboardingAddAddressSecondary,
           onPressed: () => _onNext(context, ref),
           enabled: actionGate.actionsEnabled,
-          child: Consumer(
-            builder: (context, ref, _) {
-              final addressesAsync = ref.watch(addressesProvider);
-              final addresses = addressesAsync.value ?? [];
-              final actionGate = ref.watch(
-                onboardingAddAddressActionGateProvider,
-              );
-              final label = actionGate.actionsEnabled
-                  ? (addresses.isEmpty ? 'Skip for now' : 'Next')
-                  : 'Please wait';
-
-              return Row(
-                children: [
-                  Text(
-                    label,
-                    style: AppTypography.body(context).lightBlue,
-                  ),
-                  SizedBox(width: LayoutConstants.space2),
-                  SvgPicture.asset(
-                    'assets/images/arrow_right.svg',
-                    colorFilter: const ColorFilter.mode(
-                      PrimitivesTokens.colorsLightBlue,
-                      BlendMode.srcIn,
-                    ),
-                  ),
-                ],
-              );
-            },
+          child: Row(
+            children: [
+              Text(
+                actionGate.actionsEnabled
+                    ? (hasAddresses ? 'Next' : 'Skip for now')
+                    : 'Please wait',
+                style: AppTypography.body(context).lightBlue,
+              ),
+              SizedBox(width: LayoutConstants.space2),
+              SvgPicture.asset(
+                'assets/images/arrow_right.svg',
+                colorFilter: const ColorFilter.mode(
+                  PrimitivesTokens.colorsLightBlue,
+                  BlendMode.srcIn,
+                ),
+              ),
+            ],
           ),
         ),
         hintText: actionGate.actionsEnabled
