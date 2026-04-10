@@ -83,7 +83,9 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
     unawaited(
       Future<void>.microtask(() {
         unawaited(
-          ref.read(ff1SetupOrchestratorProvider.notifier).startWifiScan(
+          ref
+              .read(ff1SetupOrchestratorProvider.notifier)
+              .startWifiScan(
                 device: widget.payload.device,
               ),
         );

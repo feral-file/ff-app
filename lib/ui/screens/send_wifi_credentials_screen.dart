@@ -7,6 +7,7 @@ import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
 import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -207,6 +208,13 @@ class _EnterWiFiPasswordScreenState
   Future<bool> _handleOrchestratorEffect(FF1SetupEffect effect) async {
     switch (effect) {
       case FF1SetupNavigate(:final route, :final extra, :final method):
+        if (!mounted) return false;
+        if (route == Routes.deviceConfiguration) {
+          await ref.read(onboardingActionsProvider).completeOnboarding();
+          await ref
+              .read(ff1SetupOrchestratorProvider.notifier)
+              .tearDownAfterSetupComplete();
+        }
         if (!mounted) return false;
         switch (method) {
           case FF1SetupNavigationMethod.push:

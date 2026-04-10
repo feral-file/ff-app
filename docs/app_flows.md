@@ -45,7 +45,7 @@
   - Introduce page -> Onboarding Add Address page
   - user can add/remove addresses or skip
   - continue to onboarding FF1 setup page
-  - user can open FF1 setup or finish onboarding directly
+  - user can open FF1 setup (BLE device scan -> connect) or tap **Finish** to complete onboarding and go home without a guided FF1 setup session
 - success state: onboarding completion flag persisted, user routed to `/`
 - failure/edge states:
   - address validation failures are inline and non-fatal
@@ -56,13 +56,17 @@
     address adds re-open and queue until a later successful seed download
 - key screens involved: Introduce, Onboarding Add Address, Onboarding Setup FF1
 - key modules/services involved: `onboarding_provider`, `add_address_provider`, `address_service`, `trackedAddressesSyncProvider`
-- notes: TrackedAddressEntity (ObjectBox) is the single source of truth for user-added addresses; `trackedAddressesSyncProvider` watches it and ensures playlists exist + indexing resumes
+- notes:
+  - TrackedAddressEntity (ObjectBox) is the single source of truth for user-added addresses; `trackedAddressesSyncProvider` watches it and ensures playlists exist + indexing resumes
+  - **Onboarding Setup FF1** (`OnboardingSetupFf1Page`): **Finish** calls `onboardingActionsProvider.completeOnboarding()` and `go` to home — no guided FF1 setup session. **Setup FF1** pushes `FF1DeviceScanPage` with the default selection handler: after the user picks a device, the app **pops scan and pushes `StartSetupFf1Page`** (`_navigateToStartSetupPage`), then **Continue** calls `ensureActiveSetupSession()` before pushing **ConnectFF1Page**. So the standard onboarding FF1 → scan → connect path **always** has an `activeSession` on connect (unless the session was reset or cancelled in between). Unit/widget tests may still simulate connect **without** a session to cover non-guided entry shapes.
 
 ## Flow: Onboarding from Device Deeplink/QR
 
 - goal: continue onboarding while preserving FF1 connect intent
 - start point: deeplink or scan action resolves to device connect
 - steps:
+  - Start Setup FF1 is the session-owning entry surface for deeplink setup
+  - when the user taps Continue there, it creates the guided FF1 setup session before pushing onboarding
   - deeplink handler emits device-connect action
   - if onboarding not completed, app routes to introduce page with deeplink payload
   - after onboarding add-address step, flow navigates to FF1 Device Scan page
@@ -75,6 +79,10 @@
   - if device not found during scan, user sees empty scan result
 - key screens involved: Start Setup FF1, Introduce, Onboarding Add Address, FF1 Device Scan, Connect FF1
 - key modules/services involved: `deeplink_handler`, `router_provider`, onboarding providers, `ff1_scan_provider`
+- notes:
+  - The deeplink onboarding path does not create a second guided setup session from onboarding screens. The session is created once when the user taps **Continue** on `StartSetupFf1Page` (`ensureActiveSetupSession()`), before pushing Introduce -> Add Address -> FF1 Device Scan -> Connect FF1.
+  - **Back / leave:** `StartSetupFf1Page` uses `PopScope` so the user cannot pop the setup shell while deeplink onboarding is still incomplete. If the route is disposed without a successful setup (e.g. stack unwind), `dispose` calls `cancelSession(userAborted)` on the orchestrator to abandon the guided session.
+  - Reaching `ConnectFF1Page` from this stack **with** an active session is the expected case; if `activeSession` were null here, treat it as a flow break worth investigating.
 
 ## Flow: Address Add and Personal Collection Sync
 
@@ -140,16 +148,24 @@
 - start point: FF1 Device Picker, Start Setup FF1, or deeplink route
 - steps:
   - BLE scan and selection (or deeplink-based lookup)
-  - connect over BLE and fetch device info
+  - connect over BLE and fetch device info (`connectFF1Provider`)
   - if FF1 not internet-connected/topic missing, run Wi-Fi network scan + credential flow
-  - persist device and set active
-  - navigate to Device Configuration
+  - persist device and set active; complete onboarding when a **guided** setup session is active (see below)
+  - navigate to Device Configuration (or defer navigation for portal-all-set — see Connect FF1 screen)
 - success state: active FF1 exists with usable topic ID (or post-connect setup path)
 - failure/edge states:
   - BLE/network errors route to retry/cancel/support paths
   - device-updating/version-check errors trigger dedicated dialogs/routes
 - key screens involved: FF1 Device Picker, Start Setup FF1, Connect FF1, Scan WiFi, Enter WiFi Password, Device Config
-- key modules/services involved: `ff1_providers`, `connect_ff1_providers`, `connect_wifi_provider`, `ff1_bluetooth_device_providers`, `ff1_wifi_control`
+- key modules/services involved: `ff1_providers`, `connect_ff1_providers`, `connect_wifi_provider`, `ff1_bluetooth_device_providers`, `ff1_wifi_control`, `ff1_setup_orchestrator_provider`
+- notes — **FF1 setup orchestration (`ff1SetupOrchestratorProvider`):**
+  - **Guided session (`FF1SetupSession`):** Optional app-layer session (opaque id + `startedAt`) tracked as `activeSession` on `FF1SetupState`. `ensureActiveSetupSession()` runs from **`StartSetupFf1Page`** when the user taps **Continue** (QR deeplink, pre-selected BLE device from scan, etc.). `OnboardingSetupFf1Page` does not call it directly, but **Setup FF1 → scan → default device pick** navigates to **Start Setup FF1** first, so connect after that path still follows the same session start.
+  - **`completeSession(FF1Device)`** (when `activeSession != null`): persists the device, calls `completeOnboarding()`, hides pairing QR over relayer when `topicId` is set, disconnects BLE best-effort, resets connect/Wi‑Fi notifiers and orchestrator ephemeral state, then **`GoRouter.go`** to device configuration (unless the caller passes `shouldNavigate: false` — used for portal-all-set until the user confirms). Serialized with `_sessionCompletionInProgress`; failures rethrow so the UI can recover. No-op if there is no active session.
+  - **`cancelSession`:** Abandons guided setup (ignored while completion is in-flight): clears session, cancels BLE connect attempt, disconnects, `reset()`.
+  - **Wi‑Fi success:** If Wi‑Fi reaches terminal success and an `FF1Device` can be resolved **and** a guided session is active, the orchestrator runs `completeSession` (same finish sequence as internet-ready). If there is no session (or device cannot be resolved), it emits a **navigate** effect to device configuration (e.g. Wi‑Fi reconfigure / non-guided paths) instead.
+  - **`tearDownAfterSetupComplete()`:** BLE disconnect + `reset()` of orchestrator/connect/Wi‑Fi state **without** removing persisted devices or onboarding flags. Used on the **legacy** Wi‑Fi navigation path (e.g. after `FF1SetupNavigate` to device configuration) where onboarding completion is handled next to navigation; does not replace `completeSession` for guided flows.
+- notes — **Internet-ready persistence (no guided session):** `ConnectFF1Notifier` persists the FF1 and promotes it active in `_handlePostConnect` when the device is already internet-ready, so “setup complete” does not race an empty device store. Guided `completeSession` still runs **addDevice** + **completeOnboarding** when a session exists.
+- notes — **Deeplink onboarding:** `StartSetupFf1Page` remains the session owner under the pushed onboarding stack until success or `cancelSession` on dispose.
 
 ## Flow: Cast and Now Displaying Control
 
@@ -240,20 +256,33 @@
 
 - role in the flow: BLE connection progress, post-connect routing, and error handling
 - route / entry point: `/connect-ff1` (requires `ConnectFF1PagePayload` with `device` and optional `ff1DeviceInfo`)
-- important actions: cancel/retry, continue to device config or Wi-Fi flow
-- dependencies: `connectFF1Provider`, onboarding actions, FF1 device persistence providers
+- important actions: cancel/retry; with guided session — finish setup (persist + onboarding + teardown) or portal-all-set confirmation
+- dependencies: `connectFF1Provider` (BLE phases only), `ff1SetupOrchestratorProvider` (effects, session, portal / Wi‑Fi routing), onboarding actions (via orchestrator in guided completion)
 - notes / caveats:
-  - transitions to "still connecting" after 15 seconds
-  - When `ff1DeviceInfo` is provided (from deeplink), skips get_info command and uses supplied metadata
-  - **Navigation contract**: FF1 setup side effects (device persistence, onboarding completion, Wi-Fi QR hide) are owned by the FF1 setup orchestration layer. When the device is internet-ready, the flow navigates to device configuration. When the device is not internet-ready, the flow routes into the Wi-Fi provisioning steps.
+  - Transitions to **still connecting** after 15 seconds (`ConnectFF1Notifier`).
+  - When `ff1DeviceInfo` is provided (from deeplink), skips get_info and uses supplied metadata; **portal / “all set” UI still depends on live `ConnectFF1Connected` after verify** — deeplink metadata must not mask BLE failures or skip completion.
+  - **BLE chrome** is derived **only** from `connectFF1Provider`. **Portal-all-set** and orchestrator-driven Wi‑Fi routing use `ff1SetupOrchestratorProvider` separately.
+  - **`FF1SetupInternetReady` with `activeSession`:** `ConnectFF1Page` calls `completeSession(connected.ff1device, shouldNavigate: !connected.portalIsSet)`. If **portal is set**, navigation is deferred; the user sees the portal “all set” state and **Go to Settings** runs `replace` to device configuration after guided completion (button stays disabled while completion is in progress).
+  - **`FF1SetupInternetReady` without `activeSession`:** No `completeSession`; device persistence for internet-ready devices is already handled in `ConnectFF1Notifier`. Effects are still acknowledged so the orchestrator does not stall.
+  - **Dispose:** Cancels the in-flight BLE attempt only; **does not** clear `activeSession` (session lifetime is owned by setup entry/exit routes such as `StartSetupFf1Page`).
 
 ## Screen: ScanWiFiNetworkScreen + EnterWiFiPasswordScreen
 
 - role in the flow: Wi-Fi provisioning when FF1 is not internet-ready
 - route / entry point: `/scan-wifi-networks` and `/enter-wifi-password`
 - important actions: retry scan, choose/manual SSID, submit password, finalize
-- dependencies: `connectWiFiProvider`, FF1 BLE command providers, support dialog helpers
-- notes / caveats: open networks auto-submit without password
+- dependencies: `connectWiFiProvider`, FF1 BLE command providers, `ff1SetupOrchestratorProvider`, support dialog helpers
+- notes / caveats:
+  - Open networks auto-submit without password.
+  - On **legacy** navigate to device configuration (orchestrator `FF1SetupNavigate`), **Enter WiFi Password** may call `completeOnboarding()` then `tearDownAfterSetupComplete()` so BLE is torn down without duplicating guided `completeSession` semantics.
+
+## Screen: StartSetupFf1Page
+
+- role in the flow: entry surface for QR/deeplink and BLE-picker setup; **starts** the guided `FF1SetupSession` on **Continue** (`ensureActiveSetupSession()`)
+- route / entry point: `/start-setup-ff1` (payload: `StartSetupFf1PagePayload` with optional `deeplink` or `selectedDevice`)
+- important actions: Continue (creates session when needed, then pushes onboarding or scan/connect stack), back subject to `PopScope` rules for deeplink + incomplete onboarding
+- dependencies: `ff1SetupOrchestratorProvider`, `hasDoneOnboardingProvider`
+- notes / caveats: **dispose** calls `cancelSession(userAborted)` if setup did not finish successfully.
 
 ## Screen: DeviceConfigScreen
 

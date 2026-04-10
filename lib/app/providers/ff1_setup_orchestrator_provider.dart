@@ -7,8 +7,11 @@ import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/ff1_setup/ff1_setup_models.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
+import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
+import 'package:app/app/routing/app_navigator_key.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_device_info.dart';
@@ -16,7 +19,9 @@ import 'package:app/domain/models/ff1_error.dart';
 import 'package:app/domain/models/wifi_point.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
+import 'package:uuid/uuid.dart';
 
 export 'package:app/app/ff1_setup/ff1_setup_models.dart';
 
@@ -25,25 +30,28 @@ final _log = Logger('FF1SetupOrchestrator');
 /// Orchestrator provider: aggregates sub-flow providers without changing UX.
 ///
 /// This does not re-implement flow logic; it listens to:
-/// - [connectFF1Provider] (connect + info + ensure-ready outcome)
-/// - [connectWiFiProvider] (Wi‑Fi provisioning)
+/// - `connectFF1Provider` (connect + info + ensure-ready outcome)
+/// - `connectWiFiProvider` (Wi‑Fi provisioning)
 ///
 /// Screens can listen to this single provider for routing decisions while
 /// preserving existing UI steps and copy.
 class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   BluetoothDevice? _selectedDevice;
   FF1DeviceInfo? _deeplinkInfo;
+  FF1SetupSession? _activeSession;
+  bool _sessionCompletionInProgress = false;
   bool _listenersRegistered = false;
   int _effectId = 0;
   FF1SetupEffect? _pendingEffect;
 
-  /// True after [startConnect] begins a new BLE attempt until [reset].
+  /// True after `startConnect` begins a new BLE attempt until `reset`.
   ///
-  /// Connect navigation effects are emitted from [_handleConnectAsyncTransition]
-  /// (driven by [ref.watch] + microtask) only when there is a recognizable
+  /// Connect navigation effects are emitted from
+  /// `_handleConnectAsyncTransition` (driven by `ref.watch` + microtask) only
+  /// when there is a recognizable
   /// prior connect state (Connecting, StillConnecting, Initial, Error, or prior
   /// Connected) or when a connect attempt is active — otherwise stale
-  /// [ConnectFF1Connected] without a real in-app attempt would spuriously
+  /// `ConnectFF1Connected` without a real in-app attempt would spuriously
   /// navigate.
   bool _connectAttemptActive = false;
   int _connectAttemptSeq = 0;
@@ -51,12 +59,12 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   String _wifiNavEmittedForTopicId = '';
   bool _wifiNavEmittedForSuccessWithoutTopicId = false;
 
-  /// Snapshot of [connectFF1Provider] after the previous [build] completed.
+  /// Snapshot of `connectFF1Provider` after the previous `build` completed.
   ///
-  /// Used with [ref.watch] + a microtask to derive connect side-effects. A
+  /// Used with `ref.watch` + a microtask to derive connect side-effects. A
   /// `ref.listen(connectFF1Provider)` on this notifier does not reliably
-  /// observe every [AsyncNotifier] transition (e.g. fast Connecting→Connected),
-  /// while [watch] always rebuilds when the async state changes.
+  /// observe every `AsyncNotifier` transition (e.g. fast Connecting→Connected),
+  /// while `watch` always rebuilds when the async state changes.
   AsyncValue<ConnectFF1State>? _connectAsyncSnapshotAtPreviousBuild;
 
   @override
@@ -89,7 +97,13 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       selectedDevice: _selectedDevice,
       deeplinkInfo: _deeplinkInfo,
     );
-    return derived.copyWith(effectId: _effectId, effect: _pendingEffect);
+    return derived.copyWith(
+      effectId: _effectId,
+      hasEffect: true,
+      effect: _pendingEffect,
+      hasActiveSession: true,
+      activeSession: _activeSession,
+    );
   }
 
   void _emitEffect(FF1SetupEffect effect) {
@@ -98,11 +112,16 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     _log.info(
       '[effect] emit effectId=$_effectId type=${effect.runtimeType}',
     );
-    state = state.copyWith(effectId: _effectId, effect: _pendingEffect);
+    state = state.copyWith(
+      effectId: _effectId,
+      hasEffect: true,
+      effect: _pendingEffect,
+    );
   }
 
-  /// Connect navigation / error effects (replaces unreliable [ref.listen] on
-  /// [connectFF1Provider] inside this [Notifier] — see [_connectAsyncSnapshotAtPreviousBuild]).
+  /// Connect navigation / error effects (replaces unreliable `ref.listen` on
+  /// `connectFF1Provider` inside this `Notifier` — see
+  /// `_connectAsyncSnapshotAtPreviousBuild`).
   void _handleConnectAsyncTransition(
     AsyncValue<ConnectFF1State>? previous,
     AsyncValue<ConnectFF1State> next,
@@ -158,9 +177,6 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
         _connectAttemptSeqWithEmittedEffect = _connectAttemptSeq;
       }
       if (cur.isConnectedToInternet) {
-        unawaited(
-          ref.read(onboardingActionsProvider).completeOnboarding(),
-        );
         _emitEffect(FF1SetupInternetReady(connected: cur));
       } else {
         _emitEffect(FF1SetupNeedsWiFi(device: cur.ff1device));
@@ -202,10 +218,38 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     }
   }
 
+  /// After Wi‑Fi success, builds [FF1Device] using [topicId] and connect /
+  /// BLE context (same inputs as setup derivation).
+  FF1Device? _ff1DeviceAfterWifiSuccess({required String topicId}) {
+    if (topicId.isEmpty) {
+      return null;
+    }
+    final connectData = ref.read(connectFF1Provider).asData?.value;
+    if (connectData is ConnectFF1Connected) {
+      return connectData.ff1device.copyWith(topicId: topicId);
+    }
+    final ble = _selectedDevice;
+    final link = _deeplinkInfo;
+    if (ble != null && link != null) {
+      return FF1Device.fromBluetoothDeviceAndDeviceInfo(ble, link).copyWith(
+        topicId: topicId,
+      );
+    }
+    _log.warning(
+      '[wifi] cannot build FF1Device: need ConnectFF1Connected or '
+      'selectedDevice + deeplinkInfo',
+    );
+    return null;
+  }
+
   /// Emits Navigate(deviceConfiguration) when Wi‑Fi reaches terminal success.
   ///
-  /// Shared by [ref.listen] and a post-build microtask so we do not rely on a
-  /// single delivery path (same motivation as [_handleConnectAsyncTransition]).
+  /// When a guided setup session is active and `_ff1DeviceAfterWifiSuccess`
+  /// returns non-null, `completeSession` runs. Otherwise only a navigate
+  /// effect is emitted (e.g. Wi‑Fi reconfigure).
+  ///
+  /// Shared by `ref.listen` and a post-build microtask so we do not rely on a
+  /// single delivery path (same motivation as `_handleConnectAsyncTransition`).
   void _tryEmitWifiSuccessNavigation(WiFiConnectionState next) {
     if (next.status != WiFiConnectionStatus.success) {
       return;
@@ -222,8 +266,32 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       }
       _wifiNavEmittedForSuccessWithoutTopicId = true;
     }
+
+    final resolved = _ff1DeviceAfterWifiSuccess(topicId: nextTopicId);
+    if (resolved != null && _activeSession != null) {
+      _log.info(
+        '[wifi] completing setup session via completeSession '
+        '(session=${_activeSession!.id})',
+      );
+      unawaited(
+        () async {
+          try {
+            await completeSession(resolved);
+          } on Object catch (e, st) {
+            _log.severe(
+              '[wifi] completeSession after Wi‑Fi success failed',
+              e,
+              st,
+            );
+          }
+        }(),
+      );
+      return;
+    }
+
     _log.info(
-      '[wifi] emitting navigation on Wi‑Fi success: '
+      '[wifi] emitting navigation on Wi‑Fi success (no setup session or could '
+      'not build FF1Device): '
       'topicId="${nextTopicId.isEmpty ? "(empty)" : "(set)"}"',
     );
     _emitEffect(
@@ -246,9 +314,128 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
             // Best-effort: hiding the QR code should not block navigation.
           }
         }
-        await ref.read(onboardingActionsProvider).completeOnboarding();
       }(),
     );
+  }
+
+  /// Starts a new guided setup session (idempotent if one is already active).
+  void startSession() {
+    _ensureListenersRegistered();
+    _activeSession = FF1SetupSession(
+      id: const Uuid().v4(),
+      startedAt: DateTime.now(),
+    );
+    _log.info('[setupSession] started id=${_activeSession!.id}');
+    state = state.copyWith(
+      hasActiveSession: true,
+      activeSession: _activeSession,
+    );
+  }
+
+  /// Ensures a guided setup session exists for flows that entered from Start /
+  /// Onboarding setup entry points.
+  void ensureActiveSetupSession() {
+    if (_activeSession != null) {
+      return;
+    }
+    startSession();
+  }
+
+  /// Persists [device], completes onboarding, hides pairing QR (when
+  /// [FF1Device.topicId] is set), disconnects BLE, and optionally resets
+  /// ephemeral setup state + navigates to device configuration.
+  ///
+  /// No-op when there is no active setup session (caller should treat as
+  /// already-finished / abandoned cleanup).
+  Future<void> completeSession(
+    FF1Device device, {
+    bool shouldNavigate = true,
+  }) async {
+    _ensureListenersRegistered();
+    final session = _activeSession;
+    if (session == null) {
+      return;
+    }
+    final sessionId = session.id;
+    if (_sessionCompletionInProgress) {
+      _log.info('completeSession ignored: completion already in progress');
+      return;
+    }
+    // Keep the guided session owned until completion succeeds. That preserves
+    // a durable recovery owner if persistence/onboarding writes fail, while a
+    // separate in-flight flag lets UI/dispose cleanup ignore cancellation once
+    // the successful finish sequence has already been committed.
+    _sessionCompletionInProgress = true;
+    try {
+      await ref
+          .read(ff1BluetoothDeviceActionsProvider.notifier)
+          .addDevice(device);
+      await ref.read(onboardingActionsProvider).completeOnboarding();
+      await _hidePairingQrCodeBestEffortBeforeBleDisconnect(device);
+      await _disconnectBleBestEffort();
+    } on Object catch (e, st) {
+      _sessionCompletionInProgress = false;
+      _log.severe('completeSession failed (session=$sessionId)', e, st);
+      rethrow;
+    }
+    _sessionCompletionInProgress = false;
+    _activeSession = null;
+    ref.read(connectFF1Provider.notifier).reset();
+    ref.read(connectWiFiProvider.notifier).reset();
+    _connectAttemptActive = false;
+    _wifiNavEmittedForTopicId = '';
+    _wifiNavEmittedForSuccessWithoutTopicId = false;
+    _selectedDevice = null;
+    _deeplinkInfo = null;
+    _connectAsyncSnapshotAtPreviousBuild = null;
+    _pendingEffect = null;
+    state = FF1SetupState(
+      step: FF1SetupStep.idle,
+      effectId: _effectId,
+    );
+    if (shouldNavigate) {
+      _goToDeviceConfigurationAfterSessionComplete();
+    }
+  }
+
+  /// Session completion routes here; legacy Wi‑Fi flow still uses effects.
+  void _goToDeviceConfigurationAfterSessionComplete() {
+    unawaited(
+      Future<void>.microtask(() {
+        final ctx = appNavigatorKey.currentContext;
+        if (ctx == null || !ctx.mounted) {
+          _log.warning(
+            'completeSession: no navigator context; skipping go() to '
+            '${Routes.deviceConfiguration}',
+          );
+          return;
+        }
+        GoRouter.of(ctx).go(Routes.deviceConfiguration);
+      }),
+    );
+  }
+
+  /// Abandons the entire guided setup: cancels BLE, disconnects, clears
+  /// session, and resets ephemeral setup state. Prefer over [cancel] when the
+  /// user leaves the flow without success.
+  Future<void> cancelSession(FF1SetupSessionCancelReason reason) async {
+    _ensureListenersRegistered();
+    final session = _activeSession;
+    if (session == null) {
+      return;
+    }
+    if (_sessionCompletionInProgress) {
+      _log.info('[setupSession] cancelSession ignored during completion');
+      return;
+    }
+    _activeSession = null;
+    state = state.copyWith(
+      hasActiveSession: true,
+    );
+    _log.info('[setupSession] cancelSession: $reason');
+    cancel();
+    await _disconnectBleBestEffort();
+    reset();
   }
 
   void _ensureListenersRegistered() {
@@ -258,8 +445,8 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     _listenersRegistered = true;
 
     ref.listen<WiFiConnectionState>(
-        connectWiFiProvider,
-        (previous, next) {
+      connectWiFiProvider,
+      (previous, next) {
         final prevStatus = previous?.status;
         final nextStatus = next.status;
         final prevTopicId = previous?.topicId ?? '';
@@ -308,7 +495,8 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
             _emitEffect(
               const FF1SetupShowError(
                 title: 'Wi‑Fi setup failed',
-                message: "FF1 couldn't complete Wi‑Fi setup because of an "
+                message:
+                    "FF1 couldn't complete Wi‑Fi setup because of an "
                     'unexpected issue. Contact support for help.',
                 showSupportCta: true,
               ),
@@ -325,7 +513,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     );
   }
 
-  /// Ensure [device] is persisted and promoted to active before navigation.
+  /// Ensure `device` is persisted and promoted to active before navigation.
   // No longer needed: internet-ready persistence is guaranteed by
   // ConnectFF1Notifier.
 
@@ -337,7 +525,8 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     final attemptSeq = ++_connectAttemptSeq;
     _log.info(
       '[connect] startConnect: attemptSeq=$attemptSeq '
-      'deviceId=${device.remoteId.str.isEmpty ? '(empty)' : device.remoteId.str} '
+      'deviceId='
+      '${device.remoteId.str.isEmpty ? '(empty)' : device.remoteId.str} '
       'deviceName=${device.advName.isEmpty ? '(unknown)' : device.advName} '
       'hasDeeplinkInfo=${deeplinkInfo != null}',
     );
@@ -354,15 +543,16 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     // fireImmediately does not conflate stale data with a missed transition.
     ref.read(connectFF1Provider.notifier).reset();
     // Clear any one-off effect from a prior attempt without wiping monotonic
-    // [_effectId]. Omitting [effect] in copyWith used to null the effect
+    // `_effectId`. Omitting `effect` in copyWith used to null the effect
     // unintentionally; constructor + explicit fields keep notifier state
-    // consistent with [build] output.
+    // consistent with `build` output.
     _pendingEffect = null;
     state = FF1SetupState(
       step: FF1SetupStep.connecting,
       effectId: _effectId,
       selectedDevice: device,
       deeplinkInfo: deeplinkInfo,
+      activeSession: _activeSession,
     );
     await ref
         .read(connectFF1Provider.notifier)
@@ -419,16 +609,89 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     ref.read(connectFF1Provider.notifier).cancelConnection();
   }
 
+  /// After FF1 setup succeeds (Internet-ready or Wi‑Fi done), disconnect BLE
+  /// and clear ephemeral setup state. Does not remove persisted FF1 devices or
+  /// onboarding flags — callers own onboarding completion
+  /// (`completeOnboarding`).
+  ///
+  /// Safe to call more than once; disconnect is best-effort.
+  Future<void> tearDownAfterSetupComplete() async {
+    _ensureListenersRegistered();
+    await _disconnectBleBestEffort();
+    reset();
+  }
+
+  /// Sends hide-QR over the relayer while BLE is still connected, so the
+  /// device can clear the pairing QR before we drop the BLE link.
+  Future<void> _hidePairingQrCodeBestEffortBeforeBleDisconnect(
+    FF1Device device,
+  ) async {
+    final topicId = device.topicId;
+    if (topicId.isEmpty) {
+      return;
+    }
+    try {
+      await ref
+          .read(ff1WifiControlProvider)
+          .showPairingQRCode(
+            topicId: topicId,
+            show: false,
+          );
+    } on Object {
+      // Best-effort: hiding the QR must not block session completion.
+    }
+  }
+
+  Future<void> _disconnectBleBestEffort() async {
+    final device = _resolveBluetoothDeviceForDisconnect();
+    if (device == null) {
+      _log.fine('[tearDown] skip BLE disconnect: no resolvable device');
+      return;
+    }
+    try {
+      await ref.read(ff1ControlProvider).disconnect(device);
+      _log.info(
+        '[tearDown] BLE disconnect requested for ${device.remoteId.str}',
+      );
+    } on Object catch (e, st) {
+      _log.warning('[tearDown] BLE disconnect failed', e, st);
+    }
+  }
+
+  /// Prefer the device from `startConnect`; fall back to the connected state's
+  /// device when the deeplink path left an empty BLE `remoteId` in the
+  /// orchestrator snapshot.
+  BluetoothDevice? _resolveBluetoothDeviceForDisconnect() {
+    final selected = _selectedDevice;
+    if (selected != null && selected.remoteId.str.isNotEmpty) {
+      return selected;
+    }
+    final connectData = ref.read(connectFF1Provider).asData?.value;
+    if (connectData is ConnectFF1Connected) {
+      final rid = connectData.ff1device.remoteId;
+      if (rid.isNotEmpty) {
+        return BluetoothDevice.fromId(rid);
+      }
+    }
+    return null;
+  }
+
   void reset() {
     _ensureListenersRegistered();
     _connectAttemptActive = false;
     _wifiNavEmittedForTopicId = '';
     _wifiNavEmittedForSuccessWithoutTopicId = false;
+    _selectedDevice = null;
+    _deeplinkInfo = null;
+    _activeSession = null;
     ref.read(connectFF1Provider.notifier).reset();
     ref.read(connectWiFiProvider.notifier).reset();
     _pendingEffect = null;
     _connectAsyncSnapshotAtPreviousBuild = null;
-    state = FF1SetupState(step: FF1SetupStep.idle, effectId: _effectId);
+    state = FF1SetupState(
+      step: FF1SetupStep.idle,
+      effectId: _effectId,
+    );
   }
 
   void ackEffect({required int effectId}) {
@@ -437,7 +700,10 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       return;
     }
     _pendingEffect = null;
-    state = state.copyWith(effectId: _effectId, effect: null);
+    state = state.copyWith(
+      effectId: _effectId,
+      hasEffect: true,
+    );
   }
 }
 
