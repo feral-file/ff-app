@@ -90,7 +90,7 @@ class _ForgetExistDialogContentState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: EdgeInsets.only(top: LayoutConstants.space2),
                         child: _dotIcon(color: AppColor.white),
                       ),
                       SizedBox(width: LayoutConstants.space3),
@@ -109,7 +109,7 @@ class _ForgetExistDialogContentState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: EdgeInsets.only(top: LayoutConstants.space2),
                         child: _dotIcon(color: AppColor.white),
                       ),
                       SizedBox(width: LayoutConstants.space3),
@@ -127,7 +127,7 @@ class _ForgetExistDialogContentState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.only(top: 8),
+                        padding: EdgeInsets.only(top: LayoutConstants.space2),
                         child: _dotIcon(color: AppColor.white),
                       ),
                       SizedBox(width: LayoutConstants.space3),

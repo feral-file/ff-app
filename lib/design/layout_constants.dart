@@ -92,12 +92,13 @@ class LayoutConstants {
   static final double space20 = PrimitivesTokens.spacingSpace20.toDouble();
 
   // Page padding
-  /// Setup page horizontal padding (44px)
+  /// Horizontal padding for hero/onboarding/setup-wizard screens that show
+  /// large title text with minimal interactive content (44px).
   static final double setupPageHorizontal = PrimitivesTokens
       .spacingSetupPageHorizontal
       .toDouble();
 
-  /// Default page horizontal padding (16px)
+  /// Horizontal padding for content, list, and form screens (16px).
   static final double pageHorizontalDefault = PrimitivesTokens
       .spacingPageHorizontalDefault
       .toDouble();

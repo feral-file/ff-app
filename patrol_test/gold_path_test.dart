@@ -119,7 +119,7 @@ Future<void> _submitPersonalAddressInOnboarding(
   await _enterAddressAndSubmit($, address);
 
   await $(
-    'See the art you already own',
+    'Your addresses',
   ).waitUntilVisible(timeout: const Duration(minutes: 1));
   await $(address).waitUntilExists(timeout: const Duration(minutes: 1));
 }

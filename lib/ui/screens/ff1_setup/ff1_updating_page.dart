@@ -1,6 +1,7 @@
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
+import 'package:app/design/layout_constants.dart';
 import 'package:app/widgets/appbars/setup_app_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -32,7 +33,9 @@ class FF1UpdatingPage extends StatelessWidget {
         backgroundColor: PrimitivesTokens.colorsDarkGrey,
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 44),
+            padding: EdgeInsets.symmetric(
+              horizontal: LayoutConstants.setupPageHorizontal,
+            ),
             child: Stack(
               children: [
                 Column(
