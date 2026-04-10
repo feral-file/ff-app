@@ -174,6 +174,9 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
       ):
         _recordDuration(success: false);
         if (!context.mounted) return false;
+        final supportEmailService = showSupportCta
+            ? ref.read(supportEmailServiceProvider)
+            : null;
         await UIHelper.showInfoDialog(
           context,
           title,
@@ -183,9 +186,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
               ? (nextContext) {
                   return UIHelper.showCustomerSupport(
                     nextContext,
-                    supportEmailService: ref.read(
-                      supportEmailServiceProvider,
-                    ),
+                    supportEmailService: supportEmailService!,
                   );
                 }
               : null,

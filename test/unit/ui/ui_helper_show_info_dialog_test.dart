@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:app/app/providers/services_provider.dart';
 import 'package:app/infra/services/device_info_service.dart';
 import 'package:app/infra/services/support_email_service.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -129,6 +131,39 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'captured support service still opens support dialog '
+    'after disposed ref path',
+    (tester) async {
+      final harnessKey = GlobalKey<_ConsumerDialogHostState>();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            supportEmailServiceProvider.overrideWith(
+              (ref) => _StubSupportEmailService(),
+            ),
+          ],
+          child: MaterialApp(
+            home: _ConsumerDialogHost(key: harnessKey),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open dialog'));
+      await tester.pumpAndSettle();
+
+      harnessKey.currentState!.unmountChild();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Contact support'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Attach a debug log?'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 class _DialogHarness extends StatefulWidget {
@@ -183,4 +218,68 @@ class _DialogHarnessState extends State<_DialogHarness> {
       ),
     );
   }
+}
+
+class _ConsumerDialogHost extends StatefulWidget {
+  const _ConsumerDialogHost({super.key});
+
+  @override
+  State<_ConsumerDialogHost> createState() => _ConsumerDialogHostState();
+}
+
+class _ConsumerDialogHostState extends State<_ConsumerDialogHost> {
+  bool _showChild = true;
+
+  void unmountChild() {
+    setState(() {
+      _showChild = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _showChild ? const _ConsumerDialogLauncher() : const SizedBox(),
+    );
+  }
+}
+
+class _ConsumerDialogLauncher extends ConsumerWidget {
+  const _ConsumerDialogLauncher();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Center(
+      child: TextButton(
+        onPressed: () {
+          final supportEmailService = ref.read(supportEmailServiceProvider);
+          unawaited(
+            UIHelper.showInfoDialog(
+              context,
+              'Dialog title',
+              'Dialog body',
+              closeButton: 'Contact support',
+              onClose: (nextContext) {
+                return UIHelper.showCustomerSupport(
+                  nextContext,
+                  supportEmailService: supportEmailService,
+                );
+              },
+            ),
+          );
+        },
+        child: const Text('Open dialog'),
+      ),
+    );
+  }
+}
+
+class _StubSupportEmailService extends SupportEmailService {
+  _StubSupportEmailService() : super(deviceInfoService: DeviceInfoService());
+
+  @override
+  Future<void> composeSupportEmail({
+    required String recipient,
+    bool attachLogs = true,
+  }) async {}
 }
