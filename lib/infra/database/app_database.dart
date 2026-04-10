@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/database/tables.dart';
@@ -77,6 +78,7 @@ class AppDatabase extends _$AppDatabase {
         // Repair DBs where user_version already advanced but `signatures_json`
         // remains (failed migration, copied file, or pre-release builds).
         await _migratePlaylistsSignaturesJsonIfNeeded();
+        await _repairMalformedPlaylistRowsIfNeeded();
         await _createIndexes();
         await _createFtsInfrastructure();
         if (details.wasCreated || details.hadUpgrade) {
@@ -190,6 +192,209 @@ class AppDatabase extends _$AppDatabase {
         );
       }
     }
+  }
+
+  /// Repairs malformed playlist rows before Drift maps them into
+  /// `PlaylistData`.
+  ///
+  /// Why this exists:
+  /// - Older copied DBs and partially-migrated local files can still contain
+  ///   playlist rows where required columns are null or enum values drifted.
+  /// - Drift's generated row mapper force-unwraps those required fields, so one
+  ///   bad row can crash startup bootstrap and every playlist list/watch query.
+  ///
+  /// We heal rows on open instead of scattering defensive fallback logic across
+  /// providers and services. This preserves the offline-first contract: the app
+  /// should repair readable local state and keep going when the damage is local
+  /// to a few playlist rows.
+  Future<void> _repairMalformedPlaylistRowsIfNeeded() async {
+    final cols = await _playlistTableColumnNames();
+    const requiredCols = {
+      'id',
+      'channel_id',
+      'type',
+      'title',
+      'created_at_us',
+      'updated_at_us',
+      'signatures',
+      'sort_mode',
+      'item_count',
+      'owner_address',
+    };
+    if (!requiredCols.every(cols.contains)) {
+      return;
+    }
+
+    final rows = await customSelect(
+      '''
+      SELECT id, channel_id, type, title, created_at_us, updated_at_us,
+             signatures, owner_address, sort_mode, item_count
+      FROM playlists
+      WHERE type IS NULL
+         OR title IS NULL
+         OR created_at_us IS NULL
+         OR updated_at_us IS NULL
+         OR signatures IS NULL
+         OR sort_mode IS NULL
+         OR item_count IS NULL
+         OR type NOT IN (0, 1, 2)
+         OR sort_mode NOT IN (0, 1)
+         OR item_count < 0
+      ''',
+      readsFrom: {playlists},
+    ).get();
+
+    if (rows.isEmpty) {
+      return;
+    }
+
+    final nowUs = DateTime.now().microsecondsSinceEpoch;
+    await transaction(() async {
+      for (final row in rows) {
+        final id = row.read<String>('id');
+        final channelId = _repairPlaylistChannelId(
+          id: id,
+          rawChannelId: row.read<String?>('channel_id'),
+        );
+        final ownerAddress = row.read<String?>('owner_address');
+        final typeValue = _repairPlaylistTypeValue(
+          id: id,
+          ownerAddress: ownerAddress,
+          rawType: row.read<int?>('type'),
+        );
+        final rawCreatedAtUs = row.read<int?>('created_at_us');
+        final rawUpdatedAtUs = row.read<int?>('updated_at_us');
+        final createdAtUs = rawCreatedAtUs ?? rawUpdatedAtUs ?? nowUs;
+        final updatedAtUs = rawUpdatedAtUs ?? createdAtUs;
+        final title = _repairPlaylistTitle(
+          id: id,
+          ownerAddress: ownerAddress,
+          typeValue: typeValue,
+          rawTitle: row.read<String?>('title'),
+        );
+        final signatures = _repairPlaylistSignaturesJson(
+          row.read<String?>('signatures'),
+        );
+        final sortMode = _repairPlaylistSortModeValue(
+          rawSortMode: row.read<int?>('sort_mode'),
+          typeValue: typeValue,
+        );
+        final itemCount = _repairPlaylistItemCount(
+          row.read<int?>('item_count'),
+        );
+
+        await customStatement(
+          '''
+          UPDATE playlists
+          SET channel_id = ?,
+              type = ?,
+              title = ?,
+              created_at_us = ?,
+              updated_at_us = ?,
+              signatures = ?,
+              sort_mode = ?,
+              item_count = ?
+          WHERE id = ?
+          ''',
+          <Object?>[
+            channelId,
+            typeValue,
+            title,
+            createdAtUs,
+            updatedAtUs,
+            signatures,
+            sortMode,
+            itemCount,
+            id,
+          ],
+        );
+      }
+    });
+
+    _log.warning(
+      'Repaired ${rows.length} malformed playlist row(s) before startup reads',
+    );
+  }
+
+  int _repairPlaylistTypeValue({
+    required String id,
+    required String? ownerAddress,
+    required int? rawType,
+  }) {
+    if (rawType != null && PlaylistType.values.any((t) => t.value == rawType)) {
+      return rawType;
+    }
+    if (id == Playlist.favoriteId) {
+      return PlaylistType.favorite.value;
+    }
+    if (ownerAddress != null && ownerAddress.trim().isNotEmpty) {
+      return PlaylistType.addressBased.value;
+    }
+    return PlaylistType.dp1.value;
+  }
+
+  String? _repairPlaylistChannelId({
+    required String id,
+    required String? rawChannelId,
+  }) {
+    if (id == Playlist.favoriteId) {
+      return Channel.myCollectionId;
+    }
+    return rawChannelId;
+  }
+
+  String _repairPlaylistTitle({
+    required String id,
+    required String? ownerAddress,
+    required int typeValue,
+    required String? rawTitle,
+  }) {
+    final trimmedTitle = rawTitle?.trim();
+    if (trimmedTitle != null && trimmedTitle.isNotEmpty) {
+      return trimmedTitle;
+    }
+    if (id == Playlist.favoriteId) {
+      return 'Favorites';
+    }
+    if (typeValue == PlaylistType.addressBased.value &&
+        ownerAddress != null &&
+        ownerAddress.trim().isNotEmpty) {
+      return ownerAddress.trim();
+    }
+    return id;
+  }
+
+  String _repairPlaylistSignaturesJson(String? rawSignatures) {
+    final trimmed = rawSignatures?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return '[]';
+    }
+    return trimmed;
+  }
+
+  int _repairPlaylistSortModeValue({
+    required int? rawSortMode,
+    required int typeValue,
+  }) {
+    if (rawSortMode != null &&
+        PlaylistSortMode.values.any((m) => m.index == rawSortMode)) {
+      return rawSortMode;
+    }
+    switch (typeValue) {
+      case 1:
+      case 2:
+        return PlaylistSortMode.provenance.index;
+      case 0:
+      default:
+        return PlaylistSortMode.position.index;
+    }
+  }
+
+  int _repairPlaylistItemCount(int? rawItemCount) {
+    if (rawItemCount == null || rawItemCount < 0) {
+      return 0;
+    }
+    return rawItemCount;
   }
 
   /// Creates performance indexes.
