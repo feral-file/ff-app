@@ -130,6 +130,11 @@ abstract class NFTRenderingWidgetState<T extends NFTRenderingWidget>
   void mute() {}
 
   void unmute() {}
+
+  /// Whether media is currently playing. Subclasses should override this to
+  /// reflect actual playback state so that [LifecycleAwarePlaybackMixin] can
+  /// avoid resuming content that was already paused before backgrounding.
+  bool get isPlaying => false;
 }
 
 /// Mixin that pauses playback when the app moves to background and resumes
@@ -137,15 +142,26 @@ abstract class NFTRenderingWidgetState<T extends NFTRenderingWidget>
 ///
 /// Only reacts to [AppLifecycleState.paused] (not [AppLifecycleState.inactive])
 /// to avoid spurious pauses during in-app navigation transitions.
+///
+/// The mixin only sets its background-pause flag when [isPlaying] is true at
+/// the moment of backgrounding, so manually paused content stays paused after
+/// the app returns to foreground.
 mixin LifecycleAwarePlaybackMixin<T extends NFTRenderingWidget>
     on NFTRenderingWidgetState<T>, WidgetsBindingObserver {
   bool _pausedForBackground = false;
 
+  /// Whether this mixin paused playback due to the app going to background.
+  /// Subclasses can read this during async initialization to avoid starting
+  /// playback while the app is already in the background.
+  bool get isBackgroundPaused => _pausedForBackground;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
-      _pausedForBackground = true;
-      pause();
+      if (isPlaying) {
+        _pausedForBackground = true;
+        pause();
+      }
     } else if (state == AppLifecycleState.resumed && _pausedForBackground) {
       _pausedForBackground = false;
       resume();

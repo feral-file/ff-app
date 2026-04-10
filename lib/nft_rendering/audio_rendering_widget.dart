@@ -80,7 +80,9 @@ class _AudioNFTRenderingWidgetState
       }
 
       widget.onLoaded?.call(time: _player?.duration?.inSeconds);
-      await _player?.play();
+      if (!isBackgroundPaused) {
+        await _player?.play();
+      }
     } catch (e) {
       _log.warning('Failed to play audio source: $audioURL. Error: $e');
     }
@@ -106,6 +108,9 @@ class _AudioNFTRenderingWidgetState
       await _resumeAudio();
     }
   }
+
+  @override
+  bool get isPlaying => _player?.playing ?? false;
 
   @override
   Future<void> mute() async {

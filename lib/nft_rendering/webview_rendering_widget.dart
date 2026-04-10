@@ -38,6 +38,7 @@ class _WebviewNFTRenderingWidgetState
     extends NFTRenderingWidgetState<WebviewNFTRenderingWidget>
     with WidgetsBindingObserver {
   ValueNotifier<bool> isPausing = ValueNotifier(false);
+  bool _pausedForBackground = false;
   WebViewController? _webViewController;
   final TextEditingController _textController = TextEditingController();
   final Color backgroundColor = Colors.black;
@@ -226,9 +227,15 @@ class _WebviewNFTRenderingWidgetState
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.paused) {
-      unawaited(onPause());
+      if (!isPausing.value) {
+        _pausedForBackground = true;
+        unawaited(onPause());
+      }
     } else if (state == AppLifecycleState.resumed) {
-      unawaited(onResume());
+      if (_pausedForBackground) {
+        _pausedForBackground = false;
+        unawaited(onResume());
+      }
     } else if (state == AppLifecycleState.detached) {
       // App is being terminated - dispose WebView immediately
       // to prevent native crashes during finalization
