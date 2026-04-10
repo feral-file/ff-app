@@ -28,6 +28,23 @@ void main() {
   );
 
   testWidgets(
+    'scheduleRequestFocusWhenLaidOut retries when TextField not laid out yet',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: _LateTextFieldHarness(),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets(
     'schedulePostFrameIfMounted runs action on next frame when route current',
     (tester) async {
       var ran = false;
@@ -153,5 +170,50 @@ class _AutoFocusHarnessState extends State<_AutoFocusHarness> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(body: widget.child);
+  }
+}
+
+/// First frame has no [TextField], so the first focus attempt sees no layout;
+/// the field is inserted in the same post-frame callback after scheduling
+/// focus — exercising the retry path used for FF-APP-6J / issue #357.
+class _LateTextFieldHarness extends StatefulWidget {
+  const _LateTextFieldHarness();
+
+  @override
+  State<_LateTextFieldHarness> createState() => _LateTextFieldHarnessState();
+}
+
+class _LateTextFieldHarnessState extends State<_LateTextFieldHarness> {
+  final FocusNode _focusNode = FocusNode();
+  bool _insertField = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      scheduleRequestFocusWhenLaidOut(
+        focusNode: _focusNode,
+        ownerContext: context,
+      );
+      setState(() => _insertField = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _insertField
+          ? TextField(
+              focusNode: _focusNode,
+            )
+          : const SizedBox.shrink(),
+    );
   }
 }

@@ -152,8 +152,7 @@ void main() {
                   builder: (context, state) => Scaffold(
                     body: Center(
                       child: TextButton(
-                        onPressed: () =>
-                            context.push(Routes.addAddressPage),
+                        onPressed: () => context.push(Routes.addAddressPage),
                         child: const Text('Open'),
                       ),
                     ),
