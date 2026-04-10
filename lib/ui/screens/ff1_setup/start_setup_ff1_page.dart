@@ -7,6 +7,7 @@
 
 import 'dart:async';
 
+import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -97,6 +98,25 @@ class StartSetupFf1Page extends ConsumerStatefulWidget {
 }
 
 class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
+  late final FF1SetupOrchestratorNotifier _setupOrchestrator;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupOrchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
+  }
+
+  @override
+  void dispose() {
+    // The guided setup session is created from this entry surface, so if the
+    // page leaves the tree without a completed setup we must abandon that
+    // session. The orchestrator ignores already-finished sessions.
+    unawaited(
+      _setupOrchestrator.cancelSession(FF1SetupSessionCancelReason.userAborted),
+    );
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final deviceName = widget.payload.deviceName;
@@ -109,14 +129,21 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
     final bottomInset = reservedBottomBarHeight;
 
     final isDeeplinkFlow = widget.payload.deeplink != null;
+    final hasDoneOnboarding = ref
+        .watch(hasDoneOnboardingProvider)
+        .maybeWhen(
+          data: (v) => v,
+          orElse: () => false,
+        );
+    final canPopSetup = !(isDeeplinkFlow && !hasDoneOnboarding);
 
     return PopScope(
-      canPop: !isDeeplinkFlow,
+      canPop: canPopSetup,
       child: Scaffold(
         backgroundColor: PrimitivesTokens.colorsDarkGrey,
         appBar: SetupAppBar(
           title: 'Setup FF1',
-          hasBackButton: !isDeeplinkFlow,
+          hasBackButton: canPopSetup,
         ),
         body: SafeArea(
           child: Padding(
@@ -146,11 +173,11 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
                   child: _StartButton(
                     text: 'Continue',
                     onPressed: () async {
-                      // If deeplink is provided (from QR scan), use QR-based flow
+                      // QR scans carry deeplink data into the setup flow.
                       if (widget.payload.deeplink != null) {
                         await _handleQRBasedSetup(widget.payload.deeplink!);
                       }
-                      // If device is already selected (from BLE picker), start setup
+                      // BLE picker entries already resolved the device.
                       else if (widget.payload.selectedDevice != null) {
                         await _handleSelectedDeviceSetup();
                       }
@@ -166,6 +193,7 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
   }
 
   Future<void> _handleQRBasedSetup(String deeplink) async {
+    _setupOrchestrator.ensureActiveSetupSession();
     final hasDoneOnboarding = await ref.read(hasDoneOnboardingProvider.future);
     if (!mounted) {
       return;
@@ -206,9 +234,11 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
   }
 
   Future<void> _handleSelectedDeviceSetup() async {
+    _setupOrchestrator.ensureActiveSetupSession();
     final device = widget.payload.selectedDevice!;
     _log.info(
-      '[StartSetupFf1Page] Starting setup for selected device: ${device.advName}',
+      '[StartSetupFf1Page] Starting setup for selected device: '
+      '${device.advName}',
     );
     unawaited(
       context.push(

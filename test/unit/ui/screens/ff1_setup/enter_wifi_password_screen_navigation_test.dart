@@ -279,13 +279,20 @@ class _ScriptedOrchestratorNotifier extends FF1SetupOrchestratorNotifier {
       route: Routes.deviceConfiguration,
       method: FF1SetupNavigationMethod.go,
     );
-    state = state.copyWith(effectId: _effectId, effect: _effect);
+    state = state.copyWith(
+      effectId: _effectId,
+      hasEffect: true,
+      effect: _effect,
+    );
   }
 
   @override
   void ackEffect({required int effectId}) {
     if (effectId != _effectId) return;
     _effect = null;
-    state = state.copyWith(effectId: _effectId, effect: null);
+    state = state.copyWith(
+      effectId: _effectId,
+      hasEffect: true,
+    );
   }
 }
