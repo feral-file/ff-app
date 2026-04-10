@@ -102,6 +102,10 @@ class FF1WifiControl {
   String? _apiKey;
   int _flowSequence = 0;
 
+  /// Invalidates in-flight connect/reconnect work after a newer pause,
+  /// disconnect, connect, or reconnect request.
+  int _wifiOpGeneration = 0;
+
   String _nextFlowId(String stage) => '$stage-${++_flowSequence}';
 
   /// Start listening to transport streams
@@ -205,12 +209,24 @@ class FF1WifiControl {
       },
     );
 
+    final connectOpGen = ++_wifiOpGeneration;
     try {
       await _transport.connect(
         device: device,
         userId: userId,
         apiKey: apiKey,
       );
+      if (connectOpGen != _wifiOpGeneration) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'control_connect_superseded',
+          message:
+              'connect completed after a newer Wi‑Fi operation — tearing down',
+          payload: {'flowId': flowId, 'deviceId': device.deviceId},
+        );
+        _transport.pauseConnection();
+        return;
+      }
       _slog.info(
         category: LogCategory.wifi,
         event: 'control_connect_dispatched',
@@ -223,6 +239,16 @@ class FF1WifiControl {
         },
       );
     } catch (e) {
+      if (connectOpGen != _wifiOpGeneration) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'control_connect_error_superseded',
+          message:
+              'connect failed after a newer Wi‑Fi operation — ignoring error',
+          payload: {'flowId': flowId, 'deviceId': device.deviceId, 'error': '$e'},
+        );
+        return;
+      }
       _log.severe('Failed to connect: $e');
       _slog.warning(
         category: LogCategory.wifi,
@@ -254,6 +280,7 @@ class FF1WifiControl {
   /// Disconnect from device
   Future<void> disconnect() async {
     final flowId = _nextFlowId('disconnect');
+    _wifiOpGeneration++;
     _log.info('Disconnecting');
     _slog.info(
       category: LogCategory.wifi,
@@ -575,7 +602,11 @@ class FF1WifiControl {
   /// Uses the `forceReconnect` flag to bypass the "already connected" check
   /// when the connection may be stale (e.g. the app was suspended and the
   /// timer-based reconnect did not fire).
-  Future<void> reconnect() async {
+  ///
+  /// Returns `false` if reconnect was skipped, superseded by a newer
+  /// operation, or failed after supersession (caller must not treat as
+  /// connected).
+  Future<bool> reconnect() async {
     final flowId = _nextFlowId('reconnect');
     if (_device == null || _userId == null || _apiKey == null) {
       _log.warning('Cannot reconnect: no cached connection params');
@@ -585,8 +616,10 @@ class FF1WifiControl {
         message: 'cannot reconnect due to missing cached params',
         payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
       );
-      return;
+      return false;
     }
+
+    final opGen = ++_wifiOpGeneration;
 
     _slog.info(
       category: LogCategory.wifi,
@@ -595,6 +628,7 @@ class FF1WifiControl {
       payload: {
         'flowId': flowId,
         'deviceId': _device!.deviceId,
+        'wifiOpGeneration': opGen,
         'isDeviceConnected': _isDeviceConnected,
         'isTransportConnected': _transport.isConnected,
         'isTransportConnecting': _transport.isConnecting,
@@ -614,6 +648,22 @@ class FF1WifiControl {
         apiKey: _apiKey!,
         forceReconnect: true,
       );
+      if (opGen != _wifiOpGeneration) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'reconnect_superseded_after_await',
+          message:
+              'reconnect completed after a newer Wi‑Fi operation — tearing down',
+          payload: {
+            'flowId': flowId,
+            'deviceId': _device?.deviceId,
+            'expectedGeneration': opGen,
+            'currentGeneration': _wifiOpGeneration,
+          },
+        );
+        _transport.pauseConnection();
+        return false;
+      }
       _slog
         ..info(
           category: LogCategory.wifi,
@@ -637,7 +687,21 @@ transport reconnected — waiting for device connection notification''',
             'isDeviceConnected': _isDeviceConnected,
           },
         );
+      return true;
     } catch (e) {
+      if (opGen != _wifiOpGeneration) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'reconnect_failed_superseded',
+          message: 'reconnect failed after a newer Wi‑Fi operation — ignoring',
+          payload: {
+            'flowId': flowId,
+            'deviceId': _device?.deviceId,
+            'error': e.toString(),
+          },
+        );
+        return false;
+      }
       _slog.warning(
         category: LogCategory.wifi,
         event: 'reconnect_failed',
@@ -661,6 +725,7 @@ transport reconnected — waiting for device connection notification''',
       return;
     }
 
+    _wifiOpGeneration++;
     final flowId = _nextFlowId('pause');
     _slog.info(
       category: LogCategory.wifi,
