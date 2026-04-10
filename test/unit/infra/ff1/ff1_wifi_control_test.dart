@@ -143,7 +143,7 @@ void main() {
         );
         await Future<void>.delayed(Duration.zero);
 
-        transport.emitConnectionState(false);
+        transport.emitConnectionState(connected: false);
         await Future<void>.delayed(Duration.zero);
 
         final clearedStatus = await control.ffpDdcPanelStatusStream.first;
@@ -348,6 +348,115 @@ void main() {
       expect((await nextDisconnected).isConnected, isFalse);
     });
   });
+
+  group('FF1WifiControl.reconnect', () {
+    test(
+      'returns false and tears down transport when superseded before '
+      'transport connect completes',
+      () async {
+        final transport = _ReconnectRaceTransport();
+        final control = FF1WifiControl(transport: transport);
+
+        addTearDown(control.dispose);
+
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'remote-1',
+          deviceId: 'device-1',
+          topicId: 'topic-1',
+        );
+
+        await control.connect(
+          device: device,
+          userId: 'u',
+          apiKey: 'k',
+        );
+        expect(transport.connectInvocationCount, 1);
+
+        final reconnectFuture = control.reconnect();
+        await Future<void>.delayed(Duration.zero);
+        expect(transport.connectInvocationCount, 2);
+
+        control.pauseConnection();
+
+        transport.releasePendingConnect();
+
+        final ok = await reconnectFuture;
+        expect(ok, isFalse);
+        expect(transport.pauseConnectionCount, greaterThanOrEqualTo(1));
+      },
+    );
+  });
+}
+
+/// First [connect] completes immediately; second [connect] (reconnect) awaits
+/// [releasePendingConnect] so tests can interleave [pauseConnection].
+class _ReconnectRaceTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+
+  int connectInvocationCount = 0;
+  int pauseConnectionCount = 0;
+  Completer<void>? _pendingSecondConnect;
+
+  void releasePendingConnect() {
+    _pendingSecondConnect?.complete();
+    _pendingSecondConnect = null;
+  }
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    connectInvocationCount++;
+    if (connectInvocationCount >= 2) {
+      _pendingSecondConnect = Completer<void>();
+      await _pendingSecondConnect!.future;
+    }
+  }
+
+  @override
+  void pauseConnection() {
+    pauseConnectionCount++;
+  }
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
 }
 
 class _RecordingRestClient {
@@ -495,7 +604,7 @@ class _NotificationTestTransport implements FF1WifiTransport {
     _notifications.add(message);
   }
 
-  void emitConnectionState(bool connected) {
+  void emitConnectionState({required bool connected}) {
     _connections.add(connected);
   }
 

@@ -1,14 +1,7 @@
-// This provider file still contains legacy analyzer noise that is outside the
-// firmware-update flow; keep the ignore local so this PR can be gated on the
-// new prompt/update behavior instead of a broader cleanup pass.
-// ignore_for_file: implementation_imports, lines_longer_than_80_chars, comment_references, discarded_futures, unawaited_futures, public_member_api_docs, avoid_equals_and_hash_code_on_mutable_classes
+// This provider file still contains legacy analyzer noise outside narrow fixes.
+// ignore_for_file: lines_longer_than_80_chars, comment_references, public_member_api_docs, avoid_equals_and_hash_code_on_mutable_classes
 
 import 'dart:async';
-
-// This provider layer already carries lint debt unrelated to the stale-status
-// bug. The current change is intentionally narrow: keep live status aligned
-// with the current FF1 connection session without refactoring the whole file.
-// ignore_for_file: avoid_equals_and_hash_code_on_mutable_classes, cascade_invocations, comment_references, discarded_futures, implementation_imports, lines_longer_than_80_chars, public_member_api_docs, unawaited_futures
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/version_provider.dart';
@@ -300,6 +293,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   ///
   /// Closes WebSocket but preserves [state.device] for [reconnect] on resume.
   void pauseConnection() {
+    _connectEpoch++;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_pause_requested',
@@ -347,8 +341,31 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       return;
     }
 
+    final epoch = ++_connectEpoch;
     try {
-      await _control.reconnect();
+      final ok = await _control.reconnect();
+
+      if (epoch != _connectEpoch) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_reconnect_canceled',
+          message: 'reconnect completed after a newer connection/pause request',
+          payload: {'deviceId': state.device?.deviceId},
+        );
+        return;
+      }
+
+      if (!ok) {
+        state = state.copyWith(isConnected: false);
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_reconnect_not_applied',
+          message:
+              'reconnect did not apply (skipped, superseded, or transport error)',
+          payload: {'deviceId': state.device?.deviceId},
+        );
+        return;
+      }
 
       state = state.copyWith(isConnected: true);
       _slog.info(
@@ -361,6 +378,18 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         },
       );
     } on Exception catch (e) {
+      if (epoch != _connectEpoch) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_reconnect_canceled_error',
+          message: 'reconnect failed after cancellation; ignoring stale error',
+          payload: {
+            'deviceId': state.device?.deviceId,
+            'error': e.toString(),
+          },
+        );
+        return;
+      }
       state = state.copyWith(
         isConnected: false,
         error: e,
