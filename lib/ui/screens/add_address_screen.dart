@@ -12,6 +12,7 @@ import 'package:app/app/providers/add_address_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/providers/scan_qr_provider.dart';
 import 'package:app/app/routing/routes.dart';
+import 'package:app/app/utils/safe_focus_request.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
@@ -54,7 +55,10 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _addressFocusNode.requestFocus();
+      scheduleRequestFocusWhenLaidOut(
+        focusNode: _addressFocusNode,
+        ownerContext: context,
+      );
     });
   }
 
@@ -103,20 +107,18 @@ class _AddAddressInputScreenState extends ConsumerState<AddAddressScreen> {
             :final address,
             :final domain,
           )) {
-            if (context.mounted) {
+            schedulePostFrameIfMounted(context, () {
               final payload = AddAliasScreenPayload(
                 address: address,
                 domain: domain,
               );
               unawaited(context.push(Routes.addAliasPage, extra: payload));
-            }
+            });
             return;
           }
 
           if (value is AddAddressFlowCompleted) {
-            if (context.mounted) {
-              context.pop();
-            }
+            schedulePostFrameIfMounted(context, () => context.pop());
           }
         }
       },
