@@ -39,6 +39,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   BluetoothDevice? _selectedDevice;
   FF1DeviceInfo? _deeplinkInfo;
   FF1SetupSession? _activeSession;
+  bool _sessionCompletionInProgress = false;
   bool _listenersRegistered = false;
   int _effectId = 0;
   FF1SetupEffect? _pendingEffect;
@@ -341,18 +342,30 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   }
 
   /// Persists [device], completes onboarding, hides pairing QR (when
-  /// [FF1Device.topicId] is set), disconnects BLE, resets ephemeral setup
-  /// state, then navigates to device configuration via the root router
-  /// (no navigation effect — avoids duplicate UI handling).
+  /// [FF1Device.topicId] is set), disconnects BLE, and optionally resets
+  /// ephemeral setup state + navigates to device configuration.
   ///
   /// No-op when there is no active setup session (caller should treat as
   /// already-finished / abandoned cleanup).
-  Future<void> completeSession(FF1Device device) async {
+  Future<void> completeSession(
+    FF1Device device, {
+    bool shouldNavigate = true,
+  }) async {
     _ensureListenersRegistered();
-    if (_activeSession == null) {
+    final session = _activeSession;
+    if (session == null) {
       return;
     }
-    final sessionId = _activeSession!.id;
+    final sessionId = session.id;
+    if (_sessionCompletionInProgress) {
+      _log.info('completeSession ignored: completion already in progress');
+      return;
+    }
+    // Keep the guided session owned until completion succeeds. That preserves
+    // a durable recovery owner if persistence/onboarding writes fail, while a
+    // separate in-flight flag lets UI/dispose cleanup ignore cancellation once
+    // the successful finish sequence has already been committed.
+    _sessionCompletionInProgress = true;
     try {
       await ref
           .read(ff1BluetoothDeviceActionsProvider.notifier)
@@ -361,9 +374,11 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       await _hidePairingQrCodeBestEffortBeforeBleDisconnect(device);
       await _disconnectBleBestEffort();
     } on Object catch (e, st) {
+      _sessionCompletionInProgress = false;
       _log.severe('completeSession failed (session=$sessionId)', e, st);
       rethrow;
     }
+    _sessionCompletionInProgress = false;
     _activeSession = null;
     ref.read(connectFF1Provider.notifier).reset();
     ref.read(connectWiFiProvider.notifier).reset();
@@ -378,7 +393,9 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       step: FF1SetupStep.idle,
       effectId: _effectId,
     );
-    _goToDeviceConfigurationAfterSessionComplete();
+    if (shouldNavigate) {
+      _goToDeviceConfigurationAfterSessionComplete();
+    }
   }
 
   /// Session completion routes here; legacy Wi‑Fi flow still uses effects.
@@ -403,9 +420,18 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   /// user leaves the flow without success.
   Future<void> cancelSession(FF1SetupSessionCancelReason reason) async {
     _ensureListenersRegistered();
-    if (_activeSession == null) {
+    final session = _activeSession;
+    if (session == null) {
       return;
     }
+    if (_sessionCompletionInProgress) {
+      _log.info('[setupSession] cancelSession ignored during completion');
+      return;
+    }
+    _activeSession = null;
+    state = state.copyWith(
+      hasActiveSession: true,
+    );
     _log.info('[setupSession] cancelSession: $reason');
     cancel();
     await _disconnectBleBestEffort();

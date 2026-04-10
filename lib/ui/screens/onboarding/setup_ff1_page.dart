@@ -8,7 +8,6 @@
 import 'dart:async';
 
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
-import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -106,7 +105,6 @@ class OnboardingSetupFf1Page extends ConsumerWidget {
 
   /// On setup FF1 button pressed.
   void _onSetupFf1(BuildContext context, WidgetRef ref) {
-    ref.read(ff1SetupOrchestratorProvider.notifier).ensureActiveSetupSession();
     unawaited(context.push(Routes.ff1DeviceScanPage));
   }
 
