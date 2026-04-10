@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:app/design/app_typography.dart';
-import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/utils/debounce_util.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
@@ -20,7 +19,7 @@ class PrimaryButton extends StatelessWidget {
     this.enabled = true,
     this.isProcessing = false,
     this.indicatorColor,
-    this.padding = EdgeInsets.symmetric(vertical: LayoutConstants.space3),
+    this.padding = const EdgeInsets.symmetric(vertical: 12),
     this.elevatedPadding,
     this.borderRadius = 32,
     this.borderColor,
@@ -150,7 +149,7 @@ class PrimaryAsyncButton extends StatefulWidget {
     this.borderColor,
     this.borderRadius = 32,
     this.processingText,
-    this.padding = EdgeInsets.symmetric(vertical: LayoutConstants.space3),
+    this.padding = const EdgeInsets.symmetric(vertical: 12),
   });
 
   /// On tap callback.

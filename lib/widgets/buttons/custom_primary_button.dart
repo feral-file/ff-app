@@ -1,4 +1,3 @@
-import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:flutter/material.dart';
 
@@ -15,7 +14,7 @@ class CustomPrimaryButton extends StatelessWidget {
     this.isProcessing = false,
     this.borderColor,
     this.indicatorColor,
-    this.padding = EdgeInsets.symmetric(vertical: LayoutConstants.space3),
+    this.padding = const EdgeInsets.symmetric(vertical: 12),
     this.borderRadius = 32,
     this.textColor,
   });

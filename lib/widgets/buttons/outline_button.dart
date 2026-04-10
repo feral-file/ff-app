@@ -17,7 +17,7 @@ class OutlineButton extends StatelessWidget {
     this.isProcessing = false,
     this.textColor,
     this.borderColor,
-    this.padding = EdgeInsets.symmetric(vertical: LayoutConstants.space3),
+    this.padding = const EdgeInsets.symmetric(vertical: 12),
     this.rightIcon,
   });
 
