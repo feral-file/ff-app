@@ -1,18 +1,25 @@
-## Summary
+## Problem
 
-Describe the change and the outcome it enables.
+What is changing?
 
-## Why This Matters
+## Why It Matters
 
-Explain the user-facing, maintainer-facing, or public-readiness reason for the change.
+Why should we land this now?
 
-## Verification
+## Acceptance Checks
 
-- [ ] `./scripts/verify_local_setup.sh` (or explain why not)
-- [ ] Additional targeted tests for the changed scope
+- [ ] Check 1
+- [ ] Check 2
+- [ ] Check 3
 
-## Public / Private Boundary Check
+## Human Owner
 
-- [ ] No secrets or private documents were added
-- [ ] `README.md` and `.env.example` were updated if setup or config changed
-- [ ] Any private dependency is documented as an interface or contract, not as committed credentials
+Who owns the task outcome?
+
+## How The Agent Will Be Used
+
+How did the agent help with implementation, review, verification, or follow-up?
+
+## PR or Deploy Link
+
+Link the PR, preview, deploy, or release if available.
