@@ -252,15 +252,16 @@ class AppDatabase extends _$AppDatabase {
     await transaction(() async {
       for (final row in rows) {
         final id = row.read<String>('id');
-        final channelId = _repairPlaylistChannelId(
-          id: id,
-          rawChannelId: row.read<String?>('channel_id'),
-        );
         final ownerAddress = row.read<String?>('owner_address');
         final typeValue = _repairPlaylistTypeValue(
           id: id,
           ownerAddress: ownerAddress,
           rawType: row.read<int?>('type'),
+        );
+        final channelId = _repairPlaylistChannelId(
+          id: id,
+          rawChannelId: row.read<String?>('channel_id'),
+          typeValue: typeValue,
         );
         final rawCreatedAtUs = row.read<int?>('created_at_us');
         final rawUpdatedAtUs = row.read<int?>('updated_at_us');
@@ -321,11 +322,11 @@ class AppDatabase extends _$AppDatabase {
     required String? ownerAddress,
     required int? rawType,
   }) {
-    if (rawType != null && PlaylistType.values.any((t) => t.value == rawType)) {
-      return rawType;
-    }
     if (id == Playlist.favoriteId) {
       return PlaylistType.favorite.value;
+    }
+    if (rawType != null && PlaylistType.values.any((t) => t.value == rawType)) {
+      return rawType;
     }
     if (ownerAddress != null && ownerAddress.trim().isNotEmpty) {
       return PlaylistType.addressBased.value;
@@ -336,8 +337,10 @@ class AppDatabase extends _$AppDatabase {
   String? _repairPlaylistChannelId({
     required String id,
     required String? rawChannelId,
+    required int typeValue,
   }) {
-    if (id == Playlist.favoriteId) {
+    if (id == Playlist.favoriteId ||
+        typeValue == PlaylistType.addressBased.value) {
       return Channel.myCollectionId;
     }
     return rawChannelId;

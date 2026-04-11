@@ -22,16 +22,10 @@ void main() {
         _createMalformedPlaylistDatabase(
           file: dbFile,
           rows: const [
-            _RawPlaylistRow(
-              id: Playlist.favoriteId,
-              title: null,
-              type: null,
-              createdAtUs: null,
-              updatedAtUs: null,
-              signatures: null,
-              sortMode: null,
-              itemCount: null,
-            ),
+              _RawPlaylistRow(
+                id: Playlist.favoriteId,
+                type: 0,
+              ),
           ],
         );
 
@@ -71,9 +65,7 @@ void main() {
               _RawPlaylistRow(
                 id: 'playlist_addr',
                 ownerAddress: '0xABCDEF',
-                title: null,
                 type: 9,
-                createdAtUs: null,
                 updatedAtUs: 55,
                 signatures: '',
                 sortMode: 99,
@@ -91,6 +83,7 @@ void main() {
             expect(playlists.single.id, 'playlist_addr');
             expect(playlists.single.name, '0xABCDEF');
             expect(playlists.single.type, PlaylistType.addressBased);
+            expect(playlists.single.channelId, Channel.myCollectionId);
             expect(playlists.single.sortMode, PlaylistSortMode.provenance);
             expect(playlists.single.itemCount, 0);
             expect(playlists.single.createdAt!.microsecondsSinceEpoch, 55);
@@ -108,39 +101,19 @@ void main() {
 class _RawPlaylistRow {
   const _RawPlaylistRow({
     required this.id,
-    this.channelId,
     this.type,
-    this.baseUrl,
-    this.dpVersion,
-    this.slug,
-    this.title,
-    this.createdAtUs,
     this.updatedAtUs,
-    this.signature,
     this.signatures,
-    this.defaultsJson,
-    this.dynamicQueriesJson,
     this.ownerAddress,
-    this.ownerChain,
     this.sortMode,
     this.itemCount,
   });
 
   final String id;
-  final String? channelId;
   final int? type;
-  final String? baseUrl;
-  final String? dpVersion;
-  final String? slug;
-  final String? title;
-  final int? createdAtUs;
   final int? updatedAtUs;
-  final String? signature;
   final String? signatures;
-  final String? defaultsJson;
-  final String? dynamicQueriesJson;
   final String? ownerAddress;
-  final String? ownerChain;
   final int? sortMode;
   final int? itemCount;
 }
@@ -151,19 +124,18 @@ void _createMalformedPlaylistDatabase({
 }) {
   final db = sqlite3.sqlite3.open(file.path);
   try {
-    db.execute('PRAGMA foreign_keys = ON;');
-    db.execute('PRAGMA user_version = 3;');
-
-    db.execute('''
+    final setupStatements = <String>[
+      'PRAGMA foreign_keys = ON;',
+      'PRAGMA user_version = 3;',
+      '''
       CREATE TABLE publishers (
         id INTEGER PRIMARY KEY,
         title TEXT NOT NULL,
         created_at_us INTEGER NOT NULL,
         updated_at_us INTEGER NOT NULL
       )
-    ''');
-
-    db.execute('''
+      ''',
+      '''
       CREATE TABLE channels (
         id TEXT PRIMARY KEY,
         type INTEGER NOT NULL,
@@ -178,9 +150,8 @@ void _createMalformedPlaylistDatabase({
         updated_at_us INTEGER NOT NULL,
         sort_order INTEGER
       )
-    ''');
-
-    db.execute('''
+      ''',
+      '''
       CREATE TABLE playlists (
         id TEXT PRIMARY KEY,
         channel_id TEXT,
@@ -200,9 +171,8 @@ void _createMalformedPlaylistDatabase({
         sort_mode INTEGER,
         item_count INTEGER
       )
-    ''');
-
-    db.execute('''
+      ''',
+      '''
       CREATE TABLE items (
         id TEXT PRIMARY KEY,
         kind INTEGER NOT NULL,
@@ -220,9 +190,8 @@ void _createMalformedPlaylistDatabase({
         enrichment_status INTEGER NOT NULL DEFAULT 0,
         updated_at_us INTEGER NOT NULL
       )
-    ''');
-
-    db.execute('''
+      ''',
+      '''
       CREATE TABLE playlist_entries (
         playlist_id TEXT NOT NULL,
         item_id TEXT NOT NULL,
@@ -230,7 +199,10 @@ void _createMalformedPlaylistDatabase({
         sort_key_us INTEGER NOT NULL,
         updated_at_us INTEGER NOT NULL
       )
-    ''');
+      ''',
+    ];
+    void executeStatement(String statement) => db.execute(statement);
+    setupStatements.forEach(executeStatement);
 
     for (final row in rows) {
       db.execute(
@@ -244,20 +216,20 @@ void _createMalformedPlaylistDatabase({
         ''',
         <Object?>[
           row.id,
-          row.channelId,
+          null,
           row.type,
-          row.baseUrl,
-          row.dpVersion,
-          row.slug,
-          row.title,
-          row.createdAtUs,
+          null,
+          null,
+          null,
+          null,
+          null,
           row.updatedAtUs,
-          row.signature,
+          null,
           row.signatures,
-          row.defaultsJson,
-          row.dynamicQueriesJson,
+          null,
+          null,
           row.ownerAddress,
-          row.ownerChain,
+          null,
           row.sortMode,
           row.itemCount,
         ],
