@@ -1207,14 +1207,14 @@ class _StallingWifiTransport extends FakeWifiTransport {
   final Completer<void> until;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
   }) async {
     await until.future;
-    await super.connect(
+    return super.connect(
       device: device,
       userId: userId,
       apiKey: apiKey,
@@ -1243,7 +1243,7 @@ class _OverlappingNotifierConnectTransport extends FakeWifiTransport {
   }
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -1255,7 +1255,7 @@ class _OverlappingNotifierConnectTransport extends FakeWifiTransport {
     } else if (_connectCount == 2) {
       await _secondConnect.future;
     }
-    await super.connect(
+    return super.connect(
       device: device,
       userId: userId,
       apiKey: apiKey,
@@ -1297,7 +1297,7 @@ class _InspectableWifiTransport implements FF1WifiTransport {
   bool get isConnecting => false;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -1305,6 +1305,7 @@ class _InspectableWifiTransport implements FF1WifiTransport {
   }) async {
     _isConnected = true;
     _connections.add(true);
+    return true;
   }
 
   @override
@@ -1347,7 +1348,7 @@ class _InspectableWifiControl extends FF1WifiControl {
   FF1Device? lastConnectedDevice;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -1358,7 +1359,7 @@ class _InspectableWifiControl extends FF1WifiControl {
       switchConnectPlayerStatus = currentPlayerStatus;
       switchConnectIsDeviceConnected = isDeviceConnected;
     }
-    await super.connect(device: device, userId: userId, apiKey: apiKey);
+    return super.connect(device: device, userId: userId, apiKey: apiKey);
   }
 }
 
@@ -1405,16 +1406,21 @@ class _AutoStatusWifiControl extends FakeWifiControl {
   final Map<String, FF1DeviceStatus> statusesByDeviceId;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
   }) async {
-    await super.connect(device: device, userId: userId, apiKey: apiKey);
+    final ok = await super.connect(
+      device: device,
+      userId: userId,
+      apiKey: apiKey,
+    );
     final status = statusesByDeviceId[device.deviceId];
     if (status != null) {
       emitDeviceStatus(status);
     }
+    return ok;
   }
 }
 
@@ -1472,7 +1478,7 @@ class _BlockingWifiControl extends FF1WifiControl {
   }
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -1484,6 +1490,7 @@ class _BlockingWifiControl extends FF1WifiControl {
       firstConnectStarted.complete();
     }
     await _connectGate.future;
+    return true;
   }
 
   @override
@@ -1511,12 +1518,14 @@ class _NoopWifiTransport implements FF1WifiTransport {
       const Stream<FF1NotificationMessage>.empty();
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   @override
   void dispose() {}

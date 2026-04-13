@@ -193,6 +193,26 @@ void main() {
     );
   });
 
+  group('FF1WifiControl.connect transport dispatch flag', () {
+    test('returns false when transport reports connect not dispatched', () async {
+      final transport = _SuppressedDispatchTransport();
+      final control = FF1WifiControl(transport: transport);
+      addTearDown(control.dispose);
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote',
+        deviceId: 'device',
+        topicId: 'topic',
+      );
+      final ok = await control.connect(
+        device: device,
+        userId: 'user',
+        apiKey: 'key',
+      );
+      expect(ok, isFalse);
+    });
+  });
+
   group('FF1WifiControl.getDeviceRealtimeMetrics', () {
     test(
       'uses default 6 second timeout for realtime metrics request',
@@ -509,7 +529,7 @@ class _StallThenThrowTransport implements FF1WifiTransport {
   bool get isConnecting => false;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -567,7 +587,7 @@ class _HappyReconnectTransport implements FF1WifiTransport {
   bool get isConnecting => false;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -576,6 +596,7 @@ class _HappyReconnectTransport implements FF1WifiTransport {
     if (forceReconnect) {
       forceReconnectConnectCount++;
     }
+    return true;
   }
 
   @override
@@ -633,7 +654,7 @@ class _ReconnectRaceTransport implements FF1WifiTransport {
   bool get isConnecting => false;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -644,6 +665,7 @@ class _ReconnectRaceTransport implements FF1WifiTransport {
       _pendingSecondConnect = Completer<void>();
       await _pendingSecondConnect!.future;
     }
+    return true;
   }
 
   @override
@@ -703,7 +725,7 @@ class _OverlappingConnectTransport implements FF1WifiTransport {
   bool get isConnecting => false;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -713,14 +735,70 @@ class _OverlappingConnectTransport implements FF1WifiTransport {
     if (_connectCalls == 1) {
       _firstConnectBlock = Completer<void>();
       await _firstConnectBlock!.future;
-      return;
+      return true;
     }
+    return true;
   }
 
   @override
   void pauseConnection() {
     pauseConnectionCount++;
   }
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
+}
+
+/// Minimal transport: [connect] completes with `false` (relayer suppressed
+/// before connect control — PR #361).
+class _SuppressedDispatchTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<bool> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    return false;
+  }
+
+  @override
+  void pauseConnection() {}
 
   @override
   Future<void> disconnect() async {}
@@ -802,12 +880,14 @@ class _DelayedConnectionFalseAfterDisconnectTransport
   bool get isConnecting => false;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   @override
   void pauseConnection() {}
@@ -853,12 +933,14 @@ class _FakeWifiTransport implements FF1WifiTransport {
   Stream<FF1NotificationMessage> get notificationStream => const Stream.empty();
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   @override
   void pauseConnection() {}
@@ -907,12 +989,14 @@ class _NotificationTestTransport implements FF1WifiTransport {
       _notifications.stream;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   @override
   void pauseConnection() {}
@@ -959,12 +1043,14 @@ class _CustomDisposeTransport implements FF1WifiTransport {
   Stream<FF1NotificationMessage> get notificationStream => const Stream.empty();
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   @override
   void pauseConnection() {}
@@ -1008,12 +1094,14 @@ class _SwitchingTransport implements FF1WifiTransport {
   bool get isConnecting => false;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   void emitNotification(FF1NotificationMessage notification) {
     _notifications.add(notification);

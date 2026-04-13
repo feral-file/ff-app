@@ -684,12 +684,14 @@ class _PromptRaceTransport implements FF1WifiTransport {
   }
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   @override
   void pauseConnection() {}

@@ -195,7 +195,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
     _connectingEpoch = epoch;
 
     try {
-      await _control.connect(
+      final ok = await _control.connect(
         device: device,
         userId: userId,
         apiKey: apiKey,
@@ -206,6 +206,22 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
           category: LogCategory.wifi,
           event: 'connection_notifier_connect_canceled',
           message: 'connect completed after a newer connection request',
+          payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
+        );
+        return;
+      }
+
+      if (!ok) {
+        state = state.copyWith(
+          isConnected: false,
+          isConnecting: false,
+          device: device,
+        );
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_connect_not_applied',
+          message:
+              'connect did not dispatch (suppressed or superseded at transport)',
           payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
         );
         return;
@@ -788,11 +804,16 @@ final ff1WifiConnectOperationProvider = FutureProvider.autoDispose
       (ref, params) async {
         final control = ref.watch(ff1WifiControlProvider);
 
-        await control.connect(
+        final ok = await control.connect(
           device: params.device,
           userId: params.userId,
           apiKey: params.apiKey,
         );
+        if (!ok) {
+          throw StateError(
+            'FF1 Wi-Fi connect did not dispatch to the relayer (suppressed).',
+          );
+        }
       },
     );
 

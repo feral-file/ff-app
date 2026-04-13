@@ -123,9 +123,10 @@ void main() {
       await reachedDispatchBoundary.future;
       transport.pauseConnection();
       releaseDispatch.complete();
-      await connectFuture;
+      final connectOk = await connectFuture;
       await Future<void>.delayed(const Duration(milliseconds: 250));
 
+      expect(connectOk, isFalse);
       expect(events.where((isConnected) => isConnected), isEmpty);
       expect(transport.isConnected, isFalse);
     },

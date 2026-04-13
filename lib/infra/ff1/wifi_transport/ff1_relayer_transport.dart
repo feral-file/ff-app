@@ -130,7 +130,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
   }
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -180,7 +180,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
             'transport connect skipped because socket is already connected',
         payload: {'flowId': flowId, 'deviceId': device.deviceId},
       );
-      return;
+      return true;
     }
 
     // Disconnect from previous device
@@ -197,7 +197,10 @@ class FF1RelayerTransport implements FF1WifiTransport {
 
     try {
       _isConnecting = true;
-      await _connectInternal(flowId: flowId);
+      final dispatched = await _connectInternal(flowId: flowId);
+      if (!dispatched) {
+        return false;
+      }
       _slog.info(
         category: LogCategory.wifi,
         event: 'transport_connect_control_sent',
@@ -209,6 +212,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
           'isConnecting': _isConnecting,
         },
       );
+      return true;
     } catch (e) {
       _isConnecting = false;
       _lastError = e.toString();
@@ -223,7 +227,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
     }
   }
 
-  Future<void> _connectInternal({String? flowId}) async {
+  Future<bool> _connectInternal({String? flowId}) async {
     // Build WebSocket URL
     final wsUrl =
         '$_relayerUrl/api/notification?'
@@ -288,7 +292,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
         message: 'connect control skipped because transport is suppressed',
         payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
       );
-      return;
+      return false;
     }
 
     // Send connect control message. wireGen is assigned here with no await
@@ -313,6 +317,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
 
     // Reset reconnect attempts on successful connect
     _reconnectAttempts = 0;
+    return true;
   }
 
   @override

@@ -38,7 +38,7 @@ class _ThrowingConnectTransport implements FF1WifiTransport {
   bool get isConnecting => false;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -101,7 +101,7 @@ class _ReconnectSecondCallFailsTransport implements FF1WifiTransport {
   bool get isConnecting => false;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -109,7 +109,7 @@ class _ReconnectSecondCallFailsTransport implements FF1WifiTransport {
   }) async {
     _connectCount++;
     if (_connectCount == 1) {
-      return;
+      return true;
     }
     _errors.add(const FF1WifiNetworkError('reconnect transport failure'));
     throw Exception('reconnect failed');

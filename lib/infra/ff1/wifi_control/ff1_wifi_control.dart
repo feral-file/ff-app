@@ -140,7 +140,10 @@ class FF1WifiControl {
   /// [device] - FF1 device with topicId
   /// [userId] - user identifier for authentication
   /// [apiKey] - API key for authentication
-  Future<void> connect({
+  ///
+  /// Returns `false` when the transport did not dispatch a connect (suppressed
+  /// or superseded). Callers must not flip UI to connected on `false`.
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -214,7 +217,7 @@ class FF1WifiControl {
       // Relayer: [FF1WifiTransport.connect] returns after dispatching to the
       // isolate; superseding pause/disconnect is enforced in the relayer
       // isolate (non-blocking connect handler), not only here (PR #361).
-      await _transport.connect(
+      final dispatched = await _transport.connect(
         device: device,
         userId: userId,
         apiKey: apiKey,
@@ -231,7 +234,18 @@ class FF1WifiControl {
               'stale result (no transport mutation)',
           payload: {'flowId': flowId, 'deviceId': device.deviceId},
         );
-        return;
+        return false;
+      }
+      if (!dispatched) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'control_connect_transport_skipped',
+          message:
+              'transport connect returned without dispatch (e.g. suppressed '
+              'during isolate startup) — not treating as connected',
+          payload: {'flowId': flowId, 'deviceId': device.deviceId},
+        );
+        return false;
       }
       _slog.info(
         category: LogCategory.wifi,
@@ -244,6 +258,7 @@ class FF1WifiControl {
           'transportConnecting': _transport.isConnecting,
         },
       );
+      return true;
     } catch (e) {
       if (connectOpGen != _wifiOpGeneration) {
         _slog.info(
@@ -253,7 +268,7 @@ class FF1WifiControl {
               'connect failed after a newer Wi‑Fi operation — ignoring error',
           payload: {'flowId': flowId, 'deviceId': device.deviceId, 'error': '$e'},
         );
-        return;
+        return false;
       }
       _log.severe('Failed to connect: $e');
       _slog.warning(
@@ -648,7 +663,7 @@ class FF1WifiControl {
         message: 'calling transport.connect(forceReconnect: true)',
         payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
       );
-      await _transport.connect(
+      final dispatched = await _transport.connect(
         device: _device!,
         userId: _userId!,
         apiKey: _apiKey!,
@@ -670,6 +685,17 @@ class FF1WifiControl {
             'expectedGeneration': opGen,
             'currentGeneration': _wifiOpGeneration,
           },
+        );
+        return false;
+      }
+      if (!dispatched) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'reconnect_transport_skipped',
+          message:
+              'transport reconnect returned without dispatch (e.g. suppressed '
+              'during isolate startup) — not treating as connected',
+          payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
         );
         return false;
       }
