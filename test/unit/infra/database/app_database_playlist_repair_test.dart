@@ -12,46 +12,231 @@ import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
 void main() {
   group('AppDatabase malformed playlist repair', () {
-    test('repairs malformed favorite row before bootstrap reads it', () async {
-      final tempDir = await Directory.systemTemp.createTemp(
-        'ff_playlist_repair_',
-      );
-      final dbFile = File(p.join(tempDir.path, 'favorite-malformed.sqlite'));
-
-      try {
-        _createMalformedPlaylistDatabase(
-          file: dbFile,
-          rows: const [
-              _RawPlaylistRow(
-                id: Playlist.favoriteId,
-                type: 0,
-              ),
-          ],
+    test(
+      'repairs favorite rows when sort mode is the only wrong field',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
         );
-
-        final db = AppDatabase.forTesting(NativeDatabase(dbFile));
-        final service = DatabaseService(db);
+        final dbFile = File(p.join(tempDir.path, 'favorite-malformed.sqlite'));
 
         try {
-          await BootstrapService(databaseService: service).bootstrap();
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: Playlist.favoriteId,
+                channelId: Channel.myCollectionId,
+                type: 2,
+                sortMode: 0,
+              ),
+            ],
+          );
+          _insertChannelRow(file: dbFile, id: 'channel_dp1');
 
-          final favorite = await service.getPlaylistById(Playlist.favoriteId);
-          expect(favorite, isNotNull);
-          expect(favorite!.name, 'Favorites');
-          expect(favorite.type, PlaylistType.favorite);
-          expect(favorite.sortMode, PlaylistSortMode.provenance);
-          expect(favorite.itemCount, 0);
-          expect(favorite.channelId, Channel.myCollectionId);
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            await BootstrapService(databaseService: service).bootstrap();
+
+            final favorite = await service.getPlaylistById(Playlist.favoriteId);
+            expect(favorite, isNotNull);
+            expect(favorite!.id, Playlist.favoriteId);
+            expect(favorite.type, PlaylistType.favorite);
+            expect(favorite.channelId, Channel.myCollectionId);
+            expect(favorite.sortMode, PlaylistSortMode.provenance);
+            expect(favorite.itemCount, 0);
+          } finally {
+            await db.close();
+          }
         } finally {
-          await db.close();
+          await tempDir.delete(recursive: true);
         }
-      } finally {
-        await tempDir.delete(recursive: true);
-      }
-    });
+      },
+    );
 
     test(
-      'repairs malformed address playlists before list queries map rows',
+      'clears stray owner address from canonical favorite rows',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'favorite-stray-owner.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: Playlist.favoriteId,
+                channelId: Channel.myCollectionId,
+                ownerAddress: '0xABCDEF',
+                type: 2,
+                sortMode: 1,
+                itemCount: 0,
+              ),
+            ],
+          );
+          _insertChannelRow(file: dbFile, id: 'channel_dp1');
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final favorite = await service.getPlaylistById(Playlist.favoriteId);
+            expect(favorite, isNotNull);
+            expect(favorite!.type, PlaylistType.favorite);
+            expect(favorite.ownerAddress, isNull);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'keeps dp1 playlists on their original channel '
+      'when type drifted to address and owner is stray',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'dp1-address-type-with-stray-owner.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_dp1_address_type_stray_owner',
+                channelId: 'channel_dp1',
+                ownerAddress: '0xABCDEF',
+                type: 1,
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+          _insertChannelRow(file: dbFile, id: 'channel_dp1');
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(
+              playlists.single.id,
+              'playlist_dp1_address_type_stray_owner',
+            );
+            expect(playlists.single.type, PlaylistType.dp1);
+            expect(playlists.single.channelId, 'channel_dp1');
+            expect(playlists.single.ownerAddress, isNull);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'restores the canonical favorite title '
+      'even when a wrong title is present',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'favorite-wrong-title.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: Playlist.favoriteId,
+                channelId: Channel.myCollectionId,
+                type: 2,
+                title: 'My Playlist',
+                sortMode: 1,
+                itemCount: 0,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final favorite = await service.getPlaylistById(Playlist.favoriteId);
+            expect(favorite, isNotNull);
+            expect(favorite!.name, 'Favorites');
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'deletes non-canonical favorite rows',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'non-canonical-favorite.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_fake_favorite',
+                channelId: Channel.myCollectionId,
+                type: 2,
+                sortMode: 1,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, isEmpty);
+            final deleted = await service.getPlaylistById(
+              'playlist_fake_favorite',
+            );
+            expect(deleted, isNull);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs address playlists when type is the only wrong field',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(
           'ff_playlist_repair_',
@@ -64,12 +249,10 @@ void main() {
             rows: const [
               _RawPlaylistRow(
                 id: 'playlist_addr',
+                channelId: Channel.myCollectionId,
                 ownerAddress: '0xABCDEF',
-                type: 9,
-                updatedAtUs: 55,
-                signatures: '',
-                sortMode: 99,
-                itemCount: -4,
+                type: 0,
+                sortMode: 1,
               ),
             ],
           );
@@ -81,12 +264,732 @@ void main() {
             final playlists = await service.getAllPlaylists();
             expect(playlists, hasLength(1));
             expect(playlists.single.id, 'playlist_addr');
-            expect(playlists.single.name, '0xABCDEF');
             expect(playlists.single.type, PlaylistType.addressBased);
             expect(playlists.single.channelId, Channel.myCollectionId);
             expect(playlists.single.sortMode, PlaylistSortMode.provenance);
             expect(playlists.single.itemCount, 0);
-            expect(playlists.single.createdAt!.microsecondsSinceEpoch, 55);
+            expect(playlists.single.createdAt, isNotNull);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs address playlists when owner address '
+      'is the only surviving signal',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'address-owner-only-signal.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_addr_owner_only',
+                ownerAddress: '0xABCDEF',
+                title: null,
+                createdAtUs: null,
+                updatedAtUs: null,
+                signatures: null,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'playlist_addr_owner_only');
+            expect(playlists.single.type, PlaylistType.addressBased);
+            expect(playlists.single.channelId, Channel.myCollectionId);
+            expect(playlists.single.ownerAddress, '0xABCDEF');
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs address playlists when owner address is present '
+      'and the stored type drifted to favorite',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(
+            tempDir.path,
+            'address-owner-favorite-type-null-channel.sqlite',
+          ),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_addr_owner_favorite_type',
+                ownerAddress: '0xABCDEF',
+                type: 2,
+                title: null,
+                createdAtUs: null,
+                updatedAtUs: null,
+                signatures: null,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'playlist_addr_owner_favorite_type');
+            expect(playlists.single.type, PlaylistType.addressBased);
+            expect(playlists.single.channelId, Channel.myCollectionId);
+            expect(playlists.single.ownerAddress, '0xABCDEF');
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs address playlists when owner address is present '
+      'and the stored type drifted to dp1 with no channel',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'address-owner-dp1-type-null-channel.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_addr_owner_dp1_type',
+                ownerAddress: '0xABCDEF',
+                type: 0,
+                title: null,
+                createdAtUs: null,
+                updatedAtUs: null,
+                signatures: null,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'playlist_addr_owner_dp1_type');
+            expect(playlists.single.type, PlaylistType.addressBased);
+            expect(playlists.single.channelId, Channel.myCollectionId);
+            expect(playlists.single.ownerAddress, '0xABCDEF');
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs address playlists when channel id is blank whitespace',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'address-owner-blank-channel.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_addr_blank_channel',
+                channelId: '   ',
+                ownerAddress: '0xABCDEF',
+                type: 0,
+                title: null,
+                createdAtUs: null,
+                updatedAtUs: null,
+                signatures: null,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'playlist_addr_blank_channel');
+            expect(playlists.single.type, PlaylistType.addressBased);
+            expect(playlists.single.channelId, Channel.myCollectionId);
+            expect(playlists.single.ownerAddress, '0xABCDEF');
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs address playlists when the stored type drifted to favorite',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'address-typed-as-favorite.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_addr_favorite_type',
+                channelId: Channel.myCollectionId,
+                ownerAddress: '0xABCDEF',
+                type: 2,
+                sortMode: 1,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'playlist_addr_favorite_type');
+            expect(playlists.single.type, PlaylistType.addressBased);
+            expect(playlists.single.channelId, Channel.myCollectionId);
+            expect(playlists.single.sortMode, PlaylistSortMode.provenance);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs address playlists when channel is the only wrong field',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'address-wrong-channel.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_addr',
+                ownerAddress: '0xABCDEF',
+                type: 1,
+                sortMode: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'playlist_addr');
+            expect(playlists.single.type, PlaylistType.addressBased);
+            expect(playlists.single.channelId, Channel.myCollectionId);
+            expect(playlists.single.sortMode, PlaylistSortMode.provenance);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs normal channel playlists when stored type drifted to address',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'dp1-typed-as-address.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_dp1_address_type',
+                channelId: 'channel_dp1',
+                type: 1,
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'playlist_dp1_address_type');
+            expect(playlists.single.type, PlaylistType.dp1);
+            expect(playlists.single.channelId, 'channel_dp1');
+            expect(playlists.single.sortMode, PlaylistSortMode.position);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'keeps dp1 playlists on their original channel '
+      'when owner address is stray',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'dp1-with-stray-owner.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_dp1_stray_owner',
+                channelId: 'channel_dp1',
+                ownerAddress: '0xABCDEF',
+                type: 0,
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'playlist_dp1_stray_owner');
+            expect(playlists.single.type, PlaylistType.dp1);
+            expect(playlists.single.channelId, 'channel_dp1');
+            expect(playlists.single.ownerAddress, isNull);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'deletes blank-owner address playlists from my collection',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'address-blank-owner.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_addr',
+                channelId: Channel.myCollectionId,
+                type: 1,
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, isEmpty);
+            final deleted = await service.getPlaylistById('playlist_addr');
+            expect(deleted, isNull);
+            final items = await service.getItems();
+            expect(items, isEmpty);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'deletes blank-owner my-collection playlists with invalid type',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'address-invalid-type-blank-owner.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_invalid_type',
+                channelId: Channel.myCollectionId,
+                type: 9,
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, isEmpty);
+            final deleted = await service.getPlaylistById(
+              'playlist_invalid_type',
+            );
+            expect(deleted, isNull);
+            final items = await service.getItems();
+            expect(items, isEmpty);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'deletes blank-owner my-collection playlists with dp1 type',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'address-dp1-type-blank-owner.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_dp1_my_collection',
+                channelId: Channel.myCollectionId,
+                type: 0,
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, isEmpty);
+            final deleted = await service.getPlaylistById(
+              'playlist_dp1_my_collection',
+            );
+            expect(deleted, isNull);
+            final items = await service.getItems();
+            expect(items, isEmpty);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'recomputes item count from playlist entries '
+      'when stored count is invalid',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'favorite-invalid-count.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: Playlist.favoriteId,
+                channelId: Channel.myCollectionId,
+                type: 2,
+                sortMode: 1,
+                itemCount: -1,
+                entryCount: 2,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final favorite = await service.getPlaylistById(Playlist.favoriteId);
+            expect(favorite, isNotNull);
+            expect(favorite!.itemCount, 2);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'recomputes stale favorite item counts from playlist entries',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'favorite-stale-positive-count.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: Playlist.favoriteId,
+                channelId: Channel.myCollectionId,
+                type: 2,
+                sortMode: 1,
+                itemCount: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final favorite = await service.getPlaylistById(Playlist.favoriteId);
+            expect(favorite, isNotNull);
+            expect(favorite!.itemCount, 0);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs null required fields before bootstrap reads favorite rows',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'favorite-null-required-fields.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: Playlist.favoriteId,
+                title: null,
+                createdAtUs: null,
+                updatedAtUs: null,
+                signatures: null,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            await BootstrapService(databaseService: service).bootstrap();
+
+            final favorite = await service.getPlaylistById(Playlist.favoriteId);
+            expect(favorite, isNotNull);
+            expect(favorite!.id, Playlist.favoriteId);
+            expect(favorite.type, PlaylistType.favorite);
+            expect(favorite.name, 'Favorites');
+            expect(favorite.channelId, Channel.myCollectionId);
+            expect(favorite.sortMode, PlaylistSortMode.provenance);
+            expect(favorite.itemCount, 0);
+            expect(favorite.createdAt, isNotNull);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'rebuilds playlist search when an existing database '
+      'is missing fts tables',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'missing-fts-searchable-playlist.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_searchable',
+                channelId: 'channel_dp1',
+                type: 0,
+                title: 'Searchable Playlist',
+                sortMode: 0,
+                itemCount: 0,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final results = await service.searchPlaylists('Searchable');
+            expect(
+              results.map((playlist) => playlist.id),
+              contains('playlist_searchable'),
+            );
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'rebuilds playlist search when fts tables exist '
+      'but triggers are missing',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(
+            tempDir.path,
+            'missing-fts-triggers-searchable-playlist.sqlite',
+          ),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_searchable_triggerless',
+                channelId: 'channel_dp1',
+                type: 0,
+                title: 'Triggerless Playlist',
+                sortMode: 0,
+                itemCount: 0,
+              ),
+            ],
+          );
+          _createFtsTablesWithoutTriggers(file: dbFile);
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final results = await service.searchPlaylists('Triggerless');
+            expect(
+              results.map((playlist) => playlist.id),
+              contains('playlist_searchable_triggerless'),
+            );
           } finally {
             await db.close();
           }
@@ -101,21 +1004,29 @@ void main() {
 class _RawPlaylistRow {
   const _RawPlaylistRow({
     required this.id,
+    this.channelId,
     this.type,
-    this.updatedAtUs,
-    this.signatures,
+    this.title = 'Playlist',
+    this.createdAtUs = 1,
+    this.updatedAtUs = 1,
+    this.signatures = '[]',
     this.ownerAddress,
     this.sortMode,
     this.itemCount,
+    this.entryCount = 0,
   });
 
   final String id;
+  final String? channelId;
   final int? type;
+  final String? title;
+  final int? createdAtUs;
   final int? updatedAtUs;
   final String? signatures;
   final String? ownerAddress;
   final int? sortMode;
   final int? itemCount;
+  final int entryCount;
 }
 
 void _createMalformedPlaylistDatabase({
@@ -201,7 +1112,10 @@ void _createMalformedPlaylistDatabase({
       )
       ''',
     ];
-    void executeStatement(String statement) => db.execute(statement);
+    void executeStatement(
+      String statement, [
+      List<Object?> params = const [],
+    ]) => db.execute(statement, params);
     setupStatements.forEach(executeStatement);
 
     for (final row in rows) {
@@ -216,13 +1130,13 @@ void _createMalformedPlaylistDatabase({
         ''',
         <Object?>[
           row.id,
-          null,
+          row.channelId,
           row.type,
           null,
           null,
           null,
-          null,
-          null,
+          row.title,
+          row.createdAtUs,
           row.updatedAtUs,
           null,
           row.signatures,
@@ -234,7 +1148,86 @@ void _createMalformedPlaylistDatabase({
           row.itemCount,
         ],
       );
+
+      for (var i = 0; i < row.entryCount; i++) {
+        final itemId = '${row.id}_item_$i';
+        executeStatement(
+          '''
+          INSERT INTO items (id, kind, updated_at_us, enrichment_status)
+          VALUES (?, ?, ?, ?)
+          ''',
+          <Object?>[itemId, 0, 1, 0],
+        );
+        executeStatement(
+          '''
+          INSERT INTO playlist_entries (
+            playlist_id, item_id, position, sort_key_us, updated_at_us
+          ) VALUES (?, ?, ?, ?, ?)
+          ''',
+          <Object?>[row.id, itemId, i, i, 1],
+        );
+      }
     }
+  } finally {
+    db.dispose();
+  }
+}
+
+void _createFtsTablesWithoutTriggers({required File file}) {
+  final db = sqlite3.sqlite3.open(file.path);
+  try {
+    void executeStatement(String statement) => db.execute(statement);
+    executeStatement('''
+      CREATE VIRTUAL TABLE IF NOT EXISTS channels_fts
+      USING fts5(
+        id UNINDEXED,
+        title,
+        tokenize = 'unicode61 remove_diacritics 2'
+      )
+    ''');
+    executeStatement('''
+      CREATE VIRTUAL TABLE IF NOT EXISTS playlists_fts
+      USING fts5(
+        id UNINDEXED,
+        title,
+        tokenize = 'unicode61 remove_diacritics 2'
+      )
+    ''');
+    executeStatement('''
+      CREATE VIRTUAL TABLE IF NOT EXISTS items_fts
+      USING fts5(
+        id UNINDEXED,
+        title,
+        tokenize = 'unicode61 remove_diacritics 2'
+      )
+    ''');
+    executeStatement('''
+      CREATE VIRTUAL TABLE IF NOT EXISTS item_artists_fts
+      USING fts5(
+        id UNINDEXED,
+        artist_name,
+        tokenize = 'unicode61 remove_diacritics 2'
+      )
+    ''');
+  } finally {
+    db.dispose();
+  }
+}
+
+void _insertChannelRow({
+  required File file,
+  required String id,
+}) {
+  final db = sqlite3.sqlite3.open(file.path);
+  try {
+    db.execute(
+      '''
+      INSERT INTO channels (
+        id, type, title, created_at_us, updated_at_us
+      ) VALUES (?, ?, ?, ?, ?)
+      ''',
+      <Object?>[id, 0, 'Channel', 1, 1],
+    );
   } finally {
     db.dispose();
   }

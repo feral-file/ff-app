@@ -78,10 +78,11 @@ class AppDatabase extends _$AppDatabase {
         // Repair DBs where user_version already advanced but `signatures_json`
         // remains (failed migration, copied file, or pre-release builds).
         await _migratePlaylistsSignaturesJsonIfNeeded();
-        await _repairMalformedPlaylistRowsIfNeeded();
         await _createIndexes();
+        final hadFtsInfrastructure = await _hasCompleteFtsInfrastructure();
         await _createFtsInfrastructure();
-        if (details.wasCreated || details.hadUpgrade) {
+        await _repairMalformedPlaylistRowsIfNeeded();
+        if (details.wasCreated || details.hadUpgrade || !hadFtsInfrastructure) {
           await _rebuildFtsIndexes();
         }
       },
@@ -240,7 +241,70 @@ class AppDatabase extends _$AppDatabase {
          OR type NOT IN (0, 1, 2)
          OR sort_mode NOT IN (0, 1)
          OR item_count < 0
+         OR (type = ? AND id != ?)
+         OR (
+              id = ?
+              AND item_count != (
+                SELECT COUNT(*)
+                FROM playlist_entries
+                WHERE playlist_id = playlists.id
+              )
+            )
+         OR (
+              type = ?
+              AND (owner_address IS NULL OR TRIM(owner_address) = '')
+            )
+         OR (
+              id != ?
+              AND channel_id = ?
+              AND (owner_address IS NULL OR TRIM(owner_address) = '')
+            )
+         OR (
+              id = ?
+              AND owner_address IS NOT NULL
+              AND TRIM(owner_address) != ''
+            )
+         OR (
+              id = ?
+              AND (
+                type != ?
+                OR channel_id IS NULL
+                OR channel_id != ?
+                OR sort_mode != ?
+                OR title != ?
+              )
+            )
+         OR (
+              (
+                type = ?
+                OR (owner_address IS NOT NULL AND TRIM(owner_address) != '')
+              )
+              AND (
+                type != ?
+                OR channel_id IS NULL
+                OR channel_id != ?
+                OR sort_mode != ?
+              )
+            )
       ''',
+      variables: [
+        Variable<int>(PlaylistType.favorite.value),
+        const Variable<String>(Playlist.favoriteId),
+        const Variable<String>(Playlist.favoriteId),
+        Variable<int>(PlaylistType.addressBased.value),
+        const Variable<String>(Playlist.favoriteId),
+        const Variable<String>(Channel.myCollectionId),
+        const Variable<String>(Playlist.favoriteId),
+        const Variable<String>(Playlist.favoriteId),
+        Variable<int>(PlaylistType.favorite.value),
+        const Variable<String>(Channel.myCollectionId),
+        Variable<int>(PlaylistSortMode.provenance.index),
+        const Variable<String>('Favorites'),
+        Variable<int>(PlaylistType.addressBased.value),
+        Variable<int>(PlaylistType.addressBased.value),
+        const Variable<String>(Channel.myCollectionId),
+        Variable<int>(PlaylistSortMode.provenance.index),
+      ],
       readsFrom: {playlists},
     ).get();
 
@@ -252,24 +316,49 @@ class AppDatabase extends _$AppDatabase {
     await transaction(() async {
       for (final row in rows) {
         final id = row.read<String>('id');
+        final rawType = row.read<int?>('type');
+        final rawChannelId = row.read<String?>('channel_id');
         final ownerAddress = row.read<String?>('owner_address');
+        final trimmedRawChannelId = rawChannelId?.trim();
+        final hasNonPersonalChannel =
+            trimmedRawChannelId != null &&
+            trimmedRawChannelId.isNotEmpty &&
+            trimmedRawChannelId != Channel.myCollectionId;
+        if (_shouldDeleteMalformedPlaylist(
+          id: id,
+          rawType: rawType,
+          rawChannelId: trimmedRawChannelId,
+          ownerAddress: ownerAddress,
+          hasNonPersonalChannel: hasNonPersonalChannel,
+        )) {
+          await _deletePlaylistAndOrphanedItems(id);
+          continue;
+        }
         final typeValue = _repairPlaylistTypeValue(
           id: id,
+          hasNonPersonalChannel: hasNonPersonalChannel,
+          rawChannelId: trimmedRawChannelId,
           ownerAddress: ownerAddress,
-          rawType: row.read<int?>('type'),
+          rawType: rawType,
         );
         final channelId = _repairPlaylistChannelId(
           id: id,
-          rawChannelId: row.read<String?>('channel_id'),
+          rawChannelId: trimmedRawChannelId,
+          rawType: rawType,
           typeValue: typeValue,
         );
         final rawCreatedAtUs = row.read<int?>('created_at_us');
         final rawUpdatedAtUs = row.read<int?>('updated_at_us');
         final createdAtUs = rawCreatedAtUs ?? rawUpdatedAtUs ?? nowUs;
         final updatedAtUs = rawUpdatedAtUs ?? createdAtUs;
-        final title = _repairPlaylistTitle(
+        final repairedOwnerAddress = _repairPlaylistOwnerAddress(
           id: id,
           ownerAddress: ownerAddress,
+          typeValue: typeValue,
+        );
+        final title = _repairPlaylistTitle(
+          id: id,
+          ownerAddress: repairedOwnerAddress,
           typeValue: typeValue,
           rawTitle: row.read<String?>('title'),
         );
@@ -280,8 +369,12 @@ class AppDatabase extends _$AppDatabase {
           rawSortMode: row.read<int?>('sort_mode'),
           typeValue: typeValue,
         );
-        final itemCount = _repairPlaylistItemCount(
-          row.read<int?>('item_count'),
+        final itemCount = await _repairPlaylistItemCount(
+          playlistId: id,
+          rawItemCount: row.read<int?>('item_count'),
+          forceRecompute:
+              id == Playlist.favoriteId ||
+              row.read<int?>('type') == PlaylistType.favorite.value,
         );
 
         await customStatement(
@@ -290,6 +383,7 @@ class AppDatabase extends _$AppDatabase {
           SET channel_id = ?,
               type = ?,
               title = ?,
+              owner_address = ?,
               created_at_us = ?,
               updated_at_us = ?,
               signatures = ?,
@@ -301,6 +395,7 @@ class AppDatabase extends _$AppDatabase {
             channelId,
             typeValue,
             title,
+            repairedOwnerAddress,
             createdAtUs,
             updatedAtUs,
             signatures,
@@ -317,19 +412,104 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  String? _repairPlaylistOwnerAddress({
+    required String id,
+    required String? ownerAddress,
+    required int typeValue,
+  }) {
+    if (id == Playlist.favoriteId ||
+        typeValue != PlaylistType.addressBased.value) {
+      return null;
+    }
+    final trimmed = ownerAddress?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  Future<void> _deletePlaylistAndOrphanedItems(String playlistId) async {
+    final itemRows = await customSelect(
+      '''
+      SELECT item_id
+      FROM playlist_entries
+      WHERE playlist_id = ?
+      ''',
+      variables: [Variable<String>(playlistId)],
+      readsFrom: {playlistEntries},
+    ).get();
+    final itemIds = itemRows
+        .map((row) => row.read<String>('item_id'))
+        .toList(growable: false);
+
+    await (delete(
+      playlistEntries,
+    )..where((entry) => entry.playlistId.equals(playlistId))).go();
+    await (delete(
+      playlists,
+    )..where((playlist) => playlist.id.equals(playlistId))).go();
+
+    for (final itemId in itemIds) {
+      final refRow = await customSelect(
+        '''
+        SELECT COUNT(*) AS ref_count
+        FROM playlist_entries
+        WHERE item_id = ?
+        ''',
+        variables: [Variable<String>(itemId)],
+        readsFrom: {playlistEntries},
+      ).getSingle();
+      if (refRow.read<int>('ref_count') == 0) {
+        await (delete(items)..where((item) => item.id.equals(itemId))).go();
+      }
+    }
+  }
+
+  bool _shouldDeleteMalformedPlaylist({
+    required String id,
+    required int? rawType,
+    required String? rawChannelId,
+    required String? ownerAddress,
+    required bool hasNonPersonalChannel,
+  }) {
+    if (id == Playlist.favoriteId) {
+      return false;
+    }
+    final hasOwnerAddress =
+        ownerAddress != null && ownerAddress.trim().isNotEmpty;
+    if (!hasOwnerAddress &&
+        (rawChannelId == Channel.myCollectionId ||
+            ((rawType == PlaylistType.addressBased.value ||
+                    rawType == PlaylistType.favorite.value) &&
+                !hasNonPersonalChannel))) {
+      return true;
+    }
+    return false;
+  }
+
   int _repairPlaylistTypeValue({
     required String id,
+    required bool hasNonPersonalChannel,
+    required String? rawChannelId,
     required String? ownerAddress,
     required int? rawType,
   }) {
     if (id == Playlist.favoriteId) {
       return PlaylistType.favorite.value;
     }
+    if (ownerAddress != null &&
+        ownerAddress.trim().isNotEmpty &&
+        (rawChannelId == Channel.myCollectionId || !hasNonPersonalChannel)) {
+      return PlaylistType.addressBased.value;
+    }
+    if (rawType == PlaylistType.favorite.value) {
+      return PlaylistType.dp1.value;
+    }
+    if (rawType == PlaylistType.addressBased.value) {
+      return PlaylistType.dp1.value;
+    }
     if (rawType != null && PlaylistType.values.any((t) => t.value == rawType)) {
       return rawType;
-    }
-    if (ownerAddress != null && ownerAddress.trim().isNotEmpty) {
-      return PlaylistType.addressBased.value;
     }
     return PlaylistType.dp1.value;
   }
@@ -337,11 +517,17 @@ class AppDatabase extends _$AppDatabase {
   String? _repairPlaylistChannelId({
     required String id,
     required String? rawChannelId,
+    required int? rawType,
     required int typeValue,
   }) {
     if (id == Playlist.favoriteId ||
         typeValue == PlaylistType.addressBased.value) {
       return Channel.myCollectionId;
+    }
+    if (id != Playlist.favoriteId &&
+        typeValue != PlaylistType.addressBased.value &&
+        rawChannelId == Channel.myCollectionId) {
+      return null;
     }
     return rawChannelId;
   }
@@ -352,12 +538,12 @@ class AppDatabase extends _$AppDatabase {
     required int typeValue,
     required String? rawTitle,
   }) {
+    if (id == Playlist.favoriteId) {
+      return 'Favorites';
+    }
     final trimmedTitle = rawTitle?.trim();
     if (trimmedTitle != null && trimmedTitle.isNotEmpty) {
       return trimmedTitle;
-    }
-    if (id == Playlist.favoriteId) {
-      return 'Favorites';
     }
     if (typeValue == PlaylistType.addressBased.value &&
         ownerAddress != null &&
@@ -379,23 +565,37 @@ class AppDatabase extends _$AppDatabase {
     required int? rawSortMode,
     required int typeValue,
   }) {
+    if (typeValue == PlaylistType.addressBased.value ||
+        typeValue == PlaylistType.favorite.value) {
+      return PlaylistSortMode.provenance.index;
+    }
     if (rawSortMode != null &&
         PlaylistSortMode.values.any((m) => m.index == rawSortMode)) {
       return rawSortMode;
     }
     switch (typeValue) {
-      case 1:
-      case 2:
-        return PlaylistSortMode.provenance.index;
       case 0:
       default:
         return PlaylistSortMode.position.index;
     }
   }
 
-  int _repairPlaylistItemCount(int? rawItemCount) {
-    if (rawItemCount == null || rawItemCount < 0) {
-      return 0;
+  Future<int> _repairPlaylistItemCount({
+    required String playlistId,
+    required int? rawItemCount,
+    bool forceRecompute = false,
+  }) async {
+    if (forceRecompute || rawItemCount == null || rawItemCount < 0) {
+      final row = await customSelect(
+        '''
+        SELECT COUNT(*) AS entry_count
+        FROM playlist_entries
+        WHERE playlist_id = ?
+        ''',
+        variables: [Variable<String>(playlistId)],
+        readsFrom: {playlistEntries},
+      ).getSingle();
+      return row.read<int>('entry_count');
     }
     return rawItemCount;
   }
@@ -555,6 +755,34 @@ class AppDatabase extends _$AppDatabase {
         WHERE COALESCE(json_extract(j.value, '$.name'), '') != '';
       END
     ''');
+  }
+
+  Future<bool> _hasCompleteFtsInfrastructure() async {
+    final tableRows = await customSelect(
+      '''
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name IN ('channels_fts', 'playlists_fts', 'items_fts', 'item_artists_fts')
+      ''',
+    ).get();
+    if (tableRows.length != 4) {
+      return false;
+    }
+
+    final triggerRows = await customSelect(
+      '''
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'trigger'
+        AND name IN (
+          'channels_ai', 'channels_ad', 'channels_au',
+          'playlists_ai', 'playlists_ad', 'playlists_au',
+          'items_ai', 'items_ad', 'items_au'
+        )
+      ''',
+    ).get();
+    return triggerRows.length == 9;
   }
 
   Future<void> _rebuildFtsIndexes() async {
