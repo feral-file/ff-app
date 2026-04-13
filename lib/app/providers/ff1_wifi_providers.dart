@@ -1,14 +1,9 @@
 // This provider file still contains legacy analyzer noise that is outside the
 // firmware-update flow; keep the ignore local so this PR can be gated on the
 // new prompt/update behavior instead of a broader cleanup pass.
-// ignore_for_file: implementation_imports, lines_longer_than_80_chars, comment_references, discarded_futures, unawaited_futures, public_member_api_docs, avoid_equals_and_hash_code_on_mutable_classes
+// ignore_for_file: lines_longer_than_80_chars, comment_references, public_member_api_docs, avoid_equals_and_hash_code_on_mutable_classes
 
 import 'dart:async';
-
-// This provider layer already carries lint debt unrelated to the stale-status
-// bug. The current change is intentionally narrow: keep live status aligned
-// with the current FF1 connection session without refactoring the whole file.
-// ignore_for_file: avoid_equals_and_hash_code_on_mutable_classes, cascade_invocations, comment_references, discarded_futures, implementation_imports, lines_longer_than_80_chars, public_member_api_docs, unawaited_futures
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/version_provider.dart';
@@ -216,6 +211,25 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         return;
       }
 
+      // [FF1WifiControl.connect] may return without throwing after swallowing
+      // [FF1WifiConnectionCancelledError] (e.g. pause during transport prep).
+      // In that case no socket is open; do not mark the notifier connected.
+      if (!_control.isConnected) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_connect_no_transport',
+          message:
+              'connect returned but transport is not connected (cancelled/no-op)',
+          payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
+        );
+        state = state.copyWith(
+          isConnected: false,
+          isConnecting: false,
+          device: device,
+        );
+        return;
+      }
+
       state = state.copyWith(
         isConnected: true,
         isConnecting: false,
@@ -349,6 +363,18 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
 
     try {
       await _control.reconnect();
+
+      if (!_control.isConnected) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_reconnect_no_transport',
+          message:
+              'reconnect returned but transport is not connected (cancelled/no-op)',
+          payload: {'deviceId': state.device?.deviceId},
+        );
+        state = state.copyWith(isConnected: false);
+        return;
+      }
 
       state = state.copyWith(isConnected: true);
       _slog.info(
