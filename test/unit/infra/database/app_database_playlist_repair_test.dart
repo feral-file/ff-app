@@ -602,8 +602,7 @@ void main() {
     );
 
     test(
-      'keeps dp1 playlists on their original channel '
-      'when owner address is stray',
+      'restores owner-bearing dp1 playlists back to the personal collection',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(
           'ff_playlist_repair_',
@@ -634,10 +633,10 @@ void main() {
           try {
             final playlists = await service.getAllPlaylists();
             expect(playlists, hasLength(1));
-            expect(playlists.single.id, 'playlist_dp1_stray_owner');
-            expect(playlists.single.type, PlaylistType.dp1);
-            expect(playlists.single.channelId, 'channel_dp1');
-            expect(playlists.single.ownerAddress, isNull);
+            expect(playlists.single.id, canonicalAddressPlaylistId);
+            expect(playlists.single.type, PlaylistType.addressBased);
+            expect(playlists.single.channelId, Channel.myCollectionId);
+            expect(playlists.single.ownerAddress, '0xABCDEF');
           } finally {
             await db.close();
           }
@@ -1736,6 +1735,76 @@ void main() {
     );
 
     test(
+      'reuses the playlist repair sidecar on an untouched reopen',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'playlist-repair-sidecar-reuse.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_marker_sidecar_reuse',
+                channelId: 'channel_dp1',
+                type: 0,
+                title: 'Recovered DP1 Playlist',
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+          _insertChannelRow(file: dbFile, id: 'channel_dp1');
+
+          final firstOpenDb = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final firstOpenService = DatabaseService(firstOpenDb);
+          try {
+            await firstOpenService.getAllPlaylists();
+          } finally {
+            await firstOpenDb.close();
+          }
+
+          final sidecarFile = File('${dbFile.path}.playlist_repair_state.json');
+          final firstModifiedAtUs = sidecarFile
+              .statSync()
+              .modified
+              .microsecondsSinceEpoch;
+          var hashFallbackCount = 0;
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+
+          final secondOpenDb = AppDatabase.forTesting(
+            NativeDatabase(dbFile),
+            onPlaylistRepairHashFallback: () => hashFallbackCount++,
+          );
+          final secondOpenService = DatabaseService(secondOpenDb);
+          try {
+            await secondOpenService.getAllPlaylists();
+          } finally {
+            await secondOpenDb.close();
+          }
+
+          expect(
+            hashFallbackCount,
+            0,
+            reason:
+                'untouched reopens should stay on the metadata-only fast path',
+          );
+          expect(
+            sidecarFile.statSync().modified.microsecondsSinceEpoch,
+            firstModifiedAtUs,
+          );
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
       'reruns repair on later opens when a marked db becomes malformed again',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(
@@ -1776,9 +1845,303 @@ void main() {
           _updatePlaylistIdentity(
             file: dbFile,
             playlistId: personalPlaylistId,
+            updatedPlaylistId: 'playlist_marker_reopen_noncanonical',
             channelId: 'channel_dp1',
             title: 'Recovered Personal Playlist',
+            bumpUpdatedAtUs: false,
           );
+
+          final secondOpenDb = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final secondOpenService = DatabaseService(secondOpenDb);
+          try {
+            await secondOpenService.getAllPlaylists();
+          } finally {
+            await secondOpenDb.close();
+          }
+
+          expect(
+            _readPlaylistChannelId(
+              file: dbFile,
+              playlistId: personalPlaylistId,
+            ),
+            Channel.myCollectionId,
+          );
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'reruns repair for copied malformed snapshots even when marker '
+      'generation still looks current',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final originalDbFile = File(
+          p.join(tempDir.path, 'playlist-repair-marker-original.sqlite'),
+        );
+        final copiedDbFile = File(
+          p.join(tempDir.path, 'playlist-repair-marker-copied.sqlite'),
+        );
+        final personalPlaylistId = canonicalAddressPlaylistId;
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: originalDbFile,
+            rows: [
+              _RawPlaylistRow(
+                id: personalPlaylistId,
+                channelId: Channel.myCollectionId,
+                ownerAddress: '0xABCDEF',
+                type: PlaylistType.addressBased.value,
+                title: 'Recovered Personal Playlist',
+                sortMode: PlaylistSortMode.provenance.index,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final firstOpenDb = AppDatabase.forTesting(
+            NativeDatabase(originalDbFile),
+          );
+          final firstOpenService = DatabaseService(firstOpenDb);
+          try {
+            await firstOpenService.getAllPlaylists();
+          } finally {
+            await firstOpenDb.close();
+          }
+
+          await originalDbFile.copy(copiedDbFile.path);
+          _copyPlaylistRepairSidecar(
+            originalFile: originalDbFile,
+            copiedFile: copiedDbFile,
+          );
+          _updatePlaylistIdentity(
+            file: copiedDbFile,
+            playlistId: personalPlaylistId,
+            updatedPlaylistId: 'playlist_marker_copied_noncanonical',
+            channelId: 'channel_dp1',
+            title: 'Recovered Personal Playlist',
+            bumpUpdatedAtUs: false,
+          );
+          _forgePlaylistRepairMarkersAsCurrent(file: copiedDbFile);
+
+          final secondOpenDb = AppDatabase.forTesting(
+            NativeDatabase(copiedDbFile),
+          );
+          final secondOpenService = DatabaseService(secondOpenDb);
+          try {
+            await secondOpenService.getAllPlaylists();
+          } finally {
+            await secondOpenDb.close();
+          }
+
+          expect(
+            _readPlaylistChannelId(
+              file: copiedDbFile,
+              playlistId: personalPlaylistId,
+            ),
+            Channel.myCollectionId,
+          );
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'falls back to repair when the playlist repair sidecar is corrupted',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'playlist-repair-sidecar-corrupted.sqlite'),
+        );
+        final personalPlaylistId = canonicalAddressPlaylistId;
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: [
+              _RawPlaylistRow(
+                id: personalPlaylistId,
+                channelId: Channel.myCollectionId,
+                ownerAddress: '0xABCDEF',
+                type: PlaylistType.addressBased.value,
+                title: 'Recovered Personal Playlist',
+                sortMode: PlaylistSortMode.provenance.index,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final firstOpenDb = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final firstOpenService = DatabaseService(firstOpenDb);
+          try {
+            await firstOpenService.getAllPlaylists();
+          } finally {
+            await firstOpenDb.close();
+          }
+
+          File('${dbFile.path}.playlist_repair_state.json').writeAsStringSync(
+            '{not-json',
+          );
+          _updatePlaylistIdentity(
+            file: dbFile,
+            playlistId: personalPlaylistId,
+            updatedPlaylistId: 'playlist_marker_sidecar_corrupted',
+            channelId: 'channel_dp1',
+            title: 'Recovered Personal Playlist',
+            bumpUpdatedAtUs: false,
+          );
+
+          final secondOpenDb = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final secondOpenService = DatabaseService(secondOpenDb);
+          try {
+            await secondOpenService.getAllPlaylists();
+          } finally {
+            await secondOpenDb.close();
+          }
+
+          expect(
+            _readPlaylistChannelId(
+              file: dbFile,
+              playlistId: personalPlaylistId,
+            ),
+            Channel.myCollectionId,
+          );
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'falls back to repair when writing the playlist repair sidecar fails',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'playlist-repair-sidecar-write-fails.sqlite'),
+        );
+        final personalPlaylistId = canonicalAddressPlaylistId;
+        final tempSidecarDir = Directory(
+          '${dbFile.path}.playlist_repair_state.json.tmp',
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: [
+              _RawPlaylistRow(
+                id: personalPlaylistId,
+                channelId: Channel.myCollectionId,
+                ownerAddress: '0xABCDEF',
+                type: PlaylistType.addressBased.value,
+                title: 'Recovered Personal Playlist',
+                sortMode: PlaylistSortMode.provenance.index,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final firstOpenDb = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final firstOpenService = DatabaseService(firstOpenDb);
+          try {
+            await firstOpenService.getAllPlaylists();
+          } finally {
+            await firstOpenDb.close();
+          }
+
+          await File('${dbFile.path}.playlist_repair_state.json').delete();
+          await tempSidecarDir.create();
+          _updatePlaylistIdentity(
+            file: dbFile,
+            playlistId: personalPlaylistId,
+            updatedPlaylistId: 'playlist_marker_sidecar_write_fails',
+            channelId: 'channel_dp1',
+            title: 'Recovered Personal Playlist',
+            bumpUpdatedAtUs: false,
+          );
+
+          final secondOpenDb = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final secondOpenService = DatabaseService(secondOpenDb);
+          try {
+            await secondOpenService.getAllPlaylists();
+          } finally {
+            await secondOpenDb.close();
+          }
+
+          expect(
+            _readPlaylistChannelId(
+              file: dbFile,
+              playlistId: personalPlaylistId,
+            ),
+            Channel.myCollectionId,
+          );
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'falls back to repair when sidecar fingerprint collection fails',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(
+            tempDir.path,
+            'playlist-repair-sidecar-fingerprint-fails.sqlite',
+          ),
+        );
+        final personalPlaylistId = canonicalAddressPlaylistId;
+        final shmDir = Directory('${dbFile.path}-shm');
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: [
+              _RawPlaylistRow(
+                id: personalPlaylistId,
+                channelId: Channel.myCollectionId,
+                ownerAddress: '0xABCDEF',
+                type: PlaylistType.addressBased.value,
+                title: 'Recovered Personal Playlist',
+                sortMode: PlaylistSortMode.provenance.index,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final firstOpenDb = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final firstOpenService = DatabaseService(firstOpenDb);
+          try {
+            await firstOpenService.getAllPlaylists();
+          } finally {
+            await firstOpenDb.close();
+          }
+
+          await File('${dbFile.path}.playlist_repair_state.json').delete();
+          _updatePlaylistIdentity(
+            file: dbFile,
+            playlistId: personalPlaylistId,
+            updatedPlaylistId: 'playlist_marker_sidecar_fingerprint_fails',
+            channelId: 'channel_dp1',
+            title: 'Recovered Personal Playlist',
+            bumpUpdatedAtUs: false,
+          );
+          await shmDir.create();
 
           final secondOpenDb = AppDatabase.forTesting(NativeDatabase(dbFile));
           final secondOpenService = DatabaseService(secondOpenDb);
@@ -2269,22 +2632,58 @@ bool _hasPlaylistRepairMarker({required File file}) {
 void _updatePlaylistIdentity({
   required File file,
   required String playlistId,
+  String? updatedPlaylistId,
   String? ownerAddress,
   String? channelId,
   String? title,
+  bool bumpUpdatedAtUs = true,
 }) {
   final db = sqlite3.sqlite3.open(file.path);
   try {
+    final updatedAtUs = DateTime.now().microsecondsSinceEpoch;
+    final bumpUpdatedAtUsFlag = bumpUpdatedAtUs ? 1 : 0;
     db.execute(
       '''
       UPDATE playlists
-      SET owner_address = COALESCE(?, owner_address),
+      SET id = COALESCE(?, id),
+          owner_address = COALESCE(?, owner_address),
           channel_id = COALESCE(?, channel_id),
-          title = COALESCE(?, title)
+          title = COALESCE(?, title),
+          updated_at_us = CASE
+            WHEN ? THEN ?
+            ELSE updated_at_us
+          END
       WHERE id = ?
       ''',
-      <Object?>[ownerAddress, channelId, title, playlistId],
+      <Object?>[
+        updatedPlaylistId,
+        ownerAddress,
+        channelId,
+        title,
+        bumpUpdatedAtUsFlag,
+        updatedAtUs,
+        playlistId,
+      ],
     );
+    if (updatedPlaylistId != null && updatedPlaylistId != playlistId) {
+      db.execute(
+        '''
+        UPDATE playlist_entries
+        SET playlist_id = ?,
+            updated_at_us = CASE
+              WHEN ? THEN ?
+              ELSE updated_at_us
+            END
+        WHERE playlist_id = ?
+        ''',
+        <Object?>[
+          updatedPlaylistId,
+          bumpUpdatedAtUsFlag,
+          updatedAtUs,
+          playlistId,
+        ],
+      );
+    }
   } finally {
     db.dispose();
   }
@@ -2307,4 +2706,59 @@ String? _readPlaylistChannelId({
   } finally {
     db.dispose();
   }
+}
+
+void _forgePlaylistRepairMarkersAsCurrent({required File file}) {
+  final db = sqlite3.sqlite3.open(file.path);
+  try {
+    void execute(String statement, [List<Object?> params = const []]) =>
+        db.execute(statement, params);
+    final generationRows = db.select(
+      '''
+      SELECT completed_at_us
+      FROM internal_repair_markers
+      WHERE key = 'playlist_repair_v1_generation'
+      LIMIT 1
+      ''',
+    );
+    final generation = generationRows.isEmpty
+        ? 0
+        : generationRows.first.columnAt(0) as int;
+    execute(
+      '''
+      INSERT OR REPLACE INTO internal_repair_markers (key, completed_at_us)
+      VALUES ('playlist_repair_v1_completed_generation', ?)
+      ''',
+      <Object?>[generation],
+    );
+    execute(
+      '''
+      INSERT OR REPLACE INTO internal_repair_markers (key, completed_at_us)
+      VALUES ('playlist_repair_v1_completed', ?)
+      ''',
+      <Object?>[generation],
+    );
+    execute(
+      '''
+      INSERT OR REPLACE INTO internal_repair_markers (key, completed_at_us)
+      VALUES ('playlist_repair_v1_completed_at_us', ?)
+      ''',
+      <Object?>[1],
+    );
+  } finally {
+    db.dispose();
+  }
+}
+
+void _copyPlaylistRepairSidecar({
+  required File originalFile,
+  required File copiedFile,
+}) {
+  final originalSidecar = File(
+    '${originalFile.path}.playlist_repair_state.json',
+  );
+  if (!originalSidecar.existsSync()) {
+    return;
+  }
+  originalSidecar.copySync('${copiedFile.path}.playlist_repair_state.json');
 }

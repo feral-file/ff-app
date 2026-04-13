@@ -6,6 +6,7 @@ import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/database/tables.dart';
+import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/isolate.dart';
 import 'package:drift/native.dart';
@@ -27,6 +28,12 @@ const _dbResetReindexMarkerFile = 'db_reset_requires_reindex.flag';
 const _ftsMetadataFallbackRank = 500.0;
 const _playlistRepairMarkerTable = 'internal_repair_markers';
 const _playlistRepairMarkerKey = 'playlist_repair_v1_completed';
+const _playlistRepairGenerationKey = 'playlist_repair_v1_generation';
+const _playlistRepairCompletedGenerationKey =
+    'playlist_repair_v1_completed_generation';
+const _playlistRepairStateSidecarSuffix = '.playlist_repair_state.json';
+const _sqliteDatabaseHeaderBytes = 100;
+const _sqliteWalHeaderBytes = 32;
 
 extension _SearchQueryTokens on String {
   List<String> get searchTokens {
@@ -47,17 +54,30 @@ extension _SearchQueryTokens on String {
   tables: [Publishers, Channels, Playlists, Items, PlaylistEntries],
 )
 class AppDatabase extends _$AppDatabase {
+
   /// Creates an AppDatabase instance.
-  AppDatabase() : super(_openConnection());
+  AppDatabase() : this._(_openConnection());
+  AppDatabase._(
+    super.e, {
+    VoidCallback? onPlaylistRepairHashFallback,
+  }) : _onPlaylistRepairHashFallback = onPlaylistRepairHashFallback;
 
   /// Creates an AppDatabase instance from a Drift [DatabaseConnection].
   ///
   /// Used by `computeWithDatabase` to run heavy DB work in a short-lived
   /// isolate while reusing the same sqlite connection.
-  AppDatabase.fromConnection(DatabaseConnection super.e);
+  AppDatabase.fromConnection(DatabaseConnection e) : this._(e);
 
   /// Creates an AppDatabase instance with a custom executor (for testing).
-  AppDatabase.forTesting(super.e);
+  AppDatabase.forTesting(
+    QueryExecutor e, {
+    VoidCallback? onPlaylistRepairHashFallback,
+  }) : this._(
+         e,
+         onPlaylistRepairHashFallback: onPlaylistRepairHashFallback,
+       );
+
+  final VoidCallback? _onPlaylistRepairHashFallback;
 
   @override
   int get schemaVersion => _schemaVersionV1;
@@ -84,9 +104,16 @@ class AppDatabase extends _$AppDatabase {
         await _createIndexes();
         final hadFtsInfrastructure = await _hasCompleteFtsInfrastructure();
         await _createFtsInfrastructure();
-        await _repairMalformedPlaylistRowsIfNeeded();
+        final shouldRefreshPlaylistRepairSidecar =
+            await _repairMalformedPlaylistRowsIfNeeded();
         if (details.wasCreated || details.hadUpgrade || !hadFtsInfrastructure) {
           await _rebuildFtsIndexes();
+        }
+        if (shouldRefreshPlaylistRepairSidecar &&
+            await _hasRepairMarker(_playlistRepairMarkerKey)) {
+          await _writePlaylistRepairSidecar(
+            await _currentPlaylistRepairGeneration(),
+          );
         }
       },
     );
@@ -211,8 +238,8 @@ class AppDatabase extends _$AppDatabase {
   /// providers and services. This preserves the offline-first contract: the app
   /// should repair readable local state and keep going when the damage is local
   /// to a few playlist rows.
-  Future<void> _repairMalformedPlaylistRowsIfNeeded() async {
-    await _ensureRepairMarkerTable();
+  Future<bool> _repairMalformedPlaylistRowsIfNeeded() async {
+    await _ensureRepairMarkerInfrastructure();
     final cols = await _playlistTableColumnNames();
     const requiredCols = {
       'id',
@@ -230,14 +257,34 @@ class AppDatabase extends _$AppDatabase {
     };
     final hasRepairMarker = await _hasRepairMarker(_playlistRepairMarkerKey);
     if (hasRepairMarker && !requiredCols.every(cols.contains)) {
-      return;
+      return false;
     }
+    final currentRepairGeneration = await _currentPlaylistRepairGeneration();
     if (!requiredCols.every(cols.contains)) {
-      await _markRepairCompleted(_playlistRepairMarkerKey);
-      return;
+      await _markRepairCompleted(
+        key: _playlistRepairMarkerKey,
+        value: currentRepairGeneration,
+      );
+      await _markRepairCompleted(
+        key: _playlistRepairCompletedGenerationKey,
+        value: currentRepairGeneration,
+      );
+      return true;
+    }
+    if (hasRepairMarker &&
+        await _playlistRepairSidecarMatches(currentRepairGeneration)) {
+      return false;
     }
     if (hasRepairMarker && !await _playlistMayNeedRepair()) {
-      return;
+      await _markRepairCompleted(
+        key: _playlistRepairMarkerKey,
+        value: currentRepairGeneration,
+      );
+      await _markRepairCompleted(
+        key: _playlistRepairCompletedGenerationKey,
+        value: currentRepairGeneration,
+      );
+      return true;
     }
 
     final rows = await customSelect(
@@ -252,8 +299,15 @@ class AppDatabase extends _$AppDatabase {
     ).get();
 
     if (rows.isEmpty) {
-      await _markRepairCompleted(_playlistRepairMarkerKey);
-      return;
+      await _markRepairCompleted(
+        key: _playlistRepairMarkerKey,
+        value: currentRepairGeneration,
+      );
+      await _markRepairCompleted(
+        key: _playlistRepairCompletedGenerationKey,
+        value: currentRepairGeneration,
+      );
+      return true;
     }
 
     // Inspect every playlist row in Dart so repair selection stays aligned with
@@ -286,6 +340,7 @@ class AppDatabase extends _$AppDatabase {
     };
 
     final nowUs = DateTime.now().microsecondsSinceEpoch;
+    var repairedGeneration = currentRepairGeneration;
     await transaction(() async {
       final supersededSnapshotIds = <String>{};
       var repairedCount = 0;
@@ -456,11 +511,20 @@ class AppDatabase extends _$AppDatabase {
           'before startup reads',
         );
       }
-      await _markRepairCompleted(_playlistRepairMarkerKey);
+      repairedGeneration = await _currentPlaylistRepairGeneration();
+      await _markRepairCompleted(
+        key: _playlistRepairMarkerKey,
+        value: repairedGeneration,
+      );
+      await _markRepairCompleted(
+        key: _playlistRepairCompletedGenerationKey,
+        value: repairedGeneration,
+      );
     });
+    return true;
   }
 
-  Future<void> _ensureRepairMarkerTable() async {
+  Future<void> _ensureRepairMarkerInfrastructure() async {
     await customStatement(
       '''
       CREATE TABLE IF NOT EXISTS $_playlistRepairMarkerTable (
@@ -468,6 +532,36 @@ class AppDatabase extends _$AppDatabase {
         completed_at_us INTEGER NOT NULL
       )
       ''',
+    );
+    await _ensurePlaylistRepairGenerationTrigger(
+      name: 'playlist_repair_generation_playlists_ai',
+      table: 'playlists',
+      event: 'INSERT',
+    );
+    await _ensurePlaylistRepairGenerationTrigger(
+      name: 'playlist_repair_generation_playlists_au',
+      table: 'playlists',
+      event: 'UPDATE',
+    );
+    await _ensurePlaylistRepairGenerationTrigger(
+      name: 'playlist_repair_generation_playlists_ad',
+      table: 'playlists',
+      event: 'DELETE',
+    );
+    await _ensurePlaylistRepairGenerationTrigger(
+      name: 'playlist_repair_generation_entries_ai',
+      table: 'playlist_entries',
+      event: 'INSERT',
+    );
+    await _ensurePlaylistRepairGenerationTrigger(
+      name: 'playlist_repair_generation_entries_au',
+      table: 'playlist_entries',
+      event: 'UPDATE',
+    );
+    await _ensurePlaylistRepairGenerationTrigger(
+      name: 'playlist_repair_generation_entries_ad',
+      table: 'playlist_entries',
+      event: 'DELETE',
     );
   }
 
@@ -484,15 +578,227 @@ class AppDatabase extends _$AppDatabase {
     return row != null;
   }
 
-  Future<void> _markRepairCompleted(String key) async {
+  Future<void> _markRepairCompleted({
+    required String key,
+    required int value,
+  }) async {
     await customStatement(
       '''
       INSERT OR REPLACE INTO $_playlistRepairMarkerTable (
         key, completed_at_us
       ) VALUES (?, ?)
       ''',
-      <Object?>[key, DateTime.now().microsecondsSinceEpoch],
+      <Object?>[key, value],
     );
+  }
+
+  Future<void> _ensurePlaylistRepairGenerationTrigger({
+    required String name,
+    required String table,
+    required String event,
+  }) async {
+    await customStatement(
+      '''
+      CREATE TRIGGER IF NOT EXISTS $name
+      AFTER $event ON $table
+      BEGIN
+        INSERT INTO $_playlistRepairMarkerTable (key, completed_at_us)
+        VALUES ('$_playlistRepairGenerationKey', 1)
+        ON CONFLICT(key) DO UPDATE
+        SET completed_at_us = completed_at_us + 1;
+      END
+      ''',
+    );
+  }
+
+  Future<int?> _repairMarkerValue(String key) async {
+    final row = await customSelect(
+      '''
+      SELECT completed_at_us
+      FROM $_playlistRepairMarkerTable
+      WHERE key = ?
+      LIMIT 1
+      ''',
+      variables: [Variable<String>(key)],
+    ).getSingleOrNull();
+    return row?.read<int>('completed_at_us');
+  }
+
+  Future<int> _currentPlaylistRepairGeneration() async {
+    return await _repairMarkerValue(_playlistRepairGenerationKey) ?? 0;
+  }
+
+  Future<bool> _playlistRepairSidecarMatches(int currentGeneration) async {
+    final sidecar = await _playlistRepairSidecarFile();
+    if (sidecar == null || !sidecar.existsSync()) {
+      return false;
+    }
+    try {
+      final raw = sidecar.readAsStringSync();
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        return false;
+      }
+      if (decoded['generation'] != currentGeneration) {
+        return false;
+      }
+
+      final expectedFingerprints = decoded['files'];
+      if (expectedFingerprints is! Map<String, dynamic>) {
+        return false;
+      }
+      final currentMetadata = await _playlistRepairFileMetadata();
+      if (_playlistRepairStoredMetadataMatches(
+        expectedFingerprints: expectedFingerprints,
+        currentMetadata: currentMetadata,
+      )) {
+        return true;
+      }
+      _onPlaylistRepairHashFallback?.call();
+      final currentFingerprints = await _playlistRepairFileFingerprints();
+      return jsonEncode(expectedFingerprints) ==
+          jsonEncode(currentFingerprints);
+    } on Object {
+      return false;
+    }
+  }
+
+  Future<void> _writePlaylistRepairSidecar(int generation) async {
+    final sidecar = await _playlistRepairSidecarFile();
+    if (sidecar == null) {
+      return;
+    }
+    try {
+      final payload = <String, Object?>{
+        'generation': generation,
+        'files': await _playlistRepairFileFingerprints(),
+      };
+      File('${sidecar.path}.tmp')
+        ..writeAsStringSync(jsonEncode(payload), flush: true)
+        ..renameSync(sidecar.path);
+    } on Object {
+      // The sidecar is only a startup fast-path cache. If it can't be written,
+      // keep the DB repair result and let the next open fall back to probing.
+    }
+  }
+
+  Future<File?> _playlistRepairSidecarFile() async {
+    final mainDbFile = await _playlistRepairMainDatabaseFile();
+    if (mainDbFile == null) {
+      return null;
+    }
+    return File('${mainDbFile.path}$_playlistRepairStateSidecarSuffix');
+  }
+
+  Future<File?> _playlistRepairMainDatabaseFile() async {
+    final rows = await customSelect('PRAGMA database_list').get();
+    for (final row in rows) {
+      final filePath = row.read<String?>('file');
+      if (filePath == null || filePath.isEmpty) {
+        continue;
+      }
+      return File(filePath);
+    }
+    return null;
+  }
+
+  Future<Map<String, Object?>> _playlistRepairFileFingerprints() async {
+    final mainDbFile = await _playlistRepairMainDatabaseFile();
+    if (mainDbFile == null) {
+      return const {};
+    }
+    // SQLite's `-shm` file is a volatile connection-side cache for WAL
+    // coordination, not durable playlist state. Excluding it keeps healthy
+    // reopens on the metadata-only fast path instead of forcing content hashes
+    // whenever a no-op reopen refreshes shared-memory bookkeeping.
+    return <String, Object?>{
+      'db': _playlistRepairFileFingerprint(mainDbFile),
+      'wal': _playlistRepairFileFingerprint(File('${mainDbFile.path}-wal')),
+    };
+  }
+
+  Future<Map<String, Object?>> _playlistRepairFileMetadata() async {
+    final mainDbFile = await _playlistRepairMainDatabaseFile();
+    if (mainDbFile == null) {
+      return const {};
+    }
+    return <String, Object?>{
+      'db': _playlistRepairFileMetadataEntry(mainDbFile),
+      'wal': _playlistRepairFileMetadataEntry(File('${mainDbFile.path}-wal')),
+    };
+  }
+
+  bool _playlistRepairStoredMetadataMatches({
+    required Map<String, dynamic> expectedFingerprints,
+    required Map<String, Object?> currentMetadata,
+  }) {
+    for (final key in currentMetadata.keys) {
+      final expectedEntry = expectedFingerprints[key];
+      final currentEntry = currentMetadata[key];
+      if (expectedEntry is! Map<String, dynamic> || currentEntry is! Map) {
+        return false;
+      }
+      if (expectedEntry['exists'] != currentEntry['exists'] ||
+          expectedEntry['size'] != currentEntry['size'] ||
+          expectedEntry['modified_at_us'] != currentEntry['modified_at_us'] ||
+          expectedEntry['changed_at_us'] != currentEntry['changed_at_us']) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Map<String, Object?> _playlistRepairFileMetadataEntry(File file) {
+    if (!file.existsSync()) {
+      return const {'exists': false};
+    }
+    final stat = file.statSync();
+    return <String, Object?>{
+      'exists': true,
+      'size': stat.size,
+      'modified_at_us': stat.modified.microsecondsSinceEpoch,
+      'changed_at_us': stat.changed.microsecondsSinceEpoch,
+    };
+  }
+
+  Map<String, Object?> _playlistRepairFileFingerprint(File file) {
+    if (!file.existsSync()) {
+      return const {'exists': false};
+    }
+    final stat = file.statSync();
+    final raf = file.openSync();
+    try {
+      final hashStartOffset = _playlistRepairFingerprintHashStartOffset(
+        file: file,
+        fileSize: stat.size,
+      );
+      raf.setPositionSync(hashStartOffset);
+      final content = raf.readSync(stat.size - hashStartOffset);
+      return <String, Object?>{
+        'exists': true,
+        'size': stat.size,
+        'modified_at_us': stat.modified.microsecondsSinceEpoch,
+        'changed_at_us': stat.changed.microsecondsSinceEpoch,
+        'content_sha256': sha256.convert(content).toString(),
+      };
+    } finally {
+      raf.closeSync();
+    }
+  }
+
+  int _playlistRepairFingerprintHashStartOffset({
+    required File file,
+    required int fileSize,
+  }) {
+    if (file.path.endsWith('-wal')) {
+      return fileSize > _sqliteWalHeaderBytes ? _sqliteWalHeaderBytes : 0;
+    }
+    if (file.path.endsWith('-shm')) {
+      return 0;
+    }
+    return fileSize > _sqliteDatabaseHeaderBytes
+        ? _sqliteDatabaseHeaderBytes
+        : 0;
   }
 
   Future<bool> _playlistMayNeedRepair() async {
@@ -866,14 +1172,15 @@ class AppDatabase extends _$AppDatabase {
     final trimmedOwnerAddress = ownerAddress?.trim();
     final hasOwnerAddress =
         trimmedOwnerAddress != null && trimmedOwnerAddress.isNotEmpty;
+    // A surviving nonblank owner is the strongest identity signal we have for
+    // a personal playlist. Favor healing back into the personal collection
+    // instead of dropping ownership just because id/channel/type drifted.
     if (hasOwnerAddress &&
-        id == PlaylistExt.addressPlaylistId(trimmedOwnerAddress)) {
-      return PlaylistType.addressBased.value;
-    }
-    if (hasOwnerAddress &&
-        (rawType == PlaylistType.addressBased.value ||
+        (id == PlaylistExt.addressPlaylistId(trimmedOwnerAddress) ||
+            rawType == PlaylistType.addressBased.value ||
             rawChannelId == Channel.myCollectionId ||
-            !hasNonPersonalChannel)) {
+            !hasNonPersonalChannel ||
+            rawType == PlaylistType.dp1.value)) {
       return PlaylistType.addressBased.value;
     }
     if (rawType == PlaylistType.favorite.value) {
