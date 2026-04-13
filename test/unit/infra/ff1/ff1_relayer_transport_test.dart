@@ -234,4 +234,57 @@ void main() {
       );
     },
   );
+
+  test(
+    'connect(forceReconnect) returns false when pause wins during disconnect '
+    'teardown (PR #361 review 4098103277)',
+    () async {
+      late FF1RelayerTransport transport;
+      transport = FF1RelayerTransport(
+        relayerUrl: 'wss://example.invalid/relayer',
+        debugBeforeDisconnectGraceDelay: () async {
+          transport.pauseConnection();
+        },
+      );
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+
+      final firstConnected = Completer<void>();
+      final sub = transport.connectionStateStream.listen((connected) {
+        if (connected && !firstConnected.isCompleted) {
+          firstConnected.complete();
+        }
+      });
+      addTearDown(() async {
+        await sub.cancel();
+        await transport.disposeFuture();
+      });
+
+      final ok1 = await transport.connect(
+        device: device,
+        userId: 'user-1',
+        apiKey: 'api-key-1',
+      );
+      expect(ok1, isTrue);
+      await firstConnected.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          fail('expected live socket before pause-during-disconnect test');
+        },
+      );
+
+      final ok2 = await transport.connect(
+        device: device,
+        userId: 'user-1',
+        apiKey: 'api-key-1',
+        forceReconnect: true,
+      );
+      expect(ok2, isFalse);
+      expect(transport.isConnected, isFalse);
+    },
+  );
 }

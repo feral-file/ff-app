@@ -63,9 +63,11 @@ class FF1RelayerTransport implements FF1WifiTransport {
     required String relayerUrl,
     Logger? logger,
     Future<void> Function()? debugBeforeConnectControlDispatch,
+    Future<void> Function()? debugBeforeDisconnectGraceDelay,
   }) : _relayerUrl = relayerUrl,
        _log = logger ?? Logger('FF1RelayerTransport'),
-       _debugBeforeConnectControlDispatch = debugBeforeConnectControlDispatch {
+       _debugBeforeConnectControlDispatch = debugBeforeConnectControlDispatch,
+       _debugBeforeDisconnectGraceDelay = debugBeforeDisconnectGraceDelay {
     _slog = AppStructuredLog.forLogger(
       _log,
       context: {'component': 'ff1_relayer_transport'},
@@ -76,6 +78,11 @@ class FF1RelayerTransport implements FF1WifiTransport {
   final Logger _log;
   late final StructuredLogger _slog;
   final Future<void> Function()? _debugBeforeConnectControlDispatch;
+  final Future<void> Function()? _debugBeforeDisconnectGraceDelay;
+
+  /// Bumps on each [pauseConnection] so [connect] can tell if lifecycle pause
+  /// won during an in-flight [disconnect] (PR #361 review 4098103277).
+  int _relayerPauseGeneration = 0;
 
   // Connection state
   bool _isConnected = false;
@@ -209,7 +216,21 @@ class FF1RelayerTransport implements FF1WifiTransport {
 
     // Disconnect from previous device
     if (_isConnected) {
+      final pauseGenBeforeDisconnect = _relayerPauseGeneration;
       await disconnect();
+      // If pauseConnection() ran while disconnect was tearing down, reopening
+      // here would violate the background contract (PR #361 review 4098103277).
+      if (_relayerPauseGeneration != pauseGenBeforeDisconnect) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'transport_connect_aborted_pause_during_disconnect',
+          message:
+              'connect aborted after disconnect because relayer pause won '
+              'during teardown',
+          payload: {'flowId': flowId, 'deviceId': device.deviceId},
+        );
+        return false;
+      }
       // disconnect() sets _reconnectSuppressed for lifecycle/teardown. That must
       // not block the replacement session this connect() is about to open:
       // otherwise forceReconnect self-suppresses at _connectInternal (PR #361
@@ -418,6 +439,11 @@ disconnect requested while teardown in progress; waiting existing teardown''',
         },
       );
 
+      final beforeGrace = _debugBeforeDisconnectGraceDelay;
+      if (beforeGrace != null) {
+        await beforeGrace();
+      }
+
       await Future<void>.delayed(const Duration(milliseconds: 100));
       _slog.info(
         category: LogCategory.wifi,
@@ -504,6 +530,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectSuppressed = true;
+    _relayerPauseGeneration++;
 
     // Always send disconnect when isolate exists. _connectInternal() drops
     // _isConnecting before the isolate sends its connection event, so there
