@@ -217,6 +217,8 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     final seedReadyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
 
     var lastProgressBucket = -1;
+    var restoreReadinessWhenDrained = false;
+    var completeGateWhenDrained = false;
 
     final suppressLoading = await appStateService.hasCompletedSeedDownload();
 
@@ -292,6 +294,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         // DB; defer snapshot to pending and restore with the winning session or
         // in finally when no sync remains in flight.
         if (updated) {
+          await appStateService.setHasCompletedSeedDownload(completed: true);
           await seedReadyNotifier.setReady();
           if (completeSeedDatabaseGate) {
             SeedDatabaseGate.complete();
@@ -317,12 +320,23 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       if (seedOnDisk) {
         // Restore when any prior session dropped readiness (e.g. overlap where
         // this session never reached beforeReplace so it has no local flag).
+        // If another sync() is still in flight (replace or download), defer
+        // until [finally] drains — same contract as failure recovery.
+        final mustDeferReadinessAndGate = _syncInProgressCount > 1;
         if (!ref.read(isSeedDatabaseReadyProvider)) {
-          await seedReadyNotifier.setReady();
+          if (mustDeferReadinessAndGate) {
+            restoreReadinessWhenDrained = true;
+          } else {
+            await seedReadyNotifier.setReady();
+          }
         }
         notifyForceReplaceFinished();
         if (completeSeedDatabaseGate) {
-          SeedDatabaseGate.complete();
+          if (mustDeferReadinessAndGate) {
+            completeGateWhenDrained = true;
+          } else {
+            SeedDatabaseGate.complete();
+          }
         }
         return updated;
       }
@@ -354,12 +368,14 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
             .read(seedDatabaseServiceProvider)
             .hasLocalDatabase();
         if (seedOnDisk && !ref.read(isSeedDatabaseReadyProvider)) {
-          await seedReadyNotifier.setReady();
+          // Defer until all overlapping sync() calls finish so we never reopen
+          // readiness while another session is still inside replace/swap.
+          restoreReadinessWhenDrained = true;
+          if (completeSeedDatabaseGate) {
+            completeGateWhenDrained = true;
+          }
         }
         notifyForceReplaceFinished(success: false, errorMessage: e.toString());
-        if (completeSeedDatabaseGate && seedOnDisk) {
-          SeedDatabaseGate.complete();
-        }
       }
       return false;
     } finally {
@@ -367,6 +383,18 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       state = state.copyWith(isSyncInProgress: _syncInProgressCount > 0);
       _clearSession(session);
       if (_syncInProgressCount == 0) {
+        if (restoreReadinessWhenDrained) {
+          final seedOnDisk = await ref
+              .read(seedDatabaseServiceProvider)
+              .hasLocalDatabase();
+          if (seedOnDisk && !ref.read(isSeedDatabaseReadyProvider)) {
+            await seedReadyNotifier.setReady();
+          }
+          if (completeGateWhenDrained &&
+              await ref.read(seedDatabaseServiceProvider).hasLocalDatabase()) {
+            SeedDatabaseGate.complete();
+          }
+        }
         await _drainPendingFavoriteRestoreIfIdle();
       }
     }

@@ -405,6 +405,11 @@ class SeedDatabaseService {
     // was successfully moved aside; otherwise a failure during staging would
     // delete the still-readable database (issue #337 recoverable-swap gap).
     var mainDatabaseBackedUp = false;
+    // Track WAL/SHM moves separately: rollback must not delete canonical -wal/-shm
+    // unless those files were actually staged to backup. If main moved but a
+    // sidecar move failed, the canonical sidecar can still hold committed data.
+    var walBackedUp = false;
+    var shmBackedUp = false;
 
     try {
       final metadata = prevalidatedArtifact ?? validateSeedArtifact(tempPath);
@@ -429,10 +434,12 @@ class SeedDatabaseService {
         canonicalPath: walPath,
         backupPath: backupWalPath,
       );
+      walBackedUp = File(backupWalPath).existsSync();
       await moveExistingDatabaseToBackup(
         canonicalPath: shmPath,
         backupPath: backupShmPath,
       );
+      shmBackedUp = File(backupShmPath).existsSync();
 
       await promoteStagedArtifact(
         stagingPath: stagingPath,
@@ -451,20 +458,24 @@ class SeedDatabaseService {
       _log.severe('Failed to replace seed database file', e, st);
       if (mainDatabaseBackedUp && !promotedCanonical) {
         await _deleteFileIfExists(dbPath);
-        await _deleteFileIfExists(walPath);
-        await _deleteFileIfExists(shmPath);
         await _restoreBackupIfNeeded(
           backupPath: backupPath,
           canonicalPath: dbPath,
         );
-        await _restoreBackupIfNeeded(
-          backupPath: backupWalPath,
-          canonicalPath: walPath,
-        );
-        await _restoreBackupIfNeeded(
-          backupPath: backupShmPath,
-          canonicalPath: shmPath,
-        );
+        if (walBackedUp) {
+          await _deleteFileIfExists(walPath);
+          await _restoreBackupIfNeeded(
+            backupPath: backupWalPath,
+            canonicalPath: walPath,
+          );
+        }
+        if (shmBackedUp) {
+          await _deleteFileIfExists(shmPath);
+          await _restoreBackupIfNeeded(
+            backupPath: backupShmPath,
+            canonicalPath: shmPath,
+          );
+        }
       }
       final stagedArtifactExists = File(stagingPath).existsSync();
       // Failed staged artifacts are never reused by later sync attempts; clean

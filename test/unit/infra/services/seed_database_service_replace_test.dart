@@ -34,6 +34,26 @@ class _SeedDatabaseServiceForReplaceTest extends SeedDatabaseService {
   }
 }
 
+/// Fails only when moving the `-shm` sidecar so WAL backup succeeds but SHM
+/// does not — rollback must not delete an unmoved canonical `-wal`.
+class _ThrowOnShmMoveSeedService extends _SeedDatabaseServiceForReplaceTest {
+  _ThrowOnShmMoveSeedService({required super.dbPath});
+
+  @override
+  Future<void> moveExistingDatabaseToBackup({
+    required String canonicalPath,
+    required String backupPath,
+  }) async {
+    if (canonicalPath.endsWith('-shm')) {
+      throw Exception('Simulated SHM move failure');
+    }
+    await super.moveExistingDatabaseToBackup(
+      canonicalPath: canonicalPath,
+      backupPath: backupPath,
+    );
+  }
+}
+
 void main() {
   group('SeedDatabaseService.replaceDatabaseFromTemporaryFile', () {
     late Directory tempDir;
@@ -157,6 +177,40 @@ void main() {
           expect(rows.first.columnAt(0), 3);
         } finally {
           db.dispose();
+        }
+      },
+    );
+
+    test(
+      'rollback restores main and WAL when SHM move fails before backup',
+      () async {
+        final canonical = File(p.join(tempDir.path, 'dp1_library.sqlite'));
+        final tempSeed = File(p.join(tempDir.path, 'incoming.sqlite'));
+        createSeedArtifactDatabase(file: canonical);
+        createSeedArtifactDatabase(file: tempSeed);
+
+        final db = sqlite3.sqlite3.open(canonical.path);
+        try {
+          db
+            ..execute('PRAGMA journal_mode=WAL;')
+            ..execute('UPDATE channels SET title = title WHERE 1=1');
+        } finally {
+          db.dispose();
+        }
+
+        final service = _ThrowOnShmMoveSeedService(dbPath: canonical.path);
+
+        await expectLater(
+          () => service.replaceDatabaseFromTemporaryFile(tempSeed.path),
+          throwsException,
+        );
+
+        final db2 = sqlite3.sqlite3.open(canonical.path);
+        try {
+          final rows = db2.select('PRAGMA user_version');
+          expect(rows.first.columnAt(0), 3);
+        } finally {
+          db2.dispose();
         }
       },
     );

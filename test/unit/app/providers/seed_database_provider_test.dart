@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
@@ -11,12 +12,16 @@ import 'package:app/infra/database/database_service.dart';
 import 'package:app/infra/database/favorite_history_snapshot.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/local_data_cleanup_service.dart';
+import 'package:app/infra/services/seed_database_artifact_validator.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:riverpod/misc.dart' show Override;
+
+import '../../../helpers/seed_database_test_helper.dart';
 
 /// Fake [AppStateService] for seed sync tests. Tracks seed download completion
 /// so subsequent syncs run in background (suppressLoading).
@@ -34,8 +39,60 @@ class _FakeAppStateService implements AppStateService {
     _hasCompletedSeedDownload = completed;
   }
 
+  /// Test-only: persisted first-install / seed completion flag.
+  bool get seedDownloadCompletedForTest => _hasCompletedSeedDownload;
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Real [SeedDatabaseSyncService] + blocking replace: sync1 holds replace
+/// while sync2 fails at download (exercises `_replaceLock` in sync service).
+class _BlockingReplaceSeedService extends SeedDatabaseService {
+  _BlockingReplaceSeedService({
+    required this.validArtifactPath,
+    required this.replaceEntered,
+    required this.replaceMayComplete,
+  });
+
+  final String validArtifactPath;
+  final Completer<void> replaceEntered;
+  final Completer<void> replaceMayComplete;
+
+  int _downloadCount = 0;
+
+  @override
+  Future<bool> hasLocalDatabase() async => true;
+
+  @override
+  Future<String> headRemoteEtag() async => 'remote-v2';
+
+  @override
+  Future<String> downloadToTemporaryFile({
+    void Function(double progress)? onProgress,
+    int? maxBytes,
+  }) async {
+    _downloadCount += 1;
+    if (_downloadCount >= 2) {
+      throw const SeedDownloadException('simulated second download failure');
+    }
+    onProgress?.call(1);
+    return validArtifactPath;
+  }
+
+  @override
+  Future<void> replaceDatabaseFromTemporaryFile(
+    String tempPath, {
+    SeedDatabaseArtifactMetadata? prevalidatedArtifact,
+  }) async {
+    if (!replaceEntered.isCompleted) {
+      replaceEntered.complete();
+    }
+    await replaceMayComplete.future;
+  }
+
+  @override
+  Future<void> cleanupTemporarySeedArtifact(String tempPath) async {}
 }
 
 class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
@@ -783,6 +840,7 @@ void main() {
         delegate: fakeSyncService,
         beforeComplete: completer.future,
       );
+      final appState = _FakeAppStateService();
       var onReadyCallCount = 0;
       final actions = SeedDatabaseReadyActions(
         onNotReady: _noOpFuture,
@@ -794,7 +852,7 @@ void main() {
       final container = ProviderContainer.test(
         overrides: [
           seedDatabaseSyncServiceProvider.overrideWithValue(slowFake),
-          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          appStateServiceProvider.overrideWithValue(appState),
           seedDatabaseReadyActionsProvider.overrideWithValue(actions),
           _fakeSeedDbSvc(hasLocal: false),
         ],
@@ -832,6 +890,83 @@ void main() {
         reason:
             'superseded session must open SeedDatabaseGate when replace ran',
       );
+      expect(
+        appState.seedDownloadCompletedForTest,
+        isTrue,
+        reason:
+            'superseded session must persist hasCompletedSeedDownload so '
+            'resume does not treat the next launch like first install',
+      );
+    },
+  );
+
+  test(
+    'second sync failure while first holds replaceLock does not reopen '
+    'readiness before first completes',
+    () async {
+      SeedDatabaseGate.complete();
+      final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(memDb.close);
+
+      final tempDir = await Directory.systemTemp.createTemp('ff_seed_lock_');
+      addTearDown(() async {
+        if (tempDir.existsSync()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+
+      final artifact = File(p.join(tempDir.path, 'valid_seed.sqlite'));
+      createSeedArtifactDatabase(file: artifact);
+
+      final replaceEntered = Completer<void>();
+      final replaceMayComplete = Completer<void>();
+      final blockingSeed = _BlockingReplaceSeedService(
+        validArtifactPath: artifact.path,
+        replaceEntered: replaceEntered,
+        replaceMayComplete: replaceMayComplete,
+      );
+
+      var localEtag = 'local-v1';
+      final realSync = SeedDatabaseSyncService(
+        seedDatabaseService: blockingSeed,
+        loadLocalEtag: () => localEtag,
+        saveLocalEtag: (etag) => localEtag = etag,
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(realSync),
+          seedDatabaseServiceProvider.overrideWithValue(blockingSeed),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+          appDatabaseProvider.overrideWithValue(memDb),
+          rawDatabaseServiceProvider.overrideWithValue(
+            _SpyDatabaseService(memDb)..snapshotReturnsEmpty = true,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(seedDownloadProvider.notifier);
+      final sync1Future = notifier.sync();
+
+      await replaceEntered.future;
+      expect(container.read(isSeedDatabaseReadyProvider), isFalse);
+
+      await notifier.sync();
+
+      expect(
+        container.read(isSeedDatabaseReadyProvider),
+        isFalse,
+        reason:
+            'replace still in progress; failed download must not reopen '
+            'readiness until all sync() calls drain.',
+      );
+
+      replaceMayComplete.complete();
+      await sync1Future;
+
+      expect(container.read(isSeedDatabaseReadyProvider), isTrue);
     },
   );
 
@@ -870,13 +1005,21 @@ void main() {
 
       expect(
         container.read(isSeedDatabaseReadyProvider),
-        isTrue,
+        isFalse,
         reason:
-            'Session 1 dropped readiness; session 2 failed before its '
-            'beforeReplace — readiness must still reflect DB on disk.',
+            'Session 1 is still in replace; session 2 failure must not reopen '
+            'readiness until all sync calls have drained.',
       );
       block.complete();
       await sync1Future;
+
+      expect(
+        container.read(isSeedDatabaseReadyProvider),
+        isTrue,
+        reason:
+            'After the last sync completes, readiness reflects DB on disk '
+            'again.',
+      );
     },
   );
 }
