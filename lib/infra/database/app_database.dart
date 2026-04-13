@@ -1,12 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:app/domain/extensions/playlist_ext.dart';
-import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/database/tables.dart';
-import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/isolate.dart';
 import 'package:drift/native.dart';
@@ -26,14 +23,6 @@ const _maxLimitForOffset = 0x7FFFFFFF;
 const _schemaVersionV1 = 3;
 const _dbResetReindexMarkerFile = 'db_reset_requires_reindex.flag';
 const _ftsMetadataFallbackRank = 500.0;
-const _playlistRepairMarkerTable = 'internal_repair_markers';
-const _playlistRepairMarkerKey = 'playlist_repair_v1_completed';
-const _playlistRepairGenerationKey = 'playlist_repair_v1_generation';
-const _playlistRepairCompletedGenerationKey =
-    'playlist_repair_v1_completed_generation';
-const _playlistRepairStateSidecarSuffix = '.playlist_repair_state.json';
-const _sqliteDatabaseHeaderBytes = 100;
-const _sqliteWalHeaderBytes = 32;
 
 extension _SearchQueryTokens on String {
   List<String> get searchTokens {
@@ -54,30 +43,17 @@ extension _SearchQueryTokens on String {
   tables: [Publishers, Channels, Playlists, Items, PlaylistEntries],
 )
 class AppDatabase extends _$AppDatabase {
-
   /// Creates an AppDatabase instance.
-  AppDatabase() : this._(_openConnection());
-  AppDatabase._(
-    super.e, {
-    VoidCallback? onPlaylistRepairHashFallback,
-  }) : _onPlaylistRepairHashFallback = onPlaylistRepairHashFallback;
+  AppDatabase() : super(_openConnection());
 
   /// Creates an AppDatabase instance from a Drift [DatabaseConnection].
   ///
   /// Used by `computeWithDatabase` to run heavy DB work in a short-lived
   /// isolate while reusing the same sqlite connection.
-  AppDatabase.fromConnection(DatabaseConnection e) : this._(e);
+  AppDatabase.fromConnection(DatabaseConnection super.e);
 
   /// Creates an AppDatabase instance with a custom executor (for testing).
-  AppDatabase.forTesting(
-    QueryExecutor e, {
-    VoidCallback? onPlaylistRepairHashFallback,
-  }) : this._(
-         e,
-         onPlaylistRepairHashFallback: onPlaylistRepairHashFallback,
-       );
-
-  final VoidCallback? _onPlaylistRepairHashFallback;
+  AppDatabase.forTesting(super.e);
 
   @override
   int get schemaVersion => _schemaVersionV1;
@@ -102,18 +78,9 @@ class AppDatabase extends _$AppDatabase {
         // remains (failed migration, copied file, or pre-release builds).
         await _migratePlaylistsSignaturesJsonIfNeeded();
         await _createIndexes();
-        final hadFtsInfrastructure = await _hasCompleteFtsInfrastructure();
         await _createFtsInfrastructure();
-        final shouldRefreshPlaylistRepairSidecar =
-            await _repairMalformedPlaylistRowsIfNeeded();
-        if (details.wasCreated || details.hadUpgrade || !hadFtsInfrastructure) {
+        if (details.wasCreated || details.hadUpgrade) {
           await _rebuildFtsIndexes();
-        }
-        if (shouldRefreshPlaylistRepairSidecar &&
-            await _hasRepairMarker(_playlistRepairMarkerKey)) {
-          await _writePlaylistRepairSidecar(
-            await _currentPlaylistRepairGeneration(),
-          );
         }
       },
     );
@@ -223,1117 +190,6 @@ class AppDatabase extends _$AppDatabase {
         );
       }
     }
-  }
-
-  /// Repairs malformed playlist rows before Drift maps them into
-  /// `PlaylistData`.
-  ///
-  /// Why this exists:
-  /// - Older copied DBs and partially-migrated local files can still contain
-  ///   playlist rows where required columns are null or enum values drifted.
-  /// - Drift's generated row mapper force-unwraps those required fields, so one
-  ///   bad row can crash startup bootstrap and every playlist list/watch query.
-  ///
-  /// We heal rows on open instead of scattering defensive fallback logic across
-  /// providers and services. This preserves the offline-first contract: the app
-  /// should repair readable local state and keep going when the damage is local
-  /// to a few playlist rows.
-  Future<bool> _repairMalformedPlaylistRowsIfNeeded() async {
-    await _ensureRepairMarkerInfrastructure();
-    final cols = await _playlistTableColumnNames();
-    const requiredCols = {
-      'id',
-      'channel_id',
-      'type',
-      'title',
-      'created_at_us',
-      'updated_at_us',
-      'signatures',
-      'defaults_json',
-      'dynamic_queries_json',
-      'sort_mode',
-      'item_count',
-      'owner_address',
-    };
-    final hasRepairMarker = await _hasRepairMarker(_playlistRepairMarkerKey);
-    if (hasRepairMarker && !requiredCols.every(cols.contains)) {
-      return false;
-    }
-    final currentRepairGeneration = await _currentPlaylistRepairGeneration();
-    if (!requiredCols.every(cols.contains)) {
-      await _markRepairCompleted(
-        key: _playlistRepairMarkerKey,
-        value: currentRepairGeneration,
-      );
-      await _markRepairCompleted(
-        key: _playlistRepairCompletedGenerationKey,
-        value: currentRepairGeneration,
-      );
-      return true;
-    }
-    if (hasRepairMarker &&
-        await _playlistRepairSidecarMatches(currentRepairGeneration)) {
-      return false;
-    }
-    if (hasRepairMarker && !await _playlistMayNeedRepair()) {
-      await _markRepairCompleted(
-        key: _playlistRepairMarkerKey,
-        value: currentRepairGeneration,
-      );
-      await _markRepairCompleted(
-        key: _playlistRepairCompletedGenerationKey,
-        value: currentRepairGeneration,
-      );
-      return true;
-    }
-
-    final rows = await customSelect(
-      '''
-      SELECT id, channel_id, type, title, created_at_us, updated_at_us,
-             signatures, defaults_json, dynamic_queries_json, owner_address,
-             sort_mode, item_count
-      FROM playlists
-      ORDER BY id
-      ''',
-      readsFrom: {playlists},
-    ).get();
-
-    if (rows.isEmpty) {
-      await _markRepairCompleted(
-        key: _playlistRepairMarkerKey,
-        value: currentRepairGeneration,
-      );
-      await _markRepairCompleted(
-        key: _playlistRepairCompletedGenerationKey,
-        value: currentRepairGeneration,
-      );
-      return true;
-    }
-
-    // Inspect every playlist row in Dart so repair selection stays aligned with
-    // the same normalization semantics used by the repair helpers. This avoids
-    // missing malformed rows whose owner/channel values only differ by
-    // Unicode/control whitespace that SQLite's default `TRIM()` does not
-    // consider.
-    rows.sort((a, b) {
-      final aHasOwner =
-          a.read<String?>('owner_address')?.trim().isNotEmpty ?? false;
-      final bHasOwner =
-          b.read<String?>('owner_address')?.trim().isNotEmpty ?? false;
-      if (aHasOwner == bHasOwner) {
-        return a.read<String>('id').compareTo(b.read<String>('id'));
-      }
-      return aHasOwner ? -1 : 1;
-    });
-
-    final entryCountRows = await customSelect(
-      '''
-      SELECT playlist_id, COUNT(*) AS entry_count
-      FROM playlist_entries
-      GROUP BY playlist_id
-      ''',
-      readsFrom: {playlistEntries},
-    ).get();
-    final entryCountsByPlaylistId = {
-      for (final row in entryCountRows)
-        row.read<String>('playlist_id'): row.read<int>('entry_count'),
-    };
-
-    final nowUs = DateTime.now().microsecondsSinceEpoch;
-    var repairedGeneration = currentRepairGeneration;
-    await transaction(() async {
-      final supersededSnapshotIds = <String>{};
-      var repairedCount = 0;
-      for (final row in rows) {
-        final id = row.read<String>('id');
-        if (supersededSnapshotIds.contains(id)) {
-          continue;
-        }
-        final rawType = row.read<int?>('type');
-        final rawChannelId = row.read<String?>('channel_id');
-        final ownerAddress = row.read<String?>('owner_address');
-        final entryCount = entryCountsByPlaylistId[id] ?? 0;
-        if (!_playlistNeedsRepair(
-          id: id,
-          rawChannelId: rawChannelId,
-          rawType: rawType,
-          rawTitle: row.read<String?>('title'),
-          rawCreatedAtUs: row.read<int?>('created_at_us'),
-          rawUpdatedAtUs: row.read<int?>('updated_at_us'),
-          rawSignatures: row.read<String?>('signatures'),
-          rawDefaultsJson: row.read<String?>('defaults_json'),
-          rawDynamicQueriesJson: row.read<String?>('dynamic_queries_json'),
-          ownerAddress: ownerAddress,
-          rawSortMode: row.read<int?>('sort_mode'),
-          rawItemCount: row.read<int?>('item_count'),
-          entryCount: entryCount,
-        )) {
-          continue;
-        }
-        repairedCount++;
-        final trimmedRawChannelId = rawChannelId?.trim();
-        final hasNonPersonalChannel =
-            trimmedRawChannelId != null &&
-            trimmedRawChannelId.isNotEmpty &&
-            trimmedRawChannelId != Channel.myCollectionId;
-        if (_shouldDeleteMalformedPlaylist(
-          id: id,
-          rawType: rawType,
-          rawChannelId: trimmedRawChannelId,
-          ownerAddress: ownerAddress,
-          hasNonPersonalChannel: hasNonPersonalChannel,
-        )) {
-          await _deleteMalformedPlaylistAndOrphanedItems(id);
-          continue;
-        }
-        final typeValue = _repairPlaylistTypeValue(
-          id: id,
-          hasNonPersonalChannel: hasNonPersonalChannel,
-          rawChannelId: trimmedRawChannelId,
-          ownerAddress: ownerAddress,
-          rawType: rawType,
-        );
-        final channelId = _repairPlaylistChannelId(
-          id: id,
-          rawChannelId: trimmedRawChannelId,
-          rawType: rawType,
-          typeValue: typeValue,
-        );
-        final rawCreatedAtUs = row.read<int?>('created_at_us');
-        final rawUpdatedAtUs = row.read<int?>('updated_at_us');
-        final createdAtUs = rawCreatedAtUs ?? rawUpdatedAtUs ?? nowUs;
-        final updatedAtUs = rawUpdatedAtUs ?? createdAtUs;
-        final repairedOwnerAddress = _repairPlaylistOwnerAddress(
-          id: id,
-          ownerAddress: ownerAddress,
-          typeValue: typeValue,
-        );
-        final targetPlaylistId = _repairPlaylistId(
-          id: id,
-          ownerAddress: repairedOwnerAddress,
-          typeValue: typeValue,
-        );
-        final canonicalization = await _canonicalizeAddressPlaylistIdIfNeeded(
-          sourcePlaylistId: id,
-          targetPlaylistId: targetPlaylistId,
-        );
-        if (canonicalization.supersededSnapshotId != null) {
-          supersededSnapshotIds.add(canonicalization.supersededSnapshotId!);
-        }
-        if (canonicalization.mergedIntoExistingCanonical) {
-          continue;
-        }
-        final title = _repairPlaylistTitle(
-          id: targetPlaylistId,
-          ownerAddress: repairedOwnerAddress,
-          typeValue: typeValue,
-          rawTitle: row.read<String?>('title'),
-        );
-        final signatures = _repairPlaylistSignaturesJson(
-          row.read<String?>('signatures'),
-        );
-        final defaultsJson = _repairPlaylistDefaultsJson(
-          rawDefaultsJson: row.read<String?>('defaults_json'),
-          rawChannelId: trimmedRawChannelId,
-          ownerAddress: ownerAddress,
-          rawType: rawType,
-          typeValue: typeValue,
-        );
-        final dynamicQueriesJson = _repairPlaylistDynamicQueriesJson(
-          rawDynamicQueriesJson: row.read<String?>('dynamic_queries_json'),
-          rawChannelId: trimmedRawChannelId,
-          ownerAddress: ownerAddress,
-          rawType: rawType,
-          typeValue: typeValue,
-        );
-        final sortMode = _repairPlaylistSortModeValue(
-          rawSortMode: row.read<int?>('sort_mode'),
-          typeValue: typeValue,
-        );
-        final itemCount = await _repairPlaylistItemCount(
-          playlistId: id,
-          rawItemCount: row.read<int?>('item_count'),
-          // Every row in this repair batch already violated playlist
-          // invariants. Recomputing from playlist_entries keeps bootstrap
-          // healing aligned with downstream sync code that resumes from the
-          // stored item_count.
-          forceRecompute: true,
-        );
-
-        await customStatement(
-          '''
-          UPDATE playlists
-          SET id = ?,
-              channel_id = ?,
-              type = ?,
-              title = ?,
-              owner_address = ?,
-              created_at_us = ?,
-              updated_at_us = ?,
-              signatures = ?,
-              defaults_json = ?,
-              dynamic_queries_json = ?,
-              sort_mode = ?,
-              item_count = ?
-          WHERE id = ?
-          ''',
-          <Object?>[
-            targetPlaylistId,
-            channelId,
-            typeValue,
-            title,
-            repairedOwnerAddress,
-            createdAtUs,
-            updatedAtUs,
-            signatures,
-            defaultsJson,
-            dynamicQueriesJson,
-            sortMode,
-            itemCount,
-            id,
-          ],
-        );
-        if (targetPlaylistId != id) {
-          await customStatement(
-            '''
-            UPDATE playlist_entries
-            SET playlist_id = ?
-            WHERE playlist_id = ?
-            ''',
-            <Object?>[targetPlaylistId, id],
-          );
-        }
-      }
-
-      if (repairedCount > 0) {
-        _log.warning(
-          'Repaired $repairedCount malformed playlist row(s) '
-          'before startup reads',
-        );
-      }
-      repairedGeneration = await _currentPlaylistRepairGeneration();
-      await _markRepairCompleted(
-        key: _playlistRepairMarkerKey,
-        value: repairedGeneration,
-      );
-      await _markRepairCompleted(
-        key: _playlistRepairCompletedGenerationKey,
-        value: repairedGeneration,
-      );
-    });
-    return true;
-  }
-
-  Future<void> _ensureRepairMarkerInfrastructure() async {
-    await customStatement(
-      '''
-      CREATE TABLE IF NOT EXISTS $_playlistRepairMarkerTable (
-        key TEXT PRIMARY KEY,
-        completed_at_us INTEGER NOT NULL
-      )
-      ''',
-    );
-    await _ensurePlaylistRepairGenerationTrigger(
-      name: 'playlist_repair_generation_playlists_ai',
-      table: 'playlists',
-      event: 'INSERT',
-    );
-    await _ensurePlaylistRepairGenerationTrigger(
-      name: 'playlist_repair_generation_playlists_au',
-      table: 'playlists',
-      event: 'UPDATE',
-    );
-    await _ensurePlaylistRepairGenerationTrigger(
-      name: 'playlist_repair_generation_playlists_ad',
-      table: 'playlists',
-      event: 'DELETE',
-    );
-    await _ensurePlaylistRepairGenerationTrigger(
-      name: 'playlist_repair_generation_entries_ai',
-      table: 'playlist_entries',
-      event: 'INSERT',
-    );
-    await _ensurePlaylistRepairGenerationTrigger(
-      name: 'playlist_repair_generation_entries_au',
-      table: 'playlist_entries',
-      event: 'UPDATE',
-    );
-    await _ensurePlaylistRepairGenerationTrigger(
-      name: 'playlist_repair_generation_entries_ad',
-      table: 'playlist_entries',
-      event: 'DELETE',
-    );
-  }
-
-  Future<bool> _hasRepairMarker(String key) async {
-    final row = await customSelect(
-      '''
-      SELECT 1 AS present
-      FROM $_playlistRepairMarkerTable
-      WHERE key = ?
-      LIMIT 1
-      ''',
-      variables: [Variable<String>(key)],
-    ).getSingleOrNull();
-    return row != null;
-  }
-
-  Future<void> _markRepairCompleted({
-    required String key,
-    required int value,
-  }) async {
-    await customStatement(
-      '''
-      INSERT OR REPLACE INTO $_playlistRepairMarkerTable (
-        key, completed_at_us
-      ) VALUES (?, ?)
-      ''',
-      <Object?>[key, value],
-    );
-  }
-
-  Future<void> _ensurePlaylistRepairGenerationTrigger({
-    required String name,
-    required String table,
-    required String event,
-  }) async {
-    await customStatement(
-      '''
-      CREATE TRIGGER IF NOT EXISTS $name
-      AFTER $event ON $table
-      BEGIN
-        INSERT INTO $_playlistRepairMarkerTable (key, completed_at_us)
-        VALUES ('$_playlistRepairGenerationKey', 1)
-        ON CONFLICT(key) DO UPDATE
-        SET completed_at_us = completed_at_us + 1;
-      END
-      ''',
-    );
-  }
-
-  Future<int?> _repairMarkerValue(String key) async {
-    final row = await customSelect(
-      '''
-      SELECT completed_at_us
-      FROM $_playlistRepairMarkerTable
-      WHERE key = ?
-      LIMIT 1
-      ''',
-      variables: [Variable<String>(key)],
-    ).getSingleOrNull();
-    return row?.read<int>('completed_at_us');
-  }
-
-  Future<int> _currentPlaylistRepairGeneration() async {
-    return await _repairMarkerValue(_playlistRepairGenerationKey) ?? 0;
-  }
-
-  Future<bool> _playlistRepairSidecarMatches(int currentGeneration) async {
-    final sidecar = await _playlistRepairSidecarFile();
-    if (sidecar == null || !sidecar.existsSync()) {
-      return false;
-    }
-    try {
-      final raw = sidecar.readAsStringSync();
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) {
-        return false;
-      }
-      if (decoded['generation'] != currentGeneration) {
-        return false;
-      }
-
-      final expectedFingerprints = decoded['files'];
-      if (expectedFingerprints is! Map<String, dynamic>) {
-        return false;
-      }
-      final currentMetadata = await _playlistRepairFileMetadata();
-      if (_playlistRepairStoredMetadataMatches(
-        expectedFingerprints: expectedFingerprints,
-        currentMetadata: currentMetadata,
-      )) {
-        return true;
-      }
-      _onPlaylistRepairHashFallback?.call();
-      final currentFingerprints = await _playlistRepairFileFingerprints();
-      return jsonEncode(expectedFingerprints) ==
-          jsonEncode(currentFingerprints);
-    } on Object {
-      return false;
-    }
-  }
-
-  Future<void> _writePlaylistRepairSidecar(int generation) async {
-    final sidecar = await _playlistRepairSidecarFile();
-    if (sidecar == null) {
-      return;
-    }
-    try {
-      final payload = <String, Object?>{
-        'generation': generation,
-        'files': await _playlistRepairFileFingerprints(),
-      };
-      File('${sidecar.path}.tmp')
-        ..writeAsStringSync(jsonEncode(payload), flush: true)
-        ..renameSync(sidecar.path);
-    } on Object {
-      // The sidecar is only a startup fast-path cache. If it can't be written,
-      // keep the DB repair result and let the next open fall back to probing.
-    }
-  }
-
-  Future<File?> _playlistRepairSidecarFile() async {
-    final mainDbFile = await _playlistRepairMainDatabaseFile();
-    if (mainDbFile == null) {
-      return null;
-    }
-    return File('${mainDbFile.path}$_playlistRepairStateSidecarSuffix');
-  }
-
-  Future<File?> _playlistRepairMainDatabaseFile() async {
-    final rows = await customSelect('PRAGMA database_list').get();
-    for (final row in rows) {
-      final filePath = row.read<String?>('file');
-      if (filePath == null || filePath.isEmpty) {
-        continue;
-      }
-      return File(filePath);
-    }
-    return null;
-  }
-
-  Future<Map<String, Object?>> _playlistRepairFileFingerprints() async {
-    final mainDbFile = await _playlistRepairMainDatabaseFile();
-    if (mainDbFile == null) {
-      return const {};
-    }
-    // SQLite's `-shm` file is a volatile connection-side cache for WAL
-    // coordination, not durable playlist state. Excluding it keeps healthy
-    // reopens on the metadata-only fast path instead of forcing content hashes
-    // whenever a no-op reopen refreshes shared-memory bookkeeping.
-    return <String, Object?>{
-      'db': _playlistRepairFileFingerprint(mainDbFile),
-      'wal': _playlistRepairFileFingerprint(File('${mainDbFile.path}-wal')),
-    };
-  }
-
-  Future<Map<String, Object?>> _playlistRepairFileMetadata() async {
-    final mainDbFile = await _playlistRepairMainDatabaseFile();
-    if (mainDbFile == null) {
-      return const {};
-    }
-    return <String, Object?>{
-      'db': _playlistRepairFileMetadataEntry(mainDbFile),
-      'wal': _playlistRepairFileMetadataEntry(File('${mainDbFile.path}-wal')),
-    };
-  }
-
-  bool _playlistRepairStoredMetadataMatches({
-    required Map<String, dynamic> expectedFingerprints,
-    required Map<String, Object?> currentMetadata,
-  }) {
-    for (final key in currentMetadata.keys) {
-      final expectedEntry = expectedFingerprints[key];
-      final currentEntry = currentMetadata[key];
-      if (expectedEntry is! Map<String, dynamic> || currentEntry is! Map) {
-        return false;
-      }
-      if (expectedEntry['exists'] != currentEntry['exists'] ||
-          expectedEntry['size'] != currentEntry['size'] ||
-          expectedEntry['modified_at_us'] != currentEntry['modified_at_us'] ||
-          expectedEntry['changed_at_us'] != currentEntry['changed_at_us']) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  Map<String, Object?> _playlistRepairFileMetadataEntry(File file) {
-    if (!file.existsSync()) {
-      return const {'exists': false};
-    }
-    final stat = file.statSync();
-    return <String, Object?>{
-      'exists': true,
-      'size': stat.size,
-      'modified_at_us': stat.modified.microsecondsSinceEpoch,
-      'changed_at_us': stat.changed.microsecondsSinceEpoch,
-    };
-  }
-
-  Map<String, Object?> _playlistRepairFileFingerprint(File file) {
-    if (!file.existsSync()) {
-      return const {'exists': false};
-    }
-    final stat = file.statSync();
-    final raf = file.openSync();
-    try {
-      final hashStartOffset = _playlistRepairFingerprintHashStartOffset(
-        file: file,
-        fileSize: stat.size,
-      );
-      raf.setPositionSync(hashStartOffset);
-      final content = raf.readSync(stat.size - hashStartOffset);
-      return <String, Object?>{
-        'exists': true,
-        'size': stat.size,
-        'modified_at_us': stat.modified.microsecondsSinceEpoch,
-        'changed_at_us': stat.changed.microsecondsSinceEpoch,
-        'content_sha256': sha256.convert(content).toString(),
-      };
-    } finally {
-      raf.closeSync();
-    }
-  }
-
-  int _playlistRepairFingerprintHashStartOffset({
-    required File file,
-    required int fileSize,
-  }) {
-    if (file.path.endsWith('-wal')) {
-      return fileSize > _sqliteWalHeaderBytes ? _sqliteWalHeaderBytes : 0;
-    }
-    if (file.path.endsWith('-shm')) {
-      return 0;
-    }
-    return fileSize > _sqliteDatabaseHeaderBytes
-        ? _sqliteDatabaseHeaderBytes
-        : 0;
-  }
-
-  Future<bool> _playlistMayNeedRepair() async {
-    final rows = await customSelect(
-      '''
-      SELECT id, channel_id, type, title, created_at_us, updated_at_us,
-             signatures, defaults_json, dynamic_queries_json, owner_address,
-             sort_mode, item_count
-      FROM playlists
-      ''',
-      readsFrom: {playlists},
-    ).get();
-
-    for (final row in rows) {
-      if (_playlistMayNeedRepairRow(row)) {
-        return true;
-      }
-    }
-
-    final countMismatch = await customSelect(
-      '''
-      SELECT 1 AS needs_repair
-      FROM playlists
-      WHERE item_count != (
-        SELECT COUNT(*)
-        FROM playlist_entries
-        WHERE playlist_id = playlists.id
-      )
-      LIMIT 1
-      ''',
-      readsFrom: {playlists, playlistEntries},
-    ).getSingleOrNull();
-    return countMismatch != null;
-  }
-
-  bool _playlistMayNeedRepairRow(QueryRow row) {
-    final id = row.read<String>('id');
-    final rawType = row.read<int?>('type');
-    final rawChannelId = row.read<String?>('channel_id');
-    final ownerAddress = row.read<String?>('owner_address');
-    final trimmedOwnerAddress = ownerAddress?.trim();
-    final hasOwnerAddress =
-        trimmedOwnerAddress != null && trimmedOwnerAddress.isNotEmpty;
-    final trimmedRawChannelId = rawChannelId?.trim();
-
-    if (rawType == null ||
-        row.read<String?>('title') == null ||
-        row.read<int?>('created_at_us') == null ||
-        row.read<int?>('updated_at_us') == null ||
-        row.read<String?>('signatures') == null ||
-        row.read<int?>('sort_mode') == null ||
-        row.read<int?>('item_count') == null) {
-      return true;
-    }
-    if (!_isValidPlaylistTypeValue(rawType) ||
-        !_isValidPlaylistSortModeValue(row.read<int>('sort_mode'))) {
-      return true;
-    }
-    if (ownerAddress != trimmedOwnerAddress) {
-      return true;
-    }
-    if (rawType == PlaylistType.favorite.value && id != Playlist.favoriteId) {
-      return true;
-    }
-    if (rawType == PlaylistType.addressBased.value && !hasOwnerAddress) {
-      return true;
-    }
-    if (id != Playlist.favoriteId &&
-        trimmedRawChannelId == Channel.myCollectionId &&
-        !hasOwnerAddress) {
-      return true;
-    }
-    if (id != Playlist.favoriteId &&
-        rawType == PlaylistType.dp1.value &&
-        rawChannelId != null &&
-        trimmedRawChannelId != rawChannelId &&
-        !hasOwnerAddress) {
-      return true;
-    }
-    if (id == Playlist.favoriteId &&
-        (hasOwnerAddress ||
-            rawType != PlaylistType.favorite.value ||
-            rawChannelId == null ||
-            rawChannelId != Channel.myCollectionId ||
-            row.read<int>('sort_mode') != PlaylistSortMode.provenance.index ||
-            row.read<String>('title') != 'Favorites')) {
-      return true;
-    }
-    if (hasOwnerAddress &&
-        (rawType != PlaylistType.addressBased.value ||
-            id != PlaylistExt.addressPlaylistId(trimmedOwnerAddress) ||
-            rawChannelId == null ||
-            rawChannelId != Channel.myCollectionId ||
-            row.read<int>('sort_mode') != PlaylistSortMode.provenance.index)) {
-      return true;
-    }
-    if (rawType == PlaylistType.dp1.value &&
-        !hasOwnerAddress &&
-        ((row.read<String?>('defaults_json')?.trim().isNotEmpty ?? false) ||
-            (row.read<String?>('dynamic_queries_json')?.trim().isNotEmpty ??
-                false))) {
-      return true;
-    }
-    return false;
-  }
-
-  bool _playlistNeedsRepair({
-    required String id,
-    required String? rawChannelId,
-    required int? rawType,
-    required String? rawTitle,
-    required int? rawCreatedAtUs,
-    required int? rawUpdatedAtUs,
-    required String? rawSignatures,
-    required String? rawDefaultsJson,
-    required String? rawDynamicQueriesJson,
-    required String? ownerAddress,
-    required int? rawSortMode,
-    required int? rawItemCount,
-    required int entryCount,
-  }) {
-    final trimmedOwnerAddress = ownerAddress?.trim();
-    final hasOwnerAddress =
-        trimmedOwnerAddress != null && trimmedOwnerAddress.isNotEmpty;
-    final trimmedRawChannelId = rawChannelId?.trim();
-
-    if (rawType == null ||
-        rawTitle == null ||
-        rawCreatedAtUs == null ||
-        rawUpdatedAtUs == null ||
-        rawSignatures == null ||
-        rawSortMode == null ||
-        rawItemCount == null) {
-      return true;
-    }
-    if (!_isValidPlaylistTypeValue(rawType) ||
-        !_isValidPlaylistSortModeValue(rawSortMode)) {
-      return true;
-    }
-    if (rawItemCount < 0 || rawItemCount != entryCount) {
-      return true;
-    }
-    final trimmedDefaultsJson = rawDefaultsJson?.trim();
-    final trimmedDynamicQueriesJson = rawDynamicQueriesJson?.trim();
-    if (ownerAddress != trimmedOwnerAddress) {
-      return true;
-    }
-    if (rawType == PlaylistType.favorite.value && id != Playlist.favoriteId) {
-      return true;
-    }
-    if (rawType == PlaylistType.addressBased.value && !hasOwnerAddress) {
-      return true;
-    }
-    if (id != Playlist.favoriteId &&
-        trimmedRawChannelId == Channel.myCollectionId &&
-        !hasOwnerAddress) {
-      return true;
-    }
-    if (id != Playlist.favoriteId &&
-        rawType == PlaylistType.dp1.value &&
-        rawChannelId != null &&
-        trimmedRawChannelId != rawChannelId &&
-        !hasOwnerAddress) {
-      return true;
-    }
-    if (rawType == PlaylistType.dp1.value &&
-        !hasOwnerAddress &&
-        ((trimmedDefaultsJson != null && trimmedDefaultsJson.isNotEmpty) ||
-            (trimmedDynamicQueriesJson != null &&
-                trimmedDynamicQueriesJson.isNotEmpty))) {
-      return true;
-    }
-    if (id == Playlist.favoriteId &&
-        (hasOwnerAddress ||
-            rawType != PlaylistType.favorite.value ||
-            rawChannelId == null ||
-            rawChannelId != Channel.myCollectionId ||
-            rawSortMode != PlaylistSortMode.provenance.index ||
-            rawTitle != 'Favorites')) {
-      return true;
-    }
-    if (hasOwnerAddress &&
-        (rawType != PlaylistType.addressBased.value ||
-            id != PlaylistExt.addressPlaylistId(trimmedOwnerAddress) ||
-            rawChannelId == null ||
-            rawChannelId != Channel.myCollectionId ||
-            rawSortMode != PlaylistSortMode.provenance.index)) {
-      return true;
-    }
-    return false;
-  }
-
-  bool _isValidPlaylistTypeValue(int rawType) =>
-      PlaylistType.values.any((type) => type.value == rawType);
-
-  bool _isValidPlaylistSortModeValue(int rawSortMode) =>
-      PlaylistSortMode.values.any((mode) => mode.index == rawSortMode);
-
-  String? _repairPlaylistOwnerAddress({
-    required String id,
-    required String? ownerAddress,
-    required int typeValue,
-  }) {
-    if (id == Playlist.favoriteId ||
-        typeValue != PlaylistType.addressBased.value) {
-      return null;
-    }
-    final trimmed = ownerAddress?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
-      return null;
-    }
-    return trimmed;
-  }
-
-  String _repairPlaylistId({
-    required String id,
-    required String? ownerAddress,
-    required int typeValue,
-  }) {
-    if (typeValue != PlaylistType.addressBased.value || ownerAddress == null) {
-      return id;
-    }
-    return PlaylistExt.addressPlaylistId(ownerAddress);
-  }
-
-  Future<({bool mergedIntoExistingCanonical, String? supersededSnapshotId})>
-  _canonicalizeAddressPlaylistIdIfNeeded({
-    required String sourcePlaylistId,
-    required String targetPlaylistId,
-  }) async {
-    if (sourcePlaylistId == targetPlaylistId) {
-      return (mergedIntoExistingCanonical: false, supersededSnapshotId: null);
-    }
-
-    final existingCanonical = await customSelect(
-      '''
-      SELECT id, owner_address
-      FROM playlists
-      WHERE id = ?
-      ''',
-      variables: [Variable<String>(targetPlaylistId)],
-      readsFrom: {playlists},
-    ).getSingleOrNull();
-    if (existingCanonical == null) {
-      return (mergedIntoExistingCanonical: false, supersededSnapshotId: null);
-    }
-
-    final canonicalOwnerAddress = existingCanonical
-        .read<String?>('owner_address')
-        ?.trim();
-    if (canonicalOwnerAddress == null || canonicalOwnerAddress.isEmpty) {
-      await _deleteMalformedPlaylistAndOrphanedItems(targetPlaylistId);
-      return (
-        mergedIntoExistingCanonical: false,
-        supersededSnapshotId: targetPlaylistId,
-      );
-    }
-
-    await _movePlaylistEntries(
-      sourcePlaylistId: sourcePlaylistId,
-      targetPlaylistId: targetPlaylistId,
-    );
-    await customStatement(
-      'DELETE FROM playlists WHERE id = ?',
-      <Object?>[sourcePlaylistId],
-    );
-    final itemCount = await _repairPlaylistItemCount(
-      playlistId: targetPlaylistId,
-      rawItemCount: null,
-      forceRecompute: true,
-    );
-    await customStatement(
-      'UPDATE playlists SET item_count = ? WHERE id = ?',
-      <Object?>[itemCount, targetPlaylistId],
-    );
-    return (mergedIntoExistingCanonical: true, supersededSnapshotId: null);
-  }
-
-  Future<void> _movePlaylistEntries({
-    required String sourcePlaylistId,
-    required String targetPlaylistId,
-  }) async {
-    await customStatement(
-      '''
-      INSERT OR IGNORE INTO playlist_entries (
-        playlist_id, item_id, position, sort_key_us, updated_at_us
-      )
-      SELECT ?, item_id, position, sort_key_us, updated_at_us
-      FROM playlist_entries
-      WHERE playlist_id = ?
-      ''',
-      <Object?>[targetPlaylistId, sourcePlaylistId],
-    );
-    await customStatement(
-      'DELETE FROM playlist_entries WHERE playlist_id = ?',
-      <Object?>[sourcePlaylistId],
-    );
-  }
-
-  Future<void> _deleteMalformedPlaylistAndOrphanedItems(
-    String playlistId,
-  ) async {
-    final itemRows = await customSelect(
-      '''
-      SELECT item_id
-      FROM playlist_entries
-      WHERE playlist_id = ?
-      ''',
-      variables: [Variable<String>(playlistId)],
-      readsFrom: {playlistEntries},
-    ).get();
-    final itemIds = itemRows
-        .map((row) => row.read<String>('item_id'))
-        .toList(growable: false);
-
-    await (delete(
-      playlistEntries,
-    )..where((entry) => entry.playlistId.equals(playlistId))).go();
-    await (delete(
-      playlists,
-    )..where((playlist) => playlist.id.equals(playlistId))).go();
-
-    // Blank-owner My Collection rows have no valid owner or channel identity,
-    // so their item references cannot be surfaced safely through personal
-    // playlist recovery. We purge now-unreferenced items here to avoid leaking
-    // ghost works/search hits back into the global read model.
-    for (final itemId in itemIds) {
-      final refRow = await customSelect(
-        '''
-        SELECT COUNT(*) AS ref_count
-        FROM playlist_entries
-        WHERE item_id = ?
-        ''',
-        variables: [Variable<String>(itemId)],
-        readsFrom: {playlistEntries},
-      ).getSingle();
-      if (refRow.read<int>('ref_count') == 0) {
-        await (delete(items)..where((item) => item.id.equals(itemId))).go();
-      }
-    }
-  }
-
-  bool _shouldDeleteMalformedPlaylist({
-    required String id,
-    required int? rawType,
-    required String? rawChannelId,
-    required String? ownerAddress,
-    required bool hasNonPersonalChannel,
-  }) {
-    if (id == Playlist.favoriteId) {
-      return false;
-    }
-    final hasOwnerAddress =
-        ownerAddress != null && ownerAddress.trim().isNotEmpty;
-    if (!hasOwnerAddress && rawChannelId == Channel.myCollectionId) {
-      return true;
-    }
-    return false;
-  }
-
-  int _repairPlaylistTypeValue({
-    required String id,
-    required bool hasNonPersonalChannel,
-    required String? rawChannelId,
-    required String? ownerAddress,
-    required int? rawType,
-  }) {
-    if (id == Playlist.favoriteId) {
-      return PlaylistType.favorite.value;
-    }
-    final trimmedOwnerAddress = ownerAddress?.trim();
-    final hasOwnerAddress =
-        trimmedOwnerAddress != null && trimmedOwnerAddress.isNotEmpty;
-    // A surviving nonblank owner is the strongest identity signal we have for
-    // a personal playlist. Favor healing back into the personal collection
-    // instead of dropping ownership just because id/channel/type drifted.
-    if (hasOwnerAddress &&
-        (id == PlaylistExt.addressPlaylistId(trimmedOwnerAddress) ||
-            rawType == PlaylistType.addressBased.value ||
-            rawChannelId == Channel.myCollectionId ||
-            !hasNonPersonalChannel ||
-            rawType == PlaylistType.dp1.value)) {
-      return PlaylistType.addressBased.value;
-    }
-    if (rawType == PlaylistType.favorite.value) {
-      return PlaylistType.dp1.value;
-    }
-    if (rawType == PlaylistType.addressBased.value) {
-      return PlaylistType.dp1.value;
-    }
-    if (rawType != null && PlaylistType.values.any((t) => t.value == rawType)) {
-      return rawType;
-    }
-    return PlaylistType.dp1.value;
-  }
-
-  String? _repairPlaylistChannelId({
-    required String id,
-    required String? rawChannelId,
-    required int? rawType,
-    required int typeValue,
-  }) {
-    if (id == Playlist.favoriteId ||
-        typeValue == PlaylistType.addressBased.value) {
-      return Channel.myCollectionId;
-    }
-    if (rawChannelId != null && rawChannelId.isEmpty) {
-      return null;
-    }
-    if (id != Playlist.favoriteId &&
-        typeValue != PlaylistType.addressBased.value &&
-        rawChannelId == Channel.myCollectionId) {
-      return null;
-    }
-    return rawChannelId;
-  }
-
-  String _repairPlaylistTitle({
-    required String id,
-    required String? ownerAddress,
-    required int typeValue,
-    required String? rawTitle,
-  }) {
-    if (id == Playlist.favoriteId) {
-      return 'Favorites';
-    }
-    final trimmedTitle = rawTitle?.trim();
-    if (trimmedTitle != null && trimmedTitle.isNotEmpty) {
-      return trimmedTitle;
-    }
-    if (typeValue == PlaylistType.addressBased.value &&
-        ownerAddress != null &&
-        ownerAddress.trim().isNotEmpty) {
-      return ownerAddress.trim();
-    }
-    return id;
-  }
-
-  String _repairPlaylistSignaturesJson(String? rawSignatures) {
-    final trimmed = rawSignatures?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
-      return '[]';
-    }
-    return trimmed;
-  }
-
-  String? _repairPlaylistDefaultsJson({
-    required String? rawDefaultsJson,
-    required String? rawChannelId,
-    required String? ownerAddress,
-    required int? rawType,
-    required int typeValue,
-  }) {
-    final hasOwnerAddress = ownerAddress?.trim().isNotEmpty ?? false;
-    final hasNonPersonalChannel =
-        rawChannelId != null &&
-        rawChannelId.isNotEmpty &&
-        rawChannelId != Channel.myCollectionId;
-    if ((rawType == PlaylistType.addressBased.value &&
-            typeValue != PlaylistType.addressBased.value) ||
-        (typeValue == PlaylistType.dp1.value &&
-            !hasOwnerAddress &&
-            !hasNonPersonalChannel)) {
-      return null;
-    }
-    final trimmed = rawDefaultsJson?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
-      return null;
-    }
-    return trimmed;
-  }
-
-  String? _repairPlaylistDynamicQueriesJson({
-    required String? rawDynamicQueriesJson,
-    required String? rawChannelId,
-    required String? ownerAddress,
-    required int? rawType,
-    required int typeValue,
-  }) {
-    final hasOwnerAddress = ownerAddress?.trim().isNotEmpty ?? false;
-    final hasNonPersonalChannel =
-        rawChannelId != null &&
-        rawChannelId.isNotEmpty &&
-        rawChannelId != Channel.myCollectionId;
-    if ((rawType == PlaylistType.addressBased.value &&
-            typeValue != PlaylistType.addressBased.value) ||
-        (typeValue == PlaylistType.dp1.value &&
-            !hasOwnerAddress &&
-            !hasNonPersonalChannel)) {
-      return null;
-    }
-    final trimmed = rawDynamicQueriesJson?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
-      return null;
-    }
-    return trimmed;
-  }
-
-  int _repairPlaylistSortModeValue({
-    required int? rawSortMode,
-    required int typeValue,
-  }) {
-    if (typeValue == PlaylistType.addressBased.value ||
-        typeValue == PlaylistType.favorite.value) {
-      return PlaylistSortMode.provenance.index;
-    }
-    if (rawSortMode != null &&
-        PlaylistSortMode.values.any((m) => m.index == rawSortMode)) {
-      return rawSortMode;
-    }
-    switch (typeValue) {
-      case 0:
-      default:
-        return PlaylistSortMode.position.index;
-    }
-  }
-
-  Future<int> _repairPlaylistItemCount({
-    required String playlistId,
-    required int? rawItemCount,
-    bool forceRecompute = false,
-  }) async {
-    if (forceRecompute || rawItemCount == null || rawItemCount < 0) {
-      final row = await customSelect(
-        '''
-        SELECT COUNT(*) AS entry_count
-        FROM playlist_entries
-        WHERE playlist_id = ?
-        ''',
-        variables: [Variable<String>(playlistId)],
-        readsFrom: {playlistEntries},
-      ).getSingle();
-      return row.read<int>('entry_count');
-    }
-    return rawItemCount;
   }
 
   /// Creates performance indexes.
@@ -1491,34 +347,6 @@ class AppDatabase extends _$AppDatabase {
         WHERE COALESCE(json_extract(j.value, '$.name'), '') != '';
       END
     ''');
-  }
-
-  Future<bool> _hasCompleteFtsInfrastructure() async {
-    final tableRows = await customSelect(
-      '''
-      SELECT name
-      FROM sqlite_master
-      WHERE type = 'table'
-        AND name IN ('channels_fts', 'playlists_fts', 'items_fts', 'item_artists_fts')
-      ''',
-    ).get();
-    if (tableRows.length != 4) {
-      return false;
-    }
-
-    final triggerRows = await customSelect(
-      '''
-      SELECT name
-      FROM sqlite_master
-      WHERE type = 'trigger'
-        AND name IN (
-          'channels_ai', 'channels_ad', 'channels_au',
-          'playlists_ai', 'playlists_ad', 'playlists_au',
-          'items_ai', 'items_ad', 'items_au'
-        )
-      ''',
-    ).get();
-    return triggerRows.length == 9;
   }
 
   Future<void> _rebuildFtsIndexes() async {
@@ -1684,6 +512,53 @@ class AppDatabase extends _$AppDatabase {
     }
 
     return query.watch();
+  }
+
+  /// Watch raw playlist rows so callers can safely skip malformed local rows
+  /// before Drift's generated mapper throws on null required fields.
+  Stream<List<QueryRow>> watchPlaylistRows({
+    int? type,
+    List<String>? channelIds,
+    String? ownerAddress,
+    int? limit,
+  }) {
+    final variables = <Variable<Object>>[];
+    final whereClauses = <String>[];
+
+    if (type != null) {
+      variables.add(Variable<int>(type));
+      whereClauses.add('p.type = ?');
+    }
+
+    if (channelIds != null && channelIds.isNotEmpty) {
+      variables.addAll(channelIds.map(Variable<String>.new));
+      whereClauses.add(
+        'p.channel_id IN (${List.filled(channelIds.length, '?').join(', ')})',
+      );
+    }
+
+    if (ownerAddress != null) {
+      variables.add(Variable<String>(ownerAddress));
+      whereClauses.add('p.owner_address = ?');
+    }
+
+    final whereSql = whereClauses.isEmpty
+        ? ''
+        : 'WHERE ${whereClauses.join(' AND ')}';
+    final limitSql = limit == null ? '' : 'LIMIT $limit';
+
+    return customSelect(
+      '''
+      SELECT p.*
+      FROM playlists p
+      LEFT JOIN channels c ON c.id = p.channel_id
+      $whereSql
+      ORDER BY COALESCE(c.publisher_id, 2147483647) ASC, p.created_at_us ASC
+      $limitSql
+      ''',
+      variables: variables,
+      readsFrom: {playlists, channels},
+    ).watch();
   }
 
   /// Watch items for a playlist using position-based ordering.
@@ -1926,9 +801,36 @@ class AppDatabase extends _$AppDatabase {
     )..where((t) => t.channelId.equals(channelId))).get();
   }
 
+  /// Get raw playlist rows for a channel without invoking Drift row mapping.
+  Future<List<QueryRow>> getPlaylistRowsByChannel(String channelId) {
+    return customSelect(
+      '''
+      SELECT *
+      FROM playlists
+      WHERE channel_id = ?
+      ''',
+      variables: [Variable<String>(channelId)],
+      readsFrom: {playlists},
+    ).get();
+  }
+
   /// Get playlist by ID.
   Future<PlaylistData?> getPlaylistById(String id) async {
     return (select(playlists)..where((t) => t.id.equals(id))).getSingleOrNull();
+  }
+
+  /// Get a raw playlist row by ID without invoking Drift row mapping.
+  Future<QueryRow?> getPlaylistRowById(String id) {
+    return customSelect(
+      '''
+      SELECT *
+      FROM playlists
+      WHERE id = ?
+      LIMIT 1
+      ''',
+      variables: [Variable<String>(id)],
+      readsFrom: {playlists},
+    ).getSingleOrNull();
   }
 
   /// Watch a single playlist by ID.
@@ -1936,6 +838,20 @@ class AppDatabase extends _$AppDatabase {
     return (select(
       playlists,
     )..where((t) => t.id.equals(id))).watchSingleOrNull();
+  }
+
+  /// Watch a raw playlist row by ID without invoking Drift row mapping.
+  Stream<QueryRow?> watchPlaylistRowById(String id) {
+    return customSelect(
+      '''
+      SELECT *
+      FROM playlists
+      WHERE id = ?
+      LIMIT 1
+      ''',
+      variables: [Variable<String>(id)],
+      readsFrom: {playlists},
+    ).watch().map((rows) => rows.isEmpty ? null : rows.single);
   }
 
   /// Get all playlists.
@@ -1967,9 +883,45 @@ class AppDatabase extends _$AppDatabase {
     return result;
   }
 
+  /// Get raw playlist rows without invoking Drift row mapping.
+  Future<List<QueryRow>> getAllPlaylistRows({PlaylistType? type}) {
+    final variables = <Variable<Object>>[];
+    final whereClause = type == null
+        ? ''
+        : (() {
+            variables.add(Variable<int>(type.value));
+            return 'WHERE p.type = ?';
+          })();
+
+    return customSelect(
+      '''
+      SELECT p.*
+      FROM playlists p
+      LEFT JOIN channels c ON c.id = p.channel_id
+      $whereClause
+      ORDER BY COALESCE(c.publisher_id, 2147483647) ASC, p.created_at_us ASC
+      ''',
+      variables: variables,
+      readsFrom: {playlists, channels},
+    ).get();
+  }
+
   /// Get address-based playlists.
   Future<List<PlaylistData>> getAddressPlaylists() async {
     return (select(playlists)..where((t) => t.type.equals(1))).get();
+  }
+
+  /// Get raw address-based playlist rows without invoking Drift row mapping.
+  Future<List<QueryRow>> getAddressPlaylistRows() {
+    return customSelect(
+      '''
+      SELECT *
+      FROM playlists
+      WHERE type = ?
+      ''',
+      variables: [Variable<int>(PlaylistType.addressBased.value)],
+      readsFrom: {playlists},
+    ).get();
   }
 
   /// Upsert a playlist.

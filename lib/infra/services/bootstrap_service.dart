@@ -66,7 +66,7 @@ class BootstrapService {
       Playlist.favoriteId,
     );
 
-    if (existingFavorite != null) {
+    if (_isCanonicalFavoritePlaylist(existingFavorite)) {
       _log.info('Favorite playlist already exists');
       return;
     }
@@ -78,6 +78,16 @@ class BootstrapService {
         updatedAt: now,
       ),
     );
+    await _databaseService.refreshPlaylistItemCount(Playlist.favoriteId);
     _log.info('Created Favorite playlist');
+  }
+
+  bool _isCanonicalFavoritePlaylist(Playlist? playlist) {
+    return playlist != null &&
+        playlist.id == Playlist.favoriteId &&
+        playlist.name == 'Favorites' &&
+        playlist.type == PlaylistType.favorite &&
+        playlist.channelId == Channel.myCollectionId &&
+        playlist.sortMode == PlaylistSortMode.provenance;
   }
 }
