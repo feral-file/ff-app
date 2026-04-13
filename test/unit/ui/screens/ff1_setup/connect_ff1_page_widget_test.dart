@@ -25,7 +25,7 @@ import 'package:mockito/mockito.dart';
 void main() {
   testWidgets(
     'internet-ready connect without active setup session navigates '
-    'to device configuration',
+    'to device configuration after teardown',
     (tester) async {
       final device = BluetoothDevice.fromId('00:11:22:33:44:55');
 
@@ -40,78 +40,86 @@ void main() {
         isConnectedToInternet: true,
       );
 
-      final router = GoRouter(
-        initialLocation: '/entry',
-        routes: [
-          GoRoute(
-            path: '/entry',
-            builder: (context, state) => Scaffold(
-              body: Center(
-                child: TextButton(
-                  onPressed: () => unawaited(
-                    context.push(
-                      Routes.connectFF1Page,
-                      extra: ConnectFF1PagePayload(
-                        device: device,
-                        ff1DeviceInfo: null,
-                      ),
-                    ),
-                  ),
-                  child: const Text('Open connect page'),
-                ),
-              ),
-            ),
+      final container = ProviderContainer(
+        overrides: [
+          connectFF1Provider.overrideWith(
+            () => _FakeConnectFF1Notifier(connectedState),
           ),
-          GoRoute(
-            path: Routes.connectFF1Page,
-            builder: (context, state) {
-              final payload = state.extra! as ConnectFF1PagePayload;
-              return ConnectFF1Page(payload: payload);
-            },
+          connectWiFiProvider.overrideWith(_IdleWifiNotifier.new),
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
           ),
-          GoRoute(
-            path: Routes.startSetupFf1,
-            builder: (context, state) => const Scaffold(
-              body: Text('START_SETUP_SHOULD_NOT_APPEAR'),
-            ),
+          ff1BluetoothDeviceActionsProvider.overrideWith(
+            _FakeFF1BluetoothDeviceActionsNotifier.new,
           ),
-          GoRoute(
-            path: Routes.deviceConfiguration,
-            builder: (context, state) => Scaffold(
-              body: Center(
-                child: Column(
-                  children: [
-                    const Text('DEVICE_CONFIGURATION_MARKER'),
-                    TextButton(
-                      onPressed: () => context.pop(),
-                      child: const Text('Back'),
-                    ),
-                  ],
-                ),
-              ),
+          onboardingActionsProvider.overrideWith(
+            (ref) => OnboardingService(
+              ref: ref,
+              appStateService: _MockAppStateService(),
             ),
           ),
         ],
       );
+      addTearDown(container.dispose);
 
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            connectFF1Provider.overrideWith(
-              () => _FakeConnectFF1Notifier(connectedState),
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(
+            routerConfig: GoRouter(
+              initialLocation: '/entry',
+              routes: [
+                GoRoute(
+                  path: '/entry',
+                  builder: (context, state) => Scaffold(
+                    body: Center(
+                      child: TextButton(
+                        onPressed: () => unawaited(
+                          context.push(
+                            Routes.connectFF1Page,
+                            extra: ConnectFF1PagePayload(
+                              device: device,
+                              ff1DeviceInfo: null,
+                            ),
+                          ),
+                        ),
+                        child: const Text('Open connect page'),
+                      ),
+                    ),
+                  ),
+                ),
+                GoRoute(
+                  path: Routes.connectFF1Page,
+                  builder: (context, state) {
+                    final payload = state.extra! as ConnectFF1PagePayload;
+                    return ConnectFF1Page(payload: payload);
+                  },
+                ),
+                GoRoute(
+                  path: Routes.startSetupFf1,
+                  builder: (context, state) => const Scaffold(
+                    body: Text('START_SETUP_SHOULD_NOT_APPEAR'),
+                  ),
+                ),
+                GoRoute(
+                  path: Routes.deviceConfiguration,
+                  builder: (context, state) => Scaffold(
+                    body: Center(
+                      child: Column(
+                        children: [
+                          const Text('DEVICE_CONFIGURATION_MARKER'),
+                          TextButton(
+                            onPressed: () => context.pop(),
+                            child: const Text('Back'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            connectWiFiProvider.overrideWith(_IdleWifiNotifier.new),
-            ff1BluetoothDeviceActionsProvider.overrideWith(
-              _FakeFF1BluetoothDeviceActionsNotifier.new,
-            ),
-            onboardingActionsProvider.overrideWith(
-              (ref) => OnboardingService(
-                ref: ref,
-                appStateService: _MockAppStateService(),
-              ),
-            ),
-          ],
-          child: MaterialApp.router(routerConfig: router),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -125,6 +133,14 @@ void main() {
       expect(find.text('Connected to FF1', skipOffstage: false), findsNothing);
       expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsOneWidget);
       expect(find.text('START_SETUP_SHOULD_NOT_APPEAR'), findsNothing);
+      expect(
+        container.read(ff1SetupOrchestratorProvider).step,
+        FF1SetupStep.idle,
+      );
+      expect(
+        container.read(connectFF1Provider).asData?.value,
+        isA<ConnectFF1Initial>(),
+      );
     },
   );
 
@@ -245,7 +261,7 @@ void main() {
   );
 
   testWidgets(
-    'portalIsSet ready does not auto navigate, requires button tap',
+    'portalIsSet without active setup session tears down on Go to Settings',
     (tester) async {
       final device = BluetoothDevice.fromId('00:11:22:33:44:55');
       var navigatedToConfig = false;
@@ -282,7 +298,6 @@ void main() {
         ],
       );
       addTearDown(container.dispose);
-      container.read(ff1SetupOrchestratorProvider.notifier).startSession();
 
       const portalDeeplinkInfo = FF1DeviceInfo(
         deviceId: 'FF1-123',
@@ -360,11 +375,6 @@ void main() {
       // Should NOT auto-navigate to device configuration
       expect(navigatedToConfig, isFalse);
       expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsNothing);
-      expect(
-        container.read(ff1SetupOrchestratorProvider).activeSession,
-        isNull,
-      );
-
       await tester.tap(find.text('Go to Settings'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -372,8 +382,99 @@ void main() {
       expect(navigatedToConfig, isTrue);
       expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsOneWidget);
       expect(
+        container.read(ff1SetupOrchestratorProvider).step,
+        FF1SetupStep.idle,
+      );
+      expect(
+        container.read(connectFF1Provider).asData?.value,
+        isA<ConnectFF1Initial>(),
+      );
+    },
+  );
+
+  testWidgets(
+    'guided cancel abandons setup session before popping back',
+    (tester) async {
+      final device = BluetoothDevice.fromId('00:11:22:33:44:55');
+
+      final connectingState = ConnectFF1Connecting(blDevice: device);
+      final container = ProviderContainer(
+        overrides: [
+          connectFF1Provider.overrideWith(
+            () => _FakeConnectFF1Notifier(connectingState),
+          ),
+          connectWiFiProvider.overrideWith(_IdleWifiNotifier.new),
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+          ff1BluetoothDeviceActionsProvider.overrideWith(
+            _FakeFF1BluetoothDeviceActionsNotifier.new,
+          ),
+          onboardingActionsProvider.overrideWith(
+            (ref) => OnboardingService(
+              ref: ref,
+              appStateService: _MockAppStateService(),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(ff1SetupOrchestratorProvider.notifier).startSession();
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(
+            routerConfig: GoRouter(
+              initialLocation: '/entry',
+              routes: [
+                GoRoute(
+                  path: '/entry',
+                  builder: (context, state) => Scaffold(
+                    body: Center(
+                      child: TextButton(
+                        onPressed: () => unawaited(
+                          context.push(
+                            Routes.connectFF1Page,
+                            extra: ConnectFF1PagePayload(
+                              device: device,
+                              ff1DeviceInfo: null,
+                            ),
+                          ),
+                        ),
+                        child: const Text('Open connect page'),
+                      ),
+                    ),
+                  ),
+                ),
+                GoRoute(
+                  path: Routes.connectFF1Page,
+                  builder: (context, state) {
+                    final payload = state.extra! as ConnectFF1PagePayload;
+                    return ConnectFF1Page(payload: payload);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open connect page'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      await tester.tap(find.byKey(GoldPathPatrolKeys.connectFF1Cancel));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Open connect page'), findsOneWidget);
+      expect(
         container.read(ff1SetupOrchestratorProvider).activeSession,
         isNull,
+      );
+      expect(
+        container.read(ff1SetupOrchestratorProvider).step,
+        FF1SetupStep.idle,
       );
     },
   );

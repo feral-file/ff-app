@@ -73,6 +73,8 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   ConnectFF1Notifier? _connectFF1Notifier;
   ProviderSubscription<FF1SetupState>? _setupSub;
   bool _guidedCompletionPending = false;
+  bool _successExitPending = false;
+  bool _successExitShowsPortal = false;
   bool _portalReadyCompletionPending = false;
   bool _portalReadySessionCompleted = false;
   FF1Device? _portalReadyDevice;
@@ -121,12 +123,16 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   /// device. Deeplink metadata can be stale, so it must not mask BLE errors or
   /// skip setup completion on its own.
   bool _shouldShowPortalIsSet(FF1SetupState setupState) {
-    return _portalReadyCompletionPending ||
+    return (_successExitPending && _successExitShowsPortal) ||
+        _portalReadyCompletionPending ||
         _portalReadySessionCompleted ||
         setupState.connected?.portalIsSet == true;
   }
 
   _BleConnectUiPhase _bleConnectionStatus(AsyncValue<ConnectFF1State> connect) {
+    if (_successExitPending) {
+      return _BleConnectUiPhase.success;
+    }
     return connect.when(
       data: (s) => switch (s) {
         ConnectFF1Initial() => _BleConnectUiPhase.connecting,
@@ -210,17 +216,10 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           return true;
         }
         if (!connected.portalIsSet && context.mounted) {
-          // Non-guided internet-ready connect still needs to move straight into
-          // device configuration. Only portal-all-set defers navigation behind
-          // an explicit confirmation screen on this page.
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!context.mounted) {
-              return;
-            }
-            unawaited(
-              GoRouter.of(context).replace<void>(Routes.deviceConfiguration),
-            );
-          });
+          await _exitConnectSuccess(
+            tearDownBeforeNavigate: true,
+            preservePortalUi: false,
+          );
         }
         return true;
       case FF1SetupNeedsWiFi(:final device):
@@ -313,21 +312,54 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   }
 
   Future<void> _onCancel() async {
-    if (_guidedCompletionPending) {
+    if (_guidedCompletionPending || _successExitPending) {
       return;
     }
     _log.info('[ConnectFF1Page] Cancel pressed, cancelling connection');
-    _cancelBleConnectAttempt();
-    try {
-      await widget.payload.device.disconnect();
-    } on Object catch (e) {
-      _log.info('[ConnectFF1Page] Error while disconnecting: $e');
+    final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
+    if (orchestrator.hasGuidedSetupSession) {
+      await orchestrator.cancelSession(FF1SetupSessionCancelReason.userAborted);
+    } else {
+      _cancelBleConnectAttempt();
+      try {
+        await widget.payload.device.disconnect();
+      } on Object catch (e) {
+        _log.info('[ConnectFF1Page] Error while disconnecting: $e');
+      }
     }
 
     if (!mounted) {
       return;
     }
     context.pop();
+  }
+
+  Future<void> _exitConnectSuccess({
+    required bool tearDownBeforeNavigate,
+    required bool preservePortalUi,
+  }) async {
+    if (_guidedCompletionPending || _successExitPending || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _successExitPending = true;
+      _successExitShowsPortal = preservePortalUi;
+    });
+
+    if (tearDownBeforeNavigate) {
+      await ref
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .tearDownAfterSetupComplete();
+      if (!mounted) {
+        return;
+      }
+    }
+
+    // Keep this route's success chrome latched until replacement disposes the
+    // page. Without that, teardown resets connect state first and can flash
+    // back to "Connecting" before device configuration appears.
+    unawaited(GoRouter.of(context).replace<void>(Routes.deviceConfiguration));
   }
 
   Future<void> _onPortalGoToSettings() async {
@@ -346,11 +378,13 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     if (_portalReadyDevice != null && !_portalReadySessionCompleted) {
       return;
     }
-    if (!mounted) {
-      return;
-    }
-    final router = GoRouter.of(context);
-    await router.replace<void>(Routes.deviceConfiguration);
+    final isGuidedPortalFlow =
+        ref.read(ff1SetupOrchestratorProvider.notifier).hasGuidedSetupSession ||
+        _portalReadyDevice != null;
+    await _exitConnectSuccess(
+      tearDownBeforeNavigate: !isGuidedPortalFlow,
+      preservePortalUi: true,
+    );
   }
 
   @override
@@ -360,11 +394,20 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     _log.info('UI state -> $setupState connect=$connectAsync');
 
     return PopScope(
-      canPop: !_guidedCompletionPending,
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          unawaited(_onCancel());
+        }
+      },
       child: Scaffold(
         appBar: SetupAppBar(
           withDivider: false,
-          onBack: _guidedCompletionPending ? () {} : null,
+          onBack: (_guidedCompletionPending || _successExitPending)
+              ? () {}
+              : () {
+                  unawaited(_onCancel());
+                },
         ),
         backgroundColor: AppColor.auGreyBackground,
         body: SafeArea(
