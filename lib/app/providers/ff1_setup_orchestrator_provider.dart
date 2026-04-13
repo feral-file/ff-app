@@ -275,6 +275,8 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       );
       unawaited(
         () async {
+          final topicForRevert = nextTopicId;
+          final hadEmptyTopicDedupe = nextTopicId.isEmpty;
           try {
             await completeSession(resolved);
           } on Object catch (e, st) {
@@ -282,6 +284,22 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
               '[wifi] completeSession after Wi‑Fi success failed',
               e,
               st,
+            );
+            // Allow a retry: success dedupe was consumed before completion.
+            if (topicForRevert.isNotEmpty) {
+              if (_wifiNavEmittedForTopicId == topicForRevert) {
+                _wifiNavEmittedForTopicId = '';
+              }
+            } else if (hadEmptyTopicDedupe) {
+              _wifiNavEmittedForSuccessWithoutTopicId = false;
+            }
+            _emitEffect(
+              const FF1SetupShowError(
+                title: 'Setup could not finish',
+                message:
+                    "We couldn't save your FF1 setup. Please try again.",
+                showSupportCta: true,
+              ),
             );
           }
         }(),
@@ -317,6 +335,13 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       }(),
     );
   }
+
+  /// Whether a guided FF1 setup session is active (`_activeSession`).
+  ///
+  /// Prefer this over reading `activeSession` from published [FF1SetupState]
+  /// when deciding guided UI (e.g. on Connect FF1) so the check tracks the
+  /// notifier field of record and cannot go stale relative to `_activeSession`.
+  bool get hasGuidedSetupSession => _activeSession != null;
 
   /// Starts a new guided setup session (idempotent if one is already active).
   void startSession() {
@@ -429,6 +454,8 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       return;
     }
     _activeSession = null;
+    // With hasActiveSession: true, copyWith applies activeSession (omitted =>
+    // null), clearing the published session to match _activeSession.
     state = state.copyWith(
       hasActiveSession: true,
     );

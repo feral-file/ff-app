@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
@@ -325,6 +326,42 @@ void main() {
     },
   );
 
+  test('cancelSession clears published activeSession', () async {
+    final container = ProviderContainer.test(
+      overrides: [
+        ff1ControlProvider.overrideWithValue(
+          FF1BleControl(transport: _NoopBleTransport()),
+        ),
+        connectWiFiProvider.overrideWith(
+          () => _FakeWiFiNotifier(const WiFiConnectionState()),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final keepAlive = container.listen(
+      ff1SetupOrchestratorProvider,
+      (_, _) {},
+    );
+    addTearDown(keepAlive.close);
+
+    final notifier = container.read(ff1SetupOrchestratorProvider.notifier)
+      ..startSession();
+    expect(
+      container.read(ff1SetupOrchestratorProvider).activeSession,
+      isNotNull,
+    );
+    expect(notifier.hasGuidedSetupSession, isTrue);
+
+    await notifier.cancelSession(FF1SetupSessionCancelReason.userAborted);
+
+    expect(
+      container.read(ff1SetupOrchestratorProvider).activeSession,
+      isNull,
+    );
+    expect(notifier.hasGuidedSetupSession, isFalse);
+  });
+
   test(
     'Wi‑Fi success with active session completes session using connect device',
     () async {
@@ -388,6 +425,79 @@ void main() {
       expect(setupState.effect, isNull);
     },
   );
+
+  test(
+    'Wi‑Fi success completeSession failure emits error; dedupe allows '
+    'another success edge',
+    () async {
+      const connected = ConnectFF1Connected(
+        ff1device: FF1Device(
+          name: 'FF1',
+          remoteId: '00:11',
+          deviceId: 'FF1-1',
+          topicId: '',
+        ),
+        portalIsSet: false,
+        isConnectedToInternet: false,
+      );
+      final container = ProviderContainer.test(
+        overrides: [
+          connectFF1Provider.overrideWith(
+            () => _FakeConnectNotifier(connected),
+          ),
+          connectWiFiProvider.overrideWith(
+            () => _FakeWiFiNotifier(const WiFiConnectionState()),
+          ),
+          ff1WifiControlProvider.overrideWithValue(_StubWifiControl()),
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+          ff1BluetoothDeviceActionsProvider.overrideWith(
+            _ThrowingBtActions.new,
+          ),
+          onboardingActionsProvider.overrideWith(
+            (ref) => OnboardingService(
+              ref: ref,
+              appStateService: MockAppStateService(),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final keepAlive = container.listen(
+        ff1SetupOrchestratorProvider,
+        (_, _) {},
+      );
+      addTearDown(keepAlive.close);
+
+      container.read(ff1SetupOrchestratorProvider.notifier).startSession();
+      await container.read(connectFF1Provider.future);
+
+      (container.read(connectWiFiProvider.notifier) as _FakeWiFiNotifier)
+          .emitSuccess(topicId: 'topic-retry');
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final afterFail = container.read(ff1SetupOrchestratorProvider);
+      expect(afterFail.effect, isA<FF1SetupShowError>());
+      expect(
+        container.read(ff1SetupOrchestratorProvider).activeSession,
+        isNotNull,
+      );
+
+      (container.read(connectWiFiProvider.notifier) as _FakeWiFiNotifier)
+        ..resetToIdle()
+        ..emitSuccess(topicId: 'topic-retry');
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(
+        container.read(ff1SetupOrchestratorProvider).effect,
+        isA<FF1SetupShowError>(),
+      );
+    },
+  );
 }
 
 class _FakeConnectNotifier extends ConnectFF1Notifier {
@@ -412,6 +522,11 @@ class _FakeWiFiNotifier extends WiFiConnectionNotifier {
       status: WiFiConnectionStatus.success,
       topicId: topicId,
     );
+  }
+
+  /// Clears success so the orchestrator Wi‑Fi listener can observe a new edge.
+  void resetToIdle() {
+    state = _initial;
   }
 }
 

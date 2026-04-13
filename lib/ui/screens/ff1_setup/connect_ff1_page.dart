@@ -146,8 +146,10 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     switch (effect) {
       case FF1SetupInternetReady(:final connected):
         _recordDuration(success: true);
-        final session = ref.read(ff1SetupOrchestratorProvider).activeSession;
-        if (session != null) {
+        final hasGuided = ref
+            .read(ff1SetupOrchestratorProvider.notifier)
+            .hasGuidedSetupSession;
+        if (hasGuided) {
           unawaited(
             () async {
               if (mounted) {
@@ -206,6 +208,19 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
             }(),
           );
           return true;
+        }
+        if (!connected.portalIsSet && context.mounted) {
+          // Non-guided internet-ready connect still needs to move straight into
+          // device configuration. Only portal-all-set defers navigation behind
+          // an explicit confirmation screen on this page.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!context.mounted) {
+              return;
+            }
+            unawaited(
+              GoRouter.of(context).replace<void>(Routes.deviceConfiguration),
+            );
+          });
         }
         return true;
       case FF1SetupNeedsWiFi(:final device):
@@ -358,7 +373,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
               vertical: LayoutConstants.space4,
               horizontal: LayoutConstants.setupPageHorizontal,
             ),
-            child: _buildMainColumn(context, setupState, connectAsync),
+            child: _buildMainColumn(context, ref, setupState, connectAsync),
           ),
         ),
       ),
@@ -367,11 +382,12 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
   Widget _buildMainColumn(
     BuildContext context,
+    WidgetRef ref,
     FF1SetupState setupState,
     AsyncValue<ConnectFF1State> connectAsync,
   ) {
     if (_shouldShowPortalIsSet(setupState)) {
-      return _portalIsSetView(context, setupState);
+      return _portalIsSetView(context, ref, setupState);
     }
 
     final ble = _bleConnectionStatus(connectAsync);
@@ -384,9 +400,14 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     };
   }
 
-  Widget _portalIsSetView(BuildContext context, FF1SetupState setupState) {
+  Widget _portalIsSetView(
+    BuildContext context,
+    WidgetRef ref,
+    FF1SetupState setupState,
+  ) {
     final isGuidedPortalFlow =
-        setupState.activeSession != null || _portalReadyDevice != null;
+        ref.read(ff1SetupOrchestratorProvider.notifier).hasGuidedSetupSession ||
+        _portalReadyDevice != null;
     final canGoToSettings =
         !isGuidedPortalFlow ||
         (!_portalReadyCompletionPending && _portalReadySessionCompleted);

@@ -24,7 +24,8 @@ import 'package:mockito/mockito.dart';
 
 void main() {
   testWidgets(
-    'internet-ready connect without active setup session stays on connect page',
+    'internet-ready connect without active setup session navigates '
+    'to device configuration',
     (tester) async {
       final device = BluetoothDevice.fromId('00:11:22:33:44:55');
 
@@ -119,11 +120,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      expect(find.text('Connected to FF1'), findsOneWidget);
-      expect(
-        find.text('DEVICE_CONFIGURATION_MARKER', skipOffstage: false),
-        findsNothing,
-      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Connected to FF1', skipOffstage: false), findsNothing);
+      expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsOneWidget);
       expect(find.text('START_SETUP_SHOULD_NOT_APPEAR'), findsNothing);
     },
   );
