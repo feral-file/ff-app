@@ -5,6 +5,52 @@ import 'package:app/infra/ff1/wifi_transport/ff1_relayer_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('relayerDisconnectEventAppliesToSession', () {
+    test('ignores stale gen vs active session', () {
+      expect(
+        relayerDisconnectEventAppliesToSession(
+          eventConnectGen: 1,
+          activeRelayerConnectGen: 2,
+          expectedConnectedGen: null,
+        ),
+        isFalse,
+      );
+    });
+
+    test('accepts disconnect for active socket gen', () {
+      expect(
+        relayerDisconnectEventAppliesToSession(
+          eventConnectGen: 2,
+          activeRelayerConnectGen: 2,
+          expectedConnectedGen: null,
+        ),
+        isTrue,
+      );
+    });
+
+    test('accepts disconnect for in-flight expected gen', () {
+      expect(
+        relayerDisconnectEventAppliesToSession(
+          eventConnectGen: 3,
+          activeRelayerConnectGen: null,
+          expectedConnectedGen: 3,
+        ),
+        isTrue,
+      );
+    });
+
+    test('legacy null gen still applies', () {
+      expect(
+        relayerDisconnectEventAppliesToSession(
+          eventConnectGen: null,
+          activeRelayerConnectGen: 2,
+          expectedConnectedGen: 4,
+        ),
+        isTrue,
+      );
+    });
+  });
+
   test(
     'dispose awaits disconnect before closing connection state stream',
     () async {

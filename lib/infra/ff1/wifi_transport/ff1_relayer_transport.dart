@@ -29,6 +29,26 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 // Relayer transport adapter (WebSocket over cloud)
 // ============================================================================
 
+/// Whether a [disconnected] event from the relayer isolate should update main
+/// transport state. Stale `onDone` / disconnect from a superseded socket
+/// carries an older [eventConnectGen] and must be ignored (PR #361 review
+/// 4097788212).
+bool relayerDisconnectEventAppliesToSession({
+  required int? eventConnectGen,
+  required int? activeRelayerConnectGen,
+  required int? expectedConnectedGen,
+}) {
+  if (eventConnectGen == null) {
+    // Legacy events without generation: preserve previous apply-all behavior.
+    return true;
+  }
+  final pending = expectedConnectedGen != null &&
+      eventConnectGen == expectedConnectedGen;
+  final active = activeRelayerConnectGen != null &&
+      eventConnectGen == activeRelayerConnectGen;
+  return pending || active;
+}
+
 /// Relayer transport: connects to FF1 device via relayer server.
 ///
 /// Connection flow:
@@ -102,6 +122,10 @@ class FF1RelayerTransport implements FF1WifiTransport {
   /// Isolate echoes `connectGen` in the connected event; we ignore events that
   /// do not match, or any event after pause cleared the expectation (PR #361).
   int? _expectedConnectedGen;
+
+  /// Generation of the socket last accepted as connected (pairs with isolate
+  /// `disconnected` `connectGen` for stale-event filtering).
+  int? _activeRelayerConnectGen;
 
   int _flowSequence = 0;
 
@@ -358,6 +382,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
 
     _reconnectSuppressed = true;
     _expectedConnectedGen = null;
+    _activeRelayerConnectGen = null;
     _teardownCompleter ??= Completer<void>();
     final completer = _teardownCompleter!;
 
@@ -452,6 +477,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
   @override
   void pauseConnection() {
     _expectedConnectedGen = null;
+    _activeRelayerConnectGen = null;
     final flowId = _nextFlowId('pause');
     _log.info('Pausing relayer connection (app background)');
     _slog.info(
@@ -600,6 +626,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
           break;
         }
         _expectedConnectedGen = null;
+        _activeRelayerConnectGen = connectGen;
         _isConnected = true;
         _lastError = null;
         _reconnectAttempts = 0;
@@ -618,6 +645,30 @@ disconnect requested while teardown in progress; waiting existing teardown''',
         );
 
       case _RelayerEventType.disconnected:
+        final eventGen = event.data?['connectGen'] as int?;
+        if (!relayerDisconnectEventAppliesToSession(
+          eventConnectGen: eventGen,
+          activeRelayerConnectGen: _activeRelayerConnectGen,
+          expectedConnectedGen: _expectedConnectedGen,
+        )) {
+          _slog.info(
+            category: LogCategory.wifi,
+            event: 'ws_disconnected_ignored_stale',
+            message: 'ignoring disconnected event (stale socket vs newer '
+                'session)',
+            payload: {
+              'deviceId': _device?.deviceId,
+              'eventConnectGen': eventGen,
+              'activeRelayerConnectGen': _activeRelayerConnectGen,
+              'expectedConnectedGen': _expectedConnectedGen,
+            },
+          );
+          break;
+        }
+        if (eventGen != null && eventGen == _expectedConnectedGen) {
+          _expectedConnectedGen = null;
+        }
+        _activeRelayerConnectGen = null;
         _isConnected = false;
         if (!_connectionStateController.isClosed) {
           _connectionStateController.add(false);
@@ -628,6 +679,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
           message: 'WebSocket disconnected from relayer',
           payload: {
             'deviceId': _device?.deviceId,
+            'eventConnectGen': eventGen,
             'reconnectSuppressed': _reconnectSuppressed,
             'reconnectAttempts': _reconnectAttempts,
             'lastError': _lastError,
@@ -898,8 +950,9 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
           };
           mainSendPort.send(errorData);
           unawaited(closeChannel());
-          const disconnectedEvent = _RelayerEventMessage(
+          final disconnectedEvent = _RelayerEventMessage(
             type: _RelayerEventType.disconnected,
+            data: {'connectGen': connectGen},
           );
           mainSendPort.send(disconnectedEvent.toJson());
           _relayerIsolateLog(
@@ -912,8 +965,9 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
             'ws_stream_done',
             'websocket stream closed (onDone)',
           );
-          const event = _RelayerEventMessage(
+          final event = _RelayerEventMessage(
             type: _RelayerEventType.disconnected,
+            data: {'connectGen': connectGen},
           );
           mainSendPort.send(event.toJson());
         },
@@ -957,8 +1011,9 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
       mainSendPort.send(errorData);
       unawaited(closeChannel());
       // Send disconnected so main schedules reconnect (initial connect failure)
-      const disconnectedEvent = _RelayerEventMessage(
+      final disconnectedEvent = _RelayerEventMessage(
         type: _RelayerEventType.disconnected,
+        data: {'connectGen': connectGen},
       );
       mainSendPort.send(disconnectedEvent.toJson());
       _relayerIsolateLog(
@@ -1015,11 +1070,13 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
         );
 
       case _RelayerControlType.disconnect:
+        final closedGen = connectGeneration;
         connectGeneration++;
         _relayerIsolateLog('control_disconnect', 'disconnect control received');
         unawaited(closeChannel());
-        const event = _RelayerEventMessage(
+        final event = _RelayerEventMessage(
           type: _RelayerEventType.disconnected,
+          data: {'connectGen': closedGen},
         );
         mainSendPort.send(event.toJson());
         _relayerIsolateLog(

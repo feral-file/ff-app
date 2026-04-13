@@ -164,7 +164,11 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   /// [device] - FF1 device with topicId
   /// [userId] - user identifier for authentication
   /// [apiKey] - API key for authentication
-  Future<void> connect({
+  ///
+  /// Returns `false` when the session was not established (superseded,
+  /// suppressed transport dispatch, etc.). Callers such as the auto-connect
+  /// watcher use this to avoid follow-up work (e.g. version checks).
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -188,7 +192,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         message: 'connect skipped because notifier is already connected',
         payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
       );
-      return;
+      return true;
     }
 
     state = state.copyWith(device: device, isConnecting: true);
@@ -208,7 +212,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
           message: 'connect completed after a newer connection request',
           payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
         );
-        return;
+        return false;
       }
 
       if (!ok) {
@@ -224,7 +228,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
               'connect did not dispatch (suppressed or superseded at transport)',
           payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
         );
-        return;
+        return false;
       }
 
       state = state.copyWith(
@@ -238,6 +242,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         message: 'connect completed in notifier',
         payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
       );
+      return true;
     } on Exception catch (e) {
       if (epoch != _connectEpoch) {
         _slog.info(
@@ -250,7 +255,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
             'error': e.toString(),
           },
         );
-        return;
+        return false;
       }
       state = state.copyWith(
         isConnected: false,
@@ -730,18 +735,20 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
             logger.info(
               'Active device changed: ${device.toJson()}, connecting...',
             );
-            await connectionNotifier.connect(
+            final connectedOk = await connectionNotifier.connect(
               device: device,
               userId: 'user_id',
               apiKey: AppConfig.ff1RelayerApiKey,
             );
-            unawaited(
-              _scheduleRequiredDeviceVersionCheck(
-                ref: ref,
-                logger: logger,
-                device: device,
-              ),
-            );
+            if (connectedOk) {
+              unawaited(
+                _scheduleRequiredDeviceVersionCheck(
+                  ref: ref,
+                  logger: logger,
+                  device: device,
+                ),
+              );
+            }
           } else {
             logger.info('No active device, disconnecting...');
             await connectionNotifier.disconnect();
@@ -809,10 +816,10 @@ final ff1WifiConnectOperationProvider = FutureProvider.autoDispose
           userId: params.userId,
           apiKey: params.apiKey,
         );
+        // Suppressed/no-dispatch (e.g. lifecycle pause) is a controlled no-op,
+        // not a hard failure — avoid retry storms that would churn transport.
         if (!ok) {
-          throw StateError(
-            'FF1 Wi-Fi connect did not dispatch to the relayer (suppressed).',
-          );
+          return;
         }
       },
     );
