@@ -1312,6 +1312,57 @@ void main() {
     );
 
     test(
+      'clears stale personal json from already-dp1 rows left by prior repairs',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'dp1-stale-personal-json.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_dp1_stale_personal_json',
+                type: 0,
+                title: 'Recovered DP1 Playlist',
+                defaultsJson: '{"layout":"wallet"}',
+                dynamicQueriesJson: '[{"field":"ownerAddress"}]',
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'playlist_dp1_stale_personal_json');
+            expect(playlists.single.type, PlaylistType.dp1);
+            expect(playlists.single.ownerAddress, isNull);
+            final repaired = await service.getPlaylistById(
+              'playlist_dp1_stale_personal_json',
+            );
+            expect(repaired, isNotNull);
+            expect(repaired!.defaults, isNull);
+            expect(repaired.dynamicQueries, isNull);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
       'repairs dp1 playlists when channel id drifted to whitespace only',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(

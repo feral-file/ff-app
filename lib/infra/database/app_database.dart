@@ -294,6 +294,8 @@ class AppDatabase extends _$AppDatabase {
           rawCreatedAtUs: row.read<int?>('created_at_us'),
           rawUpdatedAtUs: row.read<int?>('updated_at_us'),
           rawSignatures: row.read<String?>('signatures'),
+          rawDefaultsJson: row.read<String?>('defaults_json'),
+          rawDynamicQueriesJson: row.read<String?>('dynamic_queries_json'),
           ownerAddress: ownerAddress,
           rawSortMode: row.read<int?>('sort_mode'),
           rawItemCount: row.read<int?>('item_count'),
@@ -365,11 +367,15 @@ class AppDatabase extends _$AppDatabase {
         );
         final defaultsJson = _repairPlaylistDefaultsJson(
           rawDefaultsJson: row.read<String?>('defaults_json'),
+          rawChannelId: trimmedRawChannelId,
+          ownerAddress: ownerAddress,
           rawType: rawType,
           typeValue: typeValue,
         );
         final dynamicQueriesJson = _repairPlaylistDynamicQueriesJson(
           rawDynamicQueriesJson: row.read<String?>('dynamic_queries_json'),
+          rawChannelId: trimmedRawChannelId,
+          ownerAddress: ownerAddress,
           rawType: rawType,
           typeValue: typeValue,
         );
@@ -449,6 +455,8 @@ class AppDatabase extends _$AppDatabase {
     required int? rawCreatedAtUs,
     required int? rawUpdatedAtUs,
     required String? rawSignatures,
+    required String? rawDefaultsJson,
+    required String? rawDynamicQueriesJson,
     required String? ownerAddress,
     required int? rawSortMode,
     required int? rawItemCount,
@@ -475,6 +483,8 @@ class AppDatabase extends _$AppDatabase {
     if (rawItemCount < 0 || rawItemCount != entryCount) {
       return true;
     }
+    final trimmedDefaultsJson = rawDefaultsJson?.trim();
+    final trimmedDynamicQueriesJson = rawDynamicQueriesJson?.trim();
     if (ownerAddress != trimmedOwnerAddress) {
       return true;
     }
@@ -494,6 +504,13 @@ class AppDatabase extends _$AppDatabase {
         rawChannelId != null &&
         trimmedRawChannelId != rawChannelId &&
         !hasOwnerAddress) {
+      return true;
+    }
+    if (rawType == PlaylistType.dp1.value &&
+        !hasOwnerAddress &&
+        ((trimmedDefaultsJson != null && trimmedDefaultsJson.isNotEmpty) ||
+            (trimmedDynamicQueriesJson != null &&
+                trimmedDynamicQueriesJson.isNotEmpty))) {
       return true;
     }
     if (id == Playlist.favoriteId &&
@@ -771,11 +788,21 @@ class AppDatabase extends _$AppDatabase {
 
   String? _repairPlaylistDefaultsJson({
     required String? rawDefaultsJson,
+    required String? rawChannelId,
+    required String? ownerAddress,
     required int? rawType,
     required int typeValue,
   }) {
-    if (rawType == PlaylistType.addressBased.value &&
-        typeValue != PlaylistType.addressBased.value) {
+    final hasOwnerAddress = ownerAddress?.trim().isNotEmpty ?? false;
+    final hasNonPersonalChannel =
+        rawChannelId != null &&
+        rawChannelId.isNotEmpty &&
+        rawChannelId != Channel.myCollectionId;
+    if ((rawType == PlaylistType.addressBased.value &&
+            typeValue != PlaylistType.addressBased.value) ||
+        (typeValue == PlaylistType.dp1.value &&
+            !hasOwnerAddress &&
+            !hasNonPersonalChannel)) {
       return null;
     }
     final trimmed = rawDefaultsJson?.trim();
@@ -787,11 +814,21 @@ class AppDatabase extends _$AppDatabase {
 
   String? _repairPlaylistDynamicQueriesJson({
     required String? rawDynamicQueriesJson,
+    required String? rawChannelId,
+    required String? ownerAddress,
     required int? rawType,
     required int typeValue,
   }) {
-    if (rawType == PlaylistType.addressBased.value &&
-        typeValue != PlaylistType.addressBased.value) {
+    final hasOwnerAddress = ownerAddress?.trim().isNotEmpty ?? false;
+    final hasNonPersonalChannel =
+        rawChannelId != null &&
+        rawChannelId.isNotEmpty &&
+        rawChannelId != Channel.myCollectionId;
+    if ((rawType == PlaylistType.addressBased.value &&
+            typeValue != PlaylistType.addressBased.value) ||
+        (typeValue == PlaylistType.dp1.value &&
+            !hasOwnerAddress &&
+            !hasNonPersonalChannel)) {
       return null;
     }
     final trimmed = rawDynamicQueriesJson?.trim();
