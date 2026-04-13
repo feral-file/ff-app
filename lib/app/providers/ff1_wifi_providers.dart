@@ -148,6 +148,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   FF1WifiControl get _control => ref.read(ff1WifiControlProvider);
   late final StructuredLogger _slog;
   int _connectEpoch = 0;
+  int? _connectingEpoch;
 
   @override
   FF1WifiConnectionState build() {
@@ -191,6 +192,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
     }
 
     state = state.copyWith(device: device, isConnecting: true);
+    _connectingEpoch = epoch;
 
     try {
       await _control.connect(
@@ -248,7 +250,11 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       );
       rethrow;
     } finally {
-      if (epoch == _connectEpoch && state.isConnecting) {
+      // Only the connect attempt that still owns the spinner may clear it.
+      // Pause/disconnect already clear `isConnecting`, while a newer connect
+      // must keep the UI in "connecting" until that replacement attempt ends.
+      if (_connectingEpoch == epoch && state.isConnecting) {
+        _connectingEpoch = null;
         state = state.copyWith(isConnecting: false);
       }
     }
@@ -262,6 +268,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   /// reconnect() on resume would use the stale cached device.
   Future<void> disconnect() async {
     _connectEpoch++;
+    _connectingEpoch = null;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_disconnect_requested',
@@ -294,6 +301,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   /// Closes WebSocket but preserves [state.device] for [reconnect] on resume.
   void pauseConnection() {
     _connectEpoch++;
+    _connectingEpoch = null;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_pause_requested',
@@ -305,7 +313,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       },
     );
     _control.pauseConnection();
-    state = state.copyWith(isConnected: false);
+    state = state.copyWith(isConnected: false, isConnecting: false);
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_pause_completed',
@@ -319,9 +327,10 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
 
   /// Reconnect to device (using cached params)
   ///
-  /// Does not set [isConnecting]; "Connecting" status is shown only for
-  /// initial connect, not for background reconnects (app resume, etc.).
+  /// Does not set [isConnecting] to true; "Connecting" is reserved for the
+  /// initial [connect] path, not background reconnects (app resume, etc.).
   Future<void> reconnect() async {
+    _connectingEpoch = null;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_reconnect_requested',
@@ -356,7 +365,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       }
 
       if (!ok) {
-        state = state.copyWith(isConnected: false);
+        state = state.copyWith(isConnected: false, isConnecting: false);
         _slog.info(
           category: LogCategory.wifi,
           event: 'connection_notifier_reconnect_not_applied',
@@ -367,7 +376,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         return;
       }
 
-      state = state.copyWith(isConnected: true);
+      state = state.copyWith(isConnected: true, isConnecting: false);
       _slog.info(
         category: LogCategory.wifi,
         event: 'connection_notifier_reconnect_completed',
@@ -392,6 +401,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       }
       state = state.copyWith(
         isConnected: false,
+        isConnecting: false,
         error: e,
       );
       _slog.warning(

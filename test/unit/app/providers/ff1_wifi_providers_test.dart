@@ -52,6 +52,112 @@ void main() {
     expect(container.read(ff1WifiConnectionProvider).isConnected, isFalse);
   });
 
+  test('pauseConnection clears isConnecting if connect awaits', () async {
+    final stall = Completer<void>();
+    final transport = _StallingWifiTransport(stall);
+    final wifiControl = FakeWifiControl(transport: transport);
+
+    final container = ProviderContainer.test(
+      overrides: [
+        ff1WifiControlProvider.overrideWithValue(wifiControl),
+        ff1WifiConnectionProvider.overrideWith(
+          FF1WifiConnectionNotifier.new,
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    const device = FF1Device(
+      name: 'FF1',
+      remoteId: 'remote-1',
+      deviceId: 'device-1',
+      topicId: 'topic-1',
+    );
+
+    final notifier = container.read(ff1WifiConnectionProvider.notifier);
+    final connectFuture = notifier.connect(
+      device: device,
+      userId: 'u1',
+      apiKey: 'k1',
+    );
+
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(ff1WifiConnectionProvider).isConnecting, isTrue);
+
+    notifier.pauseConnection();
+    expect(container.read(ff1WifiConnectionProvider).isConnecting, isFalse);
+
+    stall.complete();
+    await connectFuture;
+
+    expect(container.read(ff1WifiConnectionProvider).isConnecting, isFalse);
+  });
+
+  test(
+    'stale connect completion does not clear newer connect spinner',
+    () async {
+      final transport = _OverlappingNotifierConnectTransport();
+      final wifiControl = FakeWifiControl(transport: transport);
+
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      const deviceA = FF1Device(
+        name: 'FF1-A',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+      const deviceB = FF1Device(
+        name: 'FF1-B',
+        remoteId: 'remote-2',
+        deviceId: 'device-2',
+        topicId: 'topic-2',
+      );
+
+      final notifier = container.read(ff1WifiConnectionProvider.notifier);
+      final connectA = notifier.connect(
+        device: deviceA,
+        userId: 'u1',
+        apiKey: 'k1',
+      );
+
+      await Future<void>.delayed(Duration.zero);
+      final connectB = notifier.connect(
+        device: deviceB,
+        userId: 'u1',
+        apiKey: 'k1',
+      );
+
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(ff1WifiConnectionProvider).isConnecting, isTrue);
+
+      transport.releaseFirstConnect();
+      await connectA;
+
+      final stateAfterStaleCompletion = container.read(
+        ff1WifiConnectionProvider,
+      );
+      expect(stateAfterStaleCompletion.isConnecting, isTrue);
+      expect(stateAfterStaleCompletion.device?.deviceId, deviceB.deviceId);
+
+      transport.releaseSecondConnect();
+      await connectB;
+
+      final finalState = container.read(ff1WifiConnectionProvider);
+      expect(finalState.isConnecting, isFalse);
+      expect(finalState.isConnected, isTrue);
+      expect(finalState.device?.deviceId, deviceB.deviceId);
+    },
+  );
+
   test(
     'ff1AutoConnectWatcherProvider connects when active device is set',
     () async {
@@ -1019,6 +1125,70 @@ FF1NotificationMessage _playerStatusNotification({
     notificationType: FF1NotificationType.playerStatus,
     timestamp: DateTime.fromMillisecondsSinceEpoch(0),
   );
+}
+
+/// Delays [FakeWifiTransport.connect] until [until] completes (race tests).
+class _StallingWifiTransport extends FakeWifiTransport {
+  _StallingWifiTransport(this.until);
+
+  final Completer<void> until;
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    await until.future;
+    await super.connect(
+      device: device,
+      userId: userId,
+      apiKey: apiKey,
+      forceReconnect: forceReconnect,
+    );
+  }
+}
+
+/// Holds two connect calls open independently so notifier tests can verify that
+/// a stale completion never clears the spinner owned by the newer connect.
+class _OverlappingNotifierConnectTransport extends FakeWifiTransport {
+  final Completer<void> _firstConnect = Completer<void>();
+  final Completer<void> _secondConnect = Completer<void>();
+  int _connectCount = 0;
+
+  void releaseFirstConnect() {
+    if (!_firstConnect.isCompleted) {
+      _firstConnect.complete();
+    }
+  }
+
+  void releaseSecondConnect() {
+    if (!_secondConnect.isCompleted) {
+      _secondConnect.complete();
+    }
+  }
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    _connectCount++;
+    if (_connectCount == 1) {
+      await _firstConnect.future;
+    } else if (_connectCount == 2) {
+      await _secondConnect.future;
+    }
+    await super.connect(
+      device: device,
+      userId: userId,
+      apiKey: apiKey,
+      forceReconnect: forceReconnect,
+    );
+  }
 }
 
 class _InspectableWifiTransport implements FF1WifiTransport {

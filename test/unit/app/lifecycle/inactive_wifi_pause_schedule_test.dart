@@ -66,7 +66,7 @@ void main() {
           ),
         );
         var pauseCount = 0;
-        AppLifecycleState current = AppLifecycleState.inactive;
+        const current = AppLifecycleState.inactive;
 
         coord.onLifecycle(
           state: AppLifecycleState.inactive,
@@ -84,6 +84,28 @@ void main() {
       });
     });
 
+    test('paused invokes immediate pause exactly once', () {
+      final coord = InactiveRelayerWifiPauseCoordinator(
+        debounce: const Duration(milliseconds: 100),
+        structuredLog: AppStructuredLog.forLogger(
+          Logger('test'),
+          context: const {'component': 'test'},
+        ),
+      );
+      var pauseCount = 0;
+      const current = AppLifecycleState.paused;
+
+      coord.onLifecycle(
+        state: AppLifecycleState.paused,
+        readLifecycle: () => current,
+        pauseRelayerWifi: () => pauseCount++,
+      );
+
+      expect(pauseCount, 1);
+
+      coord.dispose();
+    });
+
     test('resumed cancels pending inactive pause', () {
       FakeAsync().run((async) {
         final coord = InactiveRelayerWifiPauseCoordinator(
@@ -94,7 +116,7 @@ void main() {
           ),
         );
         var pauseCount = 0;
-        AppLifecycleState current = AppLifecycleState.inactive;
+        var current = AppLifecycleState.inactive;
 
         coord.onLifecycle(
           state: AppLifecycleState.inactive,
@@ -127,18 +149,19 @@ void main() {
           ),
         );
         var pauseCount = 0;
-        final current = AppLifecycleState.inactive;
+        const current = AppLifecycleState.inactive;
 
-        coord.onLifecycle(
-          state: AppLifecycleState.inactive,
-          readLifecycle: () => current,
-          pauseRelayerWifi: () => pauseCount++,
-        );
-        coord.onLifecycle(
-          state: AppLifecycleState.inactive,
-          readLifecycle: () => current,
-          pauseRelayerWifi: () => pauseCount++,
-        );
+        coord
+          ..onLifecycle(
+            state: AppLifecycleState.inactive,
+            readLifecycle: () => current,
+            pauseRelayerWifi: () => pauseCount++,
+          )
+          ..onLifecycle(
+            state: AppLifecycleState.inactive,
+            readLifecycle: () => current,
+            pauseRelayerWifi: () => pauseCount++,
+          );
 
         async.elapse(const Duration(milliseconds: 100));
         expect(pauseCount, 1);
@@ -157,7 +180,7 @@ void main() {
           ),
         );
         var pauseCount = 0;
-        AppLifecycleState current = AppLifecycleState.inactive;
+        var current = AppLifecycleState.inactive;
 
         coord.onLifecycle(
           state: AppLifecycleState.inactive,

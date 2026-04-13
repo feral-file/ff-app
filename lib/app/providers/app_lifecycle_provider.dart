@@ -20,6 +20,11 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
   late final _Observer _observer;
   late final InactiveRelayerWifiPauseCoordinator _inactiveRelayerWifiPause;
 
+  /// Set when `FF1WifiConnectionNotifier.pauseConnection` runs from lifecycle
+  /// (immediate pause or debounced inactive). Used so `resumed` does not force
+  /// a relayer reconnect after a no-op inactive→resumed flicker.
+  bool _relayerPausedByLifecycleSinceLastResume = false;
+
   @override
   AppLifecycleState build() {
     _log = Logger('AppLifecycleNotifier');
@@ -67,21 +72,42 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
       );
       unawaited(coordinator.syncAllTrackedAddresses());
       coordinator.startSyncCollectionPolling();
-      // Reconnect relayer WebSocket when app resumes; Timer-based reconnect
-      // does not fire while app is suspended.
-      _slog.info(
-        category: LogCategory.wifi,
-        event: 'lifecycle_resumed',
-        message: 'app resumed — triggering relayer reconnect',
-        payload: {
-          'previousLifecycleState': previous.name,
-          'lifecycleState': state.name,
-          'wifiStateConnected': wifiConnectionState.isConnected,
-          'wifiStateConnecting': wifiConnectionState.isConnecting,
-          'deviceId': deviceId,
-        },
-      );
-      unawaited(_reconnectRelayerAfterResume(wifiConnectionNotifier, deviceId));
+
+      final shouldReconnectRelayer = _relayerPausedByLifecycleSinceLastResume;
+      _relayerPausedByLifecycleSinceLastResume = false;
+
+      if (shouldReconnectRelayer) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'lifecycle_resumed',
+          message:
+              'app resumed after relayer pause — triggering relayer reconnect',
+          payload: {
+            'previousLifecycleState': previous.name,
+            'lifecycleState': state.name,
+            'wifiStateConnected': wifiConnectionState.isConnected,
+            'wifiStateConnecting': wifiConnectionState.isConnecting,
+            'deviceId': deviceId,
+          },
+        );
+        unawaited(
+          _reconnectRelayerAfterResume(wifiConnectionNotifier, deviceId),
+        );
+      } else {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'lifecycle_resumed_skip_relayer_reconnect',
+          message: 'app resumed without lifecycle relayer pause — '
+              'skipping forced reconnect',
+          payload: {
+            'previousLifecycleState': previous.name,
+            'lifecycleState': state.name,
+            'wifiStateConnected': wifiConnectionState.isConnected,
+            'wifiStateConnecting': wifiConnectionState.isConnecting,
+            'deviceId': deviceId,
+          },
+        );
+      }
     } else {
       coordinator.pauseSyncCollectionPolling();
       _slog.info(
@@ -101,6 +127,7 @@ class AppLifecycleNotifier extends Notifier<AppLifecycleState> {
         state: state,
         readLifecycle: () => this.state,
         pauseRelayerWifi: () {
+          _relayerPausedByLifecycleSinceLastResume = true;
           _slog.info(
             category: LogCategory.wifi,
             event: 'lifecycle_immediate_relayer_pause',
