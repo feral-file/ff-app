@@ -1,11 +1,19 @@
 # Seed Sync Race Condition — Suggested Solution
 
+**Status (2026):** The **replace-phase lock** below remains the concurrency fix. File
+swap semantics have since moved to a **validated, staged recoverable replace** in
+`SeedDatabaseService.replaceDatabaseFromTemporaryFile` (issue #337): preflight
+validation runs before `beforeReplace`; the service stages the artifact under the
+app DB directory, backs up the live files, then promotes—`beforeReplace` still
+only drains/closes via `SeedDatabaseReadyActions` and does **not** delete SQLite
+files.
+
 ## Problem
 
 When two syncs run concurrently (e.g. startup sync + Forget I Exist), both can:
 
-1. **beforeReplace** — call `setNotReady` → close DB, delete files (race: double close, double delete)
-2. **replaceDatabaseFromTemporaryFile** — delete canonical DB, rename temp to canonical (race: one can overwrite the other’s result)
+1. **beforeReplace** — call `setNotReady` → close DB (race: double close if unserialized)
+2. **replaceDatabaseFromTemporaryFile** — race: one replace can overwrite the other’s result if unserialized
 
 Result: non-deterministic DB state, possible crashes or corruption.
 
@@ -37,6 +45,9 @@ class SeedDatabaseSyncService {
       final tempPath = await _seedDatabaseService.downloadToTemporaryFile(
         onProgress: onProgress,
       );
+
+      // Preflight validation (artifact must be valid before teardown)
+      _seedDatabaseService.validateSeedArtifact(tempPath);
 
       // Critical section: only one sync at a time
       await _replaceLock.synchronized(() async {

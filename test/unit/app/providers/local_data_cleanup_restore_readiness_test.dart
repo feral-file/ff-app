@@ -68,7 +68,7 @@ void main() {
 
       container
           .read(isSeedDatabaseReadyProvider.notifier)
-          .setStateDirectly(false);
+          .seedReadyDirect = false;
       expect(container.read(isSeedDatabaseReadyProvider), isFalse);
 
       final restoreFuture = restoreReadinessAfterResetRetryFailedForTesting(

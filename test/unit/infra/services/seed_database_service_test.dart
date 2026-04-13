@@ -1,6 +1,33 @@
+import 'dart:io';
+
+import 'package:app/infra/services/seed_database_artifact_validator.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+
+import '../../../helpers/seed_database_test_helper.dart';
+
+/// Fails staging after validation so the live DB must not be deleted (#337).
+class _ThrowingMaterializeSeedService extends SeedDatabaseService {
+  _ThrowingMaterializeSeedService({
+    required this.dbPath,
+    required Future<Directory> Function() tempDirProvider,
+  }) : super(temporaryDirectoryProvider: tempDirProvider);
+
+  final String dbPath;
+
+  @override
+  Future<String> databasePath() async => dbPath;
+
+  @override
+  Future<void> materializeValidatedArtifactInDatabaseDirectory({
+    required String sourcePath,
+    required String stagingPath,
+  }) async {
+    throw Exception('Simulated materialize failure');
+  }
+}
 
 void main() {
   group('SeedDatabaseService object URI parsing', () {
@@ -148,5 +175,41 @@ void main() {
         isTrue,
       );
     });
+  });
+
+  group('SeedDatabaseService recoverable replace', () {
+    test(
+      'failure before main DB is backed up leaves canonical database readable',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_seed_replace_recover_',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        createSeedArtifactDatabase(file: File(dbPath));
+
+        final incoming = File(p.join(tempDir.path, 'incoming.sqlite'));
+        createSeedArtifactDatabase(file: incoming);
+
+        final svc = _ThrowingMaterializeSeedService(
+          dbPath: dbPath,
+          tempDirProvider: () async => tempDir,
+        );
+
+        await expectLater(
+          svc.replaceDatabaseFromTemporaryFile(incoming.path),
+          throwsException,
+        );
+
+        expect(File(dbPath).existsSync(), isTrue);
+        const validator = SeedDatabaseArtifactValidator();
+        expect(() => validator.validate(dbPath), returnsNormally);
+      },
+    );
   });
 }

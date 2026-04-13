@@ -1,3 +1,4 @@
+import 'package:app/infra/services/seed_database_artifact_validator.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
 import 'package:dio/dio.dart';
@@ -9,14 +10,17 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
     required this.remoteEtag,
     this.throwOnHead = false,
     this.throwOnReplace = false,
+    this.throwOnValidate = false,
   });
 
   bool hasLocal;
   String remoteEtag;
   bool throwOnHead;
   bool throwOnReplace;
+  bool throwOnValidate;
 
   int downloadCalls = 0;
+  int validateCalls = 0;
   int replaceCalls = 0;
 
   @override
@@ -43,6 +47,18 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
     downloadCalls += 1;
     onProgress?.call(1);
     return '/tmp/seed.sqlite.tmp';
+  }
+
+  @override
+  SeedDatabaseArtifactMetadata validateSeedArtifact(String path) {
+    validateCalls += 1;
+    if (throwOnValidate) {
+      throw const SeedArtifactValidationException(
+        reasonCode: 'magic_mismatch',
+        message: 'Invalid seed artifact',
+      );
+    }
+    return const SeedDatabaseArtifactMetadata(fileSize: 1024, userVersion: 3);
   }
 
   @override
@@ -77,6 +93,7 @@ void main() {
 
       expect(changed, isTrue);
       expect(fakeSeedService.downloadCalls, 1);
+      expect(fakeSeedService.validateCalls, 1);
       expect(fakeSeedService.replaceCalls, 1);
       expect(events, ['before', 'after']);
       expect(localEtag, 'remote-v2');
@@ -103,6 +120,7 @@ void main() {
 
       expect(changed, isFalse);
       expect(fakeSeedService.downloadCalls, 0);
+      expect(fakeSeedService.validateCalls, 0);
       expect(fakeSeedService.replaceCalls, 0);
       expect(events, isEmpty);
       expect(localEtag, 'same-etag');
@@ -131,6 +149,7 @@ void main() {
 
       expect(changed, isFalse);
       expect(fakeSeedService.downloadCalls, 0);
+      expect(fakeSeedService.validateCalls, 0);
       expect(fakeSeedService.replaceCalls, 0);
       expect(events, isEmpty);
       expect(localEtag, 'local-v1');
@@ -160,6 +179,7 @@ void main() {
 
         expect(changed, isTrue);
         expect(fakeSeedService.downloadCalls, 1);
+        expect(fakeSeedService.validateCalls, 1);
         expect(fakeSeedService.replaceCalls, 1);
         expect(events, ['before', 'after']);
         expect(localEtag, 'same-etag'); // ETag saved after replace (from HEAD)
@@ -168,7 +188,8 @@ void main() {
 
     test(
       'when replace fails after beforeReplace, sync returns false and '
-      'afterReplace is not called; old DB remains (project_spec fallback invariant)',
+      'afterReplace is not called; old DB remains '
+      '(project_spec fallback invariant)',
       () async {
         final fakeSeedService = _FakeSeedDatabaseService(
           hasLocal: true,
@@ -191,6 +212,7 @@ void main() {
         );
 
         expect(changed, isFalse);
+        expect(fakeSeedService.validateCalls, 1);
         expect(fakeSeedService.replaceCalls, 1);
         expect(events, ['before']);
         expect(localEtag, 'local-v1');
@@ -221,6 +243,7 @@ void main() {
         );
 
         expect(changed, isFalse);
+        expect(fakeSeedService.validateCalls, 1);
         expect(fakeSeedService.replaceCalls, 0);
         expect(events, isEmpty);
       },
@@ -256,9 +279,42 @@ void main() {
         );
 
         expect(changed, isTrue);
+        expect(fakeSeedService.validateCalls, 1);
         expect(fakeSeedService.replaceCalls, 1);
         expect(events, ['before', 'after']);
         expect(localEtag, 'remote-v2');
+      },
+    );
+
+    test(
+      'validation failure returns false before beforeReplace or replace',
+      () async {
+        final fakeSeedService = _FakeSeedDatabaseService(
+          hasLocal: false,
+          remoteEtag: 'remote-v2',
+          throwOnValidate: true,
+        );
+        var localEtag = '';
+        final events = <String>[];
+
+        final service = SeedDatabaseSyncService(
+          seedDatabaseService: fakeSeedService,
+          loadLocalEtag: () => localEtag,
+          saveLocalEtag: (etag) => localEtag = etag,
+        );
+
+        final changed = await service.sync(
+          beforeReplace: () async => events.add('before'),
+          afterReplace: () async => events.add('after'),
+          failSilently: true,
+        );
+
+        expect(changed, isFalse);
+        expect(fakeSeedService.downloadCalls, 1);
+        expect(fakeSeedService.validateCalls, 1);
+        expect(fakeSeedService.replaceCalls, 0);
+        expect(events, isEmpty);
+        expect(localEtag, isEmpty);
       },
     );
   });

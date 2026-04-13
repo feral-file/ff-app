@@ -44,7 +44,11 @@ Future<void> _restoreReadinessAfterResetRetryFailed(Ref ref) async {
   final cleanup = ref.read(localDataCleanupServiceProvider);
   cleanup.invalidateProvidersForRebind?.call();
   cleanup.invalidateReconnectInfraProviders?.call();
-  ref.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(true);
+  ref
+      .read(
+        isSeedDatabaseReadyProvider.notifier,
+      )
+      .seedReadyDirect = true;
 }
 
 /// Test hook for [_restoreReadinessAfterResetRetryFailed].
@@ -167,7 +171,11 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
   return LocalDataCleanupService(
     /// Set immediately at start of forgetIExist so no new DB work starts.
     prepareForReset: () {
-      ref.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(false);
+      ref
+          .read(
+            isSeedDatabaseReadyProvider.notifier,
+          )
+          .seedReadyDirect = false;
     },
 
     /// Called when forgetIExist/rebuildMetadata background seed replace fails.
@@ -208,7 +216,7 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
             .stopAndDrainForReset();
         r.invalidate(tokensSyncCoordinatorProvider);
         r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
-        readyNotifier.setStateDirectly(false);
+        readyNotifier.seedReadyDirect = false;
         invalidateDatabaseConsumerProviders();
         await SchedulerBinding.instance.endOfFrame;
         await ref.read(appDatabaseProvider).close();

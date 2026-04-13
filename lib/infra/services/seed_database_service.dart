@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/logging/structured_dio_logging_interceptor.dart';
+import 'package:app/infra/services/seed_database_artifact_validator.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -93,8 +94,9 @@ class _SeedDatabaseS3Location {
 ///
 /// The app never creates an empty database. Flow:
 /// 1) Download seed from S3-compatible storage to a temporary file.
-/// 2) Replace the current database file with the downloaded file (delete old
-///    files if any, then rename temp to canonical path).
+/// 2) Validate the artifact before any DB teardown begins.
+/// 3) Replace the current database file with a staged, recoverable swap so the
+///    previous DB can be restored if IO fails mid-replace.
 ///
 /// On first install the local `dp1_library.sqlite` does not exist until the
 /// seed is placed. Call `needsSeedDownload` to determine whether the database
@@ -106,6 +108,7 @@ class SeedDatabaseService {
     DateTime Function()? nowUtc,
     Future<Directory> Function()? temporaryDirectoryProvider,
     int maxDownloadAttempts = 3,
+    SeedDatabaseArtifactValidator? artifactValidator,
   }) : _dio = (dio ?? Dio())
          // Intentionally no sentry_dio: seed sync failures are expected offline
          // / infra cases; StructuredDioLoggingInterceptor covers observability.
@@ -118,7 +121,9 @@ class SeedDatabaseService {
        _nowUtc = nowUtc ?? (() => DateTime.now().toUtc()),
        _maxDownloadAttempts = maxDownloadAttempts < 1 ? 1 : maxDownloadAttempts,
        _temporaryDirectoryProvider =
-           temporaryDirectoryProvider ?? getTemporaryDirectory;
+           temporaryDirectoryProvider ?? getTemporaryDirectory,
+       _artifactValidator =
+           artifactValidator ?? const SeedDatabaseArtifactValidator();
 
   static final _log = Logger('SeedDatabaseService');
 
@@ -134,6 +139,7 @@ class SeedDatabaseService {
   final DateTime Function() _nowUtc;
   final Future<Directory> Function() _temporaryDirectoryProvider;
   final int _maxDownloadAttempts;
+  final SeedDatabaseArtifactValidator _artifactValidator;
 
   /// The canonical database file name used by AppDatabase.
   static const _dbFileName = 'dp1_library.sqlite';
@@ -195,6 +201,11 @@ class SeedDatabaseService {
   }) async {
     final tempPath = await downloadToTemporaryFile(onProgress: onProgress);
     await replaceDatabaseFromTemporaryFile(tempPath);
+  }
+
+  /// Validates a downloaded seed artifact before the app closes the current DB.
+  SeedDatabaseArtifactMetadata validateSeedArtifact(String path) {
+    return _artifactValidator.validate(path);
   }
 
   /// Downloads the remote seed DB to a temporary-file path and returns it.
@@ -364,35 +375,102 @@ class SeedDatabaseService {
     return false;
   }
 
-  /// Replaces the live SQLite database file with a downloaded temp seed file.
+  /// Replaces the live SQLite database file with a validated temp seed file.
   ///
-  /// Does not create any database: deletes existing DB files (if any), then
-  /// renames the temp file to the canonical path. The seed artifact is the
-  /// only source of database content.
+  /// The replace remains recoverable until the staged artifact has been
+  /// promoted to the canonical path. If promotion fails after the old DB is
+  /// moved aside, this method restores the previous main DB and sidecars.
   Future<void> replaceDatabaseFromTemporaryFile(String tempPath) async {
     final dbPath = await databasePath();
     final tempFile = File(tempPath);
     if (!tempFile.existsSync()) {
       throw SeedDownloadException('Temporary seed file not found: $tempPath');
     }
-    try {
-      final dbFile = File(dbPath);
-      if (dbFile.existsSync()) {
-        await dbFile.delete();
-      }
-      final walFile = File('$dbPath-wal');
-      if (walFile.existsSync()) {
-        await walFile.delete();
-      }
-      final shmFile = File('$dbPath-shm');
-      if (shmFile.existsSync()) {
-        await shmFile.delete();
-      }
 
-      await tempFile.rename(dbPath);
+    final metadata = validateSeedArtifact(tempPath);
+    final dbDir = p.dirname(dbPath);
+    final nonce = DateTime.now().microsecondsSinceEpoch;
+    final stagingPath = p.join(dbDir, 'dp1_library.sqlite.stage.$nonce');
+    final backupPath = p.join(dbDir, 'dp1_library.sqlite.backup.$nonce');
+    final walPath = '$dbPath-wal';
+    final shmPath = '$dbPath-shm';
+    final backupWalPath = '$backupPath-wal';
+    final backupShmPath = '$backupPath-shm';
+    var promotedCanonical = false;
+    // Only clear canonical paths and restore from backup after the live DB file
+    // was successfully moved aside; otherwise a failure during staging would
+    // delete the still-readable database (issue #337 recoverable-swap gap).
+    var mainDatabaseBackedUp = false;
+
+    try {
+      await materializeValidatedArtifactInDatabaseDirectory(
+        sourcePath: tempPath,
+        stagingPath: stagingPath,
+      );
+      _log.info(
+        'Seed database artifact validated; staging replace '
+        '(bytes=${metadata.fileSize}, userVersion=${metadata.userVersion})',
+      );
+
+      await moveExistingDatabaseToBackup(
+        canonicalPath: dbPath,
+        backupPath: backupPath,
+      );
+      // True only when a live main DB file existed and was moved aside (backup
+      // file exists). First install has no canonical file — do not treat as
+      // backed up so catch does not run destructive restore without a backup.
+      mainDatabaseBackedUp = File(backupPath).existsSync();
+      await moveExistingDatabaseToBackup(
+        canonicalPath: walPath,
+        backupPath: backupWalPath,
+      );
+      await moveExistingDatabaseToBackup(
+        canonicalPath: shmPath,
+        backupPath: backupShmPath,
+      );
+
+      await promoteStagedArtifact(
+        stagingPath: stagingPath,
+        canonicalPath: dbPath,
+      );
+      promotedCanonical = true;
+
+      await _cleanupSwapArtifactsBestEffort(
+        stagingPath: stagingPath,
+        backupPath: backupPath,
+        backupWalPath: backupWalPath,
+        backupShmPath: backupShmPath,
+      );
       _log.info('Seed database placed at $dbPath');
     } on Object catch (e, st) {
       _log.severe('Failed to replace seed database file', e, st);
+      if (mainDatabaseBackedUp && !promotedCanonical) {
+        await _deleteFileIfExists(dbPath);
+        await _deleteFileIfExists(walPath);
+        await _deleteFileIfExists(shmPath);
+        await _restoreBackupIfNeeded(
+          backupPath: backupPath,
+          canonicalPath: dbPath,
+        );
+        await _restoreBackupIfNeeded(
+          backupPath: backupWalPath,
+          canonicalPath: walPath,
+        );
+        await _restoreBackupIfNeeded(
+          backupPath: backupShmPath,
+          canonicalPath: shmPath,
+        );
+      }
+      // If there was no prior DB (first install) and promotion failed, the only
+      // valid copy may still be at [stagingPath] — do not delete it here.
+      if (mainDatabaseBackedUp || promotedCanonical) {
+        await _cleanupTemp(stagingPath);
+      } else {
+        _log.warning(
+          'Seed replace failed before promotion; leaving staged artifact at '
+          '$stagingPath for retry',
+        );
+      }
       await _cleanupTemp(tempPath);
       rethrow;
     }
@@ -416,6 +494,88 @@ class SeedDatabaseService {
       try {
         await f.delete();
       } on Object catch (_) {}
+    }
+  }
+
+  @visibleForTesting
+  /// Moves the validated temp artifact into the DB directory before promote.
+  Future<void> materializeValidatedArtifactInDatabaseDirectory({
+    required String sourcePath,
+    required String stagingPath,
+  }) async {
+    await _moveFile(sourcePath: sourcePath, targetPath: stagingPath);
+  }
+
+  @visibleForTesting
+  /// Moves the current canonical DB file or sidecar to a backup location.
+  Future<void> moveExistingDatabaseToBackup({
+    required String canonicalPath,
+    required String backupPath,
+  }) async {
+    final file = File(canonicalPath);
+    if (!file.existsSync()) return;
+    await _moveFile(sourcePath: canonicalPath, targetPath: backupPath);
+  }
+
+  @visibleForTesting
+  /// Promotes the staged artifact into the canonical DB path.
+  Future<void> promoteStagedArtifact({
+    required String stagingPath,
+    required String canonicalPath,
+  }) async {
+    await _moveFile(sourcePath: stagingPath, targetPath: canonicalPath);
+  }
+
+  Future<void> _restoreBackupIfNeeded({
+    required String backupPath,
+    required String canonicalPath,
+  }) async {
+    final backupFile = File(backupPath);
+    if (!backupFile.existsSync()) return;
+    await _moveFile(sourcePath: backupPath, targetPath: canonicalPath);
+  }
+
+  Future<void> _deleteFileIfExists(String path) async {
+    final file = File(path);
+    if (!file.existsSync()) return;
+    await file.delete();
+  }
+
+  Future<void> _cleanupSwapArtifactsBestEffort({
+    required String stagingPath,
+    required String backupPath,
+    required String backupWalPath,
+    required String backupShmPath,
+  }) async {
+    for (final path in [
+      stagingPath,
+      backupPath,
+      backupWalPath,
+      backupShmPath,
+    ]) {
+      try {
+        await _cleanupTemp(path);
+      } on Object catch (e, st) {
+        _log.warning('Best-effort seed swap cleanup failed for $path', e, st);
+      }
+    }
+  }
+
+  Future<void> _moveFile({
+    required String sourcePath,
+    required String targetPath,
+  }) async {
+    final source = File(sourcePath);
+    if (!source.existsSync()) {
+      throw SeedDownloadException('File not found while moving: $sourcePath');
+    }
+
+    try {
+      await source.rename(targetPath);
+      return;
+    } on FileSystemException {
+      await source.copy(targetPath);
+      await source.delete();
     }
   }
 

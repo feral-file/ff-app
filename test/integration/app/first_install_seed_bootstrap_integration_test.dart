@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:app/app/bootstrap/app_startup_orchestration.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
@@ -19,6 +20,7 @@ import 'package:app/infra/services/seed_database_sync_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 
 import '../helpers/integration_test_harness.dart';
 
@@ -125,6 +127,41 @@ class _IntegrationSeedDbSvc extends SeedDatabaseService {
   Future<bool> hasLocalDatabase() async => fileExists;
 }
 
+class _InvalidSeedArtifactService extends SeedDatabaseService {
+  _InvalidSeedArtifactService({
+    required this.dbPath,
+    required Future<Directory> Function() tempDirProvider,
+  }) : _tempDirProvider = tempDirProvider,
+       super(temporaryDirectoryProvider: tempDirProvider);
+
+  final String dbPath;
+  final Future<Directory> Function() _tempDirProvider;
+
+  @override
+  Future<String> databasePath() async => dbPath;
+
+  @override
+  Future<bool> hasLocalDatabase() async => File(dbPath).existsSync();
+
+  @override
+  Future<String> headRemoteEtag() async => 'remote-etag';
+
+  @override
+  Future<String> downloadToTemporaryFile({
+    void Function(double progress)? onProgress,
+    int? maxBytes,
+  }) async {
+    onProgress?.call(1);
+    final dir = await _tempDirProvider();
+    final tempPath = p.join(
+      dir.path,
+      'seed_${DateTime.now().microsecondsSinceEpoch}.sqlite.tmp',
+    );
+    await File(tempPath).writeAsBytes(List<int>.filled(1024, 5));
+    return tempPath;
+  }
+}
+
 class _MockBootstrapService implements BootstrapService {
   int bootstrapCallCount = 0;
 
@@ -207,6 +244,88 @@ void main() {
               .pendingDp1BootstrapAfterSeed,
           isFalse,
         );
+      },
+    );
+
+    test(
+      'invalid first-install seed never enters beforeReplace and keeps '
+      'lightweight bootstrap contract',
+      () async {
+        final provisionedEnvFile = await provisionIntegrationEnvFile();
+        addTearDown(() async {
+          final parent = provisionedEnvFile.parent;
+          if (parent.existsSync()) {
+            await parent.delete(recursive: true);
+          }
+        });
+
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_invalid_seed_bootstrap_',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        SeedDatabaseGate.resetForTesting();
+
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final seedService = _InvalidSeedArtifactService(
+          dbPath: dbPath,
+          tempDirProvider: () async => tempDir,
+        );
+        final syncService = SeedDatabaseSyncService(
+          seedDatabaseService: seedService,
+          loadLocalEtag: () => '',
+          saveLocalEtag: (_) {},
+        );
+        final mockBootstrap = _MockBootstrapService();
+        final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+        addTearDown(memDb.close);
+        final dbService = DatabaseService(memDb);
+        var notReadyCalls = 0;
+
+        final container = ProviderContainer.test(
+          overrides: [
+            seedDatabaseServiceProvider.overrideWithValue(seedService),
+            seedDatabaseSyncServiceProvider.overrideWithValue(syncService),
+            appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+            seedDatabaseReadyActionsProvider.overrideWithValue(
+              SeedDatabaseReadyActions(
+                onNotReady: () async {
+                  notReadyCalls++;
+                },
+                onReady: _noOpFuture,
+              ),
+            ),
+            rawDatabaseServiceProvider.overrideWithValue(dbService),
+            databaseServiceProvider.overrideWith((ref) => dbService),
+            bootstrapServiceProvider.overrideWith((ref) => mockBootstrap),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final seedNotifier = container.read(seedDownloadProvider.notifier);
+
+        await seedNotifier.sync();
+
+        expect(notReadyCalls, 0);
+        expect(SeedDatabaseGate.isCompleted, isFalse);
+        expect(
+          container.read(seedDownloadProvider).status,
+          SeedDownloadStatus.error,
+        );
+        expect(await seedService.hasLocalDatabase(), isFalse);
+
+        final bootstrapNotifier = container.read(bootstrapProvider.notifier);
+        await bootstrapNotifier.bootstrapWithoutDp1Library();
+        expect(bootstrapNotifier.pendingDp1BootstrapAfterSeed, isTrue);
+        expect(
+          container.read(bootstrapProvider).phase,
+          BootstrapPhase.completed,
+        );
+        expect(mockBootstrap.bootstrapCallCount, 0);
       },
     );
 
