@@ -648,6 +648,101 @@ void main() {
     );
 
     test(
+      'clears whitespace-only owner addresses from otherwise valid '
+      'dp1 playlists',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'dp1-control-whitespace-owner.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_dp1_whitespace_owner',
+                channelId: 'channel_dp1',
+                ownerAddress: '\t',
+                type: 0,
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+          _insertChannelRow(file: dbFile, id: 'channel_dp1');
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'playlist_dp1_whitespace_owner');
+            expect(playlists.single.type, PlaylistType.dp1);
+            expect(playlists.single.channelId, 'channel_dp1');
+            expect(playlists.single.ownerAddress, isNull);
+            expect(playlists.single.itemCount, 1);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'keeps healthy address playlists intact',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'healthy-address-playlist.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: [
+              _RawPlaylistRow(
+                id: canonicalAddressPlaylistId,
+                channelId: Channel.myCollectionId,
+                ownerAddress: '0xABCDEF',
+                type: 1,
+                title: 'My Collection',
+                sortMode: 1,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAddressPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, canonicalAddressPlaylistId);
+            expect(playlists.single.type, PlaylistType.addressBased);
+            expect(playlists.single.channelId, Channel.myCollectionId);
+            expect(playlists.single.ownerAddress, '0xABCDEF');
+            expect(playlists.single.itemCount, 1);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
       'deletes blank-owner address playlists from my collection',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(
@@ -1056,7 +1151,9 @@ void main() {
             expect(playlists, hasLength(1));
             expect(playlists.single.id, canonicalAddressPlaylistId);
             expect(playlists.single.ownerAddress, '0xABCDEF');
-            expect(playlists.single.itemCount, 2);
+            expect(playlists.single.itemCount, 1);
+            final items = await service.getItems();
+            expect(items.map((item) => item.id), ['good_item']);
           } finally {
             await db.close();
           }
@@ -1149,6 +1246,251 @@ void main() {
             expect(playlists.single.type, PlaylistType.dp1);
             expect(playlists.single.ownerAddress, isNull);
             expect(playlists.single.itemCount, 1);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs dp1 playlists when channel id drifted to whitespace only',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'dp1-whitespace-channel-only-drift.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_dp1_whitespace_channel',
+                channelId: '   ',
+                type: 0,
+                title: 'Recovered DP1 Playlist',
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'playlist_dp1_whitespace_channel');
+            expect(playlists.single.type, PlaylistType.dp1);
+            expect(playlists.single.channelId, isNull);
+            expect(playlists.single.ownerAddress, isNull);
+            expect(playlists.single.itemCount, 1);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs dp1 playlists when a real channel id has surrounding whitespace',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'dp1-surrounding-whitespace-channel.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_dp1_trimmed_channel',
+                channelId: ' channel_dp1 ',
+                type: 0,
+                title: 'Recovered DP1 Playlist',
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+          _insertChannelRow(file: dbFile, id: 'channel_dp1');
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'playlist_dp1_trimmed_channel');
+            expect(playlists.single.type, PlaylistType.dp1);
+            expect(playlists.single.channelId, 'channel_dp1');
+            expect(playlists.single.ownerAddress, isNull);
+            expect(playlists.single.itemCount, 1);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs dp1 playlists when a real channel id has tab and newline drift',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'dp1-control-whitespace-channel.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_dp1_control_whitespace_channel',
+                channelId: '\tchannel_dp1\n',
+                type: 0,
+                title: 'Recovered DP1 Playlist',
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+          _insertChannelRow(file: dbFile, id: 'channel_dp1');
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(
+              playlists.single.id,
+              'playlist_dp1_control_whitespace_channel',
+            );
+            expect(playlists.single.type, PlaylistType.dp1);
+            expect(playlists.single.channelId, 'channel_dp1');
+            expect(playlists.single.ownerAddress, isNull);
+            expect(playlists.single.itemCount, 1);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'repairs dp1 playlists when a real channel id has '
+      'unicode whitespace drift',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'dp1-unicode-whitespace-channel.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_dp1_unicode_whitespace_channel',
+                channelId: '\u00A0channel_dp1\u00A0',
+                type: 0,
+                title: 'Recovered DP1 Playlist',
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+          _insertChannelRow(file: dbFile, id: 'channel_dp1');
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, hasLength(1));
+            expect(
+              playlists.single.id,
+              'playlist_dp1_unicode_whitespace_channel',
+            );
+            expect(playlists.single.type, PlaylistType.dp1);
+            expect(playlists.single.channelId, 'channel_dp1');
+            expect(playlists.single.ownerAddress, isNull);
+            expect(playlists.single.itemCount, 1);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'deletes blank-owner my-collection playlists when owner has '
+      'control whitespace',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(
+            tempDir.path,
+            'my-collection-control-whitespace-owner.sqlite',
+          ),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_my_collection_control_owner',
+                channelId: '\u00A0my_collection\u00A0',
+                ownerAddress: '\t',
+                type: 0,
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAllPlaylists();
+            expect(playlists, isEmpty);
+            final deleted = await service.getPlaylistById(
+              'playlist_my_collection_control_owner',
+            );
+            expect(deleted, isNull);
+            final items = await service.getItems();
+            expect(items, isEmpty);
           } finally {
             await db.close();
           }

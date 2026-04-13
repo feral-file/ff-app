@@ -232,88 +232,8 @@ class AppDatabase extends _$AppDatabase {
       SELECT id, channel_id, type, title, created_at_us, updated_at_us,
              signatures, owner_address, sort_mode, item_count
       FROM playlists
-      WHERE type IS NULL
-         OR title IS NULL
-         OR created_at_us IS NULL
-         OR updated_at_us IS NULL
-         OR signatures IS NULL
-         OR sort_mode IS NULL
-         OR item_count IS NULL
-         OR type NOT IN (0, 1, 2)
-         OR sort_mode NOT IN (0, 1)
-         OR item_count < 0
-         OR item_count != (
-              SELECT COUNT(*)
-              FROM playlist_entries
-              WHERE playlist_id = playlists.id
-            )
-         OR (type = ? AND id != ?)
-         OR (
-              type = ?
-              AND (owner_address IS NULL OR TRIM(owner_address) = '')
-            )
-         OR (
-              type = ?
-              AND owner_address IS NOT NULL
-              AND TRIM(owner_address) != ''
-            )
-         OR (
-              id != ?
-              AND channel_id = ?
-              AND (owner_address IS NULL OR TRIM(owner_address) = '')
-            )
-         OR (
-              id = ?
-              AND owner_address IS NOT NULL
-              AND TRIM(owner_address) != ''
-            )
-         OR (
-              id = ?
-              AND (
-                type != ?
-                OR channel_id IS NULL
-                OR channel_id != ?
-                OR sort_mode != ?
-                OR title != ?
-              )
-            )
-         OR (
-              (
-                type = ?
-                OR (owner_address IS NOT NULL AND TRIM(owner_address) != '')
-              )
-              AND (
-                type != ?
-                OR channel_id IS NULL
-                OR channel_id != ?
-                OR sort_mode != ?
-              )
-            )
-      ORDER BY
-        CASE
-          WHEN owner_address IS NOT NULL AND TRIM(owner_address) != '' THEN 0
-          ELSE 1
-        END,
-        id
+      ORDER BY id
       ''',
-      variables: [
-        Variable<int>(PlaylistType.favorite.value),
-        const Variable<String>(Playlist.favoriteId),
-        Variable<int>(PlaylistType.addressBased.value),
-        Variable<int>(PlaylistType.addressBased.value),
-        const Variable<String>(Playlist.favoriteId),
-        const Variable<String>(Channel.myCollectionId),
-        const Variable<String>(Playlist.favoriteId),
-        const Variable<String>(Playlist.favoriteId),
-        Variable<int>(PlaylistType.favorite.value),
-        const Variable<String>(Channel.myCollectionId),
-        Variable<int>(PlaylistSortMode.provenance.index),
-        const Variable<String>('Favorites'),
-        Variable<int>(PlaylistType.addressBased.value),
-        Variable<int>(PlaylistType.addressBased.value),
-        const Variable<String>(Channel.myCollectionId),
-        Variable<int>(PlaylistSortMode.provenance.index),
-      ],
       readsFrom: {playlists},
     ).get();
 
@@ -321,9 +241,39 @@ class AppDatabase extends _$AppDatabase {
       return;
     }
 
+    // Inspect every playlist row in Dart so repair selection stays aligned with
+    // the same normalization semantics used by the repair helpers. This avoids
+    // missing malformed rows whose owner/channel values only differ by
+    // Unicode/control whitespace that SQLite's default `TRIM()` does not
+    // consider.
+    rows.sort((a, b) {
+      final aHasOwner =
+          a.read<String?>('owner_address')?.trim().isNotEmpty ?? false;
+      final bHasOwner =
+          b.read<String?>('owner_address')?.trim().isNotEmpty ?? false;
+      if (aHasOwner == bHasOwner) {
+        return a.read<String>('id').compareTo(b.read<String>('id'));
+      }
+      return aHasOwner ? -1 : 1;
+    });
+
+    final entryCountRows = await customSelect(
+      '''
+      SELECT playlist_id, COUNT(*) AS entry_count
+      FROM playlist_entries
+      GROUP BY playlist_id
+      ''',
+      readsFrom: {playlistEntries},
+    ).get();
+    final entryCountsByPlaylistId = {
+      for (final row in entryCountRows)
+        row.read<String>('playlist_id'): row.read<int>('entry_count'),
+    };
+
     final nowUs = DateTime.now().microsecondsSinceEpoch;
     await transaction(() async {
       final supersededSnapshotIds = <String>{};
+      var repairedCount = 0;
       for (final row in rows) {
         final id = row.read<String>('id');
         if (supersededSnapshotIds.contains(id)) {
@@ -332,6 +282,23 @@ class AppDatabase extends _$AppDatabase {
         final rawType = row.read<int?>('type');
         final rawChannelId = row.read<String?>('channel_id');
         final ownerAddress = row.read<String?>('owner_address');
+        final entryCount = entryCountsByPlaylistId[id] ?? 0;
+        if (!_playlistNeedsRepair(
+          id: id,
+          rawChannelId: rawChannelId,
+          rawType: rawType,
+          rawTitle: row.read<String?>('title'),
+          rawCreatedAtUs: row.read<int?>('created_at_us'),
+          rawUpdatedAtUs: row.read<int?>('updated_at_us'),
+          rawSignatures: row.read<String?>('signatures'),
+          ownerAddress: ownerAddress,
+          rawSortMode: row.read<int?>('sort_mode'),
+          rawItemCount: row.read<int?>('item_count'),
+          entryCount: entryCount,
+        )) {
+          continue;
+        }
+        repairedCount++;
         final trimmedRawChannelId = rawChannelId?.trim();
         final hasNonPersonalChannel =
             trimmedRawChannelId != null &&
@@ -344,7 +311,7 @@ class AppDatabase extends _$AppDatabase {
           ownerAddress: ownerAddress,
           hasNonPersonalChannel: hasNonPersonalChannel,
         )) {
-          await _deletePlaylistAndOrphanedItems(id);
+          await _deleteMalformedPlaylistAndOrphanedItems(id);
           continue;
         }
         final typeValue = _repairPlaylistTypeValue(
@@ -447,12 +414,96 @@ class AppDatabase extends _$AppDatabase {
           );
         }
       }
-    });
 
-    _log.warning(
-      'Repaired ${rows.length} malformed playlist row(s) before startup reads',
-    );
+      if (repairedCount > 0) {
+        _log.warning(
+          'Repaired $repairedCount malformed playlist row(s) '
+          'before startup reads',
+        );
+      }
+    });
   }
+
+  bool _playlistNeedsRepair({
+    required String id,
+    required String? rawChannelId,
+    required int? rawType,
+    required String? rawTitle,
+    required int? rawCreatedAtUs,
+    required int? rawUpdatedAtUs,
+    required String? rawSignatures,
+    required String? ownerAddress,
+    required int? rawSortMode,
+    required int? rawItemCount,
+    required int entryCount,
+  }) {
+    final trimmedOwnerAddress = ownerAddress?.trim();
+    final hasOwnerAddress =
+        trimmedOwnerAddress != null && trimmedOwnerAddress.isNotEmpty;
+    final trimmedRawChannelId = rawChannelId?.trim();
+
+    if (rawType == null ||
+        rawTitle == null ||
+        rawCreatedAtUs == null ||
+        rawUpdatedAtUs == null ||
+        rawSignatures == null ||
+        rawSortMode == null ||
+        rawItemCount == null) {
+      return true;
+    }
+    if (!_isValidPlaylistTypeValue(rawType) ||
+        !_isValidPlaylistSortModeValue(rawSortMode)) {
+      return true;
+    }
+    if (rawItemCount < 0 || rawItemCount != entryCount) {
+      return true;
+    }
+    if (ownerAddress != trimmedOwnerAddress) {
+      return true;
+    }
+    if (rawType == PlaylistType.favorite.value && id != Playlist.favoriteId) {
+      return true;
+    }
+    if (rawType == PlaylistType.addressBased.value && !hasOwnerAddress) {
+      return true;
+    }
+    if (id != Playlist.favoriteId &&
+        trimmedRawChannelId == Channel.myCollectionId &&
+        !hasOwnerAddress) {
+      return true;
+    }
+    if (id != Playlist.favoriteId &&
+        rawType == PlaylistType.dp1.value &&
+        rawChannelId != null &&
+        trimmedRawChannelId != rawChannelId &&
+        !hasOwnerAddress) {
+      return true;
+    }
+    if (id == Playlist.favoriteId &&
+        (hasOwnerAddress ||
+            rawType != PlaylistType.favorite.value ||
+            rawChannelId == null ||
+            rawChannelId != Channel.myCollectionId ||
+            rawSortMode != PlaylistSortMode.provenance.index ||
+            rawTitle != 'Favorites')) {
+      return true;
+    }
+    if (hasOwnerAddress &&
+        (rawType != PlaylistType.addressBased.value ||
+            id != PlaylistExt.addressPlaylistId(trimmedOwnerAddress) ||
+            rawChannelId == null ||
+            rawChannelId != Channel.myCollectionId ||
+            rawSortMode != PlaylistSortMode.provenance.index)) {
+      return true;
+    }
+    return false;
+  }
+
+  bool _isValidPlaylistTypeValue(int rawType) =>
+      PlaylistType.values.any((type) => type.value == rawType);
+
+  bool _isValidPlaylistSortModeValue(int rawSortMode) =>
+      PlaylistSortMode.values.any((mode) => mode.index == rawSortMode);
 
   String? _repairPlaylistOwnerAddress({
     required String id,
@@ -507,14 +558,7 @@ class AppDatabase extends _$AppDatabase {
         .read<String?>('owner_address')
         ?.trim();
     if (canonicalOwnerAddress == null || canonicalOwnerAddress.isEmpty) {
-      await _movePlaylistEntries(
-        sourcePlaylistId: targetPlaylistId,
-        targetPlaylistId: sourcePlaylistId,
-      );
-      await customStatement(
-        'DELETE FROM playlists WHERE id = ?',
-        <Object?>[targetPlaylistId],
-      );
+      await _deleteMalformedPlaylistAndOrphanedItems(targetPlaylistId);
       return (
         mergedIntoExistingCanonical: false,
         supersededSnapshotId: targetPlaylistId,
@@ -562,7 +606,9 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  Future<void> _deletePlaylistAndOrphanedItems(String playlistId) async {
+  Future<void> _deleteMalformedPlaylistAndOrphanedItems(
+    String playlistId,
+  ) async {
     final itemRows = await customSelect(
       '''
       SELECT item_id
@@ -583,6 +629,10 @@ class AppDatabase extends _$AppDatabase {
       playlists,
     )..where((playlist) => playlist.id.equals(playlistId))).go();
 
+    // Blank-owner My Collection rows have no valid owner or channel identity,
+    // so their item references cannot be surfaced safely through personal
+    // playlist recovery. We purge now-unreferenced items here to avoid leaking
+    // ghost works/search hits back into the global read model.
     for (final itemId in itemIds) {
       final refRow = await customSelect(
         '''
@@ -657,6 +707,9 @@ class AppDatabase extends _$AppDatabase {
     if (id == Playlist.favoriteId ||
         typeValue == PlaylistType.addressBased.value) {
       return Channel.myCollectionId;
+    }
+    if (rawChannelId != null && rawChannelId.isEmpty) {
+      return null;
     }
     if (id != Playlist.favoriteId &&
         typeValue != PlaylistType.addressBased.value &&
