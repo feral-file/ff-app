@@ -25,6 +25,8 @@ const _maxLimitForOffset = 0x7FFFFFFF;
 const _schemaVersionV1 = 3;
 const _dbResetReindexMarkerFile = 'db_reset_requires_reindex.flag';
 const _ftsMetadataFallbackRank = 500.0;
+const _playlistRepairMarkerTable = 'internal_repair_markers';
+const _playlistRepairMarkerKey = 'playlist_repair_v1_completed';
 
 extension _SearchQueryTokens on String {
   List<String> get searchTokens {
@@ -210,6 +212,7 @@ class AppDatabase extends _$AppDatabase {
   /// should repair readable local state and keep going when the damage is local
   /// to a few playlist rows.
   Future<void> _repairMalformedPlaylistRowsIfNeeded() async {
+    await _ensureRepairMarkerTable();
     final cols = await _playlistTableColumnNames();
     const requiredCols = {
       'id',
@@ -225,7 +228,15 @@ class AppDatabase extends _$AppDatabase {
       'item_count',
       'owner_address',
     };
+    final hasRepairMarker = await _hasRepairMarker(_playlistRepairMarkerKey);
+    if (hasRepairMarker && !requiredCols.every(cols.contains)) {
+      return;
+    }
     if (!requiredCols.every(cols.contains)) {
+      await _markRepairCompleted(_playlistRepairMarkerKey);
+      return;
+    }
+    if (hasRepairMarker && !await _playlistMayNeedRepair()) {
       return;
     }
 
@@ -241,6 +252,7 @@ class AppDatabase extends _$AppDatabase {
     ).get();
 
     if (rows.isEmpty) {
+      await _markRepairCompleted(_playlistRepairMarkerKey);
       return;
     }
 
@@ -444,7 +456,147 @@ class AppDatabase extends _$AppDatabase {
           'before startup reads',
         );
       }
+      await _markRepairCompleted(_playlistRepairMarkerKey);
     });
+  }
+
+  Future<void> _ensureRepairMarkerTable() async {
+    await customStatement(
+      '''
+      CREATE TABLE IF NOT EXISTS $_playlistRepairMarkerTable (
+        key TEXT PRIMARY KEY,
+        completed_at_us INTEGER NOT NULL
+      )
+      ''',
+    );
+  }
+
+  Future<bool> _hasRepairMarker(String key) async {
+    final row = await customSelect(
+      '''
+      SELECT 1 AS present
+      FROM $_playlistRepairMarkerTable
+      WHERE key = ?
+      LIMIT 1
+      ''',
+      variables: [Variable<String>(key)],
+    ).getSingleOrNull();
+    return row != null;
+  }
+
+  Future<void> _markRepairCompleted(String key) async {
+    await customStatement(
+      '''
+      INSERT OR REPLACE INTO $_playlistRepairMarkerTable (
+        key, completed_at_us
+      ) VALUES (?, ?)
+      ''',
+      <Object?>[key, DateTime.now().microsecondsSinceEpoch],
+    );
+  }
+
+  Future<bool> _playlistMayNeedRepair() async {
+    final rows = await customSelect(
+      '''
+      SELECT id, channel_id, type, title, created_at_us, updated_at_us,
+             signatures, defaults_json, dynamic_queries_json, owner_address,
+             sort_mode, item_count
+      FROM playlists
+      ''',
+      readsFrom: {playlists},
+    ).get();
+
+    for (final row in rows) {
+      if (_playlistMayNeedRepairRow(row)) {
+        return true;
+      }
+    }
+
+    final countMismatch = await customSelect(
+      '''
+      SELECT 1 AS needs_repair
+      FROM playlists
+      WHERE item_count != (
+        SELECT COUNT(*)
+        FROM playlist_entries
+        WHERE playlist_id = playlists.id
+      )
+      LIMIT 1
+      ''',
+      readsFrom: {playlists, playlistEntries},
+    ).getSingleOrNull();
+    return countMismatch != null;
+  }
+
+  bool _playlistMayNeedRepairRow(QueryRow row) {
+    final id = row.read<String>('id');
+    final rawType = row.read<int?>('type');
+    final rawChannelId = row.read<String?>('channel_id');
+    final ownerAddress = row.read<String?>('owner_address');
+    final trimmedOwnerAddress = ownerAddress?.trim();
+    final hasOwnerAddress =
+        trimmedOwnerAddress != null && trimmedOwnerAddress.isNotEmpty;
+    final trimmedRawChannelId = rawChannelId?.trim();
+
+    if (rawType == null ||
+        row.read<String?>('title') == null ||
+        row.read<int?>('created_at_us') == null ||
+        row.read<int?>('updated_at_us') == null ||
+        row.read<String?>('signatures') == null ||
+        row.read<int?>('sort_mode') == null ||
+        row.read<int?>('item_count') == null) {
+      return true;
+    }
+    if (!_isValidPlaylistTypeValue(rawType) ||
+        !_isValidPlaylistSortModeValue(row.read<int>('sort_mode'))) {
+      return true;
+    }
+    if (ownerAddress != trimmedOwnerAddress) {
+      return true;
+    }
+    if (rawType == PlaylistType.favorite.value && id != Playlist.favoriteId) {
+      return true;
+    }
+    if (rawType == PlaylistType.addressBased.value && !hasOwnerAddress) {
+      return true;
+    }
+    if (id != Playlist.favoriteId &&
+        trimmedRawChannelId == Channel.myCollectionId &&
+        !hasOwnerAddress) {
+      return true;
+    }
+    if (id != Playlist.favoriteId &&
+        rawType == PlaylistType.dp1.value &&
+        rawChannelId != null &&
+        trimmedRawChannelId != rawChannelId &&
+        !hasOwnerAddress) {
+      return true;
+    }
+    if (id == Playlist.favoriteId &&
+        (hasOwnerAddress ||
+            rawType != PlaylistType.favorite.value ||
+            rawChannelId == null ||
+            rawChannelId != Channel.myCollectionId ||
+            row.read<int>('sort_mode') != PlaylistSortMode.provenance.index ||
+            row.read<String>('title') != 'Favorites')) {
+      return true;
+    }
+    if (hasOwnerAddress &&
+        (rawType != PlaylistType.addressBased.value ||
+            id != PlaylistExt.addressPlaylistId(trimmedOwnerAddress) ||
+            rawChannelId == null ||
+            rawChannelId != Channel.myCollectionId ||
+            row.read<int>('sort_mode') != PlaylistSortMode.provenance.index)) {
+      return true;
+    }
+    if (rawType == PlaylistType.dp1.value &&
+        !hasOwnerAddress &&
+        ((row.read<String?>('defaults_json')?.trim().isNotEmpty ?? false) ||
+            (row.read<String?>('dynamic_queries_json')?.trim().isNotEmpty ??
+                false))) {
+      return true;
+    }
+    return false;
   }
 
   bool _playlistNeedsRepair({

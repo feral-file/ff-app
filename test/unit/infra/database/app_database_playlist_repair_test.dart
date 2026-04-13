@@ -1668,16 +1668,133 @@ void main() {
         try {
           _createPlaylistDatabaseWithoutJsonColumns(file: dbFile);
 
-          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final firstOpenDb = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final firstOpenService = DatabaseService(firstOpenDb);
 
           try {
-            // Opening should succeed even though the repair path now knows how
-            // to scrub these columns on demotion. The preflight column guard
-            // must bail out before touching a legacy schema copy that lacks
-            // them.
+            await firstOpenService.getAllPlaylists();
+          } finally {
+            await firstOpenDb.close();
+          }
+
+          expect(_hasPlaylistRepairMarker(file: dbFile), isTrue);
+
+          final secondOpenDb = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final secondOpenService = DatabaseService(secondOpenDb);
+          try {
+            await secondOpenService.getAllPlaylists();
+          } finally {
+            await secondOpenDb.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'writes the playlist repair marker after first successful open',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'playlist-repair-marker.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: const [
+              _RawPlaylistRow(
+                id: 'playlist_marker_target',
+                channelId: 'channel_dp1',
+                type: 0,
+                title: 'Recovered DP1 Playlist',
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+          _insertChannelRow(file: dbFile, id: 'channel_dp1');
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            await service.getAllPlaylists();
           } finally {
             await db.close();
           }
+
+          expect(_hasPlaylistRepairMarker(file: dbFile), isTrue);
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'reruns repair on later opens when a marked db becomes malformed again',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'playlist-repair-marker-reopen.sqlite'),
+        );
+        final personalPlaylistId = canonicalAddressPlaylistId;
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: [
+              _RawPlaylistRow(
+                id: personalPlaylistId,
+                channelId: Channel.myCollectionId,
+                ownerAddress: '0xABCDEF',
+                type: PlaylistType.addressBased.value,
+                title: 'Recovered Personal Playlist',
+                sortMode: PlaylistSortMode.provenance.index,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+          _insertChannelRow(file: dbFile, id: 'channel_dp1');
+
+          final firstOpenDb = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final firstOpenService = DatabaseService(firstOpenDb);
+          try {
+            await firstOpenService.getAllPlaylists();
+          } finally {
+            await firstOpenDb.close();
+          }
+          expect(_hasPlaylistRepairMarker(file: dbFile), isTrue);
+
+          _updatePlaylistIdentity(
+            file: dbFile,
+            playlistId: personalPlaylistId,
+            channelId: 'channel_dp1',
+            title: 'Recovered Personal Playlist',
+          );
+
+          final secondOpenDb = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final secondOpenService = DatabaseService(secondOpenDb);
+          try {
+            await secondOpenService.getAllPlaylists();
+          } finally {
+            await secondOpenDb.close();
+          }
+
+          expect(
+            _readPlaylistChannelId(
+              file: dbFile,
+              playlistId: personalPlaylistId,
+            ),
+            Channel.myCollectionId,
+          );
         } finally {
           await tempDir.delete(recursive: true);
         }
@@ -2127,6 +2244,66 @@ void _createPlaylistDatabaseWithoutJsonColumns({required File file}) {
         0,
       ],
     );
+  } finally {
+    db.dispose();
+  }
+}
+
+bool _hasPlaylistRepairMarker({required File file}) {
+  final db = sqlite3.sqlite3.open(file.path);
+  try {
+    final rows = db.select(
+      '''
+      SELECT 1
+      FROM internal_repair_markers
+      WHERE key = 'playlist_repair_v1_completed'
+      LIMIT 1
+      ''',
+    );
+    return rows.isNotEmpty;
+  } finally {
+    db.dispose();
+  }
+}
+
+void _updatePlaylistIdentity({
+  required File file,
+  required String playlistId,
+  String? ownerAddress,
+  String? channelId,
+  String? title,
+}) {
+  final db = sqlite3.sqlite3.open(file.path);
+  try {
+    db.execute(
+      '''
+      UPDATE playlists
+      SET owner_address = COALESCE(?, owner_address),
+          channel_id = COALESCE(?, channel_id),
+          title = COALESCE(?, title)
+      WHERE id = ?
+      ''',
+      <Object?>[ownerAddress, channelId, title, playlistId],
+    );
+  } finally {
+    db.dispose();
+  }
+}
+
+String? _readPlaylistChannelId({
+  required File file,
+  required String playlistId,
+}) {
+  final db = sqlite3.sqlite3.open(file.path);
+  try {
+    final rows = db.select(
+      'SELECT channel_id FROM playlists WHERE id = ?',
+      <Object?>[playlistId],
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return rows.first.columnAt(0) as String?;
   } finally {
     db.dispose();
   }
