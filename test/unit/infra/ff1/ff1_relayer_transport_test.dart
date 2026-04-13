@@ -177,4 +177,61 @@ void main() {
       expect(transport.isConnected, isFalse);
     },
   );
+
+  test(
+    'connect(forceReconnect: true) after live socket dispatches replacement '
+    'session (no self-suppression)',
+    () async {
+      final transport = FF1RelayerTransport(
+        relayerUrl: 'wss://example.invalid/relayer',
+      );
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+
+      final firstConnected = Completer<void>();
+      final sub = transport.connectionStateStream.listen((connected) {
+        if (connected && !firstConnected.isCompleted) {
+          firstConnected.complete();
+        }
+      });
+      addTearDown(() async {
+        await sub.cancel();
+        await transport.disposeFuture();
+      });
+
+      final ok1 = await transport.connect(
+        device: device,
+        userId: 'user-1',
+        apiKey: 'api-key-1',
+      );
+      expect(ok1, isTrue);
+      await firstConnected.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          fail(
+            'expected relayer isolate to emit connected (live socket) before '
+            'forceReconnect regression assertions',
+          );
+        },
+      );
+      expect(transport.isConnected, isTrue);
+
+      final ok2 = await transport.connect(
+        device: device,
+        userId: 'user-1',
+        apiKey: 'api-key-1',
+        forceReconnect: true,
+      );
+      expect(
+        ok2,
+        isTrue,
+        reason: 'forceReconnect must open a new session after disconnect; '
+            'must not return false solely because disconnect() set suppression',
+      );
+    },
+  );
 }

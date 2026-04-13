@@ -29,7 +29,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 // Relayer transport adapter (WebSocket over cloud)
 // ============================================================================
 
-/// Whether a [disconnected] event from the relayer isolate should update main
+/// Whether a disconnected event from the relayer isolate should update main
 /// transport state. Stale `onDone` / disconnect from a superseded socket
 /// carries an older [eventConnectGen] and must be ignored (PR #361 review
 /// 4097788212).
@@ -210,6 +210,11 @@ class FF1RelayerTransport implements FF1WifiTransport {
     // Disconnect from previous device
     if (_isConnected) {
       await disconnect();
+      // disconnect() sets _reconnectSuppressed for lifecycle/teardown. That must
+      // not block the replacement session this connect() is about to open:
+      // otherwise forceReconnect self-suppresses at _connectInternal (PR #361
+      // review 4097958860).
+      _reconnectSuppressed = false;
     }
 
     // Cache connection parameters for reconnect
