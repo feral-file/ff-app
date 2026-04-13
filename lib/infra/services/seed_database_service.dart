@@ -380,14 +380,16 @@ class SeedDatabaseService {
   /// The replace remains recoverable until the staged artifact has been
   /// promoted to the canonical path. If promotion fails after the old DB is
   /// moved aside, this method restores the previous main DB and sidecars.
-  Future<void> replaceDatabaseFromTemporaryFile(String tempPath) async {
+  Future<void> replaceDatabaseFromTemporaryFile(
+    String tempPath, {
+    SeedDatabaseArtifactMetadata? prevalidatedArtifact,
+  }) async {
     final dbPath = await databasePath();
     final tempFile = File(tempPath);
     if (!tempFile.existsSync()) {
       throw SeedDownloadException('Temporary seed file not found: $tempPath');
     }
 
-    final metadata = validateSeedArtifact(tempPath);
     final dbDir = p.dirname(dbPath);
     final nonce = DateTime.now().microsecondsSinceEpoch;
     final stagingPath = p.join(dbDir, 'dp1_library.sqlite.stage.$nonce');
@@ -403,6 +405,7 @@ class SeedDatabaseService {
     var mainDatabaseBackedUp = false;
 
     try {
+      final metadata = prevalidatedArtifact ?? validateSeedArtifact(tempPath);
       await materializeValidatedArtifactInDatabaseDirectory(
         sourcePath: tempPath,
         stagingPath: stagingPath,
@@ -461,15 +464,12 @@ class SeedDatabaseService {
           canonicalPath: shmPath,
         );
       }
-      // If there was no prior DB (first install) and promotion failed, the only
-      // valid copy may still be at [stagingPath] — do not delete it here.
-      if (mainDatabaseBackedUp || promotedCanonical) {
+      final stagedArtifactExists = File(stagingPath).existsSync();
+      // Failed staged artifacts are never reused by later sync attempts; clean
+      // them up even on first install so repeated failures do not accumulate
+      // orphaned SQLite files in the documents directory.
+      if (mainDatabaseBackedUp || promotedCanonical || stagedArtifactExists) {
         await _cleanupTemp(stagingPath);
-      } else {
-        _log.warning(
-          'Seed replace failed before promotion; leaving staged artifact at '
-          '$stagingPath for retry',
-        );
       }
       await _cleanupTemp(tempPath);
       rethrow;
@@ -495,6 +495,12 @@ class SeedDatabaseService {
         await f.delete();
       } on Object catch (_) {}
     }
+  }
+
+  /// Best-effort cleanup for downloaded seed artifacts that never reached the
+  /// staged swap path. Missing files are expected after successful staging.
+  Future<void> cleanupTemporarySeedArtifact(String tempPath) async {
+    await _cleanupTemp(tempPath);
   }
 
   @visibleForTesting

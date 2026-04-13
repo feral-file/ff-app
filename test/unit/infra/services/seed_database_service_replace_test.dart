@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:app/infra/services/seed_database_artifact_validator.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -53,13 +52,17 @@ void main() {
       final canonical = File(p.join(tempDir.path, 'dp1_library.sqlite'));
       final tempSeed = File(p.join(tempDir.path, 'incoming.sqlite'));
       createSeedArtifactDatabase(file: canonical, userVersion: 2);
-      createSeedArtifactDatabase(file: tempSeed, userVersion: 3);
+      createSeedArtifactDatabase(file: tempSeed);
 
       final service = _SeedDatabaseServiceForReplaceTest(
         dbPath: canonical.path,
       );
+      final metadata = service.validateSeedArtifact(tempSeed.path);
 
-      await service.replaceDatabaseFromTemporaryFile(tempSeed.path);
+      await service.replaceDatabaseFromTemporaryFile(
+        tempSeed.path,
+        prevalidatedArtifact: metadata,
+      );
 
       expect(tempSeed.existsSync(), isFalse);
       final db = sqlite3.sqlite3.open(canonical.path);
@@ -74,8 +77,8 @@ void main() {
     test('restores the previous canonical db when promote fails', () async {
       final canonical = File(p.join(tempDir.path, 'dp1_library.sqlite'));
       final tempSeed = File(p.join(tempDir.path, 'incoming.sqlite'));
-      createSeedArtifactDatabase(file: canonical, userVersion: 3);
-      createSeedArtifactDatabase(file: tempSeed, userVersion: 3);
+      createSeedArtifactDatabase(file: canonical);
+      createSeedArtifactDatabase(file: tempSeed);
 
       final service = _SeedDatabaseServiceForReplaceTest(
         dbPath: canonical.path,
@@ -97,7 +100,7 @@ void main() {
     });
 
     test(
-      'first install: when promote fails, staged artifact remains for retry',
+      'first install: when promote fails, staged artifact is cleaned up',
       () async {
         final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
         expect(File(dbPath).existsSync(), isFalse);
@@ -121,9 +124,7 @@ void main() {
             .whereType<File>()
             .where((f) => p.basename(f.path).contains('.stage.'))
             .toList();
-        expect(staged, isNotEmpty);
-        const validator = SeedDatabaseArtifactValidator();
-        expect(() => validator.validate(staged.first.path), returnsNormally);
+        expect(staged, isEmpty);
       },
     );
 
@@ -132,7 +133,7 @@ void main() {
       () async {
         final canonical = File(p.join(tempDir.path, 'dp1_library.sqlite'));
         final tempSeed = File(p.join(tempDir.path, 'incoming.sqlite'));
-        createSeedArtifactDatabase(file: canonical, userVersion: 3);
+        createSeedArtifactDatabase(file: canonical);
         await tempSeed.writeAsBytes(List<int>.filled(1024, 3));
 
         final service = _SeedDatabaseServiceForReplaceTest(
@@ -144,6 +145,7 @@ void main() {
           throwsException,
         );
 
+        expect(tempSeed.existsSync(), isFalse);
         final db = sqlite3.sqlite3.open(canonical.path);
         try {
           final rows = db.select('PRAGMA user_version');

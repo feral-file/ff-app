@@ -75,6 +75,7 @@ class SeedDatabaseSyncService {
     bool failSilently = false,
     bool Function()? isSessionActive,
   }) async {
+    String? tempPath;
     try {
       final hasLocalDatabase = await _seedDatabaseService.hasLocalDatabase();
 
@@ -136,7 +137,7 @@ class SeedDatabaseSyncService {
         remoteEtag: remoteEtag,
       );
 
-      final tempPath = await _seedDatabaseService.downloadToTemporaryFile(
+      tempPath = await _seedDatabaseService.downloadToTemporaryFile(
         onProgress: onProgress,
       );
       final metadata = _seedDatabaseService.validateSeedArtifact(tempPath);
@@ -152,7 +153,10 @@ class SeedDatabaseSyncService {
         if (isSessionActive != null && !isSessionActive()) return false;
         await beforeReplace();
 
-        await _seedDatabaseService.replaceDatabaseFromTemporaryFile(tempPath);
+        await _seedDatabaseService.replaceDatabaseFromTemporaryFile(
+          tempPath!,
+          prevalidatedArtifact: metadata,
+        );
 
         if (remoteEtag != null && remoteEtag.isNotEmpty) {
           _saveLocalEtag(remoteEtag);
@@ -210,6 +214,10 @@ class SeedDatabaseSyncService {
       if (!failSilently) rethrow;
       _log.warning('Seed database sync skipped: $e');
       return false;
+    } finally {
+      if (tempPath != null) {
+        await _seedDatabaseService.cleanupTemporarySeedArtifact(tempPath);
+      }
     }
   }
 }

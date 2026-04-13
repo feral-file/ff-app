@@ -22,6 +22,8 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
   int downloadCalls = 0;
   int validateCalls = 0;
   int replaceCalls = 0;
+  int cleanupCalls = 0;
+  SeedDatabaseArtifactMetadata? replacePrevalidatedArtifact;
 
   @override
   Future<bool> hasLocalDatabase() async => hasLocal;
@@ -62,11 +64,20 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
   }
 
   @override
-  Future<void> replaceDatabaseFromTemporaryFile(String tempPath) async {
+  Future<void> replaceDatabaseFromTemporaryFile(
+    String tempPath, {
+    SeedDatabaseArtifactMetadata? prevalidatedArtifact,
+  }) async {
     replaceCalls += 1;
+    replacePrevalidatedArtifact = prevalidatedArtifact;
     if (throwOnReplace) {
       throw Exception('Simulated replace failure');
     }
+  }
+
+  @override
+  Future<void> cleanupTemporarySeedArtifact(String tempPath) async {
+    cleanupCalls += 1;
   }
 }
 
@@ -95,6 +106,8 @@ void main() {
       expect(fakeSeedService.downloadCalls, 1);
       expect(fakeSeedService.validateCalls, 1);
       expect(fakeSeedService.replaceCalls, 1);
+      expect(fakeSeedService.replacePrevalidatedArtifact, isNotNull);
+      expect(fakeSeedService.cleanupCalls, 1);
       expect(events, ['before', 'after']);
       expect(localEtag, 'remote-v2');
     });
@@ -181,6 +194,8 @@ void main() {
         expect(fakeSeedService.downloadCalls, 1);
         expect(fakeSeedService.validateCalls, 1);
         expect(fakeSeedService.replaceCalls, 1);
+        expect(fakeSeedService.replacePrevalidatedArtifact, isNotNull);
+        expect(fakeSeedService.cleanupCalls, 1);
         expect(events, ['before', 'after']);
         expect(localEtag, 'same-etag'); // ETag saved after replace (from HEAD)
       },
@@ -214,6 +229,7 @@ void main() {
         expect(changed, isFalse);
         expect(fakeSeedService.validateCalls, 1);
         expect(fakeSeedService.replaceCalls, 1);
+        expect(fakeSeedService.cleanupCalls, 1);
         expect(events, ['before']);
         expect(localEtag, 'local-v1');
       },
@@ -245,6 +261,7 @@ void main() {
         expect(changed, isFalse);
         expect(fakeSeedService.validateCalls, 1);
         expect(fakeSeedService.replaceCalls, 0);
+        expect(fakeSeedService.cleanupCalls, 1);
         expect(events, isEmpty);
       },
     );
@@ -313,6 +330,7 @@ void main() {
         expect(fakeSeedService.downloadCalls, 1);
         expect(fakeSeedService.validateCalls, 1);
         expect(fakeSeedService.replaceCalls, 0);
+        expect(fakeSeedService.cleanupCalls, 1);
         expect(events, isEmpty);
         expect(localEtag, isEmpty);
       },

@@ -52,6 +52,9 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   /// When true, sync returns false immediately (e.g. failed download, no file).
   bool returnFalseWithoutDownload = false;
 
+  /// When true, sync fails after `beforeReplace` has already dropped readiness.
+  bool throwAfterBeforeReplace = false;
+
   /// When skipDownload is false, passed to onDownloadStarted. Use false for
   /// first install (emits syncing), true for update (no syncing).
   bool hasLocalDatabase = false;
@@ -85,6 +88,9 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
       remoteEtag: 'remote',
     );
     await beforeReplace();
+    if (throwAfterBeforeReplace) {
+      throw Exception('Simulated replace failure after beforeReplace');
+    }
     final progress = onProgress;
     if (progress != null) {
       progressValues.forEach(progress);
@@ -486,6 +492,60 @@ void main() {
         onReadyCalled,
         isTrue,
         reason: 'setReady runs onReady when DB replaced',
+      );
+    },
+  );
+
+  test(
+    'restores readiness when sync fails after beforeReplace '
+    'but local DB remains',
+    () async {
+      final fakeSyncService = _FakeSeedDatabaseSyncService()
+        ..hasLocalDatabase = true
+        ..throwAfterBeforeReplace = true;
+      final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(memDb.close);
+      final spy = _SpyDatabaseService(memDb)..snapshotReturnsEmpty = true;
+      var onNotReadyCallCount = 0;
+      var onReadyCallCount = 0;
+      final actions = SeedDatabaseReadyActions(
+        onNotReady: () async {
+          onNotReadyCallCount++;
+        },
+        onReady: () async {
+          onReadyCallCount++;
+        },
+      );
+
+      SeedDatabaseGate.complete();
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+          appDatabaseProvider.overrideWithValue(memDb),
+          rawDatabaseServiceProvider.overrideWithValue(spy),
+          _fakeSeedDbSvc(hasLocal: true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final changed = await container
+          .read(seedDownloadProvider.notifier)
+          .sync();
+
+      expect(changed, isFalse);
+      expect(onNotReadyCallCount, 1);
+      expect(
+        onReadyCallCount,
+        1,
+        reason: 'existing DB remained readable and readiness must reopen',
+      );
+      expect(container.read(isSeedDatabaseReadyProvider), isTrue);
+      expect(SeedDatabaseGate.isCompleted, isTrue);
+      expect(
+        container.read(seedDownloadProvider).status,
+        SeedDownloadStatus.error,
       );
     },
   );

@@ -57,6 +57,10 @@
     (`pendingDp1BootstrapAfterSeed`).
   - **Existing local seed file:** seed sync failure generally continues using the
     on-disk DB; gate completion follows normal sync outcome (see seed services).
+  - **Corrupt or incomplete downloaded seed artifact:** preflight validation
+    rejects the artifact before `beforeReplace` runs, the existing on-disk DB
+    remains live, failed temp artifacts are discarded, and first install stays
+    in lightweight bootstrap until a later valid seed arrives.
   - legacy data exists: onboarding is marked seen and migration runs in background
 
 ### Flow: Onboarding and first-use setup
@@ -166,7 +170,8 @@
 - Offline-first seed database lifecycle
   - What: startup seed download/swap by ETag, `SeedDatabaseGate`, first-install
     lightweight bootstrap vs full DP-1 bootstrap after the file exists, rebind/
-    invalidation, resume/retry sync.
+    invalidation, resume/retry sync, and preflight artifact validation before
+    any DB teardown begins.
   - Who: all users (infrastructure behavior).
   - Touches: `seed_database_*` services/providers, `App` bootstrap orchestration,
     `bootstrap_provider` (`bootstrapWithoutDp1Library`, `pendingDp1BootstrapAfterSeed`).

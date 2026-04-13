@@ -215,6 +215,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     final service = ref.read(seedDatabaseSyncServiceProvider);
     final appStateService = ref.read(appStateServiceProvider);
     final seedReadyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
+    var seedReadinessWasDropped = false;
 
     var lastProgressBucket = -1;
 
@@ -242,6 +243,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
             }
           }
           await seedReadyNotifier.setNotReady();
+          seedReadinessWasDropped = SeedDatabaseGate.isCompleted;
         },
         afterReplace: () async {
           // Ref.onDispose does not await async AppDatabase.close. Invalidating
@@ -312,6 +314,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
           .read(seedDatabaseServiceProvider)
           .hasLocalDatabase();
       if (seedOnDisk) {
+        if (seedReadinessWasDropped) {
+          await seedReadyNotifier.setReady();
+        }
         notifyForceReplaceFinished();
         if (completeSeedDatabaseGate) {
           SeedDatabaseGate.complete();
@@ -342,9 +347,14 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         st,
       );
       if (_isSessionActive(session)) {
+        final seedOnDisk = await ref
+            .read(seedDatabaseServiceProvider)
+            .hasLocalDatabase();
+        if (seedReadinessWasDropped && seedOnDisk) {
+          await seedReadyNotifier.setReady();
+        }
         notifyForceReplaceFinished(success: false, errorMessage: e.toString());
-        if (completeSeedDatabaseGate &&
-            await ref.read(seedDatabaseServiceProvider).hasLocalDatabase()) {
+        if (completeSeedDatabaseGate && seedOnDisk) {
           SeedDatabaseGate.complete();
         }
       }
