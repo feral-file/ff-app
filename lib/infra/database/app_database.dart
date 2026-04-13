@@ -219,6 +219,8 @@ class AppDatabase extends _$AppDatabase {
       'created_at_us',
       'updated_at_us',
       'signatures',
+      'defaults_json',
+      'dynamic_queries_json',
       'sort_mode',
       'item_count',
       'owner_address',
@@ -230,7 +232,8 @@ class AppDatabase extends _$AppDatabase {
     final rows = await customSelect(
       '''
       SELECT id, channel_id, type, title, created_at_us, updated_at_us,
-             signatures, owner_address, sort_mode, item_count
+             signatures, defaults_json, dynamic_queries_json, owner_address,
+             sort_mode, item_count
       FROM playlists
       ORDER BY id
       ''',
@@ -360,6 +363,16 @@ class AppDatabase extends _$AppDatabase {
         final signatures = _repairPlaylistSignaturesJson(
           row.read<String?>('signatures'),
         );
+        final defaultsJson = _repairPlaylistDefaultsJson(
+          rawDefaultsJson: row.read<String?>('defaults_json'),
+          rawType: rawType,
+          typeValue: typeValue,
+        );
+        final dynamicQueriesJson = _repairPlaylistDynamicQueriesJson(
+          rawDynamicQueriesJson: row.read<String?>('dynamic_queries_json'),
+          rawType: rawType,
+          typeValue: typeValue,
+        );
         final sortMode = _repairPlaylistSortModeValue(
           rawSortMode: row.read<int?>('sort_mode'),
           typeValue: typeValue,
@@ -385,6 +398,8 @@ class AppDatabase extends _$AppDatabase {
               created_at_us = ?,
               updated_at_us = ?,
               signatures = ?,
+              defaults_json = ?,
+              dynamic_queries_json = ?,
               sort_mode = ?,
               item_count = ?
           WHERE id = ?
@@ -398,6 +413,8 @@ class AppDatabase extends _$AppDatabase {
             createdAtUs,
             updatedAtUs,
             signatures,
+            defaultsJson,
+            dynamicQueriesJson,
             sortMode,
             itemCount,
             id,
@@ -681,6 +698,10 @@ class AppDatabase extends _$AppDatabase {
     final hasOwnerAddress =
         trimmedOwnerAddress != null && trimmedOwnerAddress.isNotEmpty;
     if (hasOwnerAddress &&
+        id == PlaylistExt.addressPlaylistId(trimmedOwnerAddress)) {
+      return PlaylistType.addressBased.value;
+    }
+    if (hasOwnerAddress &&
         (rawType == PlaylistType.addressBased.value ||
             rawChannelId == Channel.myCollectionId ||
             !hasNonPersonalChannel)) {
@@ -744,6 +765,38 @@ class AppDatabase extends _$AppDatabase {
     final trimmed = rawSignatures?.trim();
     if (trimmed == null || trimmed.isEmpty) {
       return '[]';
+    }
+    return trimmed;
+  }
+
+  String? _repairPlaylistDefaultsJson({
+    required String? rawDefaultsJson,
+    required int? rawType,
+    required int typeValue,
+  }) {
+    if (rawType == PlaylistType.addressBased.value &&
+        typeValue != PlaylistType.addressBased.value) {
+      return null;
+    }
+    final trimmed = rawDefaultsJson?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  String? _repairPlaylistDynamicQueriesJson({
+    required String? rawDynamicQueriesJson,
+    required int? rawType,
+    required int typeValue,
+  }) {
+    if (rawType == PlaylistType.addressBased.value &&
+        typeValue != PlaylistType.addressBased.value) {
+      return null;
+    }
+    final trimmed = rawDynamicQueriesJson?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
     }
     return trimmed;
   }

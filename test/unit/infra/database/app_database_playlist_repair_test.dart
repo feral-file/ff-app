@@ -743,6 +743,54 @@ void main() {
     );
 
     test(
+      'restores canonical address playlists when only channel id drifted',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'canonical-address-channel-drift.sqlite'),
+        );
+
+        try {
+          _createMalformedPlaylistDatabase(
+            file: dbFile,
+            rows: [
+              _RawPlaylistRow(
+                id: canonicalAddressPlaylistId,
+                channelId: 'channel_dp1',
+                ownerAddress: '0xABCDEF',
+                type: 0,
+                title: 'My Collection',
+                sortMode: 0,
+                itemCount: 1,
+                entryCount: 1,
+              ),
+            ],
+          );
+          _insertChannelRow(file: dbFile, id: 'channel_dp1');
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.getAddressPlaylists();
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, canonicalAddressPlaylistId);
+            expect(playlists.single.type, PlaylistType.addressBased);
+            expect(playlists.single.channelId, Channel.myCollectionId);
+            expect(playlists.single.ownerAddress, '0xABCDEF');
+            expect(playlists.single.sortMode, PlaylistSortMode.provenance);
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
       'deletes blank-owner address playlists from my collection',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(
@@ -1229,6 +1277,8 @@ void main() {
                 channelId: '   ',
                 type: 1,
                 title: 'Recovered DP1 Playlist',
+                defaultsJson: '{"layout":"wallet"}',
+                dynamicQueriesJson: '[{"field":"ownerAddress"}]',
                 sortMode: 0,
                 itemCount: 1,
                 entryCount: 1,
@@ -1246,6 +1296,12 @@ void main() {
             expect(playlists.single.type, PlaylistType.dp1);
             expect(playlists.single.ownerAddress, isNull);
             expect(playlists.single.itemCount, 1);
+            final repaired = await service.getPlaylistById(
+              'playlist_address_drifted',
+            );
+            expect(repaired, isNotNull);
+            expect(repaired!.defaults, isNull);
+            expect(repaired.dynamicQueries, isNull);
           } finally {
             await db.close();
           }
@@ -1549,6 +1605,35 @@ void main() {
     );
 
     test(
+      'skips playlist repair safely when legacy db is missing json columns',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_repair_',
+        );
+        final dbFile = File(
+          p.join(tempDir.path, 'playlist-missing-json-columns.sqlite'),
+        );
+
+        try {
+          _createPlaylistDatabaseWithoutJsonColumns(file: dbFile);
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+
+          try {
+            // Opening should succeed even though the repair path now knows how
+            // to scrub these columns on demotion. The preflight column guard
+            // must bail out before touching a legacy schema copy that lacks
+            // them.
+          } finally {
+            await db.close();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
       'rebuilds playlist search when an existing database '
       'is missing fts tables',
       () async {
@@ -1651,6 +1736,8 @@ class _RawPlaylistRow {
     this.createdAtUs = 1,
     this.updatedAtUs = 1,
     this.signatures = '[]',
+    this.defaultsJson,
+    this.dynamicQueriesJson,
     this.ownerAddress,
     this.sortMode,
     this.itemCount,
@@ -1665,6 +1752,8 @@ class _RawPlaylistRow {
   final int? createdAtUs;
   final int? updatedAtUs;
   final String? signatures;
+  final String? defaultsJson;
+  final String? dynamicQueriesJson;
   final String? ownerAddress;
   final int? sortMode;
   final int? itemCount;
@@ -1784,8 +1873,8 @@ void _createMalformedPlaylistDatabase({
           row.updatedAtUs,
           null,
           row.signatures,
-          null,
-          null,
+          row.defaultsJson,
+          row.dynamicQueriesJson,
           row.ownerAddress,
           null,
           row.sortMode,
@@ -1879,6 +1968,113 @@ void _insertChannelRow({
       ) VALUES (?, ?, ?, ?, ?)
       ''',
       <Object?>[id, 0, 'Channel', 1, 1],
+    );
+  } finally {
+    db.dispose();
+  }
+}
+
+void _createPlaylistDatabaseWithoutJsonColumns({required File file}) {
+  final db = sqlite3.sqlite3.open(file.path);
+  try {
+    void executeStatement(
+      String statement, [
+      List<Object?> params = const [],
+    ]) => db.execute(statement, params);
+
+    executeStatement('PRAGMA foreign_keys = ON;');
+    executeStatement('PRAGMA user_version = 3;');
+    executeStatement('''
+      CREATE TABLE publishers (
+        id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL,
+        created_at_us INTEGER NOT NULL,
+        updated_at_us INTEGER NOT NULL
+      )
+    ''');
+    executeStatement('''
+      CREATE TABLE channels (
+        id TEXT PRIMARY KEY,
+        type INTEGER NOT NULL,
+        base_url TEXT,
+        slug TEXT,
+        publisher_id INTEGER,
+        title TEXT NOT NULL,
+        curator TEXT,
+        summary TEXT,
+        cover_image_uri TEXT,
+        created_at_us INTEGER NOT NULL,
+        updated_at_us INTEGER NOT NULL,
+        sort_order INTEGER
+      )
+    ''');
+    executeStatement('''
+      CREATE TABLE playlists (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT,
+        type INTEGER,
+        base_url TEXT,
+        dp_version TEXT,
+        slug TEXT,
+        title TEXT,
+        created_at_us INTEGER,
+        updated_at_us INTEGER,
+        signature TEXT,
+        signatures TEXT,
+        owner_address TEXT,
+        owner_chain TEXT,
+        sort_mode INTEGER,
+        item_count INTEGER
+      )
+    ''');
+    executeStatement('''
+      CREATE TABLE items (
+        id TEXT PRIMARY KEY,
+        kind INTEGER NOT NULL,
+        title TEXT,
+        thumbnail_uri TEXT,
+        duration_sec INTEGER,
+        provenance_json TEXT,
+        source_uri TEXT,
+        ref_uri TEXT,
+        license TEXT,
+        repro_json TEXT,
+        override_json TEXT,
+        display_json TEXT,
+        list_artist_json TEXT,
+        enrichment_status INTEGER NOT NULL DEFAULT 0,
+        updated_at_us INTEGER NOT NULL
+      )
+    ''');
+    executeStatement('''
+      CREATE TABLE playlist_entries (
+        playlist_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        position INTEGER,
+        sort_key_us INTEGER NOT NULL,
+        updated_at_us INTEGER NOT NULL,
+        PRIMARY KEY (playlist_id, item_id)
+      )
+    ''');
+    executeStatement(
+      '''
+      INSERT INTO playlists (
+        id, channel_id, type, title, created_at_us, updated_at_us, signatures,
+        owner_address, sort_mode, item_count
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ''',
+      <Object?>[
+        Playlist.favoriteId,
+        Channel.myCollectionId,
+        PlaylistType.favorite.value,
+        'Favorites',
+        1,
+        1,
+        '[]',
+        null,
+        PlaylistSortMode.provenance.index,
+        0,
+      ],
     );
   } finally {
     db.dispose();
