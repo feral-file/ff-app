@@ -347,12 +347,53 @@ void main() {
       expect(control.isDeviceConnected, isFalse);
       expect((await nextDisconnected).isConnected, isFalse);
     });
+
+    test(
+      'superseded connect completion does not pause transport over newer '
+      'session',
+      () async {
+        final transport = _OverlappingConnectTransport();
+        final control = FF1WifiControl(transport: transport);
+
+        addTearDown(control.dispose);
+
+        const deviceA = FF1Device(
+          name: 'FF1',
+          remoteId: 'remote-1',
+          deviceId: 'device-1',
+          topicId: 'topic-1',
+        );
+        const deviceB = FF1Device(
+          name: 'FF1',
+          remoteId: 'remote-2',
+          deviceId: 'device-2',
+          topicId: 'topic-2',
+        );
+
+        final firstConnect = control.connect(
+          device: deviceA,
+          userId: 'u',
+          apiKey: 'k',
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        await control.connect(
+          device: deviceB,
+          userId: 'u',
+          apiKey: 'k',
+        );
+
+        transport.releaseFirstConnect();
+        await firstConnect;
+
+        expect(transport.pauseConnectionCount, 0);
+      },
+    );
   });
 
   group('FF1WifiControl.reconnect', () {
     test(
-      'returns false and tears down transport when superseded before '
-      'transport connect completes',
+      'returns false when superseded before transport connect completes',
       () async {
         final transport = _ReconnectRaceTransport();
         final control = FF1WifiControl(transport: transport);
@@ -383,7 +424,9 @@ void main() {
 
         final ok = await reconnectFuture;
         expect(ok, isFalse);
-        expect(transport.pauseConnectionCount, greaterThanOrEqualTo(1));
+        // Stale reconnect must not call transport.pause (only the explicit
+        // control.pauseConnection above should).
+        expect(transport.pauseConnectionCount, 1);
       },
     );
   });
@@ -432,6 +475,77 @@ class _ReconnectRaceTransport implements FF1WifiTransport {
     if (connectInvocationCount >= 2) {
       _pendingSecondConnect = Completer<void>();
       await _pendingSecondConnect!.future;
+    }
+  }
+
+  @override
+  void pauseConnection() {
+    pauseConnectionCount++;
+  }
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
+}
+
+/// First [connect] blocks until [releaseFirstConnect]; later [connect] calls
+/// return immediately so two overlapping control connects can be modeled.
+class _OverlappingConnectTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+
+  int _connectCalls = 0;
+  Completer<void>? _firstConnectBlock;
+  int pauseConnectionCount = 0;
+
+  void releaseFirstConnect() {
+    _firstConnectBlock?.complete();
+    _firstConnectBlock = null;
+  }
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    _connectCalls++;
+    if (_connectCalls == 1) {
+      _firstConnectBlock = Completer<void>();
+      await _firstConnectBlock!.future;
+      return;
     }
   }
 

@@ -217,14 +217,17 @@ class FF1WifiControl {
         apiKey: apiKey,
       );
       if (connectOpGen != _wifiOpGeneration) {
+        // Do not call `_transport.pauseConnection()` here: a newer connect,
+        // reconnect, or pause already owns the transport. Pausing from this
+        // stale completion would tear down the winner's in-flight session.
         _slog.info(
           category: LogCategory.wifi,
           event: 'control_connect_superseded',
           message:
-              'connect completed after a newer Wi‑Fi operation — tearing down',
+              'connect completed after a newer Wi‑Fi operation — ignoring '
+              'stale result (no transport mutation)',
           payload: {'flowId': flowId, 'deviceId': device.deviceId},
         );
-        _transport.pauseConnection();
         return;
       }
       _slog.info(
@@ -649,11 +652,15 @@ class FF1WifiControl {
         forceReconnect: true,
       );
       if (opGen != _wifiOpGeneration) {
+        // Same rationale as [connect]: never pause transport from a stale
+        // completion — the newer operation (e.g. user connect, lifecycle pause)
+        // already decided transport fate.
         _slog.info(
           category: LogCategory.wifi,
           event: 'reconnect_superseded_after_await',
           message:
-              'reconnect completed after a newer Wi‑Fi operation — tearing down',
+              'reconnect completed after a newer Wi‑Fi operation — ignoring '
+              'stale result (no transport mutation)',
           payload: {
             'flowId': flowId,
             'deviceId': _device?.deviceId,
@@ -661,7 +668,6 @@ class FF1WifiControl {
             'currentGeneration': _wifiOpGeneration,
           },
         );
-        _transport.pauseConnection();
         return false;
       }
       _slog
