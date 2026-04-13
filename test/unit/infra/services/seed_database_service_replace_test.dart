@@ -129,6 +129,39 @@ void main() {
     );
 
     test(
+      'restores canonical db when backup move uses rename fallback '
+      'and promote fails',
+      () async {
+        addTearDown(SeedDatabaseService.resetMoveFileDebugForTest);
+        final canonical = File(p.join(tempDir.path, 'dp1_library.sqlite'));
+        final tempSeed = File(p.join(tempDir.path, 'incoming.sqlite'));
+        createSeedArtifactDatabase(file: canonical);
+        createSeedArtifactDatabase(file: tempSeed);
+
+        // Move order: 1) temp→staging 2) canonical→backup (sim. rename fail).
+        SeedDatabaseService.debugSimulateRenameFailureOnMoveCallOneBased = 2;
+
+        final service = _SeedDatabaseServiceForReplaceTest(
+          dbPath: canonical.path,
+          throwOnPromote: true,
+        );
+
+        await expectLater(
+          () => service.replaceDatabaseFromTemporaryFile(tempSeed.path),
+          throwsException,
+        );
+
+        final db = sqlite3.sqlite3.open(canonical.path);
+        try {
+          final rows = db.select('PRAGMA user_version');
+          expect(rows.first.columnAt(0), 3);
+        } finally {
+          db.dispose();
+        }
+      },
+    );
+
+    test(
       'rejects invalid temp artifacts without touching the canonical db',
       () async {
         final canonical = File(p.join(tempDir.path, 'dp1_library.sqlite'));

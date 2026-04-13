@@ -384,6 +384,8 @@ class SeedDatabaseService {
     String tempPath, {
     SeedDatabaseArtifactMetadata? prevalidatedArtifact,
   }) async {
+    // Fresh sequence for each replace so debug hooks (tests) match call order.
+    SeedDatabaseService.moveFileInvocationCountForTest = 0;
     final dbPath = await databasePath();
     final tempFile = File(tempPath);
     if (!tempFile.existsSync()) {
@@ -567,6 +569,24 @@ class SeedDatabaseService {
     }
   }
 
+  /// Test-only: resets [moveFileInvocationCountForTest] and
+  /// [debugSimulateRenameFailureOnMoveCallOneBased].
+  @visibleForTesting
+  static void resetMoveFileDebugForTest() {
+    moveFileInvocationCountForTest = 0;
+    debugSimulateRenameFailureOnMoveCallOneBased = null;
+  }
+
+  /// 1-based index into [moveFileInvocationCountForTest] for the current
+  /// replace: when set, that move call throws before rename so the
+  /// copy/delete fallback runs (regression: backup exists after fallback).
+  @visibleForTesting
+  static int? debugSimulateRenameFailureOnMoveCallOneBased;
+
+  /// Current [replaceDatabaseFromTemporaryFile] move step (1-based), for tests.
+  @visibleForTesting
+  static int moveFileInvocationCountForTest = 0;
+
   Future<void> _moveFile({
     required String sourcePath,
     required String targetPath,
@@ -577,6 +597,15 @@ class SeedDatabaseService {
     }
 
     try {
+      SeedDatabaseService.moveFileInvocationCountForTest++;
+      if (debugSimulateRenameFailureOnMoveCallOneBased != null &&
+          SeedDatabaseService.moveFileInvocationCountForTest ==
+              debugSimulateRenameFailureOnMoveCallOneBased) {
+        throw FileSystemException(
+          'simulated rename failure for test',
+          sourcePath,
+        );
+      }
       await source.rename(targetPath);
       return;
     } on FileSystemException {

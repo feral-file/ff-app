@@ -146,6 +146,51 @@ class _OverlappingSeedSyncRaceFake implements SeedDatabaseSyncService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// Session 1 blocks after `beforeReplace`; session 2 throws before
+/// `beforeReplace` (overlap: session 1 dropped readiness).
+class _OverlapFailBeforeSecondBeforeReplaceFake
+    implements SeedDatabaseSyncService {
+  _OverlapFailBeforeSecondBeforeReplaceFake({
+    required Completer<void> blockAfterBeforeReplace,
+  }) : _block = blockAfterBeforeReplace;
+
+  final Completer<void> _block;
+  int syncCallCount = 0;
+
+  @override
+  Future<bool> sync({
+    required Future<void> Function() beforeReplace,
+    required Future<void> Function() afterReplace,
+    bool forceReplace = false,
+    void Function({
+      required bool hasLocalDatabase,
+      String? localEtag,
+      String? remoteEtag,
+    })?
+    onDownloadStarted,
+    void Function(double progress)? onProgress,
+    bool failSilently = false,
+    bool Function()? isSessionActive,
+  }) async {
+    syncCallCount++;
+    if (syncCallCount == 1) {
+      onDownloadStarted?.call(
+        hasLocalDatabase: true,
+        localEtag: 'local',
+        remoteEtag: 'remote',
+      );
+      await beforeReplace();
+      await _block.future;
+      await afterReplace();
+      return true;
+    }
+    throw Exception('sync2 failed before replace');
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 final _noOpActions = SeedDatabaseReadyActions(
   onNotReady: _noOpFuture,
   onReady: _noOpFuture,
@@ -731,6 +776,7 @@ void main() {
   test(
     'overridden session restores readiness when it completed replace',
     () async {
+      SeedDatabaseGate.complete();
       final completer = Completer<void>();
       final fakeSyncService = _FakeSeedDatabaseSyncService();
       final slowFake = _SlowFakeSeedDatabaseSyncService(
@@ -780,6 +826,57 @@ void main() {
         SeedDownloadStatus.done,
         reason: 'final state from active session',
       );
+      expect(
+        SeedDatabaseGate.isCompleted,
+        isTrue,
+        reason:
+            'superseded session must open SeedDatabaseGate when replace ran',
+      );
+    },
+  );
+
+  test(
+    'restores readiness when overlapping sync fails before beforeReplace '
+    'but local DB remains',
+    () async {
+      SeedDatabaseGate.complete();
+      final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(memDb.close);
+      final block = Completer<void>();
+      final fake = _OverlapFailBeforeSecondBeforeReplaceFake(
+        blockAfterBeforeReplace: block,
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fake),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+          appDatabaseProvider.overrideWithValue(memDb),
+          rawDatabaseServiceProvider.overrideWithValue(
+            _SpyDatabaseService(memDb)..snapshotReturnsEmpty = true,
+          ),
+          _fakeSeedDbSvc(hasLocal: true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(seedDownloadProvider.notifier);
+      final sync1Future = notifier.sync();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(container.read(isSeedDatabaseReadyProvider), isFalse);
+
+      await notifier.sync();
+
+      expect(
+        container.read(isSeedDatabaseReadyProvider),
+        isTrue,
+        reason:
+            'Session 1 dropped readiness; session 2 failed before its '
+            'beforeReplace — readiness must still reflect DB on disk.',
+      );
+      block.complete();
+      await sync1Future;
     },
   );
 }

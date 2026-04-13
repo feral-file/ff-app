@@ -215,7 +215,6 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     final service = ref.read(seedDatabaseSyncServiceProvider);
     final appStateService = ref.read(appStateServiceProvider);
     final seedReadyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
-    var seedReadinessWasDropped = false;
 
     var lastProgressBucket = -1;
 
@@ -243,7 +242,6 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
             }
           }
           await seedReadyNotifier.setNotReady();
-          seedReadinessWasDropped = SeedDatabaseGate.isCompleted;
         },
         afterReplace: () async {
           // Ref.onDispose does not await async AppDatabase.close. Invalidating
@@ -295,6 +293,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         // in finally when no sync remains in flight.
         if (updated) {
           await seedReadyNotifier.setReady();
+          if (completeSeedDatabaseGate) {
+            SeedDatabaseGate.complete();
+          }
           _appendSessionSnapshotToPendingFavorites(session);
         }
         return false;
@@ -314,7 +315,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
           .read(seedDatabaseServiceProvider)
           .hasLocalDatabase();
       if (seedOnDisk) {
-        if (seedReadinessWasDropped) {
+        // Restore when any prior session dropped readiness (e.g. overlap where
+        // this session never reached beforeReplace so it has no local flag).
+        if (!ref.read(isSeedDatabaseReadyProvider)) {
           await seedReadyNotifier.setReady();
         }
         notifyForceReplaceFinished();
@@ -350,7 +353,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         final seedOnDisk = await ref
             .read(seedDatabaseServiceProvider)
             .hasLocalDatabase();
-        if (seedReadinessWasDropped && seedOnDisk) {
+        if (seedOnDisk && !ref.read(isSeedDatabaseReadyProvider)) {
           await seedReadyNotifier.setReady();
         }
         notifyForceReplaceFinished(success: false, errorMessage: e.toString());
