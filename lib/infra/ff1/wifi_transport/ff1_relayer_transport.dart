@@ -150,10 +150,10 @@ class FF1RelayerTransport implements FF1WifiTransport {
       throw error;
     }
 
-    // Clear reconnect suppression on any connect. If only cleared on forceReconnect,
-    // a manual connect after app was backgrounded (before any device connected)
-    // would leave _reconnectSuppressed stuck true, silently disabling
-    // auto-reconnect for the rest of the session.
+    // Clear reconnect suppression on any connect. If only cleared on
+    // forceReconnect, a manual connect after app was backgrounded (before any
+    // device connected) would leave _reconnectSuppressed stuck true, silently
+    // disabling auto-reconnect for the rest of the session.
     _reconnectSuppressed = false;
 
     // Already connected to same device (skip when forceReconnect)
@@ -198,8 +198,9 @@ class FF1RelayerTransport implements FF1WifiTransport {
           'isConnecting': _isConnecting,
         },
       );
+    } on FF1WifiConnectionCancelledError {
+      rethrow;
     } catch (e) {
-      _isConnecting = false;
       _lastError = e.toString();
       final error = FF1WifiConnectionError(
         'Failed to connect to relayer',
@@ -262,6 +263,22 @@ class FF1RelayerTransport implements FF1WifiTransport {
       }
     }
 
+    // [pauseConnection] can run while we await isolate spawn/ready. Do not
+    // enqueue a connect control after pause — the isolate could still open
+    // the socket and defeat background disconnect.
+    if (_reconnectSuppressed) {
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'transport_connect_suppressed_after_pause',
+        message:
+            'connect aborted: lifecycle paused during transport preparation',
+        payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
+      );
+      throw const FF1WifiConnectionCancelledError(
+        'Relayer connect cancelled (app paused during connect preparation)',
+      );
+    }
+
     // Send connect control message
     final control = _RelayerControlMessage(
       type: _RelayerControlType.connect,
@@ -299,7 +316,8 @@ class FF1RelayerTransport implements FF1WifiTransport {
       },
     );
 
-    // Single-flight teardown: if already tearing down, wait for ongoing teardown
+    // Single-flight teardown: if already tearing down, wait for ongoing
+    // teardown.
     if (_reconnectSuppressed && _teardownCompleter != null) {
       _slog.info(
         category: LogCategory.wifi,
@@ -398,7 +416,8 @@ disconnect requested while teardown in progress; waiting existing teardown''',
       if (!completer.isCompleted) {
         completer.complete();
       }
-      // Clear completer after completion to allow fresh teardown cycle next time
+      // Clear completer after completion to allow fresh teardown cycle next
+      // time.
       _teardownCompleter = null;
       _slog.info(
         category: LogCategory.wifi,
@@ -425,9 +444,10 @@ disconnect requested while teardown in progress; waiting existing teardown''',
       },
     );
 
-    // Always cancel reconnect timers and set suppression flag, even when already
-    // disconnected. After a network drop, the transport can be !_isConnected
-    // but still have an active _reconnectTimer from _scheduleReconnect().
+    // Always cancel reconnect timers and set suppression flag, even when
+    // already disconnected. After a network drop, the transport can be
+    // !_isConnected but still have an active _reconnectTimer from
+    // _scheduleReconnect().
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectSuppressed = true;
@@ -615,7 +635,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
             if (!_notificationController.isClosed) {
               _notificationController.add(notification);
             }
-          } catch (e) {
+          } on Object catch (e) {
             _log.warning('Failed to parse notification: $e');
             _slog.warning(
               category: LogCategory.wifi,
@@ -709,7 +729,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
       );
       try {
         await _connectInternal();
-      } catch (e) {
+      } on Object catch (e) {
         _slog.warning(
           category: LogCategory.wifi,
           event: 'ws_reconnect_attempt_failed',
@@ -722,6 +742,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
     });
   }
 
+  /// Last connection error string from the relayer transport, if any.
   String? get lastError => _lastError;
 }
 
@@ -877,47 +898,59 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
     }
   }
 
-  controlPort.listen((dynamic rawMessage) async {
-    if (rawMessage is! Map) {
-      _relayerIsolateLog(
-        'control_ignored_non_map',
-        'ignored non-map control: ${rawMessage.runtimeType}',
+  // Process control messages strictly in order. Async `listen` callbacks can
+  // otherwise overlap; for example disconnect could run while a prior connect
+  // is still opening the WebSocket, then emit connected after disconnect.
+  var controlChain = Future<void>.value();
+  controlPort.listen((dynamic rawMessage) {
+    controlChain = controlChain.then((_) async {
+      if (rawMessage is! Map) {
+        _relayerIsolateLog(
+          'control_ignored_non_map',
+          'ignored non-map control: ${rawMessage.runtimeType}',
+        );
+        return;
+      }
+
+      final control = _RelayerControlMessage.fromJson(
+        Map<String, dynamic>.from(rawMessage),
       );
-      return;
-    }
 
-    final control = _RelayerControlMessage.fromJson(
-      Map<String, dynamic>.from(rawMessage),
-    );
+      switch (control.type) {
+        case _RelayerControlType.connect:
+          _relayerIsolateLog(
+            'control_connect',
+            'connect control received',
+          );
+          wsUrl = control.data?['wsUrl'] as String?;
+          await closeChannel();
+          await connect();
 
-    switch (control.type) {
-      case _RelayerControlType.connect:
-        _relayerIsolateLog(
-          'control_connect',
-          'connect control received',
-        );
-        wsUrl = control.data?['wsUrl'] as String?;
-        await closeChannel();
-        await connect();
+        case _RelayerControlType.disconnect:
+          _relayerIsolateLog(
+            'control_disconnect',
+            'disconnect control received',
+          );
+          unawaited(closeChannel());
+          const event = _RelayerEventMessage(
+            type: _RelayerEventType.disconnected,
+          );
+          mainSendPort.send(event.toJson());
+          _relayerIsolateLog(
+            'disconnect_event_sent',
+            'sent disconnected to main after disconnect control',
+          );
 
-      case _RelayerControlType.disconnect:
-        _relayerIsolateLog('control_disconnect', 'disconnect control received');
-        unawaited(closeChannel());
-        const event = _RelayerEventMessage(
-          type: _RelayerEventType.disconnected,
-        );
-        mainSendPort.send(event.toJson());
-        _relayerIsolateLog(
-          'disconnect_event_sent',
-          'sent disconnected to main after disconnect control',
-        );
-
-      case _RelayerControlType.dispose:
-        _relayerIsolateLog('control_dispose', 'dispose control received');
-        unawaited(closeChannel());
-        controlPort.close();
-        _relayerIsolateLog('control_port_closed', 'control ReceivePort closed');
-    }
+        case _RelayerControlType.dispose:
+          _relayerIsolateLog('control_dispose', 'dispose control received');
+          unawaited(closeChannel());
+          controlPort.close();
+          _relayerIsolateLog(
+            'control_port_closed',
+            'control ReceivePort closed',
+          );
+      }
+    });
   });
 }
 

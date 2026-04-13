@@ -4,6 +4,7 @@ import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
+import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -156,70 +157,23 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
             .read(ff1SetupOrchestratorProvider.notifier)
             .hasGuidedSetupSession;
         if (hasGuided) {
-          unawaited(
-            () async {
-              if (mounted) {
-                setState(() {
-                  _guidedCompletionPending = true;
-                  if (connected.portalIsSet) {
-                    _portalReadyCompletionPending = true;
-                    _portalReadyDevice = connected.ff1device;
-                  }
-                });
-              }
-              try {
-                await ref
-                    .read(ff1SetupOrchestratorProvider.notifier)
-                    .completeSession(
-                      connected.ff1device,
-                      shouldNavigate: !connected.portalIsSet,
-                    );
-              } on Object catch (e, st) {
-                _log.warning(
-                  '[ConnectFF1Page] Guided session completion failed',
-                  e,
-                  st,
-                );
-                if (!mounted) {
-                  return;
-                }
-                setState(() {
-                  _guidedCompletionPending = false;
-                  _portalReadyCompletionPending = false;
-                });
-                await UIHelper.showInfoDialog(
-                  context,
-                  'Setup could not finish',
-                  'We couldn’t finish saving your FF1 setup. Please try again.',
-                  closeButton: 'Close',
-                );
-                if (!mounted) {
-                  return;
-                }
-                context.pop();
-                return;
-              }
-              if (connected.portalIsSet && mounted) {
-                setState(() {
-                  _guidedCompletionPending = false;
-                  _portalReadyCompletionPending = false;
-                  _portalReadySessionCompleted = true;
-                  _portalReadyDevice = connected.ff1device;
-                });
-              } else if (mounted) {
-                setState(() {
-                  _guidedCompletionPending = false;
-                });
-              }
-            }(),
-          );
+          if (connected.portalIsSet) {
+            unawaited(
+              _completeGuidedPortalSession(
+                connected.ff1device,
+                navigateAfterCompletion: false,
+              ),
+            );
+          } else {
+            unawaited(_completeGuidedDirectSuccess(connected.ff1device));
+          }
           return true;
         }
-        if (!connected.portalIsSet && context.mounted) {
-          await _exitConnectSuccess(
-            tearDownBeforeNavigate: true,
-            preservePortalUi: false,
-          );
+        if (!context.mounted) {
+          return false;
+        }
+        if (!connected.portalIsSet) {
+          await _completeDirectSuccessExit(preservePortalUi: false);
         }
         return true;
       case FF1SetupNeedsWiFi(:final device):
@@ -362,6 +316,205 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     unawaited(GoRouter.of(context).replace<void>(Routes.deviceConfiguration));
   }
 
+  Future<void> _completeDirectSuccessExit({
+    required bool preservePortalUi,
+  }) async {
+    if (_guidedCompletionPending || _successExitPending || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _successExitPending = true;
+      _successExitShowsPortal = preservePortalUi;
+    });
+
+    try {
+      await ref.read(onboardingActionsProvider).completeOnboarding();
+      await ref
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .tearDownAfterSetupComplete();
+    } on Object catch (e, st) {
+      _log.warning(
+        '[ConnectFF1Page] Direct success completion failed',
+        e,
+        st,
+      );
+      if (mounted) {
+        setState(() {
+          _successExitPending = false;
+          _successExitShowsPortal = false;
+        });
+      }
+      if (!mounted) {
+        return;
+      }
+      final dialogContext = context;
+      if (!dialogContext.mounted) {
+        return;
+      }
+      await UIHelper.showInfoDialog(
+        dialogContext,
+        'Setup could not finish',
+        'We couldn’t finish saving your FF1 setup. Please try again.',
+        closeButton: 'Close',
+      );
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+    unawaited(GoRouter.of(context).replace<void>(Routes.deviceConfiguration));
+  }
+
+  Future<void> _completeGuidedDirectSuccess(FF1Device device) async {
+    if (_guidedCompletionPending || _successExitPending || !mounted) {
+      return;
+    }
+
+    // Guided BLE success resets orchestrator/connect state before the route
+    // replacement runs. Latch the success chrome locally first so the page
+    // cannot flash back to the default "Connecting" copy for a frame.
+    setState(() {
+      _guidedCompletionPending = true;
+      _successExitPending = true;
+      _successExitShowsPortal = false;
+    });
+
+    try {
+      final completed = await ref
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .completeSession(device, shouldNavigate: false);
+      if (!completed) {
+        // No-op when another completion is in flight; if the session is gone,
+        // finish like standalone connect so onboarding and teardown still run.
+        final orchestrator =
+            ref.read(ff1SetupOrchestratorProvider.notifier);
+        if (!orchestrator.hasGuidedSetupSession) {
+          await _completeDirectSuccessExit(preservePortalUi: false);
+        }
+        return;
+      }
+    } on Object catch (e, st) {
+      _log.warning(
+        '[ConnectFF1Page] Guided session completion failed',
+        e,
+        st,
+      );
+      if (mounted) {
+        setState(() {
+          _guidedCompletionPending = false;
+          _successExitPending = false;
+          _successExitShowsPortal = false;
+        });
+      }
+      if (!mounted) {
+        return;
+      }
+      final dialogContext = context;
+      if (!dialogContext.mounted) {
+        return;
+      }
+      await UIHelper.showInfoDialog(
+        dialogContext,
+        'Setup could not finish',
+        'We couldn’t finish saving your FF1 setup. Please try again.',
+        closeButton: 'Close',
+      );
+      if (!mounted) {
+        return;
+      }
+      await ref
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .cancelSession(FF1SetupSessionCancelReason.userAborted);
+      if (!mounted) {
+        return;
+      }
+      GoRouter.of(context).pop();
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _guidedCompletionPending = false;
+    });
+    unawaited(GoRouter.of(context).replace<void>(Routes.deviceConfiguration));
+  }
+
+  Future<void> _completeGuidedPortalSession(
+    FF1Device device, {
+    required bool navigateAfterCompletion,
+  }) async {
+    if (_portalReadyCompletionPending || _successExitPending || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _guidedCompletionPending = true;
+      _portalReadyCompletionPending = true;
+      _portalReadyDevice = device;
+    });
+
+    try {
+      final completed = await ref
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .completeSession(device, shouldNavigate: false);
+      if (!completed) {
+        final orchestrator =
+            ref.read(ff1SetupOrchestratorProvider.notifier);
+        if (!orchestrator.hasGuidedSetupSession) {
+          await _completeDirectSuccessExit(preservePortalUi: true);
+        }
+        return;
+      }
+    } on Object catch (e, st) {
+      _log.warning(
+        '[ConnectFF1Page] Guided portal completion failed',
+        e,
+        st,
+      );
+      if (mounted) {
+        setState(() {
+          _guidedCompletionPending = false;
+          _portalReadyCompletionPending = false;
+          _portalReadySessionCompleted = false;
+        });
+      }
+      if (!mounted) {
+        return;
+      }
+      final dialogContext = context;
+      if (!dialogContext.mounted) {
+        return;
+      }
+      await UIHelper.showInfoDialog(
+        dialogContext,
+        'Setup could not finish',
+        'We couldn’t finish saving your FF1 setup. Please try again.',
+        closeButton: 'Close',
+      );
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _guidedCompletionPending = false;
+      _portalReadyCompletionPending = false;
+      _portalReadySessionCompleted = true;
+      _portalReadyDevice = device;
+    });
+    if (navigateAfterCompletion) {
+      await _exitConnectSuccess(
+        tearDownBeforeNavigate: false,
+        preservePortalUi: true,
+      );
+    }
+  }
+
   Future<void> _onPortalGoToSettings() async {
     final setup = ref.read(ff1SetupOrchestratorProvider);
     final device = setup.connected?.ff1device ?? _portalReadyDevice;
@@ -375,14 +528,22 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     if (_portalReadyCompletionPending) {
       return;
     }
-    if (_portalReadyDevice != null && !_portalReadySessionCompleted) {
-      return;
-    }
     final isGuidedPortalFlow =
         ref.read(ff1SetupOrchestratorProvider.notifier).hasGuidedSetupSession ||
         _portalReadyDevice != null;
+    if (isGuidedPortalFlow && !_portalReadySessionCompleted) {
+      await _completeGuidedPortalSession(
+        device,
+        navigateAfterCompletion: true,
+      );
+      return;
+    }
+    if (!isGuidedPortalFlow) {
+      await _completeDirectSuccessExit(preservePortalUi: true);
+      return;
+    }
     await _exitConnectSuccess(
-      tearDownBeforeNavigate: !isGuidedPortalFlow,
+      tearDownBeforeNavigate: false,
       preservePortalUi: true,
     );
   }
@@ -430,7 +591,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     AsyncValue<ConnectFF1State> connectAsync,
   ) {
     if (_shouldShowPortalIsSet(setupState)) {
-      return _portalIsSetView(context, ref, setupState);
+      return _portalIsSetView(context);
     }
 
     final ble = _bleConnectionStatus(connectAsync);
@@ -443,17 +604,8 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     };
   }
 
-  Widget _portalIsSetView(
-    BuildContext context,
-    WidgetRef ref,
-    FF1SetupState setupState,
-  ) {
-    final isGuidedPortalFlow =
-        ref.read(ff1SetupOrchestratorProvider.notifier).hasGuidedSetupSession ||
-        _portalReadyDevice != null;
-    final canGoToSettings =
-        !isGuidedPortalFlow ||
-        (!_portalReadyCompletionPending && _portalReadySessionCompleted);
+  Widget _portalIsSetView(BuildContext context) {
+    final canGoToSettings = !_portalReadyCompletionPending;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

@@ -1,4 +1,3 @@
-import 'package:app/domain/extensions/ff1_device_info_ext.dart';
 import 'package:app/domain/models/ff1_device_info.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -54,41 +53,6 @@ void main() {
       expect(info, isNotNull);
       expect(info!.deviceId, 'x');
       expect(info.topicId, 'y');
-    });
-  });
-
-  group('FF1DeviceInfo.isPortalAllSet', () {
-    test('true when topic is non-empty and device is online', () {
-      const info = FF1DeviceInfo(
-        deviceId: 'd',
-        topicId: 't1',
-        isConnectedToInternet: true,
-        branchName: 'release',
-        version: '1',
-      );
-      expect(info.isPortalAllSet, isTrue);
-    });
-
-    test('false when topic is empty', () {
-      const info = FF1DeviceInfo(
-        deviceId: 'd',
-        topicId: '',
-        isConnectedToInternet: true,
-        branchName: 'release',
-        version: '1',
-      );
-      expect(info.isPortalAllSet, isFalse);
-    });
-
-    test('false when not connected to internet', () {
-      const info = FF1DeviceInfo(
-        deviceId: 'd',
-        topicId: 't1',
-        isConnectedToInternet: false,
-        branchName: 'release',
-        version: '1',
-      );
-      expect(info.isPortalAllSet, isFalse);
     });
   });
 }

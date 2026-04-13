@@ -146,3 +146,12 @@ class FF1WifiTransportUnavailableError extends FF1WifiTransportError {
     super.originalError,
   });
 }
+
+/// Connect was aborted because lifecycle paused (or equivalent) while the
+/// relayer transport was still preparing or before connect was dispatched.
+///
+/// Not a user-facing failure: callers should treat as a no-op, not Sentry.
+class FF1WifiConnectionCancelledError extends FF1WifiTransportError {
+  /// Creates a cancelled connect error.
+  const FF1WifiConnectionCancelledError(super.message, {super.originalError});
+}

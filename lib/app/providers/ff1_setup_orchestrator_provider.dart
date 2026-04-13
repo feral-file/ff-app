@@ -370,21 +370,23 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   /// [FF1Device.topicId] is set), disconnects BLE, and optionally resets
   /// ephemeral setup state + navigates to device configuration.
   ///
-  /// No-op when there is no active setup session (caller should treat as
-  /// already-finished / abandoned cleanup).
-  Future<void> completeSession(
+  /// Returns `false` when there is no active setup session (caller should run
+  /// standalone success completion: `completeOnboarding()` then
+  /// [tearDownAfterSetupComplete]). Returns `true` when the session finished
+  /// successfully. Rethrows on persistence or onboarding failure.
+  Future<bool> completeSession(
     FF1Device device, {
     bool shouldNavigate = true,
   }) async {
     _ensureListenersRegistered();
     final session = _activeSession;
     if (session == null) {
-      return;
+      return false;
     }
     final sessionId = session.id;
     if (_sessionCompletionInProgress) {
       _log.info('completeSession ignored: completion already in progress');
-      return;
+      return false;
     }
     // Keep the guided session owned until completion succeeds. That preserves
     // a durable recovery owner if persistence/onboarding writes fail, while a
@@ -421,6 +423,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     if (shouldNavigate) {
       _goToDeviceConfigurationAfterSessionComplete();
     }
+    return true;
   }
 
   /// Session completion routes here; legacy Wi‑Fi flow still uses effects.

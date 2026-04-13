@@ -28,6 +28,7 @@ void main() {
     'to device configuration after teardown',
     (tester) async {
       final device = BluetoothDevice.fromId('00:11:22:33:44:55');
+      final appState = _MockAppStateService();
 
       const connectedState = ConnectFF1Connected(
         ff1device: FF1Device(
@@ -55,7 +56,7 @@ void main() {
           onboardingActionsProvider.overrideWith(
             (ref) => OnboardingService(
               ref: ref,
-              appStateService: _MockAppStateService(),
+              appStateService: appState,
             ),
           ),
         ],
@@ -141,14 +142,16 @@ void main() {
         container.read(connectFF1Provider).asData?.value,
         isA<ConnectFF1Initial>(),
       );
+      verify(appState.setHasSeenOnboarding(hasSeen: true)).called(1);
     },
   );
 
   testWidgets(
-    'guided completion disables cancel until non-portal setup finishes',
+    'guided non-portal completion latches success UI until navigation finishes',
     (tester) async {
       final device = BluetoothDevice.fromId('00:11:22:33:44:55');
       final addDeviceCompleter = Completer<void>();
+      var navigatedToConfig = false;
 
       const connectedState = ConnectFF1Connected(
         ff1device: FF1Device(
@@ -218,6 +221,15 @@ void main() {
                     return ConnectFF1Page(payload: payload);
                   },
                 ),
+                GoRoute(
+                  path: Routes.deviceConfiguration,
+                  builder: (context, state) {
+                    navigatedToConfig = true;
+                    return const Scaffold(
+                      body: Text('DEVICE_CONFIGURATION_MARKER'),
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -241,6 +253,7 @@ void main() {
             .onPressed,
         isNull,
       );
+      expect(find.text('Connected to FF1'), findsOneWidget);
 
       await tester.tap(find.byKey(GoldPathPatrolKeys.connectFF1Cancel));
       await tester.pump();
@@ -251,12 +264,17 @@ void main() {
       );
 
       addDeviceCompleter.complete();
+      await tester.pump();
+
+      expect(navigatedToConfig, isTrue);
+      expect(find.text('Connecting via Bluetooth...'), findsNothing);
       await tester.pumpAndSettle();
 
       expect(
         container.read(ff1SetupOrchestratorProvider).activeSession,
         isNull,
       );
+      expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsOneWidget);
     },
   );
 
@@ -265,6 +283,7 @@ void main() {
     (tester) async {
       final device = BluetoothDevice.fromId('00:11:22:33:44:55');
       var navigatedToConfig = false;
+      final appState = _MockAppStateService();
 
       const connectedState = ConnectFF1Connected(
         ff1device: FF1Device(
@@ -292,7 +311,7 @@ void main() {
           onboardingActionsProvider.overrideWith(
             (ref) => OnboardingService(
               ref: ref,
-              appStateService: _MockAppStateService(),
+              appStateService: appState,
             ),
           ),
         ],
@@ -389,6 +408,7 @@ void main() {
         container.read(connectFF1Provider).asData?.value,
         isA<ConnectFF1Initial>(),
       );
+      verify(appState.setHasSeenOnboarding(hasSeen: true)).called(1);
     },
   );
 
@@ -628,9 +648,11 @@ void main() {
   );
 
   testWidgets(
-    'guided completion failure shows recovery dialog and pops back to caller',
+    'guided portal completion failure stays retryable from the same screen',
     (tester) async {
       final device = BluetoothDevice.fromId('00:11:22:33:44:55');
+      final retryingActions = _FailOnceFF1BluetoothDeviceActionsNotifier();
+      var navigatedToConfig = false;
 
       const connectedState = ConnectFF1Connected(
         ff1device: FF1Device(
@@ -653,7 +675,7 @@ void main() {
             FF1BleControl(transport: _NoopBleTransport()),
           ),
           ff1BluetoothDeviceActionsProvider.overrideWith(
-            _ThrowingFF1BluetoothDeviceActionsNotifier.new,
+            () => retryingActions,
           ),
           onboardingActionsProvider.overrideWith(
             (ref) => OnboardingService(
@@ -707,6 +729,15 @@ void main() {
                     return ConnectFF1Page(payload: payload);
                   },
                 ),
+                GoRoute(
+                  path: Routes.deviceConfiguration,
+                  builder: (context, state) {
+                    navigatedToConfig = true;
+                    return const Scaffold(
+                      body: Text('DEVICE_CONFIGURATION_MARKER'),
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -726,10 +757,22 @@ void main() {
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Open connect page'), findsOneWidget);
+      expect(find.text('The FF1 is All Set'), findsOneWidget);
+      expect(find.text('Go to Settings'), findsOneWidget);
       expect(
         container.read(ff1SetupOrchestratorProvider).activeSession,
         isNotNull,
+      );
+
+      await tester.tap(find.text('Go to Settings'));
+      await tester.pumpAndSettle();
+
+      expect(retryingActions.attempts, 2);
+      expect(navigatedToConfig, isTrue);
+      expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsOneWidget);
+      expect(
+        container.read(ff1SetupOrchestratorProvider).activeSession,
+        isNull,
       );
     },
   );
@@ -954,14 +997,19 @@ class _BlockingFF1BluetoothDeviceActionsNotifier
   }
 }
 
-class _ThrowingFF1BluetoothDeviceActionsNotifier
+class _FailOnceFF1BluetoothDeviceActionsNotifier
     extends FF1BluetoothDeviceActionsNotifier {
+  int attempts = 0;
+
   @override
   void build() {}
 
   @override
   Future<void> addDevice(FF1Device device) async {
-    throw StateError('persist failed');
+    attempts++;
+    if (attempts == 1) {
+      throw StateError('persist failed');
+    }
   }
 }
 

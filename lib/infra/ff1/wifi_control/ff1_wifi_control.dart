@@ -222,6 +222,15 @@ class FF1WifiControl {
           'transportConnecting': _transport.isConnecting,
         },
       );
+    } on FF1WifiConnectionCancelledError {
+      // Pause won the race during transport prep; transport did not open a new
+      // socket. Not a failure for callers or telemetry.
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'control_connect_cancelled_by_pause',
+        message: 'connect cancelled because app paused during transport connect',
+        payload: {'flowId': flowId, 'deviceId': device.deviceId},
+      );
     } catch (e) {
       _log.severe('Failed to connect: $e');
       _slog.warning(
@@ -637,6 +646,14 @@ transport reconnected — waiting for device connection notification''',
             'isDeviceConnected': _isDeviceConnected,
           },
         );
+    } on FF1WifiConnectionCancelledError {
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'reconnect_cancelled_by_pause',
+        message:
+            'reconnect transport connect cancelled (pause during preparation)',
+        payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
+      );
     } catch (e) {
       _slog.warning(
         category: LogCategory.wifi,

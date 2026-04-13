@@ -179,16 +179,19 @@ void main() {
       );
       addTearDown(keepAlive.close);
 
-      await container
-          .read(ff1SetupOrchestratorProvider.notifier)
-          .completeSession(
-            const FF1Device(
-              name: 'FF1',
-              remoteId: '00:11',
-              deviceId: 'FF1-1',
-              topicId: 'topic-1',
+      expect(
+        await container
+            .read(ff1SetupOrchestratorProvider.notifier)
+            .completeSession(
+              const FF1Device(
+                name: 'FF1',
+                remoteId: '00:11',
+                deviceId: 'FF1-1',
+                topicId: 'topic-1',
+              ),
             ),
-          );
+        isFalse,
+      );
       await container
           .read(ff1SetupOrchestratorProvider.notifier)
           .cancelSession(FF1SetupSessionCancelReason.userAborted);
