@@ -296,8 +296,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
             _emitEffect(
               const FF1SetupShowError(
                 title: 'Setup could not finish',
-                message:
-                    "We couldn't save your FF1 setup. Please try again.",
+                message: "We couldn't save your FF1 setup. Please try again.",
                 showSupportCta: true,
               ),
             );
@@ -343,6 +342,25 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   /// notifier field of record and cannot go stale relative to `_activeSession`.
   bool get hasGuidedSetupSession => _activeSession != null;
 
+  /// Whether [sessionIdAtEmission] still matches the current guided session.
+  ///
+  /// UI effect handlers must capture [FF1SetupSession.id] when an effect is
+  /// emitted (from [FF1SetupState.activeSession]) and verify this before any
+  /// success side effect runs asynchronously. Otherwise [cancelSession] can
+  /// clear `_activeSession` after the effect was queued but before the handler
+  /// runs, and re-reading [hasGuidedSetupSession] would wrongly treat the flow
+  /// as standalone.
+  ///
+  /// - `null`: effect was emitted with no guided session; safe only while
+  ///   `_activeSession` is still null (a new guided session invalidates).
+  /// - non-null: must equal `_activeSession?.id`.
+  bool matchesSessionForEffect(String? sessionIdAtEmission) {
+    if (sessionIdAtEmission == null) {
+      return _activeSession == null;
+    }
+    return _activeSession?.id == sessionIdAtEmission;
+  }
+
   /// Starts a new guided setup session (idempotent if one is already active).
   void startSession() {
     _ensureListenersRegistered();
@@ -370,10 +388,11 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   /// [FF1Device.topicId] is set), disconnects BLE, and optionally resets
   /// ephemeral setup state + navigates to device configuration.
   ///
-  /// Returns `false` when there is no active setup session (caller should run
-  /// standalone success completion: `completeOnboarding()` then
-  /// [tearDownAfterSetupComplete]). Returns `true` when the session finished
-  /// successfully. Rethrows on persistence or onboarding failure.
+  /// Returns `false` when there is no active setup session. Callers must not
+  /// infer "run standalone completion" from that alone — [cancelSession] also
+  /// clears the session; use [matchesSessionForEffect] with the id captured
+  /// when the success effect was emitted. Returns `true` when the session
+  /// finished successfully. Rethrows on persistence or onboarding failure.
   Future<bool> completeSession(
     FF1Device device, {
     bool shouldNavigate = true,

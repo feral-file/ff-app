@@ -91,9 +91,17 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
         final effectId = next.effectId;
         final effect = next.effect;
         if (previous?.effectId != effectId && effect != null) {
+          // Bind success handling to the session that existed when the effect
+          // was emitted; async handlers must not re-read
+          // [hasGuidedSetupSession] after [cancelSession] may have cleared the
+          // guided session.
+          final sessionIdAtEmission = next.activeSession?.id;
           final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
           unawaited(() async {
-            final didHandle = await _handleOrchestratorEffect(effect);
+            final didHandle = await _handleOrchestratorEffect(
+              effect,
+              sessionIdAtEmission: sessionIdAtEmission,
+            );
             if (didHandle) {
               orchestrator.ackEffect(effectId: effectId);
             }
@@ -149,18 +157,19 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     );
   }
 
-  Future<bool> _handleOrchestratorEffect(FF1SetupEffect effect) async {
+  Future<bool> _handleOrchestratorEffect(
+    FF1SetupEffect effect, {
+    required String? sessionIdAtEmission,
+  }) async {
     switch (effect) {
       case FF1SetupInternetReady(:final connected):
         _recordDuration(success: true);
-        final hasGuided = ref
-            .read(ff1SetupOrchestratorProvider.notifier)
-            .hasGuidedSetupSession;
-        if (hasGuided) {
+        if (sessionIdAtEmission != null) {
           if (connected.portalIsSet) {
             unawaited(
               _completeGuidedPortalSession(
                 connected.ff1device,
+                sessionIdAtEmission: sessionIdAtEmission,
                 navigateAfterCompletion: false,
                 shouldNavigate: !connected.portalIsSet,
               ),
@@ -169,6 +178,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
             unawaited(
               _completeGuidedDirectSuccess(
                 connected.ff1device,
+                sessionIdAtEmission: sessionIdAtEmission,
                 shouldNavigate: !connected.portalIsSet,
               ),
             );
@@ -179,6 +189,10 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
         // leaving setup. If the portal is already configured, keep the portal
         // screen until the user taps Go to Settings.
         if (connected.portalIsSet) {
+          return true;
+        }
+        final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
+        if (!orchestrator.matchesSessionForEffect(null)) {
           return true;
         }
         unawaited(_completeDirectSuccessExit(preservePortalUi: false));
@@ -327,6 +341,11 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     required bool preservePortalUi,
     bool bypassPendingGuard = false,
   }) async {
+    if (!ref
+        .read(ff1SetupOrchestratorProvider.notifier)
+        .matchesSessionForEffect(null)) {
+      return;
+    }
     if (!bypassPendingGuard &&
         (_guidedCompletionPending || _successExitPending || !mounted)) {
       return;
@@ -385,8 +404,14 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
   Future<void> _completeGuidedDirectSuccess(
     FF1Device device, {
+    required String sessionIdAtEmission,
     required bool shouldNavigate,
   }) async {
+    if (!ref
+        .read(ff1SetupOrchestratorProvider.notifier)
+        .matchesSessionForEffect(sessionIdAtEmission)) {
+      return;
+    }
     if (_guidedCompletionPending || _successExitPending || !mounted) {
       return;
     }
@@ -408,15 +433,12 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           .read(ff1SetupOrchestratorProvider.notifier)
           .completeSession(device, shouldNavigate: shouldNavigate);
       if (!completed) {
-        // No-op when another completion is in flight; if the session is gone,
-        // finish like standalone connect so onboarding and teardown still run.
-        final orchestrator =
-            ref.read(ff1SetupOrchestratorProvider.notifier);
-        if (!orchestrator.hasGuidedSetupSession) {
-          await _completeDirectSuccessExit(
-            preservePortalUi: false,
-            bypassPendingGuard: true,
-          );
+        if (mounted) {
+          setState(() {
+            _guidedCompletionPending = false;
+            _successExitPending = false;
+            _successExitShowsPortal = false;
+          });
         }
         return;
       }
@@ -472,9 +494,15 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
   Future<void> _completeGuidedPortalSession(
     FF1Device device, {
+    required String sessionIdAtEmission,
     required bool navigateAfterCompletion,
     required bool shouldNavigate,
   }) async {
+    if (!ref
+        .read(ff1SetupOrchestratorProvider.notifier)
+        .matchesSessionForEffect(sessionIdAtEmission)) {
+      return;
+    }
     if (_portalReadyCompletionPending || _successExitPending || !mounted) {
       return;
     }
@@ -490,19 +518,12 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           .read(ff1SetupOrchestratorProvider.notifier)
           .completeSession(device, shouldNavigate: shouldNavigate);
       if (!completed) {
-        final orchestrator =
-            ref.read(ff1SetupOrchestratorProvider.notifier);
-        if (!orchestrator.hasGuidedSetupSession) {
-          if (mounted) {
-            setState(() {
-              _portalReadyCompletionPending = false;
-              _portalReadySessionCompleted = false;
-            });
-          }
-          await _completeDirectSuccessExit(
-            preservePortalUi: true,
-            bypassPendingGuard: true,
-          );
+        if (mounted) {
+          setState(() {
+            _guidedCompletionPending = false;
+            _portalReadyCompletionPending = false;
+            _portalReadySessionCompleted = false;
+          });
         }
         return;
       }
@@ -569,8 +590,16 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
         ref.read(ff1SetupOrchestratorProvider.notifier).hasGuidedSetupSession ||
         _portalReadyDevice != null;
     if (isGuidedPortalFlow && !_portalReadySessionCompleted) {
+      final sessionId = ref
+          .read(ff1SetupOrchestratorProvider)
+          .activeSession
+          ?.id;
+      if (sessionId == null) {
+        return;
+      }
       await _completeGuidedPortalSession(
         device,
+        sessionIdAtEmission: sessionId,
         navigateAfterCompletion: true,
         shouldNavigate: false,
       );

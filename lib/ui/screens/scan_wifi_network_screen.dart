@@ -69,9 +69,13 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
           return;
         }
 
+        final sessionIdAtEmission = next.activeSession?.id;
         final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
         unawaited(() async {
-          final didHandle = await _handleOrchestratorEffect(effect);
+          final didHandle = await _handleOrchestratorEffect(
+            effect,
+            sessionIdAtEmission: sessionIdAtEmission,
+          );
           if (didHandle) {
             orchestrator.ackEffect(effectId: effectId);
           }
@@ -442,7 +446,15 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
     );
   }
 
-  Future<bool> _handleOrchestratorEffect(FF1SetupEffect effect) async {
+  Future<bool> _handleOrchestratorEffect(
+    FF1SetupEffect effect, {
+    required String? sessionIdAtEmission,
+  }) async {
+    // Parity with other setup screens; scan routes do not yet branch on this.
+    assert(
+      sessionIdAtEmission == null || sessionIdAtEmission.isNotEmpty,
+      'session id, when present, must be non-empty',
+    );
     switch (effect) {
       case FF1SetupEnterWifiPassword(:final device, :final wifiAccessPoint):
         if (!mounted) return false;

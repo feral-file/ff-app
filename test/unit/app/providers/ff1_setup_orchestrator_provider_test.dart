@@ -208,6 +208,42 @@ void main() {
   );
 
   test(
+    'matchesSessionForEffect rejects stale ids after cancel (UI effect bind)',
+    () async {
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+          connectWiFiProvider.overrideWith(
+            () => _FakeWiFiNotifier(const WiFiConnectionState()),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final keepAlive = container.listen(
+        ff1SetupOrchestratorProvider,
+        (_, _) {},
+      );
+      addTearDown(keepAlive.close);
+
+      final notifier = container.read(ff1SetupOrchestratorProvider.notifier);
+      expect(notifier.matchesSessionForEffect(null), isTrue);
+
+      notifier.startSession();
+      final id = container.read(ff1SetupOrchestratorProvider).activeSession!.id;
+      expect(notifier.matchesSessionForEffect(null), isFalse);
+      expect(notifier.matchesSessionForEffect(id), isTrue);
+      expect(notifier.matchesSessionForEffect('other-id'), isFalse);
+
+      await notifier.cancelSession(FF1SetupSessionCancelReason.userAborted);
+      expect(notifier.matchesSessionForEffect(null), isTrue);
+      expect(notifier.matchesSessionForEffect(id), isFalse);
+    },
+  );
+
+  test(
     'completeSession keeps active session until async completion succeeds',
     () async {
       final addDeviceCompleter = Completer<void>();
@@ -311,14 +347,16 @@ void main() {
       container.read(ff1SetupOrchestratorProvider.notifier).startSession();
 
       await expectLater(
-        container.read(ff1SetupOrchestratorProvider.notifier).completeSession(
-          const FF1Device(
-            name: 'FF1',
-            remoteId: '00:11',
-            deviceId: 'FF1-1',
-            topicId: 'topic-1',
-          ),
-        ),
+        container
+            .read(ff1SetupOrchestratorProvider.notifier)
+            .completeSession(
+              const FF1Device(
+                name: 'FF1',
+                remoteId: '00:11',
+                deviceId: 'FF1-1',
+                topicId: 'topic-1',
+              ),
+            ),
         throwsA(isA<StateError>()),
       );
 

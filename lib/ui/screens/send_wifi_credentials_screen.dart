@@ -123,9 +123,13 @@ class _EnterWiFiPasswordScreenState
           _log.info(
             '[effect] received: id=$effectId, type=${effect.runtimeType}',
           );
+          final sessionIdAtEmission = next.activeSession?.id;
           final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
           unawaited(() async {
-            final didHandle = await _handleOrchestratorEffect(effect);
+            final didHandle = await _handleOrchestratorEffect(
+              effect,
+              sessionIdAtEmission: sessionIdAtEmission,
+            );
             _log.info(
               '[effect] handled=$didHandle for id=$effectId, '
               'type=${effect.runtimeType}',
@@ -205,11 +209,19 @@ class _EnterWiFiPasswordScreenState
         );
   }
 
-  Future<bool> _handleOrchestratorEffect(FF1SetupEffect effect) async {
+  Future<bool> _handleOrchestratorEffect(
+    FF1SetupEffect effect, {
+    required String? sessionIdAtEmission,
+  }) async {
     switch (effect) {
       case FF1SetupNavigate(:final route, :final extra, :final method):
         if (!mounted) return false;
         if (route == Routes.deviceConfiguration) {
+          if (!ref
+              .read(ff1SetupOrchestratorProvider.notifier)
+              .matchesSessionForEffect(sessionIdAtEmission)) {
+            return true;
+          }
           try {
             await ref.read(onboardingActionsProvider).completeOnboarding();
             await ref
