@@ -917,6 +917,8 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
           Map<String, dynamic>.from(rawMessage),
         );
 
+        // Each case is independent: Dart `switch` does not fall through to the
+        // next case (unlike C/Java), so connect/disconnect/dispose are not chained.
         switch (control.type) {
           case _RelayerControlType.connect:
             _relayerIsolateLog(

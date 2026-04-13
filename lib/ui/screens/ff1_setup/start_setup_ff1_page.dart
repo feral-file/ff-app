@@ -193,19 +193,22 @@ class _StartSetupFf1PageState extends ConsumerState<StartSetupFf1Page> {
   }
 
   Future<void> _handleQRBasedSetup(String deeplink) async {
-    _setupOrchestrator.ensureActiveSetupSession();
+    // Validate before ensureActiveSetupSession so a malformed QR does not
+    // leave a guided session active until this route disposes.
+    final ff1DeviceInfo = FF1DeviceInfo.fromDeeplink(deeplink);
+    if (ff1DeviceInfo == null) {
+      _log.warning('[StartSetupFf1Page] Invalid deeplink: $deeplink');
+      return;
+    }
+
     final hasDoneOnboarding = await ref.read(hasDoneOnboardingProvider.future);
     if (!mounted) {
       return;
     }
 
-    if (hasDoneOnboarding) {
-      final ff1DeviceInfo = FF1DeviceInfo.fromDeeplink(deeplink);
-      if (ff1DeviceInfo == null) {
-        _log.warning('[StartSetupFf1Page] Invalid deeplink: $deeplink');
-        return;
-      }
+    _setupOrchestrator.ensureActiveSetupSession();
 
+    if (hasDoneOnboarding) {
       await context.push(
         Routes.ff1DeviceScanPage,
         extra: FF1DeviceScanPagePayload(
