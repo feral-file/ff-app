@@ -74,9 +74,11 @@ class InactiveRelayerWifiPauseCoordinator {
     switch (action) {
       case WifiPauseDebouncerAction.cancelTimerOnly:
         _cancelPendingTimer(reason: 'lifecycle_${state.name}');
+        return;
       case WifiPauseDebouncerAction.cancelTimerAndPauseWifiNow:
         _cancelPendingTimer(reason: 'lifecycle_${state.name}_immediate_pause');
         pauseRelayerWifi();
+        return;
       case WifiPauseDebouncerAction.scheduleInactiveTimerIfNone:
         if (_timer != null) {
           structuredLog.info(
@@ -119,6 +121,7 @@ class InactiveRelayerWifiPauseCoordinator {
           );
           pauseRelayerWifi();
         });
+        return;
     }
   }
 
