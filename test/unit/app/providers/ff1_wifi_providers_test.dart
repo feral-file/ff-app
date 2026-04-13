@@ -94,6 +94,79 @@ void main() {
   });
 
   test(
+    'reconnect clears notifier connected when control.reconnect returns false',
+    () async {
+      final wifiControl = _ReconnectFalseControl();
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+
+      await container.read(ff1WifiConnectionProvider.notifier).connect(
+        device: device,
+        userId: 'u1',
+        apiKey: 'k1',
+      );
+      expect(container.read(ff1WifiConnectionProvider).isConnected, isTrue);
+
+      await container.read(ff1WifiConnectionProvider.notifier).reconnect();
+
+      final after = container.read(ff1WifiConnectionProvider);
+      expect(after.isConnected, isFalse);
+      expect(after.isConnecting, isFalse);
+      expect(after.device?.deviceId, device.deviceId);
+    },
+  );
+
+  test(
+    'reconnect keeps notifier connected when control.reconnect returns true',
+    () async {
+      final wifiControl = FakeWifiControl();
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+
+      await container.read(ff1WifiConnectionProvider.notifier).connect(
+        device: device,
+        userId: 'u1',
+        apiKey: 'k1',
+      );
+      expect(container.read(ff1WifiConnectionProvider).isConnected, isTrue);
+
+      await container.read(ff1WifiConnectionProvider.notifier).reconnect();
+
+      final after = container.read(ff1WifiConnectionProvider);
+      expect(after.isConnected, isTrue);
+      expect(after.isConnecting, isFalse);
+    },
+  );
+
+  test(
     'stale connect completion does not clear newer connect spinner',
     () async {
       final transport = _OverlappingNotifierConnectTransport();
@@ -1314,6 +1387,14 @@ class _RecordingVersionService extends VersionService {
     deviceVersions.add(deviceVersion);
     return VersionCompatibilityResult.compatible;
   }
+}
+
+/// Control that always reports reconnect failure (notifier must clear state).
+class _ReconnectFalseControl extends FakeWifiControl {
+  _ReconnectFalseControl() : super();
+
+  @override
+  Future<bool> reconnect() async => false;
 }
 
 class _AutoStatusWifiControl extends FakeWifiControl {

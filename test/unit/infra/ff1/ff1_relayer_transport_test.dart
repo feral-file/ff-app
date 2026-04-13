@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_relayer_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -15,7 +18,8 @@ void main() {
   );
 
   test(
-    'concurrent disconnect calls share single teardown completer (cycle 1 and 2)',
+    'concurrent disconnect calls share single teardown completer '
+    '(cycle 1 and 2)',
     () async {
       final transport = FF1RelayerTransport(
         relayerUrl: 'wss://example.invalid/relayer',
@@ -41,7 +45,8 @@ void main() {
       final cycle2Duration = DateTime.now().difference(cycle2Start);
 
       // If completer wasn't reset, cycle 2 would complete immediately (< 50ms).
-      // With proper reset, cycle 2 should also have the 100ms delay from teardown.
+      // With proper reset, cycle 2 should also have the 100ms delay from
+      // teardown.
       expect(cycle2Duration.inMilliseconds, greaterThan(80),
           reason: 'Cycle 2 must execute full teardown, not reuse completed '
               'completer from cycle 1 (proves completer was reset)');
@@ -53,10 +58,7 @@ void main() {
     () async {
       final transport = FF1RelayerTransport(
         relayerUrl: 'wss://example.invalid/relayer',
-      );
-
-      // Call dispose
-      transport.dispose();
+      )..dispose();
 
       // Wait for any pending async operations
       await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -67,14 +69,12 @@ void main() {
   );
 
   test(
-    'connectionStateStream does not throw when added to after close during dispose',
+    'connectionStateStream does not throw when added to after close '
+    'during dispose',
     () async {
       final transport = FF1RelayerTransport(
         relayerUrl: 'wss://example.invalid/relayer',
-      );
-
-      // Dispose the transport
-      transport.dispose();
+      )..dispose();
 
       // Wait to allow async dispose to complete
       await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -86,6 +86,48 @@ void main() {
         },
         returnsNormally,
       );
+    },
+  );
+
+  test(
+    'pause skips queued connect control before it reaches isolate',
+    () async {
+      final reachedDispatchBoundary = Completer<void>();
+      final releaseDispatch = Completer<void>();
+      final transport = FF1RelayerTransport(
+        relayerUrl: 'wss://example.invalid/relayer',
+        debugBeforeConnectControlDispatch: () {
+          reachedDispatchBoundary.complete();
+          return releaseDispatch.future;
+        },
+      );
+      final events = <bool>[];
+      final sub = transport.connectionStateStream.listen(events.add);
+
+      addTearDown(() async {
+        await sub.cancel();
+        await transport.disposeFuture();
+      });
+
+      final connectFuture = transport.connect(
+        device: const FF1Device(
+          name: 'FF1',
+          remoteId: 'remote-1',
+          deviceId: 'device-1',
+          topicId: 'topic-1',
+        ),
+        userId: 'user-1',
+        apiKey: 'api-key-1',
+      );
+
+      await reachedDispatchBoundary.future;
+      transport.pauseConnection();
+      releaseDispatch.complete();
+      await connectFuture;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+
+      expect(events.where((isConnected) => isConnected), isEmpty);
+      expect(transport.isConnected, isFalse);
     },
   );
 }

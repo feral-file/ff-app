@@ -214,7 +214,7 @@
 - route / entry point: `/add-address`
 - important actions: submit input, scan QR, continue to alias or complete
 - dependencies: `addAddressFlowProvider`, `scanQrProvider`, address/domain services
-- notes / caveats: duplicate and invalid-input errors are explicit and distinct
+- notes / caveats: duplicate and invalid-input errors are explicit and distinct; focus and post-frame work use `scheduleRequestFocusWhenLaidOut` / `schedulePostFrameIfMounted` so navigation after layout does not assert on disposed `BuildContext`
 
 ## Screen: AddAliasScreen
 
@@ -222,7 +222,7 @@
 - route / entry point: `/add-alias` (requires payload)
 - important actions: submit alias or skip
 - dependencies: `addAliasProvider`, `addressService`
-- notes / caveats: successful completion pops both alias and add-address routes
+- notes / caveats: successful completion pops both alias and add-address routes; same deferred focus / post-frame helpers as Add Address when requesting focus after route transitions
 
 ## Screen: PlaylistDetailScreen
 

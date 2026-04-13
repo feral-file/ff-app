@@ -42,8 +42,10 @@ class FF1RelayerTransport implements FF1WifiTransport {
   FF1RelayerTransport({
     required String relayerUrl,
     Logger? logger,
+    Future<void> Function()? debugBeforeConnectControlDispatch,
   }) : _relayerUrl = relayerUrl,
-       _log = logger ?? Logger('FF1RelayerTransport') {
+       _log = logger ?? Logger('FF1RelayerTransport'),
+       _debugBeforeConnectControlDispatch = debugBeforeConnectControlDispatch {
     _slog = AppStructuredLog.forLogger(
       _log,
       context: {'component': 'ff1_relayer_transport'},
@@ -53,6 +55,7 @@ class FF1RelayerTransport implements FF1WifiTransport {
   final String _relayerUrl;
   final Logger _log;
   late final StructuredLogger _slog;
+  final Future<void> Function()? _debugBeforeConnectControlDispatch;
 
   // Connection state
   bool _isConnected = false;
@@ -91,6 +94,14 @@ class FF1RelayerTransport implements FF1WifiTransport {
   // Single-flight teardown: shared completer ensures concurrent disconnect()
   // and dispose() calls do not race each other on stream adds/closes.
   Completer<void>? _teardownCompleter;
+
+  /// Monotonic id for each connect control sent (pairs with expected gen).
+  int _connectSeq = 0;
+
+  /// Set synchronously when connect control is sent; cleared on pause/disconnect.
+  /// Isolate echoes `connectGen` in the connected event; we ignore events that
+  /// do not match, or any event after pause cleared the expectation (PR #361).
+  int? _expectedConnectedGen;
 
   int _flowSequence = 0;
 
@@ -150,10 +161,10 @@ class FF1RelayerTransport implements FF1WifiTransport {
       throw error;
     }
 
-    // Clear reconnect suppression on any connect. If only cleared on forceReconnect,
-    // a manual connect after app was backgrounded (before any device connected)
-    // would leave _reconnectSuppressed stuck true, silently disabling
-    // auto-reconnect for the rest of the session.
+    // Clear reconnect suppression on any connect. If only cleared on
+    // forceReconnect, a manual connect after app was backgrounded (before any
+    // device connected) would leave _reconnectSuppressed stuck true, silently
+    // disabling auto-reconnect for the rest of the session.
     _reconnectSuppressed = false;
 
     // Already connected to same device (skip when forceReconnect)
@@ -262,10 +273,31 @@ class FF1RelayerTransport implements FF1WifiTransport {
       }
     }
 
-    // Send connect control message
+    if (_debugBeforeConnectControlDispatch != null) {
+      await _debugBeforeConnectControlDispatch();
+    }
+
+    if (_reconnectSuppressed) {
+      // App lifecycle pause/disconnect may win while connect is still waiting
+      // for isolate startup. In that case, do not dispatch a stale connect
+      // control after the background transition, or the isolate can open a
+      // socket that app state has already decided must stay down.
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'transport_connect_control_skipped_suppressed',
+        message: 'connect control skipped because transport is suppressed',
+        payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
+      );
+      return;
+    }
+
+    // Send connect control message. wireGen is assigned here with no await
+    // after — see PR #361: pause() must not invalidate before this runs.
+    final wireGen = ++_connectSeq;
+    _expectedConnectedGen = wireGen;
     final control = _RelayerControlMessage(
       type: _RelayerControlType.connect,
-      data: {'wsUrl': wsUrl},
+      data: {'wsUrl': wsUrl, 'connectGen': wireGen},
     );
     _isolateSendPort?.send(control.toJson());
     _slog.info(
@@ -299,7 +331,8 @@ class FF1RelayerTransport implements FF1WifiTransport {
       },
     );
 
-    // Single-flight teardown: if already tearing down, wait for ongoing teardown
+    // Single-flight teardown: if already tearing down, wait for ongoing
+    // teardown
     if (_reconnectSuppressed && _teardownCompleter != null) {
       _slog.info(
         category: LogCategory.wifi,
@@ -319,6 +352,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
     }
 
     _reconnectSuppressed = true;
+    _expectedConnectedGen = null;
     _teardownCompleter ??= Completer<void>();
     final completer = _teardownCompleter!;
 
@@ -398,7 +432,8 @@ disconnect requested while teardown in progress; waiting existing teardown''',
       if (!completer.isCompleted) {
         completer.complete();
       }
-      // Clear completer after completion to allow fresh teardown cycle next time
+      // Clear completer after completion to allow fresh teardown cycle next
+      // time
       _teardownCompleter = null;
       _slog.info(
         category: LogCategory.wifi,
@@ -411,6 +446,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
 
   @override
   void pauseConnection() {
+    _expectedConnectedGen = null;
     final flowId = _nextFlowId('pause');
     _log.info('Pausing relayer connection (app background)');
     _slog.info(
@@ -425,9 +461,10 @@ disconnect requested while teardown in progress; waiting existing teardown''',
       },
     );
 
-    // Always cancel reconnect timers and set suppression flag, even when already
-    // disconnected. After a network drop, the transport can be !_isConnected
-    // but still have an active _reconnectTimer from _scheduleReconnect().
+    // Always cancel reconnect timers and set suppression flag, even when
+    // already disconnected. After a network drop, the transport can be
+    // !_isConnected but still have an active _reconnectTimer from
+    // _scheduleReconnect().
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectSuppressed = true;
@@ -540,6 +577,24 @@ disconnect requested while teardown in progress; waiting existing teardown''',
         }
 
       case _RelayerEventType.connected:
+        final connectGen = event.data?['connectGen'] as int?;
+        if (connectGen == null ||
+            _expectedConnectedGen == null ||
+            connectGen != _expectedConnectedGen) {
+          _slog.info(
+            category: LogCategory.wifi,
+            event: 'ws_connected_ignored_stale',
+            message: 'ignoring connected event (stale vs pause/disconnect or '
+                'newer connect)',
+            payload: {
+              'deviceId': _device?.deviceId,
+              'eventConnectGen': connectGen,
+              'expectedConnectGen': _expectedConnectedGen,
+            },
+          );
+          break;
+        }
+        _expectedConnectedGen = null;
         _isConnected = true;
         _lastError = null;
         _reconnectAttempts = 0;
@@ -615,7 +670,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
             if (!_notificationController.isClosed) {
               _notificationController.add(notification);
             }
-          } catch (e) {
+          } on Object catch (e) {
             _log.warning('Failed to parse notification: $e');
             _slog.warning(
               category: LogCategory.wifi,
@@ -709,7 +764,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
       );
       try {
         await _connectInternal();
-      } catch (e) {
+      } on Object catch (e) {
         _slog.warning(
           category: LogCategory.wifi,
           event: 'ws_reconnect_attempt_failed',
@@ -722,6 +777,7 @@ disconnect requested while teardown in progress; waiting existing teardown''',
     });
   }
 
+  /// Last connection error string from the transport, if any.
   String? get lastError => _lastError;
 }
 
@@ -754,6 +810,11 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
   StreamSubscription<dynamic>? channelSub;
   String? wsUrl;
 
+  /// Bumped on each connect control and on disconnect/dispose. Deferred
+  /// [connect] work checks this so a pause/disconnect that arrives before the
+  /// microtask runs still suppresses the stale `connected` event (PR #361).
+  var connectGeneration = 0;
+
   Future<void> closeChannel() async {
     _relayerIsolateLog('close_channel_start', 'closing websocket channel');
     await channelSub?.cancel();
@@ -763,7 +824,14 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
     _relayerIsolateLog('close_channel_done', 'websocket channel closed');
   }
 
-  Future<void> connect() async {
+  Future<void> connect(int connectGen) async {
+    if (connectGen != connectGeneration) {
+      _relayerIsolateLog(
+        'connect_skipped_superseded',
+        'connect skipped: superseded by disconnect/pause or newer connect',
+      );
+      return;
+    }
     if (wsUrl == null || wsUrl!.isEmpty) {
       _relayerIsolateLog(
         'connect_skipped_empty_url',
@@ -846,8 +914,18 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
         },
       );
 
-      const connectedEvent = _RelayerEventMessage(
+      if (connectGen != connectGeneration) {
+        await closeChannel();
+        _relayerIsolateLog(
+          'connect_aborted_before_connected_event',
+          'superseded before connected event — closing channel',
+        );
+        return;
+      }
+
+      final connectedEvent = _RelayerEventMessage(
         type: _RelayerEventType.connected,
+        data: {'connectGen': connectGen},
       );
       mainSendPort.send(connectedEvent.toJson());
       _relayerIsolateLog(
@@ -855,6 +933,14 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
         'sent connected event to main (socket object created)',
       );
     } on Exception catch (e) {
+      if (connectGen != connectGeneration) {
+        await closeChannel();
+        _relayerIsolateLog(
+          'connect_exception_ignored_superseded',
+          'connect failed but superseded — not forwarding error',
+        );
+        return;
+      }
       _relayerIsolateLog('connect_exception', e.toString());
       const errorEvent = _RelayerEventMessage(
         type: _RelayerEventType.error,
@@ -897,10 +983,34 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
           'connect control received',
         );
         wsUrl = control.data?['wsUrl'] as String?;
+        final wireGen = control.data!['connectGen'] as int;
+        // Keep isolate generation aligned with main so disconnect/pause can
+        // invalidate this attempt (see [connectGeneration]).
+        connectGeneration = wireGen;
         await closeChannel();
-        await connect();
+        if (wireGen != connectGeneration) {
+          _relayerIsolateLog(
+            'control_connect_aborted_superseded_during_close',
+            'connect aborted: disconnect/pause during closeChannel',
+          );
+          break;
+        }
+        // Do not await inner [connect]: the ReceivePort listener would stay
+        // blocked until WebSocket setup finishes, so a pause/disconnect control
+        // queued after this connect would be processed too late (PR #361 review
+        // 4096354225: cancel at isolate boundary).
+        unawaited(
+          () async {
+            await Future<void>.delayed(Duration.zero);
+            if (wireGen != connectGeneration) {
+              return;
+            }
+            await connect(wireGen);
+          }(),
+        );
 
       case _RelayerControlType.disconnect:
+        connectGeneration++;
         _relayerIsolateLog('control_disconnect', 'disconnect control received');
         unawaited(closeChannel());
         const event = _RelayerEventMessage(
@@ -913,6 +1023,7 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
         );
 
       case _RelayerControlType.dispose:
+        connectGeneration++;
         _relayerIsolateLog('control_dispose', 'dispose control received');
         unawaited(closeChannel());
         controlPort.close();

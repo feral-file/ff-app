@@ -389,6 +389,35 @@ void main() {
         expect(transport.pauseConnectionCount, 0);
       },
     );
+
+    test(
+      'superseded connect error from transport does not propagate',
+      () async {
+        final transport = _StallThenThrowTransport();
+        final control = FF1WifiControl(transport: transport);
+
+        addTearDown(control.dispose);
+
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'remote-1',
+          deviceId: 'device-1',
+          topicId: 'topic-1',
+        );
+
+        final connectFuture = control.connect(
+          device: device,
+          userId: 'u',
+          apiKey: 'k',
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        control.pauseConnection();
+        transport.releaseWithError();
+
+        await expectLater(connectFuture, completes);
+      },
+    );
   });
 
   group('FF1WifiControl.reconnect', () {
@@ -429,7 +458,146 @@ void main() {
         expect(transport.pauseConnectionCount, 1);
       },
     );
+
+    test('returns true when transport reconnect succeeds', () async {
+      final transport = _HappyReconnectTransport();
+      final control = FF1WifiControl(transport: transport);
+
+      addTearDown(control.dispose);
+
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+
+      await control.connect(device: device, userId: 'u', apiKey: 'k');
+      final ok = await control.reconnect();
+      expect(ok, isTrue);
+      expect(transport.forceReconnectConnectCount, 1);
+    });
   });
+}
+
+/// Stalls first transport `connect` until `releaseWithError`, then throws
+/// (for superseded-error path).
+class _StallThenThrowTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+  Completer<void>? _stall;
+
+  void releaseWithError() {
+    _stall?.complete();
+  }
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    _stall = Completer<void>();
+    await _stall!.future;
+    throw Exception('boom');
+  }
+
+  @override
+  void pauseConnection() {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
+}
+
+/// Minimal transport: counts `connect` calls with `forceReconnect: true`.
+class _HappyReconnectTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+
+  int forceReconnectConnectCount = 0;
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<void> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    if (forceReconnect) {
+      forceReconnectConnectCount++;
+    }
+  }
+
+  @override
+  void pauseConnection() {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
 }
 
 /// First [connect] completes immediately; second [connect] (reconnect) awaits

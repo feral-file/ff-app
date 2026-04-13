@@ -211,6 +211,9 @@ class FF1WifiControl {
 
     final connectOpGen = ++_wifiOpGeneration;
     try {
+      // Relayer: [FF1WifiTransport.connect] returns after dispatching to the
+      // isolate; superseding pause/disconnect is enforced in the relayer
+      // isolate (non-blocking connect handler), not only here (PR #361).
       await _transport.connect(
         device: device,
         userId: userId,

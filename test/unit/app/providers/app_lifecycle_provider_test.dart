@@ -2,9 +2,9 @@ import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/domain/models/ff1_device.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'provider_test_helpers.dart';
 
@@ -14,8 +14,8 @@ void main() {
   testWidgets(
     'inactive to resumed before debounce does not pause or reconnect relayer',
     (tester) async {
-      final binding = tester.binding;
-      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final binding = tester.binding
+        ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
 
       final wifiControl = _LifecycleAwareFakeWifiControl();
       final tokensSync = _RecordingTokensSyncCoordinator();
@@ -54,8 +54,8 @@ void main() {
   testWidgets(
     'inactive that reaches debounce pauses and reconnects on resume',
     (tester) async {
-      final binding = tester.binding;
-      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final binding = tester.binding
+        ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
 
       final wifiControl = _LifecycleAwareFakeWifiControl();
       final tokensSync = _RecordingTokensSyncCoordinator();
@@ -95,8 +95,8 @@ void main() {
   testWidgets(
     'paused to resumed reconnects only after lifecycle pause',
     (tester) async {
-      final binding = tester.binding;
-      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final binding = tester.binding
+        ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
 
       final wifiControl = _LifecycleAwareFakeWifiControl();
       final tokensSync = _RecordingTokensSyncCoordinator();
@@ -122,6 +122,88 @@ void main() {
       wifiControl.resetLifecycleCounts();
 
       binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(wifiControl.pauseCount, 1);
+      expect(wifiControl.reconnectCount, 0);
+
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+
+      expect(wifiControl.reconnectCount, 1);
+    },
+  );
+
+  testWidgets(
+    'hidden to resumed reconnects only after lifecycle pause',
+    (tester) async {
+      final binding = tester.binding
+        ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+
+      final wifiControl = _LifecycleAwareFakeWifiControl();
+      final tokensSync = _RecordingTokensSyncCoordinator();
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+          tokensSyncCoordinatorProvider.overrideWith(() => tokensSync),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      });
+
+      container.listen(appLifecycleProvider, (_, _) {});
+      await tester.pump();
+      tokensSync.resetCounts();
+
+      await _connectDevice(container);
+      wifiControl.resetLifecycleCounts();
+
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.pump();
+      expect(wifiControl.pauseCount, 1);
+      expect(wifiControl.reconnectCount, 0);
+
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+
+      expect(wifiControl.reconnectCount, 1);
+    },
+  );
+
+  testWidgets(
+    'detached to resumed reconnects only after lifecycle pause',
+    (tester) async {
+      final binding = tester.binding
+        ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+
+      final wifiControl = _LifecycleAwareFakeWifiControl();
+      final tokensSync = _RecordingTokensSyncCoordinator();
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+          tokensSyncCoordinatorProvider.overrideWith(() => tokensSync),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      });
+
+      container.listen(appLifecycleProvider, (_, _) {});
+      await tester.pump();
+      tokensSync.resetCounts();
+
+      await _connectDevice(container);
+      wifiControl.resetLifecycleCounts();
+
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.detached);
       await tester.pump();
       expect(wifiControl.pauseCount, 1);
       expect(wifiControl.reconnectCount, 0);
