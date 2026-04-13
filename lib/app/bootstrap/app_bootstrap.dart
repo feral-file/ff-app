@@ -11,6 +11,7 @@ import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/legacy_storage_locator.dart';
+import 'package:app/infra/services/seed_database_service.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -73,6 +74,18 @@ Future<AppBootstrapResult> bootstrapAppDependencies() async {
   if (!hasDoneOnboarding && hasLegacySqliteDatabase) {
     await appStateService.setHasSeenOnboarding(hasSeen: true);
     hasDoneOnboarding = true;
+  }
+
+  // Recover from a mid-swap crash: canonical file missing but staged/backup
+  // swap artifacts may still be present (see seed replace recoverable swap).
+  try {
+    await SeedDatabaseService().repairInterruptedSeedSwapIfNeeded();
+  } on Object catch (e, st) {
+    _log.warning(
+      'Seed swap startup repair failed; continuing without blocking startup.',
+      e,
+      st,
+    );
   }
 
   final dbFolder = await getApplicationDocumentsDirectory();

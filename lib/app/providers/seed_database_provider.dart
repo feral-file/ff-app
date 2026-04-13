@@ -101,6 +101,13 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
   static const _uuid = Uuid();
   int _syncInProgressCount = 0;
 
+  /// Merged across overlapping [sync] calls so an earlier session can defer
+  /// readiness/gate reopen and a later session's [finally] still drains the
+  /// aggregate (per-call locals would lose the flag when the first session
+  /// finishes while another is still in flight).
+  bool _aggregateDeferredRestoreReadinessWhenDrained = false;
+  bool _aggregateDeferredCompleteGateWhenDrained = false;
+
   /// Snapshots from sessions that completed a replace while no longer active
   /// (superseded by a newer [sync]). Restore runs with the winning session or
   /// when no sync remains in flight ([finally] drain), never before another
@@ -363,38 +370,57 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         e,
         st,
       );
-      if (_isSessionActive(session)) {
-        final seedOnDisk = await ref
-            .read(seedDatabaseServiceProvider)
-            .hasLocalDatabase();
-        if (seedOnDisk && !ref.read(isSeedDatabaseReadyProvider)) {
-          // Defer until all overlapping sync() calls finish so we never reopen
-          // readiness while another session is still inside replace/swap.
+      // Recovery after replace (e.g. afterReplace throws) must run even when a
+      // newer session is already active — superseded sessions are inactive
+      // while afterReplace still runs.
+      final seedOnDisk = await ref
+          .read(seedDatabaseServiceProvider)
+          .hasLocalDatabase();
+      if (seedOnDisk && !ref.read(isSeedDatabaseReadyProvider)) {
+        final mustDeferReadinessAndGate = _syncInProgressCount > 1;
+        if (mustDeferReadinessAndGate) {
           restoreReadinessWhenDrained = true;
           if (completeSeedDatabaseGate) {
             completeGateWhenDrained = true;
           }
+        } else {
+          await seedReadyNotifier.setReady();
+          if (completeSeedDatabaseGate) {
+            SeedDatabaseGate.complete();
+          }
         }
+      }
+      if (_isSessionActive(session)) {
         notifyForceReplaceFinished(success: false, errorMessage: e.toString());
       }
       return false;
     } finally {
+      if (restoreReadinessWhenDrained) {
+        _aggregateDeferredRestoreReadinessWhenDrained = true;
+      }
+      if (completeGateWhenDrained) {
+        _aggregateDeferredCompleteGateWhenDrained = true;
+      }
       _syncInProgressCount--;
       state = state.copyWith(isSyncInProgress: _syncInProgressCount > 0);
       _clearSession(session);
       if (_syncInProgressCount == 0) {
-        if (restoreReadinessWhenDrained) {
+        // Deferring gate completion can happen without deferring readiness
+        // (e.g. overlap: DB already marked ready but gate still pending).
+        if (_aggregateDeferredRestoreReadinessWhenDrained) {
           final seedOnDisk = await ref
               .read(seedDatabaseServiceProvider)
               .hasLocalDatabase();
           if (seedOnDisk && !ref.read(isSeedDatabaseReadyProvider)) {
             await seedReadyNotifier.setReady();
           }
-          if (completeGateWhenDrained &&
-              await ref.read(seedDatabaseServiceProvider).hasLocalDatabase()) {
-            SeedDatabaseGate.complete();
-          }
         }
+        if (_aggregateDeferredCompleteGateWhenDrained &&
+            await ref.read(seedDatabaseServiceProvider).hasLocalDatabase()) {
+          SeedDatabaseGate.complete();
+        }
+        _aggregateDeferredRestoreReadinessWhenDrained = false;
+        _aggregateDeferredCompleteGateWhenDrained = false;
         await _drainPendingFavoriteRestoreIfIdle();
       }
     }

@@ -203,6 +203,46 @@ class _OverlappingSeedSyncRaceFake implements SeedDatabaseSyncService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// First sync yields so a second [sync] can start; first returns quickly with
+/// no update while the second blocks — exercises deferred readiness merge when
+/// the first session finishes before the second.
+class _ParallelQuickSkipAndBlockFake implements SeedDatabaseSyncService {
+  _ParallelQuickSkipAndBlockFake({required Completer<void> blockSecond})
+    : _blockSecond = blockSecond;
+
+  final Completer<void> _blockSecond;
+  var _call = 0;
+
+  @override
+  Future<bool> sync({
+    required Future<void> Function() beforeReplace,
+    required Future<void> Function() afterReplace,
+    bool forceReplace = false,
+    void Function({
+      required bool hasLocalDatabase,
+      String? localEtag,
+      String? remoteEtag,
+    })?
+    onDownloadStarted,
+    void Function(double progress)? onProgress,
+    bool failSilently = false,
+    bool Function()? isSessionActive,
+  }) async {
+    _call++;
+    if (_call == 1) {
+      await Future<void>.value();
+      onDownloadStarted?.call(
+        hasLocalDatabase: true,
+        localEtag: 'local',
+        remoteEtag: 'remote',
+      );
+      return false;
+    }
+    await _blockSecond.future;
+    return false;
+  }
+}
+
 /// Session 1 blocks after `beforeReplace`; session 2 throws before
 /// `beforeReplace` (overlap: session 1 dropped readiness).
 class _OverlapFailBeforeSecondBeforeReplaceFake
@@ -1020,6 +1060,95 @@ void main() {
             'After the last sync completes, readiness reflects DB on disk '
             'again.',
       );
+    },
+  );
+
+  test(
+    'deferred readiness from first overlapping sync is not lost when the '
+    'first session finishes before the blocked second',
+    () async {
+      final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(memDb.close);
+
+      final blockSecond = Completer<void>();
+      final fake = _ParallelQuickSkipAndBlockFake(blockSecond: blockSecond);
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fake),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+          appDatabaseProvider.overrideWithValue(memDb),
+          rawDatabaseServiceProvider.overrideWithValue(
+            _SpyDatabaseService(memDb)..snapshotReturnsEmpty = true,
+          ),
+          _fakeSeedDbSvc(hasLocal: true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      SeedDatabaseGate.complete();
+      container.read(isSeedDatabaseReadyProvider.notifier).seedReadyDirect =
+          false;
+
+      final notifier = container.read(seedDownloadProvider.notifier);
+      final f1 = notifier.sync();
+      final f2 = notifier.sync();
+
+      await f1;
+      expect(
+        container.read(isSeedDatabaseReadyProvider),
+        isFalse,
+        reason:
+            'Second sync still in flight; deferred reopen must wait for drain.',
+      );
+
+      blockSecond.complete();
+      await f2;
+
+      expect(container.read(isSeedDatabaseReadyProvider), isTrue);
+    },
+  );
+
+  test(
+    'when overlapping skip-only sync defers gate, drain completes gate even if '
+    'readiness was already true',
+    () async {
+      SeedDatabaseGate.resetForTesting();
+      final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(memDb.close);
+
+      final blockSecond = Completer<void>();
+      final fake = _ParallelQuickSkipAndBlockFake(blockSecond: blockSecond);
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fake),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+          appDatabaseProvider.overrideWithValue(memDb),
+          rawDatabaseServiceProvider.overrideWithValue(
+            _SpyDatabaseService(memDb)..snapshotReturnsEmpty = true,
+          ),
+          _fakeSeedDbSvc(hasLocal: true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(isSeedDatabaseReadyProvider.notifier).seedReadyDirect =
+          true;
+
+      final notifier = container.read(seedDownloadProvider.notifier);
+      final f1 = notifier.sync();
+      final f2 = notifier.sync();
+
+      await f1;
+      expect(SeedDatabaseGate.isCompleted, isFalse);
+
+      blockSecond.complete();
+      await f2;
+
+      expect(SeedDatabaseGate.isCompleted, isTrue);
     },
   );
 }

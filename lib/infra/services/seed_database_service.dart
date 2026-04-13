@@ -162,6 +162,157 @@ class SeedDatabaseService {
     return File(path).existsSync();
   }
 
+  /// If the process died mid-replace, the canonical DB may be missing while
+  /// staged or backup artifacts remain. Restores a usable DB before startup
+  /// consumers run (bootstrap opens the seed gate when the file exists).
+  ///
+  /// Prefers promoting the latest staged artifact (post-validation seed) over
+  /// restoring from backup (previous live DB) when both exist.
+  Future<bool> repairInterruptedSeedSwapIfNeeded() async {
+    final dbPath = await databasePath();
+    final canonical = File(dbPath);
+    if (canonical.existsSync()) {
+      return false;
+    }
+
+    final dbDir = Directory(p.dirname(dbPath));
+    if (!dbDir.existsSync()) {
+      return false;
+    }
+
+    // Remove stray WAL/SHM without a main file — they cannot be coherent alone.
+    await _deleteFileIfExists('$dbPath-wal');
+    await _deleteFileIfExists('$dbPath-shm');
+
+    final stageRe = RegExp(
+      '^${RegExp.escape(_dbFileName)}\\.stage\\.(\\d+)\$',
+    );
+    final backupRe = RegExp(
+      '^${RegExp.escape(_dbFileName)}\\.backup\\.(\\d+)\$',
+    );
+
+    File? bestStage;
+    var bestStageNonce = -1;
+    File? bestBackup;
+    var bestBackupNonce = -1;
+
+    for (final entity in dbDir.listSync()) {
+      if (entity is! File) continue;
+      final name = p.basename(entity.path);
+      final stageMatch = stageRe.firstMatch(name);
+      if (stageMatch != null) {
+        final n = int.tryParse(stageMatch.group(1)!) ?? -1;
+        if (n > bestStageNonce) {
+          bestStageNonce = n;
+          bestStage = entity;
+        }
+      }
+      final backupMatch = backupRe.firstMatch(name);
+      if (backupMatch != null) {
+        final n = int.tryParse(backupMatch.group(1)!) ?? -1;
+        if (n > bestBackupNonce) {
+          bestBackupNonce = n;
+          bestBackup = entity;
+        }
+      }
+    }
+
+    if (bestStage != null) {
+      final stagePath = bestStage.path;
+      try {
+        await promoteStagedArtifact(
+          stagingPath: stagePath,
+          canonicalPath: dbPath,
+        );
+        _log.warning(
+          'Repaired interrupted seed swap: promoted staged artifact '
+          '(nonce=$bestStageNonce).',
+        );
+      } on Object catch (e, st) {
+        _log.severe(
+          'Failed to promote staged seed artifact during startup repair',
+          e,
+          st,
+        );
+        if (bestBackup != null) {
+          final ok = await _restoreFromBackupSet(
+            dbPath: dbPath,
+            backupMainPath: bestBackup.path,
+          );
+          if (ok) {
+            await _deleteOrphanSeedSwapArtifactFiles(dbDir);
+          }
+          return ok;
+        }
+        return false;
+      }
+      await _deleteOrphanSeedSwapArtifactFiles(dbDir);
+      return true;
+    }
+
+    if (bestBackup != null) {
+      final ok = await _restoreFromBackupSet(
+        dbPath: dbPath,
+        backupMainPath: bestBackup.path,
+      );
+      if (ok) {
+        await _deleteOrphanSeedSwapArtifactFiles(dbDir);
+      }
+      return ok;
+    }
+
+    return false;
+  }
+
+  Future<bool> _restoreFromBackupSet({
+    required String dbPath,
+    required String backupMainPath,
+  }) async {
+    try {
+      await _restoreBackupIfNeeded(
+        backupPath: backupMainPath,
+        canonicalPath: dbPath,
+      );
+      final backupWalPath = '$backupMainPath-wal';
+      final backupShmPath = '$backupMainPath-shm';
+      await _restoreBackupIfNeeded(
+        backupPath: backupWalPath,
+        canonicalPath: '$dbPath-wal',
+      );
+      await _restoreBackupIfNeeded(
+        backupPath: backupShmPath,
+        canonicalPath: '$dbPath-shm',
+      );
+      _log.warning(
+        'Repaired interrupted seed swap: restored canonical DB from backup '
+        '(${p.basename(backupMainPath)}).',
+      );
+      return true;
+    } on Object catch (e, st) {
+      _log.severe(
+        'Failed to restore seed DB from backup during startup repair',
+        e,
+        st,
+      );
+      return false;
+    }
+  }
+
+  Future<void> _deleteOrphanSeedSwapArtifactFiles(Directory dbDir) async {
+    for (final entity in dbDir.listSync()) {
+      if (entity is! File) continue;
+      final name = p.basename(entity.path);
+      if (name.startsWith('$_dbFileName.stage.') ||
+          name.startsWith('$_dbFileName.backup.')) {
+        await _cleanupTemp(entity.path);
+        final wal = File('${entity.path}-wal');
+        final shm = File('${entity.path}-shm');
+        if (wal.existsSync()) await _cleanupTemp(wal.path);
+        if (shm.existsSync()) await _cleanupTemp(shm.path);
+      }
+    }
+  }
+
   /// Best-effort HEAD request for the latest remote seed database ETag.
   ///
   /// Returns empty string when ETag is unavailable.
@@ -586,7 +737,14 @@ class SeedDatabaseService {
   static void resetMoveFileDebugForTest() {
     moveFileInvocationCountForTest = 0;
     debugSimulateRenameFailureOnMoveCallOneBased = null;
+    debugSimulateDeleteFailureAfterCopyMove = false;
   }
+
+  /// When true, the copy/delete fallback path throws after a successful copy
+  /// and before deleting the source file, exercising undo of the partial
+  /// target write.
+  @visibleForTesting
+  static bool debugSimulateDeleteFailureAfterCopyMove = false;
 
   /// 1-based index into [moveFileInvocationCountForTest] for the current
   /// replace: when set, that move call throws before rename so the
@@ -621,7 +779,22 @@ class SeedDatabaseService {
       return;
     } on FileSystemException {
       await source.copy(targetPath);
-      await source.delete();
+      try {
+        if (debugSimulateDeleteFailureAfterCopyMove) {
+          throw FileSystemException(
+            'simulated delete failure after copy',
+            sourcePath,
+          );
+        }
+        await source.delete();
+      } on Object {
+        // Undo partial fallback: if the source could not be removed, remove the
+        // copy so we do not strand duplicate paths and confuse rollback flags.
+        try {
+          await File(targetPath).delete();
+        } on Object catch (_) {}
+        rethrow;
+      }
     }
   }
 

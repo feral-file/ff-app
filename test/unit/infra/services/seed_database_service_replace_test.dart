@@ -216,6 +216,92 @@ void main() {
     );
 
     test(
+      'repairInterruptedSeedSwapIfNeeded promotes staged artifact when '
+      'canonical is missing',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        expect(File(dbPath).existsSync(), isFalse);
+
+        final staged = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.1001'),
+        );
+        createSeedArtifactDatabase(file: staged);
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+        expect(repaired, isTrue);
+        expect(File(dbPath).existsSync(), isTrue);
+
+        final db = sqlite3.sqlite3.open(dbPath);
+        try {
+          final rows = db.select('PRAGMA user_version');
+          expect(rows.first.columnAt(0), 3);
+        } finally {
+          db.dispose();
+        }
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded restores from backup when canonical '
+      'is missing and no stage',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        expect(File(dbPath).existsSync(), isFalse);
+
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.2002'),
+        );
+        createSeedArtifactDatabase(file: backup, userVersion: 2);
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+        expect(repaired, isTrue);
+        expect(File(dbPath).existsSync(), isTrue);
+
+        final db = sqlite3.sqlite3.open(dbPath);
+        try {
+          final rows = db.select('PRAGMA user_version');
+          expect(rows.first.columnAt(0), 2);
+        } finally {
+          db.dispose();
+        }
+      },
+    );
+
+    test(
+      'rename fallback delete failure after copy undoes partial backup write',
+      () async {
+        addTearDown(SeedDatabaseService.resetMoveFileDebugForTest);
+        final canonical = File(p.join(tempDir.path, 'dp1_library.sqlite'));
+        final tempSeed = File(p.join(tempDir.path, 'incoming.sqlite'));
+        createSeedArtifactDatabase(file: canonical);
+        createSeedArtifactDatabase(file: tempSeed);
+
+        SeedDatabaseService.debugSimulateRenameFailureOnMoveCallOneBased = 2;
+        SeedDatabaseService.debugSimulateDeleteFailureAfterCopyMove = true;
+
+        final service = _SeedDatabaseServiceForReplaceTest(
+          dbPath: canonical.path,
+        );
+
+        await expectLater(
+          () => service.replaceDatabaseFromTemporaryFile(tempSeed.path),
+          throwsException,
+        );
+
+        expect(File(canonical.path).existsSync(), isTrue);
+        final db = sqlite3.sqlite3.open(canonical.path);
+        try {
+          final rows = db.select('PRAGMA user_version');
+          expect(rows.first.columnAt(0), 3);
+        } finally {
+          db.dispose();
+        }
+      },
+    );
+
+    test(
       'rejects invalid temp artifacts without touching the canonical db',
       () async {
         final canonical = File(p.join(tempDir.path, 'dp1_library.sqlite'));
