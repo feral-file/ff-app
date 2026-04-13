@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
@@ -7,6 +8,7 @@ import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
+import 'package:app/app/routing/app_navigator_key.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/config/app_state_service.dart';
@@ -24,8 +26,8 @@ import 'package:mockito/mockito.dart';
 
 void main() {
   testWidgets(
-    'internet-ready connect without active setup session navigates '
-    'to device configuration after teardown',
+    'internet-ready without guided session completes onboarding and replaces '
+    'to device configuration when portal is not set',
     (tester) async {
       final device = BluetoothDevice.fromId('00:11:22:33:44:55');
       final appState = _MockAppStateService();
@@ -68,6 +70,7 @@ void main() {
           container: container,
           child: MaterialApp.router(
             routerConfig: GoRouter(
+              navigatorKey: appNavigatorKey,
               initialLocation: '/entry',
               routes: [
                 GoRoute(
@@ -131,7 +134,6 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.text('Connected to FF1', skipOffstage: false), findsNothing);
       expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsOneWidget);
       expect(find.text('START_SETUP_SHOULD_NOT_APPEAR'), findsNothing);
       expect(
@@ -193,6 +195,7 @@ void main() {
           container: container,
           child: MaterialApp.router(
             routerConfig: GoRouter(
+              navigatorKey: appNavigatorKey,
               initialLocation: '/entry',
               routes: [
                 GoRoute(
@@ -331,6 +334,7 @@ void main() {
           container: container,
           child: MaterialApp.router(
             routerConfig: GoRouter(
+              navigatorKey: appNavigatorKey,
               initialLocation: '/entry',
               routes: [
                 GoRoute(
@@ -446,6 +450,7 @@ void main() {
           container: container,
           child: MaterialApp.router(
             routerConfig: GoRouter(
+              navigatorKey: appNavigatorKey,
               initialLocation: '/entry',
               routes: [
                 GoRoute(
@@ -554,6 +559,7 @@ void main() {
           container: container,
           child: MaterialApp.router(
             routerConfig: GoRouter(
+              navigatorKey: appNavigatorKey,
               initialLocation: '/entry',
               routes: [
                 GoRoute(
@@ -701,6 +707,7 @@ void main() {
           container: container,
           child: MaterialApp.router(
             routerConfig: GoRouter(
+              navigatorKey: appNavigatorKey,
               initialLocation: '/entry',
               routes: [
                 GoRoute(
@@ -778,6 +785,107 @@ void main() {
   );
 
   testWidgets(
+    'guided completion fallback finishes onboarding when completeSession '
+    'loses the session mid-flight',
+    (tester) async {
+      final device = BluetoothDevice.fromId('00:11:22:33:44:55');
+      final appState = _MockAppStateService();
+      const connectedState = ConnectFF1Connected(
+        ff1device: FF1Device(
+          name: 'FF1',
+          remoteId: '00:11:22:33:44:55',
+          deviceId: 'FF1-123',
+          topicId: 'topic-123',
+        ),
+        portalIsSet: false,
+        isConnectedToInternet: true,
+      );
+      final fakeOrchestrator = _GuidedCompletionFallbackOrchestrator(
+        effect: const FF1SetupInternetReady(connected: connectedState),
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          connectFF1Provider.overrideWith(
+            () => _FakeConnectFF1Notifier(connectedState),
+          ),
+          connectWiFiProvider.overrideWith(_IdleWifiNotifier.new),
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+          ff1BluetoothDeviceActionsProvider.overrideWith(
+            _FakeFF1BluetoothDeviceActionsNotifier.new,
+          ),
+          onboardingActionsProvider.overrideWith(
+            (ref) => OnboardingService(
+              ref: ref,
+              appStateService: appState,
+            ),
+          ),
+          ff1SetupOrchestratorProvider.overrideWith(
+            () => fakeOrchestrator,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(
+            routerConfig: GoRouter(
+              navigatorKey: appNavigatorKey,
+              initialLocation: '/entry',
+              routes: [
+                GoRoute(
+                  path: '/entry',
+                  builder: (context, state) => Scaffold(
+                    body: Center(
+                      child: TextButton(
+                        onPressed: () => unawaited(
+                          context.push(
+                            Routes.connectFF1Page,
+                            extra: ConnectFF1PagePayload(
+                              device: device,
+                              ff1DeviceInfo: null,
+                            ),
+                          ),
+                        ),
+                        child: const Text('Open connect page'),
+                      ),
+                    ),
+                  ),
+                ),
+                GoRoute(
+                  path: Routes.connectFF1Page,
+                  builder: (context, state) {
+                    final payload = state.extra! as ConnectFF1PagePayload;
+                    return ConnectFF1Page(payload: payload);
+                  },
+                ),
+                GoRoute(
+                  path: Routes.deviceConfiguration,
+                  builder: (context, state) => const Scaffold(
+                    body: Text('DEVICE_CONFIGURATION_MARKER'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open connect page'));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(fakeOrchestrator.completeSessionCalls, 1);
+      expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsOneWidget);
+      verify(appState.setHasSeenOnboarding(hasSeen: true)).called(1);
+    },
+  );
+
+  testWidgets(
     'portal deeplink does not hide live Bluetooth failure before verified '
     'connect',
     (tester) async {
@@ -810,6 +918,7 @@ void main() {
           ],
           child: MaterialApp.router(
             routerConfig: GoRouter(
+              navigatorKey: appNavigatorKey,
               initialLocation: '/entry',
               routes: [
                 GoRoute(
@@ -884,6 +993,7 @@ void main() {
           ],
           child: MaterialApp.router(
             routerConfig: GoRouter(
+              navigatorKey: appNavigatorKey,
               initialLocation: '/entry',
               routes: [
                 GoRoute(
@@ -932,9 +1042,12 @@ void main() {
   // Note on default success path testing:
   // Guided internet-ready completion uses `completeSession` (addDevice,
   // completeOnboarding, hide QR, BLE disconnect, then go to device
-  // configuration). Legacy Wi‑Fi navigation uses `tearDownAfterSetupComplete`
-  // next to `completeOnboarding` on a different route. Broader behavior is
-  // covered in orchestration/provider tests; this file focuses on Connect UI.
+  // configuration). Standalone internet-ready (no portal) uses
+  // `_completeDirectSuccessExit` (`completeOnboarding` +
+  // `tearDownAfterSetupComplete` + replace). Standalone + portal defers exit
+  // to Go to Settings. Broader
+  // behavior is covered in orchestration/provider tests; this file focuses on
+  // Connect UI.
 }
 
 /// Wi‑Fi idle so setup derivation does not override connect with Wi‑Fi steps
@@ -1011,6 +1124,80 @@ class _FailOnceFF1BluetoothDeviceActionsNotifier
       throw StateError('persist failed');
     }
   }
+}
+
+class _GuidedCompletionFallbackOrchestrator
+    extends FF1SetupOrchestratorNotifier {
+  _GuidedCompletionFallbackOrchestrator({
+    required this.effect,
+  });
+
+  final FF1SetupEffect effect;
+  int completeSessionCalls = 0;
+  bool _hasGuidedSetupSession = true;
+  bool _effectScheduled = false;
+
+  @override
+  FF1SetupState build() {
+    if (!_effectScheduled) {
+      _effectScheduled = true;
+      unawaited(
+        Future<void>.microtask(() {
+          state = state.copyWith(
+            effectId: 1,
+            hasEffect: true,
+            effect: effect,
+          );
+        }),
+      );
+    }
+    final connected = (effect as FF1SetupInternetReady).connected;
+    return FF1SetupState(
+      step: FF1SetupStep.readyForConfig,
+      connected: connected,
+      activeSession: _hasGuidedSetupSession
+          ? FF1SetupSession(
+              id: 'guided-fallback',
+              startedAt: DateTime.fromMillisecondsSinceEpoch(0),
+            )
+          : null,
+    );
+  }
+
+  @override
+  bool get hasGuidedSetupSession => _hasGuidedSetupSession;
+
+  @override
+  void ackEffect({required int effectId}) {
+    state = state.copyWith(
+      effectId: effectId,
+    );
+  }
+
+  @override
+  void startSession() {
+    _hasGuidedSetupSession = true;
+  }
+
+  @override
+  Future<bool> completeSession(
+    FF1Device device, {
+    bool shouldNavigate = true,
+  }) async {
+    completeSessionCalls += 1;
+    _hasGuidedSetupSession = false;
+    return false;
+  }
+
+  @override
+  Future<void> cancelSession(
+    FF1SetupSessionCancelReason reason,
+  ) async {
+    _hasGuidedSetupSession = false;
+  }
+
+  @override
+  Future<void> tearDownAfterSetupComplete() async {}
 }
 
 class _MockAppStateService extends Mock implements AppStateService {

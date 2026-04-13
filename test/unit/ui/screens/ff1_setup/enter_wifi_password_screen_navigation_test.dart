@@ -146,6 +146,145 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'shows recovery dialog when onboarding persistence fails during '
+    'device-config navigation',
+    (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+          onboardingActionsProvider.overrideWith(
+            (ref) => OnboardingService(
+              ref: ref,
+              appStateService: _ThrowingAppStateService(),
+            ),
+          ),
+          ff1SetupOrchestratorProvider.overrideWith(
+            _ScriptedOrchestratorNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final router = GoRouter(
+        initialLocation: Routes.enterWifiPassword,
+        routes: [
+          GoRoute(
+            path: Routes.enterWifiPassword,
+            builder: (context, state) {
+              final payload = EnterWifiPasswordPagePayload(
+                device: const FF1Device(
+                  name: 'FF1',
+                  remoteId: '00:11',
+                  deviceId: 'FF1-1',
+                  topicId: '',
+                ),
+                wifiAccessPoint: const WifiPoint('Office'),
+              );
+              return EnterWiFiPasswordScreen(payload: payload);
+            },
+          ),
+          GoRoute(
+            path: Routes.deviceConfiguration,
+            builder: (context, state) => const Scaffold(
+              body: Text('DEVICE_CONFIGURATION_MARKER'),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      (container.read(ff1SetupOrchestratorProvider.notifier)
+              as _ScriptedOrchestratorNotifier)
+          .emitNavigate();
+
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Setup could not finish'), findsOneWidget);
+      expect(
+        find.text('DEVICE_CONFIGURATION_MARKER', skipOffstage: false),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'clears the Wi-Fi submit loading view after a failed recovery dialog',
+    (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+          onboardingActionsProvider.overrideWith(
+            (ref) => OnboardingService(
+              ref: ref,
+              appStateService: _ThrowingAppStateService(),
+            ),
+          ),
+          ff1SetupOrchestratorProvider.overrideWith(
+            _ScriptedOrchestratorNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final router = GoRouter(
+        initialLocation: Routes.enterWifiPassword,
+        routes: [
+          GoRoute(
+            path: Routes.enterWifiPassword,
+            builder: (context, state) {
+              final payload = EnterWifiPasswordPagePayload(
+                device: const FF1Device(
+                  name: 'FF1',
+                  remoteId: '00:11',
+                  deviceId: 'FF1-1',
+                  topicId: '',
+                ),
+                wifiAccessPoint: const WifiPoint('Office|OPEN'),
+              );
+              return EnterWiFiPasswordScreen(payload: payload);
+            },
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Connecting to Office'), findsOneWidget);
+
+      (container.read(ff1SetupOrchestratorProvider.notifier)
+              as _ScriptedOrchestratorNotifier)
+          .emitNavigate();
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Setup could not finish'), findsOneWidget);
+
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Connecting to Office'), findsNothing);
+    },
+  );
 }
 
 class _FakeConnectNotifier extends ConnectFF1Notifier {
@@ -193,6 +332,13 @@ class _MockAppStateService extends Mock implements AppStateService {
           returnValueForMissingStub: Future<void>.value(),
         )
         as Future<void>;
+  }
+}
+
+class _ThrowingAppStateService extends Mock implements AppStateService {
+  @override
+  Future<void> setHasSeenOnboarding({required bool hasSeen}) {
+    return Future<void>.error(StateError('persist failed'));
   }
 }
 
@@ -285,6 +431,13 @@ class _ScriptedOrchestratorNotifier extends FF1SetupOrchestratorNotifier {
       effect: _effect,
     );
   }
+
+  @override
+  Future<void> sendWifiCredentialsAndConnect({
+    required FF1Device device,
+    required String ssid,
+    required String password,
+  }) async {}
 
   @override
   void ackEffect({required int effectId}) {

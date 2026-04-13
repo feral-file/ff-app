@@ -162,19 +162,26 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
               _completeGuidedPortalSession(
                 connected.ff1device,
                 navigateAfterCompletion: false,
+                shouldNavigate: !connected.portalIsSet,
               ),
             );
           } else {
-            unawaited(_completeGuidedDirectSuccess(connected.ff1device));
+            unawaited(
+              _completeGuidedDirectSuccess(
+                connected.ff1device,
+                shouldNavigate: !connected.portalIsSet,
+              ),
+            );
           }
           return true;
         }
-        if (!context.mounted) {
-          return false;
+        // Standalone connect: internet-ready must persist onboarding before
+        // leaving setup. If the portal is already configured, keep the portal
+        // screen until the user taps Go to Settings.
+        if (connected.portalIsSet) {
+          return true;
         }
-        if (!connected.portalIsSet) {
-          await _completeDirectSuccessExit(preservePortalUi: false);
-        }
+        unawaited(_completeDirectSuccessExit(preservePortalUi: false));
         return true;
       case FF1SetupNeedsWiFi(:final device):
         if (!context.mounted) return false;
@@ -318,12 +325,21 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
   Future<void> _completeDirectSuccessExit({
     required bool preservePortalUi,
+    bool bypassPendingGuard = false,
   }) async {
-    if (_guidedCompletionPending || _successExitPending || !mounted) {
+    if (!bypassPendingGuard &&
+        (_guidedCompletionPending || _successExitPending || !mounted)) {
+      return;
+    }
+    if (!mounted) {
       return;
     }
 
     setState(() {
+      // If the guided path fell back here, clear the guided latch so the page
+      // can actually finish. The caller already proved the guided session is
+      // gone, so keeping the old guard would dead-end this recovery path.
+      _guidedCompletionPending = false;
       _successExitPending = true;
       _successExitShowsPortal = preservePortalUi;
     });
@@ -367,14 +383,20 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     unawaited(GoRouter.of(context).replace<void>(Routes.deviceConfiguration));
   }
 
-  Future<void> _completeGuidedDirectSuccess(FF1Device device) async {
+  Future<void> _completeGuidedDirectSuccess(
+    FF1Device device, {
+    required bool shouldNavigate,
+  }) async {
     if (_guidedCompletionPending || _successExitPending || !mounted) {
       return;
     }
 
-    // Guided BLE success resets orchestrator/connect state before the route
-    // replacement runs. Latch the success chrome locally first so the page
-    // cannot flash back to the default "Connecting" copy for a frame.
+    // Guided BLE success resets orchestrator/connect state before navigation.
+    // Callers pass `shouldNavigate: !connected.portalIsSet`: when false,
+    // [completeSession] leaves routing to this page (`replace` fallback below);
+    // when true, the orchestrator runs `GoRouter.go` to device configuration.
+    // Latch success chrome locally first so the page cannot flash back to the
+    // default "Connecting" copy for a frame.
     setState(() {
       _guidedCompletionPending = true;
       _successExitPending = true;
@@ -384,14 +406,17 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     try {
       final completed = await ref
           .read(ff1SetupOrchestratorProvider.notifier)
-          .completeSession(device, shouldNavigate: false);
+          .completeSession(device, shouldNavigate: shouldNavigate);
       if (!completed) {
         // No-op when another completion is in flight; if the session is gone,
         // finish like standalone connect so onboarding and teardown still run.
         final orchestrator =
             ref.read(ff1SetupOrchestratorProvider.notifier);
         if (!orchestrator.hasGuidedSetupSession) {
-          await _completeDirectSuccessExit(preservePortalUi: false);
+          await _completeDirectSuccessExit(
+            preservePortalUi: false,
+            bypassPendingGuard: true,
+          );
         }
         return;
       }
@@ -440,12 +465,15 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     setState(() {
       _guidedCompletionPending = false;
     });
-    unawaited(GoRouter.of(context).replace<void>(Routes.deviceConfiguration));
+    if (!shouldNavigate) {
+      unawaited(GoRouter.of(context).replace<void>(Routes.deviceConfiguration));
+    }
   }
 
   Future<void> _completeGuidedPortalSession(
     FF1Device device, {
     required bool navigateAfterCompletion,
+    required bool shouldNavigate,
   }) async {
     if (_portalReadyCompletionPending || _successExitPending || !mounted) {
       return;
@@ -460,12 +488,21 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     try {
       final completed = await ref
           .read(ff1SetupOrchestratorProvider.notifier)
-          .completeSession(device, shouldNavigate: false);
+          .completeSession(device, shouldNavigate: shouldNavigate);
       if (!completed) {
         final orchestrator =
             ref.read(ff1SetupOrchestratorProvider.notifier);
         if (!orchestrator.hasGuidedSetupSession) {
-          await _completeDirectSuccessExit(preservePortalUi: true);
+          if (mounted) {
+            setState(() {
+              _portalReadyCompletionPending = false;
+              _portalReadySessionCompleted = false;
+            });
+          }
+          await _completeDirectSuccessExit(
+            preservePortalUi: true,
+            bypassPendingGuard: true,
+          );
         }
         return;
       }
@@ -535,6 +572,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
       await _completeGuidedPortalSession(
         device,
         navigateAfterCompletion: true,
+        shouldNavigate: false,
       );
       return;
     }

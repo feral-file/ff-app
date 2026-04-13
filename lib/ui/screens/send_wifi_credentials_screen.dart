@@ -210,10 +210,31 @@ class _EnterWiFiPasswordScreenState
       case FF1SetupNavigate(:final route, :final extra, :final method):
         if (!mounted) return false;
         if (route == Routes.deviceConfiguration) {
-          await ref.read(onboardingActionsProvider).completeOnboarding();
-          await ref
-              .read(ff1SetupOrchestratorProvider.notifier)
-              .tearDownAfterSetupComplete();
+          try {
+            await ref.read(onboardingActionsProvider).completeOnboarding();
+            await ref
+                .read(ff1SetupOrchestratorProvider.notifier)
+                .tearDownAfterSetupComplete();
+          } on Object catch (e, st) {
+            _log.warning(
+              '[EnterWiFiPasswordScreen] Device-config navigation failed',
+              e,
+              st,
+            );
+            if (mounted) {
+              setState(() {
+                _isProcessing = false;
+              });
+            }
+            if (!mounted) return false;
+            await UIHelper.showInfoDialog(
+              context,
+              'Setup could not finish',
+              'We couldn’t finish saving your FF1 setup. Please try again.',
+              closeButton: 'Close',
+            );
+            return true;
+          }
         }
         if (!mounted) return false;
         switch (method) {

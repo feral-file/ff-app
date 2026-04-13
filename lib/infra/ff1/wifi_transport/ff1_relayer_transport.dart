@@ -904,51 +904,64 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
   var controlChain = Future<void>.value();
   controlPort.listen((dynamic rawMessage) {
     controlChain = controlChain.then((_) async {
-      if (rawMessage is! Map) {
-        _relayerIsolateLog(
-          'control_ignored_non_map',
-          'ignored non-map control: ${rawMessage.runtimeType}',
+      try {
+        if (rawMessage is! Map) {
+          _relayerIsolateLog(
+            'control_ignored_non_map',
+            'ignored non-map control: ${rawMessage.runtimeType}',
+          );
+          return;
+        }
+
+        final control = _RelayerControlMessage.fromJson(
+          Map<String, dynamic>.from(rawMessage),
         );
-        return;
-      }
 
-      final control = _RelayerControlMessage.fromJson(
-        Map<String, dynamic>.from(rawMessage),
-      );
+        switch (control.type) {
+          case _RelayerControlType.connect:
+            _relayerIsolateLog(
+              'control_connect',
+              'connect control received',
+            );
+            wsUrl = control.data?['wsUrl'] as String?;
+            await closeChannel();
+            await connect();
 
-      switch (control.type) {
-        case _RelayerControlType.connect:
-          _relayerIsolateLog(
-            'control_connect',
-            'connect control received',
-          );
-          wsUrl = control.data?['wsUrl'] as String?;
-          await closeChannel();
-          await connect();
+          case _RelayerControlType.disconnect:
+            _relayerIsolateLog(
+              'control_disconnect',
+              'disconnect control received',
+            );
+            unawaited(closeChannel());
+            const event = _RelayerEventMessage(
+              type: _RelayerEventType.disconnected,
+            );
+            mainSendPort.send(event.toJson());
+            _relayerIsolateLog(
+              'disconnect_event_sent',
+              'sent disconnected to main after disconnect control',
+            );
 
-        case _RelayerControlType.disconnect:
-          _relayerIsolateLog(
-            'control_disconnect',
-            'disconnect control received',
-          );
-          unawaited(closeChannel());
-          const event = _RelayerEventMessage(
-            type: _RelayerEventType.disconnected,
-          );
-          mainSendPort.send(event.toJson());
-          _relayerIsolateLog(
-            'disconnect_event_sent',
-            'sent disconnected to main after disconnect control',
-          );
-
-        case _RelayerControlType.dispose:
-          _relayerIsolateLog('control_dispose', 'dispose control received');
-          unawaited(closeChannel());
-          controlPort.close();
-          _relayerIsolateLog(
-            'control_port_closed',
-            'control ReceivePort closed',
-          );
+          case _RelayerControlType.dispose:
+            _relayerIsolateLog('control_dispose', 'dispose control received');
+            unawaited(closeChannel());
+            controlPort.close();
+            _relayerIsolateLog(
+              'control_port_closed',
+              'control ReceivePort closed',
+            );
+        }
+      } on Object catch (e, stackTrace) {
+        _relayerIsolateLog(
+          'control_message_error',
+          'control message failed: $e',
+        );
+        developer.log(
+          'control message failed',
+          name: 'FF1RelayerTransport',
+          error: e,
+          stackTrace: stackTrace,
+        );
       }
     });
   });
