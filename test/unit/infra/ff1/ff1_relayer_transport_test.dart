@@ -287,4 +287,80 @@ void main() {
       expect(transport.isConnected, isFalse);
     },
   );
+
+  test(
+    'connect waits for in-flight disconnect teardown before proceeding '
+    '(PR #361 review 4098243960)',
+    () async {
+      final releaseTeardown = Completer<void>();
+      late FF1RelayerTransport transport;
+      transport = FF1RelayerTransport(
+        relayerUrl: 'wss://example.invalid/relayer',
+        debugBeforeDisconnectGraceDelay: () async {
+          await releaseTeardown.future;
+        },
+      );
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+
+      final firstConnected = Completer<void>();
+      final sub = transport.connectionStateStream.listen((connected) {
+        if (connected && !firstConnected.isCompleted) {
+          firstConnected.complete();
+        }
+      });
+      addTearDown(() async {
+        await sub.cancel();
+        await transport.disposeFuture();
+      });
+
+      await transport.connect(
+        device: device,
+        userId: 'user-1',
+        apiKey: 'api-key-1',
+      );
+      await firstConnected.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          fail('expected live socket before teardown-wait test');
+        },
+      );
+
+      final secondReconnect = transport.connect(
+        device: device,
+        userId: 'user-1',
+        apiKey: 'api-key-1',
+        forceReconnect: true,
+      );
+
+      await Future<void>.delayed(Duration.zero);
+
+      var thirdCompleted = false;
+      final thirdConnect = transport
+          .connect(
+            device: device,
+            userId: 'user-1',
+            apiKey: 'api-key-1',
+          )
+          .then((_) {
+        thirdCompleted = true;
+      });
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(
+        thirdCompleted,
+        isFalse,
+        reason: 'third connect must wait for teardown, not run ahead of it',
+      );
+
+      releaseTeardown.complete();
+      await secondReconnect;
+      await thirdConnect;
+      expect(thirdCompleted, isTrue);
+    },
+  );
 }

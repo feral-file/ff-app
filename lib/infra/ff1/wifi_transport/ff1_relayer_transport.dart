@@ -192,6 +192,23 @@ class FF1RelayerTransport implements FF1WifiTransport {
       throw error;
     }
 
+    // Resume/reconnect must not open a new socket while a previous main-side
+    // teardown is still in flight (100ms grace + isolate kill).
+    // `pauseConnection` can clear `_isConnected` before that work finishes, so
+    // we cannot infer "no teardown" from the connected flag alone (PR #361
+    // review 4098243960).
+    final teardownInFlight = _teardownCompleter;
+    if (teardownInFlight != null) {
+      _slog.info(
+        category: LogCategory.wifi,
+        event: 'transport_connect_waiting_teardown',
+        message: 'connect waiting for in-flight disconnect teardown before '
+            'proceeding',
+        payload: {'flowId': flowId, 'deviceId': device.deviceId},
+      );
+      await teardownInFlight.future;
+    }
+
     // Clear reconnect suppression on any connect. If only cleared on
     // forceReconnect, a manual connect after app was backgrounded (before any
     // device connected) would leave _reconnectSuppressed stuck true, silently
@@ -214,8 +231,16 @@ class FF1RelayerTransport implements FF1WifiTransport {
       return true;
     }
 
-    // Disconnect from previous device
-    if (_isConnected) {
+    // `pauseConnection` can set `_isConnected` false while the isolate is
+    // still closing; always run full main-side teardown when resources remain.
+    final needsDisconnectFromPreviousSession =
+        _isConnected ||
+        _isConnecting ||
+        _isolate != null ||
+        _isolateSendPort != null;
+
+    // Disconnect from previous device / stale isolate
+    if (needsDisconnectFromPreviousSession) {
       final pauseGenBeforeDisconnect = _relayerPauseGeneration;
       await disconnect();
       // If pauseConnection() ran while disconnect was tearing down, reopening
