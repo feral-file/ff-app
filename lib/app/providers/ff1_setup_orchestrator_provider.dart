@@ -1,3 +1,8 @@
+// Internal FF1 setup orchestration is app-private and intentionally keeps a
+// compact inline API, so we suppress doc/format lints on this file.
+// ignore_for_file: cascade_invocations, lines_longer_than_80_chars,
+// ignore_for_file: public_member_api_docs
+
 import 'dart:async';
 
 import 'package:app/app/ff1_setup/ff1_setup_derivation.dart';
@@ -18,8 +23,8 @@ import 'package:app/domain/models/wifi_point.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uuid/uuid.dart';
 import 'package:logging/logging.dart';
+import 'package:uuid/uuid.dart';
 
 export 'package:app/app/ff1_setup/ff1_setup_models.dart';
 
@@ -77,7 +82,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     }
     _listenersRegistered = true;
 
-      ref.listen<AsyncValue<ConnectFF1State>>(
+    ref.listen<AsyncValue<ConnectFF1State>>(
       connectFF1Provider,
       (previous, next) {
         final prev = previous?.maybeWhen<ConnectFF1State?>(
@@ -195,7 +200,6 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
                 title: "Can't reach FF1",
                 message:
                     "FF1 didn't respond in time. Make sure FF1 is nearby and try again.",
-                showSupportCta: false,
               ),
             );
             return;
@@ -251,7 +255,6 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     _selectedDevice = null;
     _deeplinkInfo = null;
     _pendingEffect = null;
-    _effectId = 0;
   }
 
   void ensureActiveSetupSession() {
@@ -283,7 +286,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     await _completeOnboarding();
     await tearDownAfterSetupComplete();
     _activeSession = null;
-    state = state.copyWith(activeSession: null, hasActiveSession: true);
+    state = state.copyWith(hasActiveSession: true);
     if (shouldNavigate) {
       _goToDeviceConfigurationAfterSessionComplete();
     }
@@ -324,7 +327,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       return;
     }
     _activeSession = null;
-    state = state.copyWith(activeSession: null, hasActiveSession: true);
+    state = state.copyWith(hasActiveSession: true);
     _log.info('[setupSession] cancelSession: $reason');
     cancel();
     await _disconnectBleBestEffort();
@@ -420,12 +423,15 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     _deeplinkInfo = deeplinkInfo;
     // Refactor-only invariant: avoid stale success causing immediate navigation
     // when the connect page is opened again.
-    ref.read(connectFF1Provider.notifier).reset();
-    ref.read(connectWiFiProvider.notifier).reset();
-    state = FF1SetupState(
+    final connectNotifier = ref.read(connectFF1Provider.notifier);
+    final wifiNotifier = ref.read(connectWiFiProvider.notifier);
+    connectNotifier.reset();
+    wifiNotifier.reset();
+    state = state.copyWith(
       step: FF1SetupStep.connecting,
       selectedDevice: device,
       deeplinkInfo: deeplinkInfo,
+      hasActiveSession: _activeSession != null,
     );
     await ref
         .read(connectFF1Provider.notifier)
@@ -481,8 +487,10 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
 
   void reset() {
     _ensureListenersRegistered();
-    ref.read(connectFF1Provider.notifier).reset();
-    ref.read(connectWiFiProvider.notifier).reset();
+    final connectNotifier = ref.read(connectFF1Provider.notifier);
+    final wifiNotifier = ref.read(connectWiFiProvider.notifier);
+    connectNotifier.reset();
+    wifiNotifier.reset();
     _activeSession = null;
     _clearTransientSetupContext();
     state = const FF1SetupState(step: FF1SetupStep.idle);
@@ -494,7 +502,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       return;
     }
     _pendingEffect = null;
-    state = state.copyWith(effectId: _effectId, effect: null, hasEffect: true);
+    state = state.copyWith(effectId: _effectId, hasEffect: true);
   }
 }
 

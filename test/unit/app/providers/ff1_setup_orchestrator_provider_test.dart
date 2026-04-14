@@ -1,6 +1,9 @@
+// This test file uses compact provider reads for behavior-focused regression
+// coverage, so we suppress the receiver duplication lint here.
+// ignore_for_file: cascade_invocations
+
 import 'dart:async';
 
-import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
@@ -10,6 +13,7 @@ import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_device_info.dart';
+import 'package:app/domain/models/wifi_point.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
 import 'package:app/infra/ff1/ble_transport/ff1_ble_transport.dart';
@@ -113,6 +117,48 @@ void main() {
           );
 
       expect(connectNotifier.resetCalls, 1);
+    },
+  );
+
+  test(
+    'startConnect preserves the active guided session on the new attempt',
+    () async {
+      final container = ProviderContainer.test(
+        overrides: [
+          connectFF1Provider.overrideWith(
+            _ResetTrackingConnectNotifier.new,
+          ),
+          connectWiFiProvider.overrideWith(
+            () => _FakeWiFiNotifier(const WiFiConnectionState()),
+          ),
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final keepAlive = container.listen(
+        ff1SetupOrchestratorProvider,
+        (_, _) {},
+      );
+      addTearDown(keepAlive.close);
+
+      final notifier = container.read(ff1SetupOrchestratorProvider.notifier);
+      notifier.startSession();
+      final sessionId =
+          container.read(ff1SetupOrchestratorProvider).activeSession!.id;
+
+      await notifier.startConnect(device: BluetoothDevice.fromId('00:11'));
+
+      expect(
+        container.read(ff1SetupOrchestratorProvider).activeSession,
+        isNotNull,
+      );
+      expect(
+        container.read(ff1SetupOrchestratorProvider).activeSession!.id,
+        sessionId,
+      );
     },
   );
 
@@ -305,10 +351,8 @@ void main() {
 
     final notifier = container.read(ff1SetupOrchestratorProvider.notifier);
     notifier.ensureActiveSetupSession();
-    final firstSessionId = container
-        .read(ff1SetupOrchestratorProvider)
-        .activeSession!
-        .id;
+    final firstSessionId =
+        container.read(ff1SetupOrchestratorProvider).activeSession!.id;
 
     expect(notifier.hasGuidedSetupSession, isTrue);
     expect(notifier.matchesSessionForEffect(firstSessionId), isTrue);
@@ -449,6 +493,82 @@ void main() {
   );
 
   test(
+    'effect ids remain monotonic across teardown and stale acks',
+    () async {
+      final container = ProviderContainer.test(
+        overrides: [
+          connectFF1Provider.overrideWith(
+            () => _FakeConnectNotifier(ConnectFF1Initial()),
+          ),
+          connectWiFiProvider.overrideWith(
+            () => _FakeWiFiNotifier(const WiFiConnectionState()),
+          ),
+          ff1WifiControlProvider.overrideWithValue(_StubWifiControl()),
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+          onboardingActionsProvider.overrideWith(
+            (ref) => OnboardingService(
+              ref: ref,
+              appStateService: MockAppStateService(),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final keepAlive = container.listen(
+        ff1SetupOrchestratorProvider,
+        (_, _) {},
+      );
+      addTearDown(keepAlive.close);
+
+      final notifier = container.read(ff1SetupOrchestratorProvider.notifier);
+      notifier.startSession();
+
+      notifier.requestEnterWifiPassword(
+        device: const FF1Device(
+          name: 'FF1',
+          remoteId: '00:11',
+          deviceId: 'FF1-1',
+          topicId: 'topic-1',
+        ),
+        wifiAccessPoint: const WifiPoint('ssid-1'),
+      );
+
+      final firstState = container.read(ff1SetupOrchestratorProvider);
+      final firstEffectId = firstState.effectId;
+      expect(firstState.effect, isNotNull);
+      notifier.ackEffect(effectId: firstEffectId);
+      expect(container.read(ff1SetupOrchestratorProvider).effect, isNull);
+
+      await notifier.tearDownAfterSetupComplete();
+
+      notifier.startSession();
+      notifier.requestEnterWifiPassword(
+        device: const FF1Device(
+          name: 'FF1',
+          remoteId: '00:11',
+          deviceId: 'FF1-1',
+          topicId: 'topic-1',
+        ),
+        wifiAccessPoint: const WifiPoint('ssid-1'),
+      );
+
+      final secondState = container.read(ff1SetupOrchestratorProvider);
+      expect(secondState.effect, isNotNull);
+      expect(secondState.effectId, greaterThan(firstEffectId));
+
+      notifier.ackEffect(effectId: firstEffectId);
+      expect(container.read(ff1SetupOrchestratorProvider).effect, isNotNull);
+      expect(
+        container.read(ff1SetupOrchestratorProvider).effectId,
+        secondState.effectId,
+      );
+    },
+  );
+
+  test(
     'completeSession failure keeps active session recoverable',
     () async {
       final container = ProviderContainer.test(
@@ -541,11 +661,11 @@ void main() {
   test(
     'Wi‑Fi success with active session completes session using connect device',
     () async {
-    final container = ProviderContainer.test(
-      overrides: [
-        connectFF1Provider.overrideWith(
-          () => _FakeConnectNotifier(ConnectFF1Initial()),
-        ),
+      final container = ProviderContainer.test(
+        overrides: [
+          connectFF1Provider.overrideWith(
+            () => _FakeConnectNotifier(ConnectFF1Initial()),
+          ),
           connectWiFiProvider.overrideWith(
             () => _FakeWiFiNotifier(const WiFiConnectionState()),
           ),
@@ -616,11 +736,11 @@ void main() {
     'Wi‑Fi success completeSession failure emits error; dedupe allows '
     'another success edge',
     () async {
-    final container = ProviderContainer.test(
-      overrides: [
-        connectFF1Provider.overrideWith(
-          () => _FakeConnectNotifier(ConnectFF1Initial()),
-        ),
+      final container = ProviderContainer.test(
+        overrides: [
+          connectFF1Provider.overrideWith(
+            () => _FakeConnectNotifier(ConnectFF1Initial()),
+          ),
           connectWiFiProvider.overrideWith(
             () => _FakeWiFiNotifier(const WiFiConnectionState()),
           ),
