@@ -104,45 +104,49 @@ void main() {
       },
     );
 
-    test('bootstrap repairs favorite title when row is otherwise readable', () async {
-      await _withDatabaseFile('favorite-wrong-title.sqlite', (dbFile) async {
-        _createPlaylistDatabase(
-          file: dbFile,
-          playlistRows: [
-            _RawPlaylistRow(
-              id: Playlist.favoriteId,
-              channelId: Channel.myCollectionId,
-              type: PlaylistType.favorite.value,
-              title: 'Saved',
-              createdAtUs: 1,
-              updatedAtUs: 1,
-              signatures: '[]',
-              sortMode: PlaylistSortMode.provenance.index,
-              itemCount: 0,
-            ),
-          ],
-        );
+    test(
+      'bootstrap repairs favorite title when row is otherwise readable',
+      () async {
+        await _withDatabaseFile('favorite-wrong-title.sqlite', (dbFile) async {
+          _createPlaylistDatabase(
+            file: dbFile,
+            playlistRows: [
+              _RawPlaylistRow(
+                id: Playlist.favoriteId,
+                channelId: Channel.myCollectionId,
+                type: PlaylistType.favorite.value,
+                title: 'Saved',
+                createdAtUs: 1,
+                updatedAtUs: 1,
+                signatures: '[]',
+                sortMode: PlaylistSortMode.provenance.index,
+                itemCount: 0,
+              ),
+            ],
+          );
 
-        final db = AppDatabase.forTesting(NativeDatabase(dbFile));
-        final service = DatabaseService(db);
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
 
-        try {
-          await BootstrapService(databaseService: service).bootstrap();
+          try {
+            await BootstrapService(databaseService: service).bootstrap();
 
-          final favorite = await service.getPlaylistById(Playlist.favoriteId);
+            final favorite = await service.getPlaylistById(Playlist.favoriteId);
 
-          expect(favorite, isNotNull);
-          expect(favorite!.name, 'Favorites');
-          expect(favorite.type, PlaylistType.favorite);
-          expect(favorite.channelId, Channel.myCollectionId);
-        } finally {
-          await db.close();
-        }
-      });
-    });
+            expect(favorite, isNotNull);
+            expect(favorite!.name, 'Favorites');
+            expect(favorite.type, PlaylistType.favorite);
+            expect(favorite.channelId, Channel.myCollectionId);
+          } finally {
+            await db.close();
+          }
+        });
+      },
+    );
 
     test(
-      'favorite snapshot preserves entries when canonical metadata is malformed',
+      'favorite snapshot preserves entries when canonical metadata is '
+      'malformed',
       () async {
         await _withDatabaseFile(
           'favorite-snapshot-metadata.sqlite',
@@ -283,6 +287,58 @@ void main() {
 
             expect(playlists, hasLength(1));
             expect(playlists.single.id, 'healthy_playlist');
+          } finally {
+            await db.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'searchPlaylists skips malformed matching rows instead of crashing',
+      () async {
+        await _withDatabaseFile('playlist-search-skip.sqlite', (dbFile) async {
+          final bootstrapDb = AppDatabase.forTesting(NativeDatabase(dbFile));
+          await bootstrapDb.getAllChannels();
+          await bootstrapDb.close();
+
+          _insertRawPlaylistRow(
+            file: dbFile,
+            row: _RawPlaylistRow(
+              id: 'broken_search_playlist',
+              channelId: 'channel_dp1',
+              type: 99,
+              title: 'Searchable Broken Playlist',
+              createdAtUs: 1,
+              updatedAtUs: 1,
+              signatures: '[]',
+              sortMode: PlaylistSortMode.position.index,
+              itemCount: 0,
+            ),
+          );
+          _insertRawPlaylistRow(
+            file: dbFile,
+            row: _RawPlaylistRow(
+              id: 'healthy_search_playlist',
+              channelId: 'channel_dp1',
+              type: PlaylistType.dp1.value,
+              title: 'Searchable Healthy Playlist',
+              createdAtUs: 2,
+              updatedAtUs: 2,
+              signatures: '[]',
+              sortMode: PlaylistSortMode.position.index,
+              itemCount: 0,
+            ),
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          final service = DatabaseService(db);
+
+          try {
+            final playlists = await service.searchPlaylists('Searchable');
+
+            expect(playlists, hasLength(1));
+            expect(playlists.single.id, 'healthy_search_playlist');
           } finally {
             await db.close();
           }
@@ -462,6 +518,28 @@ void _createPlaylistDatabase({
         row.toSqlValues(),
       );
     }
+  } finally {
+    db.dispose();
+  }
+}
+
+void _insertRawPlaylistRow({
+  required File file,
+  required _RawPlaylistRow row,
+}) {
+  final db = sqlite3.sqlite3.open(file.path);
+  try {
+    db.execute(
+      '''
+      INSERT INTO playlists (
+        id, channel_id, type, base_url, dp_version, slug, title,
+        created_at_us, updated_at_us, signature, signatures, defaults_json,
+        dynamic_queries_json, owner_address, owner_chain, sort_mode,
+        item_count
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ''',
+      row.toSqlValues(),
+    );
   } finally {
     db.dispose();
   }

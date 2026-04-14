@@ -366,7 +366,11 @@ class DatabaseService {
     try {
       await _db.updatePlaylistItemCount(playlistId);
     } catch (e, stack) {
-      _log.severe('Failed to refresh playlist item count for $playlistId', e, stack);
+      _log.severe(
+        'Failed to refresh playlist item count for $playlistId',
+        e,
+        stack,
+      );
       rethrow;
     }
   }
@@ -925,8 +929,8 @@ class DatabaseService {
     int limit = 20,
   }) async {
     try {
-      final data = await _db.searchPlaylistsByTitleFts(query, limit: limit);
-      return data.map(DatabaseConverters.playlistDataToDomainPreview).toList();
+      final rows = await _db.searchPlaylistsByTitleFts(query, limit: limit);
+      return _safePlaylistsFromRows(rows, preview: true);
     } catch (e, stack) {
       _log.severe('Failed to search playlists', e, stack);
       rethrow;

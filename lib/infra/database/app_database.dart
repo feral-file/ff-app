@@ -1207,7 +1207,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Full-text search playlists by query with owner/slug fallback matching.
-  Future<List<PlaylistData>> searchPlaylistsByTitleFts(
+  Future<List<QueryRow>> searchPlaylistsByTitleFts(
     String query, {
     int limit = 20,
   }) async {
@@ -1260,7 +1260,7 @@ class AppDatabase extends _$AppDatabase {
       readsFrom: {playlists},
     ).get();
 
-    return rows.map((row) => playlists.map(row.data)).toList();
+    return rows;
   }
 
   /// Full-text search items by query (title and artist).
