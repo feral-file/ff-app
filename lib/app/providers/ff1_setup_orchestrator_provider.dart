@@ -384,9 +384,12 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     startSession();
   }
 
-  /// Persists [device], completes onboarding, hides pairing QR (when
-  /// [FF1Device.topicId] is set), disconnects BLE, and optionally resets
-  /// ephemeral setup state + navigates to device configuration.
+  /// Completes onboarding, then tears down the active setup session.
+  ///
+  /// The FF1 device is persisted before this helper runs on guided and
+  /// direct-success paths, so this method owns the shared finish/cleanup work:
+  /// hide the pairing QR when possible, disconnect BLE, and optionally reset
+  /// ephemeral setup state + navigate to device configuration.
   ///
   /// Returns `false` when there is no active setup session. Callers must not
   /// infer "run standalone completion" from that alone — [cancelSession] also
@@ -413,12 +416,9 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     // the successful finish sequence has already been committed.
     _sessionCompletionInProgress = true;
     try {
-      await ref
-          .read(ff1BluetoothDeviceActionsProvider.notifier)
-          .addDevice(device);
+      await ref.read(ff1BluetoothDeviceActionsProvider.notifier).addDevice(device);
       await ref.read(onboardingActionsProvider).completeOnboarding();
-      await _hidePairingQrCodeBestEffortBeforeBleDisconnect(device);
-      await _disconnectBleBestEffort();
+      await tearDownAfterSetupComplete();
     } on Object catch (e, st) {
       _sessionCompletionInProgress = false;
       _log.severe('completeSession failed (session=$sessionId)', e, st);
@@ -666,16 +666,20 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   /// Safe to call more than once; disconnect is best-effort.
   Future<void> tearDownAfterSetupComplete() async {
     _ensureListenersRegistered();
+    await _hidePairingQrCodeBestEffortBeforeBleDisconnect();
     await _disconnectBleBestEffort();
     reset();
   }
 
   /// Sends hide-QR over the relayer while BLE is still connected, so the
   /// device can clear the pairing QR before we drop the BLE link.
-  Future<void> _hidePairingQrCodeBestEffortBeforeBleDisconnect(
-    FF1Device device,
-  ) async {
-    final topicId = device.topicId;
+  ///
+  /// We prefer the active session's selected device, but fall back to the
+  /// connected FF1 state because the direct-success path may already have
+  /// cleared the guided session by the time teardown runs.
+  Future<void> _hidePairingQrCodeBestEffortBeforeBleDisconnect() async {
+    final device = _resolveDeviceForPairingQrHide();
+    final topicId = device?.topicId ?? '';
     if (topicId.isEmpty) {
       return;
     }
@@ -689,6 +693,14 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     } on Object {
       // Best-effort: hiding the QR must not block session completion.
     }
+  }
+
+  FF1Device? _resolveDeviceForPairingQrHide() {
+    final connectState = ref.read(connectFF1Provider).asData?.value;
+    return switch (connectState) {
+      ConnectFF1Connected(:final ff1device) => ff1device,
+      _ => null,
+    };
   }
 
   Future<void> _disconnectBleBestEffort() async {

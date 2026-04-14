@@ -27,10 +27,7 @@ class _NoopFf1BtActions extends FF1BluetoothDeviceActionsNotifier {
   Future<void> addDevice(FF1Device device) async {}
 }
 
-class _BlockingFf1BtActions extends FF1BluetoothDeviceActionsNotifier {
-  _BlockingFf1BtActions(this._completer);
-
-  final Completer<void> _completer;
+class _RecordingFf1BtActions extends FF1BluetoothDeviceActionsNotifier {
   int addDeviceCalls = 0;
 
   @override
@@ -39,17 +36,18 @@ class _BlockingFf1BtActions extends FF1BluetoothDeviceActionsNotifier {
   @override
   Future<void> addDevice(FF1Device device) async {
     addDeviceCalls += 1;
-    await _completer.future;
   }
 }
 
-class _ThrowingBtActions extends FF1BluetoothDeviceActionsNotifier {
-  @override
-  void build() {}
+class _ThrowingOnboardingService extends OnboardingService {
+  _ThrowingOnboardingService({
+    required super.ref,
+    required super.appStateService,
+  });
 
   @override
-  Future<void> addDevice(FF1Device device) async {
-    throw StateError('persist failed');
+  Future<void> completeOnboarding() async {
+    throw StateError('onboarding failed');
   }
 }
 
@@ -244,21 +242,36 @@ void main() {
   );
 
   test(
-    'completeSession keeps active session until async completion succeeds',
+    'completeSession persists the device before onboarding teardown',
     () async {
-      final addDeviceCompleter = Completer<void>();
-      final blockingBtActions = _BlockingFf1BtActions(addDeviceCompleter);
+      final wifiControl = _StubWifiControl();
+      final recordingBtActions = _RecordingFf1BtActions();
       final container = ProviderContainer.test(
         overrides: [
+          connectFF1Provider.overrideWith(
+            () => _FakeConnectNotifier(
+              const ConnectFF1Connected(
+                ff1device: FF1Device(
+                  name: 'FF1',
+                  remoteId: '00:11',
+                  deviceId: 'FF1-1',
+                  topicId: 'topic-1',
+                ),
+                portalIsSet: false,
+                isConnectedToInternet: true,
+              ),
+            ),
+          ),
           ff1ControlProvider.overrideWithValue(
             FF1BleControl(transport: _NoopBleTransport()),
+          ),
+          ff1BluetoothDeviceActionsProvider.overrideWith(
+            () => recordingBtActions,
           ),
           connectWiFiProvider.overrideWith(
             () => _FakeWiFiNotifier(const WiFiConnectionState()),
           ),
-          ff1BluetoothDeviceActionsProvider.overrideWith(
-            () => blockingBtActions,
-          ),
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
           onboardingActionsProvider.overrideWith(
             (ref) => OnboardingService(
               ref: ref,
@@ -287,29 +300,67 @@ void main() {
             ),
           );
 
-      await Future<void>.delayed(Duration.zero);
-
-      expect(
-        container.read(ff1SetupOrchestratorProvider).activeSession,
-        isNotNull,
-      );
-
-      await container
-          .read(ff1SetupOrchestratorProvider.notifier)
-          .cancelSession(FF1SetupSessionCancelReason.userAborted);
-
-      expect(
-        container.read(ff1SetupOrchestratorProvider).activeSession,
-        isNotNull,
-      );
-
-      addDeviceCompleter.complete();
-      await completeFuture;
-
-      expect(blockingBtActions.addDeviceCalls, 1);
+      expect(await completeFuture, isTrue);
+      expect(recordingBtActions.addDeviceCalls, 1);
       expect(
         container.read(ff1SetupOrchestratorProvider).activeSession,
         isNull,
+      );
+      expect(
+        container.read(ff1SetupOrchestratorProvider).step,
+        FF1SetupStep.idle,
+      );
+      expect(wifiControl.showPairingQrCodeCalls, 1);
+    },
+  );
+
+  test(
+    'tearDownAfterSetupComplete hides pairing QR before BLE disconnect',
+    () async {
+      final wifiControl = _StubWifiControl();
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+          connectFF1Provider.overrideWith(
+            () => _FakeConnectNotifier(
+              const ConnectFF1Connected(
+                ff1device: FF1Device(
+                  name: 'FF1',
+                  remoteId: '00:11',
+                  deviceId: 'FF1-1',
+                  topicId: 'topic-1',
+                ),
+                portalIsSet: false,
+                isConnectedToInternet: true,
+              ),
+            ),
+          ),
+          connectWiFiProvider.overrideWith(
+            () => _FakeWiFiNotifier(const WiFiConnectionState()),
+          ),
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final keepAlive = container.listen(
+        ff1SetupOrchestratorProvider,
+        (_, _) {},
+      );
+      addTearDown(keepAlive.close);
+
+      await container.read(connectFF1Provider.future);
+
+      await container
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .tearDownAfterSetupComplete();
+
+      expect(wifiControl.showPairingQrCodeCalls, 1);
+      expect(
+        container.read(ff1SetupOrchestratorProvider).step,
+        FF1SetupStep.idle,
       );
     },
   );
@@ -322,14 +373,15 @@ void main() {
           ff1ControlProvider.overrideWithValue(
             FF1BleControl(transport: _NoopBleTransport()),
           ),
+          ff1BluetoothDeviceServiceProvider.overrideWithValue(
+            MockFF1BluetoothDeviceService(),
+          ),
           connectWiFiProvider.overrideWith(
             () => _FakeWiFiNotifier(const WiFiConnectionState()),
           ),
-          ff1BluetoothDeviceActionsProvider.overrideWith(
-            _ThrowingBtActions.new,
-          ),
+          ff1WifiControlProvider.overrideWithValue(_StubWifiControl()),
           onboardingActionsProvider.overrideWith(
-            (ref) => OnboardingService(
+            (ref) => _ThrowingOnboardingService(
               ref: ref,
               appStateService: MockAppStateService(),
             ),
@@ -493,11 +545,8 @@ void main() {
           ff1ControlProvider.overrideWithValue(
             FF1BleControl(transport: _NoopBleTransport()),
           ),
-          ff1BluetoothDeviceActionsProvider.overrideWith(
-            _ThrowingBtActions.new,
-          ),
           onboardingActionsProvider.overrideWith(
-            (ref) => OnboardingService(
+            (ref) => _ThrowingOnboardingService(
               ref: ref,
               appStateService: MockAppStateService(),
             ),
@@ -572,11 +621,14 @@ class _FakeWiFiNotifier extends WiFiConnectionNotifier {
 }
 
 class _StubWifiControl extends FakeWifiControl {
+  int showPairingQrCodeCalls = 0;
+
   @override
   Future<FF1CommandResponse> showPairingQRCode({
     required String topicId,
     required bool show,
   }) async {
+    showPairingQrCodeCalls += 1;
     return FF1CommandResponse(status: 'ok');
   }
 }
