@@ -49,6 +49,17 @@ void main() {
         isTrue,
       );
     });
+
+    test('stale notification/error gen does not apply to current session', () {
+      expect(
+        relayerDisconnectEventAppliesToSession(
+          eventConnectGen: 1,
+          activeRelayerConnectGen: 2,
+          expectedConnectedGen: 2,
+        ),
+        isFalse,
+      );
+    });
   });
 
   test(

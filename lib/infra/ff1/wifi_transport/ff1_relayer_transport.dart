@@ -764,6 +764,25 @@ disconnect requested while teardown in progress; waiting existing teardown''',
         }
 
       case _RelayerEventType.error:
+        final eventGen = event.data?['connectGen'] as int?;
+        if (!relayerDisconnectEventAppliesToSession(
+          eventConnectGen: eventGen,
+          activeRelayerConnectGen: _activeRelayerConnectGen,
+          expectedConnectedGen: _expectedConnectedGen,
+        )) {
+          _slog.info(
+            category: LogCategory.wifi,
+            event: 'ws_error_ignored_stale',
+            message: 'ignoring stale error from superseded relayer session',
+            payload: {
+              'deviceId': _device?.deviceId,
+              'eventConnectGen': eventGen,
+              'activeRelayerConnectGen': _activeRelayerConnectGen,
+              'expectedConnectedGen': _expectedConnectedGen,
+            },
+          );
+          break;
+        }
         final errorMsg = event.data?['error'] as String? ?? 'Unknown error';
         _lastError = errorMsg;
         _slog.warning(
@@ -782,6 +801,26 @@ disconnect requested while teardown in progress; waiting existing teardown''',
         }
 
       case _RelayerEventType.notification:
+        final eventGen = event.data?['connectGen'] as int?;
+        if (!relayerDisconnectEventAppliesToSession(
+          eventConnectGen: eventGen,
+          activeRelayerConnectGen: _activeRelayerConnectGen,
+          expectedConnectedGen: _expectedConnectedGen,
+        )) {
+          _slog.info(
+            category: LogCategory.wifi,
+            event: 'isolate_notification_ignored_stale',
+            message:
+                'ignoring stale notification from superseded relayer session',
+            payload: {
+              'deviceId': _device?.deviceId,
+              'eventConnectGen': eventGen,
+              'activeRelayerConnectGen': _activeRelayerConnectGen,
+              'expectedConnectedGen': _expectedConnectedGen,
+            },
+          );
+          break;
+        }
         final notificationData = event.data?['notification'] as Map?;
         if (notificationData != null) {
           try {
@@ -1001,7 +1040,10 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
             );
             final eventData = <String, dynamic>{
               ...event.toJson(),
-              'data': {'notification': notification.toJson()},
+              'data': {
+                'connectGen': connectGen,
+                'notification': notification.toJson(),
+              },
             };
             mainSendPort.send(eventData);
             _relayerIsolateLog(
@@ -1019,7 +1061,7 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
           );
           final errorData = <String, dynamic>{
             ...errorEvent.toJson(),
-            'data': {'error': error.toString()},
+            'data': {'connectGen': connectGen, 'error': error.toString()},
           };
           mainSendPort.send(errorData);
           unawaited(closeChannel());
@@ -1079,7 +1121,7 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
       );
       final errorData = <String, dynamic>{
         ...errorEvent.toJson(),
-        'data': {'error': e.toString()},
+        'data': {'connectGen': connectGen, 'error': e.toString()},
       };
       mainSendPort.send(errorData);
       unawaited(closeChannel());
