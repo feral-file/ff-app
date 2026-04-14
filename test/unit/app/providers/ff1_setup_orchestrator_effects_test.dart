@@ -128,13 +128,13 @@ void main() {
     'does not emit connect navigation effect on fireImmediately when '
     'ConnectFF1Connected is stale and no connect attempt is active',
     () async {
-    final container = ProviderContainer.test(
-      overrides: [
-        connectFF1Provider.overrideWith(
-          _StaleConnectedConnectNotifier.new,
-        ),
-      ],
-    );
+      final container = ProviderContainer.test(
+        overrides: [
+          connectFF1Provider.overrideWith(
+            _StaleConnectedConnectNotifier.new,
+          ),
+        ],
+      );
       addTearDown(container.dispose);
 
       final keepAlive = container.listen(
