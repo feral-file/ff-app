@@ -6,6 +6,7 @@ import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
+import 'package:app/domain/models/dp1/dp1_playlist_signature.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -81,9 +82,9 @@ class DatabaseService {
 
   /// Publisher id → display name; updates when publishers are ingested.
   Stream<Map<int, String>> watchPublisherTitles() {
-    return _db
-        .watchPublisherTitles()
-        .debounceTime(const Duration(milliseconds: 300));
+    return _db.watchPublisherTitles().debounceTime(
+      const Duration(milliseconds: 300),
+    );
   }
 
   /// Watch playlists as domain models.
@@ -97,17 +98,14 @@ class DatabaseService {
     int? limit,
   }) {
     return _db
-        .watchPlaylists(
-          type: type?.index,
+        .watchPlaylistRows(
+          type: type?.value,
           channelIds: channelIds,
           ownerAddress: ownerAddress,
           limit: limit,
         )
         .debounceTime(const Duration(milliseconds: 300))
-        .map(
-          (rows) =>
-              rows.map(DatabaseConverters.playlistDataToDomainPreview).toList(),
-        );
+        .map((rows) => _safePlaylistsFromRows(rows, preview: true));
   }
 
   /// Watch playlist items as domain models.
@@ -296,8 +294,8 @@ class DatabaseService {
   /// Get playlists for a channel.
   Future<List<Playlist>> getPlaylistsByChannel(String channelId) async {
     try {
-      final data = await _db.getPlaylistsByChannel(channelId);
-      return data.map(DatabaseConverters.playlistDataToDomainPreview).toList();
+      final rows = await _db.getPlaylistRowsByChannel(channelId);
+      return _safePlaylistsFromRows(rows, preview: true);
     } catch (e, stack) {
       _log.severe('Failed to get playlists for channel $channelId', e, stack);
       rethrow;
@@ -307,10 +305,8 @@ class DatabaseService {
   /// Get playlist by ID.
   Future<Playlist?> getPlaylistById(String id) async {
     try {
-      final data = await _db.getPlaylistById(id);
-      return data != null
-          ? DatabaseConverters.playlistDataToDomain(data)
-          : null;
+      final row = await _db.getPlaylistRowById(id);
+      return row != null ? _safePlaylistFromRow(row, preview: false) : null;
     } catch (e, stack) {
       _log.severe('Failed to get playlist $id', e, stack);
       rethrow;
@@ -320,11 +316,10 @@ class DatabaseService {
   /// Watch a single playlist by ID.
   Stream<Playlist?> watchPlaylistById(String id) {
     return _db
-        .watchPlaylistById(id)
+        .watchPlaylistRowById(id)
         .map(
-          (data) => data != null
-              ? DatabaseConverters.playlistDataToDomain(data)
-              : null,
+          (row) =>
+              row != null ? _safePlaylistFromRow(row, preview: false) : null,
         );
   }
 
@@ -333,10 +328,8 @@ class DatabaseService {
   /// When [type] is provided, results are filtered by playlist type.
   Future<List<Playlist>> getAllPlaylists({PlaylistType? type}) async {
     try {
-      final data = await _db.getAllPlaylists(type: type);
-      final playlists = data
-          .map(DatabaseConverters.playlistDataToDomain)
-          .toList();
+      final rows = await _db.getAllPlaylistRows(type: type);
+      final playlists = _safePlaylistsFromRows(rows, preview: false);
       _log.info(
         'Retrieved ${playlists.length} playlists from database'
         '${type != null ? ' (type: ${type.name})' : ''}',
@@ -351,8 +344,8 @@ class DatabaseService {
   /// Get all address-based playlists.
   Future<List<Playlist>> getAddressPlaylists() async {
     try {
-      final data = await _db.getAddressPlaylists();
-      return data.map(DatabaseConverters.playlistDataToDomainPreview).toList();
+      final rows = await _db.getAddressPlaylistRows();
+      return _safePlaylistsFromRows(rows, preview: true);
     } catch (e, stack) {
       if (_isDatabaseUnavailableError(e)) {
         _log.warning(
@@ -362,6 +355,22 @@ class DatabaseService {
         rethrow;
       }
       _log.severe('Failed to get address playlists', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Recompute playlist item count from playlist_entries after a narrow
+  /// metadata repair. This keeps Favorites visible when bootstrap overwrites a
+  /// malformed metadata row but the underlying saved entries are still valid.
+  Future<void> refreshPlaylistItemCount(String playlistId) async {
+    try {
+      await _db.updatePlaylistItemCount(playlistId);
+    } catch (e, stack) {
+      _log.severe(
+        'Failed to refresh playlist item count for $playlistId',
+        e,
+        stack,
+      );
       rethrow;
     }
   }
@@ -442,15 +451,17 @@ class DatabaseService {
   /// comes from `getPlaylistItemsByProvenance`; that same order is
   /// preserved on `restoreFavoritePlaylistsSnapshot` (no sortKeyUs stored).
   Future<List<FavoritePlaylistSnapshot>> getFavoritePlaylistsSnapshot() async {
-    final playlistsData = await _db.getAllPlaylists(
-      type: PlaylistType.favorite,
-    );
-    final playlists = playlistsData
-        .map(DatabaseConverters.playlistDataToDomain)
-        .toList();
-
     final snapshots = <FavoritePlaylistSnapshot>[];
+    final canonicalFavoriteSnapshot = await _getCanonicalFavoriteSnapshot();
+    if (canonicalFavoriteSnapshot != null) {
+      snapshots.add(canonicalFavoriteSnapshot);
+    }
+
+    final playlists = await getAllPlaylists(type: PlaylistType.favorite);
     for (final playlist in playlists) {
+      if (playlist.id == Playlist.favoriteId) {
+        continue;
+      }
       final items = await _db.getPlaylistItemsByProvenance(playlist.id);
       snapshots.add(
         FavoritePlaylistSnapshot(
@@ -460,6 +471,206 @@ class DatabaseService {
       );
     }
     return snapshots;
+  }
+
+  Future<FavoritePlaylistSnapshot?> _getCanonicalFavoriteSnapshot() async {
+    final row = await _db.getPlaylistRowById(Playlist.favoriteId);
+    if (row == null) {
+      return null;
+    }
+
+    final items = await _db.getPlaylistItemsByProvenance(Playlist.favoriteId);
+    final playlist = _safePlaylistFromRow(row, preview: false);
+    if (_isCanonicalFavoritePlaylist(playlist)) {
+      return FavoritePlaylistSnapshot(
+        playlist: playlist!,
+        items: items,
+      );
+    }
+
+    if (items.isEmpty) {
+      return null;
+    }
+
+    // Seed replace snapshotting runs before bootstrap can recreate the
+    // canonical Favorite row. Preserve saved entries by snapshotting the
+    // canonical Favorite metadata only for this hot path.
+    _log.warning(
+      'Snapshotting canonical Favorite playlist metadata after malformed '
+      'favorite row was skipped',
+    );
+    return FavoritePlaylistSnapshot(
+      playlist: Playlist.favorite(),
+      items: items,
+    );
+  }
+
+  bool _isCanonicalFavoritePlaylist(Playlist? playlist) {
+    return playlist != null &&
+        playlist.id == Playlist.favoriteId &&
+        playlist.name == 'Favorites' &&
+        playlist.type == PlaylistType.favorite &&
+        playlist.channelId == Channel.myCollectionId &&
+        playlist.sortMode == PlaylistSortMode.provenance;
+  }
+
+  List<Playlist> _safePlaylistsFromRows(
+    List<QueryRow> rows, {
+    required bool preview,
+  }) {
+    final playlists = <Playlist>[];
+    for (final row in rows) {
+      final playlist = _safePlaylistFromRow(row, preview: preview);
+      if (playlist != null) {
+        playlists.add(playlist);
+      }
+    }
+    return playlists;
+  }
+
+  Playlist? _safePlaylistFromRow(
+    QueryRow row, {
+    required bool preview,
+  }) {
+    try {
+      final id = row.read<String?>('id');
+      final title = row.read<String?>('title');
+      final typeValue = row.read<int?>('type');
+      final createdAtUs = row.read<int?>('created_at_us');
+      final updatedAtUs = row.read<int?>('updated_at_us');
+      final signatures = row.read<String?>('signatures');
+      final sortModeValue = row.read<int?>('sort_mode');
+      final itemCount = row.read<int?>('item_count');
+
+      if (id == null ||
+          title == null ||
+          typeValue == null ||
+          createdAtUs == null ||
+          updatedAtUs == null ||
+          signatures == null ||
+          sortModeValue == null ||
+          itemCount == null) {
+        _logSkippedPlaylistRow(
+          row,
+          'missing one or more required playlist columns',
+        );
+        return null;
+      }
+
+      final type = _playlistTypeFromValue(typeValue);
+      final sortMode = _playlistSortModeFromValue(sortModeValue);
+      if (type == null || sortMode == null) {
+        _logSkippedPlaylistRow(row, 'invalid playlist enum values');
+        return null;
+      }
+
+      List<DP1PlaylistSignature>? structuredSignatures;
+      if (!preview && signatures.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(signatures) as List;
+          final parsed = <DP1PlaylistSignature>[];
+          for (final entry in decoded) {
+            if (entry is Map) {
+              parsed.add(
+                DP1PlaylistSignature.fromJson(
+                  Map<String, dynamic>.from(entry),
+                ),
+              );
+            }
+          }
+          structuredSignatures = parsed.isEmpty ? null : parsed;
+        } on Object {
+          // Invalid JSON should not crash local playlist reads.
+        }
+      }
+
+      Map<String, dynamic>? defaults;
+      if (!preview) {
+        final defaultsJson = row.read<String?>('defaults_json');
+        if (defaultsJson != null && defaultsJson.isNotEmpty) {
+          try {
+            defaults = jsonDecode(defaultsJson) as Map<String, dynamic>;
+          } on Object {
+            // Invalid JSON should not crash local playlist reads.
+          }
+        }
+      }
+
+      List<DynamicQuery>? dynamicQueries;
+      if (!preview) {
+        final dynamicQueriesJson = row.read<String?>('dynamic_queries_json');
+        if (dynamicQueriesJson != null && dynamicQueriesJson.isNotEmpty) {
+          try {
+            dynamicQueries = (jsonDecode(dynamicQueriesJson) as List)
+                .map(
+                  (entry) =>
+                      DynamicQuery.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList();
+          } on Object {
+            // Invalid JSON should not crash local playlist reads.
+          }
+        }
+      }
+
+      return Playlist(
+        id: id,
+        name: title,
+        type: type,
+        channelId: row.read<String?>('channel_id'),
+        baseUrl: row.read<String?>('base_url'),
+        dpVersion: row.read<String?>('dp_version'),
+        slug: row.read<String?>('slug'),
+        createdAt: DateTime.fromMicrosecondsSinceEpoch(createdAtUs),
+        updatedAt: DateTime.fromMicrosecondsSinceEpoch(updatedAtUs),
+        legacySignature: preview ? null : row.read<String?>('signature'),
+        signatures: structuredSignatures,
+        defaults: defaults,
+        dynamicQueries: dynamicQueries,
+        ownerAddress: row.read<String?>('owner_address'),
+        ownerChain: row.read<String?>('owner_chain'),
+        sortMode: sortMode,
+        itemCount: itemCount,
+      );
+    } on Object catch (error, stack) {
+      _logSkippedPlaylistRow(
+        row,
+        'failed to parse playlist row: $error',
+        stack,
+      );
+      return null;
+    }
+  }
+
+  PlaylistType? _playlistTypeFromValue(int value) {
+    for (final type in PlaylistType.values) {
+      if (type.value == value) {
+        return type;
+      }
+    }
+    return null;
+  }
+
+  PlaylistSortMode? _playlistSortModeFromValue(int value) {
+    for (final mode in PlaylistSortMode.values) {
+      if (mode.index == value) {
+        return mode;
+      }
+    }
+    return null;
+  }
+
+  void _logSkippedPlaylistRow(
+    QueryRow row,
+    String reason, [
+    StackTrace? stack,
+  ]) {
+    final id = row.read<String?>('id') ?? '<unknown>';
+    _log.warning(
+      'Skipping malformed playlist row $id: $reason',
+      null,
+      stack,
+    );
   }
 
   /// Restore Favorite playlists from snapshot after rebuild-metadata.
@@ -719,8 +930,8 @@ class DatabaseService {
     int limit = 20,
   }) async {
     try {
-      final data = await _db.searchPlaylistsByTitleFts(query, limit: limit);
-      return data.map(DatabaseConverters.playlistDataToDomainPreview).toList();
+      final rows = await _db.searchPlaylistsByTitleFts(query, limit: limit);
+      return _safePlaylistsFromRows(rows, preview: true);
     } catch (e, stack) {
       _log.severe('Failed to search playlists', e, stack);
       rethrow;
