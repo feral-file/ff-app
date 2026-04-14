@@ -4,7 +4,6 @@ import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
-import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -128,6 +127,21 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     super.dispose();
   }
 
+  /// Clear page-local success latches before a new connect attempt starts.
+  ///
+  /// The orchestrator owns durable setup/session state, but this page keeps a
+  /// few UI-only latches to avoid flashing between success and route
+  /// replacement. Those latches must be reset on retry so a fresh attempt does
+  /// not inherit portal-ready chrome or a stale verified device.
+  void _resetAttemptUiState() {
+    _guidedCompletionPending = false;
+    _successExitPending = false;
+    _successExitShowsPortal = false;
+    _portalReadyCompletionPending = false;
+    _portalReadySessionCompleted = false;
+    _portalReadyDevice = null;
+  }
+
   /// Portal-all-set UI is only valid after the live connect flow verifies the
   /// device. Deeplink metadata can be stale, so it must not mask BLE errors or
   /// skip setup completion on its own.
@@ -195,7 +209,12 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
         if (!orchestrator.matchesSessionForEffect(null)) {
           return true;
         }
-        unawaited(_completeDirectSuccessExit(preservePortalUi: false));
+        unawaited(
+          _completeDirectSuccessExit(
+            device: connected.ff1device,
+            preservePortalUi: false,
+          ),
+        );
         return true;
       case FF1SetupNeedsWiFi(:final device):
         if (!context.mounted) return false;
@@ -249,6 +268,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   Future<void> _startConnectFlow() async {
     _startTime = DateTime.now();
     _log.info('[ConnectFF1Page] Start connecting to FF1');
+    _resetAttemptUiState();
     final notifier = _setupOrchestrator;
     if (notifier == null) {
       return;
@@ -338,6 +358,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   }
 
   Future<void> _completeDirectSuccessExit({
+    required FF1Device device,
     required bool preservePortalUi,
     bool bypassPendingGuard = false,
   }) async {
@@ -364,10 +385,9 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     });
 
     try {
-      await ref.read(onboardingActionsProvider).completeOnboarding();
       await ref
           .read(ff1SetupOrchestratorProvider.notifier)
-          .tearDownAfterSetupComplete();
+          .completeInternetReadySetup(device, shouldNavigate: false);
     } on Object catch (e, st) {
       _log.warning(
         '[ConnectFF1Page] Direct success completion failed',
@@ -606,7 +626,10 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
       return;
     }
     if (!isGuidedPortalFlow) {
-      await _completeDirectSuccessExit(preservePortalUi: true);
+      await _completeDirectSuccessExit(
+        device: device,
+        preservePortalUi: true,
+      );
       return;
     }
     await _exitConnectSuccess(

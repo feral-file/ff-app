@@ -274,7 +274,7 @@
 - dependencies: `connectWiFiProvider`, FF1 BLE command providers, `ff1SetupOrchestratorProvider`, support dialog helpers
 - notes / caveats:
   - Open networks auto-submit without password.
-  - On **legacy** navigate to device configuration (orchestrator `FF1SetupNavigate`), **Enter WiFi Password** may call `completeOnboarding()` then `tearDownAfterSetupComplete()` so BLE is torn down without duplicating guided `completeSession` semantics.
+  - On **legacy** navigate to device configuration (orchestrator `FF1SetupNavigate`), **Enter WiFi Password** only routes with `context.go(...)`; onboarding completion and teardown remain owned by the orchestrator/direct-success path so the screen does not duplicate setup cleanup.
 
 ## Screen: StartSetupFf1Page
 

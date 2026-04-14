@@ -7,7 +7,6 @@ import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
 import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
-import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
@@ -223,10 +222,12 @@ class _EnterWiFiPasswordScreenState
             return true;
           }
           try {
-            await ref.read(onboardingActionsProvider).completeOnboarding();
             await ref
                 .read(ff1SetupOrchestratorProvider.notifier)
-                .tearDownAfterSetupComplete();
+                .completeInternetReadySetup(
+                  widget.payload.device,
+                  shouldNavigate: false,
+                );
           } on Object catch (e, st) {
             _log.warning(
               '[EnterWiFiPasswordScreen] Device-config navigation failed',

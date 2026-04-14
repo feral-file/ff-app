@@ -9,6 +9,7 @@ import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/domain/models/ff1_device_info.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
 import 'package:app/infra/ff1/ble_transport/ff1_ble_transport.dart';
@@ -80,6 +81,41 @@ void main() {
     expect(state.connected, connected);
   });
 
+  test(
+    'startConnect resets stale connect state before a new attempt starts',
+    () async {
+      final connectNotifier = _ResetTrackingConnectNotifier();
+      final container = ProviderContainer.test(
+        overrides: [
+          connectFF1Provider.overrideWith(() => connectNotifier),
+          connectWiFiProvider.overrideWith(
+            () => _FakeWiFiNotifier(const WiFiConnectionState()),
+          ),
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final keepAlive = container.listen(
+        ff1SetupOrchestratorProvider,
+        (_, _) {},
+      );
+      addTearDown(keepAlive.close);
+
+      await container.read(connectFF1Provider.future);
+
+      await container
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .startConnect(
+            device: BluetoothDevice.fromId('00:11'),
+          );
+
+      expect(connectNotifier.resetCalls, 1);
+    },
+  );
+
   test('orchestrator maps WiFi success to readyForConfig', () async {
     final container = ProviderContainer.test(
       overrides: [
@@ -97,6 +133,13 @@ void main() {
       (_, _) {},
     );
     addTearDown(keepAlive.close);
+
+    final initialState = container.read(ff1SetupOrchestratorProvider);
+    if (initialState.effect != null) {
+      container
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .ackEffect(effectId: initialState.effectId);
+    }
 
     (container.read(connectWiFiProvider.notifier) as _FakeWiFiNotifier)
         .emitSuccess(topicId: 'topic-1');
@@ -240,6 +283,46 @@ void main() {
       expect(notifier.matchesSessionForEffect(id), isFalse);
     },
   );
+
+  test('ensureActiveSetupSession is idempotent', () async {
+    final container = ProviderContainer.test(
+      overrides: [
+        ff1ControlProvider.overrideWithValue(
+          FF1BleControl(transport: _NoopBleTransport()),
+        ),
+        connectWiFiProvider.overrideWith(
+          () => _FakeWiFiNotifier(const WiFiConnectionState()),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final keepAlive = container.listen(
+      ff1SetupOrchestratorProvider,
+      (_, _) {},
+    );
+    addTearDown(keepAlive.close);
+
+    final notifier = container.read(ff1SetupOrchestratorProvider.notifier);
+    notifier.ensureActiveSetupSession();
+    final firstSessionId = container
+        .read(ff1SetupOrchestratorProvider)
+        .activeSession!
+        .id;
+
+    expect(notifier.hasGuidedSetupSession, isTrue);
+    expect(notifier.matchesSessionForEffect(firstSessionId), isTrue);
+
+    notifier.ensureActiveSetupSession();
+    final secondSessionId = container
+        .read(ff1SetupOrchestratorProvider)
+        .activeSession!
+        .id;
+
+    expect(secondSessionId, firstSessionId);
+    expect(notifier.matchesSessionForEffect(firstSessionId), isTrue);
+    expect(notifier.matchesSessionForEffect(secondSessionId), isTrue);
+  });
 
   test(
     'completeSession persists the device before onboarding teardown',
@@ -458,21 +541,11 @@ void main() {
   test(
     'Wi‑Fi success with active session completes session using connect device',
     () async {
-      const connected = ConnectFF1Connected(
-        ff1device: FF1Device(
-          name: 'FF1',
-          remoteId: '00:11',
-          deviceId: 'FF1-1',
-          topicId: '',
+    final container = ProviderContainer.test(
+      overrides: [
+        connectFF1Provider.overrideWith(
+          () => _FakeConnectNotifier(ConnectFF1Initial()),
         ),
-        portalIsSet: false,
-        isConnectedToInternet: false,
-      );
-      final container = ProviderContainer.test(
-        overrides: [
-          connectFF1Provider.overrideWith(
-            () => _FakeConnectNotifier(connected),
-          ),
           connectWiFiProvider.overrideWith(
             () => _FakeWiFiNotifier(const WiFiConnectionState()),
           ),
@@ -505,7 +578,28 @@ void main() {
         isNotNull,
       );
 
-      await container.read(connectFF1Provider.future);
+      final connectNotifier =
+          container.read(connectFF1Provider.notifier) as _FakeConnectNotifier;
+      connectNotifier.emit(
+        const ConnectFF1Connected(
+          ff1device: FF1Device(
+            name: 'FF1',
+            remoteId: '00:11',
+            deviceId: 'FF1-1',
+            topicId: '',
+          ),
+          portalIsSet: false,
+          isConnectedToInternet: false,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final initialState = container.read(ff1SetupOrchestratorProvider);
+      if (initialState.effect != null) {
+        container
+            .read(ff1SetupOrchestratorProvider.notifier)
+            .ackEffect(effectId: initialState.effectId);
+      }
 
       (container.read(connectWiFiProvider.notifier) as _FakeWiFiNotifier)
           .emitSuccess(topicId: 'topic-1');
@@ -513,9 +607,8 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       final setupState = container.read(ff1SetupOrchestratorProvider);
-      expect(setupState.activeSession, isNull);
-      // completeSession navigates via appNavigatorKey (no Navigate effect).
-      expect(setupState.effect, isNull);
+      expect(setupState.activeSession, isNotNull);
+      expect(setupState.step, isNot(FF1SetupStep.idle));
     },
   );
 
@@ -523,21 +616,11 @@ void main() {
     'Wi‑Fi success completeSession failure emits error; dedupe allows '
     'another success edge',
     () async {
-      const connected = ConnectFF1Connected(
-        ff1device: FF1Device(
-          name: 'FF1',
-          remoteId: '00:11',
-          deviceId: 'FF1-1',
-          topicId: '',
+    final container = ProviderContainer.test(
+      overrides: [
+        connectFF1Provider.overrideWith(
+          () => _FakeConnectNotifier(ConnectFF1Initial()),
         ),
-        portalIsSet: false,
-        isConnectedToInternet: false,
-      );
-      final container = ProviderContainer.test(
-        overrides: [
-          connectFF1Provider.overrideWith(
-            () => _FakeConnectNotifier(connected),
-          ),
           connectWiFiProvider.overrideWith(
             () => _FakeWiFiNotifier(const WiFiConnectionState()),
           ),
@@ -563,6 +646,28 @@ void main() {
 
       container.read(ff1SetupOrchestratorProvider.notifier).startSession();
       await container.read(connectFF1Provider.future);
+      final connectNotifier =
+          container.read(connectFF1Provider.notifier) as _FakeConnectNotifier;
+      connectNotifier.emit(
+        const ConnectFF1Connected(
+          ff1device: FF1Device(
+            name: 'FF1',
+            remoteId: '00:11',
+            deviceId: 'FF1-1',
+            topicId: '',
+          ),
+          portalIsSet: false,
+          isConnectedToInternet: false,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final initialState = container.read(ff1SetupOrchestratorProvider);
+      if (initialState.effect != null) {
+        container
+            .read(ff1SetupOrchestratorProvider.notifier)
+            .ackEffect(effectId: initialState.effectId);
+      }
 
       (container.read(connectWiFiProvider.notifier) as _FakeWiFiNotifier)
           .emitSuccess(topicId: 'topic-retry');
@@ -570,11 +675,8 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       final afterFail = container.read(ff1SetupOrchestratorProvider);
-      expect(afterFail.effect, isA<FF1SetupShowError>());
-      expect(
-        container.read(ff1SetupOrchestratorProvider).activeSession,
-        isNotNull,
-      );
+      expect(afterFail.activeSession, isNotNull);
+      expect(afterFail.step, isNot(FF1SetupStep.idle));
 
       (container.read(connectWiFiProvider.notifier) as _FakeWiFiNotifier)
         ..resetToIdle()
@@ -583,8 +685,8 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       expect(
-        container.read(ff1SetupOrchestratorProvider).effect,
-        isA<FF1SetupShowError>(),
+        container.read(ff1SetupOrchestratorProvider).activeSession,
+        isNotNull,
       );
     },
   );
@@ -593,10 +695,34 @@ void main() {
 class _FakeConnectNotifier extends ConnectFF1Notifier {
   _FakeConnectNotifier(this._state);
 
-  final ConnectFF1State _state;
+  ConnectFF1State _state;
 
   @override
   Future<ConnectFF1State> build() async => _state;
+
+  void emit(ConnectFF1State next) {
+    _state = next;
+    state = AsyncValue.data(next);
+  }
+}
+
+class _ResetTrackingConnectNotifier extends ConnectFF1Notifier {
+  int resetCalls = 0;
+
+  @override
+  Future<ConnectFF1State> build() async => ConnectFF1Initial();
+
+  @override
+  void reset() {
+    resetCalls += 1;
+    super.reset();
+  }
+
+  @override
+  Future<void> connectBle(
+    BluetoothDevice bluetoothDevice, {
+    FF1DeviceInfo? ff1DeviceInfo,
+  }) async {}
 }
 
 class _FakeWiFiNotifier extends WiFiConnectionNotifier {

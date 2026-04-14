@@ -52,6 +52,13 @@ class FF1BluetoothDeviceActionsNotifier extends Notifier<void> {
   Future<void> addDevice(FF1Device device) async {
     await _service.putDevice(device);
     _log.info('Device saved: ${device.deviceId}');
+    final activeDevice = _service.getActiveDevice();
+    if (activeDevice?.deviceId == device.deviceId) {
+      // Internet-ready setup already promotes the device before callers reach
+      // teardown. Skipping the redundant active-device write avoids retriggering
+      // auto-connect watchers while the setup flow is still unwinding.
+      return;
+    }
     await setActiveDevice(device.deviceId);
   }
 
