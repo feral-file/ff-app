@@ -42,9 +42,10 @@ bool relayerDisconnectEventAppliesToSession({
     // Legacy events without generation: preserve previous apply-all behavior.
     return true;
   }
-  final pending = expectedConnectedGen != null &&
-      eventConnectGen == expectedConnectedGen;
-  final active = activeRelayerConnectGen != null &&
+  final pending =
+      expectedConnectedGen != null && eventConnectGen == expectedConnectedGen;
+  final active =
+      activeRelayerConnectGen != null &&
       eventConnectGen == activeRelayerConnectGen;
   return pending || active;
 }
@@ -199,14 +200,27 @@ class FF1RelayerTransport implements FF1WifiTransport {
     // review 4098243960).
     final teardownInFlight = _teardownCompleter;
     if (teardownInFlight != null) {
+      final pauseGenBeforeTeardown = _relayerPauseGeneration;
       _slog.info(
         category: LogCategory.wifi,
         event: 'transport_connect_waiting_teardown',
-        message: 'connect waiting for in-flight disconnect teardown before '
+        message:
+            'connect waiting for in-flight disconnect teardown before '
             'proceeding',
         payload: {'flowId': flowId, 'deviceId': device.deviceId},
       );
       await teardownInFlight.future;
+      if (_relayerPauseGeneration != pauseGenBeforeTeardown) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'transport_connect_aborted_pause_during_teardown',
+          message:
+              'connect aborted because relayer pause won while waiting for '
+              'disconnect teardown',
+          payload: {'flowId': flowId, 'deviceId': device.deviceId},
+        );
+        return false;
+      }
     }
 
     // Clear reconnect suppression on any connect. If only cleared on
@@ -672,7 +686,8 @@ disconnect requested while teardown in progress; waiting existing teardown''',
           _slog.info(
             category: LogCategory.wifi,
             event: 'ws_connected_ignored_stale',
-            message: 'ignoring connected event (stale vs pause/disconnect or '
+            message:
+                'ignoring connected event (stale vs pause/disconnect or '
                 'newer connect)',
             payload: {
               'deviceId': _device?.deviceId,
@@ -711,7 +726,8 @@ disconnect requested while teardown in progress; waiting existing teardown''',
           _slog.info(
             category: LogCategory.wifi,
             event: 'ws_disconnected_ignored_stale',
-            message: 'ignoring disconnected event (stale socket vs newer '
+            message:
+                'ignoring disconnected event (stale socket vs newer '
                 'session)',
             payload: {
               'deviceId': _device?.deviceId,

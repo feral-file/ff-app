@@ -93,9 +93,13 @@ void main() {
       // If completer wasn't reset, cycle 2 would complete immediately (< 50ms).
       // With proper reset, cycle 2 should also have the 100ms delay from
       // teardown.
-      expect(cycle2Duration.inMilliseconds, greaterThan(80),
-          reason: 'Cycle 2 must execute full teardown, not reuse completed '
-              'completer from cycle 1 (proves completer was reset)');
+      expect(
+        cycle2Duration.inMilliseconds,
+        greaterThan(80),
+        reason:
+            'Cycle 2 must execute full teardown, not reuse completed '
+            'completer from cycle 1 (proves completer was reset)',
+      );
     },
   );
 
@@ -229,7 +233,8 @@ void main() {
       expect(
         ok2,
         isTrue,
-        reason: 'forceReconnect must open a new session after disconnect; '
+        reason:
+            'forceReconnect must open a new session after disconnect; '
             'must not return false solely because disconnect() set suppression',
       );
     },
@@ -283,6 +288,80 @@ void main() {
         apiKey: 'api-key-1',
         forceReconnect: true,
       );
+      expect(ok2, isFalse);
+      expect(transport.isConnected, isFalse);
+    },
+  );
+
+  test(
+    'connect(forceReconnect) aborts when pause wins while waiting for prior '
+    'teardown',
+    () async {
+      final reachedTeardownWait = Completer<void>();
+      final releaseTeardown = Completer<void>();
+      late FF1RelayerTransport transport;
+      transport = FF1RelayerTransport(
+        relayerUrl: 'wss://example.invalid/relayer',
+        debugBeforeDisconnectGraceDelay: () async {
+          if (!reachedTeardownWait.isCompleted) {
+            reachedTeardownWait.complete();
+          }
+          await releaseTeardown.future;
+        },
+      );
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+
+      final firstConnected = Completer<void>();
+      final sub = transport.connectionStateStream.listen((connected) {
+        if (connected && !firstConnected.isCompleted) {
+          firstConnected.complete();
+        }
+      });
+      addTearDown(() async {
+        await sub.cancel();
+        await transport.disposeFuture();
+      });
+
+      final ok1 = await transport.connect(
+        device: device,
+        userId: 'user-1',
+        apiKey: 'api-key-1',
+      );
+      expect(ok1, isTrue);
+      await firstConnected.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          fail('expected live socket before teardown-wait pause test');
+        },
+      );
+
+      final disconnectFuture = transport.disconnect();
+      await reachedTeardownWait.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          fail('expected disconnect teardown to enter grace delay');
+        },
+      );
+
+      final connectFuture = transport.connect(
+        device: device,
+        userId: 'user-1',
+        apiKey: 'api-key-1',
+        forceReconnect: true,
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      transport.pauseConnection();
+      releaseTeardown.complete();
+
+      final ok2 = await connectFuture;
+      await disconnectFuture;
+
       expect(ok2, isFalse);
       expect(transport.isConnected, isFalse);
     },
@@ -347,8 +426,8 @@ void main() {
             apiKey: 'api-key-1',
           )
           .then((_) {
-        thirdCompleted = true;
-      });
+            thirdCompleted = true;
+          });
 
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(

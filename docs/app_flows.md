@@ -45,6 +45,7 @@
   - `inactive`: schedule a debounced relayer pause; `resumed` cancels only the pending timer (no reconnect if the relayer was never paused)
   - `paused` / `hidden` / `detached`: cancel any debounce and pause relayer Wi‑Fi immediately
   - `resumed`: resume indexer token sync; call `FF1WifiConnectionNotifier.reconnect` only when lifecycle actually paused the relayer in this cycle (immediate pause or debounced inactive pause)
+  - the first successful relayer session for a device triggers the required-device-version check, including the later resume reconnect path after a suppressed initial connect
 - success state: relayer socket matches whether the app backgrounded; short inactive-only flicker does not force reconnect
 - failure/edge states: reconnect failures are logged; connection notifier clears stale connecting flags when pause races with an in-flight connect
 - key modules: `app_lifecycle_provider.dart`, `inactive_wifi_pause_schedule.dart`, `ff1_wifi_providers.dart` (`FF1WifiConnectionNotifier`)

@@ -146,17 +146,49 @@ class FF1WifiConnectionState {
 /// Manages connection lifecycle and state for a single device.
 class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   FF1WifiControl get _control => ref.read(ff1WifiControlProvider);
+  late final Logger _log;
   late final StructuredLogger _slog;
   int _connectEpoch = 0;
   int? _connectingEpoch;
+  String? _requiredDeviceVersionCheckCompletedForDeviceId;
+  String? _requiredDeviceVersionCheckInFlightForDeviceId;
 
   @override
   FF1WifiConnectionState build() {
+    _log = Logger('FF1WifiConnectionNotifier');
     _slog = AppStructuredLog.forLogger(
-      Logger('FF1WifiConnectionNotifier'),
+      _log,
       context: {'component': 'ff1_wifi_connection_notifier'},
     );
     return const FF1WifiConnectionState(isConnected: false);
+  }
+
+  void _scheduleRequiredDeviceVersionCheckIfNeeded(FF1Device device) {
+    if (_requiredDeviceVersionCheckCompletedForDeviceId == device.deviceId) {
+      return;
+    }
+    if (_requiredDeviceVersionCheckInFlightForDeviceId == device.deviceId) {
+      return;
+    }
+
+    // The first session that actually observes a version-bearing device
+    // status owns the required-version gate. If the session is paused before
+    // that status arrives, the gate must be allowed to re-arm on resume.
+    _requiredDeviceVersionCheckInFlightForDeviceId = device.deviceId;
+    unawaited(
+      _scheduleRequiredDeviceVersionCheck(
+        ref: ref,
+        logger: _log,
+        device: device,
+      ).then((completed) {
+        if (_requiredDeviceVersionCheckInFlightForDeviceId == device.deviceId) {
+          _requiredDeviceVersionCheckInFlightForDeviceId = null;
+        }
+        if (completed) {
+          _requiredDeviceVersionCheckCompletedForDeviceId = device.deviceId;
+        }
+      }),
+    );
   }
 
   /// Connect to device over WiFi
@@ -186,6 +218,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       },
     );
     if (state.isConnected && state.device?.topicId == device.topicId) {
+      _scheduleRequiredDeviceVersionCheckIfNeeded(device);
       _slog.info(
         category: LogCategory.wifi,
         event: 'connection_notifier_connect_skipped',
@@ -193,6 +226,11 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
       );
       return true;
+    }
+
+    if (state.device?.deviceId != device.deviceId) {
+      _requiredDeviceVersionCheckCompletedForDeviceId = null;
+      _requiredDeviceVersionCheckInFlightForDeviceId = null;
     }
 
     state = state.copyWith(device: device, isConnecting: true);
@@ -236,6 +274,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         isConnecting: false,
         device: device,
       );
+      _scheduleRequiredDeviceVersionCheckIfNeeded(device);
       _slog.info(
         category: LogCategory.wifi,
         event: 'connection_notifier_connect_completed',
@@ -290,6 +329,8 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   Future<void> disconnect() async {
     _connectEpoch++;
     _connectingEpoch = null;
+    _requiredDeviceVersionCheckCompletedForDeviceId = null;
+    _requiredDeviceVersionCheckInFlightForDeviceId = null;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_disconnect_requested',
@@ -323,6 +364,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   void pauseConnection() {
     _connectEpoch++;
     _connectingEpoch = null;
+    _requiredDeviceVersionCheckInFlightForDeviceId = null;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_pause_requested',
@@ -398,6 +440,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       }
 
       state = state.copyWith(isConnected: true, isConnecting: false);
+      _scheduleRequiredDeviceVersionCheckIfNeeded(state.device!);
       _slog.info(
         category: LogCategory.wifi,
         event: 'connection_notifier_reconnect_completed',
@@ -617,7 +660,7 @@ Future<void> _runRequiredDeviceVersionCheck({
       );
 }
 
-Future<void> _scheduleRequiredDeviceVersionCheck({
+Future<bool> _scheduleRequiredDeviceVersionCheck({
   required Ref ref,
   required Logger logger,
   required FF1Device device,
@@ -629,14 +672,14 @@ Future<void> _scheduleRequiredDeviceVersionCheck({
   // the future with null automatically on teardown / device switch.
   final deviceStatus = await control.freshDeviceVersionFuture();
   if (!ref.mounted) {
-    return;
+    return false;
   }
   if (deviceStatus == null) {
     logger.warning(
       'Skipping device version compatibility check: '
       'fresh device status unavailable for this session',
     );
-    return;
+    return false;
   }
   final activeDevice = ref
       .read(activeFF1BluetoothDeviceProvider)
@@ -650,7 +693,7 @@ Future<void> _scheduleRequiredDeviceVersionCheck({
       'Skipping device version compatibility check for '
       '${device.deviceId}: active device changed before status arrived',
     );
-    return;
+    return false;
   }
   try {
     await _runRequiredDeviceVersionCheck(
@@ -659,6 +702,7 @@ Future<void> _scheduleRequiredDeviceVersionCheck({
       device: device,
       deviceStatus: deviceStatus,
     );
+    return true;
   } on Object catch (error, stack) {
     logger.severe(
       'Failed required device version compatibility check for '
@@ -666,6 +710,7 @@ Future<void> _scheduleRequiredDeviceVersionCheck({
       error,
       stack,
     );
+    return false;
   }
 }
 
@@ -735,20 +780,11 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
             logger.info(
               'Active device changed: ${device.toJson()}, connecting...',
             );
-            final connectedOk = await connectionNotifier.connect(
+            await connectionNotifier.connect(
               device: device,
               userId: 'user_id',
               apiKey: AppConfig.ff1RelayerApiKey,
             );
-            if (connectedOk) {
-              unawaited(
-                _scheduleRequiredDeviceVersionCheck(
-                  ref: ref,
-                  logger: logger,
-                  device: device,
-                ),
-              );
-            }
           } else {
             logger.info('No active device, disconnecting...');
             await connectionNotifier.disconnect();

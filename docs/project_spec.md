@@ -66,6 +66,7 @@
   - `inactive` is debounced before closing the relayer WebSocket; very short inactive-only transitions (for example system overlays) do not pause the relayer.
   - `paused`, `hidden`, and `detached` pause relayer Wi‑Fi immediately.
   - On `resumed`, a forced relayer reconnect runs only when the relayer was paused during this background or foreground cycle; otherwise the existing session is left as-is to avoid unnecessary socket churn.
+  - The required-device-version gate is scheduled on the first successful relayer session for a device, including the resume reconnect path after a suppressed initial connect.
 - Outcome: the relayer stays connected when the app never truly backgrounded; after real backgrounding, the app restores relayer connectivity on resume.
 
 ### Flow: Onboarding and first-use setup

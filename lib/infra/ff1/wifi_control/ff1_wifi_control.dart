@@ -266,7 +266,11 @@ class FF1WifiControl {
           event: 'control_connect_error_superseded',
           message:
               'connect failed after a newer Wi‑Fi operation — ignoring error',
-          payload: {'flowId': flowId, 'deviceId': device.deviceId, 'error': '$e'},
+          payload: {
+            'flowId': flowId,
+            'deviceId': device.deviceId,
+            'error': '$e',
+          },
         );
         return false;
       }
@@ -699,6 +703,13 @@ class FF1WifiControl {
         );
         return false;
       }
+
+      // Re-arm the session-scoped fresh-status waiters for the reconnecting
+      // session. Reconnect bypasses [connect], so it must recreate the futures
+      // that gate follow-up work like the required-version check.
+      _freshDeviceStatusCompleter = Completer<FF1DeviceStatus?>();
+      _freshDeviceVersionCompleter = Completer<FF1DeviceStatus?>();
+
       _slog
         ..info(
           category: LogCategory.wifi,
