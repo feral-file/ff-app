@@ -201,6 +201,59 @@ void main() {
       },
     );
 
+    test(
+      'favorite snapshot canonicalizes wrong favorite title before restore',
+      () async {
+        await _withDatabaseFile(
+          'favorite-snapshot-wrong-title.sqlite',
+          (dbFile) async {
+            _createPlaylistDatabase(
+              file: dbFile,
+              playlistRows: [
+                _RawPlaylistRow(
+                  id: Playlist.favoriteId,
+                  channelId: Channel.myCollectionId,
+                  type: PlaylistType.favorite.value,
+                  title: 'Saved',
+                  createdAtUs: 1,
+                  updatedAtUs: 1,
+                  signatures: '[]',
+                  sortMode: PlaylistSortMode.provenance.index,
+                  itemCount: 1,
+                ),
+              ],
+              itemRows: const [
+                _RawItemRow(id: 'item_1', title: 'Saved work'),
+              ],
+              entryRows: const [
+                _RawEntryRow(
+                  playlistId: Playlist.favoriteId,
+                  itemId: 'item_1',
+                  sortKeyUs: 1,
+                ),
+              ],
+            );
+
+            final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+            final service = DatabaseService(db);
+
+            try {
+              final snapshots = await service.getFavoritePlaylistsSnapshot();
+
+              expect(snapshots, hasLength(1));
+              expect(snapshots.single.playlist.id, Playlist.favoriteId);
+              expect(snapshots.single.playlist.name, 'Favorites');
+              expect(snapshots.single.playlist.type, PlaylistType.favorite);
+              expect(snapshots.single.items, hasLength(1));
+              expect(snapshots.single.items.single.id, 'item_1');
+            } finally {
+              await db.close();
+            }
+          },
+        );
+      },
+    );
+
     test('getAllPlaylists skips malformed rows instead of crashing', () async {
       await _withDatabaseFile('playlist-read-skip.sqlite', (dbFile) async {
         _createPlaylistDatabase(

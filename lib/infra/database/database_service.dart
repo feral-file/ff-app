@@ -508,6 +508,7 @@ class DatabaseService {
   bool _isCanonicalFavoritePlaylist(Playlist? playlist) {
     return playlist != null &&
         playlist.id == Playlist.favoriteId &&
+        playlist.name == 'Favorites' &&
         playlist.type == PlaylistType.favorite &&
         playlist.channelId == Channel.myCollectionId &&
         playlist.sortMode == PlaylistSortMode.provenance;
