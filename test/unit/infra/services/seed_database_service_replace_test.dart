@@ -243,29 +243,47 @@ void main() {
     );
 
     test(
-      'repairInterruptedSeedSwapIfNeeded restores from backup when canonical '
-      'is missing and no stage',
+      'repairInterruptedSeedSwapIfNeeded skips invalid stage residue when '
+      'no valid backup exists',
       () async {
         final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
         expect(File(dbPath).existsSync(), isFalse);
 
-        final backup = File(
-          p.join(tempDir.path, 'dp1_library.sqlite.backup.2002'),
+        final staged = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.3003'),
         );
-        createSeedArtifactDatabase(file: backup, userVersion: 2);
+        await staged.writeAsBytes(List<int>.filled(1024, 7));
 
         final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
         final repaired = await service.repairInterruptedSeedSwapIfNeeded();
-        expect(repaired, isTrue);
-        expect(File(dbPath).existsSync(), isTrue);
+        expect(repaired, isFalse);
+        expect(File(dbPath).existsSync(), isFalse);
+      },
+    );
 
-        final db = sqlite3.sqlite3.open(dbPath);
-        try {
-          final rows = db.select('PRAGMA user_version');
-          expect(rows.first.columnAt(0), 2);
-        } finally {
-          db.dispose();
-        }
+    test(
+      'deleteDatabaseFiles removes staged and backup swap artifacts',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        createSeedArtifactDatabase(file: File(dbPath));
+
+        final staged = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.4004'),
+        );
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.4005'),
+        );
+        createSeedArtifactDatabase(file: staged, userVersion: 2);
+        createSeedArtifactDatabase(file: backup, userVersion: 1);
+
+        await service.deleteDatabaseFiles();
+
+        expect(File(dbPath).existsSync(), isFalse);
+        expect(File('$dbPath-wal').existsSync(), isFalse);
+        expect(File('$dbPath-shm').existsSync(), isFalse);
+        expect(staged.existsSync(), isFalse);
+        expect(backup.existsSync(), isFalse);
       },
     );
 

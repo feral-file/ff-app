@@ -220,6 +220,7 @@ class SeedDatabaseService {
     if (bestStage != null) {
       final stagePath = bestStage.path;
       try {
+        validateSeedArtifact(stagePath);
         await promoteStagedArtifact(
           stagingPath: stagePath,
           canonicalPath: dbPath,
@@ -235,6 +236,16 @@ class SeedDatabaseService {
           st,
         );
         if (bestBackup != null) {
+          try {
+            validateSeedArtifact(bestBackup.path);
+          } on Object catch (validationError, validationStackTrace) {
+            _log.severe(
+              'Backup seed artifact failed validation during startup repair',
+              validationError,
+              validationStackTrace,
+            );
+            return false;
+          }
           final ok = await _restoreFromBackupSet(
             dbPath: dbPath,
             backupMainPath: bestBackup.path,
@@ -251,6 +262,16 @@ class SeedDatabaseService {
     }
 
     if (bestBackup != null) {
+      try {
+        validateSeedArtifact(bestBackup.path);
+      } on Object catch (validationError, validationStackTrace) {
+        _log.severe(
+          'Backup seed artifact failed validation during startup repair',
+          validationError,
+          validationStackTrace,
+        );
+        return false;
+      }
       final ok = await _restoreFromBackupSet(
         dbPath: dbPath,
         backupMainPath: bestBackup.path,
@@ -643,12 +664,20 @@ class SeedDatabaseService {
   /// Deletes the SQLite main database file and sidecar WAL/SHM files.
   Future<void> deleteDatabaseFiles() async {
     final dbPath = await databasePath();
-    final paths = <String>[dbPath, '$dbPath-wal', '$dbPath-shm'];
+    final paths = <String>[
+      dbPath,
+      '$dbPath-wal',
+      '$dbPath-shm',
+    ];
     for (final path in paths) {
       final file = File(path);
       if (file.existsSync()) {
         await file.delete();
       }
+    }
+    final dbDir = Directory(p.dirname(dbPath));
+    if (dbDir.existsSync()) {
+      await _deleteOrphanSeedSwapArtifactFiles(dbDir);
     }
   }
 
