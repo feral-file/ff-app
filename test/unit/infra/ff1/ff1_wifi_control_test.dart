@@ -194,23 +194,26 @@ void main() {
   });
 
   group('FF1WifiControl.connect transport dispatch flag', () {
-    test('returns false when transport reports connect not dispatched', () async {
-      final transport = _SuppressedDispatchTransport();
-      final control = FF1WifiControl(transport: transport);
-      addTearDown(control.dispose);
-      const device = FF1Device(
-        name: 'FF1',
-        remoteId: 'remote',
-        deviceId: 'device',
-        topicId: 'topic',
-      );
-      final ok = await control.connect(
-        device: device,
-        userId: 'user',
-        apiKey: 'key',
-      );
-      expect(ok, isFalse);
-    });
+    test(
+      'returns false when transport reports connect not dispatched',
+      () async {
+        final transport = _SuppressedDispatchTransport();
+        final control = FF1WifiControl(transport: transport);
+        addTearDown(control.dispose);
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'remote',
+          deviceId: 'device',
+          topicId: 'topic',
+        );
+        final ok = await control.connect(
+          device: device,
+          userId: 'user',
+          apiKey: 'key',
+        );
+        expect(ok, isFalse);
+      },
+    );
   });
 
   group('FF1WifiControl.getDeviceRealtimeMetrics', () {
@@ -313,60 +316,63 @@ void main() {
   });
 
   group('FF1WifiControl.connect', () {
-    test('clears replayed device state when switching to a different device', () async {
-      final transport = _SwitchingTransport();
-      final control = FF1WifiControl(transport: transport);
+    test(
+      'clears replayed device state when switching to a different device',
+      () async {
+        final transport = _SwitchingTransport();
+        final control = FF1WifiControl(transport: transport);
 
-      addTearDown(control.dispose);
+        addTearDown(control.dispose);
 
-      const deviceA = FF1Device(
-        name: 'FF1 A',
-        remoteId: 'remote-a',
-        deviceId: 'device-a',
-        topicId: 'topic-a',
-      );
-      const deviceB = FF1Device(
-        name: 'FF1 B',
-        remoteId: 'remote-b',
-        deviceId: 'device-b',
-        topicId: 'topic-b',
-      );
+        const deviceA = FF1Device(
+          name: 'FF1 A',
+          remoteId: 'remote-a',
+          deviceId: 'device-a',
+          topicId: 'topic-a',
+        );
+        const deviceB = FF1Device(
+          name: 'FF1 B',
+          remoteId: 'remote-b',
+          deviceId: 'device-b',
+          topicId: 'topic-b',
+        );
 
-      await control.connect(device: deviceA, userId: 'u', apiKey: 'k');
-      transport.emitNotification(
-        FF1NotificationMessage(
-          type: FF1WifiMessageType.notification,
-          notificationType: FF1NotificationType.deviceStatus,
-          timestamp: DateTime.fromMillisecondsSinceEpoch(1),
-          message: const {
-            'installedVersion': '1.0.0',
-            'latestVersion': '2.0.0',
-          },
-        ),
-      );
-      transport.emitNotification(
-        FF1NotificationMessage(
-          type: FF1WifiMessageType.notification,
-          notificationType: FF1NotificationType.connection,
-          timestamp: DateTime.fromMillisecondsSinceEpoch(2),
-          message: const {'isConnected': true},
-        ),
-      );
-      await Future<void>.delayed(Duration.zero);
+        await control.connect(device: deviceA, userId: 'u', apiKey: 'k');
+        transport.emitNotification(
+          FF1NotificationMessage(
+            type: FF1WifiMessageType.notification,
+            notificationType: FF1NotificationType.deviceStatus,
+            timestamp: DateTime.fromMillisecondsSinceEpoch(1),
+            message: const {
+              'installedVersion': '1.0.0',
+              'latestVersion': '2.0.0',
+            },
+          ),
+        );
+        transport.emitNotification(
+          FF1NotificationMessage(
+            type: FF1WifiMessageType.notification,
+            notificationType: FF1NotificationType.connection,
+            timestamp: DateTime.fromMillisecondsSinceEpoch(2),
+            message: const {'isConnected': true},
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
 
-      expect(control.currentDeviceStatus?.latestVersion, '2.0.0');
-      expect(control.isDeviceConnected, isTrue);
+        expect(control.currentDeviceStatus?.latestVersion, '2.0.0');
+        expect(control.isDeviceConnected, isTrue);
 
-      final nextDisconnected = control.connectionStatusStream.firstWhere(
-        (status) => !status.isConnected,
-      );
+        final nextDisconnected = control.connectionStatusStream.firstWhere(
+          (status) => !status.isConnected,
+        );
 
-      await control.connect(device: deviceB, userId: 'u', apiKey: 'k');
+        await control.connect(device: deviceB, userId: 'u', apiKey: 'k');
 
-      expect(control.currentDeviceStatus, isNull);
-      expect(control.isDeviceConnected, isFalse);
-      expect((await nextDisconnected).isConnected, isFalse);
-    });
+        expect(control.currentDeviceStatus, isNull);
+        expect(control.isDeviceConnected, isFalse);
+        expect((await nextDisconnected).isConnected, isFalse);
+      },
+    );
 
     test(
       'superseded connect completion does not pause transport over newer '
@@ -476,6 +482,34 @@ void main() {
         // Stale reconnect must not call transport.pause (only the explicit
         // control.pauseConnection above should).
         expect(transport.pauseConnectionCount, 1);
+      },
+    );
+
+    test(
+      'captures the first fresh device status when reconnect emits it before returning',
+      () async {
+        final transport = _ReconnectEmitsEarlyStatusTransport();
+        final control = FF1WifiControl(transport: transport);
+
+        addTearDown(control.dispose);
+
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'remote-1',
+          deviceId: 'device-1',
+          topicId: 'topic-1',
+        );
+
+        await control.connect(device: device, userId: 'u', apiKey: 'k');
+
+        final reconnectFuture = control.reconnect();
+        await Future<void>.delayed(Duration.zero);
+        final status = await control.freshDeviceStatusFuture();
+        final ok = await reconnectFuture;
+
+        expect(ok, isTrue);
+        expect(status?.latestVersion, '2.0.0');
+        expect(status?.installedVersion, '1.0.0');
       },
     );
 
@@ -596,6 +630,78 @@ class _HappyReconnectTransport implements FF1WifiTransport {
     if (forceReconnect) {
       forceReconnectConnectCount++;
     }
+    return true;
+  }
+
+  @override
+  void pauseConnection() {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
+}
+
+/// Emits the first reconnect device status before returning from connect.
+class _ReconnectEmitsEarlyStatusTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+
+  int _connectCalls = 0;
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => true;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<bool> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    _connectCalls++;
+    if (_connectCalls == 1) {
+      return true;
+    }
+
+    _notifications.add(
+      FF1NotificationMessage(
+        type: FF1WifiMessageType.notification,
+        notificationType: FF1NotificationType.deviceStatus,
+        message: const {
+          'installedVersion': '1.0.0',
+          'latestVersion': '2.0.0',
+        },
+        timestamp: DateTime.fromMillisecondsSinceEpoch(1),
+      ),
+    );
     return true;
   }
 

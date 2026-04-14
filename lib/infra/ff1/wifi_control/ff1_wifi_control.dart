@@ -108,6 +108,16 @@ class FF1WifiControl {
 
   String _nextFlowId(String stage) => '$stage-${++_flowSequence}';
 
+  /// Arms the session-scoped waiters for the next fresh device-status update.
+  ///
+  /// Reconnect must do this before dispatching transport.connect(), because the
+  /// relayer can emit the first device status before the reconnect await
+  /// completes. Creating the futures afterward would miss that status.
+  void _resetFreshDeviceStatusWaiters() {
+    _freshDeviceStatusCompleter = Completer<FF1DeviceStatus?>();
+    _freshDeviceVersionCompleter = Completer<FF1DeviceStatus?>();
+  }
+
   /// Start listening to transport streams
   void _startListening() {
     // Listen to notification stream
@@ -191,8 +201,7 @@ class FF1WifiControl {
     _currentPlayerStatus = null;
     _currentDeviceStatus = null;
     _isDeviceConnected = false;
-    _freshDeviceStatusCompleter = Completer<FF1DeviceStatus?>();
-    _freshDeviceVersionCompleter = Completer<FF1DeviceStatus?>();
+    _resetFreshDeviceStatusWaiters();
     _connectionStatusController.add(
       const FF1ConnectionStatus(isConnected: false),
     );
@@ -645,6 +654,7 @@ class FF1WifiControl {
     }
 
     final opGen = ++_wifiOpGeneration;
+    _resetFreshDeviceStatusWaiters();
 
     _slog.info(
       category: LogCategory.wifi,
@@ -674,6 +684,10 @@ class FF1WifiControl {
         forceReconnect: true,
       );
       if (opGen != _wifiOpGeneration) {
+        _freshDeviceStatusCompleter?.complete(null);
+        _freshDeviceStatusCompleter = null;
+        _freshDeviceVersionCompleter?.complete(null);
+        _freshDeviceVersionCompleter = null;
         // Same rationale as [connect]: never pause transport from a stale
         // completion — the newer operation (e.g. user connect, lifecycle pause)
         // already decided transport fate.
@@ -693,6 +707,10 @@ class FF1WifiControl {
         return false;
       }
       if (!dispatched) {
+        _freshDeviceStatusCompleter?.complete(null);
+        _freshDeviceStatusCompleter = null;
+        _freshDeviceVersionCompleter?.complete(null);
+        _freshDeviceVersionCompleter = null;
         _slog.info(
           category: LogCategory.wifi,
           event: 'reconnect_transport_skipped',
@@ -703,12 +721,6 @@ class FF1WifiControl {
         );
         return false;
       }
-
-      // Re-arm the session-scoped fresh-status waiters for the reconnecting
-      // session. Reconnect bypasses [connect], so it must recreate the futures
-      // that gate follow-up work like the required-version check.
-      _freshDeviceStatusCompleter = Completer<FF1DeviceStatus?>();
-      _freshDeviceVersionCompleter = Completer<FF1DeviceStatus?>();
 
       _slog
         ..info(
