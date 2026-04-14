@@ -32,8 +32,16 @@ abstract class FF1WifiTransport {
   ///   app resume when connection may be stale (Timer-based reconnect does
   ///   not fire while app is suspended)
   ///
+  /// Returns `false` when the connect attempt stopped before dispatching
+  /// transport work (e.g. lifecycle [pauseConnection] won while the relayer
+  /// was still preparing the isolate). Callers must not treat that as a
+  /// successful session — no socket was opened.
+  ///
+  /// Returns `true` when connect control was dispatched or the session was
+  /// already connected (no-op skip).
+  ///
   /// Throws: [FF1WifiTransportError] if connection fails
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,

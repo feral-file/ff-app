@@ -143,7 +143,7 @@ void main() {
         );
         await Future<void>.delayed(Duration.zero);
 
-        transport.emitConnectionState(false);
+        transport.emitConnectionState(connected: false);
         await Future<void>.delayed(Duration.zero);
 
         final clearedStatus = await control.ffpDdcPanelStatusStream.first;
@@ -189,6 +189,29 @@ void main() {
 
         expect(control.isDeviceConnected, isFalse);
         expect(control.currentFfpDdcPanelStatus, isNull);
+      },
+    );
+  });
+
+  group('FF1WifiControl.connect transport dispatch flag', () {
+    test(
+      'returns false when transport reports connect not dispatched',
+      () async {
+        final transport = _SuppressedDispatchTransport();
+        final control = FF1WifiControl(transport: transport);
+        addTearDown(control.dispose);
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'remote',
+          deviceId: 'device',
+          topicId: 'topic',
+        );
+        final ok = await control.connect(
+          device: device,
+          userId: 'user',
+          apiKey: 'key',
+        );
+        expect(ok, isFalse);
       },
     );
   });
@@ -293,61 +316,613 @@ void main() {
   });
 
   group('FF1WifiControl.connect', () {
-    test('clears replayed device state when switching to a different device', () async {
-      final transport = _SwitchingTransport();
+    test(
+      'clears replayed device state when switching to a different device',
+      () async {
+        final transport = _SwitchingTransport();
+        final control = FF1WifiControl(transport: transport);
+
+        addTearDown(control.dispose);
+
+        const deviceA = FF1Device(
+          name: 'FF1 A',
+          remoteId: 'remote-a',
+          deviceId: 'device-a',
+          topicId: 'topic-a',
+        );
+        const deviceB = FF1Device(
+          name: 'FF1 B',
+          remoteId: 'remote-b',
+          deviceId: 'device-b',
+          topicId: 'topic-b',
+        );
+
+        await control.connect(device: deviceA, userId: 'u', apiKey: 'k');
+        transport.emitNotification(
+          FF1NotificationMessage(
+            type: FF1WifiMessageType.notification,
+            notificationType: FF1NotificationType.deviceStatus,
+            timestamp: DateTime.fromMillisecondsSinceEpoch(1),
+            message: const {
+              'installedVersion': '1.0.0',
+              'latestVersion': '2.0.0',
+            },
+          ),
+        );
+        transport.emitNotification(
+          FF1NotificationMessage(
+            type: FF1WifiMessageType.notification,
+            notificationType: FF1NotificationType.connection,
+            timestamp: DateTime.fromMillisecondsSinceEpoch(2),
+            message: const {'isConnected': true},
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(control.currentDeviceStatus?.latestVersion, '2.0.0');
+        expect(control.isDeviceConnected, isTrue);
+
+        final nextDisconnected = control.connectionStatusStream.firstWhere(
+          (status) => !status.isConnected,
+        );
+
+        await control.connect(device: deviceB, userId: 'u', apiKey: 'k');
+
+        expect(control.currentDeviceStatus, isNull);
+        expect(control.isDeviceConnected, isFalse);
+        expect((await nextDisconnected).isConnected, isFalse);
+      },
+    );
+
+    test(
+      'superseded connect completion does not pause transport over newer '
+      'session',
+      () async {
+        final transport = _OverlappingConnectTransport();
+        final control = FF1WifiControl(transport: transport);
+
+        addTearDown(control.dispose);
+
+        const deviceA = FF1Device(
+          name: 'FF1',
+          remoteId: 'remote-1',
+          deviceId: 'device-1',
+          topicId: 'topic-1',
+        );
+        const deviceB = FF1Device(
+          name: 'FF1',
+          remoteId: 'remote-2',
+          deviceId: 'device-2',
+          topicId: 'topic-2',
+        );
+
+        final firstConnect = control.connect(
+          device: deviceA,
+          userId: 'u',
+          apiKey: 'k',
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        await control.connect(
+          device: deviceB,
+          userId: 'u',
+          apiKey: 'k',
+        );
+
+        transport.releaseFirstConnect();
+        await firstConnect;
+
+        expect(transport.pauseConnectionCount, 0);
+      },
+    );
+
+    test(
+      'superseded connect error from transport does not propagate',
+      () async {
+        final transport = _StallThenThrowTransport();
+        final control = FF1WifiControl(transport: transport);
+
+        addTearDown(control.dispose);
+
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'remote-1',
+          deviceId: 'device-1',
+          topicId: 'topic-1',
+        );
+
+        final connectFuture = control.connect(
+          device: device,
+          userId: 'u',
+          apiKey: 'k',
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        control.pauseConnection();
+        transport.releaseWithError();
+
+        await expectLater(connectFuture, completes);
+      },
+    );
+  });
+
+  group('FF1WifiControl.reconnect', () {
+    test(
+      'returns false when superseded before transport connect completes',
+      () async {
+        final transport = _ReconnectRaceTransport();
+        final control = FF1WifiControl(transport: transport);
+
+        addTearDown(control.dispose);
+
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'remote-1',
+          deviceId: 'device-1',
+          topicId: 'topic-1',
+        );
+
+        await control.connect(
+          device: device,
+          userId: 'u',
+          apiKey: 'k',
+        );
+        expect(transport.connectInvocationCount, 1);
+
+        final reconnectFuture = control.reconnect();
+        await Future<void>.delayed(Duration.zero);
+        expect(transport.connectInvocationCount, 2);
+
+        control.pauseConnection();
+
+        transport.releasePendingConnect();
+
+        final ok = await reconnectFuture;
+        expect(ok, isFalse);
+        // Stale reconnect must not call transport.pause (only the explicit
+        // control.pauseConnection above should).
+        expect(transport.pauseConnectionCount, 1);
+      },
+    );
+
+    test(
+      'captures the first fresh device status when reconnect emits it before returning',
+      () async {
+        final transport = _ReconnectEmitsEarlyStatusTransport();
+        final control = FF1WifiControl(transport: transport);
+
+        addTearDown(control.dispose);
+
+        const device = FF1Device(
+          name: 'FF1',
+          remoteId: 'remote-1',
+          deviceId: 'device-1',
+          topicId: 'topic-1',
+        );
+
+        await control.connect(device: device, userId: 'u', apiKey: 'k');
+
+        final reconnectFuture = control.reconnect();
+        await Future<void>.delayed(Duration.zero);
+        final status = await control.freshDeviceStatusFuture();
+        final ok = await reconnectFuture;
+
+        expect(ok, isTrue);
+        expect(status?.latestVersion, '2.0.0');
+        expect(status?.installedVersion, '1.0.0');
+      },
+    );
+
+    test('returns true when transport reconnect succeeds', () async {
+      final transport = _HappyReconnectTransport();
       final control = FF1WifiControl(transport: transport);
 
       addTearDown(control.dispose);
 
-      const deviceA = FF1Device(
-        name: 'FF1 A',
-        remoteId: 'remote-a',
-        deviceId: 'device-a',
-        topicId: 'topic-a',
-      );
-      const deviceB = FF1Device(
-        name: 'FF1 B',
-        remoteId: 'remote-b',
-        deviceId: 'device-b',
-        topicId: 'topic-b',
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
       );
 
-      await control.connect(device: deviceA, userId: 'u', apiKey: 'k');
-      transport.emitNotification(
-        FF1NotificationMessage(
-          type: FF1WifiMessageType.notification,
-          notificationType: FF1NotificationType.deviceStatus,
-          timestamp: DateTime.fromMillisecondsSinceEpoch(1),
-          message: const {
-            'installedVersion': '1.0.0',
-            'latestVersion': '2.0.0',
-          },
-        ),
-      );
-      transport.emitNotification(
-        FF1NotificationMessage(
-          type: FF1WifiMessageType.notification,
-          notificationType: FF1NotificationType.connection,
-          timestamp: DateTime.fromMillisecondsSinceEpoch(2),
-          message: const {'isConnected': true},
-        ),
-      );
-      await Future<void>.delayed(Duration.zero);
-
-      expect(control.currentDeviceStatus?.latestVersion, '2.0.0');
-      expect(control.isDeviceConnected, isTrue);
-
-      final nextDisconnected = control.connectionStatusStream.firstWhere(
-        (status) => !status.isConnected,
-      );
-
-      await control.connect(device: deviceB, userId: 'u', apiKey: 'k');
-
-      expect(control.currentDeviceStatus, isNull);
-      expect(control.isDeviceConnected, isFalse);
-      expect((await nextDisconnected).isConnected, isFalse);
+      await control.connect(device: device, userId: 'u', apiKey: 'k');
+      final ok = await control.reconnect();
+      expect(ok, isTrue);
+      expect(transport.forceReconnectConnectCount, 1);
     });
   });
+}
+
+/// Stalls first transport `connect` until `releaseWithError`, then throws
+/// (for superseded-error path).
+class _StallThenThrowTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+  Completer<void>? _stall;
+
+  void releaseWithError() {
+    _stall?.complete();
+  }
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<bool> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    _stall = Completer<void>();
+    await _stall!.future;
+    throw Exception('boom');
+  }
+
+  @override
+  void pauseConnection() {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
+}
+
+/// Minimal transport: counts `connect` calls with `forceReconnect: true`.
+class _HappyReconnectTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+
+  int forceReconnectConnectCount = 0;
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<bool> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    if (forceReconnect) {
+      forceReconnectConnectCount++;
+    }
+    return true;
+  }
+
+  @override
+  void pauseConnection() {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
+}
+
+/// Emits the first reconnect device status before returning from connect.
+class _ReconnectEmitsEarlyStatusTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+
+  int _connectCalls = 0;
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => true;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<bool> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    _connectCalls++;
+    if (_connectCalls == 1) {
+      return true;
+    }
+
+    _notifications.add(
+      FF1NotificationMessage(
+        type: FF1WifiMessageType.notification,
+        notificationType: FF1NotificationType.deviceStatus,
+        message: const {
+          'installedVersion': '1.0.0',
+          'latestVersion': '2.0.0',
+        },
+        timestamp: DateTime.fromMillisecondsSinceEpoch(1),
+      ),
+    );
+    return true;
+  }
+
+  @override
+  void pauseConnection() {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
+}
+
+/// First [connect] completes immediately; second [connect] (reconnect) awaits
+/// [releasePendingConnect] so tests can interleave [pauseConnection].
+class _ReconnectRaceTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+
+  int connectInvocationCount = 0;
+  int pauseConnectionCount = 0;
+  Completer<void>? _pendingSecondConnect;
+
+  void releasePendingConnect() {
+    _pendingSecondConnect?.complete();
+    _pendingSecondConnect = null;
+  }
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<bool> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    connectInvocationCount++;
+    if (connectInvocationCount >= 2) {
+      _pendingSecondConnect = Completer<void>();
+      await _pendingSecondConnect!.future;
+    }
+    return true;
+  }
+
+  @override
+  void pauseConnection() {
+    pauseConnectionCount++;
+  }
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
+}
+
+/// First [connect] blocks until [releaseFirstConnect]; later [connect] calls
+/// return immediately so two overlapping control connects can be modeled.
+class _OverlappingConnectTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+
+  int _connectCalls = 0;
+  Completer<void>? _firstConnectBlock;
+  int pauseConnectionCount = 0;
+
+  void releaseFirstConnect() {
+    _firstConnectBlock?.complete();
+    _firstConnectBlock = null;
+  }
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<bool> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    _connectCalls++;
+    if (_connectCalls == 1) {
+      _firstConnectBlock = Completer<void>();
+      await _firstConnectBlock!.future;
+      return true;
+    }
+    return true;
+  }
+
+  @override
+  void pauseConnection() {
+    pauseConnectionCount++;
+  }
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
+}
+
+/// Minimal transport: [connect] completes with `false` (relayer suppressed
+/// before connect control — PR #361).
+class _SuppressedDispatchTransport implements FF1WifiTransport {
+  final _notifications = StreamController<FF1NotificationMessage>.broadcast();
+  final _connections = StreamController<bool>.broadcast();
+  final _errors = StreamController<FF1WifiTransportError>.broadcast();
+
+  @override
+  Stream<bool> get connectionStateStream => _connections.stream;
+
+  @override
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
+
+  @override
+  Stream<FF1WifiTransportError> get errorStream => _errors.stream;
+
+  @override
+  bool get isConnected => false;
+
+  @override
+  bool get isConnecting => false;
+
+  @override
+  Future<bool> connect({
+    required FF1Device device,
+    required String userId,
+    required String apiKey,
+    bool forceReconnect = false,
+  }) async {
+    return false;
+  }
+
+  @override
+  void pauseConnection() {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> sendCommand(Map<String, dynamic> command) async {}
+
+  @override
+  void dispose() {
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
+  }
+
+  @override
+  Future<void> disposeFuture() async {
+    dispose();
+  }
 }
 
 class _RecordingRestClient {
@@ -411,12 +986,14 @@ class _DelayedConnectionFalseAfterDisconnectTransport
   bool get isConnecting => false;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   @override
   void pauseConnection() {}
@@ -462,12 +1039,14 @@ class _FakeWifiTransport implements FF1WifiTransport {
   Stream<FF1NotificationMessage> get notificationStream => const Stream.empty();
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   @override
   void pauseConnection() {}
@@ -495,7 +1074,7 @@ class _NotificationTestTransport implements FF1WifiTransport {
     _notifications.add(message);
   }
 
-  void emitConnectionState(bool connected) {
+  void emitConnectionState({required bool connected}) {
     _connections.add(connected);
   }
 
@@ -516,12 +1095,14 @@ class _NotificationTestTransport implements FF1WifiTransport {
       _notifications.stream;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   @override
   void pauseConnection() {}
@@ -568,12 +1149,14 @@ class _CustomDisposeTransport implements FF1WifiTransport {
   Stream<FF1NotificationMessage> get notificationStream => const Stream.empty();
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   @override
   void pauseConnection() {}
@@ -617,12 +1200,14 @@ class _SwitchingTransport implements FF1WifiTransport {
   bool get isConnecting => false;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   void emitNotification(FF1NotificationMessage notification) {
     _notifications.add(notification);

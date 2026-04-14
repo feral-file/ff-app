@@ -37,6 +37,19 @@
 - key screens involved: config error screen (fallback), Home, Onboarding
 - key modules/services involved: `lib/main.dart`, `lib/app/app.dart`, `seed_database_*`, `bootstrap_provider`, `legacy_data_migration_service`, `app_state_service`
 
+## Flow: App lifecycle and FF1 relayer Wi‑Fi
+
+- goal: pause the FF1 relayer WebSocket when the app is not active, without tearing it down on every transient `inactive`, and restore it after real backgrounding
+- start point: `AppLifecycleNotifier` (`app_lifecycle_provider.dart`) handling `WidgetsBindingObserver` lifecycle updates
+- steps:
+  - `inactive`: schedule a debounced relayer pause; `resumed` cancels only the pending timer (no reconnect if the relayer was never paused)
+  - `paused` / `hidden` / `detached`: cancel any debounce and pause relayer Wi‑Fi immediately
+  - `resumed`: resume indexer token sync; call `FF1WifiConnectionNotifier.reconnect` only when lifecycle actually paused the relayer in this cycle (immediate pause or debounced inactive pause)
+  - the first successful relayer session for a device triggers the required-device-version check, including the later resume reconnect path after a suppressed initial connect
+- success state: relayer socket matches whether the app backgrounded; short inactive-only flicker does not force reconnect
+- failure/edge states: reconnect failures are logged; connection notifier clears stale connecting flags when pause races with an in-flight connect
+- key modules: `app_lifecycle_provider.dart`, `inactive_wifi_pause_schedule.dart`, `ff1_wifi_providers.dart` (`FF1WifiConnectionNotifier`)
+
 ## Flow: Onboarding (No Deeplink)
 
 - goal: orient new users and optionally set up personal collection + FF1
@@ -202,7 +215,7 @@
 - route / entry point: `/add-address`
 - important actions: submit input, scan QR, continue to alias or complete
 - dependencies: `addAddressFlowProvider`, `scanQrProvider`, address/domain services
-- notes / caveats: duplicate and invalid-input errors are explicit and distinct
+- notes / caveats: duplicate and invalid-input errors are explicit and distinct; focus and post-frame work use `scheduleRequestFocusWhenLaidOut` / `schedulePostFrameIfMounted` so navigation after layout does not assert on disposed `BuildContext`
 
 ## Screen: AddAliasScreen
 
@@ -210,7 +223,7 @@
 - route / entry point: `/add-alias` (requires payload)
 - important actions: submit alias or skip
 - dependencies: `addAliasProvider`, `addressService`
-- notes / caveats: successful completion pops both alias and add-address routes
+- notes / caveats: successful completion pops both alias and add-address routes; same deferred focus / post-frame helpers as Add Address when requesting focus after route transitions
 
 ## Screen: PlaylistDetailScreen
 
