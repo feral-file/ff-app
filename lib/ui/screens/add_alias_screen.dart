@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
 import 'package:app/app/providers/add_address_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
+import 'package:app/app/utils/safe_focus_request.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
@@ -60,11 +61,12 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
   void initState() {
     super.initState();
     _inputController = TextEditingController();
-    // Auto focus on input field
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _aliasFocusNode.requestFocus();
-      }
+      if (!mounted) return;
+      scheduleRequestFocusWhenLaidOut(
+        focusNode: _aliasFocusNode,
+        ownerContext: context,
+      );
     });
   }
 
@@ -99,13 +101,12 @@ class _AddAliasScreenState extends ConsumerState<AddAliasScreen> {
     ref.listen<AsyncValue<void>>(
       addAliasProvider,
       (previous, next) {
-        // When address is successfully added, pop
         if (next is AsyncData<void>) {
-          if (context.mounted) {
+          schedulePostFrameIfMounted(context, () {
             context
               ..pop()
               ..pop();
-          }
+          });
         }
       },
     );

@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:app/app/providers/scan_qr_provider.dart';
 import 'package:app/app/route_observer.dart';
 import 'package:app/app/routing/deeplink_handler.dart';
-import 'package:app/ui/screens/scan_qr_camera_session.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/screens/scan_qr_camera_session.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -201,7 +201,7 @@ class _ScanQrPageState extends ConsumerState<ScanQrPage>
         : 'Scan a Feral File deeplink or wallet address';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 70),
+      padding: EdgeInsets.symmetric(horizontal: LayoutConstants.space18),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.62),

@@ -214,7 +214,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             left: LayoutConstants.pageHorizontalDefault,
             right: LayoutConstants.pageHorizontalDefault,
             child: PrimaryAsyncButton(
-              padding: const EdgeInsets.only(top: 13, bottom: 10),
+
               onTap: () async {
                 context.go(Routes.home);
               },

@@ -9,10 +9,11 @@ import 'package:app/domain/models/ff1_device_info.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
 import 'package:app/infra/ff1/ble_transport/ff1_ble_transport.dart';
-import 'package:app/test/unit/app/providers/provider_test_helpers.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'provider_test_helpers.dart';
 
 void main() {
   test('connect emits internet-ready state only after persisting device', () async {
@@ -61,7 +62,7 @@ void main() {
 
     final state = container.read(connectFF1Provider).value;
     expect(state, isA<ConnectFF1Connected>());
-    final connected = state as ConnectFF1Connected;
+    final connected = state! as ConnectFF1Connected;
     expect(connected.isConnectedToInternet, isTrue);
     expect(actions.addDeviceCalled, isTrue);
   });

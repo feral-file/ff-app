@@ -233,7 +233,7 @@ class FakeWifiTransport implements FF1WifiTransport {
   bool get isConnecting => _isConnecting;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -243,6 +243,7 @@ class FakeWifiTransport implements FF1WifiTransport {
     _isConnected = true;
     _isConnecting = false;
     _connections.add(true);
+    return true;
   }
 
   @override
@@ -340,7 +341,7 @@ class FakeWifiControl extends FF1WifiControl {
   bool reconnectEndsWithoutTransportSocket = false;
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -348,17 +349,17 @@ class FakeWifiControl extends FF1WifiControl {
     connectCalled = true;
     lastConnectedDevice = device;
     if (connectEndsWithoutTransportSocket) {
-      return;
+      return false;
     }
-    await super.connect(device: device, userId: userId, apiKey: apiKey);
+    return super.connect(device: device, userId: userId, apiKey: apiKey);
   }
 
   @override
-  Future<void> reconnect() async {
+  Future<bool> reconnect() async {
     if (reconnectEndsWithoutTransportSocket) {
-      return;
+      return false;
     }
-    await super.reconnect();
+    return super.reconnect();
   }
 
   @override

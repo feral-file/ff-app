@@ -87,28 +87,6 @@ class _EnterWiFiPasswordScreenState
   ProviderSubscription<FF1SetupState>? _setupSub;
   ProviderSubscription<WiFiConnectionState>? _wifiErrorSub;
 
-  /// Parse SSID from networkSsid (may contain "ssid|security" format)
-  String _parseSSID(String ssid) {
-    if (ssid.contains('|')) {
-      final parts = ssid.split('|');
-      return parts.isNotEmpty ? parts.first : ssid;
-    }
-    return ssid;
-  }
-
-  /// Check if network is open (from "ssid|security" format)
-  bool _isOpenNetwork(String ssid) {
-    if (!ssid.contains('|')) {
-      return false;
-    }
-    final parts = ssid.split('|');
-    if (parts.length > 1) {
-      final security = parts[1].trim().toUpperCase();
-      return security == 'OPEN';
-    }
-    return false;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -154,7 +132,7 @@ class _EnterWiFiPasswordScreenState
       },
     );
 
-    final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
+    final isOpen = widget.payload.wifiAccessPoint.isOpenNetwork ?? false;
     if (isOpen) {
       // Auto-submit for open networks
       unawaited(Future.microtask(_handleSendCredentials));
@@ -178,7 +156,7 @@ class _EnterWiFiPasswordScreenState
   }
 
   Future<void> _handleSendCredentials() async {
-    final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
+    final isOpen = widget.payload.wifiAccessPoint.isOpenNetwork ?? false;
     final password = isOpen ? '' : _passwordController.text.trim();
 
     if (!isOpen && password.isEmpty) {
@@ -203,7 +181,7 @@ class _EnterWiFiPasswordScreenState
         .read(ff1SetupOrchestratorProvider.notifier)
         .sendWifiCredentialsAndConnect(
           device: widget.payload.device,
-          ssid: _parseSSID(widget.payload.wifiAccessPoint.ssid),
+          ssid: widget.payload.wifiAccessPoint.ssid,
           password: password,
         );
   }
@@ -271,25 +249,24 @@ class _EnterWiFiPasswordScreenState
         :final showSupportCta,
       ):
         if (!mounted) return false;
+        final supportEmailService = showSupportCta
+            ? ref.read(supportEmailServiceProvider)
+            : null;
         await UIHelper.showInfoDialog(
           context,
           title,
           message,
           closeButton: showSupportCta ? 'Contact support' : '',
           onClose: showSupportCta
-              ? () {
-                  unawaited(
-                    UIHelper.showCustomerSupport(
-                      context,
-                      supportEmailService: ref.read(
-                        supportEmailServiceProvider,
-                      ),
-                    ),
+              ? (nextContext) {
+                  return UIHelper.showCustomerSupport(
+                    nextContext,
+                    supportEmailService: supportEmailService!,
                   );
                 }
               : null,
         );
-        if (_isOpenNetwork(widget.payload.wifiAccessPoint.ssid) && mounted) {
+        if ((widget.payload.wifiAccessPoint.isOpenNetwork ?? false) && mounted) {
           context.pop();
         }
         setState(() {
@@ -315,8 +292,8 @@ class _EnterWiFiPasswordScreenState
       localProcessingFlag: _isProcessing,
       status: connectionState.status,
     );
-    final isOpen = _isOpenNetwork(widget.payload.wifiAccessPoint.ssid);
-    final parsedSsid = _parseSSID(widget.payload.wifiAccessPoint.ssid);
+    final isOpen = widget.payload.wifiAccessPoint.isOpenNetwork ?? false;
+    final parsedSsid = widget.payload.wifiAccessPoint.ssid;
     // Open networks don't need a password; closed networks require one.
     final canSubmit = isOpen || _passwordText.trim().isNotEmpty;
     final reservedBottomBarHeight = shouldReserveNowDisplayingBar
@@ -332,7 +309,7 @@ class _EnterWiFiPasswordScreenState
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.symmetric(
-            horizontal: LayoutConstants.setupPageHorizontal,
+            horizontal: LayoutConstants.pageHorizontalDefault,
           ),
           child: isProcessing
               ? _buildProcessingView(parsedSsid)

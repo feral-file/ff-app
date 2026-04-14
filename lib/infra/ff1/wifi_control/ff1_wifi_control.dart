@@ -102,7 +102,21 @@ class FF1WifiControl {
   String? _apiKey;
   int _flowSequence = 0;
 
+  /// Invalidates in-flight connect/reconnect work after a newer pause,
+  /// disconnect, connect, or reconnect request.
+  int _wifiOpGeneration = 0;
+
   String _nextFlowId(String stage) => '$stage-${++_flowSequence}';
+
+  /// Arms the session-scoped waiters for the next fresh device-status update.
+  ///
+  /// Reconnect must do this before dispatching transport.connect(), because the
+  /// relayer can emit the first device status before the reconnect await
+  /// completes. Creating the futures afterward would miss that status.
+  void _resetFreshDeviceStatusWaiters() {
+    _freshDeviceStatusCompleter = Completer<FF1DeviceStatus?>();
+    _freshDeviceVersionCompleter = Completer<FF1DeviceStatus?>();
+  }
 
   /// Start listening to transport streams
   void _startListening() {
@@ -136,7 +150,10 @@ class FF1WifiControl {
   /// [device] - FF1 device with topicId
   /// [userId] - user identifier for authentication
   /// [apiKey] - API key for authentication
-  Future<void> connect({
+  ///
+  /// Returns `false` when the transport did not dispatch a connect (suppressed
+  /// or superseded). Callers must not flip UI to connected on `false`.
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -184,8 +201,7 @@ class FF1WifiControl {
     _currentPlayerStatus = null;
     _currentDeviceStatus = null;
     _isDeviceConnected = false;
-    _freshDeviceStatusCompleter = Completer<FF1DeviceStatus?>();
-    _freshDeviceVersionCompleter = Completer<FF1DeviceStatus?>();
+    _resetFreshDeviceStatusWaiters();
     _connectionStatusController.add(
       const FF1ConnectionStatus(isConnected: false),
     );
@@ -205,12 +221,41 @@ class FF1WifiControl {
       },
     );
 
+    final connectOpGen = ++_wifiOpGeneration;
     try {
-      await _transport.connect(
+      // Relayer: [FF1WifiTransport.connect] returns after dispatching to the
+      // isolate; superseding pause/disconnect is enforced in the relayer
+      // isolate (non-blocking connect handler), not only here (PR #361).
+      final dispatched = await _transport.connect(
         device: device,
         userId: userId,
         apiKey: apiKey,
       );
+      if (connectOpGen != _wifiOpGeneration) {
+        // Do not call `_transport.pauseConnection()` here: a newer connect,
+        // reconnect, or pause already owns the transport. Pausing from this
+        // stale completion would tear down the winner's in-flight session.
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'control_connect_superseded',
+          message:
+              'connect completed after a newer Wi‑Fi operation — ignoring '
+              'stale result (no transport mutation)',
+          payload: {'flowId': flowId, 'deviceId': device.deviceId},
+        );
+        return false;
+      }
+      if (!dispatched) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'control_connect_transport_skipped',
+          message:
+              'transport connect returned without dispatch (e.g. suppressed '
+              'during isolate startup) — not treating as connected',
+          payload: {'flowId': flowId, 'deviceId': device.deviceId},
+        );
+        return false;
+      }
       _slog.info(
         category: LogCategory.wifi,
         event: 'control_connect_dispatched',
@@ -222,16 +267,33 @@ class FF1WifiControl {
           'transportConnecting': _transport.isConnecting,
         },
       );
+      return true;
     } on FF1WifiConnectionCancelledError {
       // Pause won the race during transport prep; transport did not open a new
       // socket. Not a failure for callers or telemetry.
       _slog.info(
         category: LogCategory.wifi,
         event: 'control_connect_cancelled_by_pause',
-        message: 'connect cancelled because app paused during transport connect',
+        message:
+            'connect cancelled because app paused during transport connect',
         payload: {'flowId': flowId, 'deviceId': device.deviceId},
       );
+      return false;
     } catch (e) {
+      if (connectOpGen != _wifiOpGeneration) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'control_connect_error_superseded',
+          message:
+              'connect failed after a newer Wi‑Fi operation — ignoring error',
+          payload: {
+            'flowId': flowId,
+            'deviceId': device.deviceId,
+            'error': '$e',
+          },
+        );
+        return false;
+      }
       _log.severe('Failed to connect: $e');
       _slog.warning(
         category: LogCategory.wifi,
@@ -263,6 +325,7 @@ class FF1WifiControl {
   /// Disconnect from device
   Future<void> disconnect() async {
     final flowId = _nextFlowId('disconnect');
+    _wifiOpGeneration++;
     _log.info('Disconnecting');
     _slog.info(
       category: LogCategory.wifi,
@@ -584,7 +647,11 @@ class FF1WifiControl {
   /// Uses the `forceReconnect` flag to bypass the "already connected" check
   /// when the connection may be stale (e.g. the app was suspended and the
   /// timer-based reconnect did not fire).
-  Future<void> reconnect() async {
+  ///
+  /// Returns `false` if reconnect was skipped, superseded by a newer
+  /// operation, or failed after supersession (caller must not treat as
+  /// connected).
+  Future<bool> reconnect() async {
     final flowId = _nextFlowId('reconnect');
     if (_device == null || _userId == null || _apiKey == null) {
       _log.warning('Cannot reconnect: no cached connection params');
@@ -594,8 +661,11 @@ class FF1WifiControl {
         message: 'cannot reconnect due to missing cached params',
         payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
       );
-      return;
+      return false;
     }
+
+    final opGen = ++_wifiOpGeneration;
+    _resetFreshDeviceStatusWaiters();
 
     _slog.info(
       category: LogCategory.wifi,
@@ -604,6 +674,7 @@ class FF1WifiControl {
       payload: {
         'flowId': flowId,
         'deviceId': _device!.deviceId,
+        'wifiOpGeneration': opGen,
         'isDeviceConnected': _isDeviceConnected,
         'isTransportConnected': _transport.isConnected,
         'isTransportConnecting': _transport.isConnecting,
@@ -617,12 +688,51 @@ class FF1WifiControl {
         message: 'calling transport.connect(forceReconnect: true)',
         payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
       );
-      await _transport.connect(
+      final dispatched = await _transport.connect(
         device: _device!,
         userId: _userId!,
         apiKey: _apiKey!,
         forceReconnect: true,
       );
+      if (opGen != _wifiOpGeneration) {
+        _freshDeviceStatusCompleter?.complete(null);
+        _freshDeviceStatusCompleter = null;
+        _freshDeviceVersionCompleter?.complete(null);
+        _freshDeviceVersionCompleter = null;
+        // Same rationale as [connect]: never pause transport from a stale
+        // completion — the newer operation (e.g. user connect, lifecycle pause)
+        // already decided transport fate.
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'reconnect_superseded_after_await',
+          message:
+              'reconnect completed after a newer Wi‑Fi operation — ignoring '
+              'stale result (no transport mutation)',
+          payload: {
+            'flowId': flowId,
+            'deviceId': _device?.deviceId,
+            'expectedGeneration': opGen,
+            'currentGeneration': _wifiOpGeneration,
+          },
+        );
+        return false;
+      }
+      if (!dispatched) {
+        _freshDeviceStatusCompleter?.complete(null);
+        _freshDeviceStatusCompleter = null;
+        _freshDeviceVersionCompleter?.complete(null);
+        _freshDeviceVersionCompleter = null;
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'reconnect_transport_skipped',
+          message:
+              'transport reconnect returned without dispatch (e.g. suppressed '
+              'during isolate startup) — not treating as connected',
+          payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
+        );
+        return false;
+      }
+
       _slog
         ..info(
           category: LogCategory.wifi,
@@ -646,6 +756,7 @@ transport reconnected — waiting for device connection notification''',
             'isDeviceConnected': _isDeviceConnected,
           },
         );
+      return true;
     } on FF1WifiConnectionCancelledError {
       _slog.info(
         category: LogCategory.wifi,
@@ -654,7 +765,21 @@ transport reconnected — waiting for device connection notification''',
             'reconnect transport connect cancelled (pause during preparation)',
         payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
       );
+      return false;
     } catch (e) {
+      if (opGen != _wifiOpGeneration) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'reconnect_failed_superseded',
+          message: 'reconnect failed after a newer Wi‑Fi operation — ignoring',
+          payload: {
+            'flowId': flowId,
+            'deviceId': _device?.deviceId,
+            'error': e.toString(),
+          },
+        );
+        return false;
+      }
       _slog.warning(
         category: LogCategory.wifi,
         event: 'reconnect_failed',
@@ -678,6 +803,7 @@ transport reconnected — waiting for device connection notification''',
       return;
     }
 
+    _wifiOpGeneration++;
     final flowId = _nextFlowId('pause');
     _slog.info(
       category: LogCategory.wifi,

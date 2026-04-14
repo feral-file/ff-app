@@ -14,7 +14,7 @@ class CustomPrimaryButton extends StatelessWidget {
     this.isProcessing = false,
     this.borderColor,
     this.indicatorColor,
-    this.padding = const EdgeInsets.symmetric(vertical: 13),
+    this.padding = const EdgeInsets.symmetric(vertical: 12),
     this.borderRadius = 32,
     this.textColor,
   });

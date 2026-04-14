@@ -3,7 +3,8 @@ import 'package:app/design/layout_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Bottom spacing widget for consistent spacing at the bottom of scrollable content.
+/// Bottom spacing widget for consistent spacing at the bottom of
+/// scrollable content.
 class BottomSpacing extends ConsumerWidget {
   /// Creates a BottomSpacing widget.
   ///
@@ -24,11 +25,12 @@ class BottomSpacing extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final baseHeight = bottomPadding + LayoutConstants.space4;
 
     if (!checkNowDisplayingVisibility) {
       return SizedBox(
-        height: baseHeight + LayoutConstants.nowDisplayingBarReservedHeight,
+        height: bottomPadding +
+            LayoutConstants.space20 +
+            LayoutConstants.nowDisplayingBarReservedHeight,
       );
     }
 
@@ -36,12 +38,17 @@ class BottomSpacing extends ConsumerWidget {
       nowDisplayingVisibilityProvider.select((s) => s.shouldShow),
     );
 
+    // When the bar is visible (not scrolling) use a taller base so
+    // content clears the gradient + bar. When hidden (scrolling) use
+    // a smaller base so an extra row of thumbnails is reachable.
     if (!shouldShow) {
-      return SizedBox(height: baseHeight);
+      return SizedBox(height: bottomPadding);
     }
 
     return SizedBox(
-      height: baseHeight + LayoutConstants.nowDisplayingBarReservedHeight,
+      height: bottomPadding +
+          LayoutConstants.space20 +
+          LayoutConstants.nowDisplayingBarReservedHeight,
     );
   }
 }

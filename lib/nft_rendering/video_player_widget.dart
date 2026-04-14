@@ -44,7 +44,7 @@ class VideoNFTRenderingWidget extends NFTRenderingWidget {
 
 class _VideoNFTRenderingWidgetState
     extends NFTRenderingWidgetState<VideoNFTRenderingWidget>
-    with RouteAware, WidgetsBindingObserver {
+    with RouteAware, WidgetsBindingObserver, LifecycleAwarePlaybackMixin {
   VideoPlayerController? _controller;
   bool _isPreviewLoaded = false;
   bool _isPlayingFailed = false;
@@ -110,7 +110,7 @@ class _VideoNFTRenderingWidgetState
       }
       await _controller?.setLooping(true);
       if (shouldPauseOrResume) {
-        if (_isPlaying) {
+        if (_isPlaying && !isInBackground) {
           await resume();
         } else {
           await pause();
@@ -250,6 +250,9 @@ class _VideoNFTRenderingWidgetState
     ),
     fit: BoxFit.cover,
   );
+
+  @override
+  bool get isPlaying => _isPlaying;
 
   @override
   Future<void> pause() async {

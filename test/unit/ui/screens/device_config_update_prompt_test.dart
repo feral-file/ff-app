@@ -1,12 +1,12 @@
 import 'dart:async';
 
+import 'package:app/app/ff1/ff1_firmware_update_prompt_service.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_device_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/app/ff1/ff1_firmware_update_prompt_service.dart';
 import 'package:app/app/providers/version_provider.dart';
-import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1/canvas_cast_request_reply.dart';
+import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/api/pubdoc_api.dart';
 import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/database/ff1_bluetooth_device_service.dart';
@@ -684,12 +684,14 @@ class _PromptRaceTransport implements FF1WifiTransport {
   }
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   @override
   void pauseConnection() {}

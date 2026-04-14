@@ -259,7 +259,10 @@ class _VersionSection extends StatelessWidget {
         SizedBox(height: LayoutConstants.space6),
         if (packageInfo != null)
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+            padding: EdgeInsets.symmetric(
+              vertical: LayoutConstants.space2,
+              horizontal: LayoutConstants.space3,
+            ),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(50),
               border: Border.all(color: outlineColor),

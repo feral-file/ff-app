@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app/app/providers/app_overlay_provider.dart';
+import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/now_displaying_bar/now_displaying_bar.dart';
@@ -53,6 +54,7 @@ class AppGlobalOverlayLayer extends ConsumerWidget {
             );
           },
         ),
+        const _BottomFadeGradient(),
         NowDisplayingBarOverlay(router: router),
         Material(
           type: MaterialType.transparency,
@@ -197,6 +199,49 @@ class _ToastOverlayPresenterState
       return;
     }
     ref.read(appOverlayProvider.notifier).removeOverlay(widget.overlay.id);
+  }
+}
+
+class _BottomFadeGradient extends ConsumerWidget {
+  const _BottomFadeGradient();
+
+  static const _fadeHeightBarVisible = 120.0;
+  static const _fadeHeightBarHidden = 48.0;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final barVisible = ref.watch(
+      nowDisplayingVisibilityProvider.select((s) => s.shouldShow),
+    );
+    final fadeHeight = barVisible
+        ? _fadeHeightBarVisible
+        : _fadeHeightBarHidden;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final totalHeight = fadeHeight + bottomInset;
+    final opaqueStop = fadeHeight * 0.37 / totalHeight;
+
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: totalHeight,
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: [0.0, opaqueStop, 1.0],
+              colors: const [
+                Color(0x002E2E2E),
+                Color(0xFF2E2E2E),
+                Color(0xFF2E2E2E),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

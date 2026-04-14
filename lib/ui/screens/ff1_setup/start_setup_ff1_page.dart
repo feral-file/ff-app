@@ -314,7 +314,6 @@ class _StartButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPrimaryButton(
-      padding: const EdgeInsets.only(top: 13, bottom: 10),
       color: PrimitivesTokens.colorsLightBlue,
       onTap: onPressed,
       child: Row(

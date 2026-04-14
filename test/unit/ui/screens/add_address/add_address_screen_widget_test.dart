@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:app/app/providers/add_address_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
+import 'package:app/app/routing/routes.dart';
 import 'package:app/ui/screens/add_address_screen.dart';
+import 'package:app/ui/screens/add_alias_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -129,6 +131,87 @@ void main() {
     expect(observer.popCount, 1);
     expect(find.text('Open'), findsOneWidget);
   });
+
+  testWidgets(
+    'add-address to add-alias flow completes on skip without error',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            nowDisplayingShouldShowProvider.overrideWithValue(false),
+            addAddressFlowProvider.overrideWith(
+              _NeedsAliasOnSubmitNotifier.new,
+            ),
+            addAliasProvider.overrideWith(_ImmediateAliasCompleteNotifier.new),
+          ],
+          child: MaterialApp.router(
+            routerConfig: GoRouter(
+              routes: [
+                GoRoute(
+                  path: Routes.home,
+                  builder: (context, state) => Scaffold(
+                    body: Center(
+                      child: TextButton(
+                        onPressed: () => context.push(Routes.addAddressPage),
+                        child: const Text('Open'),
+                      ),
+                    ),
+                  ),
+                ),
+                GoRoute(
+                  path: Routes.addAddressPage,
+                  builder: (context, state) => const AddAddressScreen(),
+                ),
+                GoRoute(
+                  path: Routes.addAliasPage,
+                  builder: (context, state) {
+                    final extra = state.extra! as AddAliasScreenPayload;
+                    return AddAliasScreen(payload: extra);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), '0xabc');
+      await tester.tap(find.text('Submit'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alias (optional)'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text('Skip'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Open'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+}
+
+class _NeedsAliasOnSubmitNotifier extends AddAddressFlowNotifier {
+  @override
+  Future<void> submit(String addressOrDomain) async {
+    state = const AsyncValue.loading();
+    state = const AsyncValue.data(
+      AddAddressFlowNeedsAlias(
+        address: '0x1234567890123456789012345678901234567890',
+      ),
+    );
+  }
+}
+
+class _ImmediateAliasCompleteNotifier extends AddAliasNotifier {
+  @override
+  Future<void> add(String address, String? alias) async {
+    state = const AsyncValue.loading();
+    state = const AsyncValue.data(null);
+  }
 }
 
 class _ErrorAddAddressFlowNotifier extends AddAddressFlowNotifier {

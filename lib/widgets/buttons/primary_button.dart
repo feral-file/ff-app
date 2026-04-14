@@ -19,7 +19,7 @@ class PrimaryButton extends StatelessWidget {
     this.enabled = true,
     this.isProcessing = false,
     this.indicatorColor,
-    this.padding = const EdgeInsets.symmetric(vertical: 13),
+    this.padding = const EdgeInsets.symmetric(vertical: 12),
     this.elevatedPadding,
     this.borderRadius = 32,
     this.borderColor,
@@ -149,7 +149,7 @@ class PrimaryAsyncButton extends StatefulWidget {
     this.borderColor,
     this.borderRadius = 32,
     this.processingText,
-    this.padding = const EdgeInsets.symmetric(vertical: 13),
+    this.padding = const EdgeInsets.symmetric(vertical: 12),
   });
 
   /// On tap callback.
