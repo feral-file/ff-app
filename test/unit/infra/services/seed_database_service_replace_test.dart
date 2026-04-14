@@ -226,6 +226,7 @@ void main() {
           p.join(tempDir.path, 'dp1_library.sqlite.stage.1001'),
         );
         createSeedArtifactDatabase(file: staged);
+        await File('$dbPath.swap_in_progress').writeAsString('1001');
 
         final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
         final repaired = await service.repairInterruptedSeedSwapIfNeeded();
@@ -243,6 +244,35 @@ void main() {
     );
 
     test(
+      'repairInterruptedSeedSwapIfNeeded preserves canonical WAL/SHM while '
+      'restoring the main db',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final marker = File('$dbPath.swap_in_progress');
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.2002'),
+        );
+        final wal = File('$dbPath-wal');
+        final shm = File('$dbPath-shm');
+
+        createSeedArtifactDatabase(file: backup);
+        await marker.writeAsString('2002');
+        await wal.writeAsString('wal-preserved');
+        await shm.writeAsString('shm-preserved');
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        expect(File(dbPath).existsSync(), isTrue);
+        expect(wal.existsSync(), isTrue);
+        expect(shm.existsSync(), isTrue);
+        expect(await wal.readAsString(), 'wal-preserved');
+        expect(await shm.readAsString(), 'shm-preserved');
+      },
+    );
+
+    test(
       'repairInterruptedSeedSwapIfNeeded skips invalid stage residue when '
       'no valid backup exists',
       () async {
@@ -253,9 +283,32 @@ void main() {
           p.join(tempDir.path, 'dp1_library.sqlite.stage.3003'),
         );
         await staged.writeAsBytes(List<int>.filled(1024, 7));
+        await File('$dbPath.swap_in_progress').writeAsString('3003');
 
         final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
         final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+        expect(repaired, isFalse);
+        expect(File(dbPath).existsSync(), isFalse);
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded ignores stale swap artifacts when '
+      'no replace marker exists',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final staged = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.6006'),
+        );
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.6006'),
+        );
+        createSeedArtifactDatabase(file: staged);
+        createSeedArtifactDatabase(file: backup);
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
         expect(repaired, isFalse);
         expect(File(dbPath).existsSync(), isFalse);
       },
@@ -274,8 +327,12 @@ void main() {
         final backup = File(
           p.join(tempDir.path, 'dp1_library.sqlite.backup.4005'),
         );
+        final backupWal = File('${backup.path}-wal');
+        final backupShm = File('${backup.path}-shm');
         createSeedArtifactDatabase(file: staged, userVersion: 2);
         createSeedArtifactDatabase(file: backup, userVersion: 1);
+        await backupWal.writeAsString('wal');
+        await backupShm.writeAsString('shm');
 
         await service.deleteDatabaseFiles();
 
@@ -284,6 +341,33 @@ void main() {
         expect(File('$dbPath-shm').existsSync(), isFalse);
         expect(staged.existsSync(), isFalse);
         expect(backup.existsSync(), isFalse);
+        expect(backupWal.existsSync(), isFalse);
+        expect(backupShm.existsSync(), isFalse);
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded restores backup sidecars when the '
+      'canonical db is missing',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.7007'),
+        );
+        createSeedArtifactDatabase(file: backup);
+        final backupWalPath = '${backup.path}-wal';
+        final backupShmPath = '${backup.path}-shm';
+        await File(backupWalPath).writeAsString('committed-wal');
+        await File(backupShmPath).writeAsString('committed-shm');
+        await File('$dbPath.swap_in_progress').writeAsString('7007');
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        expect(File(dbPath).existsSync(), isTrue);
+        expect(File('$dbPath-wal').existsSync(), isTrue);
+        expect(File('$dbPath-shm').existsSync(), isTrue);
       },
     );
 

@@ -288,6 +288,67 @@ class _OverlapFailBeforeSecondBeforeReplaceFake
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// First sync completes successfully while second remains in-flight, so the
+/// first session becomes superseded after replace has already reopened state.
+class _OverlapUpdatedSuccessFake implements SeedDatabaseSyncService {
+  _OverlapUpdatedSuccessFake({
+    required Completer<void> firstMayComplete,
+    required Completer<void> secondStarted,
+    required Completer<void> secondMayComplete,
+  })  : _firstMayComplete = firstMayComplete,
+        _secondStarted = secondStarted,
+        _secondMayComplete = secondMayComplete;
+
+  final Completer<void> _firstMayComplete;
+  final Completer<void> _secondStarted;
+  final Completer<void> _secondMayComplete;
+  int syncCallCount = 0;
+
+  @override
+  Future<bool> sync({
+    required Future<void> Function() beforeReplace,
+    required Future<void> Function() afterReplace,
+    bool forceReplace = false,
+    void Function({
+      required bool hasLocalDatabase,
+      String? localEtag,
+      String? remoteEtag,
+    })?
+    onDownloadStarted,
+    void Function(double progress)? onProgress,
+    bool failSilently = false,
+    bool Function()? isSessionActive,
+  }) async {
+    syncCallCount++;
+    if (syncCallCount == 1) {
+      onDownloadStarted?.call(
+        hasLocalDatabase: true,
+        localEtag: 'local',
+        remoteEtag: 'remote',
+      );
+      await beforeReplace();
+      await _firstMayComplete.future;
+      await afterReplace();
+      return true;
+    }
+    onDownloadStarted?.call(
+      hasLocalDatabase: true,
+      localEtag: 'local',
+      remoteEtag: 'remote',
+    );
+    await beforeReplace();
+    if (!_secondStarted.isCompleted) {
+      _secondStarted.complete();
+    }
+    await _secondMayComplete.future;
+    await afterReplace();
+    return true;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 final _noOpActions = SeedDatabaseReadyActions(
   onNotReady: _noOpFuture,
   onReady: _noOpFuture,
@@ -928,7 +989,8 @@ void main() {
         SeedDatabaseGate.isCompleted,
         isTrue,
         reason:
-            'superseded session must open SeedDatabaseGate when replace ran',
+            'superseded session must open SeedDatabaseGate once the overlap '
+            'drains',
       );
       expect(
         appState.seedDownloadCompletedForTest,
@@ -937,6 +999,58 @@ void main() {
             'superseded session must persist hasCompletedSeedDownload so '
             'resume does not treat the next launch like first install',
       );
+    },
+  );
+
+  test(
+    'superseded successful sync defers readiness and gate until overlap drains',
+    () async {
+      SeedDatabaseGate.resetForTesting();
+      final firstMayComplete = Completer<void>();
+      final secondStarted = Completer<void>();
+      final secondMayComplete = Completer<void>();
+      final fakeSyncService = _OverlapUpdatedSuccessFake(
+        firstMayComplete: firstMayComplete,
+        secondStarted: secondStarted,
+        secondMayComplete: secondMayComplete,
+      );
+      final appState = _FakeAppStateService();
+      var onReadyCallCount = 0;
+      final actions = SeedDatabaseReadyActions(
+        onNotReady: _noOpFuture,
+        onReady: () async {
+          onReadyCallCount++;
+        },
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(appState),
+          seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+          _fakeSeedDbSvc(hasLocal: false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(seedDownloadProvider.notifier);
+      final sync1Future = notifier.sync();
+      final sync2Future = notifier.sync();
+
+      await secondStarted.future;
+      expect(SeedDatabaseGate.isCompleted, isFalse);
+
+      firstMayComplete.complete();
+      await sync1Future;
+      expect(SeedDatabaseGate.isCompleted, isFalse);
+
+      secondMayComplete.complete();
+      await sync2Future;
+
+      expect(onReadyCallCount, greaterThanOrEqualTo(1));
+      expect(container.read(isSeedDatabaseReadyProvider), isTrue);
+      expect(SeedDatabaseGate.isCompleted, isTrue);
+      expect(appState.seedDownloadCompletedForTest, isTrue);
     },
   );
 

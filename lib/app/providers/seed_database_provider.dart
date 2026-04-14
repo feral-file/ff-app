@@ -297,14 +297,16 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         // Overridden session must not update state, UI, or gate. But if it
         // completed replace+afterReplace (updated==true), we must restore
         // readiness: no other path will, and DB consumers stay gated otherwise.
+        // If another sync is still active, defer reopening until the overlap
+        // drains so the newer session remains authoritative.
         // Do not restore favorites here: a newer session may still replace the
         // DB; defer snapshot to pending and restore with the winning session or
         // in finally when no sync remains in flight.
         if (updated) {
           await appStateService.setHasCompletedSeedDownload(completed: true);
-          await seedReadyNotifier.setReady();
+          restoreReadinessWhenDrained = true;
           if (completeSeedDatabaseGate) {
-            SeedDatabaseGate.complete();
+            completeGateWhenDrained = true;
           }
           _appendSessionSnapshotToPendingFavorites(session);
         }
