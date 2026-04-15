@@ -206,7 +206,7 @@ class _BottomFadeGradient extends ConsumerWidget {
   const _BottomFadeGradient();
 
   static const _fadeHeightBarVisible = 120.0;
-  static const _fadeHeightBarHidden = 48.0;
+  static const _fadeHeightBarHidden = 0.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
