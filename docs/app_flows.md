@@ -95,6 +95,7 @@
 - notes:
   - The deeplink onboarding path does not create a second guided setup session from onboarding screens. The session is created once when the user taps **Continue** on `StartSetupFf1Page` (`ensureActiveSetupSession()`), before pushing Introduce -> Add Address -> FF1 Device Scan -> Connect FF1.
   - **Back / leave:** `StartSetupFf1Page` uses `PopScope` so the user cannot pop the setup shell while deeplink onboarding is still incomplete. If the route is disposed without a successful setup (e.g. stack unwind), `dispose` calls `cancelSession(userAborted)` on the orchestrator to abandon the guided session.
+  - After `cancelSession(userAborted)`, late connect success effects are ignored. A cancelled guided attempt must not be reclassified as standalone success if a delayed BLE or Wi‑Fi completion arrives afterward.
   - Reaching `ConnectFF1Page` from this stack **with** an active session is the expected case; if `activeSession` were null here, treat it as a flow break worth investigating.
 
 ## Flow: Address Add and Personal Collection Sync

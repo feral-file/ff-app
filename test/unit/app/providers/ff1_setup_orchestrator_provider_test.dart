@@ -44,6 +44,22 @@ class _RecordingFf1BtActions extends FF1BluetoothDeviceActionsNotifier {
   }
 }
 
+class _BlockingFf1BtActions extends FF1BluetoothDeviceActionsNotifier {
+  _BlockingFf1BtActions(this._completer);
+
+  final Completer<void> _completer;
+  int addDeviceCalls = 0;
+
+  @override
+  void build() {}
+
+  @override
+  Future<void> addDevice(FF1Device device) async {
+    addDeviceCalls += 1;
+    await _completer.future;
+  }
+}
+
 class _ThrowingOnboardingService extends OnboardingService {
   _ThrowingOnboardingService({
     required super.ref,
@@ -618,6 +634,72 @@ void main() {
       expect(
         container.read(ff1SetupOrchestratorProvider).activeSession,
         isNotNull,
+      );
+    },
+  );
+
+  test(
+    'cancelSession ignores teardown while completion is in flight',
+    () async {
+      final addDeviceCompleter = Completer<void>();
+      final recordingBtActions = _BlockingFf1BtActions(addDeviceCompleter);
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+          ff1BluetoothDeviceActionsProvider.overrideWith(
+            () => recordingBtActions,
+          ),
+          connectWiFiProvider.overrideWith(
+            () => _FakeWiFiNotifier(const WiFiConnectionState()),
+          ),
+          ff1WifiControlProvider.overrideWithValue(_StubWifiControl()),
+          onboardingActionsProvider.overrideWith(
+            (ref) => OnboardingService(
+              ref: ref,
+              appStateService: MockAppStateService(),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final keepAlive = container.listen(
+        ff1SetupOrchestratorProvider,
+        (_, _) {},
+      );
+      addTearDown(keepAlive.close);
+
+      final notifier = container.read(ff1SetupOrchestratorProvider.notifier);
+      notifier.startSession();
+
+      final completeFuture = notifier.completeSession(
+        const FF1Device(
+          name: 'FF1',
+          remoteId: '00:11',
+          deviceId: 'FF1-1',
+          topicId: 'topic-1',
+        ),
+      );
+
+      await Future<void>.delayed(Duration.zero);
+      await notifier.cancelSession(FF1SetupSessionCancelReason.userAborted);
+      expect(
+        container.read(ff1SetupOrchestratorProvider).activeSession,
+        isNotNull,
+      );
+
+      addDeviceCompleter.complete();
+      expect(await completeFuture, isTrue);
+      expect(recordingBtActions.addDeviceCalls, 1);
+      expect(
+        container.read(ff1SetupOrchestratorProvider).activeSession,
+        isNull,
+      );
+      expect(
+        container.read(ff1SetupOrchestratorProvider).step,
+        FF1SetupStep.idle,
       );
     },
   );

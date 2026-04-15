@@ -45,6 +45,8 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   bool _listenersRegistered = false;
   int _effectId = 0;
   FF1SetupEffect? _pendingEffect;
+  bool _sessionCompletionInProgress = false;
+  bool _currentConnectAttemptWasGuided = false;
 
   @override
   FF1SetupState build() {
@@ -228,7 +230,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
 
   bool matchesSessionForEffect(String? sessionIdAtEmission) {
     if (sessionIdAtEmission == null) {
-      return _activeSession == null;
+      return !_currentConnectAttemptWasGuided;
     }
     return _activeSession?.id == sessionIdAtEmission;
   }
@@ -276,21 +278,26 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   }) async {
     _ensureListenersRegistered();
     final session = _activeSession;
-    if (session == null) {
+    if (session == null || _sessionCompletionInProgress) {
       return false;
     }
 
-    await ref
-        .read(ff1BluetoothDeviceActionsProvider.notifier)
-        .addDevice(device);
-    await _completeOnboarding();
-    await tearDownAfterSetupComplete();
-    _activeSession = null;
-    state = state.copyWith(hasActiveSession: true);
-    if (shouldNavigate) {
-      _goToDeviceConfigurationAfterSessionComplete();
+    _sessionCompletionInProgress = true;
+    try {
+      await ref
+          .read(ff1BluetoothDeviceActionsProvider.notifier)
+          .addDevice(device);
+      await _completeOnboarding();
+      await tearDownAfterSetupComplete();
+      _activeSession = null;
+      state = const FF1SetupState(step: FF1SetupStep.idle);
+      if (shouldNavigate) {
+        _goToDeviceConfigurationAfterSessionComplete();
+      }
+      return true;
+    } finally {
+      _sessionCompletionInProgress = false;
     }
-    return true;
   }
 
   /// Completes an internet-ready setup when no guided session is active.
@@ -302,18 +309,26 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     bool shouldNavigate = true,
   }) async {
     _ensureListenersRegistered();
+    if (_sessionCompletionInProgress) {
+      return;
+    }
     if (_activeSession != null) {
       await completeSession(device, shouldNavigate: shouldNavigate);
       return;
     }
 
-    await ref
-        .read(ff1BluetoothDeviceActionsProvider.notifier)
-        .addDevice(device);
-    await _completeOnboarding();
-    await tearDownAfterSetupComplete();
-    if (shouldNavigate) {
-      _goToDeviceConfigurationAfterSessionComplete();
+    _sessionCompletionInProgress = true;
+    try {
+      await ref
+          .read(ff1BluetoothDeviceActionsProvider.notifier)
+          .addDevice(device);
+      await _completeOnboarding();
+      await tearDownAfterSetupComplete();
+      if (shouldNavigate) {
+        _goToDeviceConfigurationAfterSessionComplete();
+      }
+    } finally {
+      _sessionCompletionInProgress = false;
     }
   }
 
@@ -323,11 +338,11 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   Future<void> cancelSession(FF1SetupSessionCancelReason reason) async {
     _ensureListenersRegistered();
     final session = _activeSession;
-    if (session == null) {
+    if (session == null || _sessionCompletionInProgress) {
       return;
     }
     _activeSession = null;
-    state = state.copyWith(hasActiveSession: true);
+    state = const FF1SetupState(step: FF1SetupStep.idle);
     _log.info('[setupSession] cancelSession: $reason');
     cancel();
     await _disconnectBleBestEffort();
@@ -419,6 +434,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     FF1DeviceInfo? deeplinkInfo,
   }) async {
     _ensureListenersRegistered();
+    _currentConnectAttemptWasGuided = _activeSession != null;
     _selectedDevice = device;
     _deeplinkInfo = deeplinkInfo;
     // Refactor-only invariant: avoid stale success causing immediate navigation

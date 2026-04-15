@@ -504,6 +504,120 @@ void main() {
   );
 
   testWidgets(
+    'late guided success is ignored after session cancel',
+    (tester) async {
+      final device = BluetoothDevice.fromId('00:11:22:33:44:55');
+      var navigatedToConfig = false;
+      final connectRelease = Completer<void>();
+
+      const connectedState = ConnectFF1Connected(
+        ff1device: FF1Device(
+          name: 'FF1',
+          remoteId: '00:11:22:33:44:55',
+          deviceId: 'FF1-123',
+          topicId: 'topic-123',
+        ),
+        portalIsSet: false,
+        isConnectedToInternet: true,
+      );
+
+      final connectNotifier = _GatedFakeConnectFF1Notifier(
+        release: connectRelease.future,
+        nextState: connectedState,
+      );
+      final container = ProviderContainer(
+        overrides: [
+          connectFF1Provider.overrideWith(() => connectNotifier),
+          connectWiFiProvider.overrideWith(_IdleWifiNotifier.new),
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+          ff1BluetoothDeviceActionsProvider.overrideWith(
+            _FakeFF1BluetoothDeviceActionsNotifier.new,
+          ),
+          onboardingActionsProvider.overrideWith(
+            (ref) => OnboardingService(
+              ref: ref,
+              appStateService: _MockAppStateService(),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(ff1SetupOrchestratorProvider.notifier).startSession();
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(
+            routerConfig: GoRouter(
+              navigatorKey: appNavigatorKey,
+              initialLocation: '/entry',
+              routes: [
+                GoRoute(
+                  path: '/entry',
+                  builder: (context, state) => Scaffold(
+                    body: Center(
+                      child: TextButton(
+                        onPressed: () => unawaited(
+                          context.push(
+                            Routes.connectFF1Page,
+                            extra: ConnectFF1PagePayload(
+                              device: device,
+                              ff1DeviceInfo: null,
+                            ),
+                          ),
+                        ),
+                        child: const Text('Open connect page'),
+                      ),
+                    ),
+                  ),
+                ),
+                GoRoute(
+                  path: Routes.connectFF1Page,
+                  builder: (context, state) {
+                    final payload = state.extra! as ConnectFF1PagePayload;
+                    return ConnectFF1Page(payload: payload);
+                  },
+                ),
+                GoRoute(
+                  path: Routes.deviceConfiguration,
+                  builder: (context, state) {
+                    navigatedToConfig = true;
+                    return const Scaffold(
+                      body: Text('DEVICE_CONFIGURATION_MARKER'),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open connect page'));
+      await tester.pumpAndSettle();
+
+      await container
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .cancelSession(FF1SetupSessionCancelReason.userAborted);
+
+      connectRelease.complete();
+      await tester.pump();
+
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(navigatedToConfig, isFalse);
+      expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsNothing);
+      expect(
+        container.read(ff1SetupOrchestratorProvider).activeSession,
+        isNull,
+      );
+    },
+  );
+
+  testWidgets(
     'portalIsSet Go to Settings disabled until guided completion finishes',
     (tester) async {
       final device = BluetoothDevice.fromId('00:11:22:33:44:55');
@@ -977,6 +1091,29 @@ class _FakeConnectFF1Notifier extends ConnectFF1Notifier {
     // Connecting before Connected (mirrors real async connect).
     await Future<void>.value();
     state = AsyncValue.data(_nextState);
+  }
+}
+
+class _GatedFakeConnectFF1Notifier extends ConnectFF1Notifier {
+  _GatedFakeConnectFF1Notifier({
+    required this.release,
+    required this.nextState,
+  });
+
+  final Future<void> release;
+  final ConnectFF1State nextState;
+
+  @override
+  Future<ConnectFF1State> build() async => ConnectFF1Initial();
+
+  @override
+  Future<void> connectBle(
+    BluetoothDevice bluetoothDevice, {
+    FF1DeviceInfo? ff1DeviceInfo,
+  }) async {
+    state = AsyncValue.data(ConnectFF1Connecting(blDevice: bluetoothDevice));
+    await release;
+    state = AsyncValue.data(nextState);
   }
 }
 

@@ -90,10 +90,10 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
         final effectId = next.effectId;
         final effect = next.effect;
         if (previous?.effectId != effectId && effect != null) {
-          // Bind success handling to the session that existed when the effect
-          // was emitted; async handlers must not re-read
-          // [hasGuidedSetupSession] after [cancelSession] may have cleared the
-          // guided session.
+          // Bind success handling to the session that was active when the
+          // effect was emitted. The orchestrator keeps track of whether the
+          // current connect attempt started as guided so a cancelled guided
+          // attempt cannot be reclassified as standalone success.
           final sessionIdAtEmission = next.activeSession?.id;
           final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
           unawaited(() async {
@@ -200,13 +200,14 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           return true;
         }
         // Standalone connect: internet-ready must persist onboarding before
-        // leaving setup. If the portal is already configured, keep the portal
-        // screen until the user taps Go to Settings.
-        if (connected.portalIsSet) {
+        // leaving setup. If the current attempt began as a guided session, the
+        // orchestrator attempt flag keeps late success from being reclassified
+        // after cancel.
+        final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
+        if (!orchestrator.matchesSessionForEffect(sessionIdAtEmission)) {
           return true;
         }
-        final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
-        if (!orchestrator.matchesSessionForEffect(null)) {
+        if (connected.portalIsSet) {
           return true;
         }
         unawaited(
@@ -361,11 +362,6 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     required bool preservePortalUi,
     bool bypassPendingGuard = false,
   }) async {
-    if (!ref
-        .read(ff1SetupOrchestratorProvider.notifier)
-        .matchesSessionForEffect(null)) {
-      return;
-    }
     if (!bypassPendingGuard &&
         (_guidedCompletionPending || _successExitPending || !mounted)) {
       return;
