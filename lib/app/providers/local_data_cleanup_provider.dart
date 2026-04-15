@@ -56,6 +56,24 @@ Future<void> _restoreReadinessAfterResetRetryFailed(Ref ref) async {
 Future<void> restoreReadinessAfterResetRetryFailedForTesting(Ref ref) =>
     _restoreReadinessAfterResetRetryFailed(ref);
 
+/// Delete-only helper for the gate-completed path.
+///
+/// The cleanup flow intentionally shares the same lock as seed replacement so
+/// "Forget I Exist" cannot delete the only recoverable `.stage` / `.backup`
+/// artifacts while a background replace is still in progress.
+Future<void> _deleteSeedFilesUnderReplaceLock(Ref ref) async {
+  final seedDatabaseSyncService = ref.read(seedDatabaseSyncServiceProvider);
+  await seedDatabaseSyncService.runWithReplaceLock(() async {
+    final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+    await seedDatabaseService.deleteDatabaseFiles();
+  });
+}
+
+/// Test hook for [_deleteSeedFilesUnderReplaceLock].
+@visibleForTesting
+Future<void> deleteSeedFilesUnderReplaceLockForTesting(Ref ref) =>
+    _deleteSeedFilesUnderReplaceLock(ref);
+
 /// Wires [LocalDataCleanupService] for two flows:
 ///
 /// 1. **forgetIExist** (Forget I Exist): full reset → deletes SQLite,
@@ -205,25 +223,24 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
       final readyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
       await readyNotifier.setNotReady();
       if (SeedDatabaseGate.isCompleted) {
-        final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
-        await seedDatabaseService.deleteDatabaseFiles();
-      } else {
-        await ref
-            .read(tokensSyncCoordinatorProvider.notifier)
-            .stopAndDrainForReset();
-        await ref
-            .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
-            .stopAndDrainForReset();
-        r.invalidate(tokensSyncCoordinatorProvider);
-        r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
-        readyNotifier.seedReadyDirect = false;
-        invalidateDatabaseConsumerProviders();
-        await SchedulerBinding.instance.endOfFrame;
-        await ref.read(appDatabaseProvider).close();
-        final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
-        await seedDatabaseService.deleteDatabaseFiles();
-        await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
+        await _deleteSeedFilesUnderReplaceLock(ref);
+        return;
       }
+      await ref
+          .read(tokensSyncCoordinatorProvider.notifier)
+          .stopAndDrainForReset();
+      await ref
+          .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+          .stopAndDrainForReset();
+      r.invalidate(tokensSyncCoordinatorProvider);
+      r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
+      readyNotifier.seedReadyDirect = false;
+      invalidateDatabaseConsumerProviders();
+      await SchedulerBinding.instance.endOfFrame;
+      await ref.read(appDatabaseProvider).close();
+      final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+      await seedDatabaseService.deleteDatabaseFiles();
+      await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
     },
 
     /// Clears FF1 devices, app state, tracked addresses, etc.

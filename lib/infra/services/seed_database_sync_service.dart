@@ -41,6 +41,13 @@ class SeedDatabaseSyncService {
   /// beforeReplace → replace → afterReplace.
   final _replaceLock = Lock();
 
+  /// Runs [action] while holding the replace lock. Cleanup flows that delete
+  /// seed artifacts must go through the same lock so they cannot remove the
+  /// only recoverable swap files while a replace is mid-flight.
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) {
+    return _replaceLock.synchronized(action);
+  }
+
   /// Syncs seed DB from remote.
   ///
   /// When `forceReplace` is false (default), performs ETag-based conditional
@@ -149,7 +156,7 @@ class SeedDatabaseSyncService {
       // After beforeReplace, must finish replace+afterReplace (reconnect path).
       // Early return would leave DB closed; if newer session fails, nothing
       // restores readiness. Only check isSessionActive before beforeReplace.
-      final result = await _replaceLock.synchronized(() async {
+      final result = await runWithReplaceLock(() async {
         if (isSessionActive != null && !isSessionActive()) return false;
         await beforeReplace();
 
