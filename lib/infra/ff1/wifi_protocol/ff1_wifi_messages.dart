@@ -217,9 +217,8 @@ class FF1PlayerStatus {
           : null,
       sleepMode: json['sleepMode'] as bool?,
       shuffle: json['shuffle'] as bool?,
-      loopMode: json['loopMode'] != null
-          ? LoopMode.fromString(json['loopMode'] as String)
-          : null,
+      // Unknown loopMode strings must not fail the whole player_status parse.
+      loopMode: LoopMode.tryParse(json['loopMode']),
     );
   }
 
@@ -738,7 +737,7 @@ class FF1WifiUpdateToLatestVersionRequest extends FF1WifiCommandRequest {
 class FF1WifiSetLoopRequest extends FF1WifiCommandRequest {
   /// Creates a set-loop request.
   ///
-  /// [mode] — playlist or one.
+  /// [mode] — none, playlist, or one.
   const FF1WifiSetLoopRequest({required this.mode});
 
   /// Loop mode.
