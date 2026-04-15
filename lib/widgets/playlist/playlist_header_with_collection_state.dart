@@ -68,11 +68,13 @@ class PlaylistHeaderWithCollectionState extends ConsumerWidget {
     var effectiveShowRetry = false;
 
     if (ownerAddress != null && ownerAddress!.isNotEmpty) {
-      final processStatusAsync =
-          ref.watch(addressIndexingProcessStatusProvider(ownerAddress!));
+      final processStatusAsync = ref.watch(
+        addressIndexingProcessStatusProvider(ownerAddress!),
+      );
       final job = ref.watch(indexingJobStatusProvider(ownerAddress!));
-      final processStatus =
-          processStatusAsync.hasValue ? processStatusAsync.value : null;
+      final processStatus = processStatusAsync.hasValue
+          ? processStatusAsync.value
+          : null;
       final derived = deriveIndexingStatusText(
         processStatus: processStatus,
         job: job,
@@ -82,10 +84,26 @@ class PlaylistHeaderWithCollectionState extends ConsumerWidget {
       effectiveShowRetry = derived.showRetry;
     }
 
+    final isAddressPlaylist = ownerAddress != null && ownerAddress!.isNotEmpty;
+
+    // Address playlists (list rows): swap which string fills [PlaylistTitle]'s
+    // secondary vs status slots so indexing text sits on the title row and the
+    // address sits on the lower line. Detail headers use [showDivider], which
+    // hides secondary—keep the original mapping so status stays the second line.
+    final String titleSecondary;
+    final String? titleStatus;
+    if (isAddressPlaylist && !showDivider) {
+      titleSecondary = effectiveStatusText ?? '';
+      titleStatus = secondaryText.isEmpty ? null : secondaryText;
+    } else {
+      titleSecondary = secondaryText;
+      titleStatus = effectiveStatusText;
+    }
+
     return PlaylistTitle(
       primaryText: primaryText,
-      secondaryText: secondaryText,
-      statusText: effectiveStatusText,
+      secondaryText: titleSecondary,
+      statusText: titleStatus,
       onTap: onTap,
       onRetry: effectiveShowRetry ? onRetry : null,
       subtitle: subtitle,

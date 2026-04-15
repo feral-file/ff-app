@@ -1,6 +1,7 @@
 ---
 alwaysApply: true
 ---
+
 # Review workflow rule
 
 This is the mandatory post-implementation gate. After any implementation, do not consider the work done, and do not commit, push, or create a PR, until both paths are clear:
@@ -8,11 +9,13 @@ This is the mandatory post-implementation gate. After any implementation, do not
 1. Deterministic check: `scripts/agent-helpers/post-implementation-checks.sh HEAD` is clean and every reported issue is fixed.
 2. Inference check: the reviewer pool accepts the full diff against `main`.
 
-1. **Handoff** — Produce a compact handoff: master purpose, recent implementation change, files changed, key decisions, checks run.
-2. **Diff** — Generate the review diff by comparing the branch to `main`, not only the latest commit or latest local edit.
-3. **Review pool** — Spawn 2-3 fresh-context `reviewer` subagents in parallel based on implementation complexity. Size the pool from the actual implementation complexity only. Do not increase reviewer count because of test-only, doc-only, workflow-only, or dependency-only changes.
-4. **Inputs** — Give each reviewer the handoff, the diff against `main`, and any relevant test or lint output. Each reviewer follows `prompts/code-review.md` and ends with **Verdict: accept** or **Verdict: revise**.
-5. **If any Verdict: revise** — Collect all reviewer reports, merge all valid findings into one action list, fix every valid issue found across the full review pool, re-run the deterministic checks, update the handoff, and send the updated diff against `main` back for another review round. Repeat until the full pool accepts.
-6. **After Verdict: accept** — Commit (Conventional Commits), push, and create a PR only if the user requested it.
+3. **Handoff** — Produce a compact handoff: master purpose, recent implementation change, files changed, key decisions, checks run.
+4. **Diff** — Generate the review diff by comparing the branch to `main`, not only the latest commit or latest local edit.
+5. **Diff** — Generate the review diff by comparing the branch to `main`, not only the latest commit or latest local edit. This ensures reviewers see the full context of all changes on the branch.
+6. **Review pool** — Spawn 2-3 fresh-context `reviewer` subagents in parallel based on implementation complexity. Size the pool from the actual implementation complexity only. Do not increase reviewer count because of test-only, doc-only, workflow-only, or dependency-only changes.
+7. **Inputs** — Give each reviewer the handoff, the diff against `main`, and any relevant test or lint output. Each reviewer follows `prompts/code-review.md` and ends with **Verdict: accept** or **Verdict: revise**.
+8. **If any Verdict: revise** — Collect all reviewer reports, merge all valid findings into one action list, fix every valid issue found across the full review pool, re-run the deterministic checks, update the handoff, and send the updated diff against `main` back for another review round. Repeat until the full pool accepts.
+9. **After Verdict: accept** — Commit (Conventional Commits), push, and create a PR only if the user requested it.
+10. **Scope guard for review fixes** — When the user asks to fix reviewer feedback, do not automatically implement every requested change. First classify each comment against the branch purpose, the PR description, and `docs/project_spec.md` / `docs/app_flows.md`. If a review comment is out of scope, conflicts with the agreed feature direction, or would materially expand the PR, explicitly raise it and explain why it should not be fixed in this change. Prefer a smaller PR over silent scope creep.
 
 Keep this rule focused. Do not duplicate detailed review heuristics here; `prompts/code-review.md` remains the source of truth for review content and output.

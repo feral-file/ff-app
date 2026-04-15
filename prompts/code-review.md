@@ -9,6 +9,7 @@
 - Because this app does not require backward-compatibility or migration-safe edits by default, do not bias toward minimal-change solutions during review.
 - Consider stronger alternatives, including larger refactors, responsibility re-allocation, API reshaping, deleting obsolete abstractions, or breaking changes, but only mention them when they are obviously better and materially improve the outcome.
 - Do not speculate or brainstorm in review comments. If an alternative is not clearly superior, skip it.
+- When reviewing a fix to reviewer feedback, separate in-scope defects from scope-expanding asks. If a comment would broaden the PR beyond the branch purpose or the product/spec context, call that out explicitly instead of asking the author to implement it.
 
 ### Hindsight and refactor review
 After reading the PR description and implementation, step back and consider the underlying product or architectural goal, referencing the project spec and app flows for broader context. Suggest a clearer or structurally better alternative only if the review reveals a concrete architectural issue or an obviously improved approach. Provide hindsight or refactor feedback only when actionable—omit this section entirely if no clear, valuable insight exists.
