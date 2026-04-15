@@ -20,6 +20,10 @@ class AppGlobalOverlayLayer extends ConsumerWidget {
     super.key,
   });
 
+  /// Key for tests: bottom fade [Positioned] when the now bar is visible.
+  static const ValueKey<String> bottomFadeGradientKey =
+      ValueKey<String>('app_global_overlay_bottom_fade');
+
   /// App router used by the global now displaying overlay.
   final GoRouter router;
 
@@ -206,21 +210,26 @@ class _BottomFadeGradient extends ConsumerWidget {
   const _BottomFadeGradient();
 
   static const _fadeHeightBarVisible = 120.0;
-  static const _fadeHeightBarHidden = 48.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final barVisible = ref.watch(
       nowDisplayingVisibilityProvider.select((s) => s.shouldShow),
     );
-    final fadeHeight = barVisible
-        ? _fadeHeightBarVisible
-        : _fadeHeightBarHidden;
+    // When the now bar is hidden, do not reserve height for bottom safe area:
+    // fadeHeight + padding.bottom would still paint over the home indicator,
+    // and fadeHeight == 0 would make gradient stops divide by zero.
+    if (!barVisible) {
+      return const SizedBox.shrink();
+    }
+
+    const fadeHeight = _fadeHeightBarVisible;
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final totalHeight = fadeHeight + bottomInset;
     final opaqueStop = fadeHeight * 0.37 / totalHeight;
 
     return Positioned(
+      key: AppGlobalOverlayLayer.bottomFadeGradientKey,
       left: 0,
       right: 0,
       bottom: 0,
