@@ -68,8 +68,8 @@ void main() {
       test(
         'passes key to WiFi when topicId is available and WiFi succeeds',
         () async {
-          // Regression: the support API key must reach the WiFi transport so the
-          // device can authenticate with the backend.
+          // Regression: the support API key must reach the WiFi transport so
+          // the device can authenticate with the backend.
           const testKey = 'test-support-key-123';
           final wifiSpy = _SpyWifiControl(
             response: FF1CommandResponse(status: 'ok'),
@@ -120,6 +120,7 @@ void main() {
         // BLE fallback must carry the same key so auth is consistent.
         expect(bleTransport.sendLogCalled, isTrue);
         expect(bleTransport.capturedApiKey, testKey);
+        expect(bleTransport.callOrder, ['connect', 'sendCommand']);
       });
 
       test('falls back to BLE when WiFi returns non-ok status', () async {
@@ -145,6 +146,7 @@ void main() {
         expect(outcome, isA<SendLogSuccess>());
         expect(bleTransport.sendLogCalled, isTrue);
         expect(bleTransport.capturedApiKey, testKey);
+        expect(bleTransport.callOrder, ['connect', 'sendCommand']);
       });
 
       test('goes directly to BLE when device has no topicId', () async {
@@ -192,8 +194,60 @@ void main() {
             .read(sendLogProvider.notifier)
             .send(wifiDevice);
 
-        expect(outcome, isA<SendLogFailure>());
+        expect(
+          outcome,
+          isA<SendLogFailure>().having(
+            (result) => result.error,
+            'error',
+            isA<Exception>().having(
+              (error) => error.toString(),
+              'toString()',
+              contains('BLE sendLog error'),
+            ),
+          ),
+        );
       });
+
+      test(
+        'returns SendLogFailure when BLE connect throws a StateError',
+        () async {
+          const testKey = 'test-support-key-connect-error';
+          final wifiSpy = _SpyWifiControl(
+            sendLogError: Exception('wifi error'),
+          );
+          final bleTransport = _SpyBleTransport(
+            throwStateErrorOnConnect: true,
+          );
+
+          final container = ProviderContainer.test(
+            overrides: [
+              supportApiKeyProvider.overrideWithValue(testKey),
+              ff1WifiControlProvider.overrideWithValue(wifiSpy),
+              ff1TransportProvider.overrideWithValue(bleTransport),
+            ],
+          );
+          addTearDown(container.dispose);
+
+          final outcome = await container
+              .read(sendLogProvider.notifier)
+              .send(wifiDevice);
+
+          expect(
+            outcome,
+            isA<SendLogFailure>().having(
+              (result) => result.error,
+              'error',
+              isA<StateError>().having(
+                (error) => error.message,
+                'message',
+                'BLE connect failed',
+              ),
+            ),
+          );
+          // Guard rail: when connect fails, command dispatch must not happen.
+          expect(bleTransport.sendLogCalled, isFalse);
+        },
+      );
     });
   });
 }
@@ -231,13 +285,19 @@ class _SpyWifiControl extends FakeWifiControl {
 // BLE transport spy
 // ============================================================================
 
-/// Minimal [FF1BleTransport] implementation that records [sendLog] calls
-/// (via [sendCommand]) and allows simulating failures.
+/// Minimal FF1 BLE transport spy that records send-log calls and allows
+/// simulating failures.
 class _SpyBleTransport implements FF1BleTransport {
-  _SpyBleTransport({this.throwOnSendLog = false});
+  _SpyBleTransport({
+    this.throwOnSendLog = false,
+    this.throwStateErrorOnConnect = false,
+  });
 
   final bool throwOnSendLog;
+  final bool throwStateErrorOnConnect;
 
+  final List<String> callOrder = <String>[];
+  bool connectCalled = false;
   bool sendLogCalled = false;
   String? capturedApiKey;
 
@@ -258,6 +318,10 @@ class _SpyBleTransport implements FF1BleTransport {
     required FF1BleRequest request,
     Duration timeout = const Duration(seconds: 10),
   }) async {
+    callOrder.add('sendCommand');
+    if (!connectCalled) {
+      throw StateError('BLE command sent before connect');
+    }
     if (command == FF1BleCommand.sendLog) {
       sendLogCalled = true;
       if (request is SendLogRequest) {
@@ -289,7 +353,13 @@ class _SpyBleTransport implements FF1BleTransport {
     Duration timeout = const Duration(seconds: 30),
     int maxRetries = 3,
     bool Function()? shouldContinue,
-  }) async {}
+  }) async {
+    callOrder.add('connect');
+    if (throwStateErrorOnConnect) {
+      throw StateError('BLE connect failed');
+    }
+    connectCalled = true;
+  }
 
   @override
   Future<void> disconnect(BluetoothDevice device) async {}

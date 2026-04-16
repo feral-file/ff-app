@@ -4,6 +4,7 @@ import 'package:app/app/ff1/ff1_firmware_update_prompt_service.dart';
 import 'package:app/app/ff1/ff1_relayer_firmware_update_service.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
+import 'package:app/app/providers/ff1_wifi_ble_fallback.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/send_log_provider.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
@@ -411,42 +412,43 @@ class OptionsButton extends ConsumerWidget {
                   color: Colors.transparent,
                   onTap: () async {
                     try {
-                      var success = false;
+                      final success = await runWifiThenBleFallback(
+                        wifiAttempt: () async {
+                          if (device.topicId.isEmpty) {
+                            return false;
+                          }
 
-                      if (device.topicId.isNotEmpty) {
-                        try {
                           _log.info('[Factory Reset] Attempting via WiFi');
                           final response = await control.factoryReset(
                             topicId: device.topicId,
                           );
                           final okFlag = ff1CommandResponseOkFlag(response);
-                          success = okFlag ?? ff1CommandResponseIsOk(response);
-                          if (!success) {
+                          final ok = okFlag ?? ff1CommandResponseIsOk(response);
+                          if (!ok) {
                             _log.warning(
                               '[Factory Reset] WiFi returned unsuccessful '
                               'response, fallback to BLE',
                             );
                           }
-                        } on Exception catch (e) {
-                          _log.warning(
-                            '[Factory Reset] WiFi error: $e, '
-                            'falling back to BLE',
-                          );
-                        }
-                      }
-
-                      if (!success) {
-                        _log.info('[Factory Reset] Attempting via Bluetooth');
-                        await ref
-                            .read(ff1ControlProvider)
-                            .factoryReset(blDevice: device.toBluetoothDevice());
-                        success = true;
-                      }
+                          return ok;
+                        },
+                        bleAttempt: () async {
+                          _log.info('[Factory Reset] Attempting via Bluetooth');
+                          await ref
+                              .read(ff1ControlProvider)
+                              .factoryReset(
+                                blDevice: device.toBluetoothDevice(),
+                              );
+                        },
+                        bleConnectPort: ref.read(ff1ControlProvider),
+                        blDevice: device.toBluetoothDevice(),
+                        actionName: 'Factory Reset',
+                      );
 
                       if (context.mounted) {
                         Navigator.pop(context, success);
                       }
-                    } on Exception catch (e) {
+                    } on Object catch (e) {
                       _log.warning('[Factory Reset] Failed: $e');
                       if (context.mounted) {
                         Navigator.pop(context, e);
