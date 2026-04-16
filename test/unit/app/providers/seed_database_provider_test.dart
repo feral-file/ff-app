@@ -65,6 +65,9 @@ class _BlockingReplaceSeedService extends SeedDatabaseService {
   Future<bool> hasLocalDatabase() async => true;
 
   @override
+  Future<bool> hasUsableLocalDatabase() async => true;
+
+  @override
   Future<String> headRemoteEtag() async => 'remote-v2';
 
   @override
@@ -374,6 +377,52 @@ class _OverlapUpdatedSuccessFake implements SeedDatabaseSyncService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// First sync succeeds; second sync skips download and completes quickly.
+/// Used to reproduce the ordering where the superseded success path resumes
+/// after the overlap count has already dropped back to 1.
+class _FirstSuccessSecondSkipFake implements SeedDatabaseSyncService {
+  _FirstSuccessSecondSkipFake();
+
+  int syncCallCount = 0;
+
+  @override
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) async {
+    return action();
+  }
+
+  @override
+  Future<bool> sync({
+    required Future<void> Function() beforeReplace,
+    required Future<void> Function() afterReplace,
+    bool forceReplace = false,
+    void Function({
+      required bool hasLocalDatabase,
+      String? localEtag,
+      String? remoteEtag,
+    })?
+    onDownloadStarted,
+    void Function(double progress)? onProgress,
+    bool failSilently = false,
+    bool Function()? isSessionActive,
+  }) async {
+    syncCallCount++;
+    if (syncCallCount == 1) {
+      onDownloadStarted?.call(
+        hasLocalDatabase: true,
+        localEtag: 'local',
+        remoteEtag: 'remote',
+      );
+      await beforeReplace();
+      await afterReplace();
+      return true;
+    }
+    return false;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 final _noOpActions = SeedDatabaseReadyActions(
   onNotReady: _noOpFuture,
   onReady: _noOpFuture,
@@ -422,12 +471,16 @@ class _SpyDatabaseService extends DatabaseService {
 }
 
 class _FakeSeedDatabaseService extends SeedDatabaseService {
-  _FakeSeedDatabaseService({required this.hasLocal}) : super();
+  _FakeSeedDatabaseService({required this.hasLocal, this.hasUsable}) : super();
 
   final bool hasLocal;
+  final bool? hasUsable;
 
   @override
   Future<bool> hasLocalDatabase() async => hasLocal;
+
+  @override
+  Future<bool> hasUsableLocalDatabase() async => hasUsable ?? hasLocal;
 }
 
 /// Simulates a slow Drift/native shutdown: if reconnect invalidation ran
@@ -454,9 +507,9 @@ class _SlowClosingAppDatabase extends AppDatabase {
 }
 
 /// Avoids real SeedDatabaseService.hasLocalDatabase (path_provider) in tests.
-Override _fakeSeedDbSvc({required bool hasLocal}) {
+Override _fakeSeedDbSvc({required bool hasLocal, bool? hasUsable}) {
   return seedDatabaseServiceProvider.overrideWithValue(
-    _FakeSeedDatabaseService(hasLocal: hasLocal),
+    _FakeSeedDatabaseService(hasLocal: hasLocal, hasUsable: hasUsable),
   );
 }
 
@@ -659,6 +712,33 @@ void main() {
           seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
           seedDatabaseServiceProvider.overrideWithValue(
             _FakeSeedDatabaseService(hasLocal: false),
+          ),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(seedDownloadProvider.notifier).sync();
+
+      expect(SeedDatabaseGate.isCompleted, isFalse);
+      expect(
+        container.read(seedDownloadProvider).status,
+        SeedDownloadStatus.error,
+      );
+    },
+  );
+
+  test(
+    'does not complete SeedDatabaseGate when local DB exists but is unusable',
+    () async {
+      final fakeSyncService = _FakeSeedDatabaseSyncService()
+        ..returnFalseWithoutDownload = true;
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          seedDatabaseServiceProvider.overrideWithValue(
+            _FakeSeedDatabaseService(hasLocal: true, hasUsable: false),
           ),
           appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
         ],
@@ -1071,6 +1151,57 @@ void main() {
         SeedDownloadStatus.done,
       );
       expect(SeedDatabaseGate.isCompleted, isTrue);
+    },
+  );
+
+  test(
+    'superseded successful sync still completes gate after overlap drains '
+    'even if another sync already finished',
+    () async {
+      SeedDatabaseGate.resetForTesting();
+      final readyCompleter = Completer<void>();
+      final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(memDb.close);
+      final spy = _SpyDatabaseService(memDb)..snapshotReturnsEmpty = true;
+      final fakeSyncService = _FirstSuccessSecondSkipFake();
+      final appState = _FakeAppStateService();
+      var onReadyCallCount = 0;
+      final actions = SeedDatabaseReadyActions(
+        onNotReady: _noOpFuture,
+        onReady: () async {
+          onReadyCallCount++;
+          await readyCompleter.future;
+        },
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(appState),
+          seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+          appDatabaseProvider.overrideWithValue(memDb),
+          rawDatabaseServiceProvider.overrideWithValue(spy),
+          _fakeSeedDbSvc(hasLocal: true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(seedDownloadProvider.notifier);
+      final sync1Future = notifier.sync();
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final sync2Future = notifier.sync();
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(SeedDatabaseGate.isCompleted, isFalse);
+
+      readyCompleter.complete();
+      await sync1Future;
+      await sync2Future;
+
+      expect(onReadyCallCount, 1);
+      expect(SeedDatabaseGate.isCompleted, isTrue);
+      expect(appState.seedDownloadCompletedForTest, isTrue);
     },
   );
 

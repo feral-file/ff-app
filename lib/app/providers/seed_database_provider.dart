@@ -222,6 +222,9 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
     final service = ref.read(seedDatabaseSyncServiceProvider);
     final appStateService = ref.read(appStateServiceProvider);
     final seedReadyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
+    Future<bool> hasUsableSeedOnDisk() async {
+      return ref.read(seedDatabaseServiceProvider).hasUsableLocalDatabase();
+    }
 
     var lastProgressBucket = -1;
     var restoreReadinessWhenDrained = false;
@@ -328,7 +331,10 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
           );
         }
         if (!_isSessionActive(session)) {
-          if (completeSeedDatabaseGate && _syncInProgressCount > 1) {
+          if (completeSeedDatabaseGate) {
+            // A superseded session may resume after another sync already
+            // drained the overlap. Gate completion must survive that timing
+            // and be finalized when the last in-flight sync exits.
             completeGateWhenDrained = true;
           }
           return false;
@@ -340,9 +346,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         return updated;
       }
 
-      final seedOnDisk = await ref
-          .read(seedDatabaseServiceProvider)
-          .hasLocalDatabase();
+      final seedOnDisk = await hasUsableSeedOnDisk();
       if (seedOnDisk) {
         // Restore when any prior session dropped readiness (e.g. overlap where
         // this session never reached beforeReplace so it has no local flag).
@@ -392,9 +396,7 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       // Recovery after replace (e.g. afterReplace throws) must run even when a
       // newer session is already active — superseded sessions are inactive
       // while afterReplace still runs.
-      final seedOnDisk = await ref
-          .read(seedDatabaseServiceProvider)
-          .hasLocalDatabase();
+      final seedOnDisk = await hasUsableSeedOnDisk();
       if (seedOnDisk && !ref.read(isSeedDatabaseReadyProvider)) {
         final mustDeferReadinessAndGate = _syncInProgressCount > 1;
         if (mustDeferReadinessAndGate) {
@@ -427,15 +429,13 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         // Deferring gate completion can happen without deferring readiness
         // (e.g. overlap: DB already marked ready but gate still pending).
         if (_aggregateDeferredRestoreReadinessWhenDrained) {
-          final seedOnDisk = await ref
-              .read(seedDatabaseServiceProvider)
-              .hasLocalDatabase();
+          final seedOnDisk = await hasUsableSeedOnDisk();
           if (seedOnDisk && !ref.read(isSeedDatabaseReadyProvider)) {
             await seedReadyNotifier.setReady();
           }
         }
         if (_aggregateDeferredCompleteGateWhenDrained &&
-            await ref.read(seedDatabaseServiceProvider).hasLocalDatabase()) {
+            await hasUsableSeedOnDisk()) {
           SeedDatabaseGate.complete();
         }
         _aggregateDeferredRestoreReadinessWhenDrained = false;

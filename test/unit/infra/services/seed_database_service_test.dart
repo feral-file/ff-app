@@ -244,6 +244,32 @@ void main() {
     );
 
     test(
+      'startup repair clears stale reset marker when no swap marker exists',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_seed_stale_reset_marker_',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final marker = File('$dbPath.reset_in_progress');
+        await marker.writeAsString('1');
+
+        final svc = _ThrowingMaterializeSeedService(
+          dbPath: dbPath,
+          tempDirProvider: () async => tempDir,
+        );
+
+        expect(await svc.repairInterruptedSeedSwapIfNeeded(), isFalse);
+        expect(marker.existsSync(), isFalse);
+      },
+    );
+
+    test(
       'startup repair prefers the newest artifact even when backup is newer '
       'than stage',
       () async {

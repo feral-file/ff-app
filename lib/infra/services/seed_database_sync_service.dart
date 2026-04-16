@@ -85,6 +85,9 @@ class SeedDatabaseSyncService {
     String? tempPath;
     try {
       final hasLocalDatabase = await _seedDatabaseService.hasLocalDatabase();
+      final hasUsableLocalDatabase =
+          hasLocalDatabase &&
+          await _seedDatabaseService.hasUsableLocalDatabase();
 
       bool shouldDownload;
       String? localEtag;
@@ -101,10 +104,12 @@ class SeedDatabaseSyncService {
           final loaded = _loadLocalEtag();
           final headEtag = await _seedDatabaseService.headRemoteEtag();
           shouldDownload =
-              !hasLocalDatabase || (headEtag.isNotEmpty && headEtag != loaded);
+              !hasUsableLocalDatabase ||
+              (headEtag.isNotEmpty && headEtag != loaded);
 
           _log.info(
             'Seed sync pre-check: hasLocal=$hasLocalDatabase, '
+            'hasUsableLocal=$hasUsableLocalDatabase, '
             'localEtag=${loaded.isEmpty ? '<empty>' : loaded}, '
             'remoteEtag=${headEtag.isEmpty ? '<empty>' : headEtag}, '
             'shouldReplace=$shouldDownload',

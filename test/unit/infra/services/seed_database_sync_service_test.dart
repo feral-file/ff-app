@@ -8,12 +8,14 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
   _FakeSeedDatabaseService({
     required this.hasLocal,
     required this.remoteEtag,
+    bool? hasUsable,
     this.throwOnHead = false,
     this.throwOnReplace = false,
     this.throwOnValidate = false,
-  });
+  }) : hasUsable = hasUsable ?? hasLocal;
 
   bool hasLocal;
+  bool hasUsable;
   String remoteEtag;
   bool throwOnHead;
   bool throwOnReplace;
@@ -27,6 +29,9 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
 
   @override
   Future<bool> hasLocalDatabase() async => hasLocal;
+
+  @override
+  Future<bool> hasUsableLocalDatabase() async => hasUsable;
 
   @override
   Future<String> headRemoteEtag() async {
@@ -138,6 +143,36 @@ void main() {
       expect(events, isEmpty);
       expect(localEtag, 'same-etag');
     });
+
+    test(
+      'downloads when local DB exists but is unusable even if ETag unchanged',
+      () async {
+        final fakeSeedService = _FakeSeedDatabaseService(
+          hasLocal: true,
+          hasUsable: false,
+          remoteEtag: 'same-etag',
+        );
+        var localEtag = 'same-etag';
+        final events = <String>[];
+
+        final service = SeedDatabaseSyncService(
+          seedDatabaseService: fakeSeedService,
+          loadLocalEtag: () => localEtag,
+          saveLocalEtag: (etag) => localEtag = etag,
+        );
+
+        final changed = await service.sync(
+          beforeReplace: () async => events.add('before'),
+          afterReplace: () async => events.add('after'),
+        );
+
+        expect(changed, isTrue);
+        expect(fakeSeedService.downloadCalls, 1);
+        expect(fakeSeedService.validateCalls, 1);
+        expect(fakeSeedService.replaceCalls, 1);
+        expect(events, ['before', 'after']);
+      },
+    );
 
     test('fails silently on network error when requested', () async {
       final fakeSeedService = _FakeSeedDatabaseService(

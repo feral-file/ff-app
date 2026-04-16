@@ -94,6 +94,78 @@ void main() {
       }
     });
 
+    test(
+      'repairInterruptedSeedSwapIfNeeded restores backup sidecars over stale '
+      'canonical sidecars',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final marker = File('$dbPath.swap_in_progress');
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.9009'),
+        );
+        final canonicalWal = File('$dbPath-wal');
+        final canonicalShm = File('$dbPath-shm');
+
+        createSeedArtifactDatabase(file: backup);
+        await File('${backup.path}-wal').writeAsString('backup-wal');
+        await File('${backup.path}-shm').writeAsString('backup-shm');
+        await canonicalWal.writeAsString('stale-wal');
+        await canonicalShm.writeAsString('stale-shm');
+        await marker.writeAsString('9009');
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        expect(File(dbPath).existsSync(), isTrue);
+        expect(canonicalWal.existsSync(), isTrue);
+        expect(canonicalShm.existsSync(), isTrue);
+        expect(canonicalWal.lengthSync(), greaterThan(0));
+        expect(canonicalShm.lengthSync(), greaterThan(0));
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded restores canonical WAL when moving '
+      'canonical SHM to rollback fails',
+      () async {
+        SeedDatabaseService.resetMoveFileDebugForTest();
+        addTearDown(SeedDatabaseService.resetMoveFileDebugForTest);
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final marker = File('$dbPath.swap_in_progress');
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.9011'),
+        );
+        final canonicalWal = File('$dbPath-wal');
+        final canonicalShm = File('$dbPath-shm');
+
+        createSeedArtifactDatabase(file: backup);
+        await File('${backup.path}-wal').writeAsString('backup-wal');
+        await File('${backup.path}-shm').writeAsString('backup-shm');
+        await canonicalWal.writeAsString('canonical-wal');
+        await canonicalShm.writeAsString('canonical-shm');
+        await marker.writeAsString('9011');
+
+        // Move order in this restore path:
+        // 1) backup main -> restore main
+        // 2) backup wal -> restore wal
+        // 3) backup shm -> restore shm
+        // 4) canonical wal -> rollback wal
+        // 5) canonical shm -> rollback shm (fail here)
+        SeedDatabaseService.debugSimulateRenameFailureOnMoveCallOneBased = 5;
+        SeedDatabaseService.debugSimulateDeleteFailureAfterCopyMove = true;
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isFalse);
+        expect(canonicalWal.existsSync(), isTrue);
+        expect(canonicalShm.existsSync(), isTrue);
+        expect(await canonicalWal.readAsString(), 'canonical-wal');
+        expect(await canonicalShm.readAsString(), 'canonical-shm');
+      },
+    );
+
     test('restores the previous canonical db when promote fails', () async {
       final canonical = File(p.join(tempDir.path, 'dp1_library.sqlite'));
       final tempSeed = File(p.join(tempDir.path, 'incoming.sqlite'));
@@ -118,6 +190,36 @@ void main() {
         db.dispose();
       }
     });
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded preserves canonical sidecars when '
+      'staged promotion fails',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final staged = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.1010'),
+        );
+        final canonicalWal = File('$dbPath-wal');
+        final canonicalShm = File('$dbPath-shm');
+
+        createSeedArtifactDatabase(file: staged);
+        await File('$dbPath.swap_in_progress').writeAsString('1010');
+        await canonicalWal.writeAsString('stale-wal');
+        await canonicalShm.writeAsString('stale-shm');
+
+        final service = _SeedDatabaseServiceForReplaceTest(
+          dbPath: dbPath,
+          throwOnPromote: true,
+        );
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isFalse);
+        expect(canonicalWal.existsSync(), isTrue);
+        expect(canonicalShm.existsSync(), isTrue);
+        expect(await canonicalWal.readAsString(), 'stale-wal');
+        expect(await canonicalShm.readAsString(), 'stale-shm');
+      },
+    );
 
     test(
       'first install: when promote fails, staged artifact is cleaned up',
@@ -233,6 +335,97 @@ void main() {
         expect(repaired, isTrue);
         expect(File(dbPath).existsSync(), isTrue);
 
+        final db = sqlite3.sqlite3.open(dbPath);
+        try {
+          final rows = db.select('PRAGMA user_version');
+          expect(rows.first.columnAt(0), 3);
+        } finally {
+          db.dispose();
+        }
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded removes stale canonical WAL/SHM '
+      'before promoting staged artifact',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final wal = File('$dbPath-wal');
+        final shm = File('$dbPath-shm');
+        final staged = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.1002'),
+        );
+
+        createSeedArtifactDatabase(file: staged);
+        await File('$dbPath.swap_in_progress').writeAsString('1002');
+        await wal.writeAsString('stale-wal');
+        await shm.writeAsString('stale-shm');
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        expect(File(dbPath).existsSync(), isTrue);
+        expect(wal.existsSync(), isFalse);
+        expect(shm.existsSync(), isFalse);
+
+        final db = sqlite3.sqlite3.open(dbPath);
+        try {
+          final rows = db.select('PRAGMA user_version');
+          expect(rows.first.columnAt(0), 3);
+        } finally {
+          db.dispose();
+        }
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded overwrites corrupt canonical db '
+      'when promoting staged artifact',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final staged = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.1003'),
+        );
+
+        createSeedArtifactDatabase(file: staged);
+        await File(dbPath).writeAsBytes(List<int>.filled(512, 9));
+        await File('$dbPath.swap_in_progress').writeAsString('1003');
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        final db = sqlite3.sqlite3.open(dbPath);
+        try {
+          final rows = db.select('PRAGMA user_version');
+          expect(rows.first.columnAt(0), 3);
+        } finally {
+          db.dispose();
+        }
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded restores canonical db when staged '
+      'promotion fails',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final staged = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.1004'),
+        );
+
+        createSeedArtifactDatabase(file: staged);
+        createSeedArtifactDatabase(file: File(dbPath));
+        await File('$dbPath.swap_in_progress').writeAsString('1004');
+
+        final service = _SeedDatabaseServiceForReplaceTest(
+          dbPath: dbPath,
+          throwOnPromote: true,
+        );
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isFalse);
         final db = sqlite3.sqlite3.open(dbPath);
         try {
           final rows = db.select('PRAGMA user_version');
@@ -412,6 +605,38 @@ void main() {
     );
 
     test(
+      'repairInterruptedSeedSwapIfNeeded overwrites corrupt canonical db '
+      'when restoring a backup set',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final marker = File('$dbPath.swap_in_progress');
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.9010'),
+        );
+
+        createSeedArtifactDatabase(file: backup);
+        await File('${backup.path}-wal').writeAsString('backup-wal');
+        await File('${backup.path}-shm').writeAsString('backup-shm');
+        await File(dbPath).writeAsBytes(List<int>.filled(512, 7));
+        await File('$dbPath-wal').writeAsString('stale-wal');
+        await File('$dbPath-shm').writeAsString('stale-shm');
+        await marker.writeAsString('9010');
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        final db = sqlite3.sqlite3.open(dbPath);
+        try {
+          final rows = db.select('PRAGMA user_version');
+          expect(rows.first.columnAt(0), 3);
+        } finally {
+          db.dispose();
+        }
+      },
+    );
+
+    test(
       'rename fallback delete failure after copy undoes partial backup write',
       () async {
         addTearDown(SeedDatabaseService.resetMoveFileDebugForTest);
@@ -468,6 +693,38 @@ void main() {
         } finally {
           db.dispose();
         }
+      },
+    );
+
+    test('hasUsableLocalDatabase returns true for a valid artifact', () async {
+      final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+      createSeedArtifactDatabase(file: File(dbPath));
+
+      final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+      final hasUsableDatabase = await service.hasUsableLocalDatabase();
+
+      expect(hasUsableDatabase, isTrue);
+    });
+
+    test('hasUsableLocalDatabase returns false when file is missing', () async {
+      final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+      final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+
+      final hasUsableDatabase = await service.hasUsableLocalDatabase();
+
+      expect(hasUsableDatabase, isFalse);
+    });
+
+    test(
+      'hasUsableLocalDatabase returns false for invalid database bytes',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        await File(dbPath).writeAsBytes(List<int>.filled(1024, 11));
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+
+        final hasUsableDatabase = await service.hasUsableLocalDatabase();
+
+        expect(hasUsableDatabase, isFalse);
       },
     );
   });

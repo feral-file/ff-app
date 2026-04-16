@@ -132,9 +132,13 @@ class _IntegrationSeedDbSvc extends SeedDatabaseService {
 
   /// Simulates `dp1_library.sqlite` on disk after a successful seed download.
   bool fileExists = false;
+  bool fileUsable = true;
 
   @override
   Future<bool> hasLocalDatabase() async => fileExists;
+
+  @override
+  Future<bool> hasUsableLocalDatabase() async => fileExists && fileUsable;
 }
 
 class _InvalidSeedArtifactService extends SeedDatabaseService {
@@ -340,6 +344,53 @@ void main() {
     );
 
     test(
+      'pending DP1 bootstrap stays pending when local seed file exists but is '
+      'not usable',
+      () async {
+        final provisionedEnvFile = await provisionIntegrationEnvFile();
+        addTearDown(() async {
+          final parent = provisionedEnvFile.parent;
+          if (parent.existsSync()) {
+            await parent.delete(recursive: true);
+          }
+        });
+
+        SeedDatabaseGate.resetForTesting();
+
+        final syncFake = _TwoPhaseStartupSeedSync();
+        final seedSvc = _IntegrationSeedDbSvc()
+          ..fileExists = true
+          ..fileUsable = false;
+        final mockBootstrap = _MockBootstrapService();
+        final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+        addTearDown(memDb.close);
+        final dbService = DatabaseService(memDb);
+
+        final container = ProviderContainer.test(
+          overrides: [
+            seedDatabaseSyncServiceProvider.overrideWithValue(syncFake),
+            seedDatabaseServiceProvider.overrideWithValue(seedSvc),
+            appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+            seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+            rawDatabaseServiceProvider.overrideWithValue(dbService),
+            databaseServiceProvider.overrideWith((ref) => dbService),
+            bootstrapServiceProvider.overrideWith((ref) => mockBootstrap),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final bootstrapNotifier = container.read(bootstrapProvider.notifier);
+        await bootstrapNotifier.bootstrapWithoutDp1Library();
+        expect(bootstrapNotifier.pendingDp1BootstrapAfterSeed, isTrue);
+
+        await _ensureDp1BootstrapAfterSeedIfPending(container);
+
+        expect(mockBootstrap.bootstrapCallCount, 0);
+        expect(bootstrapNotifier.pendingDp1BootstrapAfterSeed, isTrue);
+      },
+    );
+
+    test(
       'onboarding gate defers actions while seed sync is in flight and '
       'stays closed until lightweight bootstrap publishes deferred recovery',
       () async {
@@ -478,7 +529,9 @@ Future<void> _ensureDp1BootstrapAfterSeedIfPending(
   if (!notifier.pendingDp1BootstrapAfterSeed) {
     return;
   }
-  if (!await container.read(seedDatabaseServiceProvider).hasLocalDatabase()) {
+  if (!await container
+      .read(seedDatabaseServiceProvider)
+      .hasUsableLocalDatabase()) {
     return;
   }
   await notifier.bootstrap();

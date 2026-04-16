@@ -162,6 +162,30 @@ class SeedDatabaseService {
     return File(path).existsSync();
   }
 
+  /// Returns true only when the canonical database file exists and passes the
+  /// same artifact validation used for downloaded seed files.
+  ///
+  /// Startup uses this to avoid opening the seed gate on a corrupt local file.
+  Future<bool> hasUsableLocalDatabase() async {
+    final path = await databasePath();
+    final canonical = File(path);
+    if (!canonical.existsSync()) {
+      return false;
+    }
+    try {
+      validateSeedArtifact(path);
+      return true;
+    } on Object catch (e, st) {
+      _log.warning(
+        'Canonical seed DB exists but failed validation; keeping seed gate '
+        'closed until sync restores a valid artifact.',
+        e,
+        st,
+      );
+      return false;
+    }
+  }
+
   /// If the process died mid-replace, the canonical DB may be missing while
   /// staged or backup artifacts remain. Restores a usable DB before startup
   /// consumers run (bootstrap opens the seed gate when the file exists).
@@ -170,10 +194,17 @@ class SeedDatabaseService {
   /// restoring from backup (previous live DB) when both exist.
   Future<bool> repairInterruptedSeedSwapIfNeeded() async {
     final dbPath = await databasePath();
-    if (File(_resetInProgressMarkerPath(dbPath)).existsSync()) {
+    final resetMarker = File(_resetInProgressMarkerPath(dbPath));
+    final swapMarker = File(_swapInProgressMarkerPath(dbPath));
+    if (resetMarker.existsSync()) {
+      // If reset crashed after marker creation but before cleanup, clear stale
+      // marker once no swap operation is pending. Keeping it forever would
+      // disable startup repair for unrelated future interrupted swaps.
+      if (!swapMarker.existsSync()) {
+        await _cleanupTemp(resetMarker.path);
+      }
       return false;
     }
-    final swapMarker = File(_swapInProgressMarkerPath(dbPath));
     if (!swapMarker.existsSync()) {
       return false;
     }
@@ -242,10 +273,25 @@ class SeedDatabaseService {
       try {
         validateSeedArtifact(candidatePath);
         if (candidate.isStage) {
-          await promoteStagedArtifact(
-            stagingPath: candidatePath,
-            canonicalPath: dbPath,
-          );
+          final rollbackDbPath = '$dbPath.rollback.${candidate.nonce}';
+          if (File(dbPath).existsSync()) {
+            await _moveFile(sourcePath: dbPath, targetPath: rollbackDbPath);
+          }
+          try {
+            await promoteStagedArtifact(
+              stagingPath: candidatePath,
+              canonicalPath: dbPath,
+            );
+          } on Object {
+            if (File(rollbackDbPath).existsSync()) {
+              await _moveFile(sourcePath: rollbackDbPath, targetPath: dbPath);
+            }
+            rethrow;
+          } finally {
+            await _cleanupTemp(rollbackDbPath);
+          }
+          await _deleteFileIfExists('$dbPath-wal');
+          await _deleteFileIfExists('$dbPath-shm');
           _log.warning(
             'Repaired interrupted seed swap: promoted staged artifact '
             '(nonce=${candidate.nonce}).',
@@ -283,20 +329,142 @@ class SeedDatabaseService {
     required String backupMainPath,
   }) async {
     try {
-      await _restoreBackupIfNeeded(
-        backupPath: backupMainPath,
-        canonicalPath: dbPath,
-      );
+      final nonce = DateTime.now().microsecondsSinceEpoch;
+      final restoreMainPath = '$dbPath.restore.$nonce';
+      final restoreWalPath = '$dbPath-wal.restore.$nonce';
+      final restoreShmPath = '$dbPath-shm.restore.$nonce';
+      final rollbackWalPath = '$dbPath-wal.rollback.$nonce';
+      final rollbackShmPath = '$dbPath-shm.rollback.$nonce';
       final backupWalPath = '$backupMainPath-wal';
       final backupShmPath = '$backupMainPath-shm';
-      await _restoreBackupIfNeeded(
-        backupPath: backupWalPath,
-        canonicalPath: '$dbPath-wal',
-      );
-      await _restoreBackupIfNeeded(
-        backupPath: backupShmPath,
-        canonicalPath: '$dbPath-shm',
-      );
+      final backupWalExists = File(backupWalPath).existsSync();
+      final backupShmExists = File(backupShmPath).existsSync();
+      try {
+        if (File(backupMainPath).existsSync()) {
+          await _moveFile(
+            sourcePath: backupMainPath,
+            targetPath: restoreMainPath,
+          );
+        }
+        if (backupWalExists) {
+          await _moveFile(
+            sourcePath: backupWalPath,
+            targetPath: restoreWalPath,
+          );
+        }
+        if (backupShmExists) {
+          await _moveFile(
+            sourcePath: backupShmPath,
+            targetPath: restoreShmPath,
+          );
+        }
+      } on Object {
+        if (File(restoreMainPath).existsSync()) {
+          await _moveFile(
+            sourcePath: restoreMainPath,
+            targetPath: backupMainPath,
+          );
+        }
+        if (File(restoreWalPath).existsSync()) {
+          await _moveFile(
+            sourcePath: restoreWalPath,
+            targetPath: backupWalPath,
+          );
+        }
+        if (File(restoreShmPath).existsSync()) {
+          await _moveFile(
+            sourcePath: restoreShmPath,
+            targetPath: backupShmPath,
+          );
+        }
+        rethrow;
+      }
+
+      final canonicalWalPath = '$dbPath-wal';
+      final canonicalShmPath = '$dbPath-shm';
+      if (backupWalExists || backupShmExists) {
+        final canonicalWalExists = File(canonicalWalPath).existsSync();
+        final canonicalShmExists = File(canonicalShmPath).existsSync();
+        var canonicalWalMovedToRollback = false;
+        var canonicalShmMovedToRollback = false;
+
+        try {
+          if (canonicalWalExists) {
+            await _moveFile(
+              sourcePath: canonicalWalPath,
+              targetPath: rollbackWalPath,
+            );
+            canonicalWalMovedToRollback = true;
+          }
+          if (canonicalShmExists) {
+            await _moveFile(
+              sourcePath: canonicalShmPath,
+              targetPath: rollbackShmPath,
+            );
+            canonicalShmMovedToRollback = true;
+          }
+          if (backupWalExists && File(restoreWalPath).existsSync()) {
+            await _moveFile(
+              sourcePath: restoreWalPath,
+              targetPath: canonicalWalPath,
+            );
+          }
+          if (backupShmExists && File(restoreShmPath).existsSync()) {
+            await _moveFile(
+              sourcePath: restoreShmPath,
+              targetPath: canonicalShmPath,
+            );
+          }
+          if (File(restoreMainPath).existsSync()) {
+            await _replaceFileOverwritingTarget(
+              sourcePath: restoreMainPath,
+              targetPath: dbPath,
+            );
+          }
+        } on Object {
+          if (canonicalWalMovedToRollback &&
+              File(rollbackWalPath).existsSync()) {
+            await _replaceFileOverwritingTarget(
+              sourcePath: rollbackWalPath,
+              targetPath: canonicalWalPath,
+            );
+          }
+          if (canonicalShmMovedToRollback &&
+              File(rollbackShmPath).existsSync()) {
+            await _replaceFileOverwritingTarget(
+              sourcePath: rollbackShmPath,
+              targetPath: canonicalShmPath,
+            );
+          }
+          if (File(restoreMainPath).existsSync()) {
+            await _moveFile(
+              sourcePath: restoreMainPath,
+              targetPath: backupMainPath,
+            );
+          }
+          if (File(restoreWalPath).existsSync()) {
+            await _moveFile(
+              sourcePath: restoreWalPath,
+              targetPath: backupWalPath,
+            );
+          }
+          if (File(restoreShmPath).existsSync()) {
+            await _moveFile(
+              sourcePath: restoreShmPath,
+              targetPath: backupShmPath,
+            );
+          }
+          rethrow;
+        } finally {
+          await _cleanupTemp(rollbackWalPath);
+          await _cleanupTemp(rollbackShmPath);
+        }
+      } else if (File(restoreMainPath).existsSync()) {
+        await _replaceFileOverwritingTarget(
+          sourcePath: restoreMainPath,
+          targetPath: dbPath,
+        );
+      }
       _log.warning(
         'Repaired interrupted seed swap: restored canonical DB from backup '
         '(${p.basename(backupMainPath)}).',
@@ -745,7 +913,10 @@ class SeedDatabaseService {
     required String stagingPath,
     required String canonicalPath,
   }) async {
-    await _moveFile(sourcePath: stagingPath, targetPath: canonicalPath);
+    await _replaceFileOverwritingTarget(
+      sourcePath: stagingPath,
+      targetPath: canonicalPath,
+    );
   }
 
   Future<void> _restoreBackupIfNeeded({
@@ -754,7 +925,38 @@ class SeedDatabaseService {
   }) async {
     final backupFile = File(backupPath);
     if (!backupFile.existsSync()) return;
-    await _moveFile(sourcePath: backupPath, targetPath: canonicalPath);
+    await _replaceFileOverwritingTarget(
+      sourcePath: backupPath,
+      targetPath: canonicalPath,
+    );
+  }
+
+  /// Replaces [targetPath] with [sourcePath] without depending on rename
+  /// overwrite semantics. If the source move fails, the original target is
+  /// restored from a rollback file so a failed repair cannot strand startup.
+  Future<void> _replaceFileOverwritingTarget({
+    required String sourcePath,
+    required String targetPath,
+  }) async {
+    final target = File(targetPath);
+    if (!target.existsSync()) {
+      await _moveFile(sourcePath: sourcePath, targetPath: targetPath);
+      return;
+    }
+
+    final rollbackPath =
+        '$targetPath.rollback.${DateTime.now().microsecondsSinceEpoch}';
+    await _moveFile(sourcePath: targetPath, targetPath: rollbackPath);
+    try {
+      await _moveFile(sourcePath: sourcePath, targetPath: targetPath);
+    } on Object {
+      if (File(rollbackPath).existsSync()) {
+        await _moveFile(sourcePath: rollbackPath, targetPath: targetPath);
+      }
+      rethrow;
+    } finally {
+      await _cleanupTemp(rollbackPath);
+    }
   }
 
   Future<void> _deleteFileIfExists(String path) async {
