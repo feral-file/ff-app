@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:app/infra/services/seed_database_artifact_validator.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -51,6 +52,40 @@ class _ThrowOnShmMoveSeedService extends _SeedDatabaseServiceForReplaceTest {
       canonicalPath: canonicalPath,
       backupPath: backupPath,
     );
+  }
+}
+
+/// [repairInterruptedSeedSwapIfNeeded] validates the backup main file, which
+/// opens SQLite and may recreate `-wal` / `-shm` next to it. Real mid-crash
+/// artifacts can be asymmetric; strip the sidecar we want absent after
+/// validation so `_restoreFromBackupSet` sees the intended layout.
+class _AsymmetricBackupAfterValidateService
+    extends _SeedDatabaseServiceForReplaceTest {
+  _AsymmetricBackupAfterValidateService({
+    required super.dbPath,
+    required this.removeBackupWal,
+    required this.removeBackupShm,
+  });
+
+  final bool removeBackupWal;
+  final bool removeBackupShm;
+
+  @override
+  SeedDatabaseArtifactMetadata validateSeedArtifact(String path) {
+    final meta = super.validateSeedArtifact(path);
+    if (removeBackupWal) {
+      final wal = File('$path-wal');
+      if (wal.existsSync()) {
+        wal.deleteSync();
+      }
+    }
+    if (removeBackupShm) {
+      final shm = File('$path-shm');
+      if (shm.existsSync()) {
+        shm.deleteSync();
+      }
+    }
+    return meta;
   }
 }
 
@@ -561,6 +596,64 @@ void main() {
         expect(File(dbPath).existsSync(), isTrue);
         expect(File('$dbPath-wal').existsSync(), isTrue);
         expect(File('$dbPath-shm').existsSync(), isTrue);
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded preserves canonical WAL when backup '
+      'has SHM but no WAL',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.7101'),
+        );
+        createSeedArtifactDatabase(file: backup);
+        await File('${backup.path}-shm').writeAsString('backup-shm');
+        await File('$dbPath-wal').writeAsString('precious-wal');
+        await File('$dbPath.swap_in_progress').writeAsString('7101');
+
+        final service = _AsymmetricBackupAfterValidateService(
+          dbPath: dbPath,
+          removeBackupWal: true,
+          removeBackupShm: false,
+        );
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        expect(File(dbPath).existsSync(), isTrue);
+        expect(File('$dbPath-wal').existsSync(), isTrue);
+        expect(await File('$dbPath-wal').readAsString(), 'precious-wal');
+        expect(File('$dbPath-shm').existsSync(), isTrue);
+        expect(await File('$dbPath-shm').readAsString(), 'backup-shm');
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded preserves canonical SHM when backup '
+      'has WAL but no SHM',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.7102'),
+        );
+        createSeedArtifactDatabase(file: backup);
+        await File('${backup.path}-wal').writeAsString('backup-wal');
+        await File('$dbPath-shm').writeAsString('precious-shm');
+        await File('$dbPath.swap_in_progress').writeAsString('7102');
+
+        final service = _AsymmetricBackupAfterValidateService(
+          dbPath: dbPath,
+          removeBackupWal: false,
+          removeBackupShm: true,
+        );
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        expect(File(dbPath).existsSync(), isTrue);
+        expect(File('$dbPath-shm').existsSync(), isTrue);
+        expect(await File('$dbPath-shm').readAsString(), 'precious-shm');
+        expect(File('$dbPath-wal').existsSync(), isTrue);
+        expect(await File('$dbPath-wal').readAsString(), 'backup-wal');
       },
     );
 

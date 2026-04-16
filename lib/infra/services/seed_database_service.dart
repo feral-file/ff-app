@@ -388,15 +388,19 @@ class SeedDatabaseService {
         var canonicalWalMovedToRollback = false;
         var canonicalShmMovedToRollback = false;
 
+        // Only move a canonical sidecar into rollback when we have the matching
+        // backup sidecar to restore. If the crash left an asymmetric backup
+        // (e.g. only `-shm` in backup), moving the surviving canonical `-wal`
+        // would discard committed pages that still pair with the backup main.
         try {
-          if (canonicalWalExists) {
+          if (backupWalExists && canonicalWalExists) {
             await _moveFile(
               sourcePath: canonicalWalPath,
               targetPath: rollbackWalPath,
             );
             canonicalWalMovedToRollback = true;
           }
-          if (canonicalShmExists) {
+          if (backupShmExists && canonicalShmExists) {
             await _moveFile(
               sourcePath: canonicalShmPath,
               targetPath: rollbackShmPath,

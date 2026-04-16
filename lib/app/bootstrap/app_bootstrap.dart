@@ -75,17 +75,7 @@ Future<AppBootstrapResult> bootstrapAppDependencies() async {
   // Recover from a mid-swap crash: canonical file missing but staged/backup
   // swap artifacts may still be present (see seed replace recoverable swap).
   final seedDatabaseService = SeedDatabaseService();
-  try {
-    await seedDatabaseService.repairInterruptedSeedSwapIfNeeded();
-  } on Object catch (e, st) {
-    _log.warning(
-      'Seed swap startup repair failed; continuing without blocking startup.',
-      e,
-      st,
-    );
-  }
-
-  await completeSeedDatabaseGateIfUsable(seedDatabaseService);
+  await runSeedRepairAndCompleteGateIfUsable(seedDatabaseService);
 
   final initialLocation = hasDoneOnboarding || hasLegacySqliteDatabase
       ? Routes.home
@@ -98,6 +88,26 @@ Future<AppBootstrapResult> bootstrapAppDependencies() async {
     hasLegacySqliteDatabase: hasLegacySqliteDatabase,
     initialLocation: initialLocation,
   );
+}
+
+/// Same ordering as [bootstrapAppDependencies]: repair interrupted swap, then
+/// open the seed gate when the local DB validates. Kept testable so startup
+/// repair + gate behavior stays covered without full ObjectBox bootstrap.
+@visibleForTesting
+Future<void> runSeedRepairAndCompleteGateIfUsable(
+  SeedDatabaseService seedDatabaseService,
+) async {
+  try {
+    await seedDatabaseService.repairInterruptedSeedSwapIfNeeded();
+  } on Object catch (e, st) {
+    _log.warning(
+      'Seed swap startup repair failed; continuing without blocking startup.',
+      e,
+      st,
+    );
+  }
+
+  await completeSeedDatabaseGateIfUsable(seedDatabaseService);
 }
 
 /// Opens [SeedDatabaseGate] only when the local seed database is valid.
