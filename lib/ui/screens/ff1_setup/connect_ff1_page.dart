@@ -94,7 +94,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           // effect was emitted. The orchestrator keeps track of whether the
           // current connect attempt started as guided so a cancelled guided
           // attempt cannot be reclassified as standalone success.
-          final sessionIdAtEmission = next.activeSession?.id;
+          final sessionIdAtEmission = effect.sessionId;
           final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
           unawaited(() async {
             final didHandle = await _handleOrchestratorEffect(
@@ -200,11 +200,14 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           return true;
         }
         // Standalone connect: internet-ready must persist onboarding before
-        // leaving setup. If the current attempt began as a guided session, the
-        // orchestrator attempt flag keeps late success from being reclassified
-        // after cancel.
-        final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
-        if (!orchestrator.matchesSessionForEffect(sessionIdAtEmission)) {
+        // leaving setup. Late guided effects are filtered by session id above;
+        // null here means this was a standalone effect and should proceed.
+        final activeSessionId = ref
+            .read(ff1SetupOrchestratorProvider)
+            .activeSession
+            ?.id;
+        if (sessionIdAtEmission != null &&
+            sessionIdAtEmission != activeSessionId) {
           return true;
         }
         if (connected.portalIsSet) {
@@ -422,11 +425,6 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     required String sessionIdAtEmission,
     required bool shouldNavigate,
   }) async {
-    if (!ref
-        .read(ff1SetupOrchestratorProvider.notifier)
-        .matchesSessionForEffect(sessionIdAtEmission)) {
-      return;
-    }
     if (_guidedCompletionPending || _successExitPending || !mounted) {
       return;
     }
@@ -513,11 +511,6 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     required bool navigateAfterCompletion,
     required bool shouldNavigate,
   }) async {
-    if (!ref
-        .read(ff1SetupOrchestratorProvider.notifier)
-        .matchesSessionForEffect(sessionIdAtEmission)) {
-      return;
-    }
     if (_portalReadyCompletionPending || _successExitPending || !mounted) {
       return;
     }

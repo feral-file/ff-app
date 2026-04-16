@@ -69,7 +69,7 @@ class _ScanWiFiNetworkScreenState extends ConsumerState<ScanWiFiNetworkScreen> {
           return;
         }
 
-        final sessionIdAtEmission = next.activeSession?.id;
+        final sessionIdAtEmission = effect.sessionId;
         final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
         unawaited(() async {
           final didHandle = await _handleOrchestratorEffect(

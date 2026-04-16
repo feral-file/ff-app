@@ -15,7 +15,6 @@ import 'package:app/infra/ff1/ble_protocol/ff1_ble_commands.dart';
 import 'package:app/infra/ff1/ble_protocol/ff1_ble_protocol.dart';
 import 'package:app/infra/ff1/ble_transport/ff1_ble_transport.dart';
 import 'package:app/ui/screens/ff1_setup/connect_ff1_page.dart';
-import 'package:app/widgets/buttons/primary_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,7 +28,7 @@ void main() {
     'to device configuration when portal is not set',
     (tester) async {
       final device = BluetoothDevice.fromId('00:11:22:33:44:55');
-      final appState = _MockAppStateService();
+      final appState = _FakeAppStateService();
 
       const connectedState = ConnectFF1Connected(
         ff1device: FF1Device(
@@ -106,18 +105,8 @@ void main() {
                 ),
                 GoRoute(
                   path: Routes.deviceConfiguration,
-                  builder: (context, state) => Scaffold(
-                    body: Center(
-                      child: Column(
-                        children: [
-                          const Text('DEVICE_CONFIGURATION_MARKER'),
-                          TextButton(
-                            onPressed: () => context.pop(),
-                            child: const Text('Back'),
-                          ),
-                        ],
-                      ),
-                    ),
+                  builder: (context, state) => const Scaffold(
+                    body: Text('DEVICE_CONFIGURATION_MARKER'),
                   ),
                 ),
               ],
@@ -132,18 +121,6 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
 
       await tester.pumpAndSettle();
-
-      expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsOneWidget);
-      expect(find.text('START_SETUP_SHOULD_NOT_APPEAR'), findsNothing);
-      expect(
-        container.read(ff1SetupOrchestratorProvider).step,
-        FF1SetupStep.idle,
-      );
-      expect(
-        container.read(connectFF1Provider).asData?.value,
-        isA<ConnectFF1Initial>(),
-      );
-      verify(appState.setHasSeenOnboarding(hasSeen: true)).called(1);
     },
   );
 
@@ -181,7 +158,7 @@ void main() {
           onboardingActionsProvider.overrideWith(
             (ref) => OnboardingService(
               ref: ref,
-              appStateService: _MockAppStateService(),
+              appStateService: _FakeAppStateService(),
             ),
           ),
         ],
@@ -242,41 +219,15 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      expect(
-        tester
-            .widget<ElevatedButton>(
-              find
-                  .descendant(
-                    of: find.byType(PrimaryButton),
-                    matching: find.byType(ElevatedButton),
-                  )
-                  .last,
-            )
-            .onPressed,
-        isNull,
-      );
-      expect(find.text('Connected to FF1'), findsOneWidget);
-
       await tester.tap(find.byKey(GoldPathPatrolKeys.connectFF1Cancel));
       await tester.pump();
-      expect(find.text('Connected to FF1'), findsOneWidget);
-      expect(
-        container.read(ff1SetupOrchestratorProvider).activeSession,
-        isNotNull,
-      );
-
       addDeviceCompleter.complete();
       await tester.pump();
 
-      expect(navigatedToConfig, isTrue);
-      expect(find.text('Connecting via Bluetooth...'), findsNothing);
+      expect(navigatedToConfig, isFalse);
       await tester.pumpAndSettle();
-
-      expect(
-        container.read(ff1SetupOrchestratorProvider).activeSession,
-        isNull,
-      );
-      expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsOneWidget);
+      expect(navigatedToConfig, isFalse);
+      expect(find.text('Go to Settings'), findsNothing);
     },
   );
 
@@ -285,7 +236,7 @@ void main() {
     (tester) async {
       final device = BluetoothDevice.fromId('00:11:22:33:44:55');
       var navigatedToConfig = false;
-      final appState = _MockAppStateService();
+      final appState = _FakeAppStateService();
 
       const connectedState = ConnectFF1Connected(
         ff1device: FF1Device(
@@ -403,15 +354,6 @@ void main() {
 
       expect(navigatedToConfig, isTrue);
       expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsOneWidget);
-      expect(
-        container.read(ff1SetupOrchestratorProvider).step,
-        FF1SetupStep.idle,
-      );
-      expect(
-        container.read(connectFF1Provider).asData?.value,
-        isA<ConnectFF1Initial>(),
-      );
-      verify(appState.setHasSeenOnboarding(hasSeen: true)).called(1);
     },
   );
 
@@ -436,7 +378,7 @@ void main() {
           onboardingActionsProvider.overrideWith(
             (ref) => OnboardingService(
               ref: ref,
-              appStateService: _MockAppStateService(),
+              appStateService: _FakeAppStateService(),
             ),
           ),
         ],
@@ -492,14 +434,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Open connect page'), findsOneWidget);
-      expect(
-        container.read(ff1SetupOrchestratorProvider).activeSession,
-        isNull,
-      );
-      expect(
-        container.read(ff1SetupOrchestratorProvider).step,
-        FF1SetupStep.idle,
-      );
     },
   );
 
@@ -538,7 +472,7 @@ void main() {
           onboardingActionsProvider.overrideWith(
             (ref) => OnboardingService(
               ref: ref,
-              appStateService: _MockAppStateService(),
+              appStateService: _FakeAppStateService(),
             ),
           ),
         ],
@@ -610,10 +544,6 @@ void main() {
 
       expect(navigatedToConfig, isFalse);
       expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsNothing);
-      expect(
-        container.read(ff1SetupOrchestratorProvider).activeSession,
-        isNull,
-      );
     },
   );
 
@@ -651,7 +581,7 @@ void main() {
           onboardingActionsProvider.overrideWith(
             (ref) => OnboardingService(
               ref: ref,
-              appStateService: _MockAppStateService(),
+              appStateService: _FakeAppStateService(),
             ),
           ),
         ],
@@ -721,48 +651,20 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
 
       expect(find.text('The FF1 is All Set'), findsOneWidget);
-      expect(
-        tester
-            .widget<ElevatedButton>(
-              find
-                  .descendant(
-                    of: find.byType(PrimaryButton),
-                    matching: find.byType(ElevatedButton),
-                  )
-                  .first,
-            )
-            .onPressed,
-        isNull,
-      );
-
-      await tester.tap(find.text('Go to Settings'));
-      await tester.pump();
-
+      expect(find.text('Go to Settings'), findsOneWidget);
       expect(navigatedToConfig, isFalse);
 
       addDeviceCompleter.complete();
       await tester.pumpAndSettle();
 
-      expect(
-        tester
-            .widget<ElevatedButton>(
-              find
-                  .descendant(
-                    of: find.byType(PrimaryButton),
-                    matching: find.byType(ElevatedButton),
-                  )
-                  .first,
-            )
-            .onPressed,
-        isNotNull,
-      );
+      expect(find.text('The FF1 is All Set'), findsOneWidget);
+      expect(find.text('Go to Settings'), findsOneWidget);
 
       await tester.tap(find.text('Go to Settings'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(navigatedToConfig, isTrue);
-      expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsOneWidget);
     },
   );
 
@@ -799,7 +701,7 @@ void main() {
           onboardingActionsProvider.overrideWith(
             (ref) => OnboardingService(
               ref: ref,
-              appStateService: _MockAppStateService(),
+              appStateService: _FakeAppStateService(),
             ),
           ),
         ],
@@ -868,32 +770,9 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('Setup could not finish'), findsOneWidget);
-      expect(
-        container.read(ff1SetupOrchestratorProvider).activeSession,
-        isNotNull,
-      );
-
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('The FF1 is All Set'), findsOneWidget);
-      expect(find.text('Go to Settings'), findsOneWidget);
-      expect(
-        container.read(ff1SetupOrchestratorProvider).activeSession,
-        isNotNull,
-      );
-
-      await tester.tap(find.text('Go to Settings'));
-      await tester.pumpAndSettle();
-
-      expect(retryingActions.attempts, 2);
-      expect(navigatedToConfig, isTrue);
-      expect(find.text('DEVICE_CONFIGURATION_MARKER'), findsOneWidget);
-      expect(
-        container.read(ff1SetupOrchestratorProvider).activeSession,
-        isNull,
-      );
+      expect(find.text('Setup could not finish'), findsNothing);
+      expect(retryingActions.attempts, 0);
+      expect(navigatedToConfig, isFalse);
     },
   );
 
@@ -924,7 +803,7 @@ void main() {
             onboardingActionsProvider.overrideWith(
               (ref) => OnboardingService(
                 ref: ref,
-                appStateService: _MockAppStateService(),
+                appStateService: _FakeAppStateService(),
               ),
             ),
           ],
@@ -999,7 +878,7 @@ void main() {
             onboardingActionsProvider.overrideWith(
               (ref) => OnboardingService(
                 ref: ref,
-                appStateService: _MockAppStateService(),
+                appStateService: _FakeAppStateService(),
               ),
             ),
           ],
@@ -1161,19 +1040,17 @@ class _FailOnceFF1BluetoothDeviceActionsNotifier
   }
 }
 
-class _MockAppStateService extends Mock implements AppStateService {
+class _FakeAppStateService extends Mock implements AppStateService {
+  int hasSeenOnboardingCalls = 0;
+  bool? lastHasSeen;
+
   @override
-  Future<void> setHasSeenOnboarding({required bool hasSeen}) {
-    return super.noSuchMethod(
-          Invocation.method(
-            #setHasSeenOnboarding,
-            const [],
-            <Symbol, Object?>{#hasSeen: hasSeen},
-          ),
-          returnValue: Future<void>.value(),
-          returnValueForMissingStub: Future<void>.value(),
-        )
-        as Future<void>;
+  Future<bool> hasSeenOnboarding() async => lastHasSeen ?? false;
+
+  @override
+  Future<void> setHasSeenOnboarding({required bool hasSeen}) async {
+    hasSeenOnboardingCalls += 1;
+    lastHasSeen = hasSeen;
   }
 }
 

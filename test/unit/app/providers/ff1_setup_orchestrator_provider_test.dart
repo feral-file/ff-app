@@ -332,16 +332,15 @@ void main() {
       addTearDown(keepAlive.close);
 
       final notifier = container.read(ff1SetupOrchestratorProvider.notifier);
-      expect(notifier.matchesSessionForEffect(null), isTrue);
+      expect(notifier.hasGuidedSetupSession, isFalse);
 
       notifier.startSession();
       final id = container.read(ff1SetupOrchestratorProvider).activeSession!.id;
-      expect(notifier.matchesSessionForEffect(null), isFalse);
       expect(notifier.matchesSessionForEffect(id), isTrue);
       expect(notifier.matchesSessionForEffect('other-id'), isFalse);
 
       await notifier.cancelSession(FF1SetupSessionCancelReason.userAborted);
-      expect(notifier.matchesSessionForEffect(null), isTrue);
+      expect(notifier.hasGuidedSetupSession, isFalse);
       expect(notifier.matchesSessionForEffect(id), isFalse);
     },
   );

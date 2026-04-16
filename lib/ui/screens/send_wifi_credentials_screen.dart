@@ -100,7 +100,7 @@ class _EnterWiFiPasswordScreenState
           _log.info(
             '[effect] received: id=$effectId, type=${effect.runtimeType}',
           );
-          final sessionIdAtEmission = next.activeSession?.id;
+          final sessionIdAtEmission = effect.sessionId;
           final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
           unawaited(() async {
             final didHandle = await _handleOrchestratorEffect(
@@ -194,9 +194,12 @@ class _EnterWiFiPasswordScreenState
       case FF1SetupNavigate(:final route, :final extra, :final method):
         if (!mounted) return false;
         if (route == Routes.deviceConfiguration) {
-          if (!ref
-              .read(ff1SetupOrchestratorProvider.notifier)
-              .matchesSessionForEffect(sessionIdAtEmission)) {
+          final activeSessionId = ref
+              .read(ff1SetupOrchestratorProvider)
+              .activeSession
+              ?.id;
+          if (sessionIdAtEmission != null &&
+              sessionIdAtEmission != activeSessionId) {
             return true;
           }
           try {
@@ -266,7 +269,8 @@ class _EnterWiFiPasswordScreenState
                 }
               : null,
         );
-        if ((widget.payload.wifiAccessPoint.isOpenNetwork ?? false) && mounted) {
+        if ((widget.payload.wifiAccessPoint.isOpenNetwork ?? false) &&
+            mounted) {
           context.pop();
         }
         setState(() {

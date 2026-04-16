@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
+import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_providers.dart';
 import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
@@ -29,7 +30,7 @@ void main() {
   testWidgets('orchestrator emits navigate on WiFi success (widget env)', (
     tester,
   ) async {
-    final appState = _MockAppStateService();
+    final appState = _FakeAppStateService();
     final container = ProviderContainer(
       overrides: [
         connectFF1Provider.overrideWith(
@@ -72,13 +73,16 @@ void main() {
   ) async {
     final container = ProviderContainer(
       overrides: [
+        ff1BluetoothDeviceActionsProvider.overrideWith(
+          _NoopFF1BluetoothDeviceActionsNotifier.new,
+        ),
         ff1ControlProvider.overrideWithValue(
           FF1BleControl(transport: _NoopBleTransport()),
         ),
         onboardingActionsProvider.overrideWith(
           (ref) => OnboardingService(
             ref: ref,
-            appStateService: _MockAppStateService(),
+            appStateService: _FakeAppStateService(),
           ),
         ),
         ff1SetupOrchestratorProvider.overrideWith(
@@ -152,6 +156,9 @@ void main() {
   ) async {
     final container = ProviderContainer(
       overrides: [
+        ff1BluetoothDeviceActionsProvider.overrideWith(
+          _NoopFF1BluetoothDeviceActionsNotifier.new,
+        ),
         ff1SetupOrchestratorProvider.overrideWith(
           _NoOpOrchestratorNotifier.new,
         ),
@@ -198,6 +205,9 @@ void main() {
     (tester) async {
       final container = ProviderContainer(
         overrides: [
+          ff1BluetoothDeviceActionsProvider.overrideWith(
+            _NoopFF1BluetoothDeviceActionsNotifier.new,
+          ),
           ff1ControlProvider.overrideWithValue(
             FF1BleControl(transport: _NoopBleTransport()),
           ),
@@ -267,8 +277,12 @@ void main() {
   testWidgets(
     'clears the Wi-Fi submit loading view after a failed recovery dialog',
     (tester) async {
+      final sendCompleter = Completer<void>();
       final container = ProviderContainer(
         overrides: [
+          ff1BluetoothDeviceActionsProvider.overrideWith(
+            _NoopFF1BluetoothDeviceActionsNotifier.new,
+          ),
           ff1ControlProvider.overrideWithValue(
             FF1BleControl(transport: _NoopBleTransport()),
           ),
@@ -279,7 +293,7 @@ void main() {
             ),
           ),
           ff1SetupOrchestratorProvider.overrideWith(
-            _ScriptedOrchestratorNotifier.new,
+            () => _BlockingScriptedOrchestratorNotifier(sendCompleter),
           ),
         ],
       );
@@ -312,14 +326,13 @@ void main() {
           child: MaterialApp.router(routerConfig: router),
         ),
       );
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('Connecting to Office'), findsOneWidget);
+      await tester.pump();
 
       (container.read(ff1SetupOrchestratorProvider.notifier)
-              as _ScriptedOrchestratorNotifier)
+              as _BlockingScriptedOrchestratorNotifier)
           .emitNavigate();
 
+      sendCompleter.complete();
       await tester.pumpAndSettle();
 
       expect(find.text('Setup could not finish'), findsOneWidget);
@@ -383,27 +396,37 @@ class _FakeWiFiNotifier extends WiFiConnectionNotifier {
   }
 }
 
-class _MockAppStateService extends Mock implements AppStateService {
+class _FakeAppStateService extends Mock implements AppStateService {
+  int hasSeenOnboardingCalls = 0;
+  bool? lastHasSeen;
+
   @override
-  Future<void> setHasSeenOnboarding({required bool hasSeen}) {
-    return super.noSuchMethod(
-          Invocation.method(
-            #setHasSeenOnboarding,
-            const [],
-            <Symbol, Object?>{#hasSeen: hasSeen},
-          ),
-          returnValue: Future<void>.value(),
-          returnValueForMissingStub: Future<void>.value(),
-        )
-        as Future<void>;
+  Future<bool> hasSeenOnboarding() async => lastHasSeen ?? false;
+
+  @override
+  Future<void> setHasSeenOnboarding({required bool hasSeen}) async {
+    hasSeenOnboardingCalls += 1;
+    lastHasSeen = hasSeen;
   }
 }
 
 class _ThrowingAppStateService extends Mock implements AppStateService {
   @override
-  Future<void> setHasSeenOnboarding({required bool hasSeen}) {
-    return Future<void>.error(StateError('persist failed'));
+  Future<bool> hasSeenOnboarding() async => false;
+
+  @override
+  Future<void> setHasSeenOnboarding({required bool hasSeen}) async {
+    throw StateError('persist failed');
   }
+}
+
+class _NoopFF1BluetoothDeviceActionsNotifier
+    extends FF1BluetoothDeviceActionsNotifier {
+  @override
+  void build() {}
+
+  @override
+  Future<void> addDevice(FF1Device device) async {}
 }
 
 class _StubWifiControl extends FakeWifiControl {
@@ -485,9 +508,10 @@ class _ScriptedOrchestratorNotifier extends FF1SetupOrchestratorNotifier {
 
   void emitNavigate() {
     _effectId += 1;
-    _effect = const FF1SetupNavigate(
+    _effect = FF1SetupNavigate(
       route: Routes.deviceConfiguration,
       method: FF1SetupNavigationMethod.go,
+      sessionId: state.activeSession?.id,
     );
     state = state.copyWith(
       effectId: _effectId,
@@ -511,5 +535,21 @@ class _ScriptedOrchestratorNotifier extends FF1SetupOrchestratorNotifier {
       effectId: _effectId,
       hasEffect: true,
     );
+  }
+}
+
+class _BlockingScriptedOrchestratorNotifier
+    extends _ScriptedOrchestratorNotifier {
+  _BlockingScriptedOrchestratorNotifier(this._sendCompleter);
+
+  final Completer<void> _sendCompleter;
+
+  @override
+  Future<void> sendWifiCredentialsAndConnect({
+    required FF1Device device,
+    required String ssid,
+    required String password,
+  }) async {
+    await _sendCompleter.future;
   }
 }

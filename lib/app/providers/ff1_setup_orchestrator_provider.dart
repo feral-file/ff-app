@@ -46,7 +46,6 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   int _effectId = 0;
   FF1SetupEffect? _pendingEffect;
   bool _sessionCompletionInProgress = false;
-  bool _currentConnectAttemptWasGuided = false;
 
   @override
   FF1SetupState build() {
@@ -62,9 +61,9 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     return derived.copyWith(
       effectId: _effectId,
       effect: _pendingEffect,
-      hasEffect: true,
+      hasEffect: _pendingEffect != null,
       activeSession: _activeSession,
-      hasActiveSession: true,
+      hasActiveSession: _activeSession != null,
     );
   }
 
@@ -107,12 +106,30 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
         }
 
         if (cur is ConnectFF1Connected && prev != cur) {
+          // `connectFF1Provider` can surface a cached Connected state when the
+          // orchestrator first mounts. Only treat that as a real success when
+          // this orchestrator has already started a connect attempt for the
+          // current device; otherwise we would replay stale navigation from a
+          // previous session.
+          if (_selectedDevice == null) {
+            return;
+          }
           if (cur.isConnectedToInternet) {
             // Root-cause fix lives in ConnectFF1Notifier: it persists/promotes
             // the device before emitting ConnectFF1Connected(internet=true).
-            _emitEffect(FF1SetupInternetReady(connected: cur));
+            _emitEffect(
+              FF1SetupInternetReady(
+                connected: cur,
+                sessionId: _activeSession?.id,
+              ),
+            );
           } else {
-            _emitEffect(FF1SetupNeedsWiFi(device: cur.ff1device));
+            _emitEffect(
+              FF1SetupNeedsWiFi(
+                device: cur.ff1device,
+                sessionId: _activeSession?.id,
+              ),
+            );
           }
           return;
         }
@@ -127,6 +144,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
                 title: ex.title,
                 message: ex.message,
                 showSupportCta: ex.shouldShowSupport,
+                sessionId: _activeSession?.id,
               ),
             );
             return;
@@ -137,6 +155,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
               title: 'Connect failed',
               message: ex.toString(),
               showSupportCta: true,
+              sessionId: _activeSession?.id,
             ),
           );
         }
@@ -172,9 +191,10 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
             'didReceiveTopicId=$didReceiveTopicId; status=$nextStatus',
           );
           _emitEffect(
-            const FF1SetupNavigate(
+            FF1SetupNavigate(
               route: Routes.deviceConfiguration,
               method: FF1SetupNavigationMethod.go,
+              sessionId: _activeSession?.id,
             ),
           );
           return;
@@ -184,7 +204,9 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
           final error = next.error;
           if (error is FF1ResponseError) {
             if (error is DeviceUpdatingError) {
-              _emitEffect(const FF1SetupDeviceUpdating());
+              _emitEffect(
+                FF1SetupDeviceUpdating(sessionId: _activeSession?.id),
+              );
               return;
             }
             _emitEffect(
@@ -192,27 +214,30 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
                 title: error.title,
                 message: error.message,
                 showSupportCta: error.shouldShowSupport,
+                sessionId: _activeSession?.id,
               ),
             );
             return;
           }
           if (error is TimeoutException) {
             _emitEffect(
-              const FF1SetupShowError(
+              FF1SetupShowError(
                 title: "Can't reach FF1",
                 message:
                     "FF1 didn't respond in time. Make sure FF1 is nearby and try again.",
+                sessionId: _activeSession?.id,
               ),
             );
             return;
           }
           if (error != null) {
             _emitEffect(
-              const FF1SetupShowError(
+              FF1SetupShowError(
                 title: 'Wi‑Fi setup failed',
                 message:
                     "FF1 couldn't complete Wi‑Fi setup because of an unexpected issue. Contact support for help.",
                 showSupportCta: true,
+                sessionId: _activeSession?.id,
               ),
             );
           }
@@ -229,10 +254,8 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
   bool get hasGuidedSetupSession => _activeSession != null;
 
   bool matchesSessionForEffect(String? sessionIdAtEmission) {
-    if (sessionIdAtEmission == null) {
-      return !_currentConnectAttemptWasGuided;
-    }
-    return _activeSession?.id == sessionIdAtEmission;
+    return sessionIdAtEmission != null &&
+        _activeSession?.id == sessionIdAtEmission;
   }
 
   void startSession() {
@@ -434,7 +457,6 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     FF1DeviceInfo? deeplinkInfo,
   }) async {
     _ensureListenersRegistered();
-    _currentConnectAttemptWasGuided = _activeSession != null;
     _selectedDevice = device;
     _deeplinkInfo = deeplinkInfo;
     // Refactor-only invariant: avoid stale success causing immediate navigation
@@ -477,6 +499,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
       FF1SetupEnterWifiPassword(
         device: device,
         wifiAccessPoint: wifiAccessPoint,
+        sessionId: _activeSession?.id,
       ),
     );
   }
@@ -508,6 +531,7 @@ class FF1SetupOrchestratorNotifier extends Notifier<FF1SetupState> {
     connectNotifier.reset();
     wifiNotifier.reset();
     _activeSession = null;
+    _pendingEffect = null;
     _clearTransientSetupContext();
     state = const FF1SetupState(step: FF1SetupStep.idle);
   }
