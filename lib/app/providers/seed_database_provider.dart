@@ -440,7 +440,16 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         }
         _aggregateDeferredRestoreReadinessWhenDrained = false;
         _aggregateDeferredCompleteGateWhenDrained = false;
-        await _drainPendingFavoriteRestoreIfIdle();
+        try {
+          await _drainPendingFavoriteRestoreIfIdle();
+        } on Object catch (e, st) {
+          _log.warning(
+            'Deferred favorite restore failed after sync drain; keeping '
+            'replaced seed database state.',
+            e,
+            st,
+          );
+        }
       }
     }
   }

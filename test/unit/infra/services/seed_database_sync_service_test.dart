@@ -204,6 +204,40 @@ void main() {
     });
 
     test(
+      'when ETag HEAD fails and local DB is unusable, still downloads and '
+      'replaces',
+      () async {
+        final fakeSeedService = _FakeSeedDatabaseService(
+          hasLocal: true,
+          hasUsable: false,
+          remoteEtag: '',
+          throwOnHead: true,
+        );
+        var localEtag = 'local-v1';
+        final events = <String>[];
+
+        final service = SeedDatabaseSyncService(
+          seedDatabaseService: fakeSeedService,
+          loadLocalEtag: () => localEtag,
+          saveLocalEtag: (etag) => localEtag = etag,
+        );
+
+        final changed = await service.sync(
+          beforeReplace: () async => events.add('before'),
+          afterReplace: () async => events.add('after'),
+          failSilently: true,
+        );
+
+        expect(changed, isTrue);
+        expect(fakeSeedService.downloadCalls, 1);
+        expect(fakeSeedService.validateCalls, 1);
+        expect(fakeSeedService.replaceCalls, 1);
+        expect(events, ['before', 'after']);
+        expect(localEtag, 'local-v1');
+      },
+    );
+
+    test(
       'forceReplace always downloads and replaces, skipping ETag check',
       () async {
         final fakeSeedService = _FakeSeedDatabaseService(

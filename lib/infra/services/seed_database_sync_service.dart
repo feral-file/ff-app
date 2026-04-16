@@ -125,11 +125,12 @@ class SeedDatabaseSyncService {
       } on Exception catch (e, st) {
         _log.warning(
           'Seed sync ETag check failed; '
-          'falling back to shouldDownload=forceReplace.',
+          'falling back to shouldDownload= '
+          '(forceReplace || no usable local DB).',
           e,
           st,
         );
-        shouldDownload = forceReplace;
+        shouldDownload = forceReplace || !hasUsableLocalDatabase;
         localEtag = null;
         remoteEtag = null;
       }

@@ -89,6 +89,36 @@ class _AsymmetricBackupAfterValidateService
   }
 }
 
+class _MaterializeBackupSidecarsDuringValidateService
+    extends _SeedDatabaseServiceForReplaceTest {
+  _MaterializeBackupSidecarsDuringValidateService({
+    required super.dbPath,
+    required this.materializeWal,
+    required this.materializeShm,
+  });
+
+  final bool materializeWal;
+  final bool materializeShm;
+
+  @override
+  SeedDatabaseArtifactMetadata validateSeedArtifact(String path) {
+    final meta = super.validateSeedArtifact(path);
+    if (materializeWal) {
+      final wal = File('$path-wal');
+      if (!wal.existsSync()) {
+        wal.writeAsStringSync('validator-created-wal');
+      }
+    }
+    if (materializeShm) {
+      final shm = File('$path-shm');
+      if (!shm.existsSync()) {
+        shm.writeAsStringSync('validator-created-shm');
+      }
+    }
+    return meta;
+  }
+}
+
 void main() {
   group('SeedDatabaseService.replaceDatabaseFromTemporaryFile', () {
     late Directory tempDir;
@@ -658,6 +688,34 @@ void main() {
     );
 
     test(
+      'repairInterruptedSeedSwapIfNeeded preserves canonical WAL/SHM when '
+      'validator materializes missing backup sidecars',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.7103'),
+        );
+        createSeedArtifactDatabase(file: backup);
+        await File('${backup.path}-shm').writeAsString('backup-shm');
+        await File('$dbPath-wal').writeAsString('precious-wal');
+        await File('$dbPath-shm').writeAsString('precious-shm');
+        await File('$dbPath.swap_in_progress').writeAsString('7103');
+
+        final service = _MaterializeBackupSidecarsDuringValidateService(
+          dbPath: dbPath,
+          materializeWal: true,
+          materializeShm: false,
+        );
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        expect(File(dbPath).existsSync(), isTrue);
+        expect(await File('$dbPath-wal').readAsString(), 'precious-wal');
+        expect(await File('$dbPath-shm').readAsString(), 'backup-shm');
+      },
+    );
+
+    test(
       'repairInterruptedSeedSwapIfNeeded prefers staged artifact over backup '
       'for the same nonce',
       () async {
@@ -694,6 +752,107 @@ void main() {
         } finally {
           db.dispose();
         }
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded only evaluates artifacts that match '
+      'swap marker nonce',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final marker = File('$dbPath.swap_in_progress');
+        final stagedDifferentNonce = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.9002'),
+        );
+        final backupMarkedNonce = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.9001'),
+        );
+
+        createSeedArtifactDatabase(file: stagedDifferentNonce);
+        createSeedArtifactDatabase(file: backupMarkedNonce);
+
+        final stagedDb = sqlite3.sqlite3.open(stagedDifferentNonce.path);
+        final backupDb = sqlite3.sqlite3.open(backupMarkedNonce.path);
+        try {
+          stagedDb.execute(
+            "UPDATE playlists SET title = 'staged-should-not-win'",
+          );
+          backupDb.execute(
+            "UPDATE playlists SET title = 'marker-nonce-backup'",
+          );
+        } finally {
+          stagedDb.dispose();
+          backupDb.dispose();
+        }
+        await marker.writeAsString('9001');
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        final db = sqlite3.sqlite3.open(dbPath);
+        try {
+          final rows = db.select('SELECT title FROM playlists LIMIT 1');
+          expect(rows.first.columnAt(0), 'marker-nonce-backup');
+        } finally {
+          db.dispose();
+        }
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded skips repair when marker nonce is '
+      'malformed',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final marker = File('$dbPath.swap_in_progress');
+        final staged = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.9101'),
+        );
+        createSeedArtifactDatabase(file: staged);
+        await marker.writeAsString('bad-marker');
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isFalse);
+        expect(File(dbPath).existsSync(), isFalse);
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded restores backup sidecars when '
+      'main restore fails after sidecars were promoted',
+      () async {
+        SeedDatabaseService.resetMoveFileDebugForTest();
+        addTearDown(SeedDatabaseService.resetMoveFileDebugForTest);
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final marker = File('$dbPath.swap_in_progress');
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.7201'),
+        );
+
+        createSeedArtifactDatabase(file: backup);
+        await File('${backup.path}-wal').writeAsString('backup-wal');
+        await File('${backup.path}-shm').writeAsString('backup-shm');
+        await marker.writeAsString('7201');
+
+        SeedDatabaseService.debugSimulateRenameFailureOnMoveCallOneBased = 6;
+        SeedDatabaseService.debugSimulateDeleteFailureAfterCopyMove = true;
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(
+          repaired,
+          isFalse,
+          reason:
+              'Main restore fails by design, so startup repair should fail.',
+        );
+        expect(File('$dbPath-wal').existsSync(), isFalse);
+        expect(File('$dbPath-shm').existsSync(), isFalse);
+        expect(File('${backup.path}-wal').existsSync(), isTrue);
+        expect(File('${backup.path}-shm').existsSync(), isTrue);
       },
     );
 

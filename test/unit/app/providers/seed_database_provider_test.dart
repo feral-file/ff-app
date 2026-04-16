@@ -423,6 +423,62 @@ class _FirstSuccessSecondSkipFake implements SeedDatabaseSyncService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// First sync reaches beforeReplace and blocks so second sync can supersede it.
+/// Second sync then skips download. This forces the first session to append
+/// favorite snapshots into pending drain logic.
+class _FirstUpdatedSecondSkipWithBlockFake implements SeedDatabaseSyncService {
+  _FirstUpdatedSecondSkipWithBlockFake({
+    required Completer<void> firstEnteredBeforeReplace,
+    required Completer<void> allowFirstToFinish,
+  }) : _firstEnteredBeforeReplace = firstEnteredBeforeReplace,
+       _allowFirstToFinish = allowFirstToFinish;
+
+  final Completer<void> _firstEnteredBeforeReplace;
+  final Completer<void> _allowFirstToFinish;
+  int syncCallCount = 0;
+
+  @override
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) async {
+    return action();
+  }
+
+  @override
+  Future<bool> sync({
+    required Future<void> Function() beforeReplace,
+    required Future<void> Function() afterReplace,
+    bool forceReplace = false,
+    void Function({
+      required bool hasLocalDatabase,
+      String? localEtag,
+      String? remoteEtag,
+    })?
+    onDownloadStarted,
+    void Function(double progress)? onProgress,
+    bool failSilently = false,
+    bool Function()? isSessionActive,
+  }) async {
+    syncCallCount++;
+    if (syncCallCount == 1) {
+      onDownloadStarted?.call(
+        hasLocalDatabase: true,
+        localEtag: 'local',
+        remoteEtag: 'remote',
+      );
+      await beforeReplace();
+      if (!_firstEnteredBeforeReplace.isCompleted) {
+        _firstEnteredBeforeReplace.complete();
+      }
+      await _allowFirstToFinish.future;
+      await afterReplace();
+      return true;
+    }
+    return false;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 final _noOpActions = SeedDatabaseReadyActions(
   onNotReady: _noOpFuture,
   onReady: _noOpFuture,
@@ -1150,6 +1206,48 @@ void main() {
         container.read(seedDownloadProvider).status,
         SeedDownloadStatus.done,
       );
+      expect(SeedDatabaseGate.isCompleted, isTrue);
+    },
+  );
+
+  test(
+    'drain of deferred favorite restore is best-effort when superseded '
+    'session queued snapshots',
+    () async {
+      SeedDatabaseGate.complete();
+      final firstEnteredBeforeReplace = Completer<void>();
+      final allowFirstToFinish = Completer<void>();
+      final fakeSyncService = _FirstUpdatedSecondSkipWithBlockFake(
+        firstEnteredBeforeReplace: firstEnteredBeforeReplace,
+        allowFirstToFinish: allowFirstToFinish,
+      );
+      final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(memDb.close);
+      final spy = _SpyDatabaseService(memDb)
+        ..snapshotReturnsEmpty = false
+        ..restoreThrows = true;
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+          appDatabaseProvider.overrideWithValue(memDb),
+          rawDatabaseServiceProvider.overrideWithValue(spy),
+          _fakeSeedDbSvc(hasLocal: true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(seedDownloadProvider.notifier);
+      final sync1Future = notifier.sync();
+      await firstEnteredBeforeReplace.future;
+      await notifier.sync();
+      allowFirstToFinish.complete();
+
+      await expectLater(sync1Future, completes);
+      expect(spy.snapshotCalls, 1);
+      expect(spy.restoreCalls, 1);
       expect(SeedDatabaseGate.isCompleted, isTrue);
     },
   );

@@ -208,6 +208,15 @@ class SeedDatabaseService {
     if (!swapMarker.existsSync()) {
       return false;
     }
+    final rawMarkerNonce = swapMarker.readAsStringSync().trim();
+    final markerNonce = int.tryParse(rawMarkerNonce);
+    if (markerNonce == null) {
+      _log.warning(
+        'Seed swap marker contains non-numeric nonce "$rawMarkerNonce"; '
+        'skip startup repair to avoid restoring an unrelated artifact set.',
+      );
+      return false;
+    }
     final canonical = File(dbPath);
     if (canonical.existsSync()) {
       try {
@@ -267,9 +276,26 @@ class SeedDatabaseService {
       }
       return a.file.path.compareTo(b.file.path);
     });
+    final candidatesToTry = candidates
+        .where((c) => c.nonce == markerNonce)
+        .toList();
+    if (candidatesToTry.isEmpty) {
+      _log.warning(
+        'Seed swap marker nonce=$markerNonce has no matching staged/backup '
+        'artifacts; skip startup repair to avoid restoring an unrelated swap.',
+      );
+      return false;
+    }
 
-    for (final candidate in candidates) {
+    for (final candidate in candidatesToTry) {
       final candidatePath = candidate.file.path;
+      // Snapshot backup sidecar presence before validation. Validation opens
+      // SQLite and may materialize sidecars; restore decisions must reflect
+      // the real interrupted-swap artifact layout, not validator side effects.
+      final backupWalExistsBeforeValidation =
+          !candidate.isStage && File('$candidatePath-wal').existsSync();
+      final backupShmExistsBeforeValidation =
+          !candidate.isStage && File('$candidatePath-shm').existsSync();
       try {
         validateSeedArtifact(candidatePath);
         if (candidate.isStage) {
@@ -300,6 +326,8 @@ class SeedDatabaseService {
           final ok = await _restoreFromBackupSet(
             dbPath: dbPath,
             backupMainPath: candidatePath,
+            backupWalExists: backupWalExistsBeforeValidation,
+            backupShmExists: backupShmExistsBeforeValidation,
           );
           if (ok) {
             await _cleanupTemp(swapMarker.path);
@@ -327,6 +355,8 @@ class SeedDatabaseService {
   Future<bool> _restoreFromBackupSet({
     required String dbPath,
     required String backupMainPath,
+    required bool backupWalExists,
+    required bool backupShmExists,
   }) async {
     try {
       final nonce = DateTime.now().microsecondsSinceEpoch;
@@ -337,8 +367,6 @@ class SeedDatabaseService {
       final rollbackShmPath = '$dbPath-shm.rollback.$nonce';
       final backupWalPath = '$backupMainPath-wal';
       final backupShmPath = '$backupMainPath-shm';
-      final backupWalExists = File(backupWalPath).existsSync();
-      final backupShmExists = File(backupShmPath).existsSync();
       try {
         if (File(backupMainPath).existsSync()) {
           await _moveFile(
@@ -387,6 +415,8 @@ class SeedDatabaseService {
         final canonicalShmExists = File(canonicalShmPath).existsSync();
         var canonicalWalMovedToRollback = false;
         var canonicalShmMovedToRollback = false;
+        var restoredWalMovedToCanonical = false;
+        var restoredShmMovedToCanonical = false;
 
         // Only move a canonical sidecar into rollback when we have the matching
         // backup sidecar to restore. If the crash left an asymmetric backup
@@ -412,12 +442,14 @@ class SeedDatabaseService {
               sourcePath: restoreWalPath,
               targetPath: canonicalWalPath,
             );
+            restoredWalMovedToCanonical = true;
           }
           if (backupShmExists && File(restoreShmPath).existsSync()) {
             await _moveFile(
               sourcePath: restoreShmPath,
               targetPath: canonicalShmPath,
             );
+            restoredShmMovedToCanonical = true;
           }
           if (File(restoreMainPath).existsSync()) {
             await _replaceFileOverwritingTarget(
@@ -426,6 +458,23 @@ class SeedDatabaseService {
             );
           }
         } on Object {
+          // If sidecars were already moved to canonical before the main replace
+          // failed, move them back into restore slots so catch cleanup can put
+          // the backup set back together deterministically.
+          if (restoredWalMovedToCanonical &&
+              File(canonicalWalPath).existsSync()) {
+            await _moveFile(
+              sourcePath: canonicalWalPath,
+              targetPath: restoreWalPath,
+            );
+          }
+          if (restoredShmMovedToCanonical &&
+              File(canonicalShmPath).existsSync()) {
+            await _moveFile(
+              sourcePath: canonicalShmPath,
+              targetPath: restoreShmPath,
+            );
+          }
           if (canonicalWalMovedToRollback &&
               File(rollbackWalPath).existsSync()) {
             await _replaceFileOverwritingTarget(
