@@ -372,6 +372,46 @@ void main() {
     );
 
     test(
+      'repairInterruptedSeedSwapIfNeeded prefers staged artifact over backup '
+      'for the same nonce',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final marker = File('$dbPath.swap_in_progress');
+        final staged = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.8008'),
+        );
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.8008'),
+        );
+
+        createSeedArtifactDatabase(file: staged);
+        createSeedArtifactDatabase(file: backup);
+        final stageDb = sqlite3.sqlite3.open(staged.path);
+        final backupDb = sqlite3.sqlite3.open(backup.path);
+        try {
+          stageDb.execute("UPDATE playlists SET title = 'Stage wins'");
+          backupDb.execute("UPDATE playlists SET title = 'Backup loses'");
+        } finally {
+          stageDb.dispose();
+          backupDb.dispose();
+        }
+        await marker.writeAsString('8008');
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        final db = sqlite3.sqlite3.open(dbPath);
+        try {
+          final rows = db.select('SELECT title FROM playlists LIMIT 1');
+          expect(rows.first.columnAt(0), 'Stage wins');
+        } finally {
+          db.dispose();
+        }
+      },
+    );
+
+    test(
       'rename fallback delete failure after copy undoes partial backup write',
       () async {
         addTearDown(SeedDatabaseService.resetMoveFileDebugForTest);

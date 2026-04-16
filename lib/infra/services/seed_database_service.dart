@@ -179,8 +179,19 @@ class SeedDatabaseService {
     }
     final canonical = File(dbPath);
     if (canonical.existsSync()) {
-      await _cleanupTemp(swapMarker.path);
-      return false;
+      try {
+        validateSeedArtifact(canonical.path);
+        await _cleanupTemp(swapMarker.path);
+        await _deleteOrphanSeedSwapArtifactFiles(Directory(p.dirname(dbPath)));
+        return false;
+      } on Object catch (e, st) {
+        _log.warning(
+          'Canonical seed DB exists but failed validation during startup '
+          'repair; attempting recovery from staged/backup artifacts.',
+          e,
+          st,
+        );
+      }
     }
 
     final dbDir = Directory(p.dirname(dbPath));
@@ -212,13 +223,20 @@ class SeedDatabaseService {
       }
     }
 
-    candidates.sort((a, b) => b.nonce.compareTo(a.nonce));
-
     // Do not delete canonical WAL/SHM here. If the process died after moving
     // the main database aside but before sidecars were backed up, those files
     // may still contain the newest committed pages for the pre-replace DB.
     // Restoring the main file first preserves SQLite's ability to recover that
     // state on the next open.
+    candidates.sort((a, b) {
+      final nonceCmp = b.nonce.compareTo(a.nonce);
+      if (nonceCmp != 0) return nonceCmp;
+      if (a.isStage != b.isStage) {
+        return a.isStage ? -1 : 1;
+      }
+      return a.file.path.compareTo(b.file.path);
+    });
+
     for (final candidate in candidates) {
       final candidatePath = candidate.file.path;
       try {
