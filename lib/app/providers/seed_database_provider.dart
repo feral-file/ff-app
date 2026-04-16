@@ -315,7 +315,24 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       if (updated) {
         await appStateService.setHasCompletedSeedDownload(completed: true);
         await seedReadyNotifier.setReady();
-        await _restorePreservedFavoritesAfterSuccessfulSeedReplace(session);
+        try {
+          await _restorePreservedFavoritesAfterSuccessfulSeedReplace(session);
+        } on Object catch (e, st) {
+          // Favorite restoration is a best-effort post-swap repair. If it
+          // fails, the database is still valid and the app should not remain
+          // gated waiting for an ancillary restore step.
+          _log.warning(
+            'Seed database replaced successfully, but favorite restore failed.',
+            e,
+            st,
+          );
+        }
+        if (!_isSessionActive(session)) {
+          if (completeSeedDatabaseGate && _syncInProgressCount > 1) {
+            completeGateWhenDrained = true;
+          }
+          return false;
+        }
         notifyForceReplaceFinished();
         if (completeSeedDatabaseGate) {
           SeedDatabaseGate.complete();

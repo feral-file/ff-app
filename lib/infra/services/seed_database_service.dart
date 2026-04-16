@@ -256,10 +256,13 @@ class SeedDatabaseService {
             backupMainPath: candidatePath,
           );
           if (ok) {
+            await _cleanupTemp(swapMarker.path);
             await _deleteOrphanSeedSwapArtifactFiles(dbDir);
+            return true;
           }
-          return ok;
+          continue;
         }
+        await _cleanupTemp(swapMarker.path);
         await _deleteOrphanSeedSwapArtifactFiles(dbDir);
         return true;
       } on Object catch (e, st) {

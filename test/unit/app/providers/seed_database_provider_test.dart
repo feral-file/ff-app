@@ -315,9 +315,9 @@ class _OverlapUpdatedSuccessFake implements SeedDatabaseSyncService {
     required Completer<void> firstMayComplete,
     required Completer<void> secondStarted,
     required Completer<void> secondMayComplete,
-  })  : _firstMayComplete = firstMayComplete,
-        _secondStarted = secondStarted,
-        _secondMayComplete = secondMayComplete;
+  }) : _firstMayComplete = firstMayComplete,
+       _secondStarted = secondStarted,
+       _secondMayComplete = secondMayComplete;
 
   final Completer<void> _firstMayComplete;
   final Completer<void> _secondStarted;
@@ -395,6 +395,7 @@ class _SpyDatabaseService extends DatabaseService {
   /// the test cannot survive provider invalidation closing the test
   /// [AppDatabase].
   bool snapshotReturnsEmpty = false;
+  bool restoreThrows = false;
 
   @override
   Future<List<FavoritePlaylistSnapshot>> getFavoritePlaylistsSnapshot() async {
@@ -414,6 +415,9 @@ class _SpyDatabaseService extends DatabaseService {
     List<FavoritePlaylistSnapshot> snapshots,
   ) async {
     restoreCalls++;
+    if (restoreThrows) {
+      throw Exception('simulated favorite restore failure');
+    }
   }
 }
 
@@ -1024,6 +1028,49 @@ void main() {
             'superseded session must persist hasCompletedSeedDownload so '
             'resume does not treat the next launch like first install',
       );
+    },
+  );
+
+  test(
+    'successful replace keeps gate open even if favorite restore fails',
+    () async {
+      SeedDatabaseGate.complete();
+      final fakeSyncService = _FakeSeedDatabaseSyncService();
+      final memDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(memDb.close);
+      final spy = _SpyDatabaseService(memDb)
+        ..snapshotReturnsEmpty = false
+        ..restoreThrows = true;
+      var onReadyCallCount = 0;
+      final actions = SeedDatabaseReadyActions(
+        onNotReady: _noOpFuture,
+        onReady: () async {
+          onReadyCallCount++;
+        },
+      );
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(actions),
+          appDatabaseProvider.overrideWithValue(memDb),
+          rawDatabaseServiceProvider.overrideWithValue(spy),
+          _fakeSeedDbSvc(hasLocal: true),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(seedDownloadProvider.notifier);
+      await notifier.sync();
+
+      expect(onReadyCallCount, 1);
+      expect(spy.restoreCalls, 1);
+      expect(
+        container.read(seedDownloadProvider).status,
+        SeedDownloadStatus.done,
+      );
+      expect(SeedDatabaseGate.isCompleted, isTrue);
     },
   );
 
