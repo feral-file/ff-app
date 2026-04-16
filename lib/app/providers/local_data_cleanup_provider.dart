@@ -45,10 +45,11 @@ Future<void> _restoreReadinessAfterResetRetryFailed(Ref ref) async {
   cleanup.invalidateProvidersForRebind?.call();
   cleanup.invalidateReconnectInfraProviders?.call();
   ref
-      .read(
-        isSeedDatabaseReadyProvider.notifier,
-      )
-      .seedReadyDirect = true;
+          .read(
+            isSeedDatabaseReadyProvider.notifier,
+          )
+          .seedReadyDirect =
+      true;
 }
 
 /// Test hook for [_restoreReadinessAfterResetRetryFailed].
@@ -66,6 +67,46 @@ Future<void> _deleteSeedFilesUnderReplaceLock(Ref ref) async {
   await seedDatabaseSyncService.runWithReplaceLock(() async {
     final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
     await seedDatabaseService.deleteDatabaseFiles();
+  });
+}
+
+/// Runs the full reset teardown under the same lock as seed replacement.
+///
+/// The lock must cover readiness drop, provider draining, close, and file
+/// deletion so a concurrent replace cannot lose its staged/backup artifacts
+/// halfway through a reset.
+Future<void> _closeAndDeleteDatabaseUnderReplaceLock(
+  Ref ref,
+  void Function() invalidateDatabaseConsumerProviders,
+) async {
+  final seedDatabaseSyncService = ref.read(seedDatabaseSyncServiceProvider);
+  await seedDatabaseSyncService.runWithReplaceLock(() async {
+    final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+    await seedDatabaseService.markResetCleanupInProgress();
+    try {
+      final readyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
+      await readyNotifier.setNotReady();
+      if (SeedDatabaseGate.isCompleted) {
+        await seedDatabaseService.deleteDatabaseFiles();
+        return;
+      }
+      await ref
+          .read(tokensSyncCoordinatorProvider.notifier)
+          .stopAndDrainForReset();
+      await ref
+          .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+          .stopAndDrainForReset();
+      ref.invalidate(tokensSyncCoordinatorProvider);
+      ref.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
+      readyNotifier.seedReadyDirect = false;
+      invalidateDatabaseConsumerProviders();
+      await SchedulerBinding.instance.endOfFrame;
+      await ref.read(appDatabaseProvider).close();
+      await seedDatabaseService.deleteDatabaseFiles();
+      await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
+    } finally {
+      await seedDatabaseService.clearResetCleanupInProgress();
+    }
   });
 }
 
@@ -190,10 +231,11 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     /// Set immediately at start of forgetIExist so no new DB work starts.
     prepareForReset: () {
       ref
-          .read(
-            isSeedDatabaseReadyProvider.notifier,
-          )
-          .seedReadyDirect = false;
+              .read(
+                isSeedDatabaseReadyProvider.notifier,
+              )
+              .seedReadyDirect =
+          false;
     },
 
     /// Called when forgetIExist/rebuildMetadata background seed replace fails.
@@ -220,27 +262,10 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     /// seed sync). If SeedDatabaseGate is not completed, setNotReady is a
     /// no-op; we mirror drain + close so Forget stays safe on edge boots.
     closeAndDeleteDatabase: () async {
-      final readyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
-      await readyNotifier.setNotReady();
-      if (SeedDatabaseGate.isCompleted) {
-        await _deleteSeedFilesUnderReplaceLock(ref);
-        return;
-      }
-      await ref
-          .read(tokensSyncCoordinatorProvider.notifier)
-          .stopAndDrainForReset();
-      await ref
-          .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
-          .stopAndDrainForReset();
-      r.invalidate(tokensSyncCoordinatorProvider);
-      r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
-      readyNotifier.seedReadyDirect = false;
-      invalidateDatabaseConsumerProviders();
-      await SchedulerBinding.instance.endOfFrame;
-      await ref.read(appDatabaseProvider).close();
-      final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
-      await seedDatabaseService.deleteDatabaseFiles();
-      await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
+      await _closeAndDeleteDatabaseUnderReplaceLock(
+        ref,
+        invalidateDatabaseConsumerProviders,
+      );
     },
 
     /// Clears FF1 devices, app state, tracked addresses, etc.

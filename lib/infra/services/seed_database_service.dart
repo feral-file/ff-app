@@ -170,6 +170,9 @@ class SeedDatabaseService {
   /// restoring from backup (previous live DB) when both exist.
   Future<bool> repairInterruptedSeedSwapIfNeeded() async {
     final dbPath = await databasePath();
+    if (File(_resetInProgressMarkerPath(dbPath)).existsSync()) {
+      return false;
+    }
     final swapMarker = File(_swapInProgressMarkerPath(dbPath));
     if (!swapMarker.existsSync()) {
       return false;
@@ -192,10 +195,7 @@ class SeedDatabaseService {
       '^${RegExp.escape(_dbFileName)}\\.backup\\.(\\d+)\$',
     );
 
-    File? bestStage;
-    var bestStageNonce = -1;
-    File? bestBackup;
-    var bestBackupNonce = -1;
+    final candidates = <({File file, int nonce, bool isStage})>[];
 
     for (final entity in dbDir.listSync()) {
       if (entity is! File) continue;
@@ -203,89 +203,55 @@ class SeedDatabaseService {
       final stageMatch = stageRe.firstMatch(name);
       if (stageMatch != null) {
         final n = int.tryParse(stageMatch.group(1)!) ?? -1;
-        if (n > bestStageNonce) {
-          bestStageNonce = n;
-          bestStage = entity;
-        }
+        candidates.add((file: entity, nonce: n, isStage: true));
       }
       final backupMatch = backupRe.firstMatch(name);
       if (backupMatch != null) {
         final n = int.tryParse(backupMatch.group(1)!) ?? -1;
-        if (n > bestBackupNonce) {
-          bestBackupNonce = n;
-          bestBackup = entity;
-        }
+        candidates.add((file: entity, nonce: n, isStage: false));
       }
     }
+
+    candidates.sort((a, b) => b.nonce.compareTo(a.nonce));
 
     // Do not delete canonical WAL/SHM here. If the process died after moving
     // the main database aside but before sidecars were backed up, those files
     // may still contain the newest committed pages for the pre-replace DB.
     // Restoring the main file first preserves SQLite's ability to recover that
     // state on the next open.
-    if (bestStage != null) {
-      final stagePath = bestStage.path;
+    for (final candidate in candidates) {
+      final candidatePath = candidate.file.path;
       try {
-        validateSeedArtifact(stagePath);
-        await promoteStagedArtifact(
-          stagingPath: stagePath,
-          canonicalPath: dbPath,
-        );
-        _log.warning(
-          'Repaired interrupted seed swap: promoted staged artifact '
-          '(nonce=$bestStageNonce).',
-        );
-      } on Object catch (e, st) {
-        _log.severe(
-          'Failed to promote staged seed artifact during startup repair',
-          e,
-          st,
-        );
-        if (bestBackup != null) {
-          try {
-            validateSeedArtifact(bestBackup.path);
-          } on Object catch (validationError, validationStackTrace) {
-            _log.severe(
-              'Backup seed artifact failed validation during startup repair',
-              validationError,
-              validationStackTrace,
-            );
-            return false;
-          }
+        validateSeedArtifact(candidatePath);
+        if (candidate.isStage) {
+          await promoteStagedArtifact(
+            stagingPath: candidatePath,
+            canonicalPath: dbPath,
+          );
+          _log.warning(
+            'Repaired interrupted seed swap: promoted staged artifact '
+            '(nonce=${candidate.nonce}).',
+          );
+        } else {
           final ok = await _restoreFromBackupSet(
             dbPath: dbPath,
-            backupMainPath: bestBackup.path,
+            backupMainPath: candidatePath,
           );
           if (ok) {
             await _deleteOrphanSeedSwapArtifactFiles(dbDir);
           }
           return ok;
         }
-        return false;
-      }
-      await _deleteOrphanSeedSwapArtifactFiles(dbDir);
-      return true;
-    }
-
-    if (bestBackup != null) {
-      try {
-        validateSeedArtifact(bestBackup.path);
-      } on Object catch (validationError, validationStackTrace) {
-        _log.severe(
-          'Backup seed artifact failed validation during startup repair',
-          validationError,
-          validationStackTrace,
-        );
-        return false;
-      }
-      final ok = await _restoreFromBackupSet(
-        dbPath: dbPath,
-        backupMainPath: bestBackup.path,
-      );
-      if (ok) {
         await _deleteOrphanSeedSwapArtifactFiles(dbDir);
+        return true;
+      } on Object catch (e, st) {
+        _log.severe(
+          'Failed to restore seed artifact during startup repair',
+          e,
+          st,
+        );
+        continue;
       }
-      return ok;
     }
 
     return false;
@@ -704,6 +670,19 @@ class SeedDatabaseService {
     }
   }
 
+  /// Marks that a reset/forget teardown is in progress so startup repair does
+  /// not resurrect a DB that the app is intentionally deleting.
+  Future<void> markResetCleanupInProgress() async {
+    final dbPath = await databasePath();
+    await File(_resetInProgressMarkerPath(dbPath)).writeAsString('1');
+  }
+
+  /// Clears the reset/forget teardown marker after cleanup completes.
+  Future<void> clearResetCleanupInProgress() async {
+    final dbPath = await databasePath();
+    await _cleanupTemp(_resetInProgressMarkerPath(dbPath));
+  }
+
   Future<void> _cleanupTemp(String tempPath) async {
     final f = File(tempPath);
     if (f.existsSync()) {
@@ -784,6 +763,9 @@ class SeedDatabaseService {
   }
 
   String _swapInProgressMarkerPath(String dbPath) => '$dbPath.swap_in_progress';
+
+  String _resetInProgressMarkerPath(String dbPath) =>
+      '$dbPath.reset_in_progress';
 
   /// Test-only: resets [moveFileInvocationCountForTest] and
   /// [debugSimulateRenameFailureOnMoveCallOneBased].

@@ -1,4 +1,3 @@
-
 import 'package:app/app/providers/local_data_cleanup_provider.dart';
 import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
@@ -32,10 +31,10 @@ class _SlowClosingAppDatabase extends AppDatabase {
 class _BlockingReplaceLockSeedSyncService extends SeedDatabaseSyncService {
   _BlockingReplaceLockSeedSyncService()
     : super(
-         seedDatabaseService: _NoOpSeedDatabaseService(),
-         loadLocalEtag: () => '',
-         saveLocalEtag: (_) {},
-       );
+        seedDatabaseService: _NoOpSeedDatabaseService(),
+        loadLocalEtag: () => '',
+        saveLocalEtag: (_) {},
+      );
 
   int lockInvocations = 0;
 
@@ -101,9 +100,8 @@ void main() {
       // Warm up so appDatabaseProvider exists (matches production).
       expect(container.read(appDatabaseProvider), same(db));
 
-      container
-          .read(isSeedDatabaseReadyProvider.notifier)
-          .seedReadyDirect = false;
+      container.read(isSeedDatabaseReadyProvider.notifier).seedReadyDirect =
+          false;
       expect(container.read(isSeedDatabaseReadyProvider), isFalse);
 
       final restoreFuture = restoreReadinessAfterResetRetryFailedForTesting(

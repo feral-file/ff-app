@@ -57,6 +57,11 @@ class _TwoPhaseStartupSeedSync implements SeedDatabaseSyncService {
   int _calls = 0;
 
   @override
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) async {
+    return action();
+  }
+
+  @override
   Future<bool> sync({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
@@ -92,6 +97,11 @@ class _BlockingStartupSeedSync implements SeedDatabaseSyncService {
   _BlockingStartupSeedSync(this._finishCompleter);
 
   final Completer<bool> _finishCompleter;
+
+  @override
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) async {
+    return action();
+  }
 
   @override
   Future<bool> sync({

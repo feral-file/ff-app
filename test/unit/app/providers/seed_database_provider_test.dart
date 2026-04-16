@@ -117,6 +117,11 @@ class _FakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
   bool hasLocalDatabase = false;
 
   @override
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) async {
+    return action();
+  }
+
+  @override
   Future<bool> sync({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
@@ -170,6 +175,11 @@ class _OverlappingSeedSyncRaceFake implements SeedDatabaseSyncService {
   int syncCallCount = 0;
 
   @override
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) async {
+    return action();
+  }
+
+  @override
   Future<bool> sync({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
@@ -214,6 +224,11 @@ class _ParallelQuickSkipAndBlockFake implements SeedDatabaseSyncService {
   var _call = 0;
 
   @override
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) async {
+    return action();
+  }
+
+  @override
   Future<bool> sync({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
@@ -253,6 +268,11 @@ class _OverlapFailBeforeSecondBeforeReplaceFake
 
   final Completer<void> _block;
   int syncCallCount = 0;
+
+  @override
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) async {
+    return action();
+  }
 
   @override
   Future<bool> sync({
@@ -303,6 +323,11 @@ class _OverlapUpdatedSuccessFake implements SeedDatabaseSyncService {
   final Completer<void> _secondStarted;
   final Completer<void> _secondMayComplete;
   int syncCallCount = 0;
+
+  @override
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) async {
+    return action();
+  }
 
   @override
   Future<bool> sync({
@@ -1278,6 +1303,11 @@ class _SlowFakeSeedDatabaseSyncService implements SeedDatabaseSyncService {
 
   final SeedDatabaseSyncService delegate;
   final Future<void> _beforeComplete;
+
+  @override
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) async {
+    return action();
+  }
 
   @override
   Future<bool> sync({

@@ -211,5 +211,74 @@ void main() {
         expect(() => validator.validate(dbPath), returnsNormally);
       },
     );
+
+    test(
+      'startup repair ignores interrupted-reset markers instead of restoring '
+      'swap artifacts',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_seed_reset_marker_',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final marker = File('$dbPath.reset_in_progress');
+        final stage = File(p.join(tempDir.path, 'dp1_library.sqlite.stage.9'));
+        createSeedArtifactDatabase(file: stage);
+        await marker.writeAsString('1');
+        await File('$dbPath.swap_in_progress').writeAsString('9');
+
+        final svc = _ThrowingMaterializeSeedService(
+          dbPath: dbPath,
+          tempDirProvider: () async => tempDir,
+        );
+
+        expect(await svc.repairInterruptedSeedSwapIfNeeded(), isFalse);
+        expect(File(dbPath).existsSync(), isFalse);
+        expect(stage.existsSync(), isTrue);
+      },
+    );
+
+    test(
+      'startup repair prefers the newest artifact even when backup is newer '
+      'than stage',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_seed_mixed_artifacts_',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final olderStage = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.100'),
+        );
+        final newerBackup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.200'),
+        );
+        createSeedArtifactDatabase(file: olderStage);
+        createSeedArtifactDatabase(file: newerBackup);
+        await File('$dbPath.swap_in_progress').writeAsString('200');
+
+        final svc = _ThrowingMaterializeSeedService(
+          dbPath: dbPath,
+          tempDirProvider: () async => tempDir,
+        );
+
+        final repaired = await svc.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        expect(File(dbPath).existsSync(), isTrue);
+        expect(olderStage.existsSync(), isFalse);
+        expect(newerBackup.existsSync(), isFalse);
+      },
+    );
   });
 }
