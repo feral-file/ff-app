@@ -30,9 +30,9 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      container.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(
-            false,
-          );
+      container
+          .read(isSeedDatabaseReadyProvider.notifier)
+          .seedReadyDirect = false;
       await container.read(isSeedDatabaseReadyProvider.notifier).setReady();
 
       expect(readyDuringOnReady, isFalse);
@@ -70,9 +70,9 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      container.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(
-            false,
-          );
+      container
+          .read(isSeedDatabaseReadyProvider.notifier)
+          .seedReadyDirect = false;
       await container.read(isSeedDatabaseReadyProvider.notifier).setReady();
 
       expect(ensureCalls, 1);

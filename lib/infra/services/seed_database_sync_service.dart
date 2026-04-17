@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:app/infra/services/seed_database_artifact_validator.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
@@ -11,11 +12,14 @@ import 'package:synchronized/synchronized.dart';
 /// 1) HEAD remote seed URL and read ETag.
 /// 2) Compare against locally persisted ETag in ObjectBox config.
 /// 3) If changed (or no local DB), download to temp file.
-/// 4) [beforeReplace] — callback only; caller prepares (e.g. close DB). Does not
-///    perform replace. Must not delete files; [replaceDatabaseFromTemporaryFile]
-///    handles delete+rename atomically.
-/// 5) [replaceDatabaseFromTemporaryFile] — the actual replace (delete old, rename temp).
-/// 6) [afterReplace] — callback only; caller rebinds (e.g. invalidate providers).
+/// 4) Validate the temp artifact before any DB teardown begins.
+/// 5) `beforeReplace` — callback only; caller prepares (e.g. close DB). Does
+///    not perform replace. Must not delete files;
+///    `replaceDatabaseFromTemporaryFile` owns the recoverable swap.
+/// 6) `replaceDatabaseFromTemporaryFile` — the actual replace (stage, backup,
+///    promote, restore-on-failure).
+/// 7) `afterReplace` — callback only; caller rebinds (e.g. invalidate
+///    providers).
 class SeedDatabaseSyncService {
   /// Creates a seed database sync orchestrator.
   SeedDatabaseSyncService({
@@ -37,6 +41,13 @@ class SeedDatabaseSyncService {
   /// beforeReplace → replace → afterReplace.
   final _replaceLock = Lock();
 
+  /// Runs [action] while holding the replace lock. Cleanup flows that delete
+  /// seed artifacts must go through the same lock so they cannot remove the
+  /// only recoverable swap files while a replace is mid-flight.
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) {
+    return _replaceLock.synchronized(action);
+  }
+
   /// Syncs seed DB from remote.
   ///
   /// When `forceReplace` is false (default), performs ETag-based conditional
@@ -49,14 +60,14 @@ class SeedDatabaseSyncService {
   /// decide whether to emit syncing status (e.g. only when hasLocalDatabase is
   /// false). Remote ETag is always fetched via HEAD before download.
   ///
-  /// `isSessionActive` when provided is checked before each replace-phase step
-  /// (beforeReplace, replace, afterReplace). If it returns false, the step and
-  /// remaining steps are skipped and the method returns false.
+  /// `isSessionActive` when provided is checked before the replace phase
+  /// starts. Once `beforeReplace` begins, the sync must finish replace +
+  /// rebind so the app is not left with a closed DB and no reconnect path.
   ///
-  /// [beforeReplace] and [afterReplace] are callbacks only; they do not affect
-  /// the replace logic. The actual replace (delete old files + rename temp) is
-  /// done by [replaceDatabaseFromTemporaryFile]. beforeReplace should prepare
-  /// (e.g. close DB). afterReplace should rebind (e.g. invalidate providers).
+  /// `beforeReplace` and `afterReplace` are callbacks only; they do not own
+  /// the file swap logic. `beforeReplace` should prepare (e.g. close DB) only
+  /// after the temp artifact has already validated. `afterReplace` should
+  /// rebind (e.g. invalidate providers).
   Future<bool> sync({
     required Future<void> Function() beforeReplace,
     required Future<void> Function() afterReplace,
@@ -71,8 +82,12 @@ class SeedDatabaseSyncService {
     bool failSilently = false,
     bool Function()? isSessionActive,
   }) async {
+    String? tempPath;
     try {
       final hasLocalDatabase = await _seedDatabaseService.hasLocalDatabase();
+      final hasUsableLocalDatabase =
+          hasLocalDatabase &&
+          await _seedDatabaseService.hasUsableLocalDatabase();
 
       bool shouldDownload;
       String? localEtag;
@@ -89,10 +104,12 @@ class SeedDatabaseSyncService {
           final loaded = _loadLocalEtag();
           final headEtag = await _seedDatabaseService.headRemoteEtag();
           shouldDownload =
-              !hasLocalDatabase || (headEtag.isNotEmpty && headEtag != loaded);
+              !hasUsableLocalDatabase ||
+              (headEtag.isNotEmpty && headEtag != loaded);
 
           _log.info(
             'Seed sync pre-check: hasLocal=$hasLocalDatabase, '
+            'hasUsableLocal=$hasUsableLocalDatabase, '
             'localEtag=${loaded.isEmpty ? '<empty>' : loaded}, '
             'remoteEtag=${headEtag.isEmpty ? '<empty>' : headEtag}, '
             'shouldReplace=$shouldDownload',
@@ -108,11 +125,12 @@ class SeedDatabaseSyncService {
       } on Exception catch (e, st) {
         _log.warning(
           'Seed sync ETag check failed; '
-          'falling back to shouldDownload=forceReplace.',
+          'falling back to shouldDownload= '
+          '(forceReplace || no usable local DB).',
           e,
           st,
         );
-        shouldDownload = forceReplace;
+        shouldDownload = forceReplace || !hasUsableLocalDatabase;
         localEtag = null;
         remoteEtag = null;
       }
@@ -132,18 +150,26 @@ class SeedDatabaseSyncService {
         remoteEtag: remoteEtag,
       );
 
-      final tempPath = await _seedDatabaseService.downloadToTemporaryFile(
+      tempPath = await _seedDatabaseService.downloadToTemporaryFile(
         onProgress: onProgress,
+      );
+      final metadata = _seedDatabaseService.validateSeedArtifact(tempPath);
+      _log.info(
+        'Seed database artifact preflight passed '
+        '(bytes=${metadata.fileSize}, userVersion=${metadata.userVersion})',
       );
 
       // After beforeReplace, must finish replace+afterReplace (reconnect path).
       // Early return would leave DB closed; if newer session fails, nothing
       // restores readiness. Only check isSessionActive before beforeReplace.
-      final result = await _replaceLock.synchronized(() async {
+      final result = await runWithReplaceLock(() async {
         if (isSessionActive != null && !isSessionActive()) return false;
         await beforeReplace();
 
-        await _seedDatabaseService.replaceDatabaseFromTemporaryFile(tempPath);
+        await _seedDatabaseService.replaceDatabaseFromTemporaryFile(
+          tempPath!,
+          prevalidatedArtifact: metadata,
+        );
 
         if (remoteEtag != null && remoteEtag.isNotEmpty) {
           _saveLocalEtag(remoteEtag);
@@ -182,6 +208,13 @@ class SeedDatabaseSyncService {
         'Seed database sync skipped (network failure): ${e.message}',
       );
       return false;
+    } on SeedArtifactValidationException catch (e) {
+      if (!failSilently) rethrow;
+      _log.warning(
+        'Seed database sync skipped (artifact validation failed: '
+        '${e.reasonCode}): $e',
+      );
+      return false;
     } on SocketException catch (e) {
       if (!failSilently) rethrow;
       _log.warning('Seed database sync skipped (offline): $e');
@@ -194,6 +227,10 @@ class SeedDatabaseSyncService {
       if (!failSilently) rethrow;
       _log.warning('Seed database sync skipped: $e');
       return false;
+    } finally {
+      if (tempPath != null) {
+        await _seedDatabaseService.cleanupTemporarySeedArtifact(tempPath);
+      }
     }
   }
 }

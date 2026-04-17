@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:app/app/app.dart';
 import 'package:app/app/providers/app_provider_observer.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
@@ -11,11 +9,10 @@ import 'package:app/infra/database/objectbox_init.dart';
 import 'package:app/infra/database/objectbox_models.dart';
 import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/legacy_storage_locator.dart';
+import 'package:app/infra/services/seed_database_service.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// Shared app bootstrap state used by both production startup and Patrol tests.
@@ -75,11 +72,10 @@ Future<AppBootstrapResult> bootstrapAppDependencies() async {
     hasDoneOnboarding = true;
   }
 
-  final dbFolder = await getApplicationDocumentsDirectory();
-  final dbFile = File(p.join(dbFolder.path, 'dp1_library.sqlite'));
-  if (dbFile.existsSync()) {
-    SeedDatabaseGate.complete();
-  }
+  // Recover from a mid-swap crash: canonical file missing but staged/backup
+  // swap artifacts may still be present (see seed replace recoverable swap).
+  final seedDatabaseService = SeedDatabaseService();
+  await runSeedRepairAndCompleteGateIfUsable(seedDatabaseService);
 
   final initialLocation = hasDoneOnboarding || hasLegacySqliteDatabase
       ? Routes.home
@@ -92,6 +88,42 @@ Future<AppBootstrapResult> bootstrapAppDependencies() async {
     hasLegacySqliteDatabase: hasLegacySqliteDatabase,
     initialLocation: initialLocation,
   );
+}
+
+/// Same ordering as [bootstrapAppDependencies]: repair interrupted swap, then
+/// open the seed gate when the local DB validates. Kept testable so startup
+/// repair + gate behavior stays covered without full ObjectBox bootstrap.
+@visibleForTesting
+Future<void> runSeedRepairAndCompleteGateIfUsable(
+  SeedDatabaseService seedDatabaseService,
+) async {
+  try {
+    await seedDatabaseService.repairInterruptedSeedSwapIfNeeded();
+  } on Object catch (e, st) {
+    _log.warning(
+      'Seed swap startup repair failed; continuing without blocking startup.',
+      e,
+      st,
+    );
+  }
+
+  await completeSeedDatabaseGateIfUsable(seedDatabaseService);
+}
+
+/// Opens [SeedDatabaseGate] only when the local seed database is valid.
+@visibleForTesting
+Future<void> completeSeedDatabaseGateIfUsable(
+  SeedDatabaseService seedDatabaseService,
+) async {
+  if (await seedDatabaseService.isResetCleanupInProgress()) {
+    _log.info(
+      'Skipping seed gate completion while reset cleanup is in progress.',
+    );
+    return;
+  }
+  if (await seedDatabaseService.hasUsableLocalDatabase()) {
+    SeedDatabaseGate.complete();
+  }
 }
 
 /// Builds the production app root with the resolved bootstrap state.

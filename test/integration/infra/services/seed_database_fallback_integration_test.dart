@@ -5,18 +5,21 @@ import 'package:app/infra/services/seed_database_service.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
+import '../../../helpers/seed_database_test_helper.dart';
 import '../../helpers/integration_test_harness.dart';
 
-/// SeedDatabaseService that uses a temp path and throws on replace.
-/// Verifies fallback invariant: when replace fails after beforeReplace,
-/// the old DB file remains on disk (project_spec, app_flows).
-class _ThrowingReplaceSeedDatabaseService extends SeedDatabaseService {
-  _ThrowingReplaceSeedDatabaseService({
+/// SeedDatabaseService that downloads a valid temp seed but fails during
+/// promotion after the old DB has already been moved to backup.
+/// Verifies the real fallback invariant: restore the previous DB when staged
+/// replace cannot complete.
+class _FailingPromoteSeedDatabaseService extends SeedDatabaseService {
+  _FailingPromoteSeedDatabaseService({
     required this.dbPath,
     required Future<Directory> Function() tempDirProvider,
-  })  : _tempDirProvider = tempDirProvider,
-        super(temporaryDirectoryProvider: tempDirProvider);
+  }) : _tempDirProvider = tempDirProvider,
+       super(temporaryDirectoryProvider: tempDirProvider);
 
   final String dbPath;
   final Future<Directory> Function() _tempDirProvider;
@@ -39,22 +42,25 @@ class _ThrowingReplaceSeedDatabaseService extends SeedDatabaseService {
     final dir = await _tempDirProvider();
     final tempPath = p.join(
       dir.path,
-      'seed_${DateTime.now().microsecondsSinceEpoch}.tmp',
+      'seed_${DateTime.now().microsecondsSinceEpoch}.sqlite',
     );
-    await File(tempPath).writeAsString('temp');
+    createSeedArtifactDatabase(file: File(tempPath));
     return tempPath;
   }
 
   @override
-  Future<void> replaceDatabaseFromTemporaryFile(String tempPath) async {
-    throw Exception('Simulated replace failure');
+  Future<void> promoteStagedArtifact({
+    required String stagingPath,
+    required String canonicalPath,
+  }) async {
+    throw Exception('Simulated promote failure');
   }
 }
 
 void main() {
   group('Seed database fallback invariant', () {
     test(
-      'when replace fails after beforeReplace, old DB file remains readable',
+      'when staged replace fails after backup, old sqlite db remains readable',
       () async {
         final provisionedEnvFile = await provisionIntegrationEnvFile();
         addTearDown(() async {
@@ -64,7 +70,9 @@ void main() {
           }
         });
 
-        final tempDir = await Directory.systemTemp.createTemp('ff_seed_fallback_');
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_seed_fallback_',
+        );
         addTearDown(() async {
           if (tempDir.existsSync()) {
             await tempDir.delete(recursive: true);
@@ -72,10 +80,9 @@ void main() {
         });
 
         final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
-        const marker = 'old-db-content';
-        await File(dbPath).writeAsString(marker);
+        createSeedArtifactDatabase(file: File(dbPath));
 
-        final seedService = _ThrowingReplaceSeedDatabaseService(
+        final seedService = _FailingPromoteSeedDatabaseService(
           dbPath: dbPath,
           tempDirProvider: () async => tempDir,
         );
@@ -102,7 +109,13 @@ void main() {
 
         final dbFile = File(dbPath);
         expect(dbFile.existsSync(), isTrue);
-        expect(await dbFile.readAsString(), marker);
+        final probeDb = sqlite3.sqlite3.open(dbFile.path);
+        try {
+          final rows = probeDb.select('PRAGMA user_version');
+          expect(rows.first.columnAt(0), 3);
+        } finally {
+          probeDb.dispose();
+        }
       },
     );
   });

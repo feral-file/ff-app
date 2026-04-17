@@ -311,7 +311,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
 
       final hasSeedFile = await ref
           .read(seedDatabaseServiceProvider)
-          .hasLocalDatabase();
+          .hasUsableLocalDatabase();
       if (!hasSeedFile) {
         // Gate stays incomplete; do not open Drift — run config + FF1 only so
         // startup completes (onboarding / home) instead of blocking forever on
@@ -455,7 +455,7 @@ class _AppStartupBootstrapState extends ConsumerState<_AppStartupBootstrap>
     if (!notifier.pendingDp1BootstrapAfterSeed) {
       return;
     }
-    if (!await ref.read(seedDatabaseServiceProvider).hasLocalDatabase()) {
+    if (!await ref.read(seedDatabaseServiceProvider).hasUsableLocalDatabase()) {
       return;
     }
     try {

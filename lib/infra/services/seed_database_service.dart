@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:app/infra/config/app_config.dart';
 import 'package:app/infra/logging/structured_dio_logging_interceptor.dart';
+import 'package:app/infra/services/seed_database_artifact_validator.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -93,8 +94,9 @@ class _SeedDatabaseS3Location {
 ///
 /// The app never creates an empty database. Flow:
 /// 1) Download seed from S3-compatible storage to a temporary file.
-/// 2) Replace the current database file with the downloaded file (delete old
-///    files if any, then rename temp to canonical path).
+/// 2) Validate the artifact before any DB teardown begins.
+/// 3) Replace the current database file with a staged, recoverable swap so the
+///    previous DB can be restored if IO fails mid-replace.
 ///
 /// On first install the local `dp1_library.sqlite` does not exist until the
 /// seed is placed. Call `needsSeedDownload` to determine whether the database
@@ -106,6 +108,7 @@ class SeedDatabaseService {
     DateTime Function()? nowUtc,
     Future<Directory> Function()? temporaryDirectoryProvider,
     int maxDownloadAttempts = 3,
+    SeedDatabaseArtifactValidator? artifactValidator,
   }) : _dio = (dio ?? Dio())
          // Intentionally no sentry_dio: seed sync failures are expected offline
          // / infra cases; StructuredDioLoggingInterceptor covers observability.
@@ -118,7 +121,9 @@ class SeedDatabaseService {
        _nowUtc = nowUtc ?? (() => DateTime.now().toUtc()),
        _maxDownloadAttempts = maxDownloadAttempts < 1 ? 1 : maxDownloadAttempts,
        _temporaryDirectoryProvider =
-           temporaryDirectoryProvider ?? getTemporaryDirectory;
+           temporaryDirectoryProvider ?? getTemporaryDirectory,
+       _artifactValidator =
+           artifactValidator ?? const SeedDatabaseArtifactValidator();
 
   static final _log = Logger('SeedDatabaseService');
 
@@ -134,6 +139,7 @@ class SeedDatabaseService {
   final DateTime Function() _nowUtc;
   final Future<Directory> Function() _temporaryDirectoryProvider;
   final int _maxDownloadAttempts;
+  final SeedDatabaseArtifactValidator _artifactValidator;
 
   /// The canonical database file name used by AppDatabase.
   static const _dbFileName = 'dp1_library.sqlite';
@@ -154,6 +160,401 @@ class SeedDatabaseService {
   Future<bool> hasLocalDatabase() async {
     final path = await databasePath();
     return File(path).existsSync();
+  }
+
+  /// Returns true only when the canonical database file exists and passes the
+  /// same artifact validation used for downloaded seed files.
+  ///
+  /// Startup uses this to avoid opening the seed gate on a corrupt local file.
+  Future<bool> hasUsableLocalDatabase() async {
+    final path = await databasePath();
+    final canonical = File(path);
+    if (!canonical.existsSync()) {
+      return false;
+    }
+    try {
+      validateSeedArtifact(path);
+      return true;
+    } on Object catch (e, st) {
+      _log.warning(
+        'Canonical seed DB exists but failed validation; keeping seed gate '
+        'closed until sync restores a valid artifact.',
+        e,
+        st,
+      );
+      return false;
+    }
+  }
+
+  /// If the process died mid-replace, the canonical DB may be missing while
+  /// staged or backup artifacts remain. Restores a usable DB before startup
+  /// consumers run (bootstrap opens the seed gate when the file exists).
+  ///
+  /// Prefers promoting the latest staged artifact (post-validation seed) over
+  /// restoring from backup (previous live DB) when both exist.
+  Future<bool> repairInterruptedSeedSwapIfNeeded() async {
+    final dbPath = await databasePath();
+    final resetMarker = File(_resetInProgressMarkerPath(dbPath));
+    final swapMarker = File(_swapInProgressMarkerPath(dbPath));
+    if (resetMarker.existsSync()) {
+      return false;
+    }
+    if (!swapMarker.existsSync()) {
+      return false;
+    }
+    final rawMarkerNonce = swapMarker.readAsStringSync().trim();
+    final markerNonce = int.tryParse(rawMarkerNonce);
+    if (markerNonce == null) {
+      _log.warning(
+        'Seed swap marker contains non-numeric nonce "$rawMarkerNonce"; '
+        'skip startup repair to avoid restoring an unrelated artifact set.',
+      );
+      return false;
+    }
+    final canonical = File(dbPath);
+    if (canonical.existsSync()) {
+      try {
+        validateSeedArtifact(canonical.path);
+        await _cleanupTemp(swapMarker.path);
+        await _deleteOrphanSeedSwapArtifactFiles(Directory(p.dirname(dbPath)));
+        return false;
+      } on Object catch (e, st) {
+        _log.warning(
+          'Canonical seed DB exists but failed validation during startup '
+          'repair; attempting recovery from staged/backup artifacts.',
+          e,
+          st,
+        );
+      }
+    }
+
+    final dbDir = Directory(p.dirname(dbPath));
+    if (!dbDir.existsSync()) {
+      return false;
+    }
+
+    final stageRe = RegExp(
+      '^${RegExp.escape(_dbFileName)}\\.stage\\.(\\d+)\$',
+    );
+    final backupRe = RegExp(
+      '^${RegExp.escape(_dbFileName)}\\.backup\\.(\\d+)\$',
+    );
+
+    final candidates = <({File file, int nonce, bool isStage})>[];
+
+    for (final entity in dbDir.listSync()) {
+      if (entity is! File) continue;
+      final name = p.basename(entity.path);
+      final stageMatch = stageRe.firstMatch(name);
+      if (stageMatch != null) {
+        final n = int.tryParse(stageMatch.group(1)!) ?? -1;
+        candidates.add((file: entity, nonce: n, isStage: true));
+      }
+      final backupMatch = backupRe.firstMatch(name);
+      if (backupMatch != null) {
+        final n = int.tryParse(backupMatch.group(1)!) ?? -1;
+        candidates.add((file: entity, nonce: n, isStage: false));
+      }
+    }
+
+    // Do not delete canonical WAL/SHM here. If the process died after moving
+    // the main database aside but before sidecars were backed up, those files
+    // may still contain the newest committed pages for the pre-replace DB.
+    // Restoring the main file first preserves SQLite's ability to recover that
+    // state on the next open.
+    candidates.sort((a, b) {
+      final nonceCmp = b.nonce.compareTo(a.nonce);
+      if (nonceCmp != 0) return nonceCmp;
+      if (a.isStage != b.isStage) {
+        return a.isStage ? -1 : 1;
+      }
+      return a.file.path.compareTo(b.file.path);
+    });
+    final candidatesToTry = candidates
+        .where((c) => c.nonce == markerNonce)
+        .toList();
+    if (candidatesToTry.isEmpty) {
+      _log.warning(
+        'Seed swap marker nonce=$markerNonce has no matching staged/backup '
+        'artifacts; skip startup repair to avoid restoring an unrelated swap.',
+      );
+      return false;
+    }
+
+    for (final candidate in candidatesToTry) {
+      final candidatePath = candidate.file.path;
+      // Snapshot backup sidecar presence before validation. Validation opens
+      // SQLite and may materialize sidecars; restore decisions must reflect
+      // the real interrupted-swap artifact layout, not validator side effects.
+      final backupWalExistsBeforeValidation =
+          !candidate.isStage && File('$candidatePath-wal').existsSync();
+      final backupShmExistsBeforeValidation =
+          !candidate.isStage && File('$candidatePath-shm').existsSync();
+      try {
+        validateSeedArtifact(candidatePath);
+        if (candidate.isStage) {
+          final rollbackDbPath = '$dbPath.rollback.${candidate.nonce}';
+          var rollbackMovedIntoPlace = false;
+          if (File(dbPath).existsSync()) {
+            await _moveFile(sourcePath: dbPath, targetPath: rollbackDbPath);
+            rollbackMovedIntoPlace = true;
+          }
+          try {
+            await promoteStagedArtifact(
+              stagingPath: candidatePath,
+              canonicalPath: dbPath,
+            );
+          } on Object {
+            if (File(rollbackDbPath).existsSync()) {
+              await _moveFile(sourcePath: rollbackDbPath, targetPath: dbPath);
+              rollbackMovedIntoPlace = false;
+            }
+            rethrow;
+          }
+          if (rollbackMovedIntoPlace) {
+            await _cleanupTemp(rollbackDbPath);
+          }
+          await _deleteFileIfExists('$dbPath-wal');
+          await _deleteFileIfExists('$dbPath-shm');
+          _log.warning(
+            'Repaired interrupted seed swap: promoted staged artifact '
+            '(nonce=${candidate.nonce}).',
+          );
+        } else {
+          final ok = await _restoreFromBackupSet(
+            dbPath: dbPath,
+            backupMainPath: candidatePath,
+            backupWalExists: backupWalExistsBeforeValidation,
+            backupShmExists: backupShmExistsBeforeValidation,
+          );
+          if (ok) {
+            await _cleanupTemp(swapMarker.path);
+            await _deleteOrphanSeedSwapArtifactFiles(dbDir);
+            return true;
+          }
+          continue;
+        }
+        await _cleanupTemp(swapMarker.path);
+        await _deleteOrphanSeedSwapArtifactFiles(dbDir);
+        return true;
+      } on Object catch (e, st) {
+        _log.severe(
+          'Failed to restore seed artifact during startup repair',
+          e,
+          st,
+        );
+        continue;
+      }
+    }
+
+    return false;
+  }
+
+  Future<bool> _restoreFromBackupSet({
+    required String dbPath,
+    required String backupMainPath,
+    required bool backupWalExists,
+    required bool backupShmExists,
+  }) async {
+    try {
+      final nonce = DateTime.now().microsecondsSinceEpoch;
+      final restoreMainPath = '$dbPath.restore.$nonce';
+      final restoreWalPath = '$dbPath-wal.restore.$nonce';
+      final restoreShmPath = '$dbPath-shm.restore.$nonce';
+      final rollbackWalPath = '$dbPath-wal.rollback.$nonce';
+      final rollbackShmPath = '$dbPath-shm.rollback.$nonce';
+      final backupWalPath = '$backupMainPath-wal';
+      final backupShmPath = '$backupMainPath-shm';
+      try {
+        if (File(backupMainPath).existsSync()) {
+          await _moveFile(
+            sourcePath: backupMainPath,
+            targetPath: restoreMainPath,
+          );
+        }
+        if (backupWalExists) {
+          await _moveFile(
+            sourcePath: backupWalPath,
+            targetPath: restoreWalPath,
+          );
+        }
+        if (backupShmExists) {
+          await _moveFile(
+            sourcePath: backupShmPath,
+            targetPath: restoreShmPath,
+          );
+        }
+      } on Object {
+        if (File(restoreMainPath).existsSync()) {
+          await _moveFile(
+            sourcePath: restoreMainPath,
+            targetPath: backupMainPath,
+          );
+        }
+        if (File(restoreWalPath).existsSync()) {
+          await _moveFile(
+            sourcePath: restoreWalPath,
+            targetPath: backupWalPath,
+          );
+        }
+        if (File(restoreShmPath).existsSync()) {
+          await _moveFile(
+            sourcePath: restoreShmPath,
+            targetPath: backupShmPath,
+          );
+        }
+        rethrow;
+      }
+
+      final canonicalWalPath = '$dbPath-wal';
+      final canonicalShmPath = '$dbPath-shm';
+      if (backupWalExists || backupShmExists) {
+        final canonicalWalExists = File(canonicalWalPath).existsSync();
+        final canonicalShmExists = File(canonicalShmPath).existsSync();
+        var canonicalWalMovedToRollback = false;
+        var canonicalShmMovedToRollback = false;
+        var restoredWalMovedToCanonical = false;
+        var restoredShmMovedToCanonical = false;
+
+        // Only move a canonical sidecar into rollback when we have the matching
+        // backup sidecar to restore. If the crash left an asymmetric backup
+        // (e.g. only `-shm` in backup), moving the surviving canonical `-wal`
+        // would discard committed pages that still pair with the backup main.
+        try {
+          if (backupWalExists && canonicalWalExists) {
+            await _moveFile(
+              sourcePath: canonicalWalPath,
+              targetPath: rollbackWalPath,
+            );
+            canonicalWalMovedToRollback = true;
+          }
+          if (backupShmExists && canonicalShmExists) {
+            await _moveFile(
+              sourcePath: canonicalShmPath,
+              targetPath: rollbackShmPath,
+            );
+            canonicalShmMovedToRollback = true;
+          }
+          if (backupWalExists && File(restoreWalPath).existsSync()) {
+            await _moveFile(
+              sourcePath: restoreWalPath,
+              targetPath: canonicalWalPath,
+            );
+            restoredWalMovedToCanonical = true;
+          }
+          if (backupShmExists && File(restoreShmPath).existsSync()) {
+            await _moveFile(
+              sourcePath: restoreShmPath,
+              targetPath: canonicalShmPath,
+            );
+            restoredShmMovedToCanonical = true;
+          }
+          if (File(restoreMainPath).existsSync()) {
+            await _replaceFileOverwritingTarget(
+              sourcePath: restoreMainPath,
+              targetPath: dbPath,
+            );
+          }
+        } on Object {
+          // If sidecars were already moved to canonical before the main replace
+          // failed, move them back into restore slots so catch cleanup can put
+          // the backup set back together deterministically.
+          if (restoredWalMovedToCanonical &&
+              File(canonicalWalPath).existsSync()) {
+            await _moveFile(
+              sourcePath: canonicalWalPath,
+              targetPath: restoreWalPath,
+            );
+          }
+          if (restoredShmMovedToCanonical &&
+              File(canonicalShmPath).existsSync()) {
+            await _moveFile(
+              sourcePath: canonicalShmPath,
+              targetPath: restoreShmPath,
+            );
+          }
+          if (canonicalWalMovedToRollback &&
+              File(rollbackWalPath).existsSync()) {
+            await _replaceFileOverwritingTarget(
+              sourcePath: rollbackWalPath,
+              targetPath: canonicalWalPath,
+            );
+          }
+          if (canonicalShmMovedToRollback &&
+              File(rollbackShmPath).existsSync()) {
+            await _replaceFileOverwritingTarget(
+              sourcePath: rollbackShmPath,
+              targetPath: canonicalShmPath,
+            );
+          }
+          if (File(restoreMainPath).existsSync()) {
+            await _moveFile(
+              sourcePath: restoreMainPath,
+              targetPath: backupMainPath,
+            );
+          }
+          if (File(restoreWalPath).existsSync()) {
+            await _moveFile(
+              sourcePath: restoreWalPath,
+              targetPath: backupWalPath,
+            );
+          }
+          if (File(restoreShmPath).existsSync()) {
+            await _moveFile(
+              sourcePath: restoreShmPath,
+              targetPath: backupShmPath,
+            );
+          }
+          rethrow;
+        } finally {
+          await _cleanupTemp(rollbackWalPath);
+          await _cleanupTemp(rollbackShmPath);
+        }
+      } else if (File(restoreMainPath).existsSync()) {
+        await _replaceFileOverwritingTarget(
+          sourcePath: restoreMainPath,
+          targetPath: dbPath,
+        );
+      }
+      _log.warning(
+        'Repaired interrupted seed swap: restored canonical DB from backup '
+        '(${p.basename(backupMainPath)}).',
+      );
+      return true;
+    } on Object catch (e, st) {
+      _log.severe(
+        'Failed to restore seed DB from backup during startup repair',
+        e,
+        st,
+      );
+      return false;
+    }
+  }
+
+  Future<void> _deleteOrphanSeedSwapArtifactFiles(Directory dbDir) async {
+    for (final entity in dbDir.listSync()) {
+      if (entity is! File) continue;
+      final name = p.basename(entity.path);
+      if (name.startsWith('$_dbFileName.stage.') ||
+          name.startsWith('$_dbFileName.backup.')) {
+        await _cleanupTemp(entity.path);
+        final wal = File('${entity.path}-wal');
+        final shm = File('${entity.path}-shm');
+        if (wal.existsSync()) await _cleanupTemp(wal.path);
+        if (shm.existsSync()) await _cleanupTemp(shm.path);
+      }
+    }
+  }
+
+  Future<void> _deleteSeedSwapArtifactsInDirectory(Directory dbDir) async {
+    for (final entity in dbDir.listSync()) {
+      if (entity is! File) continue;
+      final name = p.basename(entity.path);
+      if (name.startsWith('$_dbFileName.stage.') ||
+          name.startsWith('$_dbFileName.backup.')) {
+        await _cleanupTemp(entity.path);
+      }
+    }
   }
 
   /// Best-effort HEAD request for the latest remote seed database ETag.
@@ -195,6 +596,11 @@ class SeedDatabaseService {
   }) async {
     final tempPath = await downloadToTemporaryFile(onProgress: onProgress);
     await replaceDatabaseFromTemporaryFile(tempPath);
+  }
+
+  /// Validates a downloaded seed artifact before the app closes the current DB.
+  SeedDatabaseArtifactMetadata validateSeedArtifact(String path) {
+    return _artifactValidator.validate(path);
   }
 
   /// Downloads the remote seed DB to a temporary-file path and returns it.
@@ -364,35 +770,119 @@ class SeedDatabaseService {
     return false;
   }
 
-  /// Replaces the live SQLite database file with a downloaded temp seed file.
+  /// Replaces the live SQLite database file with a validated temp seed file.
   ///
-  /// Does not create any database: deletes existing DB files (if any), then
-  /// renames the temp file to the canonical path. The seed artifact is the
-  /// only source of database content.
-  Future<void> replaceDatabaseFromTemporaryFile(String tempPath) async {
+  /// The replace remains recoverable until the staged artifact has been
+  /// promoted to the canonical path. If promotion fails after the old DB is
+  /// moved aside, this method restores the previous main DB and sidecars.
+  Future<void> replaceDatabaseFromTemporaryFile(
+    String tempPath, {
+    SeedDatabaseArtifactMetadata? prevalidatedArtifact,
+  }) async {
+    // Fresh sequence for each replace so debug hooks (tests) match call order.
+    SeedDatabaseService.moveFileInvocationCountForTest = 0;
     final dbPath = await databasePath();
     final tempFile = File(tempPath);
     if (!tempFile.existsSync()) {
       throw SeedDownloadException('Temporary seed file not found: $tempPath');
     }
-    try {
-      final dbFile = File(dbPath);
-      if (dbFile.existsSync()) {
-        await dbFile.delete();
-      }
-      final walFile = File('$dbPath-wal');
-      if (walFile.existsSync()) {
-        await walFile.delete();
-      }
-      final shmFile = File('$dbPath-shm');
-      if (shmFile.existsSync()) {
-        await shmFile.delete();
-      }
 
-      await tempFile.rename(dbPath);
+    final dbDir = p.dirname(dbPath);
+    final nonce = DateTime.now().microsecondsSinceEpoch;
+    final stagingPath = p.join(dbDir, 'dp1_library.sqlite.stage.$nonce');
+    final backupPath = p.join(dbDir, 'dp1_library.sqlite.backup.$nonce');
+    final walPath = '$dbPath-wal';
+    final shmPath = '$dbPath-shm';
+    final backupWalPath = '$backupPath-wal';
+    final backupShmPath = '$backupPath-shm';
+    final swapMarkerPath = _swapInProgressMarkerPath(dbPath);
+    var promotedCanonical = false;
+    // Only clear canonical paths and restore from backup after the live DB file
+    // was successfully moved aside; otherwise a failure during staging would
+    // delete the still-readable database (issue #337 recoverable-swap gap).
+    var mainDatabaseBackedUp = false;
+    // Track WAL/SHM moves separately: rollback must not delete canonical -wal/-shm
+    // unless those files were actually staged to backup. If main moved but a
+    // sidecar move failed, the canonical sidecar can still hold committed data.
+    var walBackedUp = false;
+    var shmBackedUp = false;
+
+    try {
+      await File(swapMarkerPath).writeAsString('$nonce');
+      final metadata = prevalidatedArtifact ?? validateSeedArtifact(tempPath);
+      await materializeValidatedArtifactInDatabaseDirectory(
+        sourcePath: tempPath,
+        stagingPath: stagingPath,
+      );
+      _log.info(
+        'Seed database artifact validated; staging replace '
+        '(bytes=${metadata.fileSize}, userVersion=${metadata.userVersion})',
+      );
+
+      await moveExistingDatabaseToBackup(
+        canonicalPath: dbPath,
+        backupPath: backupPath,
+      );
+      // True only when a live main DB file existed and was moved aside (backup
+      // file exists). First install has no canonical file — do not treat as
+      // backed up so catch does not run destructive restore without a backup.
+      mainDatabaseBackedUp = File(backupPath).existsSync();
+      await moveExistingDatabaseToBackup(
+        canonicalPath: walPath,
+        backupPath: backupWalPath,
+      );
+      walBackedUp = File(backupWalPath).existsSync();
+      await moveExistingDatabaseToBackup(
+        canonicalPath: shmPath,
+        backupPath: backupShmPath,
+      );
+      shmBackedUp = File(backupShmPath).existsSync();
+
+      await promoteStagedArtifact(
+        stagingPath: stagingPath,
+        canonicalPath: dbPath,
+      );
+      promotedCanonical = true;
+
+      await _cleanupSwapArtifactsBestEffort(
+        stagingPath: stagingPath,
+        backupPath: backupPath,
+        backupWalPath: backupWalPath,
+        backupShmPath: backupShmPath,
+      );
+      await _cleanupTemp(swapMarkerPath);
       _log.info('Seed database placed at $dbPath');
     } on Object catch (e, st) {
       _log.severe('Failed to replace seed database file', e, st);
+      if (mainDatabaseBackedUp && !promotedCanonical) {
+        await _deleteFileIfExists(dbPath);
+        await _restoreBackupIfNeeded(
+          backupPath: backupPath,
+          canonicalPath: dbPath,
+        );
+        if (walBackedUp) {
+          await _deleteFileIfExists(walPath);
+          await _restoreBackupIfNeeded(
+            backupPath: backupWalPath,
+            canonicalPath: walPath,
+          );
+        }
+        if (shmBackedUp) {
+          await _deleteFileIfExists(shmPath);
+          await _restoreBackupIfNeeded(
+            backupPath: backupShmPath,
+            canonicalPath: shmPath,
+          );
+        }
+      }
+      final stagedArtifactExists = File(stagingPath).existsSync();
+      // Failed staged artifacts are never reused by later sync attempts; clean
+      // them up even on first install so repeated failures do not accumulate
+      // orphaned SQLite files in the documents directory.
+      if (mainDatabaseBackedUp || promotedCanonical || stagedArtifactExists) {
+        await _cleanupTemp(stagingPath);
+      }
+      await _cleanupTemp(swapMarkerPath);
       await _cleanupTemp(tempPath);
       rethrow;
     }
@@ -401,13 +891,45 @@ class SeedDatabaseService {
   /// Deletes the SQLite main database file and sidecar WAL/SHM files.
   Future<void> deleteDatabaseFiles() async {
     final dbPath = await databasePath();
-    final paths = <String>[dbPath, '$dbPath-wal', '$dbPath-shm'];
+    final paths = <String>[
+      dbPath,
+      '$dbPath-wal',
+      '$dbPath-shm',
+    ];
     for (final path in paths) {
       final file = File(path);
       if (file.existsSync()) {
         await file.delete();
       }
     }
+    final dbDir = Directory(p.dirname(dbPath));
+    if (dbDir.existsSync()) {
+      await _cleanupTemp(_swapInProgressMarkerPath(dbPath));
+      await _deleteOrphanSeedSwapArtifactFiles(dbDir);
+      await _deleteSeedSwapArtifactsInDirectory(dbDir);
+    }
+  }
+
+  /// Marks that a reset/forget teardown is in progress so startup repair does
+  /// not resurrect a DB that the app is intentionally deleting.
+  Future<void> markResetCleanupInProgress() async {
+    final dbPath = await databasePath();
+    await File(_resetInProgressMarkerPath(dbPath)).writeAsString('1');
+  }
+
+  /// Clears the reset/forget teardown marker after cleanup completes.
+  Future<void> clearResetCleanupInProgress() async {
+    final dbPath = await databasePath();
+    await _cleanupTemp(_resetInProgressMarkerPath(dbPath));
+  }
+
+  /// Returns true while an intentional reset/forget teardown is in progress.
+  ///
+  /// Startup repair must not reopen the seed gate in this state, even if the
+  /// canonical database file is still present and validates.
+  Future<bool> isResetCleanupInProgress() async {
+    final dbPath = await databasePath();
+    return File(_resetInProgressMarkerPath(dbPath)).existsSync();
   }
 
   Future<void> _cleanupTemp(String tempPath) async {
@@ -416,6 +938,182 @@ class SeedDatabaseService {
       try {
         await f.delete();
       } on Object catch (_) {}
+    }
+  }
+
+  /// Best-effort cleanup for downloaded seed artifacts that never reached the
+  /// staged swap path. Missing files are expected after successful staging.
+  Future<void> cleanupTemporarySeedArtifact(String tempPath) async {
+    await _cleanupTemp(tempPath);
+  }
+
+  @visibleForTesting
+  /// Moves the validated temp artifact into the DB directory before promote.
+  Future<void> materializeValidatedArtifactInDatabaseDirectory({
+    required String sourcePath,
+    required String stagingPath,
+  }) async {
+    await _moveFile(sourcePath: sourcePath, targetPath: stagingPath);
+  }
+
+  @visibleForTesting
+  /// Moves the current canonical DB file or sidecar to a backup location.
+  Future<void> moveExistingDatabaseToBackup({
+    required String canonicalPath,
+    required String backupPath,
+  }) async {
+    final file = File(canonicalPath);
+    if (!file.existsSync()) return;
+    await _moveFile(sourcePath: canonicalPath, targetPath: backupPath);
+  }
+
+  @visibleForTesting
+  /// Promotes the staged artifact into the canonical DB path.
+  Future<void> promoteStagedArtifact({
+    required String stagingPath,
+    required String canonicalPath,
+  }) async {
+    await _replaceFileOverwritingTarget(
+      sourcePath: stagingPath,
+      targetPath: canonicalPath,
+    );
+  }
+
+  Future<void> _restoreBackupIfNeeded({
+    required String backupPath,
+    required String canonicalPath,
+  }) async {
+    final backupFile = File(backupPath);
+    if (!backupFile.existsSync()) return;
+    await _replaceFileOverwritingTarget(
+      sourcePath: backupPath,
+      targetPath: canonicalPath,
+    );
+  }
+
+  /// Replaces [targetPath] with [sourcePath] without depending on rename
+  /// overwrite semantics. If the source move fails, the original target is
+  /// restored from a rollback file so a failed repair cannot strand startup.
+  Future<void> _replaceFileOverwritingTarget({
+    required String sourcePath,
+    required String targetPath,
+  }) async {
+    final target = File(targetPath);
+    if (!target.existsSync()) {
+      await _moveFile(sourcePath: sourcePath, targetPath: targetPath);
+      return;
+    }
+
+    final rollbackPath =
+        '$targetPath.rollback.${DateTime.now().microsecondsSinceEpoch}';
+    await _moveFile(sourcePath: targetPath, targetPath: rollbackPath);
+    try {
+      await _moveFile(sourcePath: sourcePath, targetPath: targetPath);
+    } on Object {
+      if (File(rollbackPath).existsSync()) {
+        await _moveFile(sourcePath: rollbackPath, targetPath: targetPath);
+      }
+      rethrow;
+    } finally {
+      await _cleanupTemp(rollbackPath);
+    }
+  }
+
+  Future<void> _deleteFileIfExists(String path) async {
+    final file = File(path);
+    if (!file.existsSync()) return;
+    await file.delete();
+  }
+
+  Future<void> _cleanupSwapArtifactsBestEffort({
+    required String stagingPath,
+    required String backupPath,
+    required String backupWalPath,
+    required String backupShmPath,
+  }) async {
+    for (final path in [
+      stagingPath,
+      backupPath,
+      backupWalPath,
+      backupShmPath,
+    ]) {
+      try {
+        await _cleanupTemp(path);
+      } on Object catch (e, st) {
+        _log.warning('Best-effort seed swap cleanup failed for $path', e, st);
+      }
+    }
+  }
+
+  String _swapInProgressMarkerPath(String dbPath) => '$dbPath.swap_in_progress';
+
+  String _resetInProgressMarkerPath(String dbPath) =>
+      '$dbPath.reset_in_progress';
+
+  /// Test-only: resets [moveFileInvocationCountForTest] and
+  /// [debugSimulateRenameFailureOnMoveCallOneBased].
+  @visibleForTesting
+  static void resetMoveFileDebugForTest() {
+    moveFileInvocationCountForTest = 0;
+    debugSimulateRenameFailureOnMoveCallOneBased = null;
+    debugSimulateDeleteFailureAfterCopyMove = false;
+  }
+
+  /// When true, the copy/delete fallback path throws after a successful copy
+  /// and before deleting the source file, exercising undo of the partial
+  /// target write.
+  @visibleForTesting
+  static bool debugSimulateDeleteFailureAfterCopyMove = false;
+
+  /// 1-based index into [moveFileInvocationCountForTest] for the current
+  /// replace: when set, that move call throws before rename so the
+  /// copy/delete fallback runs (regression: backup exists after fallback).
+  @visibleForTesting
+  static int? debugSimulateRenameFailureOnMoveCallOneBased;
+
+  /// Current [replaceDatabaseFromTemporaryFile] move step (1-based), for tests.
+  @visibleForTesting
+  static int moveFileInvocationCountForTest = 0;
+
+  Future<void> _moveFile({
+    required String sourcePath,
+    required String targetPath,
+  }) async {
+    final source = File(sourcePath);
+    if (!source.existsSync()) {
+      throw SeedDownloadException('File not found while moving: $sourcePath');
+    }
+
+    try {
+      SeedDatabaseService.moveFileInvocationCountForTest++;
+      if (debugSimulateRenameFailureOnMoveCallOneBased != null &&
+          SeedDatabaseService.moveFileInvocationCountForTest ==
+              debugSimulateRenameFailureOnMoveCallOneBased) {
+        throw FileSystemException(
+          'simulated rename failure for test',
+          sourcePath,
+        );
+      }
+      await source.rename(targetPath);
+      return;
+    } on FileSystemException {
+      await source.copy(targetPath);
+      try {
+        if (debugSimulateDeleteFailureAfterCopyMove) {
+          throw FileSystemException(
+            'simulated delete failure after copy',
+            sourcePath,
+          );
+        }
+        await source.delete();
+      } on Object {
+        // Undo partial fallback: if the source could not be removed, remove the
+        // copy so we do not strand duplicate paths and confuse rollback flags.
+        try {
+          await File(targetPath).delete();
+        } on Object catch (_) {}
+        rethrow;
+      }
     }
   }
 

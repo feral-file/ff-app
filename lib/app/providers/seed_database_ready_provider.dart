@@ -43,8 +43,9 @@ class SeedDatabaseReadyActions {
   }
 
   /// Prepares for replace (drain workers, close DB). Does NOT delete files.
-  /// [replaceDatabaseFromTemporaryFile] does delete+rename. Does NOT set
-  /// [isSeedDatabaseReadyProvider]; [SeedDatabaseReadyNotifier.setNotReady] does.
+  /// `replaceDatabaseFromTemporaryFile` owns the staged swap and any
+  /// backup/restore behavior. Does NOT set `isSeedDatabaseReadyProvider`;
+  /// `SeedDatabaseReadyNotifier.setNotReady` does.
   Future<void> onNotReady() async {
     final stub = _onNotReadyStub;
     if (stub != null) return stub();
@@ -62,11 +63,12 @@ class SeedDatabaseReadyActions {
     // closed, drop [RemoteAppConfigEntity] + [AppStateAddressEntity] so
     // indexing/checkpoints cannot outlive the DB file being replaced.
     await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
-    // Do NOT delete files here. replaceDatabaseFromTemporaryFile deletes and
-    // renames the db path atomically. If replace fails, old DB remains (project_spec).
+    // Do NOT delete files here. The replace service owns the recoverable file
+    // swap so the old DB can be restored if promotion fails mid-replace.
   }
 
-  /// Rebinds when DB becomes ready (invalidate providers). Does NOT perform replace.
+  /// Rebinds when DB becomes ready (invalidate providers).
+  /// Does NOT perform replace.
   Future<void> onReady() async {
     final stub = _onReadyStub;
     if (stub != null) return stub();
@@ -82,8 +84,8 @@ class SeedDatabaseReadyActions {
 }
 
 /// Provides [SeedDatabaseReadyActions] for [SeedDatabaseReadyNotifier].
-/// [onNotReady] is the single place for drain + close before DB replace; local
-/// cleanup [closeAndDeleteDatabase] calls [setNotReady] then deletes files.
+/// `onNotReady` is the single place for drain + close before DB replace; local
+/// cleanup `closeAndDeleteDatabase` calls `setNotReady` then deletes files.
 final seedDatabaseReadyActionsProvider = Provider<SeedDatabaseReadyActions>((
   ref,
 ) {
@@ -97,9 +99,13 @@ class SeedDatabaseReadyNotifier extends Notifier<bool> {
   @override
   bool build() => true;
 
-  /// Direct state setter for flows that manage their own teardown (e.g. forgetIExist).
+  /// Same as [state]; pairs with [seedReadyDirect] setter for lints.
+  bool get seedReadyDirect => state;
+
+  /// Direct state assignment for flows that manage their own teardown.
+  /// Example: `forgetIExist`.
   /// Does NOT run onNotReady/onReady.
-  void setStateDirectly(bool value) {
+  set seedReadyDirect(bool value) {
     state = value;
   }
 
@@ -114,11 +120,11 @@ class SeedDatabaseReadyNotifier extends Notifier<bool> {
     await actions.onNotReady();
   }
 
-  /// Runs [onReady] (invalidate / rebind) first, then sets state = true.
+  /// Runs `onReady` (invalidate / rebind) first, then sets state = true.
   ///
-  /// Ordering avoids a window where [isSeedDatabaseReadyProvider] is true while
-  /// consumers still see a stale or closed DB before [appDatabaseProvider]
-  /// invalidation completes.
+  /// Ordering avoids a window where `isSeedDatabaseReadyProvider` is true
+  /// while consumers still see a stale or closed DB before
+  /// `appDatabaseProvider` invalidation completes.
   Future<void> setReady() async {
     final actions = ref.read(seedDatabaseReadyActionsProvider);
     await actions.onReady();
@@ -128,10 +134,12 @@ class SeedDatabaseReadyNotifier extends Notifier<bool> {
 
 /// When true, the seed database is ready and DB-watch providers may create
 /// streams. When false (during close/replace for Forget I Exist or Rebuild
-/// Metadata), providers must not create streams so [close] can complete.
+/// Metadata), providers must not create streams so `close()` can complete.
 ///
-/// Use [SeedDatabaseReadyNotifier.setNotReady]/[setReady] to toggle; logic
-/// triggers automatically on value change.
+/// Use `SeedDatabaseReadyNotifier.setNotReady` and `setReady` to run teardown
+/// / rebind around a seed replace. Those methods flip readiness and invoke the
+/// wired `onNotReady` / `onReady` actions. The `seedReadyDirect` setter updates
+/// only the notifier state and does not run `onNotReady` or `onReady`.
 final isSeedDatabaseReadyProvider =
     NotifierProvider<SeedDatabaseReadyNotifier, bool>(
       SeedDatabaseReadyNotifier.new,
