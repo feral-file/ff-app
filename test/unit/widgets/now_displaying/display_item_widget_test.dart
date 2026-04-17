@@ -1,5 +1,4 @@
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/app/providers/playback_progress_provider.dart';
 import 'package:app/domain/models/dp1/dp1_manifest.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/widgets/now_displaying_bar/display_item.dart';
@@ -18,7 +17,6 @@ void main() {
         kind: PlaylistItemKind.indexerToken,
         title: 'Short',
         artists: [DP1Artist(name: 'Artist', id: '1')],
-        thumbnailUrl: null,
       );
 
       await tester.pumpWidget(

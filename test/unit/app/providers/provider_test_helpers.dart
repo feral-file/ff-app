@@ -333,6 +333,13 @@ class FakeWifiControl extends FF1WifiControl {
   bool disconnectShouldThrow = false;
   FF1Device? lastConnectedDevice;
 
+  /// When true, [connect] returns without opening a transport socket (mirrors
+  /// [FF1WifiControl] swallowing [FF1WifiConnectionCancelledError]).
+  bool connectEndsWithoutTransportSocket = false;
+
+  /// When true, [reconnect] returns without opening a transport socket.
+  bool reconnectEndsWithoutTransportSocket = false;
+
   @override
   Future<bool> connect({
     required FF1Device device,
@@ -341,7 +348,18 @@ class FakeWifiControl extends FF1WifiControl {
   }) async {
     connectCalled = true;
     lastConnectedDevice = device;
+    if (connectEndsWithoutTransportSocket) {
+      return false;
+    }
     return super.connect(device: device, userId: userId, apiKey: apiKey);
+  }
+
+  @override
+  Future<bool> reconnect() async {
+    if (reconnectEndsWithoutTransportSocket) {
+      return false;
+    }
+    return super.reconnect();
   }
 
   @override

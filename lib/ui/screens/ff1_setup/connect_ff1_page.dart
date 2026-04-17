@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/ff1_setup/ff1_setup_effect.dart';
 import 'package:app/app/patrol/gold_path_patrol_keys.dart';
+import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/routes.dart';
@@ -23,13 +24,14 @@ import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-enum _ConnectFF1Status {
+/// BLE chrome phases — derived from [connectFF1Provider] only. Portal / Wi‑Fi
+/// routing uses [ff1SetupOrchestratorProvider] separately.
+enum _BleConnectUiPhase {
   connecting,
   stillConnecting,
   bluetoothOff,
   error,
   success,
-  portalIsSet,
 }
 
 final _log = Logger('ConnectFF1Page');
@@ -68,23 +70,37 @@ class ConnectFF1Page extends ConsumerStatefulWidget {
 class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   DateTime? _startTime;
   FF1SetupOrchestratorNotifier? _setupOrchestrator;
+  ConnectFF1Notifier? _connectFF1Notifier;
   ProviderSubscription<FF1SetupState>? _setupSub;
+  bool _guidedCompletionPending = false;
+  bool _successExitPending = false;
+  bool _successExitShowsPortal = false;
+  bool _portalReadyCompletionPending = false;
+  bool _portalReadySessionCompleted = false;
+  FF1Device? _portalReadyDevice;
 
   @override
   void initState() {
     super.initState();
     _startTime = DateTime.now();
 
-    // Navigation + dialog side-effects must not be registered inside build.
     _setupSub = ref.listenManual<FF1SetupState>(
       ff1SetupOrchestratorProvider,
       (previous, next) {
         final effectId = next.effectId;
         final effect = next.effect;
         if (previous?.effectId != effectId && effect != null) {
+          // Bind success handling to the session that was active when the
+          // effect was emitted. The orchestrator keeps track of whether the
+          // current connect attempt started as guided so a cancelled guided
+          // attempt cannot be reclassified as standalone success.
+          final sessionIdAtEmission = effect.sessionId;
           final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
           unawaited(() async {
-            final didHandle = await _handleOrchestratorEffect(effect);
+            final didHandle = await _handleOrchestratorEffect(
+              effect,
+              sessionIdAtEmission: sessionIdAtEmission,
+            );
             if (didHandle) {
               orchestrator.ackEffect(effectId: effectId);
             }
@@ -94,12 +110,8 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     );
 
     _setupOrchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
+    _connectFF1Notifier = ref.read(connectFF1Provider.notifier);
 
-    // Start the BLE flow only after this frame has built and watched the
-    // orchestrator. A microtask can run before [build] runs, which means
-    // [FF1SetupOrchestratorNotifier.build] may not have registered
-    // [ref.listen(connectFF1Provider)] yet — connect would reach terminal
-    // [ConnectFF1Connected] with no listener to emit navigation effects.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -110,38 +122,102 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
 
   @override
   void dispose() {
-    // Cancel connection if still in progress
-    _setupOrchestrator?.cancel();
+    _cancelBleConnectAttempt();
     _setupSub?.close();
     super.dispose();
   }
 
-  /// Map provider state to UI status
-  _ConnectFF1Status _getStatusFromSetupState(FF1SetupState state) {
-    if (state.connected?.portalIsSet == true) {
-      return _ConnectFF1Status.portalIsSet;
-    }
-
-    return switch (state.step) {
-      FF1SetupStep.connecting => _ConnectFF1Status.connecting,
-      FF1SetupStep.stillConnecting => _ConnectFF1Status.stillConnecting,
-      FF1SetupStep.bluetoothOff => _ConnectFF1Status.bluetoothOff,
-      FF1SetupStep.error => _ConnectFF1Status.error,
-      FF1SetupStep.readyForConfig => _ConnectFF1Status.success,
-      _ => _ConnectFF1Status.connecting,
-    };
+  /// Clear page-local success latches before a new connect attempt starts.
+  ///
+  /// The orchestrator owns durable setup/session state, but this page keeps a
+  /// few UI-only latches to avoid flashing between success and route
+  /// replacement. Those latches must be reset on retry so a fresh attempt does
+  /// not inherit portal-ready chrome or a stale verified device.
+  void _resetAttemptUiState() {
+    _guidedCompletionPending = false;
+    _successExitPending = false;
+    _successExitShowsPortal = false;
+    _portalReadyCompletionPending = false;
+    _portalReadySessionCompleted = false;
+    _portalReadyDevice = null;
   }
 
-  Future<bool> _handleOrchestratorEffect(FF1SetupEffect effect) async {
+  /// Portal-all-set UI is only valid after the live connect flow verifies the
+  /// device. Deeplink metadata can be stale, so it must not mask BLE errors or
+  /// skip setup completion on its own.
+  bool _shouldShowPortalIsSet(FF1SetupState setupState) {
+    return (_successExitPending && _successExitShowsPortal) ||
+        _portalReadyCompletionPending ||
+        _portalReadySessionCompleted ||
+        setupState.connected?.portalIsSet == true;
+  }
+
+  _BleConnectUiPhase _bleConnectionStatus(AsyncValue<ConnectFF1State> connect) {
+    if (_successExitPending) {
+      return _BleConnectUiPhase.success;
+    }
+    return connect.when(
+      data: (s) => switch (s) {
+        ConnectFF1Initial() => _BleConnectUiPhase.connecting,
+        ConnectFF1Connecting() => _BleConnectUiPhase.connecting,
+        ConnectFF1StillConnecting() => _BleConnectUiPhase.stillConnecting,
+        ConnectFF1BluetoothOff() => _BleConnectUiPhase.bluetoothOff,
+        ConnectFF1Cancelled() => _BleConnectUiPhase.connecting,
+        ConnectFF1Error() => _BleConnectUiPhase.error,
+        ConnectFF1Connected() => _BleConnectUiPhase.success,
+      },
+      error: (_, _) => _BleConnectUiPhase.error,
+      loading: () => _BleConnectUiPhase.connecting,
+    );
+  }
+
+  Future<bool> _handleOrchestratorEffect(
+    FF1SetupEffect effect, {
+    required String? sessionIdAtEmission,
+  }) async {
     switch (effect) {
       case FF1SetupInternetReady(:final connected):
         _recordDuration(success: true);
-        if (!connected.portalIsSet && context.mounted) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!context.mounted) return;
-            context.replace(Routes.deviceConfiguration);
-          });
+        if (sessionIdAtEmission != null) {
+          final orchestrator =
+              ref.read(ff1SetupOrchestratorProvider.notifier);
+          // Guided effects carry the session id from emission time. If the user
+          // cancelled or superseded the session before this handler runs, a
+          // non-null id must still match the current active session.
+          if (!orchestrator.matchesSessionForEffect(sessionIdAtEmission)) {
+            return true;
+          }
+          if (connected.portalIsSet) {
+            unawaited(
+              _completeGuidedPortalSession(
+                connected.ff1device,
+                sessionIdAtEmission: sessionIdAtEmission,
+                navigateAfterCompletion: false,
+                shouldNavigate: !connected.portalIsSet,
+              ),
+            );
+          } else {
+            unawaited(
+              _completeGuidedDirectSuccess(
+                connected.ff1device,
+                sessionIdAtEmission: sessionIdAtEmission,
+                shouldNavigate: !connected.portalIsSet,
+              ),
+            );
+          }
+          return true;
         }
+        // Standalone connect: internet-ready must persist onboarding before
+        // leaving setup. Null sessionId means a standalone (non-guided) effect.
+        if (connected.portalIsSet) {
+          return true;
+        }
+        unawaited(
+          _completeDirectSuccessExit(
+            device: connected.ff1device,
+            preservePortalUi: false,
+          ),
+        );
         return true;
       case FF1SetupNeedsWiFi(:final device):
         if (!context.mounted) return false;
@@ -154,14 +230,8 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
         });
         return true;
       case FF1SetupNavigate():
-        // Navigation effects can be emitted by downstream Wi‑Fi steps.
-        // When this page sits below those routes in the stack, handling them
-        // here can target the wrong navigator and swallow the effect for the
-        // active screen. Let the top-most screen consume these effects.
         return false;
       case FF1SetupPop():
-        // Pop is owned by the active route (e.g. cancel CTA on the current
-        // page).
         return false;
       case FF1SetupDeviceUpdating():
         if (!context.mounted) return false;
@@ -193,7 +263,6 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
         );
         return true;
       case FF1SetupEnterWifiPassword():
-        // Not expected on this screen; ignore.
         return false;
     }
   }
@@ -201,6 +270,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   Future<void> _startConnectFlow() async {
     _startTime = DateTime.now();
     _log.info('[ConnectFF1Page] Start connecting to FF1');
+    _resetAttemptUiState();
     final notifier = _setupOrchestrator;
     if (notifier == null) {
       return;
@@ -209,6 +279,13 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
       device: widget.payload.device,
       deeplinkInfo: widget.payload.ff1DeviceInfo,
     );
+  }
+
+  /// This page owns only the active BLE connect attempt. Guided setup session
+  /// lifetime is managed by setup entry/exit routes, so page-level cleanup
+  /// must not clear the durable setup session.
+  void _cancelBleConnectAttempt() {
+    _connectFF1Notifier?.cancelConnection();
   }
 
   void _recordDuration({required bool success}) {
@@ -232,12 +309,20 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
   }
 
   Future<void> _onCancel() async {
+    if (_guidedCompletionPending || _successExitPending) {
+      return;
+    }
     _log.info('[ConnectFF1Page] Cancel pressed, cancelling connection');
-    _setupOrchestrator?.cancel();
-    try {
-      await widget.payload.device.disconnect();
-    } on Object catch (e) {
-      _log.info('[ConnectFF1Page] Error while disconnecting: $e');
+    final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
+    if (orchestrator.hasGuidedSetupSession) {
+      await orchestrator.cancelSession(FF1SetupSessionCancelReason.userAborted);
+    } else {
+      _cancelBleConnectAttempt();
+      try {
+        await widget.payload.device.disconnect();
+      } on Object catch (e) {
+        _log.info('[ConnectFF1Page] Error while disconnecting: $e');
+      }
     }
 
     if (!mounted) {
@@ -246,139 +331,540 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
     context.pop();
   }
 
+  Future<void> _exitConnectSuccess({
+    required bool tearDownBeforeNavigate,
+    required bool preservePortalUi,
+  }) async {
+    if (_guidedCompletionPending || _successExitPending || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _successExitPending = true;
+      _successExitShowsPortal = preservePortalUi;
+    });
+
+    if (tearDownBeforeNavigate) {
+      await ref
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .tearDownAfterSetupComplete();
+      if (!mounted) {
+        return;
+      }
+    }
+
+    // Keep this route's success chrome latched until replacement disposes the
+    // page. Without that, teardown resets connect state first and can flash
+    // back to "Connecting" before device configuration appears.
+    unawaited(GoRouter.of(context).replace<void>(Routes.deviceConfiguration));
+  }
+
+  Future<void> _completeDirectSuccessExit({
+    required FF1Device device,
+    required bool preservePortalUi,
+    bool bypassPendingGuard = false,
+  }) async {
+    if (!bypassPendingGuard &&
+        (_guidedCompletionPending || _successExitPending || !mounted)) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      // If the guided path fell back here, clear the guided latch so the page
+      // can actually finish. The caller already proved the guided session is
+      // gone, so keeping the old guard would dead-end this recovery path.
+      _guidedCompletionPending = false;
+      _successExitPending = true;
+      _successExitShowsPortal = preservePortalUi;
+    });
+
+    try {
+      await ref
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .completeInternetReadySetup(device, shouldNavigate: false);
+    } on Object catch (e, st) {
+      _log.warning(
+        '[ConnectFF1Page] Direct success completion failed',
+        e,
+        st,
+      );
+      if (mounted) {
+        setState(() {
+          _successExitPending = false;
+          _successExitShowsPortal = false;
+        });
+      }
+      if (!mounted) {
+        return;
+      }
+      final dialogContext = context;
+      if (!dialogContext.mounted) {
+        return;
+      }
+      await UIHelper.showInfoDialog(
+        dialogContext,
+        'Setup could not finish',
+        'We couldn’t finish saving your FF1 setup. Please try again.',
+        closeButton: 'Close',
+      );
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+    unawaited(GoRouter.of(context).replace<void>(Routes.deviceConfiguration));
+  }
+
+  Future<void> _completeGuidedDirectSuccess(
+    FF1Device device, {
+    required String sessionIdAtEmission,
+    required bool shouldNavigate,
+  }) async {
+    if (_guidedCompletionPending || _successExitPending || !mounted) {
+      return;
+    }
+
+    // Guided BLE success resets orchestrator/connect state before navigation.
+    // Callers pass `shouldNavigate: !connected.portalIsSet`: when false,
+    // [completeSession] leaves routing to this page (`replace` fallback below);
+    // when true, the orchestrator runs `GoRouter.go` to device configuration.
+    // Latch success chrome locally first so the page cannot flash back to the
+    // default "Connecting" copy for a frame.
+    setState(() {
+      _guidedCompletionPending = true;
+      _successExitPending = true;
+      _successExitShowsPortal = false;
+    });
+
+    try {
+      final completed = await ref
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .completeSession(device, shouldNavigate: shouldNavigate);
+      if (!completed) {
+        if (mounted) {
+          setState(() {
+            _guidedCompletionPending = false;
+            _successExitPending = false;
+            _successExitShowsPortal = false;
+          });
+        }
+        return;
+      }
+    } on Object catch (e, st) {
+      _log.warning(
+        '[ConnectFF1Page] Guided session completion failed',
+        e,
+        st,
+      );
+      if (mounted) {
+        setState(() {
+          _guidedCompletionPending = false;
+          _successExitPending = false;
+          _successExitShowsPortal = false;
+        });
+      }
+      if (!mounted) {
+        return;
+      }
+      final dialogContext = context;
+      if (!dialogContext.mounted) {
+        return;
+      }
+      await UIHelper.showInfoDialog(
+        dialogContext,
+        'Setup could not finish',
+        'We couldn’t finish saving your FF1 setup. Please try again.',
+        closeButton: 'Close',
+      );
+      if (!mounted) {
+        return;
+      }
+      await ref
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .cancelSession(FF1SetupSessionCancelReason.userAborted);
+      if (!mounted) {
+        return;
+      }
+      GoRouter.of(context).pop();
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _guidedCompletionPending = false;
+    });
+    if (!shouldNavigate) {
+      unawaited(GoRouter.of(context).replace<void>(Routes.deviceConfiguration));
+    }
+  }
+
+  Future<void> _completeGuidedPortalSession(
+    FF1Device device, {
+    required String sessionIdAtEmission,
+    required bool navigateAfterCompletion,
+    required bool shouldNavigate,
+  }) async {
+    if (_portalReadyCompletionPending || _successExitPending || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _guidedCompletionPending = true;
+      _portalReadyCompletionPending = true;
+      _portalReadyDevice = device;
+    });
+
+    try {
+      final completed = await ref
+          .read(ff1SetupOrchestratorProvider.notifier)
+          .completeSession(device, shouldNavigate: shouldNavigate);
+      if (!completed) {
+        if (mounted) {
+          setState(() {
+            _guidedCompletionPending = false;
+            _portalReadyCompletionPending = false;
+            _portalReadySessionCompleted = false;
+          });
+        }
+        return;
+      }
+    } on Object catch (e, st) {
+      _log.warning(
+        '[ConnectFF1Page] Guided portal completion failed',
+        e,
+        st,
+      );
+      if (mounted) {
+        setState(() {
+          _guidedCompletionPending = false;
+          _portalReadyCompletionPending = false;
+          _portalReadySessionCompleted = false;
+        });
+      }
+      if (!mounted) {
+        return;
+      }
+      final dialogContext = context;
+      if (!dialogContext.mounted) {
+        return;
+      }
+      await UIHelper.showInfoDialog(
+        dialogContext,
+        'Setup could not finish',
+        'We couldn’t finish saving your FF1 setup. Please try again.',
+        closeButton: 'Close',
+      );
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _guidedCompletionPending = false;
+      _portalReadyCompletionPending = false;
+      _portalReadySessionCompleted = true;
+      _portalReadyDevice = device;
+    });
+    if (navigateAfterCompletion) {
+      await _exitConnectSuccess(
+        tearDownBeforeNavigate: false,
+        preservePortalUi: true,
+      );
+    }
+  }
+
+  Future<void> _onPortalGoToSettings() async {
+    final setup = ref.read(ff1SetupOrchestratorProvider);
+    final device = setup.connected?.ff1device ?? _portalReadyDevice;
+    if (device == null) {
+      _log.warning(
+        '[ConnectFF1Page] Ignoring portal settings tap without verified '
+        'ConnectFF1Connected state',
+      );
+      return;
+    }
+    if (_portalReadyCompletionPending) {
+      return;
+    }
+    final isGuidedPortalFlow =
+        ref.read(ff1SetupOrchestratorProvider.notifier).hasGuidedSetupSession ||
+        _portalReadyDevice != null;
+    if (isGuidedPortalFlow && !_portalReadySessionCompleted) {
+      final sessionId = ref
+          .read(ff1SetupOrchestratorProvider)
+          .activeSession
+          ?.id;
+      if (sessionId == null) {
+        return;
+      }
+      await _completeGuidedPortalSession(
+        device,
+        sessionIdAtEmission: sessionId,
+        navigateAfterCompletion: true,
+        shouldNavigate: false,
+      );
+      return;
+    }
+    if (!isGuidedPortalFlow) {
+      await _completeDirectSuccessExit(
+        device: device,
+        preservePortalUi: true,
+      );
+      return;
+    }
+    await _exitConnectSuccess(
+      tearDownBeforeNavigate: false,
+      preservePortalUi: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final setupState = ref.watch(ff1SetupOrchestratorProvider);
-    _log.info('UI state -> $setupState');
-    final status = _getStatusFromSetupState(setupState);
+    final connectAsync = ref.watch(connectFF1Provider);
+    _log.info('UI state -> $setupState connect=$connectAsync');
 
-    return Scaffold(
-      appBar: const SetupAppBar(
-        withDivider: false,
-      ),
-      backgroundColor: AppColor.auGreyBackground,
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            vertical: LayoutConstants.space4,
-            horizontal: LayoutConstants.setupPageHorizontal,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Builder(
-                  builder: (context) {
-                    if (status == _ConnectFF1Status.bluetoothOff) {
-                      return _bluetoothNotAvailableView(context);
-                    }
-
-                    return Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (status == _ConnectFF1Status.error) ...[
-                          Icon(
-                            Icons.error,
-                            size: LayoutConstants.iconSizeLarge * 2,
-                            color: PrimitivesTokens.colorsLightBlue,
-                          ),
-                          SizedBox(height: LayoutConstants.space4),
-                        ] else ...[
-                          if (status == _ConnectFF1Status.portalIsSet)
-                            Image.asset(
-                              'assets/images/ff_logo.png',
-                              width: 139,
-                              height: 92.67,
-                            )
-                          else
-                            GifView.asset(
-                              'assets/images/loading.gif',
-                              width: 139,
-                              height: 92.67,
-                              frameRate: 12,
-                            ),
-                          const SizedBox(height: 85),
-                        ],
-                        Align(
-                          alignment: status == _ConnectFF1Status.error
-                              ? Alignment.center
-                              : Alignment.centerLeft,
-                          child: Column(
-                            crossAxisAlignment:
-                                status == _ConnectFF1Status.error
-                                ? CrossAxisAlignment.center
-                                : CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _getTitleText(status),
-                                style: AppTypography.h2(context).white,
-                              ),
-                              SizedBox(height: LayoutConstants.space5),
-                              Text(
-                                _getBodyText(status),
-                                style: AppTypography.body(context).white,
-                              ),
-                              if (status == _ConnectFF1Status.portalIsSet) ...[
-                                SizedBox(height: LayoutConstants.space5),
-                                PrimaryButton(
-                                  onTap: () async {
-                                    if (context.mounted) {
-                                      context.replace(
-                                        Routes.deviceConfiguration,
-                                      );
-                                    }
-                                  },
-                                  text: 'Go to Settings',
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-              if (status == _ConnectFF1Status.error) ...[
-                SizedBox(height: LayoutConstants.space6),
-                Row(
-                  children: [
-                    Expanded(
-                      child: PrimaryButton(
-                        key: GoldPathPatrolKeys.connectFF1Retry,
-                        text: 'Try Again',
-                        onTap: _startConnectFlow,
-                        color: AppColor.white,
-                        textColor: AppColor.primaryBlack,
-                      ),
-                    ),
-                    SizedBox(width: LayoutConstants.space3),
-                    Expanded(
-                      child: PrimaryButton(
-                        key: GoldPathPatrolKeys.connectFF1Cancel,
-                        text: 'Cancel',
-                        onTap: _onCancel,
-                        color: AppColor.white,
-                        textColor: AppColor.primaryBlack,
-                      ),
-                    ),
-                  ],
-                ),
-              ] else if (status != _ConnectFF1Status.portalIsSet) ...[
-                PrimaryButton(
-                  key: GoldPathPatrolKeys.connectFF1Cancel,
-                  text: 'Cancel',
-                  onTap: _onCancel,
-                  color: AppColor.white,
-                  textColor: AppColor.primaryBlack,
-                ),
-              ],
-            ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          unawaited(_onCancel());
+        }
+      },
+      child: Scaffold(
+        appBar: SetupAppBar(
+          withDivider: false,
+          onBack: (_guidedCompletionPending || _successExitPending)
+              ? () {}
+              : () {
+                  unawaited(_onCancel());
+                },
+        ),
+        backgroundColor: AppColor.auGreyBackground,
+        body: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              vertical: LayoutConstants.space4,
+              horizontal: LayoutConstants.setupPageHorizontal,
+            ),
+            child: _buildMainColumn(context, ref, setupState, connectAsync),
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildMainColumn(
+    BuildContext context,
+    WidgetRef ref,
+    FF1SetupState setupState,
+    AsyncValue<ConnectFF1State> connectAsync,
+  ) {
+    if (_shouldShowPortalIsSet(setupState)) {
+      return _portalIsSetView(context);
+    }
+
+    final ble = _bleConnectionStatus(connectAsync);
+    return switch (ble) {
+      _BleConnectUiPhase.bluetoothOff => _bluetoothNotAvailableView(context),
+      _BleConnectUiPhase.error => _bleErrorView(context),
+      _BleConnectUiPhase.connecting ||
+      _BleConnectUiPhase.stillConnecting ||
+      _BleConnectUiPhase.success => _bleConnectingOrSuccessView(context, ble),
+    };
+  }
+
+  Widget _portalIsSetView(BuildContext context) {
+    final canGoToSettings = !_portalReadyCompletionPending;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Image.asset(
+                'assets/images/ff_logo.png',
+                width: 139,
+                height: 92.67,
+              ),
+              const SizedBox(height: 85),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'The FF1 is All Set',
+                      style: AppTypography.h2(context).white,
+                    ),
+                    SizedBox(height: LayoutConstants.space5),
+                    Text(
+                      'Your FF1 is already set up and connected. You can head '
+                      'to settings to make changes or check the status.',
+                      style: AppTypography.body(context).white,
+                    ),
+                    SizedBox(height: LayoutConstants.space5),
+                    PrimaryButton(
+                      onTap: _onPortalGoToSettings,
+                      enabled: canGoToSettings,
+                      isProcessing: _portalReadyCompletionPending,
+                      text: 'Go to Settings',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _bleErrorView(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Icon(
+                Icons.error,
+                size: LayoutConstants.iconSizeLarge * 2,
+                color: PrimitivesTokens.colorsLightBlue,
+              ),
+              SizedBox(height: LayoutConstants.space4),
+              Align(
+                child: Column(
+                  children: [
+                    Text(
+                      'We couldn’t connect to FF1',
+                      style: AppTypography.h2(context).white,
+                    ),
+                    SizedBox(height: LayoutConstants.space5),
+                    Text(
+                      'A few things to check:\n'
+                      '• Make sure your FF1 is powered on.\n'
+                      '• Keep your phone close to the device.\n'
+                      '• Check that Bluetooth is turned on.',
+                      style: AppTypography.body(context).white,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: LayoutConstants.space6),
+        Row(
+          children: [
+            Expanded(
+              child: PrimaryButton(
+                key: GoldPathPatrolKeys.connectFF1Retry,
+                text: 'Try Again',
+                onTap: _startConnectFlow,
+                color: AppColor.white,
+                textColor: AppColor.primaryBlack,
+              ),
+            ),
+            SizedBox(width: LayoutConstants.space3),
+            Expanded(
+              child: PrimaryButton(
+                key: GoldPathPatrolKeys.connectFF1Cancel,
+                text: 'Cancel',
+                onTap: _onCancel,
+                color: AppColor.white,
+                textColor: AppColor.primaryBlack,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _bleConnectingOrSuccessView(
+    BuildContext context,
+    _BleConnectUiPhase phase,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              GifView.asset(
+                'assets/images/loading.gif',
+                width: 139,
+                height: 92.67,
+                frameRate: 12,
+              ),
+              const SizedBox(height: 85),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _bleTitle(phase),
+                      style: AppTypography.h2(context).white,
+                    ),
+                    SizedBox(height: LayoutConstants.space5),
+                    Text(
+                      _bleBody(phase),
+                      style: AppTypography.body(context).white,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        PrimaryButton(
+          key: GoldPathPatrolKeys.connectFF1Cancel,
+          text: 'Cancel',
+          onTap: _onCancel,
+          enabled: !_guidedCompletionPending,
+          color: AppColor.white,
+          textColor: AppColor.primaryBlack,
+        ),
+      ],
+    );
+  }
+
+  String _bleTitle(_BleConnectUiPhase phase) {
+    return switch (phase) {
+      _BleConnectUiPhase.connecting => 'Connecting via Bluetooth...',
+      _BleConnectUiPhase.stillConnecting => 'Still connecting…',
+      _BleConnectUiPhase.success => 'Connected to FF1',
+      _BleConnectUiPhase.bluetoothOff || _BleConnectUiPhase.error =>
+        throw StateError('Not a BLE progress phase: $phase'),
+    };
+  }
+
+  String _bleBody(_BleConnectUiPhase phase) {
+    return switch (phase) {
+      _BleConnectUiPhase.connecting =>
+        'Keep your phone near FF1 and remain on this screen.',
+      _BleConnectUiPhase.stillConnecting =>
+        'We’re still trying to reach your FF1 over Bluetooth.\n'
+            'If this takes more than 15 seconds, you can cancel and try again.',
+      _BleConnectUiPhase.success => 'Connected to FF1 — ready to play art.',
+      _BleConnectUiPhase.bluetoothOff || _BleConnectUiPhase.error =>
+        throw StateError('Not a BLE progress phase: $phase'),
+    };
   }
 
   Widget _bluetoothNotAvailableView(BuildContext context) {
@@ -409,44 +895,5 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
         ),
       ],
     );
-  }
-
-  String _getTitleText(_ConnectFF1Status status) {
-    switch (status) {
-      case _ConnectFF1Status.connecting:
-        return 'Connecting via Bluetooth...';
-      case _ConnectFF1Status.stillConnecting:
-        return 'Still connecting…';
-      case _ConnectFF1Status.bluetoothOff:
-        return 'Bluetooth is Off';
-      case _ConnectFF1Status.error:
-        return 'We couldn’t connect to FF1';
-      case _ConnectFF1Status.success:
-        return 'Connected to FF1';
-      case _ConnectFF1Status.portalIsSet:
-        return 'The FF1 is All Set';
-    }
-  }
-
-  String _getBodyText(_ConnectFF1Status status) {
-    switch (status) {
-      case _ConnectFF1Status.connecting:
-        return 'Keep your phone near FF1 and remain on this screen.';
-      case _ConnectFF1Status.stillConnecting:
-        return 'We’re still trying to reach your FF1 over Bluetooth.\n'
-            'If this takes more than 15 seconds, you can cancel and try again.';
-      case _ConnectFF1Status.bluetoothOff:
-        return 'Turn on Bluetooth to connect to FF1.';
-      case _ConnectFF1Status.error:
-        return 'A few things to check:\n'
-            '• Make sure your FF1 is powered on.\n'
-            '• Keep your phone close to the device.\n'
-            '• Check that Bluetooth is turned on.';
-      case _ConnectFF1Status.success:
-        return 'Connected to FF1 — ready to play art.';
-      case _ConnectFF1Status.portalIsSet:
-        return 'Your FF1 is already set up and connected. You can head to '
-            'settings to make changes or check the status.';
-    }
   }
 }

@@ -3,15 +3,12 @@ import 'package:app/app/providers/connect_ff1_providers.dart';
 import 'package:app/app/providers/connect_wifi_provider.dart';
 import 'package:app/app/providers/ff1_setup_orchestrator_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/app/providers/onboarding_provider.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/ff1_device_info.dart';
-import 'package:app/infra/config/app_state_service.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mockito/mockito.dart';
 
 import 'provider_test_helpers.dart';
 
@@ -28,15 +25,10 @@ void main() {
       isConnectedToInternet: false,
     );
 
-    final appState = _MockAppStateService();
-
     final container = ProviderContainer.test(
       overrides: [
         connectFF1Provider.overrideWith(
           () => _ScriptedConnectNotifier(connected: connected),
-        ),
-        onboardingActionsProvider.overrideWith(
-          (ref) => OnboardingService(ref: ref, appStateService: appState),
         ),
       ],
     );
@@ -72,14 +64,10 @@ void main() {
       isConnectedToInternet: true,
     );
 
-    final appState = _MockAppStateService();
     final container = ProviderContainer.test(
       overrides: [
         connectFF1Provider.overrideWith(
           () => _ScriptedConnectNotifier(connected: connected),
-        ),
-        onboardingActionsProvider.overrideWith(
-          (ref) => OnboardingService(ref: ref, appStateService: appState),
         ),
       ],
     );
@@ -102,7 +90,6 @@ void main() {
 
   test('emits Navigate(DeviceConfig) when WiFi reaches success (not on topicId '
       'alone)', () async {
-    final appState = _MockAppStateService();
     final container = ProviderContainer.test(
       overrides: [
         connectFF1Provider.overrideWith(
@@ -112,9 +99,6 @@ void main() {
           () => _FakeWiFiNotifier(const WiFiConnectionState()),
         ),
         ff1WifiControlProvider.overrideWithValue(_StubWifiControl()),
-        onboardingActionsProvider.overrideWith(
-          (ref) => OnboardingService(ref: ref, appStateService: appState),
-        ),
       ],
     );
     addTearDown(container.dispose);
@@ -144,14 +128,10 @@ void main() {
     'does not emit connect navigation effect on fireImmediately when '
     'ConnectFF1Connected is stale and no connect attempt is active',
     () async {
-      final appState = _MockAppStateService();
       final container = ProviderContainer.test(
         overrides: [
           connectFF1Provider.overrideWith(
             _StaleConnectedConnectNotifier.new,
-          ),
-          onboardingActionsProvider.overrideWith(
-            (ref) => OnboardingService(ref: ref, appStateService: appState),
           ),
         ],
       );
@@ -238,22 +218,6 @@ class _FakeWiFiNotifier extends WiFiConnectionNotifier {
       status: WiFiConnectionStatus.success,
       topicId: topicId,
     );
-  }
-}
-
-class _MockAppStateService extends Mock implements AppStateService {
-  @override
-  Future<void> setHasSeenOnboarding({required bool hasSeen}) {
-    return super.noSuchMethod(
-          Invocation.method(
-            #setHasSeenOnboarding,
-            const [],
-            <Symbol, Object?>{#hasSeen: hasSeen},
-          ),
-          returnValue: Future<void>.value(),
-          returnValueForMissingStub: Future<void>.value(),
-        )
-        as Future<void>;
   }
 }
 

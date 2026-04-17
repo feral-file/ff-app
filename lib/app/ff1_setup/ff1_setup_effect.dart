@@ -5,7 +5,9 @@ import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/wifi_point.dart';
 
 sealed class FF1SetupEffect {
-  const FF1SetupEffect();
+  const FF1SetupEffect({this.sessionId});
+
+  final String? sessionId;
 }
 
 /// Navigation intent emitted by FF1 setup orchestration.
@@ -14,6 +16,7 @@ final class FF1SetupNavigate extends FF1SetupEffect {
     required this.route,
     this.extra,
     this.method = FF1SetupNavigationMethod.replace,
+    super.sessionId,
   });
 
   final String route;
@@ -28,7 +31,7 @@ enum FF1SetupNavigationMethod {
 }
 
 final class FF1SetupPop extends FF1SetupEffect {
-  const FF1SetupPop();
+  const FF1SetupPop({super.sessionId});
 }
 
 /// Internet-ready connect outcome. Use this to drive navigation overrides while
@@ -36,6 +39,7 @@ final class FF1SetupPop extends FF1SetupEffect {
 final class FF1SetupInternetReady extends FF1SetupEffect {
   const FF1SetupInternetReady({
     required this.connected,
+    super.sessionId,
   });
 
   final ConnectFF1Connected connected;
@@ -45,6 +49,7 @@ final class FF1SetupInternetReady extends FF1SetupEffect {
 final class FF1SetupNeedsWiFi extends FF1SetupEffect {
   const FF1SetupNeedsWiFi({
     required this.device,
+    super.sessionId,
   });
 
   final FF1Device device;
@@ -54,6 +59,7 @@ final class FF1SetupEnterWifiPassword extends FF1SetupEffect {
   const FF1SetupEnterWifiPassword({
     required this.device,
     required this.wifiAccessPoint,
+    super.sessionId,
   });
 
   final FF1Device device;
@@ -65,6 +71,7 @@ final class FF1SetupShowError extends FF1SetupEffect {
     required this.title,
     required this.message,
     this.showSupportCta = false,
+    super.sessionId,
   });
 
   final String title;
@@ -73,5 +80,5 @@ final class FF1SetupShowError extends FF1SetupEffect {
 }
 
 final class FF1SetupDeviceUpdating extends FF1SetupEffect {
-  const FF1SetupDeviceUpdating();
+  const FF1SetupDeviceUpdating({super.sessionId});
 }

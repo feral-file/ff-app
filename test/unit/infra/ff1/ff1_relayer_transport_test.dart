@@ -1,7 +1,10 @@
+// Regression tests: keep lints relaxed so assertions stay readable.
+
 import 'dart:async';
 
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_transport/ff1_relayer_transport.dart';
+import 'package:app/infra/ff1/wifi_transport/ff1_wifi_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -61,6 +64,35 @@ void main() {
       );
     });
   });
+
+  test(
+    'pause during connect preparation cancels before connect control is sent',
+    () async {
+      final transport = FF1RelayerTransport(
+        relayerUrl: 'wss://example.invalid/relayer',
+      );
+      addTearDown(transport.dispose);
+
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+
+      final connectFuture = transport.connect(
+        device: device,
+        userId: 'user-1',
+        apiKey: 'api-key-1',
+      );
+      transport.pauseConnection();
+
+      await expectLater(
+        connectFuture,
+        throwsA(isA<FF1WifiConnectionCancelledError>()),
+      );
+    },
+  );
 
   test(
     'dispose awaits disconnect before closing connection state stream',
@@ -184,10 +216,11 @@ void main() {
       await reachedDispatchBoundary.future;
       transport.pauseConnection();
       releaseDispatch.complete();
-      final connectOk = await connectFuture;
+      await expectLater(
+        connectFuture,
+        throwsA(isA<FF1WifiConnectionCancelledError>()),
+      );
       await Future<void>.delayed(const Duration(milliseconds: 250));
-
-      expect(connectOk, isFalse);
       expect(events.where((isConnected) => isConnected), isEmpty);
       expect(transport.isConnected, isFalse);
     },

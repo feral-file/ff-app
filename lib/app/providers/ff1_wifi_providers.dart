@@ -1,4 +1,6 @@
-// This provider file still contains legacy analyzer noise outside narrow fixes.
+// This provider file still contains legacy analyzer noise that is outside the
+// firmware-update flow; keep the ignore local so this PR can be gated on the
+// new prompt/update behavior instead of a broader cleanup pass.
 // ignore_for_file: lines_longer_than_80_chars, comment_references, public_member_api_docs, avoid_equals_and_hash_code_on_mutable_classes
 
 import 'dart:async';
@@ -265,6 +267,25 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
           message:
               'connect did not dispatch (suppressed or superseded at transport)',
           payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
+        );
+        return false;
+      }
+
+      // [FF1WifiControl.connect] may return without throwing after swallowing
+      // [FF1WifiConnectionCancelledError] (e.g. pause during transport prep).
+      // In that case no socket is open; do not mark the notifier connected.
+      if (!_control.isConnected) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_connect_no_transport',
+          message:
+              'connect returned but transport is not connected (cancelled/no-op)',
+          payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
+        );
+        state = state.copyWith(
+          isConnected: false,
+          isConnecting: false,
+          device: device,
         );
         return false;
       }

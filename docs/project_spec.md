@@ -75,15 +75,22 @@
 - Key steps:
   - onboarding introduce page
   - optional add address (with optional alias)
-  - optional FF1 setup path via device picker
-  - finish marks onboarding complete and routes to home
+  - optional FF1 setup path via device picker (BLE scan -> connect); user may
+    instead tap **Finish** on the onboarding FF1 step to complete onboarding and
+    go home without pairing
+  - **Finish** (or equivalent completion) marks onboarding complete and routes to home
 - Outcome: user enters app with onboarding flag persisted.
 - Important edge cases:
   - while startup seed sync is actively in flight, onboarding add-address
     actions wait for the bootstrap gate to reopen so first-run transitions stay
     deterministic
   - if seed DB is not ready, added addresses are queued in pending store and migrated later
-  - if onboarding is entered from device-connect deep link, flow branches to connect FF1
+  - if onboarding is entered from device-connect deep link, flow branches through
+    **Start Setup FF1** (which may start a **guided FF1 setup session** before
+    pushing the onboarding stack); execution detail in `docs/app_flows.md`
+  - optional FF1 setup from **Onboarding Setup FF1** routes scan → **Start Setup FF1**
+    → continue → connect, so guided session is created on **Start Setup FF1**
+    before connect; see `docs/app_flows.md`
 
 ### Flow: Browse and discover content
 
@@ -116,15 +123,23 @@
 - Trigger: FF1 setup from onboarding/device menu/deep link/QR.
 - Key steps:
   - discover FF1 via BLE scan or resolve from deeplink info
-  - connect via BLE and read device info
+  - connect via BLE and read device info (`connect` path in app layer)
   - if internet/topic not ready, run Wi-Fi network scan + credential flow
-  - persist device in ObjectBox and set active device
-  - navigate to device configuration
+  - persist device in ObjectBox and set active device; when a **guided setup
+    session** is active (started from **Start Setup FF1**), completion also
+    marks onboarding complete and tears down BLE setup state before routing;
+    internet-ready persistence without a session is still handled so storage
+    does not race the UI (see `docs/app_flows.md`)
+  - navigate to device configuration (or defer primary navigation when the
+    device reports portal-all-set until the user confirms, per screen contract)
 - Outcome: active FF1 device is paired and auto-connects to relayer.
 - Important edge cases:
   - BLE retries/backoff and "still connecting" fallback UI
   - FF1 response errors route to support/contact dialogs
   - device-updating/version errors route to dedicated update handling
+  - abandoning setup from session-owning routes cancels the guided session;
+    orchestration detail lives under `ff1_setup_orchestrator_provider` in
+    `docs/app_flows.md`
 
 ### Flow: Play and control on FF1
 
@@ -234,18 +249,33 @@
 
 - Purpose: first-use orientation, optional personal collection seeding, optional FF1 setup.
 - Entry points: `/onboarding/*`, startup routing.
-- Key actions: add/remove addresses, skip/next, launch FF1 setup path, finish onboarding.
+- Key actions: add/remove addresses, skip/next, launch FF1 setup path (device scan),
+  **Finish** to complete onboarding without FF1 pairing, or continue into FF1 flows
+  when the user chooses setup.
 - Important data: onboarding flag, tracked addresses, deeplink payload continuity.
 - Related modules: onboarding providers, add-address flow, token sync coordinator.
+- Notes: **Finish** on the onboarding FF1 step completes onboarding via app actions
+  and routes home; it is separate from the optional **guided FF1 setup session**
+  owned by the FF1 orchestration layer (see FF1 setup group and `docs/app_flows.md`).
+  **Setup FF1** uses the default scan route into **Start Setup FF1** before connect, so
+  guided session is still created on **Continue** there (`docs/app_flows.md`).
 
 ### Screen group: FF1 setup (FF1DeviceScan, StartSetupFf1, ConnectFF1, ScanWiFi, EnterWiFiPassword, DeviceConfig, FF1Updating)
 
 - Purpose: discover/pair FF1 and configure connectivity/device settings.
-- Entry points: onboarding setup, menu FF1 Settings, QR deeplinks.
+- Entry points: onboarding setup, menu FF1 Settings, QR deeplinks (`/start-setup-ff1`).
 - Key actions: BLE scan/connect, Wi-Fi selection/credentials, finalize pairing, adjust orientation/scaling/audio (FF1 system), adjust FFP/DDC display brightness/contrast/power (no monitor volume/mute in app).
 - Firmware updates: Device Configuration can prompt when a newer version is reported (only after setup, not during the initial setup visit); eligibility is re-checked when relayer connectivity or version fields change so a late relayer connection still surfaces the prompt; at most one auto-prompt dialog is scheduled or open at a time. If the reported latest version changes during the same visit, the prompt may appear again for the new version (subject to dismissal). Manual **Update FF1** is shown only when the relayer has already reported both `installedVersion` and `latestVersion`; the prompt and manual action both start the update over Wi-Fi/relayer only (no Bluetooth firmware update from the app). Prompt orchestration (session dedupe, in-flight guard) and relayer update start live in app-layer code shared by the screen and options entry points.
-- Important data: BLE state, FF1 device info/topicId, device/player status streams.
-- Related modules: FF1 providers (BLE + Wi-Fi), FF1 services, ObjectBox device store.
+- Important data: BLE state, FF1 device info/topicId, device/player status streams,
+  optional guided-setup session id when **Start Setup FF1** has started a session.
+- Related modules: FF1 providers (BLE + Wi-Fi), `ff1_setup_orchestrator_provider`
+  (session lifecycle, connect/Wi-Fi side effects, completion/cancel), FF1 services,
+  ObjectBox device store.
+- Notes: **Start Setup FF1** is the entry that **starts** a guided FF1 setup session
+  when the user continues (QR or BLE-selected device). **Connect FF1** coordinates
+  BLE UI with orchestrator effects, while the success paths own onboarding
+  completion and teardown after the device has already been persisted; full
+  contracts are in `docs/app_flows.md`.
 - Notes: The FFP/DDC block is shown only when the app’s FF1 connection state reports **connected** (`ff1DeviceDataProvider`); when the device is not connected, DeviceConfig does not subscribe to the panel status stream or render FFP/DDC UI. While connected, brightness/contrast/power remain **relayer-driven** (pushed panel snapshots and commands); the surface can stay available during setup and sleeping/off when monitor status exists. The section hides when no relayer monitor status has arrived yet. Tapping the brightness/contrast icon uses the shared zero-toggle helper: it jumps to `0` when the slider is above zero, and restores the last non-zero value when the slider is already at zero. The helper commits through the same optimistic slider flow as drag end. For monitor **power**, if the relayer omits `power` on a push, the app treats power as unknown, clears optimistic power, and the UI shows **Unknown** with **no** power mode buttons until `power` appears again. **Accepted behavior:** After FFP power-off, some monitors do not expose readable power status over DDC; the relayer may therefore push DDC status **without** a `power` field. Showing **Unknown** and withholding On/Standby/Off actions until `power` is present is intentional—we do not infer or assume power state without relayer data. **Reviewer note:** Do not treat this as a regression or request sticky last-known power, extra wake affordance, or power actions while `power` is null unless the product spec explicitly changes. Implementation: `_resolvePendingPower` and `availableFfpMonitorPowerModes` in `ff1_control_surface_providers.dart` / `ffp_monitor_ddc_section.dart`; regression: `ffp_monitor_ddc_section_test.dart` (“incomplete off snapshot”).
 
 ### Screen group: NowDisplaying + KeyboardControl
