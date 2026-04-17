@@ -417,6 +417,51 @@ void main() {
   );
 
   testWidgets(
+    'pairing QR button stays hidden during setup when displayUrl is absent',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 2400));
+      addTearDown(() async {
+        await tester.binding.setSurfaceSize(null);
+      });
+
+      await tester.pumpWidget(
+        _wrapScreen(
+          isInSetupProcess: true,
+          deviceData: FF1DeviceData(
+            deviceStatus: const FF1DeviceStatus(
+              volume: 40,
+              isMuted: false,
+            ),
+            playerStatus: FF1PlayerStatus(
+              playlistId: 'playlist-1',
+              sleepMode: false,
+            ),
+            isConnected: true,
+          ),
+          currentDeviceStatus: const FF1DeviceStatus(
+            volume: 40,
+            isMuted: false,
+          ),
+          currentPlayerStatus: FF1PlayerStatus(
+            playlistId: 'playlist-1',
+            sleepMode: false,
+          ),
+          panelStatus: const FfpDdcPanelStatus(
+            brightness: 25,
+            contrast: 60,
+            power: FfpDdcPanelPower.on,
+            monitor: 'Test Monitor',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Hide QR Code'), findsNothing);
+      expect(find.text('Show Pairing QR Code'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'pairing QR button keeps local state after successful in-flight toggle',
     (tester) async {
       final currentStatusProvider = StateProvider<FF1DeviceStatus?>(
