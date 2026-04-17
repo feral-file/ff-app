@@ -197,12 +197,6 @@ class SeedDatabaseService {
     final resetMarker = File(_resetInProgressMarkerPath(dbPath));
     final swapMarker = File(_swapInProgressMarkerPath(dbPath));
     if (resetMarker.existsSync()) {
-      // If reset crashed after marker creation but before cleanup, clear stale
-      // marker once no swap operation is pending. Keeping it forever would
-      // disable startup repair for unrelated future interrupted swaps.
-      if (!swapMarker.existsSync()) {
-        await _cleanupTemp(resetMarker.path);
-      }
       return false;
     }
     if (!swapMarker.existsSync()) {
@@ -300,8 +294,10 @@ class SeedDatabaseService {
         validateSeedArtifact(candidatePath);
         if (candidate.isStage) {
           final rollbackDbPath = '$dbPath.rollback.${candidate.nonce}';
+          var rollbackMovedIntoPlace = false;
           if (File(dbPath).existsSync()) {
             await _moveFile(sourcePath: dbPath, targetPath: rollbackDbPath);
+            rollbackMovedIntoPlace = true;
           }
           try {
             await promoteStagedArtifact(
@@ -311,9 +307,11 @@ class SeedDatabaseService {
           } on Object {
             if (File(rollbackDbPath).existsSync()) {
               await _moveFile(sourcePath: rollbackDbPath, targetPath: dbPath);
+              rollbackMovedIntoPlace = false;
             }
             rethrow;
-          } finally {
+          }
+          if (rollbackMovedIntoPlace) {
             await _cleanupTemp(rollbackDbPath);
           }
           await _deleteFileIfExists('$dbPath-wal');
@@ -923,6 +921,15 @@ class SeedDatabaseService {
   Future<void> clearResetCleanupInProgress() async {
     final dbPath = await databasePath();
     await _cleanupTemp(_resetInProgressMarkerPath(dbPath));
+  }
+
+  /// Returns true while an intentional reset/forget teardown is in progress.
+  ///
+  /// Startup repair must not reopen the seed gate in this state, even if the
+  /// canonical database file is still present and validates.
+  Future<bool> isResetCleanupInProgress() async {
+    final dbPath = await databasePath();
+    return File(_resetInProgressMarkerPath(dbPath)).existsSync();
   }
 
   Future<void> _cleanupTemp(String tempPath) async {

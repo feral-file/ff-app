@@ -244,7 +244,7 @@ void main() {
     );
 
     test(
-      'startup repair clears stale reset marker when no swap marker exists',
+      'startup repair preserves reset marker when no swap marker exists',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(
           'ff_seed_stale_reset_marker_',
@@ -265,7 +265,7 @@ void main() {
         );
 
         expect(await svc.repairInterruptedSeedSwapIfNeeded(), isFalse);
-        expect(marker.existsSync(), isFalse);
+        expect(marker.existsSync(), isTrue);
       },
     );
 

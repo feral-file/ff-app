@@ -115,6 +115,12 @@ Future<void> runSeedRepairAndCompleteGateIfUsable(
 Future<void> completeSeedDatabaseGateIfUsable(
   SeedDatabaseService seedDatabaseService,
 ) async {
+  if (await seedDatabaseService.isResetCleanupInProgress()) {
+    _log.info(
+      'Skipping seed gate completion while reset cleanup is in progress.',
+    );
+    return;
+  }
   if (await seedDatabaseService.hasUsableLocalDatabase()) {
     SeedDatabaseGate.complete();
   }
