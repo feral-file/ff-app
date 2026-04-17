@@ -286,7 +286,10 @@ class FF1RelayerTransport implements FF1WifiTransport {
 
     try {
       _isConnecting = true;
-      final dispatched = await _connectInternal(flowId: flowId);
+      final dispatched = await _connectInternal(
+        flowId: flowId,
+        throwIfSuppressedBeforeConnectControl: true,
+      );
       if (!dispatched) {
         return false;
       }
@@ -317,7 +320,18 @@ class FF1RelayerTransport implements FF1WifiTransport {
     }
   }
 
-  Future<bool> _connectInternal({String? flowId}) async {
+  Future<bool> _connectInternal({
+    String? flowId,
+    bool throwIfSuppressedBeforeConnectControl = false,
+  }) async {
+    // `pauseConnection` bumps [_relayerPauseGeneration]; plain [disconnect]
+    // does not. When two [connect] calls overlap, one may run [disconnect]
+    // while the other is awaiting isolate prep — that sets
+    // [_reconnectSuppressed] without a pause bump; return false (PR #361
+    // teardown-wait test). Only treat as lifecycle cancellation when the
+    // pause generation changed during prep.
+    final pauseGenAtConnectInternalStart = _relayerPauseGeneration;
+
     // Build WebSocket URL
     final wsUrl =
         '$_relayerUrl/api/notification?'
@@ -382,6 +396,13 @@ class FF1RelayerTransport implements FF1WifiTransport {
         message: 'connect control skipped because transport is suppressed',
         payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
       );
+      final pausedDuringPrep =
+          _relayerPauseGeneration != pauseGenAtConnectInternalStart;
+      if (pausedDuringPrep && throwIfSuppressedBeforeConnectControl) {
+        throw const FF1WifiConnectionCancelledError(
+          'Relayer connect cancelled before connect control was sent',
+        );
+      }
       return false;
     }
 
@@ -1178,9 +1199,9 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
               break;
             }
             // Do not await inner [connect]: the ReceivePort listener would stay
-            // blocked until WebSocket setup finishes, so a pause/disconnect control
-            // queued after this connect would be processed too late (PR #361 review
-            // 4096354225: cancel at isolate boundary).
+            // blocked until WebSocket setup finishes, so a pause/disconnect
+            // control queued after this connect would be processed too late
+            // (PR #361 review 4096354225: cancel at isolate boundary).
             unawaited(
               () async {
                 await Future<void>.delayed(Duration.zero);

@@ -216,10 +216,11 @@ void main() {
       await reachedDispatchBoundary.future;
       transport.pauseConnection();
       releaseDispatch.complete();
-      final connectOk = await connectFuture;
+      await expectLater(
+        connectFuture,
+        throwsA(isA<FF1WifiConnectionCancelledError>()),
+      );
       await Future<void>.delayed(const Duration(milliseconds: 250));
-
-      expect(connectOk, isFalse);
       expect(events.where((isConnected) => isConnected), isEmpty);
       expect(transport.isConnected, isFalse);
     },

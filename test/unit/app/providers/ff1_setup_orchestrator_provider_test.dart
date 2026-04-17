@@ -345,6 +345,48 @@ void main() {
     },
   );
 
+  test(
+    'matchesSessionForEffect rejects stale id after new guided session starts',
+    () async {
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1ControlProvider.overrideWithValue(
+            FF1BleControl(transport: _NoopBleTransport()),
+          ),
+          connectWiFiProvider.overrideWith(
+            () => _FakeWiFiNotifier(const WiFiConnectionState()),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final keepAlive = container.listen(
+        ff1SetupOrchestratorProvider,
+        (_, _) {},
+      );
+      addTearDown(keepAlive.close);
+
+      final notifier = container.read(ff1SetupOrchestratorProvider.notifier);
+      notifier.startSession();
+      final supersededSessionId =
+          container.read(ff1SetupOrchestratorProvider).activeSession!.id;
+
+      await notifier.cancelSession(FF1SetupSessionCancelReason.userAborted);
+      notifier.startSession();
+      final currentSessionId =
+          container.read(ff1SetupOrchestratorProvider).activeSession!.id;
+
+      expect(supersededSessionId, isNot(equals(currentSessionId)));
+      expect(
+        notifier.matchesSessionForEffect(supersededSessionId),
+        isFalse,
+        reason:
+            'late FF1SetupInternetReady must not bind to a prior session id',
+      );
+      expect(notifier.matchesSessionForEffect(currentSessionId), isTrue);
+    },
+  );
+
   test('ensureActiveSetupSession is idempotent', () async {
     final container = ProviderContainer.test(
       overrides: [

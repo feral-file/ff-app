@@ -179,6 +179,14 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
       case FF1SetupInternetReady(:final connected):
         _recordDuration(success: true);
         if (sessionIdAtEmission != null) {
+          final orchestrator =
+              ref.read(ff1SetupOrchestratorProvider.notifier);
+          // Guided effects carry the session id from emission time. If the user
+          // cancelled or superseded the session before this handler runs, a
+          // non-null id must still match the current active session.
+          if (!orchestrator.matchesSessionForEffect(sessionIdAtEmission)) {
+            return true;
+          }
           if (connected.portalIsSet) {
             unawaited(
               _completeGuidedPortalSession(
@@ -200,16 +208,7 @@ class _ConnectFF1PageState extends ConsumerState<ConnectFF1Page> {
           return true;
         }
         // Standalone connect: internet-ready must persist onboarding before
-        // leaving setup. Late guided effects are filtered by session id above;
-        // null here means this was a standalone effect and should proceed.
-        final activeSessionId = ref
-            .read(ff1SetupOrchestratorProvider)
-            .activeSession
-            ?.id;
-        if (sessionIdAtEmission != null &&
-            sessionIdAtEmission != activeSessionId) {
-          return true;
-        }
+        // leaving setup. Null sessionId means a standalone (non-guided) effect.
         if (connected.portalIsSet) {
           return true;
         }
