@@ -41,6 +41,19 @@
 - key screens involved: config error screen (fallback), Home, Onboarding
 - key modules/services involved: `lib/main.dart`, `lib/app/app.dart`, `seed_database_*`, `bootstrap_provider`, `legacy_data_migration_service`, `app_state_service`
 
+## Flow: App lifecycle and FF1 relayer Wi‑Fi
+
+- goal: pause the FF1 relayer WebSocket when the app is not active, without tearing it down on every transient `inactive`, and restore it after real backgrounding
+- start point: `AppLifecycleNotifier` (`app_lifecycle_provider.dart`) handling `WidgetsBindingObserver` lifecycle updates
+- steps:
+  - `inactive`: schedule a debounced relayer pause; `resumed` cancels only the pending timer (no reconnect if the relayer was never paused)
+  - `paused` / `hidden` / `detached`: cancel any debounce and pause relayer Wi‑Fi immediately
+  - `resumed`: resume indexer token sync; call `FF1WifiConnectionNotifier.reconnect` only when lifecycle actually paused the relayer in this cycle (immediate pause or debounced inactive pause)
+  - the first successful relayer session for a device triggers the required-device-version check, including the later resume reconnect path after a suppressed initial connect
+- success state: relayer socket matches whether the app backgrounded; short inactive-only flicker does not force reconnect
+- failure/edge states: reconnect failures are logged; connection notifier clears stale connecting flags when pause races with an in-flight connect
+- key modules: `app_lifecycle_provider.dart`, `inactive_wifi_pause_schedule.dart`, `ff1_wifi_providers.dart` (`FF1WifiConnectionNotifier`)
+
 ## Flow: Onboarding (No Deeplink)
 
 - goal: orient new users and optionally set up personal collection + FF1
@@ -165,6 +178,8 @@
   - now-displaying bar displays current item and appears as floating overlay
   - for the visible index window, the app reads matching rows from local SQLite to avoid redundant enrichment, then may call the indexer only for items still missing after that read; live DP-1 fields from the device fill gaps and cover enrichment failures, and same-playlist window changes (index shifts or scroll expansion) update immediately with DP-1 fallback rows while enrichment catches up
   - user taps bar to navigate to current work detail (or already there)
+  - collapsed now-playing row: shuffle and repeat are shown only when the live `player_status` includes the corresponding capability—shuffle when the `shuffle` key is present, repeat when `loopMode` parses to a known value (`none`, `playlist`, `one`); the two gates are independent so a future unknown `loopMode` string does not drop the whole status parse and does not suppress shuffle
+  - when the playing list has only one work (length from `player_status.items` when present, else the visible now-displaying item window), shuffle and repeat controls are not shown
   - optional: user opens Interact screen for keyboard/touchpad control
 - success state: active playback visible and controllable from app
 - failure/edge states:
@@ -175,7 +190,7 @@
   - expanded-bar scroll expansion is scoped to the current playing list: switching playlist or ordered items clears the widened range so the next window is not inflated by a previous session
 - key screens involved: Work Detail, Playlist Detail, Keyboard Control, Now Displaying Bar (overlay)
 - key modules/services involved: `canvas_client_service_v2`, `now_displaying_provider`, `ff1_wifi_providers`, `ff1_device_provider`
-- notes: The quick DDC brightness/contrast controls shown in Now Displaying reuse the same shared zero-toggle helper as DeviceConfig, so icon taps jump to `0` and restore the previous non-zero value while slider drags still commit the final level normally.
+- notes: The quick DDC brightness/contrast controls shown in Now Displaying reuse the same shared zero-toggle helper as DeviceConfig, so icon taps jump to `0` and restore the previous non-zero value while slider drags still commit the final level normally. End-to-end repeat-off requires FF1 firmware that accepts `setLoop` with `mode: none` and echoes `loopMode: none` in `player_status`; the app tolerates unknown `loopMode` strings when parsing `player_status` for forward compatibility.
 
 ## Flow: Settings Recovery and Support
 
@@ -206,7 +221,7 @@
 - route / entry point: `/add-address`
 - important actions: submit input, scan QR, continue to alias or complete
 - dependencies: `addAddressFlowProvider`, `scanQrProvider`, address/domain services
-- notes / caveats: duplicate and invalid-input errors are explicit and distinct
+- notes / caveats: duplicate and invalid-input errors are explicit and distinct; focus and post-frame work use `scheduleRequestFocusWhenLaidOut` / `schedulePostFrameIfMounted` so navigation after layout does not assert on disposed `BuildContext`
 
 ## Screen: AddAliasScreen
 
@@ -214,7 +229,7 @@
 - route / entry point: `/add-alias` (requires payload)
 - important actions: submit alias or skip
 - dependencies: `addAliasProvider`, `addressService`
-- notes / caveats: successful completion pops both alias and add-address routes
+- notes / caveats: successful completion pops both alias and add-address routes; same deferred focus / post-frame helpers as Add Address when requesting focus after route transitions
 
 ## Screen: PlaylistDetailScreen
 

@@ -514,6 +514,53 @@ class AppDatabase extends _$AppDatabase {
     return query.watch();
   }
 
+  /// Watch raw playlist rows so callers can safely skip malformed local rows
+  /// before Drift's generated mapper throws on null required fields.
+  Stream<List<QueryRow>> watchPlaylistRows({
+    int? type,
+    List<String>? channelIds,
+    String? ownerAddress,
+    int? limit,
+  }) {
+    final variables = <Variable<Object>>[];
+    final whereClauses = <String>[];
+
+    if (type != null) {
+      variables.add(Variable<int>(type));
+      whereClauses.add('p.type = ?');
+    }
+
+    if (channelIds != null && channelIds.isNotEmpty) {
+      variables.addAll(channelIds.map(Variable<String>.new));
+      whereClauses.add(
+        'p.channel_id IN (${List.filled(channelIds.length, '?').join(', ')})',
+      );
+    }
+
+    if (ownerAddress != null) {
+      variables.add(Variable<String>(ownerAddress));
+      whereClauses.add('p.owner_address = ?');
+    }
+
+    final whereSql = whereClauses.isEmpty
+        ? ''
+        : 'WHERE ${whereClauses.join(' AND ')}';
+    final limitSql = limit == null ? '' : 'LIMIT $limit';
+
+    return customSelect(
+      '''
+      SELECT p.*
+      FROM playlists p
+      LEFT JOIN channels c ON c.id = p.channel_id
+      $whereSql
+      ORDER BY COALESCE(c.publisher_id, 2147483647) ASC, p.created_at_us ASC
+      $limitSql
+      ''',
+      variables: variables,
+      readsFrom: {playlists, channels},
+    ).watch();
+  }
+
   /// Watch items for a playlist using position-based ordering.
   ///
   /// The results are ordered by:
@@ -754,9 +801,36 @@ class AppDatabase extends _$AppDatabase {
     )..where((t) => t.channelId.equals(channelId))).get();
   }
 
+  /// Get raw playlist rows for a channel without invoking Drift row mapping.
+  Future<List<QueryRow>> getPlaylistRowsByChannel(String channelId) {
+    return customSelect(
+      '''
+      SELECT *
+      FROM playlists
+      WHERE channel_id = ?
+      ''',
+      variables: [Variable<String>(channelId)],
+      readsFrom: {playlists},
+    ).get();
+  }
+
   /// Get playlist by ID.
   Future<PlaylistData?> getPlaylistById(String id) async {
     return (select(playlists)..where((t) => t.id.equals(id))).getSingleOrNull();
+  }
+
+  /// Get a raw playlist row by ID without invoking Drift row mapping.
+  Future<QueryRow?> getPlaylistRowById(String id) {
+    return customSelect(
+      '''
+      SELECT *
+      FROM playlists
+      WHERE id = ?
+      LIMIT 1
+      ''',
+      variables: [Variable<String>(id)],
+      readsFrom: {playlists},
+    ).getSingleOrNull();
   }
 
   /// Watch a single playlist by ID.
@@ -764,6 +838,20 @@ class AppDatabase extends _$AppDatabase {
     return (select(
       playlists,
     )..where((t) => t.id.equals(id))).watchSingleOrNull();
+  }
+
+  /// Watch a raw playlist row by ID without invoking Drift row mapping.
+  Stream<QueryRow?> watchPlaylistRowById(String id) {
+    return customSelect(
+      '''
+      SELECT *
+      FROM playlists
+      WHERE id = ?
+      LIMIT 1
+      ''',
+      variables: [Variable<String>(id)],
+      readsFrom: {playlists},
+    ).watch().map((rows) => rows.isEmpty ? null : rows.single);
   }
 
   /// Get all playlists.
@@ -795,9 +883,45 @@ class AppDatabase extends _$AppDatabase {
     return result;
   }
 
+  /// Get raw playlist rows without invoking Drift row mapping.
+  Future<List<QueryRow>> getAllPlaylistRows({PlaylistType? type}) {
+    final variables = <Variable<Object>>[];
+    final whereClause = type == null
+        ? ''
+        : (() {
+            variables.add(Variable<int>(type.value));
+            return 'WHERE p.type = ?';
+          })();
+
+    return customSelect(
+      '''
+      SELECT p.*
+      FROM playlists p
+      LEFT JOIN channels c ON c.id = p.channel_id
+      $whereClause
+      ORDER BY COALESCE(c.publisher_id, 2147483647) ASC, p.created_at_us ASC
+      ''',
+      variables: variables,
+      readsFrom: {playlists, channels},
+    ).get();
+  }
+
   /// Get address-based playlists.
   Future<List<PlaylistData>> getAddressPlaylists() async {
     return (select(playlists)..where((t) => t.type.equals(1))).get();
+  }
+
+  /// Get raw address-based playlist rows without invoking Drift row mapping.
+  Future<List<QueryRow>> getAddressPlaylistRows() {
+    return customSelect(
+      '''
+      SELECT *
+      FROM playlists
+      WHERE type = ?
+      ''',
+      variables: [Variable<int>(PlaylistType.addressBased.value)],
+      readsFrom: {playlists},
+    ).get();
   }
 
   /// Upsert a playlist.
@@ -1083,7 +1207,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Full-text search playlists by query with owner/slug fallback matching.
-  Future<List<PlaylistData>> searchPlaylistsByTitleFts(
+  Future<List<QueryRow>> searchPlaylistsByTitleFts(
     String query, {
     int limit = 20,
   }) async {
@@ -1136,7 +1260,7 @@ class AppDatabase extends _$AppDatabase {
       readsFrom: {playlists},
     ).get();
 
-    return rows.map((row) => playlists.map(row.data)).toList();
+    return rows;
   }
 
   /// Full-text search items by query (title and artist).

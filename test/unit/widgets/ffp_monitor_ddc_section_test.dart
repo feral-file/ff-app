@@ -621,12 +621,14 @@ class _FakeWifiTransport implements FF1WifiTransport {
       const Stream<FF1NotificationMessage>.empty();
 
   @override
-  Future<void> connect({
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
     bool forceReconnect = false,
-  }) async {}
+  }) async {
+    return true;
+  }
 
   @override
   void dispose() {}

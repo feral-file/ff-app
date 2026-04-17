@@ -1,14 +1,7 @@
-// This provider file still contains legacy analyzer noise that is outside the
-// firmware-update flow; keep the ignore local so this PR can be gated on the
-// new prompt/update behavior instead of a broader cleanup pass.
-// ignore_for_file: implementation_imports, lines_longer_than_80_chars, comment_references, discarded_futures, unawaited_futures, public_member_api_docs, avoid_equals_and_hash_code_on_mutable_classes
+// This provider file still contains legacy analyzer noise outside narrow fixes.
+// ignore_for_file: lines_longer_than_80_chars, comment_references, public_member_api_docs, avoid_equals_and_hash_code_on_mutable_classes
 
 import 'dart:async';
-
-// This provider layer already carries lint debt unrelated to the stale-status
-// bug. The current change is intentionally narrow: keep live status aligned
-// with the current FF1 connection session without refactoring the whole file.
-// ignore_for_file: avoid_equals_and_hash_code_on_mutable_classes, cascade_invocations, comment_references, discarded_futures, implementation_imports, lines_longer_than_80_chars, public_member_api_docs, unawaited_futures
 
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/version_provider.dart';
@@ -153,16 +146,49 @@ class FF1WifiConnectionState {
 /// Manages connection lifecycle and state for a single device.
 class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   FF1WifiControl get _control => ref.read(ff1WifiControlProvider);
+  late final Logger _log;
   late final StructuredLogger _slog;
   int _connectEpoch = 0;
+  int? _connectingEpoch;
+  String? _requiredDeviceVersionCheckCompletedForDeviceId;
+  String? _requiredDeviceVersionCheckInFlightForDeviceId;
 
   @override
   FF1WifiConnectionState build() {
+    _log = Logger('FF1WifiConnectionNotifier');
     _slog = AppStructuredLog.forLogger(
-      Logger('FF1WifiConnectionNotifier'),
+      _log,
       context: {'component': 'ff1_wifi_connection_notifier'},
     );
     return const FF1WifiConnectionState(isConnected: false);
+  }
+
+  void _scheduleRequiredDeviceVersionCheckIfNeeded(FF1Device device) {
+    if (_requiredDeviceVersionCheckCompletedForDeviceId == device.deviceId) {
+      return;
+    }
+    if (_requiredDeviceVersionCheckInFlightForDeviceId == device.deviceId) {
+      return;
+    }
+
+    // The first session that actually observes a version-bearing device
+    // status owns the required-version gate. If the session is paused before
+    // that status arrives, the gate must be allowed to re-arm on resume.
+    _requiredDeviceVersionCheckInFlightForDeviceId = device.deviceId;
+    unawaited(
+      _scheduleRequiredDeviceVersionCheck(
+        ref: ref,
+        logger: _log,
+        device: device,
+      ).then((completed) {
+        if (_requiredDeviceVersionCheckInFlightForDeviceId == device.deviceId) {
+          _requiredDeviceVersionCheckInFlightForDeviceId = null;
+        }
+        if (completed) {
+          _requiredDeviceVersionCheckCompletedForDeviceId = device.deviceId;
+        }
+      }),
+    );
   }
 
   /// Connect to device over WiFi
@@ -170,7 +196,11 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   /// [device] - FF1 device with topicId
   /// [userId] - user identifier for authentication
   /// [apiKey] - API key for authentication
-  Future<void> connect({
+  ///
+  /// Returns `false` when the session was not established (superseded,
+  /// suppressed transport dispatch, etc.). Callers such as the auto-connect
+  /// watcher use this to avoid follow-up work (e.g. version checks).
+  Future<bool> connect({
     required FF1Device device,
     required String userId,
     required String apiKey,
@@ -188,19 +218,26 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       },
     );
     if (state.isConnected && state.device?.topicId == device.topicId) {
+      _scheduleRequiredDeviceVersionCheckIfNeeded(device);
       _slog.info(
         category: LogCategory.wifi,
         event: 'connection_notifier_connect_skipped',
         message: 'connect skipped because notifier is already connected',
         payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
       );
-      return;
+      return true;
+    }
+
+    if (state.device?.deviceId != device.deviceId) {
+      _requiredDeviceVersionCheckCompletedForDeviceId = null;
+      _requiredDeviceVersionCheckInFlightForDeviceId = null;
     }
 
     state = state.copyWith(device: device, isConnecting: true);
+    _connectingEpoch = epoch;
 
     try {
-      await _control.connect(
+      final ok = await _control.connect(
         device: device,
         userId: userId,
         apiKey: apiKey,
@@ -213,7 +250,23 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
           message: 'connect completed after a newer connection request',
           payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
         );
-        return;
+        return false;
+      }
+
+      if (!ok) {
+        state = state.copyWith(
+          isConnected: false,
+          isConnecting: false,
+          device: device,
+        );
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_connect_not_applied',
+          message:
+              'connect did not dispatch (suppressed or superseded at transport)',
+          payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
+        );
+        return false;
       }
 
       state = state.copyWith(
@@ -221,12 +274,14 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         isConnecting: false,
         device: device,
       );
+      _scheduleRequiredDeviceVersionCheckIfNeeded(device);
       _slog.info(
         category: LogCategory.wifi,
         event: 'connection_notifier_connect_completed',
         message: 'connect completed in notifier',
         payload: {'deviceId': device.deviceId, 'topicId': device.topicId},
       );
+      return true;
     } on Exception catch (e) {
       if (epoch != _connectEpoch) {
         _slog.info(
@@ -239,7 +294,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
             'error': e.toString(),
           },
         );
-        return;
+        return false;
       }
       state = state.copyWith(
         isConnected: false,
@@ -255,7 +310,11 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       );
       rethrow;
     } finally {
-      if (epoch == _connectEpoch && state.isConnecting) {
+      // Only the connect attempt that still owns the spinner may clear it.
+      // Pause/disconnect already clear `isConnecting`, while a newer connect
+      // must keep the UI in "connecting" until that replacement attempt ends.
+      if (_connectingEpoch == epoch && state.isConnecting) {
+        _connectingEpoch = null;
         state = state.copyWith(isConnecting: false);
       }
     }
@@ -269,6 +328,9 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   /// reconnect() on resume would use the stale cached device.
   Future<void> disconnect() async {
     _connectEpoch++;
+    _connectingEpoch = null;
+    _requiredDeviceVersionCheckCompletedForDeviceId = null;
+    _requiredDeviceVersionCheckInFlightForDeviceId = null;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_disconnect_requested',
@@ -300,6 +362,9 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
   ///
   /// Closes WebSocket but preserves [state.device] for [reconnect] on resume.
   void pauseConnection() {
+    _connectEpoch++;
+    _connectingEpoch = null;
+    _requiredDeviceVersionCheckInFlightForDeviceId = null;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_pause_requested',
@@ -311,7 +376,7 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       },
     );
     _control.pauseConnection();
-    state = state.copyWith(isConnected: false);
+    state = state.copyWith(isConnected: false, isConnecting: false);
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_pause_completed',
@@ -325,9 +390,10 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
 
   /// Reconnect to device (using cached params)
   ///
-  /// Does not set [isConnecting]; "Connecting" status is shown only for
-  /// initial connect, not for background reconnects (app resume, etc.).
+  /// Does not set [isConnecting] to true; "Connecting" is reserved for the
+  /// initial [connect] path, not background reconnects (app resume, etc.).
   Future<void> reconnect() async {
+    _connectingEpoch = null;
     _slog.info(
       category: LogCategory.wifi,
       event: 'connection_notifier_reconnect_requested',
@@ -347,10 +413,34 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
       return;
     }
 
+    final epoch = ++_connectEpoch;
     try {
-      await _control.reconnect();
+      final ok = await _control.reconnect();
 
-      state = state.copyWith(isConnected: true);
+      if (epoch != _connectEpoch) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_reconnect_canceled',
+          message: 'reconnect completed after a newer connection/pause request',
+          payload: {'deviceId': state.device?.deviceId},
+        );
+        return;
+      }
+
+      if (!ok) {
+        state = state.copyWith(isConnected: false, isConnecting: false);
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_reconnect_not_applied',
+          message:
+              'reconnect did not apply (skipped, superseded, or transport error)',
+          payload: {'deviceId': state.device?.deviceId},
+        );
+        return;
+      }
+
+      state = state.copyWith(isConnected: true, isConnecting: false);
+      _scheduleRequiredDeviceVersionCheckIfNeeded(state.device!);
       _slog.info(
         category: LogCategory.wifi,
         event: 'connection_notifier_reconnect_completed',
@@ -361,8 +451,21 @@ class FF1WifiConnectionNotifier extends Notifier<FF1WifiConnectionState> {
         },
       );
     } on Exception catch (e) {
+      if (epoch != _connectEpoch) {
+        _slog.info(
+          category: LogCategory.wifi,
+          event: 'connection_notifier_reconnect_canceled_error',
+          message: 'reconnect failed after cancellation; ignoring stale error',
+          payload: {
+            'deviceId': state.device?.deviceId,
+            'error': e.toString(),
+          },
+        );
+        return;
+      }
       state = state.copyWith(
         isConnected: false,
+        isConnecting: false,
         error: e,
       );
       _slog.warning(
@@ -439,14 +542,34 @@ final ff1ConnectionStatusStreamProvider = StreamProvider<FF1ConnectionStatus>(
   },
 );
 
-/// Whether the connected FF1 device supports shuffle and loop modes.
+/// Whether the device includes a [FF1PlayerStatus.shuffle] field (any value).
 ///
-/// Returns true only when the device has sent a player status that includes
-/// both [FF1PlayerStatus.shuffle] and [FF1PlayerStatus.loopMode] — these fields
-/// are absent on older firmware that does not support playback modes.
-final ff1SupportsPlaybackModesProvider = Provider<bool>((ref) {
+/// Older firmware omits the key; presence indicates shuffle can be driven from
+/// the app. Independent of [FF1PlayerStatus.loopMode] so an unknown future
+/// `loopMode` wire string (parsed as null) does not hide shuffle.
+final ff1SupportsShuffleProvider = Provider<bool>((ref) {
   final status = ref.watch(ff1CurrentPlayerStatusProvider);
-  return status != null && status.shuffle != null && status.loopMode != null;
+  return status != null && status.shuffle != null;
+});
+
+/// Whether we have a parsed [FF1PlayerStatus.loopMode] from the device.
+///
+/// Unknown wire values are dropped by [LoopMode.tryParse], so this stays false
+/// until the app understands the mode — repeat stays hidden, shuffle can still
+/// show via [ff1SupportsShuffleProvider].
+final ff1SupportsLoopProvider = Provider<bool>((ref) {
+  final status = ref.watch(ff1CurrentPlayerStatusProvider);
+  return status != null && status.loopMode != null;
+});
+
+/// True when the device exposes at least one playback-mode field we can use.
+///
+/// Prefer [ff1SupportsShuffleProvider] and [ff1SupportsLoopProvider] in UI so
+/// shuffle and repeat gate independently. This aggregate remains for call
+/// sites that only need a single “any playback chrome” flag (e.g. tests).
+final ff1SupportsPlaybackModesProvider = Provider<bool>((ref) {
+  return ref.watch(ff1SupportsShuffleProvider) ||
+      ref.watch(ff1SupportsLoopProvider);
 });
 
 /// Current player status provider (last received value)
@@ -557,7 +680,7 @@ Future<void> _runRequiredDeviceVersionCheck({
       );
 }
 
-Future<void> _scheduleRequiredDeviceVersionCheck({
+Future<bool> _scheduleRequiredDeviceVersionCheck({
   required Ref ref,
   required Logger logger,
   required FF1Device device,
@@ -569,14 +692,14 @@ Future<void> _scheduleRequiredDeviceVersionCheck({
   // the future with null automatically on teardown / device switch.
   final deviceStatus = await control.freshDeviceVersionFuture();
   if (!ref.mounted) {
-    return;
+    return false;
   }
   if (deviceStatus == null) {
     logger.warning(
       'Skipping device version compatibility check: '
       'fresh device status unavailable for this session',
     );
-    return;
+    return false;
   }
   final activeDevice = ref
       .read(activeFF1BluetoothDeviceProvider)
@@ -590,7 +713,7 @@ Future<void> _scheduleRequiredDeviceVersionCheck({
       'Skipping device version compatibility check for '
       '${device.deviceId}: active device changed before status arrived',
     );
-    return;
+    return false;
   }
   try {
     await _runRequiredDeviceVersionCheck(
@@ -599,6 +722,7 @@ Future<void> _scheduleRequiredDeviceVersionCheck({
       device: device,
       deviceStatus: deviceStatus,
     );
+    return true;
   } on Object catch (error, stack) {
     logger.severe(
       'Failed required device version compatibility check for '
@@ -606,6 +730,7 @@ Future<void> _scheduleRequiredDeviceVersionCheck({
       error,
       stack,
     );
+    return false;
   }
 }
 
@@ -680,13 +805,6 @@ final ff1AutoConnectWatcherProvider = Provider<void>((ref) {
               userId: 'user_id',
               apiKey: AppConfig.ff1RelayerApiKey,
             );
-            unawaited(
-              _scheduleRequiredDeviceVersionCheck(
-                ref: ref,
-                logger: logger,
-                device: device,
-              ),
-            );
           } else {
             logger.info('No active device, disconnecting...');
             await connectionNotifier.disconnect();
@@ -749,11 +867,16 @@ final ff1WifiConnectOperationProvider = FutureProvider.autoDispose
       (ref, params) async {
         final control = ref.watch(ff1WifiControlProvider);
 
-        await control.connect(
+        final ok = await control.connect(
           device: params.device,
           userId: params.userId,
           apiKey: params.apiKey,
         );
+        // Suppressed/no-dispatch (e.g. lifecycle pause) is a controlled no-op,
+        // not a hard failure — avoid retry storms that would churn transport.
+        if (!ok) {
+          return;
+        }
       },
     );
 
