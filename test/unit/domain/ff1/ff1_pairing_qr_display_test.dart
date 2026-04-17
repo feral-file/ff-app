@@ -44,5 +44,35 @@ void main() {
     test('returns false for unparseable url', () {
       expect(isPairingQrStepInDisplayUrl('::'), isFalse);
     });
+
+    test('returns false when main query is malformed', () {
+      expect(
+        isPairingQrStepInDisplayUrl(
+          'https://example.com/path?step=%E0%A4%A',
+        ),
+        isFalse,
+      );
+    });
+
+    test(
+      'returns true from fragment when main query is malformed',
+      () {
+        expect(
+          isPairingQrStepInDisplayUrl(
+            'https://example.com/path?bad=%E0%A4%A#/setup?step=qrcode',
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    test('returns false when fragment query is malformed', () {
+      expect(
+        isPairingQrStepInDisplayUrl(
+          'http://127.0.0.1:9222/#/setup?step=%E0%A4%A',
+        ),
+        isFalse,
+      );
+    });
   });
 }

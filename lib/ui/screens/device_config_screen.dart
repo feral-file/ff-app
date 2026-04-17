@@ -15,8 +15,10 @@ import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_control_verifier.dart';
 import 'package:app/infra/ff1/wifi_protocol/ff1_device_status_pairing_qr.dart';
-import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart' show FF1DeviceStatus;
+import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart'
+    show FF1DeviceStatus;
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/custom_app_bar.dart';
@@ -64,7 +66,7 @@ final _log = Logger('DeviceConfigScreen');
 
 class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     with RouteAware {
-  /// Default: assume pairing QR is visible (FF1 builds without `displayURL`).
+  /// Default: assume pairing QR is visible when relayer omits `displayURL`.
   bool _isShowingQRCode = true;
 
   /// While a show/hide command is in flight, ignore `displayUrl` sync to avoid
@@ -260,7 +262,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             left: LayoutConstants.pageHorizontalDefault,
             right: LayoutConstants.pageHorizontalDefault,
             child: PrimaryAsyncButton(
-
               onTap: () async {
                 context.go(Routes.home);
               },
@@ -852,19 +853,24 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           device: device,
           deviceData: deviceData,
         ),
-        if (isControllable) ...[
+        if (!widget.payload.isInSetupProcess && isControllable) ...[
           SizedBox(height: LayoutConstants.space4),
           PrimaryAsyncButton(
             text: _isShowingQRCode ? 'Hide QR Code' : 'Show Pairing QR Code',
             color: AppColor.white,
             onTap: () async {
               final nextShow = !_isShowingQRCode;
+              var commandSucceeded = false;
               _isPairingQrCommandInFlight = true;
               try {
-                await control.showPairingQRCode(
+                final response = await control.showPairingQRCode(
                   topicId: device.topicId,
                   show: nextShow,
                 );
+                commandSucceeded = ff1CommandResponseSucceeded(response);
+                if (!commandSucceeded) {
+                  return;
+                }
                 if (!mounted) {
                   return;
                 }
@@ -873,6 +879,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 });
               } finally {
                 _isPairingQrCommandInFlight = false;
+                // Reconcile skipped status updates only when the command fails.
+                // On success, keep the local optimistic state and wait for the
+                // next device-status push to avoid stale rollback flicker.
+                if (!commandSucceeded) {
+                  _maybeApplyDisplayUrlToPairingQr(
+                    ref.read(ff1CurrentDeviceStatusProvider),
+                  );
+                }
               }
             },
           ),

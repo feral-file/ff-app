@@ -11,7 +11,14 @@ bool isPairingQrStepInDisplayUrl(String displayUrl) {
   if (uri == null) {
     return false;
   }
-  if (_stepValueIndicatesQr(uri.queryParameters['step'])) {
+  String? mainStep;
+  try {
+    mainStep = uri.queryParameters['step'];
+  } on FormatException {
+    // Ignore malformed main query and keep trying the fragment query because
+    // hash-routed URLs may still carry a valid `step` value.
+  }
+  if (_stepValueIndicatesQr(mainStep)) {
     return true;
   }
   // Hash-routed SPAs often put query parameters in [Uri.fragment] (e.g.
@@ -24,8 +31,14 @@ bool isPairingQrStepInDisplayUrl(String displayUrl) {
   if (q < 0 || q >= fragment.length - 1) {
     return false;
   }
-  final params = Uri.splitQueryString(fragment.substring(q + 1));
-  return _stepValueIndicatesQr(params['step']);
+  try {
+    final params = Uri.splitQueryString(fragment.substring(q + 1));
+    return _stepValueIndicatesQr(params['step']);
+  } on FormatException {
+    // Relayer payloads are external input; malformed fragment query encoding
+    // should be treated as non-QR instead of crashing UI sync.
+    return false;
+  }
 }
 
 bool _stepValueIndicatesQr(String? step) {
