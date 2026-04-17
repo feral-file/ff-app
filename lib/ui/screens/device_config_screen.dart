@@ -15,6 +15,8 @@ import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
+import 'package:app/infra/ff1/wifi_protocol/ff1_device_status_pairing_qr.dart';
+import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart' show FF1DeviceStatus;
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/custom_app_bar.dart';
@@ -62,7 +64,16 @@ final _log = Logger('DeviceConfigScreen');
 
 class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     with RouteAware {
-  bool _isShowingQRCode = false;
+  /// Default: assume pairing QR is visible (FF1 builds without `displayURL`).
+  bool _isShowingQRCode = true;
+
+  /// While a show/hide command is in flight, ignore `displayUrl` sync to avoid
+  /// flicker from stale device_status notifications.
+  bool _isPairingQrCommandInFlight = false;
+
+  /// `ref.listen` does not fire for the initial provider value; we run one
+  /// post-frame sync when the screen opens and again after switching devices.
+  bool _queuedOneShotPairingQrDisplayUrlSync = true;
   bool _isRouteVisible = false;
   bool _isUpdatePromptPending = false;
   bool _isUpdatePromptDialogVisible = false;
@@ -122,6 +133,22 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     _isRouteVisible = false;
   }
 
+  void _maybeApplyDisplayUrlToPairingQr(FF1DeviceStatus? status) {
+    if (!mounted || _isPairingQrCommandInFlight) {
+      return;
+    }
+    final showing = status?.isPairingQrShowing;
+    if (showing == null) {
+      return;
+    }
+    if (_isShowingQRCode == showing) {
+      return;
+    }
+    setState(() {
+      _isShowingQRCode = showing;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // Prompt only on fresh relayer/connectivity updates. Active-device changes
@@ -131,7 +158,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     ref
       ..listen(
         ff1CurrentDeviceStatusProvider,
-        (_, _) => _checkUpdatePrompt(),
+        (_, next) {
+          _checkUpdatePrompt();
+          _maybeApplyDisplayUrlToPairingQr(next);
+        },
       )
       ..listen(
         activeFF1BluetoothDeviceProvider,
@@ -147,6 +177,13 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           if (previousDeviceId != nextDeviceId) {
             _updatePromptGeneration++;
             _isUpdatePromptPending = false;
+            _queuedOneShotPairingQrDisplayUrlSync = true;
+            if (mounted) {
+              setState(() {
+                _isShowingQRCode = true;
+                _isPairingQrCommandInFlight = false;
+              });
+            }
             if (_isUpdatePromptDialogVisible && mounted) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (!mounted || !_isUpdatePromptDialogVisible) {
@@ -161,6 +198,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           }
         },
       );
+
+    if (_queuedOneShotPairingQrDisplayUrlSync) {
+      _queuedOneShotPairingQrDisplayUrlSync = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _maybeApplyDisplayUrlToPairingQr(
+          ref.read(ff1CurrentDeviceStatusProvider),
+        );
+      });
+    }
 
     return ref
         .watch(activeFF1BluetoothDeviceProvider)
@@ -812,13 +858,22 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             text: _isShowingQRCode ? 'Hide QR Code' : 'Show Pairing QR Code',
             color: AppColor.white,
             onTap: () async {
-              await control.showPairingQRCode(
-                topicId: device.topicId,
-                show: !_isShowingQRCode,
-              );
-              setState(() {
-                _isShowingQRCode = !_isShowingQRCode;
-              });
+              final nextShow = !_isShowingQRCode;
+              _isPairingQrCommandInFlight = true;
+              try {
+                await control.showPairingQRCode(
+                  topicId: device.topicId,
+                  show: nextShow,
+                );
+                if (!mounted) {
+                  return;
+                }
+                setState(() {
+                  _isShowingQRCode = nextShow;
+                });
+              } finally {
+                _isPairingQrCommandInFlight = false;
+              }
             },
           ),
         ],

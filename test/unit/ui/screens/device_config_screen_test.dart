@@ -1,9 +1,9 @@
 import 'dart:async';
 
+import 'package:app/app/ff1/ff1_firmware_update_prompt_service.dart';
 import 'package:app/app/providers/ff1_bluetooth_device_providers.dart';
 import 'package:app/app/providers/ff1_device_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
-import 'package:app/app/ff1/ff1_firmware_update_prompt_service.dart';
 import 'package:app/domain/models/ff1/ffp_ddc_panel_status.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/domain/models/indexer/sync_collection.dart';
@@ -118,7 +118,8 @@ void main() {
         rotateButton.enabled,
         isFalse,
         reason:
-            'Legacy FF1 actions stay disabled while sleeping; DDC uses its own gate.',
+            'Legacy FF1 actions stay disabled while sleeping; DDC uses its own '
+            'gate.',
       );
 
       await tester.dragUntilVisible(
@@ -206,6 +207,112 @@ void main() {
         ),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets(
+    'pairing QR button shows Hide when displayUrl has step=qrcode',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 2400));
+      addTearDown(() async {
+        await tester.binding.setSurfaceSize(null);
+      });
+
+      await tester.pumpWidget(
+        _wrapScreen(
+          isInSetupProcess: false,
+          deviceData: FF1DeviceData(
+            deviceStatus: const FF1DeviceStatus(
+              volume: 40,
+              isMuted: false,
+              displayUrl: 'https://example.com/?step=qrcode',
+            ),
+            playerStatus: FF1PlayerStatus(
+              playlistId: 'playlist-1',
+              sleepMode: false,
+            ),
+            isConnected: true,
+          ),
+          currentDeviceStatus: const FF1DeviceStatus(
+            volume: 40,
+            isMuted: false,
+            displayUrl: 'https://example.com/?step=qrcode',
+          ),
+          currentPlayerStatus: FF1PlayerStatus(
+            playlistId: 'playlist-1',
+            sleepMode: false,
+          ),
+          panelStatus: const FfpDdcPanelStatus(
+            brightness: 25,
+            contrast: 60,
+            power: FfpDdcPanelPower.on,
+            monitor: 'Test Monitor',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.dragUntilVisible(
+        find.text('Device Information'),
+        find.byType(CustomScrollView),
+        const Offset(0, -300),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Hide QR Code'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'pairing QR button shows Show when displayUrl is not qrcode step',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 2400));
+      addTearDown(() async {
+        await tester.binding.setSurfaceSize(null);
+      });
+
+      await tester.pumpWidget(
+        _wrapScreen(
+          isInSetupProcess: false,
+          deviceData: FF1DeviceData(
+            deviceStatus: const FF1DeviceStatus(
+              volume: 40,
+              isMuted: false,
+              displayUrl: 'https://example.com/?step=home',
+            ),
+            playerStatus: FF1PlayerStatus(
+              playlistId: 'playlist-1',
+              sleepMode: false,
+            ),
+            isConnected: true,
+          ),
+          currentDeviceStatus: const FF1DeviceStatus(
+            volume: 40,
+            isMuted: false,
+            displayUrl: 'https://example.com/?step=home',
+          ),
+          currentPlayerStatus: FF1PlayerStatus(
+            playlistId: 'playlist-1',
+            sleepMode: false,
+          ),
+          panelStatus: const FfpDdcPanelStatus(
+            brightness: 25,
+            contrast: 60,
+            power: FfpDdcPanelPower.on,
+            monitor: 'Test Monitor',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.dragUntilVisible(
+        find.text('Device Information'),
+        find.byType(CustomScrollView),
+        const Offset(0, -300),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Show Pairing QR Code'), findsOneWidget);
     },
   );
 

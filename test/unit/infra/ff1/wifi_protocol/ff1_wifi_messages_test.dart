@@ -318,6 +318,22 @@ void main() {
       expect(status.internetConnected, true);
     });
 
+    test('fromJson parses displayURL', () {
+      final status = FF1DeviceStatus.fromJson({
+        'displayURL': 'https://example.com/?step=qrcode',
+      });
+
+      expect(status.displayUrl, 'https://example.com/?step=qrcode');
+    });
+
+    test('fromJson treats empty displayURL as absent', () {
+      final status = FF1DeviceStatus.fromJson({
+        'displayURL': '   ',
+      });
+
+      expect(status.displayUrl, isNull);
+    });
+
     test('toJson serializes correctly', () {
       const status = FF1DeviceStatus(
         connectedWifi: 'TestNetwork',
@@ -325,6 +341,7 @@ void main() {
         installedVersion: '2.0.0',
         latestVersion: '2.1.0',
         internetConnected: false,
+        displayUrl: 'https://example.com/ui',
       );
 
       final json = status.toJson();
@@ -334,6 +351,7 @@ void main() {
       expect(json['installedVersion'], '2.0.0');
       expect(json['latestVersion'], '2.1.0');
       expect(json['internetConnected'], false);
+      expect(json['displayURL'], 'https://example.com/ui');
     });
   });
 

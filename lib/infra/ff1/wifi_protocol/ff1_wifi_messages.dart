@@ -278,6 +278,7 @@ class FF1DeviceStatus {
     this.volume,
     this.isMuted,
     this.macInfo,
+    this.displayUrl,
   });
 
   /// Deserialize from JSON.
@@ -297,6 +298,13 @@ class FF1DeviceStatus {
       );
     }
 
+    final rawDisplayUrl = json['displayURL'] as String?;
+    final trimmedDisplay = rawDisplayUrl?.trim();
+    final displayUrl =
+        trimmedDisplay != null && trimmedDisplay.isNotEmpty
+            ? trimmedDisplay
+            : null;
+
     return FF1DeviceStatus(
       connectedWifi: json['connectedWifi'] as String?,
       screenRotation: rotation,
@@ -306,6 +314,7 @@ class FF1DeviceStatus {
       volume: json['volume'] as int?,
       isMuted: json['isMuted'] as bool?,
       macInfo: macInfo,
+      displayUrl: displayUrl,
     );
   }
 
@@ -334,6 +343,10 @@ class FF1DeviceStatus {
   /// (e.g. `{"enp1s0": "10:bb:f3:64:0e:75", "wlp2s0": "40:9c:a7:50:90:21"}`).
   final Map<String, String>? macInfo;
 
+  /// Chromium UI page URL from device status (relayer `displayURL`), when
+  /// present.
+  final String? displayUrl;
+
   /// Serialize to JSON.
   Map<String, dynamic> toJson() => {
     'connectedWifi': connectedWifi,
@@ -344,12 +357,14 @@ class FF1DeviceStatus {
     'volume': volume,
     'isMuted': isMuted,
     'macInfo': macInfo,
+    'displayURL': displayUrl,
   };
 
   @override
   String toString() =>
       'FF1DeviceStatus(wifi: $connectedWifi, internet: $internetConnected, '
-      'volume: $volume, isMuted: $isMuted, macInfo: $macInfo)';
+      'volume: $volume, isMuted: $isMuted, macInfo: $macInfo, '
+      'displayUrl: $displayUrl)';
 }
 
 ScreenOrientation? _parseScreenOrientation(String value) {
