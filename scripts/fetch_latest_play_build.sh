@@ -6,6 +6,10 @@ usage() {
 Usage:
   scripts/fetch_latest_play_build.sh <service-account-json> <package-name> [version]
 
+Optional [version] is the Play versionName being built. versionCode must increase on every
+upload; if that versionName is not on the internal track yet, the script falls back to the
+highest versionCode already on internal (same as when [version] is omitted).
+
 Example:
   scripts/fetch_latest_play_build.sh ~/Downloads/service-account.json com.feralfile.app
   scripts/fetch_latest_play_build.sh ~/Downloads/service-account.json com.feralfile.app 1.0.8
@@ -111,53 +115,13 @@ TRACKS_RESPONSE="$(curl -sS "$BASE_URL/edits/$EDIT_ID/tracks" \
 # best-effort cleanup of edit; ignore failure
 curl -sS -X DELETE "$BASE_URL/edits/$EDIT_ID" -H "Authorization: Bearer $ACCESS_TOKEN" >/dev/null 2>&1 || true
 
-printf '%s' "$TRACKS_RESPONSE" | jq -r --arg targetVersion "$TARGET_VERSION" '
-  def to_release_entries($track):
-    [
-      (($track.releases // [])[]? | {
-        version: (.name // ""),
-        status: (.status // ""),
-        track: ($track.track // ""),
-        codes: [(.versionCodes // [])[]? | tonumber?] | map(select(. != null))
-      })
-      | .max_code = (if (.codes | length) == 0 then null else (.codes | max) end)
-    ];
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+QUERY_FILE="$SCRIPT_DIR/fetch_latest_play_build_query.jq"
+if [[ ! -f "$QUERY_FILE" ]]; then
+  echo "Error: missing jq query file: $QUERY_FILE" >&2
+  exit 1
+fi
 
-  def to_code_entries($releases):
-    [
-      $releases[] as $r
-      | $r.codes[]? as $c
-      | {
-          code: $c,
-          track: $r.track,
-          version: $r.version,
-          status: $r.status
-        }
-    ];
-
-  (
-    (.tracks // []) | map(select(.track == "internal")) | .[0]
-  ) as $internal_track
-  | if $internal_track == null then
-      "latest_version=0\nlatest_build_number=0\nlatest_version_code=0\nlatest_track=internal\nlatest_release_status="
-    else
-      (to_release_entries($internal_track)) as $releases
-      | if ($targetVersion | length) > 0 then
-          (to_code_entries($releases | map(select(.version == $targetVersion)))) as $entries
-          | if ($entries | length) == 0 then
-              "latest_version=\($targetVersion)\nlatest_build_number=0\nlatest_version_code=0\nlatest_track=internal\nlatest_release_status="
-            else
-              ($entries | max_by(.code)) as $latest
-              | "latest_version=\($targetVersion)\nlatest_build_number=\($latest.code)\nlatest_version_code=\($latest.code)\nlatest_track=\($latest.track)\nlatest_release_status=\($latest.status)"
-            end
-        else
-          ($releases | map(select(.max_code != null))) as $with_codes
-          | if ($with_codes | length) == 0 then
-              "latest_version=0\nlatest_build_number=0\nlatest_version_code=0\nlatest_track=internal\nlatest_release_status="
-            else
-              ($with_codes | max_by(.max_code)) as $latest_release
-              | "latest_version=\(if ($latest_release.version | length) > 0 then $latest_release.version else "0" end)\nlatest_build_number=\($latest_release.max_code)\nlatest_version_code=\($latest_release.max_code)\nlatest_track=\($latest_release.track)\nlatest_release_status=\($latest_release.status)"
-            end
-        end
-    end
-'
+# latest_build_number is the max versionCode on internal for the requested versionName when it
+# exists; otherwise the global max on internal so CI can use (max + 1) monotonically.
+printf '%s' "$TRACKS_RESPONSE" | jq -r --arg targetVersion "$TARGET_VERSION" -f "$QUERY_FILE"
