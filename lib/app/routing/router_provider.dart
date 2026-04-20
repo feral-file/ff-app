@@ -345,9 +345,11 @@ routerProvider = Provider.family<GoRouter, String>((
         name: RouteNames.allChannels,
         pageBuilder: (context, state) {
           final filterParam = state.uri.queryParameters['filter'];
-          final filter = filterParam == 'personal'
-              ? AllChannelsFilter.personal
-              : AllChannelsFilter.curated;
+          final filter = switch (filterParam) {
+            'personal' => AllChannelsFilter.personal,
+            'living' => AllChannelsFilter.living,
+            _ => AllChannelsFilter.curated,
+          };
           return buildCupertinoTransitionPage(
             context,
             state,

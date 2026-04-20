@@ -51,6 +51,8 @@ class AppToastOverlayItem extends AppOverlayItem {
     required this.iconPreset,
     this.isManuallyDismissible = false,
     this.autoDismissAfter,
+    this.primaryActionLabel,
+    this.onPrimaryAction,
   });
 
   /// Toast message.
@@ -65,6 +67,12 @@ class AppToastOverlayItem extends AppOverlayItem {
   /// Whether the toast can be dismissed via UI controls.
   final bool isManuallyDismissible;
 
+  /// Optional trailing action (e.g. Play for living-channel updates).
+  final String? primaryActionLabel;
+
+  /// Invoked when the user taps [primaryActionLabel].
+  final VoidCallback? onPrimaryAction;
+
   /// Returns an updated copy.
   AppToastOverlayItem copyWith({
     String? id,
@@ -75,6 +83,9 @@ class AppToastOverlayItem extends AppOverlayItem {
     Duration? autoDismissAfter,
     bool clearAutoDismissAfter = false,
     bool? isManuallyDismissible,
+    String? primaryActionLabel,
+    VoidCallback? onPrimaryAction,
+    bool clearPrimaryAction = false,
   }) {
     return AppToastOverlayItem(
       id: id ?? this.id,
@@ -87,6 +98,12 @@ class AppToastOverlayItem extends AppOverlayItem {
           : autoDismissAfter ?? this.autoDismissAfter,
       isManuallyDismissible:
           isManuallyDismissible ?? this.isManuallyDismissible,
+      primaryActionLabel: clearPrimaryAction
+          ? null
+          : primaryActionLabel ?? this.primaryActionLabel,
+      onPrimaryAction: clearPrimaryAction
+          ? null
+          : onPrimaryAction ?? this.onPrimaryAction,
     );
   }
 }
@@ -112,6 +129,8 @@ class AppOverlayNotifier extends Notifier<List<AppOverlayItem>> {
     ToastOverlayIconPreset iconPreset = ToastOverlayIconPreset.loading,
     bool isTapThroughable = true,
     Duration? autoDismissAfter,
+    String? primaryActionLabel,
+    VoidCallback? onPrimaryAction,
   }) {
     final overlayId = 'toast-${_nextOverlayId++}';
     final interactionMode = isTapThroughable
@@ -125,6 +144,8 @@ class AppOverlayNotifier extends Notifier<List<AppOverlayItem>> {
       message: message,
       iconPreset: iconPreset,
       autoDismissAfter: autoDismissAfter,
+      primaryActionLabel: primaryActionLabel,
+      onPrimaryAction: onPrimaryAction,
     );
 
     state = [...state, toast];

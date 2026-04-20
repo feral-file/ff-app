@@ -7,8 +7,7 @@ import 'package:app/domain/models/channel.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
-import 'package:riverpod/src/providers/future_provider.dart';
-import 'package:riverpod/src/providers/notifier.dart';
+import 'package:riverpod/misc.dart';
 
 /// State for a single channel type (curated or personal).
 /// Aligns with old repo: one list per ChannelType,
@@ -125,8 +124,10 @@ class ChannelsState {
 /// Notifier for one channel type (curated = dp1, personal = localVirtual).
 /// Aligns with old repo: ChannelsBloc(channelType, total?, pageSize).
 class ChannelsNotifier extends Notifier<ChannelsState> {
-  ChannelsNotifier(this._type)
-    : _log = Logger('ChannelsNotifier(${_type.name})');
+  /// Subscribes to DB updates for [type] and loads the initial page.
+  ChannelsNotifier(ChannelType type)
+    : _type = type,
+      _log = Logger('ChannelsNotifier(${type.name})');
 
   static const int _pageSize = 10;
 
@@ -136,32 +137,56 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 
   @override
   ChannelsState build() {
-    ref.watch(databaseServiceProvider);
+    ref
+      ..watch(databaseServiceProvider)
+      ..onDispose(() async {
+        _log.info('Disposing ChannelsNotifier, cancelling subscription');
+        await _watchSub?.cancel();
+        _watchSub = null;
+      });
 
-    ref.onDispose(() async {
-      _log.info('Disposing ChannelsNotifier, cancelling subscription');
-      await _watchSub?.cancel();
-      _watchSub = null;
-    });
-
-    // Best practice: keep build() synchronous; defer subscriptions to the next turn.
-    // Stream.listen() can emit synchronously; if we set up the watch here and the
-    // callback runs before build() returns, Riverpod throws "uninitialized provider".
-    // Future.microtask ensures the notifier is fully initialized before any callback.
+    // Best practice: keep build() synchronous; defer subscriptions to the next
+    // turn. Stream.listen() can emit synchronously; if we set up the watch here
+    // and the callback runs before build() returns, Riverpod throws
+    // "uninitialized provider". Future.microtask ensures the notifier is fully
+    // initialized before any callback.
     unawaited(Future.microtask(_setupDatabaseWatch));
-    return ChannelsState.initial();
+
+    // [databaseServiceProvider] is watched so we re-subscribe when the backing
+    // DB is rebound (e.g. seed sync swaps in-memory placeholder → file DB).
+    // Do **not** return [ChannelsState.initial()] on every rebuild: that would
+    // wipe loaded channel lists whenever the dependency invalidates.
+    // First build: `state` is not set yet (Riverpod throws [StateError]).
+    // Catching [StateError] is intentional: it is the signal that the notifier
+    // has no prior return value yet (first [build]).
+    try {
+      return state;
+      // StateError is the only expected failure when reading [state] before the
+      // first successful [build] return; it must not be rethrown.
+      // ignore: avoid_catching_errors
+    } on StateError catch (_) {
+      return ChannelsState.initial();
+    }
   }
 
   void _setupDatabaseWatch() {
     if (!ref.mounted) return;
     if (!ref.read(isSeedDatabaseReadyProvider)) return;
-    _watchSub?.cancel();
+    final previous = _watchSub;
+    _watchSub = null;
+    if (previous != null) {
+      unawaited(previous.cancel());
+    }
     final databaseService = ref.read(databaseServiceProvider);
     // Use watchChannelsByType so we react to playlist_entries changes
     // (remove address, unfavorite). watchChannels only watches channels table.
     if (_type == ChannelType.localVirtual) {
       _watchSub = databaseService
           .watchChannelsByType(ChannelType.localVirtual)
+          .listen(_onChannelsChanged, onError: _onWatchError);
+    } else if (_type == ChannelType.living) {
+      _watchSub = databaseService
+          .watchLivingChannelsCatalog()
           .listen(_onChannelsChanged, onError: _onWatchError);
     } else {
       final listenSize = (_pageSize > state.channels.length)
@@ -196,6 +221,15 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
       );
       return;
     }
+    if (_type == ChannelType.living) {
+      state = ChannelsState.loaded(
+        channels: next,
+        hasMore: false,
+        cursor: null,
+        total: next.length,
+      );
+      return;
+    }
     // dp1: use emission as trigger to refresh (pagination).
     if (state.channels.isEmpty && !state.isLoading) {
       unawaited(refresh());
@@ -218,7 +252,8 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
     try {
       final effectiveSize = size ?? _pageSize;
       _log.info(
-        'Loading channels from database (type: ${_type.name}, size: $effectiveSize)...',
+        'Loading channels from database '
+        '(type: ${_type.name}, size: $effectiveSize)...',
       );
       if (showLoading) {
         state = state.copyWith(isLoading: true, clearError: true);
@@ -226,7 +261,17 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
 
       final databaseService = ref.read(databaseServiceProvider);
 
-      if (_type == ChannelType.dp1) {
+      if (_type == ChannelType.living) {
+        final living = await databaseService.getLivingChannelsCatalog();
+        if (!ref.mounted) return;
+        state = ChannelsState.loaded(
+          channels: living,
+          hasMore: false,
+          cursor: null,
+          total: living.length,
+        );
+        _log.info('Living (followed) channels: ${living.length}');
+      } else if (_type == ChannelType.dp1) {
         final result = await databaseService.getChannelsByType(
           ChannelType.dp1,
           limit: effectiveSize + 1,
@@ -241,7 +286,8 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
           cursor: nextCursor,
         );
         _log.info(
-          'Curated channels: ${page.length}, hasMore: $hasMore, cursor: $nextCursor',
+          'Curated channels: ${page.length}, '
+          'hasMore: $hasMore, cursor: $nextCursor',
         );
       } else {
         final personalAll = await databaseService.getChannelsByType(
@@ -256,7 +302,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
         );
         _log.info('Personal channels: ${personalAll.length}');
       }
-    } catch (e, stack) {
+    } on Object catch (e, stack) {
       if (!ref.mounted) return;
       if (isDatabaseUnavailableError(e)) {
         state = ChannelsState.loaded(
@@ -329,7 +375,7 @@ class ChannelsNotifier extends Notifier<ChannelsState> {
         hasMore: hasMore,
         cursor: nextCursor,
       );
-    } catch (e, stack) {
+    } on Object catch (e, stack) {
       if (!ref.mounted) return;
       if (isDatabaseUnavailableError(e)) {
         state = state.copyWith(
@@ -357,9 +403,10 @@ bool _isOperationCancelled(Object error) {
       error.toString().contains('Operation was cancelled');
 }
 
-/// Provider for channels state by type (dp1 = curated, localVirtual = personal).
+/// Provider for channels state by type (dp1 = curated,
+/// localVirtual = personal).
 final NotifierProviderFamily<ChannelsNotifier, ChannelsState, ChannelType>
-channelsProvider =
+    channelsProvider =
     NotifierProvider.family<ChannelsNotifier, ChannelsState, ChannelType>(
       ChannelsNotifier.new,
     );
@@ -367,16 +414,16 @@ channelsProvider =
 /// Provider for a specific channel by ID.
 final FutureProviderFamily<Channel?, String> channelByIdProvider =
     FutureProvider.family<Channel?, String>((
-      ref,
-      channelId,
-    ) async {
-      final databaseService = ref.watch(databaseServiceProvider);
-      try {
-        return await databaseService.getChannelById(channelId);
-      } on Object catch (e) {
-        if (isDatabaseUnavailableError(e)) {
-          return null;
-        }
-        rethrow;
-      }
-    });
+  ref,
+  channelId,
+) async {
+  final databaseService = ref.watch(databaseServiceProvider);
+  try {
+    return await databaseService.getChannelById(channelId);
+  } on Object catch (e) {
+    if (isDatabaseUnavailableError(e)) {
+      return null;
+    }
+    rethrow;
+  }
+});

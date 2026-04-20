@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app/app/providers/addresses_provider.dart';
 import 'package:app/app/providers/bootstrap_provider.dart';
 import 'package:app/app/providers/channel_detail_provider.dart';
+import 'package:app/app/providers/channel_follow_provider.dart';
 import 'package:app/app/providers/channel_preview_provider.dart';
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/database_service_provider.dart';
@@ -89,6 +90,8 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     r.invalidate(channelPreviewProvider);
     r.invalidate(channelsProvider(ChannelType.dp1));
     r.invalidate(channelsProvider(ChannelType.localVirtual));
+    r.invalidate(channelsProvider(ChannelType.living));
+    r.invalidate(followedChannelIdsProvider);
     r.invalidate(playlistsProvider(PlaylistType.dp1));
     r.invalidate(playlistsProvider(PlaylistType.addressBased));
     r.invalidate(playlistsProvider(PlaylistType.favorite));

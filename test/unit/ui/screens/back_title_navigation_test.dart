@@ -1,4 +1,5 @@
 import 'package:app/app/providers/channel_detail_provider.dart';
+import 'package:app/app/providers/channel_follow_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
@@ -369,6 +370,9 @@ void main() {
             channelPlaylistsFromIdsProvider(channelId).overrideWith(
               (ref) => Stream.value(channelPlaylists),
             ),
+            followedChannelIdsProvider.overrideWith(
+              (ref) => Stream.value(<String>{}),
+            ),
           ],
           child: MaterialApp.router(
             routerConfig: GoRouter(
@@ -686,6 +690,9 @@ void main() {
             overrides: [
               channelDetailsProvider(channelId).overrideWith(
                 (ref) => const Stream<ChannelDetails>.empty(),
+              ),
+              followedChannelIdsProvider.overrideWith(
+                (ref) => Stream.value(<String>{}),
               ),
               nowDisplayingProvider.overrideWith(
                 () => _StaticNowDisplayingNotifier(

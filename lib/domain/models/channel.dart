@@ -21,6 +21,9 @@ class Channel {
     this.createdAt,
     this.updatedAt,
     this.sortOrder,
+    this.etag,
+    this.isFollowed = false,
+    this.hasUnseenUpdate = false,
   });
 
   /// DP-1 channel ID (e.g., ch_*)
@@ -62,6 +65,15 @@ class Channel {
   /// Display order.
   final int? sortOrder;
 
+  /// Last known HTTP ETag for this channel (DP-1 Feed single-resource GET).
+  final String? etag;
+
+  /// Whether the user follows this living channel (local follow table).
+  final bool isFollowed;
+
+  /// Whether there is an unseen update (red dot; session-local until cleared).
+  final bool hasUnseenUpdate;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -79,7 +91,10 @@ class Channel {
           coverImageUrl == other.coverImageUrl &&
           createdAt == other.createdAt &&
           updatedAt == other.updatedAt &&
-          sortOrder == other.sortOrder;
+          sortOrder == other.sortOrder &&
+          etag == other.etag &&
+          isFollowed == other.isFollowed &&
+          hasUnseenUpdate == other.hasUnseenUpdate;
 
   @override
   int get hashCode => Object.hash(
@@ -96,6 +111,9 @@ class Channel {
     createdAt,
     updatedAt,
     sortOrder,
+    etag,
+    isFollowed,
+    hasUnseenUpdate,
   );
 
   /// Creates a copy with updated values.
@@ -113,6 +131,9 @@ class Channel {
     DateTime? createdAt,
     DateTime? updatedAt,
     int? sortOrder,
+    String? etag,
+    bool? isFollowed,
+    bool? hasUnseenUpdate,
   }) {
     return Channel(
       id: id ?? this.id,
@@ -128,6 +149,9 @@ class Channel {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       sortOrder: sortOrder ?? this.sortOrder,
+      etag: etag ?? this.etag,
+      isFollowed: isFollowed ?? this.isFollowed,
+      hasUnseenUpdate: hasUnseenUpdate ?? this.hasUnseenUpdate,
     );
   }
 
@@ -137,16 +161,20 @@ class Channel {
 
 /// Channel type enumeration.
 enum ChannelType {
-  /// DP1 channel from feed server.
+  /// DP1 channel from feed server (curated / static ingest).
   dp1(0),
 
   /// Local virtual channel (e.g., My Collection).
-  localVirtual(1)
+  localVirtual(1),
+
+  /// Living channel (followed, polled from DP-1 Feed).
+  living(2),
   ;
 
-  final int value;
-
   const ChannelType(this.value);
+
+  /// Wire/database discriminant for this variant.
+  final int value;
 
   /// Serializes to string for query params / persistence.
   String toQueryParamString() {
@@ -155,6 +183,8 @@ enum ChannelType {
         return 'dp1';
       case ChannelType.localVirtual:
         return 'localVirtual';
+      case ChannelType.living:
+        return 'living';
     }
   }
 
@@ -165,6 +195,8 @@ enum ChannelType {
         return ChannelType.dp1;
       case 'localVirtual':
         return ChannelType.localVirtual;
+      case 'living':
+        return ChannelType.living;
       default:
         return null;
     }

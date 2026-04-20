@@ -50,6 +50,7 @@ class DP1Playlist {
     this.legacySignature,
     this.signatures = const [],
     this.dynamicQueries = const [],
+    this.playlistNoteText,
   });
 
   // from JSON
@@ -76,7 +77,18 @@ class DP1Playlist {
                   ),
                 )
                 .toList(),
+      playlistNoteText: _playlistNoteTextFromJson(json['note']),
     );
+  }
+
+  static String? _playlistNoteTextFromJson(Object? note) {
+    if (note is Map<String, dynamic> && note['text'] is String) {
+      return note['text'] as String;
+    }
+    if (note is Map && note['text'] is String) {
+      return note['text'] as String;
+    }
+    return null;
   }
 
   final String dpVersion; // e.g., "1.0.0"
@@ -91,6 +103,9 @@ class DP1Playlist {
   final String? legacySignature;
   final List<DP1PlaylistSignature> signatures;
   final List<DynamicQuery> dynamicQueries;
+
+  /// Playlist-level note text (`note.text` on wire), if present.
+  final String? playlistNoteText;
 
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{
@@ -125,6 +140,7 @@ class DP1Playlist {
     String? legacySignature,
     List<DP1PlaylistSignature>? signatures,
     List<DynamicQuery>? dynamicQueries,
+    String? playlistNoteText,
   }) {
     return DP1Playlist(
       dpVersion: dpVersion ?? this.dpVersion,
@@ -137,6 +153,7 @@ class DP1Playlist {
       legacySignature: legacySignature ?? this.legacySignature,
       signatures: signatures ?? this.signatures,
       dynamicQueries: dynamicQueries ?? this.dynamicQueries,
+      playlistNoteText: playlistNoteText ?? this.playlistNoteText,
     );
   }
 

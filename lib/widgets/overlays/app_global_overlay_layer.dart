@@ -295,6 +295,20 @@ class _ToastCard extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ),
+            if (overlay.primaryActionLabel != null &&
+                overlay.onPrimaryAction != null) ...[
+              const SizedBox(width: 12),
+              TextButton(
+                onPressed: overlay.onPrimaryAction,
+                child: Text(
+                  overlay.primaryActionLabel!,
+                  style: AppTypography.body(context).copyWith(
+                    color: AppColor.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

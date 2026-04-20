@@ -27,8 +27,11 @@ class Channels extends Table {
   /// Channel identifier (DP-1 ID like ch_*).
   TextColumn get id => text()();
 
-  /// Channel type: 0 = DP1, 1 = local virtual.
+  /// Channel type: 0 = DP1, 1 = local virtual, 2 = living (registry/catalog).
   IntColumn get type => integer()();
+
+  /// HTTP ETag from last successful single-resource GET (nullable).
+  TextColumn get etag => text().nullable()();
 
   /// Feed server base URL for DP1 channels.
   TextColumn get baseUrl => text().nullable()();
@@ -120,8 +123,40 @@ class Playlists extends Table {
   /// Number of items in the playlist.
   IntColumn get itemCount => integer().withDefault(const Constant(0))();
 
+  /// HTTP ETag from last successful single-resource GET (nullable).
+  TextColumn get etag => text().nullable()();
+
+  /// DP-1 playlist-level `note.text` (nullable).
+  TextColumn get playlistNoteText => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
+}
+
+/// Rows for channels the user follows (living channels); local-only,
+/// no sync server.
+@DataClassName('FollowedChannelData')
+class FollowedChannels extends Table {
+  /// References [Channels.id].
+  TextColumn get channelId => text().references(Channels, #id)();
+
+  /// When the user tapped Follow.
+  Int64Column get followedAtUs => int64()();
+
+  /// Last successful poll attempt (nullable).
+  Int64Column get lastPolledAtUs => int64().nullable()();
+
+  /// Red-dot / unseen update flag for this session (also cleared on app detach).
+  IntColumn get hasUnseenUpdate =>
+      integer().withDefault(const Constant(0))();
+
+  /// After first successful poll, we emit update toasts (avoids noise right
+  /// after Follow).
+  IntColumn get initialPollDone =>
+      integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {channelId};
 }
 
 /// Items table.

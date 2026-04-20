@@ -20,7 +20,7 @@ final _log = Logger('AppDatabase');
 
 /// Large limit used when only offset is set (skip N rows, return the rest).
 const _maxLimitForOffset = 0x7FFFFFFF;
-const _schemaVersionV1 = 3;
+const _schemaVersionV1 = 5;
 const _dbResetReindexMarkerFile = 'db_reset_requires_reindex.flag';
 const _ftsMetadataFallbackRank = 500.0;
 
@@ -40,7 +40,14 @@ extension _SearchQueryTokens on String {
 /// Main application database using Drift.
 /// Implements offline-first storage for DP-1 entities and relationships.
 @DriftDatabase(
-  tables: [Publishers, Channels, Playlists, Items, PlaylistEntries],
+  tables: [
+    Publishers,
+    Channels,
+    Playlists,
+    Items,
+    PlaylistEntries,
+    FollowedChannels,
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   /// Creates an AppDatabase instance.
@@ -70,6 +77,14 @@ class AppDatabase extends _$AppDatabase {
       onUpgrade: (m, from, to) async {
         if (from < 3) {
           await m.addColumn(items, items.enrichmentStatus);
+        }
+        if (from < 4) {
+          await m.addColumn(channels, channels.etag);
+          await m.addColumn(playlists, playlists.etag);
+          await m.addColumn(playlists, playlists.playlistNoteText);
+          // [FollowedChannels] is created with all columns (including
+          // `initial_poll_done`) from the current [Table] definition.
+          await m.createTable(followedChannels);
         }
         await _migratePlaylistsSignaturesJsonIfNeeded();
       },
@@ -720,6 +735,38 @@ class AppDatabase extends _$AppDatabase {
     return (select(channels)..where((t) => t.id.equals(id))).watch().map(
       (list) => list.isEmpty ? null : list.single,
     );
+  }
+
+  /// Followed rows joined with channel bodies (Living tab).
+  Stream<List<(ChannelData, FollowedChannelData)>>
+      watchFollowedChannelsJoined() {
+    return select(followedChannels).join([
+      innerJoin(channels, channels.id.equalsExp(followedChannels.channelId)),
+    ]).watch().map(
+      (rows) => rows.map((row) {
+        return (row.readTable(channels), row.readTable(followedChannels));
+      }).toList(),
+    );
+  }
+
+  /// Snapshot of followed channels (join query).
+  Future<List<(ChannelData, FollowedChannelData)>>
+      getFollowedChannelsJoined() async {
+    final rows = await select(followedChannels).join([
+      innerJoin(channels, channels.id.equalsExp(followedChannels.channelId)),
+    ]).get();
+    return rows
+        .map(
+          (row) => (row.readTable(channels), row.readTable(followedChannels)),
+        )
+        .toList();
+  }
+
+  /// Emits the set of followed channel ids whenever the table changes.
+  Stream<Set<String>> watchFollowedChannelIds() {
+    return select(followedChannels).watch().map(
+          (rows) => rows.map((e) => e.channelId).toSet(),
+        );
   }
 
   /// Upsert a channel.

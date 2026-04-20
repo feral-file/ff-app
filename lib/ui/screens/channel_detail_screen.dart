@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:app/app/providers/channel_detail_provider.dart';
+import 'package:app/app/providers/channel_follow_provider.dart';
+import 'package:app/app/providers/channels_provider.dart';
+import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/routing/all_playlists_route.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
@@ -8,6 +11,7 @@ import 'package:app/app/routing/previous_page_title_extra.dart';
 import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/app_typography.dart';
+import 'package:app/design/build/primitives.dart';
 import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
@@ -50,6 +54,24 @@ class ChannelDetailScreen extends ConsumerStatefulWidget {
 
 class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
   static const int _previewCount = 5;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(
+        ref
+            .read(databaseServiceProvider)
+            .markFollowedChannelUnseenUpdate(
+              widget.channelId,
+              hasUnseen: false,
+            ),
+      );
+    });
+  }
 
   String _pageTitle(AsyncValue<ChannelDetails> detailsAsync) {
     final channel = switch (detailsAsync) {
@@ -294,6 +316,77 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
       ref.invalidate(channelDetailsProvider(channelId));
     }
 
+    final followedIds = ref.watch(followedChannelIdsProvider);
+    final livingChannel = switch (detailsAsync) {
+      AsyncData(:final value) => value.channel?.type == ChannelType.living
+          ? value.channel
+          : null,
+      _ => null,
+    };
+    final followActions = livingChannel != null &&
+            livingChannel.type == ChannelType.living
+        ? followedIds.maybeWhen(
+            data: (ids) {
+              final isFollowed = ids.contains(livingChannel.id);
+              return [
+                Padding(
+                  padding: EdgeInsets.only(
+                    right: LayoutConstants.space2,
+                  ),
+                  child: Center(
+                    child: isFollowed
+                        ? FilledButton(
+                            style: FilledButton.styleFrom(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: LayoutConstants.space3,
+                                vertical: LayoutConstants.space2,
+                              ),
+                              backgroundColor: PrimitivesTokens.colorsLightBlue,
+                              foregroundColor: PrimitivesTokens.colorsBlack,
+                            ),
+                            onPressed: () async {
+                              await ref
+                                  .read(databaseServiceProvider)
+                                  .unfollowChannel(livingChannel.id);
+                              ref
+                                ..invalidate(followedChannelIdsProvider)
+                                ..invalidate(
+                                  channelsProvider(ChannelType.living),
+                                )
+                                ..invalidate(channelsProvider(ChannelType.dp1));
+                            },
+                            child: const Text('Following'),
+                          )
+                        : OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: LayoutConstants.space3,
+                                vertical: LayoutConstants.space2,
+                              ),
+                              foregroundColor: AppColor.white,
+                              side: const BorderSide(color: AppColor.white),
+                            ),
+                            onPressed: () async {
+                              await ref
+                                  .read(databaseServiceProvider)
+                                  .followChannel(livingChannel.id);
+                              ref
+                                ..invalidate(followedChannelIdsProvider)
+                                ..invalidate(
+                                  channelsProvider(ChannelType.living),
+                                )
+                                ..invalidate(channelsProvider(ChannelType.dp1));
+                            },
+                            child: const Text('Follow'),
+                          ),
+                  ),
+                ),
+              ];
+            },
+            orElse: () => const <Widget>[],
+          )
+        : const <Widget>[];
+
     return PreviousPageTitleScope(
       title: _pageTitle(detailsAsync),
       child: Scaffold(
@@ -302,6 +395,7 @@ class _ChannelDetailScreenState extends ConsumerState<ChannelDetailScreen> {
           context,
           backTitle: widget.backTitle ?? '',
           backgroundColor: AppColor.auGreyBackground,
+          actions: followActions,
         ),
         body: SafeArea(
           child: RefreshIndicator(

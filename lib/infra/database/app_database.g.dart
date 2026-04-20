@@ -338,6 +338,15 @@ class $ChannelsTable extends Channels
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _etagMeta = const VerificationMeta('etag');
+  @override
+  late final GeneratedColumn<String> etag = GeneratedColumn<String>(
+    'etag',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _baseUrlMeta = const VerificationMeta(
     'baseUrl',
   );
@@ -451,6 +460,7 @@ class $ChannelsTable extends Channels
   List<GeneratedColumn> get $columns => [
     id,
     type,
+    etag,
     baseUrl,
     slug,
     publisherId,
@@ -486,6 +496,12 @@ class $ChannelsTable extends Channels
       );
     } else if (isInserting) {
       context.missing(_typeMeta);
+    }
+    if (data.containsKey('etag')) {
+      context.handle(
+        _etagMeta,
+        etag.isAcceptableOrUnknown(data['etag']!, _etagMeta),
+      );
     }
     if (data.containsKey('base_url')) {
       context.handle(
@@ -582,6 +598,10 @@ class $ChannelsTable extends Channels
         DriftSqlType.int,
         data['${effectivePrefix}type'],
       )!,
+      etag: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}etag'],
+      ),
       baseUrl: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}base_url'],
@@ -635,8 +655,11 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
   /// Channel identifier (DP-1 ID like ch_*).
   final String id;
 
-  /// Channel type: 0 = DP1, 1 = local virtual.
+  /// Channel type: 0 = DP1, 1 = local virtual, 2 = living (registry/catalog).
   final int type;
+
+  /// HTTP ETag from last successful single-resource GET (nullable).
+  final String? etag;
 
   /// Feed server base URL for DP1 channels.
   final String? baseUrl;
@@ -670,6 +693,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
   const ChannelData({
     required this.id,
     required this.type,
+    this.etag,
     this.baseUrl,
     this.slug,
     this.publisherId,
@@ -686,6 +710,9 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['type'] = Variable<int>(type);
+    if (!nullToAbsent || etag != null) {
+      map['etag'] = Variable<String>(etag);
+    }
     if (!nullToAbsent || baseUrl != null) {
       map['base_url'] = Variable<String>(baseUrl);
     }
@@ -717,6 +744,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
     return ChannelsCompanion(
       id: Value(id),
       type: Value(type),
+      etag: etag == null && nullToAbsent ? const Value.absent() : Value(etag),
       baseUrl: baseUrl == null && nullToAbsent
           ? const Value.absent()
           : Value(baseUrl),
@@ -750,6 +778,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
     return ChannelData(
       id: serializer.fromJson<String>(json['id']),
       type: serializer.fromJson<int>(json['type']),
+      etag: serializer.fromJson<String?>(json['etag']),
       baseUrl: serializer.fromJson<String?>(json['baseUrl']),
       slug: serializer.fromJson<String?>(json['slug']),
       publisherId: serializer.fromJson<int?>(json['publisherId']),
@@ -768,6 +797,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'type': serializer.toJson<int>(type),
+      'etag': serializer.toJson<String?>(etag),
       'baseUrl': serializer.toJson<String?>(baseUrl),
       'slug': serializer.toJson<String?>(slug),
       'publisherId': serializer.toJson<int?>(publisherId),
@@ -784,6 +814,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
   ChannelData copyWith({
     String? id,
     int? type,
+    Value<String?> etag = const Value.absent(),
     Value<String?> baseUrl = const Value.absent(),
     Value<String?> slug = const Value.absent(),
     Value<int?> publisherId = const Value.absent(),
@@ -797,6 +828,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
   }) => ChannelData(
     id: id ?? this.id,
     type: type ?? this.type,
+    etag: etag.present ? etag.value : this.etag,
     baseUrl: baseUrl.present ? baseUrl.value : this.baseUrl,
     slug: slug.present ? slug.value : this.slug,
     publisherId: publisherId.present ? publisherId.value : this.publisherId,
@@ -814,6 +846,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
     return ChannelData(
       id: data.id.present ? data.id.value : this.id,
       type: data.type.present ? data.type.value : this.type,
+      etag: data.etag.present ? data.etag.value : this.etag,
       baseUrl: data.baseUrl.present ? data.baseUrl.value : this.baseUrl,
       slug: data.slug.present ? data.slug.value : this.slug,
       publisherId: data.publisherId.present
@@ -840,6 +873,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
     return (StringBuffer('ChannelData(')
           ..write('id: $id, ')
           ..write('type: $type, ')
+          ..write('etag: $etag, ')
           ..write('baseUrl: $baseUrl, ')
           ..write('slug: $slug, ')
           ..write('publisherId: $publisherId, ')
@@ -858,6 +892,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
   int get hashCode => Object.hash(
     id,
     type,
+    etag,
     baseUrl,
     slug,
     publisherId,
@@ -875,6 +910,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
       (other is ChannelData &&
           other.id == this.id &&
           other.type == this.type &&
+          other.etag == this.etag &&
           other.baseUrl == this.baseUrl &&
           other.slug == this.slug &&
           other.publisherId == this.publisherId &&
@@ -890,6 +926,7 @@ class ChannelData extends DataClass implements Insertable<ChannelData> {
 class ChannelsCompanion extends UpdateCompanion<ChannelData> {
   final Value<String> id;
   final Value<int> type;
+  final Value<String?> etag;
   final Value<String?> baseUrl;
   final Value<String?> slug;
   final Value<int?> publisherId;
@@ -904,6 +941,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
   const ChannelsCompanion({
     this.id = const Value.absent(),
     this.type = const Value.absent(),
+    this.etag = const Value.absent(),
     this.baseUrl = const Value.absent(),
     this.slug = const Value.absent(),
     this.publisherId = const Value.absent(),
@@ -919,6 +957,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
   ChannelsCompanion.insert({
     required String id,
     required int type,
+    this.etag = const Value.absent(),
     this.baseUrl = const Value.absent(),
     this.slug = const Value.absent(),
     this.publisherId = const Value.absent(),
@@ -938,6 +977,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
   static Insertable<ChannelData> custom({
     Expression<String>? id,
     Expression<int>? type,
+    Expression<String>? etag,
     Expression<String>? baseUrl,
     Expression<String>? slug,
     Expression<int>? publisherId,
@@ -953,6 +993,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (type != null) 'type': type,
+      if (etag != null) 'etag': etag,
       if (baseUrl != null) 'base_url': baseUrl,
       if (slug != null) 'slug': slug,
       if (publisherId != null) 'publisher_id': publisherId,
@@ -970,6 +1011,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
   ChannelsCompanion copyWith({
     Value<String>? id,
     Value<int>? type,
+    Value<String?>? etag,
     Value<String?>? baseUrl,
     Value<String?>? slug,
     Value<int?>? publisherId,
@@ -985,6 +1027,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
     return ChannelsCompanion(
       id: id ?? this.id,
       type: type ?? this.type,
+      etag: etag ?? this.etag,
       baseUrl: baseUrl ?? this.baseUrl,
       slug: slug ?? this.slug,
       publisherId: publisherId ?? this.publisherId,
@@ -1007,6 +1050,9 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
     }
     if (type.present) {
       map['type'] = Variable<int>(type.value);
+    }
+    if (etag.present) {
+      map['etag'] = Variable<String>(etag.value);
     }
     if (baseUrl.present) {
       map['base_url'] = Variable<String>(baseUrl.value);
@@ -1049,6 +1095,7 @@ class ChannelsCompanion extends UpdateCompanion<ChannelData> {
     return (StringBuffer('ChannelsCompanion(')
           ..write('id: $id, ')
           ..write('type: $type, ')
+          ..write('etag: $etag, ')
           ..write('baseUrl: $baseUrl, ')
           ..write('slug: $slug, ')
           ..write('publisherId: $publisherId, ')
@@ -1252,6 +1299,26 @@ class $PlaylistsTable extends Playlists
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _etagMeta = const VerificationMeta('etag');
+  @override
+  late final GeneratedColumn<String> etag = GeneratedColumn<String>(
+    'etag',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _playlistNoteTextMeta = const VerificationMeta(
+    'playlistNoteText',
+  );
+  @override
+  late final GeneratedColumn<String> playlistNoteText = GeneratedColumn<String>(
+    'playlist_note_text',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1271,6 +1338,8 @@ class $PlaylistsTable extends Playlists
     ownerChain,
     sortMode,
     itemCount,
+    etag,
+    playlistNoteText,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1410,6 +1479,21 @@ class $PlaylistsTable extends Playlists
         itemCount.isAcceptableOrUnknown(data['item_count']!, _itemCountMeta),
       );
     }
+    if (data.containsKey('etag')) {
+      context.handle(
+        _etagMeta,
+        etag.isAcceptableOrUnknown(data['etag']!, _etagMeta),
+      );
+    }
+    if (data.containsKey('playlist_note_text')) {
+      context.handle(
+        _playlistNoteTextMeta,
+        playlistNoteText.isAcceptableOrUnknown(
+          data['playlist_note_text']!,
+          _playlistNoteTextMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1487,6 +1571,14 @@ class $PlaylistsTable extends Playlists
         DriftSqlType.int,
         data['${effectivePrefix}item_count'],
       )!,
+      etag: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}etag'],
+      ),
+      playlistNoteText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}playlist_note_text'],
+      ),
     );
   }
 
@@ -1547,6 +1639,12 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
 
   /// Number of items in the playlist.
   final int itemCount;
+
+  /// HTTP ETag from last successful single-resource GET (nullable).
+  final String? etag;
+
+  /// DP-1 playlist-level `note.text` (nullable).
+  final String? playlistNoteText;
   const PlaylistData({
     required this.id,
     this.channelId,
@@ -1565,6 +1663,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
     this.ownerChain,
     required this.sortMode,
     required this.itemCount,
+    this.etag,
+    this.playlistNoteText,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1604,6 +1704,12 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
     }
     map['sort_mode'] = Variable<int>(sortMode);
     map['item_count'] = Variable<int>(itemCount);
+    if (!nullToAbsent || etag != null) {
+      map['etag'] = Variable<String>(etag);
+    }
+    if (!nullToAbsent || playlistNoteText != null) {
+      map['playlist_note_text'] = Variable<String>(playlistNoteText);
+    }
     return map;
   }
 
@@ -1642,6 +1748,10 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
           : Value(ownerChain),
       sortMode: Value(sortMode),
       itemCount: Value(itemCount),
+      etag: etag == null && nullToAbsent ? const Value.absent() : Value(etag),
+      playlistNoteText: playlistNoteText == null && nullToAbsent
+          ? const Value.absent()
+          : Value(playlistNoteText),
     );
   }
 
@@ -1670,6 +1780,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
       ownerChain: serializer.fromJson<String?>(json['ownerChain']),
       sortMode: serializer.fromJson<int>(json['sortMode']),
       itemCount: serializer.fromJson<int>(json['itemCount']),
+      etag: serializer.fromJson<String?>(json['etag']),
+      playlistNoteText: serializer.fromJson<String?>(json['playlistNoteText']),
     );
   }
   @override
@@ -1693,6 +1805,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
       'ownerChain': serializer.toJson<String?>(ownerChain),
       'sortMode': serializer.toJson<int>(sortMode),
       'itemCount': serializer.toJson<int>(itemCount),
+      'etag': serializer.toJson<String?>(etag),
+      'playlistNoteText': serializer.toJson<String?>(playlistNoteText),
     };
   }
 
@@ -1714,6 +1828,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
     Value<String?> ownerChain = const Value.absent(),
     int? sortMode,
     int? itemCount,
+    Value<String?> etag = const Value.absent(),
+    Value<String?> playlistNoteText = const Value.absent(),
   }) => PlaylistData(
     id: id ?? this.id,
     channelId: channelId.present ? channelId.value : this.channelId,
@@ -1734,6 +1850,10 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
     ownerChain: ownerChain.present ? ownerChain.value : this.ownerChain,
     sortMode: sortMode ?? this.sortMode,
     itemCount: itemCount ?? this.itemCount,
+    etag: etag.present ? etag.value : this.etag,
+    playlistNoteText: playlistNoteText.present
+        ? playlistNoteText.value
+        : this.playlistNoteText,
   );
   PlaylistData copyWithCompanion(PlaylistsCompanion data) {
     return PlaylistData(
@@ -1768,6 +1888,10 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
           : this.ownerChain,
       sortMode: data.sortMode.present ? data.sortMode.value : this.sortMode,
       itemCount: data.itemCount.present ? data.itemCount.value : this.itemCount,
+      etag: data.etag.present ? data.etag.value : this.etag,
+      playlistNoteText: data.playlistNoteText.present
+          ? data.playlistNoteText.value
+          : this.playlistNoteText,
     );
   }
 
@@ -1790,7 +1914,9 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
           ..write('ownerAddress: $ownerAddress, ')
           ..write('ownerChain: $ownerChain, ')
           ..write('sortMode: $sortMode, ')
-          ..write('itemCount: $itemCount')
+          ..write('itemCount: $itemCount, ')
+          ..write('etag: $etag, ')
+          ..write('playlistNoteText: $playlistNoteText')
           ..write(')'))
         .toString();
   }
@@ -1814,6 +1940,8 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
     ownerChain,
     sortMode,
     itemCount,
+    etag,
+    playlistNoteText,
   );
   @override
   bool operator ==(Object other) =>
@@ -1835,7 +1963,9 @@ class PlaylistData extends DataClass implements Insertable<PlaylistData> {
           other.ownerAddress == this.ownerAddress &&
           other.ownerChain == this.ownerChain &&
           other.sortMode == this.sortMode &&
-          other.itemCount == this.itemCount);
+          other.itemCount == this.itemCount &&
+          other.etag == this.etag &&
+          other.playlistNoteText == this.playlistNoteText);
 }
 
 class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
@@ -1856,6 +1986,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
   final Value<String?> ownerChain;
   final Value<int> sortMode;
   final Value<int> itemCount;
+  final Value<String?> etag;
+  final Value<String?> playlistNoteText;
   final Value<int> rowid;
   const PlaylistsCompanion({
     this.id = const Value.absent(),
@@ -1875,6 +2007,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
     this.ownerChain = const Value.absent(),
     this.sortMode = const Value.absent(),
     this.itemCount = const Value.absent(),
+    this.etag = const Value.absent(),
+    this.playlistNoteText = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PlaylistsCompanion.insert({
@@ -1895,6 +2029,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
     this.ownerChain = const Value.absent(),
     required int sortMode,
     this.itemCount = const Value.absent(),
+    this.etag = const Value.absent(),
+    this.playlistNoteText = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        type = Value(type),
@@ -1920,6 +2056,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
     Expression<String>? ownerChain,
     Expression<int>? sortMode,
     Expression<int>? itemCount,
+    Expression<String>? etag,
+    Expression<String>? playlistNoteText,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1941,6 +2079,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
       if (ownerChain != null) 'owner_chain': ownerChain,
       if (sortMode != null) 'sort_mode': sortMode,
       if (itemCount != null) 'item_count': itemCount,
+      if (etag != null) 'etag': etag,
+      if (playlistNoteText != null) 'playlist_note_text': playlistNoteText,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1963,6 +2103,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
     Value<String?>? ownerChain,
     Value<int>? sortMode,
     Value<int>? itemCount,
+    Value<String?>? etag,
+    Value<String?>? playlistNoteText,
     Value<int>? rowid,
   }) {
     return PlaylistsCompanion(
@@ -1983,6 +2125,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
       ownerChain: ownerChain ?? this.ownerChain,
       sortMode: sortMode ?? this.sortMode,
       itemCount: itemCount ?? this.itemCount,
+      etag: etag ?? this.etag,
+      playlistNoteText: playlistNoteText ?? this.playlistNoteText,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2041,6 +2185,12 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
     if (itemCount.present) {
       map['item_count'] = Variable<int>(itemCount.value);
     }
+    if (etag.present) {
+      map['etag'] = Variable<String>(etag.value);
+    }
+    if (playlistNoteText.present) {
+      map['playlist_note_text'] = Variable<String>(playlistNoteText.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2067,6 +2217,8 @@ class PlaylistsCompanion extends UpdateCompanion<PlaylistData> {
           ..write('ownerChain: $ownerChain, ')
           ..write('sortMode: $sortMode, ')
           ..write('itemCount: $itemCount, ')
+          ..write('etag: $etag, ')
+          ..write('playlistNoteText: $playlistNoteText, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2498,7 +2650,7 @@ class ItemData extends DataClass implements Insertable<ItemData> {
   /// Display configuration as JSON.
   final String? displayJson;
 
-  /// List of artists as JSON (List<DP1Artist>).
+  /// List of artists as JSON (list of DP1Artist).
   final String? listArtistJson;
 
   /// Enrichment status: 0 = pending, 1 = enriched, 2 = failed.
@@ -3380,6 +3532,412 @@ class PlaylistEntriesCompanion extends UpdateCompanion<PlaylistEntryData> {
   }
 }
 
+class $FollowedChannelsTable extends FollowedChannels
+    with TableInfo<$FollowedChannelsTable, FollowedChannelData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FollowedChannelsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _channelIdMeta = const VerificationMeta(
+    'channelId',
+  );
+  @override
+  late final GeneratedColumn<String> channelId = GeneratedColumn<String>(
+    'channel_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES channels (id)',
+    ),
+  );
+  static const VerificationMeta _followedAtUsMeta = const VerificationMeta(
+    'followedAtUs',
+  );
+  @override
+  late final GeneratedColumn<BigInt> followedAtUs = GeneratedColumn<BigInt>(
+    'followed_at_us',
+    aliasedName,
+    false,
+    type: DriftSqlType.bigInt,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastPolledAtUsMeta = const VerificationMeta(
+    'lastPolledAtUs',
+  );
+  @override
+  late final GeneratedColumn<BigInt> lastPolledAtUs = GeneratedColumn<BigInt>(
+    'last_polled_at_us',
+    aliasedName,
+    true,
+    type: DriftSqlType.bigInt,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _hasUnseenUpdateMeta = const VerificationMeta(
+    'hasUnseenUpdate',
+  );
+  @override
+  late final GeneratedColumn<int> hasUnseenUpdate = GeneratedColumn<int>(
+    'has_unseen_update',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _initialPollDoneMeta = const VerificationMeta(
+    'initialPollDone',
+  );
+  @override
+  late final GeneratedColumn<int> initialPollDone = GeneratedColumn<int>(
+    'initial_poll_done',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    channelId,
+    followedAtUs,
+    lastPolledAtUs,
+    hasUnseenUpdate,
+    initialPollDone,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'followed_channels';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FollowedChannelData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('channel_id')) {
+      context.handle(
+        _channelIdMeta,
+        channelId.isAcceptableOrUnknown(data['channel_id']!, _channelIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_channelIdMeta);
+    }
+    if (data.containsKey('followed_at_us')) {
+      context.handle(
+        _followedAtUsMeta,
+        followedAtUs.isAcceptableOrUnknown(
+          data['followed_at_us']!,
+          _followedAtUsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_followedAtUsMeta);
+    }
+    if (data.containsKey('last_polled_at_us')) {
+      context.handle(
+        _lastPolledAtUsMeta,
+        lastPolledAtUs.isAcceptableOrUnknown(
+          data['last_polled_at_us']!,
+          _lastPolledAtUsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('has_unseen_update')) {
+      context.handle(
+        _hasUnseenUpdateMeta,
+        hasUnseenUpdate.isAcceptableOrUnknown(
+          data['has_unseen_update']!,
+          _hasUnseenUpdateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('initial_poll_done')) {
+      context.handle(
+        _initialPollDoneMeta,
+        initialPollDone.isAcceptableOrUnknown(
+          data['initial_poll_done']!,
+          _initialPollDoneMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {channelId};
+  @override
+  FollowedChannelData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FollowedChannelData(
+      channelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}channel_id'],
+      )!,
+      followedAtUs: attachedDatabase.typeMapping.read(
+        DriftSqlType.bigInt,
+        data['${effectivePrefix}followed_at_us'],
+      )!,
+      lastPolledAtUs: attachedDatabase.typeMapping.read(
+        DriftSqlType.bigInt,
+        data['${effectivePrefix}last_polled_at_us'],
+      ),
+      hasUnseenUpdate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}has_unseen_update'],
+      )!,
+      initialPollDone: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}initial_poll_done'],
+      )!,
+    );
+  }
+
+  @override
+  $FollowedChannelsTable createAlias(String alias) {
+    return $FollowedChannelsTable(attachedDatabase, alias);
+  }
+}
+
+class FollowedChannelData extends DataClass
+    implements Insertable<FollowedChannelData> {
+  /// References [Channels.id].
+  final String channelId;
+
+  /// When the user tapped Follow.
+  final BigInt followedAtUs;
+
+  /// Last successful poll attempt (nullable).
+  final BigInt? lastPolledAtUs;
+
+  /// Red-dot / unseen update flag for this session (also cleared on app detach).
+  final int hasUnseenUpdate;
+
+  /// After first successful poll, we emit update toasts (avoids noise right
+  /// after Follow).
+  final int initialPollDone;
+  const FollowedChannelData({
+    required this.channelId,
+    required this.followedAtUs,
+    this.lastPolledAtUs,
+    required this.hasUnseenUpdate,
+    required this.initialPollDone,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['channel_id'] = Variable<String>(channelId);
+    map['followed_at_us'] = Variable<BigInt>(followedAtUs);
+    if (!nullToAbsent || lastPolledAtUs != null) {
+      map['last_polled_at_us'] = Variable<BigInt>(lastPolledAtUs);
+    }
+    map['has_unseen_update'] = Variable<int>(hasUnseenUpdate);
+    map['initial_poll_done'] = Variable<int>(initialPollDone);
+    return map;
+  }
+
+  FollowedChannelsCompanion toCompanion(bool nullToAbsent) {
+    return FollowedChannelsCompanion(
+      channelId: Value(channelId),
+      followedAtUs: Value(followedAtUs),
+      lastPolledAtUs: lastPolledAtUs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastPolledAtUs),
+      hasUnseenUpdate: Value(hasUnseenUpdate),
+      initialPollDone: Value(initialPollDone),
+    );
+  }
+
+  factory FollowedChannelData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FollowedChannelData(
+      channelId: serializer.fromJson<String>(json['channelId']),
+      followedAtUs: serializer.fromJson<BigInt>(json['followedAtUs']),
+      lastPolledAtUs: serializer.fromJson<BigInt?>(json['lastPolledAtUs']),
+      hasUnseenUpdate: serializer.fromJson<int>(json['hasUnseenUpdate']),
+      initialPollDone: serializer.fromJson<int>(json['initialPollDone']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'channelId': serializer.toJson<String>(channelId),
+      'followedAtUs': serializer.toJson<BigInt>(followedAtUs),
+      'lastPolledAtUs': serializer.toJson<BigInt?>(lastPolledAtUs),
+      'hasUnseenUpdate': serializer.toJson<int>(hasUnseenUpdate),
+      'initialPollDone': serializer.toJson<int>(initialPollDone),
+    };
+  }
+
+  FollowedChannelData copyWith({
+    String? channelId,
+    BigInt? followedAtUs,
+    Value<BigInt?> lastPolledAtUs = const Value.absent(),
+    int? hasUnseenUpdate,
+    int? initialPollDone,
+  }) => FollowedChannelData(
+    channelId: channelId ?? this.channelId,
+    followedAtUs: followedAtUs ?? this.followedAtUs,
+    lastPolledAtUs: lastPolledAtUs.present
+        ? lastPolledAtUs.value
+        : this.lastPolledAtUs,
+    hasUnseenUpdate: hasUnseenUpdate ?? this.hasUnseenUpdate,
+    initialPollDone: initialPollDone ?? this.initialPollDone,
+  );
+  FollowedChannelData copyWithCompanion(FollowedChannelsCompanion data) {
+    return FollowedChannelData(
+      channelId: data.channelId.present ? data.channelId.value : this.channelId,
+      followedAtUs: data.followedAtUs.present
+          ? data.followedAtUs.value
+          : this.followedAtUs,
+      lastPolledAtUs: data.lastPolledAtUs.present
+          ? data.lastPolledAtUs.value
+          : this.lastPolledAtUs,
+      hasUnseenUpdate: data.hasUnseenUpdate.present
+          ? data.hasUnseenUpdate.value
+          : this.hasUnseenUpdate,
+      initialPollDone: data.initialPollDone.present
+          ? data.initialPollDone.value
+          : this.initialPollDone,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FollowedChannelData(')
+          ..write('channelId: $channelId, ')
+          ..write('followedAtUs: $followedAtUs, ')
+          ..write('lastPolledAtUs: $lastPolledAtUs, ')
+          ..write('hasUnseenUpdate: $hasUnseenUpdate, ')
+          ..write('initialPollDone: $initialPollDone')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    channelId,
+    followedAtUs,
+    lastPolledAtUs,
+    hasUnseenUpdate,
+    initialPollDone,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FollowedChannelData &&
+          other.channelId == this.channelId &&
+          other.followedAtUs == this.followedAtUs &&
+          other.lastPolledAtUs == this.lastPolledAtUs &&
+          other.hasUnseenUpdate == this.hasUnseenUpdate &&
+          other.initialPollDone == this.initialPollDone);
+}
+
+class FollowedChannelsCompanion extends UpdateCompanion<FollowedChannelData> {
+  final Value<String> channelId;
+  final Value<BigInt> followedAtUs;
+  final Value<BigInt?> lastPolledAtUs;
+  final Value<int> hasUnseenUpdate;
+  final Value<int> initialPollDone;
+  final Value<int> rowid;
+  const FollowedChannelsCompanion({
+    this.channelId = const Value.absent(),
+    this.followedAtUs = const Value.absent(),
+    this.lastPolledAtUs = const Value.absent(),
+    this.hasUnseenUpdate = const Value.absent(),
+    this.initialPollDone = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  FollowedChannelsCompanion.insert({
+    required String channelId,
+    required BigInt followedAtUs,
+    this.lastPolledAtUs = const Value.absent(),
+    this.hasUnseenUpdate = const Value.absent(),
+    this.initialPollDone = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : channelId = Value(channelId),
+       followedAtUs = Value(followedAtUs);
+  static Insertable<FollowedChannelData> custom({
+    Expression<String>? channelId,
+    Expression<BigInt>? followedAtUs,
+    Expression<BigInt>? lastPolledAtUs,
+    Expression<int>? hasUnseenUpdate,
+    Expression<int>? initialPollDone,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (channelId != null) 'channel_id': channelId,
+      if (followedAtUs != null) 'followed_at_us': followedAtUs,
+      if (lastPolledAtUs != null) 'last_polled_at_us': lastPolledAtUs,
+      if (hasUnseenUpdate != null) 'has_unseen_update': hasUnseenUpdate,
+      if (initialPollDone != null) 'initial_poll_done': initialPollDone,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  FollowedChannelsCompanion copyWith({
+    Value<String>? channelId,
+    Value<BigInt>? followedAtUs,
+    Value<BigInt?>? lastPolledAtUs,
+    Value<int>? hasUnseenUpdate,
+    Value<int>? initialPollDone,
+    Value<int>? rowid,
+  }) {
+    return FollowedChannelsCompanion(
+      channelId: channelId ?? this.channelId,
+      followedAtUs: followedAtUs ?? this.followedAtUs,
+      lastPolledAtUs: lastPolledAtUs ?? this.lastPolledAtUs,
+      hasUnseenUpdate: hasUnseenUpdate ?? this.hasUnseenUpdate,
+      initialPollDone: initialPollDone ?? this.initialPollDone,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (channelId.present) {
+      map['channel_id'] = Variable<String>(channelId.value);
+    }
+    if (followedAtUs.present) {
+      map['followed_at_us'] = Variable<BigInt>(followedAtUs.value);
+    }
+    if (lastPolledAtUs.present) {
+      map['last_polled_at_us'] = Variable<BigInt>(lastPolledAtUs.value);
+    }
+    if (hasUnseenUpdate.present) {
+      map['has_unseen_update'] = Variable<int>(hasUnseenUpdate.value);
+    }
+    if (initialPollDone.present) {
+      map['initial_poll_done'] = Variable<int>(initialPollDone.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FollowedChannelsCompanion(')
+          ..write('channelId: $channelId, ')
+          ..write('followedAtUs: $followedAtUs, ')
+          ..write('lastPolledAtUs: $lastPolledAtUs, ')
+          ..write('hasUnseenUpdate: $hasUnseenUpdate, ')
+          ..write('initialPollDone: $initialPollDone, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3388,6 +3946,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PlaylistsTable playlists = $PlaylistsTable(this);
   late final $ItemsTable items = $ItemsTable(this);
   late final $PlaylistEntriesTable playlistEntries = $PlaylistEntriesTable(
+    this,
+  );
+  late final $FollowedChannelsTable followedChannels = $FollowedChannelsTable(
     this,
   );
   @override
@@ -3400,6 +3961,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     playlists,
     items,
     playlistEntries,
+    followedChannels,
   ];
 }
 
@@ -3689,6 +4251,7 @@ typedef $$ChannelsTableCreateCompanionBuilder =
     ChannelsCompanion Function({
       required String id,
       required int type,
+      Value<String?> etag,
       Value<String?> baseUrl,
       Value<String?> slug,
       Value<int?> publisherId,
@@ -3705,6 +4268,7 @@ typedef $$ChannelsTableUpdateCompanionBuilder =
     ChannelsCompanion Function({
       Value<String> id,
       Value<int> type,
+      Value<String?> etag,
       Value<String?> baseUrl,
       Value<String?> slug,
       Value<int?> publisherId,
@@ -3740,6 +4304,29 @@ final class $$ChannelsTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$FollowedChannelsTable, List<FollowedChannelData>>
+  _followedChannelsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.followedChannels,
+    aliasName: $_aliasNameGenerator(
+      db.channels.id,
+      db.followedChannels.channelId,
+    ),
+  );
+
+  $$FollowedChannelsTableProcessedTableManager get followedChannelsRefs {
+    final manager = $$FollowedChannelsTableTableManager(
+      $_db,
+      $_db.followedChannels,
+    ).filter((f) => f.channelId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _followedChannelsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$ChannelsTableFilterComposer
@@ -3758,6 +4345,11 @@ class $$ChannelsTableFilterComposer
 
   ColumnFilters<int> get type => $composableBuilder(
     column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get etag => $composableBuilder(
+    column: $table.etag,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3828,6 +4420,31 @@ class $$ChannelsTableFilterComposer
     );
     return composer;
   }
+
+  Expression<bool> followedChannelsRefs(
+    Expression<bool> Function($$FollowedChannelsTableFilterComposer f) f,
+  ) {
+    final $$FollowedChannelsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.followedChannels,
+      getReferencedColumn: (t) => t.channelId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FollowedChannelsTableFilterComposer(
+            $db: $db,
+            $table: $db.followedChannels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ChannelsTableOrderingComposer
@@ -3846,6 +4463,11 @@ class $$ChannelsTableOrderingComposer
 
   ColumnOrderings<int> get type => $composableBuilder(
     column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get etag => $composableBuilder(
+    column: $table.etag,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -3933,6 +4555,9 @@ class $$ChannelsTableAnnotationComposer
   GeneratedColumn<int> get type =>
       $composableBuilder(column: $table.type, builder: (column) => column);
 
+  GeneratedColumn<String> get etag =>
+      $composableBuilder(column: $table.etag, builder: (column) => column);
+
   GeneratedColumn<String> get baseUrl =>
       $composableBuilder(column: $table.baseUrl, builder: (column) => column);
 
@@ -3988,6 +4613,31 @@ class $$ChannelsTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> followedChannelsRefs<T extends Object>(
+    Expression<T> Function($$FollowedChannelsTableAnnotationComposer a) f,
+  ) {
+    final $$FollowedChannelsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.followedChannels,
+      getReferencedColumn: (t) => t.channelId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FollowedChannelsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.followedChannels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ChannelsTableTableManager
@@ -4003,7 +4653,7 @@ class $$ChannelsTableTableManager
           $$ChannelsTableUpdateCompanionBuilder,
           (ChannelData, $$ChannelsTableReferences),
           ChannelData,
-          PrefetchHooks Function({bool publisherId})
+          PrefetchHooks Function({bool publisherId, bool followedChannelsRefs})
         > {
   $$ChannelsTableTableManager(_$AppDatabase db, $ChannelsTable table)
     : super(
@@ -4020,6 +4670,7 @@ class $$ChannelsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<int> type = const Value.absent(),
+                Value<String?> etag = const Value.absent(),
                 Value<String?> baseUrl = const Value.absent(),
                 Value<String?> slug = const Value.absent(),
                 Value<int?> publisherId = const Value.absent(),
@@ -4034,6 +4685,7 @@ class $$ChannelsTableTableManager
               }) => ChannelsCompanion(
                 id: id,
                 type: type,
+                etag: etag,
                 baseUrl: baseUrl,
                 slug: slug,
                 publisherId: publisherId,
@@ -4050,6 +4702,7 @@ class $$ChannelsTableTableManager
               ({
                 required String id,
                 required int type,
+                Value<String?> etag = const Value.absent(),
                 Value<String?> baseUrl = const Value.absent(),
                 Value<String?> slug = const Value.absent(),
                 Value<int?> publisherId = const Value.absent(),
@@ -4064,6 +4717,7 @@ class $$ChannelsTableTableManager
               }) => ChannelsCompanion.insert(
                 id: id,
                 type: type,
+                etag: etag,
                 baseUrl: baseUrl,
                 slug: slug,
                 publisherId: publisherId,
@@ -4084,47 +4738,72 @@ class $$ChannelsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({publisherId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (publisherId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.publisherId,
-                                referencedTable: $$ChannelsTableReferences
-                                    ._publisherIdTable(db),
-                                referencedColumn: $$ChannelsTableReferences
-                                    ._publisherIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({publisherId = false, followedChannelsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (followedChannelsRefs) db.followedChannels,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (publisherId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.publisherId,
+                                    referencedTable: $$ChannelsTableReferences
+                                        ._publisherIdTable(db),
+                                    referencedColumn: $$ChannelsTableReferences
+                                        ._publisherIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (followedChannelsRefs)
+                        await $_getPrefetchedData<
+                          ChannelData,
+                          $ChannelsTable,
+                          FollowedChannelData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ChannelsTableReferences
+                              ._followedChannelsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ChannelsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).followedChannelsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.channelId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -4141,7 +4820,7 @@ typedef $$ChannelsTableProcessedTableManager =
       $$ChannelsTableUpdateCompanionBuilder,
       (ChannelData, $$ChannelsTableReferences),
       ChannelData,
-      PrefetchHooks Function({bool publisherId})
+      PrefetchHooks Function({bool publisherId, bool followedChannelsRefs})
     >;
 typedef $$PlaylistsTableCreateCompanionBuilder =
     PlaylistsCompanion Function({
@@ -4162,6 +4841,8 @@ typedef $$PlaylistsTableCreateCompanionBuilder =
       Value<String?> ownerChain,
       required int sortMode,
       Value<int> itemCount,
+      Value<String?> etag,
+      Value<String?> playlistNoteText,
       Value<int> rowid,
     });
 typedef $$PlaylistsTableUpdateCompanionBuilder =
@@ -4183,6 +4864,8 @@ typedef $$PlaylistsTableUpdateCompanionBuilder =
       Value<String?> ownerChain,
       Value<int> sortMode,
       Value<int> itemCount,
+      Value<String?> etag,
+      Value<String?> playlistNoteText,
       Value<int> rowid,
     });
 
@@ -4277,6 +4960,16 @@ class $$PlaylistsTableFilterComposer
 
   ColumnFilters<int> get itemCount => $composableBuilder(
     column: $table.itemCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get etag => $composableBuilder(
+    column: $table.etag,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get playlistNoteText => $composableBuilder(
+    column: $table.playlistNoteText,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4374,6 +5067,16 @@ class $$PlaylistsTableOrderingComposer
     column: $table.itemCount,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get etag => $composableBuilder(
+    column: $table.etag,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get playlistNoteText => $composableBuilder(
+    column: $table.playlistNoteText,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PlaylistsTableAnnotationComposer
@@ -4449,6 +5152,14 @@ class $$PlaylistsTableAnnotationComposer
 
   GeneratedColumn<int> get itemCount =>
       $composableBuilder(column: $table.itemCount, builder: (column) => column);
+
+  GeneratedColumn<String> get etag =>
+      $composableBuilder(column: $table.etag, builder: (column) => column);
+
+  GeneratedColumn<String> get playlistNoteText => $composableBuilder(
+    column: $table.playlistNoteText,
+    builder: (column) => column,
+  );
 }
 
 class $$PlaylistsTableTableManager
@@ -4499,6 +5210,8 @@ class $$PlaylistsTableTableManager
                 Value<String?> ownerChain = const Value.absent(),
                 Value<int> sortMode = const Value.absent(),
                 Value<int> itemCount = const Value.absent(),
+                Value<String?> etag = const Value.absent(),
+                Value<String?> playlistNoteText = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PlaylistsCompanion(
                 id: id,
@@ -4518,6 +5231,8 @@ class $$PlaylistsTableTableManager
                 ownerChain: ownerChain,
                 sortMode: sortMode,
                 itemCount: itemCount,
+                etag: etag,
+                playlistNoteText: playlistNoteText,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4539,6 +5254,8 @@ class $$PlaylistsTableTableManager
                 Value<String?> ownerChain = const Value.absent(),
                 required int sortMode,
                 Value<int> itemCount = const Value.absent(),
+                Value<String?> etag = const Value.absent(),
+                Value<String?> playlistNoteText = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PlaylistsCompanion.insert(
                 id: id,
@@ -4558,6 +5275,8 @@ class $$PlaylistsTableTableManager
                 ownerChain: ownerChain,
                 sortMode: sortMode,
                 itemCount: itemCount,
+                etag: etag,
+                playlistNoteText: playlistNoteText,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -5194,6 +5913,346 @@ typedef $$PlaylistEntriesTableProcessedTableManager =
       PlaylistEntryData,
       PrefetchHooks Function()
     >;
+typedef $$FollowedChannelsTableCreateCompanionBuilder =
+    FollowedChannelsCompanion Function({
+      required String channelId,
+      required BigInt followedAtUs,
+      Value<BigInt?> lastPolledAtUs,
+      Value<int> hasUnseenUpdate,
+      Value<int> initialPollDone,
+      Value<int> rowid,
+    });
+typedef $$FollowedChannelsTableUpdateCompanionBuilder =
+    FollowedChannelsCompanion Function({
+      Value<String> channelId,
+      Value<BigInt> followedAtUs,
+      Value<BigInt?> lastPolledAtUs,
+      Value<int> hasUnseenUpdate,
+      Value<int> initialPollDone,
+      Value<int> rowid,
+    });
+
+final class $$FollowedChannelsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $FollowedChannelsTable,
+          FollowedChannelData
+        > {
+  $$FollowedChannelsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ChannelsTable _channelIdTable(_$AppDatabase db) =>
+      db.channels.createAlias(
+        $_aliasNameGenerator(db.followedChannels.channelId, db.channels.id),
+      );
+
+  $$ChannelsTableProcessedTableManager get channelId {
+    final $_column = $_itemColumn<String>('channel_id')!;
+
+    final manager = $$ChannelsTableTableManager(
+      $_db,
+      $_db.channels,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_channelIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$FollowedChannelsTableFilterComposer
+    extends Composer<_$AppDatabase, $FollowedChannelsTable> {
+  $$FollowedChannelsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<BigInt> get followedAtUs => $composableBuilder(
+    column: $table.followedAtUs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<BigInt> get lastPolledAtUs => $composableBuilder(
+    column: $table.lastPolledAtUs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get hasUnseenUpdate => $composableBuilder(
+    column: $table.hasUnseenUpdate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get initialPollDone => $composableBuilder(
+    column: $table.initialPollDone,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ChannelsTableFilterComposer get channelId {
+    final $$ChannelsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.channelId,
+      referencedTable: $db.channels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChannelsTableFilterComposer(
+            $db: $db,
+            $table: $db.channels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FollowedChannelsTableOrderingComposer
+    extends Composer<_$AppDatabase, $FollowedChannelsTable> {
+  $$FollowedChannelsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<BigInt> get followedAtUs => $composableBuilder(
+    column: $table.followedAtUs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<BigInt> get lastPolledAtUs => $composableBuilder(
+    column: $table.lastPolledAtUs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get hasUnseenUpdate => $composableBuilder(
+    column: $table.hasUnseenUpdate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get initialPollDone => $composableBuilder(
+    column: $table.initialPollDone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ChannelsTableOrderingComposer get channelId {
+    final $$ChannelsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.channelId,
+      referencedTable: $db.channels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChannelsTableOrderingComposer(
+            $db: $db,
+            $table: $db.channels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FollowedChannelsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FollowedChannelsTable> {
+  $$FollowedChannelsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<BigInt> get followedAtUs => $composableBuilder(
+    column: $table.followedAtUs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<BigInt> get lastPolledAtUs => $composableBuilder(
+    column: $table.lastPolledAtUs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get hasUnseenUpdate => $composableBuilder(
+    column: $table.hasUnseenUpdate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get initialPollDone => $composableBuilder(
+    column: $table.initialPollDone,
+    builder: (column) => column,
+  );
+
+  $$ChannelsTableAnnotationComposer get channelId {
+    final $$ChannelsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.channelId,
+      referencedTable: $db.channels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChannelsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.channels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FollowedChannelsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FollowedChannelsTable,
+          FollowedChannelData,
+          $$FollowedChannelsTableFilterComposer,
+          $$FollowedChannelsTableOrderingComposer,
+          $$FollowedChannelsTableAnnotationComposer,
+          $$FollowedChannelsTableCreateCompanionBuilder,
+          $$FollowedChannelsTableUpdateCompanionBuilder,
+          (FollowedChannelData, $$FollowedChannelsTableReferences),
+          FollowedChannelData,
+          PrefetchHooks Function({bool channelId})
+        > {
+  $$FollowedChannelsTableTableManager(
+    _$AppDatabase db,
+    $FollowedChannelsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FollowedChannelsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$FollowedChannelsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$FollowedChannelsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> channelId = const Value.absent(),
+                Value<BigInt> followedAtUs = const Value.absent(),
+                Value<BigInt?> lastPolledAtUs = const Value.absent(),
+                Value<int> hasUnseenUpdate = const Value.absent(),
+                Value<int> initialPollDone = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FollowedChannelsCompanion(
+                channelId: channelId,
+                followedAtUs: followedAtUs,
+                lastPolledAtUs: lastPolledAtUs,
+                hasUnseenUpdate: hasUnseenUpdate,
+                initialPollDone: initialPollDone,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String channelId,
+                required BigInt followedAtUs,
+                Value<BigInt?> lastPolledAtUs = const Value.absent(),
+                Value<int> hasUnseenUpdate = const Value.absent(),
+                Value<int> initialPollDone = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FollowedChannelsCompanion.insert(
+                channelId: channelId,
+                followedAtUs: followedAtUs,
+                lastPolledAtUs: lastPolledAtUs,
+                hasUnseenUpdate: hasUnseenUpdate,
+                initialPollDone: initialPollDone,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$FollowedChannelsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({channelId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (channelId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.channelId,
+                                referencedTable:
+                                    $$FollowedChannelsTableReferences
+                                        ._channelIdTable(db),
+                                referencedColumn:
+                                    $$FollowedChannelsTableReferences
+                                        ._channelIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$FollowedChannelsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FollowedChannelsTable,
+      FollowedChannelData,
+      $$FollowedChannelsTableFilterComposer,
+      $$FollowedChannelsTableOrderingComposer,
+      $$FollowedChannelsTableAnnotationComposer,
+      $$FollowedChannelsTableCreateCompanionBuilder,
+      $$FollowedChannelsTableUpdateCompanionBuilder,
+      (FollowedChannelData, $$FollowedChannelsTableReferences),
+      FollowedChannelData,
+      PrefetchHooks Function({bool channelId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5208,4 +6267,6 @@ class $AppDatabaseManager {
       $$ItemsTableTableManager(_db, _db.items);
   $$PlaylistEntriesTableTableManager get playlistEntries =>
       $$PlaylistEntriesTableTableManager(_db, _db.playlistEntries);
+  $$FollowedChannelsTableTableManager get followedChannels =>
+      $$FollowedChannelsTableTableManager(_db, _db.followedChannels);
 }

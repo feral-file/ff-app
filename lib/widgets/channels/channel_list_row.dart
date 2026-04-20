@@ -18,6 +18,7 @@ class ChannelRowData {
     required this.channelTitle,
     required this.works,
     this.channelSummary,
+    this.showUnseenUpdateDot = false,
   });
 
   /// Channel ID.
@@ -32,6 +33,9 @@ class ChannelRowData {
   /// List of works in this channel (domain).
   /// When empty, [ChannelListRow] loads preview via [channelPreviewProvider].
   final List<PlaylistItem> works;
+
+  /// Living-channel: pulsing red dot until the user opens channel details.
+  final bool showUnseenUpdateDot;
 }
 
 /// Channel List Row - Combines channel info with carousel of works.
@@ -136,59 +140,120 @@ class _ChannelListRowState extends ConsumerState<ChannelListRow> {
         ),
       ),
       padding: EdgeInsets.only(bottom: LayoutConstants.space3),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          ChannelHeader(
-            channelId: widget.channelData.channelId,
-            channelTitle: widget.channelData.channelTitle,
-            channelSummary: widget.channelData.channelSummary,
-            maxLines: 4,
-          ),
-          if (error != null)
-            Padding(
-              padding: EdgeInsets.only(top: ContentRhythm.rowVerticalPadding),
-              child: Text(
-                "We couldn't load this channel's works. Tap to retry.",
-                style: ContentRhythm.supporting(context),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ChannelHeader(
+                channelId: widget.channelData.channelId,
+                channelTitle: widget.channelData.channelTitle,
+                channelSummary: widget.channelData.channelSummary,
+                maxLines: 4,
               ),
-            ),
-          if (error != null)
-            Padding(
-              padding: EdgeInsets.only(top: LayoutConstants.space2),
-              child: TextButton(
-                onPressed: () {
-                  unawaited(
-                    ref.read(channelPreviewProvider(channelId).notifier).load(),
-                  );
-                },
-                child: Text(
-                  'Retry',
-                  style: ContentRhythm.controlLabel(context),
+              if (error != null)
+                Padding(
+                  padding:
+                      EdgeInsets.only(top: ContentRhythm.rowVerticalPadding),
+                  child: Text(
+                    "We couldn't load this channel's works. Tap to retry.",
+                    style: ContentRhythm.supporting(context),
+                  ),
                 ),
+              if (error != null)
+                Padding(
+                  padding: EdgeInsets.only(top: LayoutConstants.space2),
+                  child: TextButton(
+                    onPressed: () {
+                      unawaited(
+                        ref
+                            .read(channelPreviewProvider(channelId).notifier)
+                            .load(),
+                      );
+                    },
+                    child: Text(
+                      'Retry',
+                      style: ContentRhythm.controlLabel(context),
+                    ),
+                  ),
+                ),
+              DP1Carousel(
+                items: works,
+                isLoading: isLoading && works.isEmpty,
+                onItemTap: widget.onItemTap,
+                itemKeyBuilder: (item, _) => GoldPathPatrolKeys.channelWork(
+                  channelId: channelId,
+                  workId: item.id,
+                ),
+                isLoadingMore: isLoadingMore,
+                onLoadMore: hasMore
+                    ? () {
+                        unawaited(
+                          ref
+                              .read(
+                                channelPreviewProvider(channelId).notifier,
+                              )
+                              .loadMore(),
+                        );
+                      }
+                    : null,
               ),
-            ),
-          DP1Carousel(
-            items: works,
-            isLoading: isLoading && works.isEmpty,
-            onItemTap: widget.onItemTap,
-            itemKeyBuilder: (item, _) => GoldPathPatrolKeys.channelWork(
-              channelId: channelId,
-              workId: item.id,
-            ),
-            isLoadingMore: isLoadingMore,
-            onLoadMore: hasMore
-                ? () {
-                    unawaited(
-                      ref
-                          .read(channelPreviewProvider(channelId).notifier)
-                          .loadMore(),
-                    );
-                  }
-                : null,
+            ],
           ),
+          if (widget.channelData.showUnseenUpdateDot)
+            const Positioned(
+              top: 4,
+              right: 8,
+              child: _LivingUnseenDot(),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+class _LivingUnseenDot extends StatefulWidget {
+  const _LivingUnseenDot();
+
+  @override
+  State<_LivingUnseenDot> createState() => _LivingUnseenDotState();
+}
+
+class _LivingUnseenDotState extends State<_LivingUnseenDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    unawaited(_controller.repeat(reverse: true));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.35, end: 1).animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+      ),
+      child: Container(
+        width: 8,
+        height: 8,
+        decoration: const BoxDecoration(
+          color: Color(0xFFFF0000),
+          shape: BoxShape.circle,
+        ),
       ),
     );
   }

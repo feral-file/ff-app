@@ -13,6 +13,7 @@ class ChannelSectionHeader extends StatelessWidget {
     this.sectionIcon,
     this.onViewAllTap,
     this.hasMore = true,
+    this.trailing,
     super.key,
   });
 
@@ -28,6 +29,9 @@ class ChannelSectionHeader extends StatelessWidget {
   /// Whether there are more items to view.
   final bool hasMore;
 
+  /// Optional widget on the right (before "View all"), e.g. Living **Add**.
+  final Widget? trailing;
+
   @override
   Widget build(BuildContext context) {
     final key = sectionName == 'Curated'
@@ -40,67 +44,75 @@ class ChannelSectionHeader extends StatelessWidget {
         horizontal: ContentRhythm.horizontalRail,
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left: Section name with icon
+          Expanded(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (sectionIcon != null) ...[
+                  sectionIcon!,
+                  SizedBox(
+                    width: ContentRhythm.sectionIconGap,
+                  ),
+                ] else ...[
+                  SvgPicture.asset(
+                    'assets/images/icon_account.svg',
+                    width: LayoutConstants.iconSizeDefault,
+                    height: LayoutConstants.iconSizeDefault,
+                    colorFilter: const ColorFilter.mode(
+                      AppColor.white,
+                      BlendMode.srcIn,
+                    ),
+                  ),
+                  SizedBox(width: ContentRhythm.sectionIconGap),
+                ],
+                Flexible(
+                  child: Text(
+                    sectionName,
+                    style: ContentRhythm.sectionTitle(context),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (sectionIcon != null) ...[
-                sectionIcon!,
-                SizedBox(
-                  width: ContentRhythm.sectionIconGap,
-                ),
-              ] else ...[
-                SvgPicture.asset(
-                  'assets/images/icon_account.svg',
-                  width: LayoutConstants.iconSizeDefault,
-                  height: LayoutConstants.iconSizeDefault,
-                  colorFilter: const ColorFilter.mode(
-                    AppColor.white,
-                    BlendMode.srcIn,
+              ?trailing,
+              if (hasMore && onViewAllTap != null)
+                GestureDetector(
+                  onTap: onViewAllTap,
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    color: Colors.transparent,
+                    constraints: BoxConstraints(
+                      minWidth: LayoutConstants.minTouchTarget,
+                      minHeight: LayoutConstants.minTouchTarget,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SvgPicture.asset(
+                          'assets/images/icon_arrow_left.svg',
+                          width: LayoutConstants.iconSizeSmall,
+                          height: LayoutConstants.iconSizeSmall,
+                          colorFilter: const ColorFilter.mode(
+                            AppColor.auQuickSilver,
+                            BlendMode.srcIn,
+                          ),
+                        ),
+                        SizedBox(width: LayoutConstants.space2),
+                        Text(
+                          'All',
+                          style: ContentRhythm.controlLabel(context),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                SizedBox(width: ContentRhythm.sectionIconGap),
-              ],
-              Text(
-                sectionName,
-                style: ContentRhythm.sectionTitle(context),
-              ),
             ],
           ),
-          // Right: View all button
-          if (hasMore && onViewAllTap != null)
-            GestureDetector(
-              onTap: onViewAllTap,
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                color: Colors.transparent,
-                constraints: BoxConstraints(
-                  minWidth: LayoutConstants.minTouchTarget,
-                  minHeight: LayoutConstants.minTouchTarget,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SvgPicture.asset(
-                      'assets/images/icon_arrow_left.svg',
-                      width: LayoutConstants.iconSizeSmall,
-                      height: LayoutConstants.iconSizeSmall,
-                      colorFilter: const ColorFilter.mode(
-                        AppColor.auQuickSilver,
-                        BlendMode.srcIn,
-                      ),
-                    ),
-                    SizedBox(width: LayoutConstants.space2),
-                    Text(
-                      'All',
-                      style: ContentRhythm.controlLabel(context),
-                    ),
-                  ],
-                ),
-              ),
-            ),
         ],
       ),
     );

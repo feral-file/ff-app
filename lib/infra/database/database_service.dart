@@ -9,6 +9,7 @@ import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
+import 'package:app/domain/services/living_channel_change_detector.dart';
 import 'package:app/domain/utils/address_deduplication.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/converters.dart';
@@ -244,6 +245,194 @@ class DatabaseService {
       _log.severe('Failed to get channel $id', e, stack);
       rethrow;
     }
+  }
+
+  /// Join snapshot for polling (channel row + follow row).
+  Future<List<(ChannelData, FollowedChannelData)>>
+      getFollowedChannelsJoined() async {
+    return _db.getFollowedChannelsJoined();
+  }
+
+  /// Watch followed channel id set (for Follow button + Living list).
+  Stream<Set<String>> watchFollowedChannelIds() {
+    return _db.watchFollowedChannelIds();
+  }
+
+  /// Whether [channelId] is in the local follow list.
+  Future<bool> isChannelFollowed(String channelId) async {
+    final row = await (_db.select(_db.followedChannels)
+          ..where((t) => t.channelId.equals(channelId)))
+        .getSingleOrNull();
+    return row != null;
+  }
+
+  /// Follow a channel: local row + mark channel as [ChannelType.living].
+  Future<void> followChannel(String channelId) async {
+    final existing = await _db.getChannelById(channelId);
+    if (existing == null) {
+      throw StateError('Cannot follow unknown channel $channelId');
+    }
+    final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+    await _db.transaction(() async {
+      await _db.into(_db.followedChannels).insertOnConflictUpdate(
+            FollowedChannelsCompanion.insert(
+              channelId: channelId,
+              followedAtUs: nowUs,
+            ),
+          );
+      await (_db.update(_db.channels)..where((t) => t.id.equals(channelId)))
+          .write(
+        ChannelsCompanion(
+          type: Value(ChannelType.living.index),
+          updatedAtUs: Value(nowUs),
+        ),
+      );
+    });
+  }
+
+  /// Remove follow row; channel data remains. Restores [ChannelType.dp1] so the
+  /// channel can appear under Curated again when applicable.
+  Future<void> unfollowChannel(String channelId) async {
+    final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+    await _db.transaction(() async {
+      await (_db.delete(_db.followedChannels)
+            ..where((t) => t.channelId.equals(channelId)))
+          .go();
+      await (_db.update(_db.channels)..where((t) => t.id.equals(channelId)))
+          .write(
+        ChannelsCompanion(
+          type: Value(ChannelType.dp1.index),
+          updatedAtUs: Value(nowUs),
+        ),
+      );
+    });
+  }
+
+  /// All **living** registry channels (`channels.type` = living) that have
+  /// playlist content, merged with `followed_channels` for `Channel.isFollowed`
+  /// and unseen-update dots.
+  ///
+  /// **Listing vs polling:** The Channels “Living” section shows this full
+  /// catalog (every living channel in the local read model). **Background feed
+  /// polling** (conditional GET / update toasts) runs only for rows in
+  /// `followed_channels` — see `LivingChannelPollingService` in
+  /// `living_channel_polling_service.dart`, which uses
+  /// [getFollowedChannelsJoined], not this catalog query.
+  Stream<List<Channel>> watchLivingChannelsCatalog() {
+    return Rx.combineLatest2(
+      _db.watchChannelsByType(ChannelType.living.index),
+      _db.select(_db.followedChannels).watch(),
+      _mergeLivingChannelsWithFollowRows,
+    ).debounceTime(const Duration(milliseconds: 300));
+  }
+
+  /// Same snapshot as [watchLivingChannelsCatalog] for one-shot loads.
+  Future<List<Channel>> getLivingChannelsCatalog() async {
+    final channels = await _db.getChannelsByType(ChannelType.living.index);
+    if (channels.isEmpty) {
+      return [];
+    }
+    final ids = channels.map((c) => c.id).toList();
+    final followedRows = await (_db.select(_db.followedChannels)
+          ..where((t) => t.channelId.isIn(ids)))
+        .get();
+    return _mergeLivingChannelsWithFollowRows(channels, followedRows);
+  }
+
+  List<Channel> _mergeLivingChannelsWithFollowRows(
+    List<ChannelData> channels,
+    List<FollowedChannelData> followedRows,
+  ) {
+    final byId = {for (final f in followedRows) f.channelId: f};
+    return channels
+        .map((c) {
+          final f = byId[c.id];
+          return DatabaseConverters.channelDataToDomain(c).copyWith(
+            isFollowed: f != null,
+            hasUnseenUpdate: f != null && f.hasUnseenUpdate != 0,
+          );
+        })
+        .toList();
+  }
+
+  /// Clears red-dot flags for all followed channels (e.g. app detached).
+  Future<void> clearAllFollowedChannelUpdateIndicators() async {
+    await _db.customStatement(
+      'UPDATE followed_channels SET has_unseen_update = 0',
+    );
+  }
+
+  /// Marks one channel's unseen-update flag (red dot).
+  Future<void> markFollowedChannelUnseenUpdate(
+    String channelId, {
+    required bool hasUnseen,
+  }) async {
+    await (_db.update(_db.followedChannels)
+          ..where((t) => t.channelId.equals(channelId)))
+        .write(
+      FollowedChannelsCompanion(
+        hasUnseenUpdate: Value(hasUnseen ? 1 : 0),
+      ),
+    );
+  }
+
+  /// Updates poll bookkeeping on a followed channel row.
+  Future<void> updateFollowedChannelPollMeta({
+    required String channelId,
+    BigInt? lastPolledAtUs,
+    bool? initialPollDone,
+  }) async {
+    await (_db.update(_db.followedChannels)
+          ..where((t) => t.channelId.equals(channelId)))
+        .write(
+      FollowedChannelsCompanion(
+        lastPolledAtUs: lastPolledAtUs == null
+            ? const Value.absent()
+            : Value(lastPolledAtUs),
+        initialPollDone: initialPollDone == null
+            ? const Value.absent()
+            : Value(initialPollDone ? 1 : 0),
+      ),
+    );
+  }
+
+  /// Follow metadata for polling / first-notification guard.
+  Future<FollowedChannelData?> getFollowedChannelRow(String channelId) async {
+    return (_db.select(_db.followedChannels)
+          ..where((t) => t.channelId.equals(channelId)))
+        .getSingleOrNull();
+  }
+
+  /// Reconstruct [DP1Playlist] from current DB rows (for 304 playlist GET).
+  Future<DP1Playlist> dp1PlaylistSnapshotFromDb(String playlistId) async {
+    final p = await getPlaylistById(playlistId);
+    if (p == null) {
+      throw StateError('Missing playlist $playlistId');
+    }
+    final items = await getPlaylistItems(playlistId);
+    return DatabaseConverters.playlistAndItemsToDP1Playlist(p, items);
+  }
+
+  /// Build playlist snapshots for living-channel diff (ordered item ids + titles).
+  Future<Map<String, PlaylistPollSnapshot>> loadPlaylistPollSnapshots(
+    String channelId,
+  ) async {
+    final rows = await _db.getPlaylistsByChannel(channelId);
+    final out = <String, PlaylistPollSnapshot>{};
+    for (final row in rows) {
+      final domain = DatabaseConverters.playlistDataToDomain(row);
+      final items = await getPlaylistItems(domain.id);
+      final ids = items.map((e) => e.id).toList();
+      final titles = <String, String?>{
+        for (final i in items) i.id: i.title,
+      };
+      out[domain.id] = PlaylistPollSnapshot(
+        playlist: domain,
+        orderedItemIds: ids,
+        itemTitleById: titles,
+      );
+    }
+    return out;
   }
 
   /// Watch a single channel by ID as domain model. Emits null if the channel is
@@ -1168,6 +1357,9 @@ class DatabaseService {
     required DP1Channel channel,
     required List<DP1Playlist> playlists,
     int? publisherId,
+    ChannelType channelType = ChannelType.dp1,
+    String? channelEtag,
+    Map<String, String>? playlistEtagById,
   }) async {
     try {
       // Avoid computeWithDatabase() here: opening a short-lived extra
@@ -1182,6 +1374,9 @@ class DatabaseService {
           channel: channel,
           playlists: playlists,
           publisherId: publisherId,
+          channelType: channelType,
+          channelEtag: channelEtag,
+          playlistEtagById: playlistEtagById,
         );
       });
 
@@ -1205,11 +1400,14 @@ class DatabaseService {
     required DP1Channel channel,
     required List<DP1Playlist> playlists,
     int? publisherId,
+    ChannelType channelType = ChannelType.dp1,
+    String? channelEtag,
+    Map<String, String>? playlistEtagById,
   }) async {
     final domainChannel = Channel(
       id: channel.id,
       name: channel.title,
-      type: ChannelType.dp1,
+      type: channelType,
       description: channel.summary,
       baseUrl: baseUrl,
       slug: channel.slug,
@@ -1218,6 +1416,7 @@ class DatabaseService {
       coverImageUrl: channel.coverImage,
       createdAt: channel.created,
       updatedAt: channel.created,
+      etag: channelEtag,
     );
 
     final channelCompanion = DatabaseConverters.channelToCompanion(
@@ -1233,6 +1432,8 @@ class DatabaseService {
         playlist,
         baseUrl: baseUrl,
         channelId: channel.id,
+      ).copyWith(
+        etag: playlistEtagById?[playlist.id],
       );
       playlistCompanions.add(
         DatabaseConverters.playlistToCompanion(domainPlaylist),

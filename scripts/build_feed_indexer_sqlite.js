@@ -9,7 +9,11 @@ const https = require('node:https');
 const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
 
-const SCHEMA_VERSION = 3;
+/** Must match `AppDatabase.schemaVersion` / `_schemaVersionV1` in `lib/infra/database/app_database.dart`. */
+const SCHEMA_VERSION = 5;
+/** Aligns with app `ChannelType`: 0 = dp1 (static curated), 2 = living. */
+const CHANNEL_TYPE_DP1 = 0;
+const CHANNEL_TYPE_LIVING = 2;
 const SEED_FILENAME = 'ff_feed_indexer_seed.sqlite';
 const DEFAULT_OUTPUT = path.resolve(
   __dirname,
@@ -175,6 +179,7 @@ async function main() {
         baseUrl: channelRef.baseUrl,
         publisherKey: derivedPublisher.publisherKey,
         publisherTitle: derivedPublisher.publisherTitle,
+        channelKind: channelRef.channelKind === 'living' ? 'living' : 'static',
       };
     },
   );
@@ -198,6 +203,7 @@ async function main() {
       channelSortOrder,
       fetched.publisherId,
       fetched.publisherTitle,
+      fetched.channelKind,
     );
     ingestChannelPlaylists(
       data,
@@ -206,7 +212,8 @@ async function main() {
       fetched.baseUrl,
     );
     console.log(
-      `[feed] channel=${fetched.channel.id} playlists=${fetched.channelPlaylists.length}`,
+      `[feed] channel=${fetched.channel.id} kind=${fetched.channelKind} `
+      + `playlists=${fetched.channelPlaylists.length}`,
     );
   }
 
@@ -348,38 +355,104 @@ async function fetchChannelsFromSource(source) {
   if (Array.isArray(payload?.exhibitions)) {
     return extractChannelsFromPublishArtifact(payload);
   }
-  if (Array.isArray(payload)) {
-    return extractChannelsFromRegistry(payload);
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    !Array.isArray(payload) &&
+    Array.isArray(payload.publishers)
+  ) {
+    return extractChannelsFromChannelRegistry(payload);
   }
   throw new Error(
-    'Invalid channels source format: expected registry format (array) or publish artifact format (object with exhibitions array)'
+    'Invalid channels source: expected publish artifact ({ exhibitions }) '
+    + 'or ChannelRegistry ({ publishers } with static/living URL lists)',
   );
+}
+
+/**
+ * Parses DP-1 **ChannelRegistry** (see dp1-feed `ChannelRegistry` / GET
+ * `/api/v1/registry/channels`): each publisher has optional `static` and
+ * `living` channel URL arrays.
+ */
+function extractChannelsFromChannelRegistry(registry) {
+  if (!registry || !Array.isArray(registry.publishers)) {
+    throw new Error('ChannelRegistry: expected object with publishers array');
+  }
+  const channels = [];
+  for (const publisher of registry.publishers) {
+    const publisherTitle = String(publisher?.name || '').trim() || null;
+    const registryPublisherKey = derivePublisherAttribution({
+      baseUrl: null,
+      source: {
+        publisher,
+        publisherTitle,
+      },
+      preferExplicitIdentity: true,
+    });
+    const staticUrls = Array.isArray(publisher?.static) ? publisher.static : [];
+    const livingUrls = Array.isArray(publisher?.living) ? publisher.living : [];
+    const staticUrlSet = new Set(staticUrls);
+    const allUrlsForKey = [...staticUrlSet, ...livingUrls];
+    const parsedChannels = [...new Set(allUrlsForKey)]
+      .map((raw) => parseChannelUrl(raw))
+      .filter(Boolean);
+    const registryFallbackKey = isExplicitPublisherKey(registryPublisherKey.publisherKey)
+      ? registryPublisherKey.publisherKey
+      : buildRegistryPublisherFallbackKey(parsedChannels);
+    for (const rawChannelUrl of staticUrlSet) {
+      const parsed = parseChannelUrl(rawChannelUrl);
+      if (parsed) {
+        channels.push({
+          ...parsed,
+          publisherKey: registryFallbackKey,
+          publisherTitle: registryPublisherKey.publisherTitle,
+          channelKind: 'static',
+        });
+      }
+    }
+    for (const rawChannelUrl of livingUrls) {
+      const parsed = parseChannelUrl(rawChannelUrl);
+      if (parsed) {
+        channels.push({
+          ...parsed,
+          publisherKey: registryFallbackKey,
+          publisherTitle: registryPublisherKey.publisherTitle,
+          channelKind: 'living',
+        });
+      }
+    }
+  }
+  return finalizeChannelReferences(channels);
 }
 
 async function fetchChannelsFromFeedEndpoint(rawFeedEndpoint) {
   const baseUrl = normalizeOrigin(rawFeedEndpoint);
-  const channels = await fetchFeedPages({
-    feedBaseUrl: baseUrl,
-    route: '/api/v1/channels',
+  const registryUrl = `${trimSlash(baseUrl)}/api/v1/registry/channels`;
+  const registryPayload = await fetchJson(registryUrl, {
+    headers: {
+      'Content-Type': 'application/json',
+    },
   });
-  const out = [];
-  for (const channel of channels) {
-    if (!channel?.id) {
-      continue;
-    }
-    const publisher = derivePublisherAttribution({
-      baseUrl,
-      source: channel,
-    });
-    out.push({
-      id: String(channel.id),
-      baseUrl,
-      channelUrl: `${baseUrl}/api/v1/channels/${encodeURIComponent(channel.id)}`,
-      publisherKey: publisher.publisherKey,
-      publisherTitle: publisher.publisherTitle,
-    });
+  if (
+    !registryPayload ||
+    typeof registryPayload !== 'object' ||
+    !Array.isArray(registryPayload.publishers)
+  ) {
+    throw new Error(
+      `Expected ChannelRegistry JSON from ${registryUrl} (object with publishers array)`,
+    );
   }
-  return finalizeChannelReferences(out);
+  let staticCount = 0;
+  let livingCount = 0;
+  for (const pub of registryPayload.publishers) {
+    staticCount += Array.isArray(pub?.static) ? pub.static.length : 0;
+    livingCount += Array.isArray(pub?.living) ? pub.living.length : 0;
+  }
+  console.log(
+    `[feed] registry=${registryUrl} publishers=${registryPayload.publishers.length} `
+    + `static_urls=${staticCount} living_urls=${livingCount}`,
+  );
+  return extractChannelsFromChannelRegistry(registryPayload);
 }
 
 function normalizeOrigin(rawUrl) {
@@ -398,47 +471,6 @@ function normalizeOrigin(rawUrl) {
     );
   }
   return parsed.origin;
-}
-
-function extractChannelsFromRegistry(publishers) {
-  if (!Array.isArray(publishers)) {
-    throw new Error('Invalid registry format: expected array of publishers');
-  }
-
-  const channels = [];
-  for (let i = 0; i < publishers.length; i += 1) {
-    const publisher = publishers[i];
-    const publisherTitle = String(publisher?.name || '').trim()
-      || null;
-    const registryPublisherKey = derivePublisherAttribution({
-      baseUrl: null,
-      source: {
-        publisher,
-        publisherTitle,
-      },
-      preferExplicitIdentity: true,
-    });
-    const channelUrls = Array.isArray(publisher?.channel_urls)
-      ? publisher.channel_urls
-      : [];
-    const parsedChannels = channelUrls
-      .map((rawChannelUrl) => parseChannelUrl(rawChannelUrl))
-      .filter(Boolean);
-    const registryFallbackKey = isExplicitPublisherKey(registryPublisherKey.publisherKey)
-      ? registryPublisherKey.publisherKey
-      : buildRegistryPublisherFallbackKey(parsedChannels);
-    for (const rawChannelUrl of channelUrls) {
-      const parsed = parseChannelUrl(rawChannelUrl);
-      if (parsed) {
-        channels.push({
-          ...parsed,
-          publisherKey: registryFallbackKey,
-          publisherTitle: registryPublisherKey.publisherTitle,
-        });
-      }
-    }
-  }
-  return finalizeChannelReferences(channels);
 }
 
 function extractChannelsFromPublishArtifact(payload) {
@@ -460,6 +492,7 @@ function extractChannelsFromPublishArtifact(payload) {
       ...parsed,
       publisherKey: publisher.publisherKey,
       publisherTitle: publisher.publisherTitle,
+      channelKind: 'static',
     });
   }
   return finalizeChannelReferences(channels);
@@ -616,7 +649,21 @@ function safeNormalizeOrigin(rawUrl) {
 function finalizeChannelReferences(channels) {
   const dedupedChannels = new Map();
   for (const channel of channels) {
-    dedupedChannels.set(`${channel.baseUrl}::${channel.id}`, channel);
+    const key = `${channel.baseUrl}::${channel.id}`;
+    const prev = dedupedChannels.get(key);
+    if (!prev) {
+      dedupedChannels.set(key, {...channel});
+      continue;
+    }
+    const mergedKind =
+      prev.channelKind === 'living' || channel.channelKind === 'living'
+        ? 'living'
+        : 'static';
+    dedupedChannels.set(key, {
+      ...prev,
+      ...channel,
+      channelKind: mergedKind,
+    });
   }
 
   const publisherTitlesByKey = new Map();
@@ -639,6 +686,7 @@ function finalizeChannelReferences(channels) {
 
   return [...dedupedChannels.values()].map((channel) => ({
     ...channel,
+    channelKind: channel.channelKind === 'living' ? 'living' : 'static',
     publisherId: channel.publisherKey
       ? (publisherIdsByKey.get(channel.publisherKey) ?? null)
       : null,
@@ -764,6 +812,7 @@ function ingestChannel(
   sortOrder,
   publisherId,
   publisherTitle,
+  channelKind = 'static',
 ) {
   if (!channel?.id) {
     return;
@@ -777,9 +826,13 @@ function ingestChannel(
     });
   }
   const createdAtUs = toMicros(channel.created) || NOW_US;
+  const rowType = channelKind === 'living'
+    ? CHANNEL_TYPE_LIVING
+    : CHANNEL_TYPE_DP1;
   data.channels.set(channel.id, {
     id: channel.id,
-    type: 0,
+    type: rowType,
+    etag: null,
     base_url: baseUrl,
     slug: channel.slug || null,
     publisher_id: Number.isFinite(publisherId) && publisherId > 0
@@ -869,6 +922,12 @@ function ingestChannelPlaylists(data, channel, playlists, baseUrl) {
     const sortMode = dynamicQueries.length > 0 ? 1 : 0;
     const items = Array.isArray(playlist.items) ? playlist.items : [];
 
+    const noteText =
+      playlist.note &&
+      typeof playlist.note === 'object' &&
+      typeof playlist.note.text === 'string'
+        ? playlist.note.text
+        : null;
     data.playlists.set(playlist.id, {
       id: playlist.id,
       channel_id: channel.id,
@@ -887,6 +946,8 @@ function ingestChannelPlaylists(data, channel, playlists, baseUrl) {
       owner_chain: null,
       sort_mode: sortMode,
       item_count: items.length,
+      etag: null,
+      playlist_note_text: noteText,
     });
 
     for (let position = 0; position < items.length; position += 1) {
@@ -1271,6 +1332,7 @@ CREATE TABLE IF NOT EXISTS publishers (
 CREATE TABLE IF NOT EXISTS channels (
   id TEXT NOT NULL PRIMARY KEY,
   type INTEGER NOT NULL,
+  etag TEXT,
   base_url TEXT,
   slug TEXT,
   publisher_id INTEGER REFERENCES publishers(id),
@@ -1301,7 +1363,9 @@ CREATE TABLE IF NOT EXISTS playlists (
   owner_address TEXT,
   owner_chain TEXT,
   sort_mode INTEGER NOT NULL,
-  item_count INTEGER NOT NULL DEFAULT 0
+  item_count INTEGER NOT NULL DEFAULT 0,
+  etag TEXT,
+  playlist_note_text TEXT
 );`);
 
   lines.push(`
@@ -1333,6 +1397,15 @@ CREATE TABLE IF NOT EXISTS playlist_entries (
   sort_key_us INTEGER NOT NULL,
   updated_at_us INTEGER NOT NULL,
   PRIMARY KEY (playlist_id, item_id)
+);`);
+
+  lines.push(`
+CREATE TABLE IF NOT EXISTS followed_channels (
+  channel_id TEXT NOT NULL PRIMARY KEY REFERENCES channels(id),
+  followed_at_us INTEGER NOT NULL,
+  last_polled_at_us INTEGER,
+  has_unseen_update INTEGER NOT NULL DEFAULT 0,
+  initial_poll_done INTEGER NOT NULL DEFAULT 0
 );`);
 
   lines.push(`
@@ -1464,6 +1537,7 @@ END;`);
     lines.push(insertUpsertSql('channels', [
       'id',
       'type',
+      'etag',
       'base_url',
       'slug',
       'publisher_id',
@@ -1496,6 +1570,8 @@ END;`);
       'owner_chain',
       'sort_mode',
       'item_count',
+      'etag',
+      'playlist_note_text',
     ], row, ['id']));
   }
 
@@ -1924,8 +2000,8 @@ async function fetchJson(url, options = {}) {
 
 module.exports = {
   derivePublisherAttribution,
+  extractChannelsFromChannelRegistry,
   extractChannelsFromPublishArtifact,
-  extractChannelsFromRegistry,
   finalizeChannelReferences,
   normalizeOrigin,
 };

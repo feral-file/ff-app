@@ -15,6 +15,7 @@ class ChannelSection extends StatelessWidget {
     this.onChannelItemTap,
     this.hasMore = true,
     this.isActive = true,
+    this.headerTrailing,
     super.key,
   });
 
@@ -39,6 +40,9 @@ class ChannelSection extends StatelessWidget {
   /// Whether rows should actively listen to providers.
   final bool isActive;
 
+  /// Optional widget next to the section header (e.g. Add).
+  final Widget? headerTrailing;
+
   @override
   Widget build(BuildContext context) {
     return ListView.builder(
@@ -54,6 +58,7 @@ class ChannelSection extends StatelessWidget {
             sectionIcon: sectionIcon,
             onViewAllTap: hasMore ? onViewAllTap : null,
             hasMore: hasMore,
+            trailing: headerTrailing,
           );
         }
 

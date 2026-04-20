@@ -45,6 +45,7 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
   final ScrollController _scrollController = ScrollController();
   ChannelsState _cachedCuratedState = ChannelsState.initial();
   ChannelsState _cachedPersonalState = ChannelsState.initial();
+  ChannelsState _cachedLivingState = ChannelsState.initial();
 
   @override
   bool get wantKeepAlive => true;
@@ -116,6 +117,18 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
             .loadChannels(),
       );
     }
+
+    final livingState = ref.read(channelsProvider(ChannelType.living));
+    final shouldLoadLiving = shouldLoadTabData(
+      isLoading: livingState.isLoading,
+      hasCachedItems: livingState.channels.isNotEmpty,
+      hasError: livingState.error != null,
+    );
+    if (shouldLoadLiving) {
+      unawaited(
+        ref.read(channelsProvider(ChannelType.living).notifier).loadChannels(),
+      );
+    }
   }
 
   @override
@@ -165,11 +178,20 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
     }
     final personalChannels = _cachedPersonalState.channels;
 
+    final nextLivingState = widget.isActive
+        ? ref.watch(channelsProvider(ChannelType.living))
+        : _cachedLivingState;
+    if (widget.isActive) {
+      _cachedLivingState = nextLivingState;
+    }
+    final livingChannels = _cachedLivingState.channels;
+
     // Surface error when either curated or personal fails with no data.
     // Both sections are first-class; user needs a retry path for either.
     final hasError =
         (curatedState.error != null && curatedChannels.isEmpty) ||
-        (_cachedPersonalState.error != null && personalChannels.isEmpty);
+        (_cachedPersonalState.error != null && personalChannels.isEmpty) ||
+        (_cachedLivingState.error != null && livingChannels.isEmpty);
 
     // Match old app: Use CustomScrollView with NeverScrollableScrollPhysics
     // Parent NestedScrollView handles scrolling
@@ -202,6 +224,11 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
                           )
                           .loadChannels(),
                     );
+                    unawaited(
+                      ref
+                          .read(channelsProvider(ChannelType.living).notifier)
+                          .loadChannels(),
+                    );
                   },
                 ),
               ),
@@ -216,6 +243,21 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
                       scopedContext,
                       'Me',
                       personalChannels,
+                    ),
+                    SizedBox(height: LayoutConstants.space12),
+                  ],
+                ),
+              ),
+
+            if (livingChannels.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    _buildChannelSectionContent(
+                      scopedContext,
+                      'Living',
+                      livingChannels,
+                      showUnseenDots: true,
                     ),
                     SizedBox(height: LayoutConstants.space12),
                   ],
@@ -252,8 +294,9 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
   Widget _buildChannelSectionContent(
     BuildContext context,
     String sectionName,
-    List<Channel> channels,
-  ) {
+    List<Channel> channels, {
+    bool showUnseenDots = false,
+  }) {
     final displayChannels = channels.take(_previewCount).toList();
     final hasMore = channels.length > _previewCount;
 
@@ -263,6 +306,7 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
         channelTitle: channel.name,
         channelSummary: channel.description,
         works: const <PlaylistItem>[],
+        showUnseenUpdateDot: showUnseenDots && channel.hasUnseenUpdate,
       );
     }).toList();
 
@@ -283,7 +327,11 @@ class ChannelsTabPageState extends ConsumerState<ChannelsTabPage>
       hasMore: hasMore,
       onViewAllTap: hasMore
           ? () {
-              final filter = isMe ? 'personal' : 'curated';
+              final filter = switch (sectionName) {
+                'Me' => 'personal',
+                'Living' => 'living',
+                _ => 'curated',
+              };
               final location = '${Routes.allChannels}?filter=$filter';
               unawaited(
                 context.push(

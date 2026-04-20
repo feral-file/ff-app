@@ -26,6 +26,9 @@ enum AllChannelsFilter {
 
   /// Show personal (local virtual) channels.
   personal,
+
+  /// Show living registry channels.
+  living,
 }
 
 /// Maps UI filter to domain ChannelType.
@@ -35,6 +38,8 @@ ChannelType _filterToType(AllChannelsFilter filter) {
       return ChannelType.dp1;
     case AllChannelsFilter.personal:
       return ChannelType.localVirtual;
+    case AllChannelsFilter.living:
+      return ChannelType.living;
   }
 }
 
@@ -85,7 +90,9 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   }
 
   void _onScroll() {
-    if (widget.filter != AllChannelsFilter.curated) return;
+    if (widget.filter != AllChannelsFilter.curated) {
+      return;
+    }
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
       unawaited(
@@ -110,20 +117,31 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     final isLoadingMore = state.isLoadingMore;
     final hasMore = state.hasMore;
 
-    final title = widget.filter == AllChannelsFilter.curated
-        ? 'Curated'
-        : 'Personal';
-    // Descriptions from Feral File app (old repo) for consistency.
-    final description = widget.filter == AllChannelsFilter.curated
-        ? 'A small set of Channels selected by Feral File and invited '
-              'collaborators. These are early recommendations designed to give '
-              'you strong entry points into digital art.'
-        : 'Public Channels gathered from across the ecosystem. '
-              "They're not ranked or popularity-based—they simply give you a "
-              "wide view of what's out there, organized by source.";
-    final iconAsset = widget.filter == AllChannelsFilter.curated
-        ? 'assets/images/D.svg'
-        : 'assets/images/icon_account.svg';
+    final title = switch (widget.filter) {
+      AllChannelsFilter.curated => 'Curated',
+      AllChannelsFilter.personal => 'Personal',
+      AllChannelsFilter.living => 'Living',
+    };
+    // Descriptions from Feral File app (old repo) for consistency where
+    // applicable.
+    final description = switch (widget.filter) {
+      AllChannelsFilter.curated =>
+        'A small set of Channels selected by Feral File and invited '
+            'collaborators. These are early recommendations designed to give '
+            'you strong entry points into digital art.',
+      AllChannelsFilter.personal =>
+        'Public Channels gathered from across the ecosystem. '
+            "They're not ranked or popularity-based—they simply give you a "
+            "wide view of what's out there, organized by source.",
+      AllChannelsFilter.living =>
+        'Channels that update over time from the feed. Follow a channel to get '
+            'notifications when new playlists or works appear.',
+    };
+    final iconAsset = switch (widget.filter) {
+      AllChannelsFilter.curated => 'assets/images/D.svg',
+      AllChannelsFilter.personal => 'assets/images/icon_account.svg',
+      AllChannelsFilter.living => 'assets/images/D.svg',
+    };
 
     return PreviousPageTitleScope(
       title: title,

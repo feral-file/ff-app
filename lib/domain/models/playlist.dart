@@ -33,6 +33,8 @@ class Playlist {
     this.ownerName,
     this.sortMode = PlaylistSortMode.position,
     this.itemCount = 0,
+    this.etag,
+    this.playlistNoteText,
   });
 
   /// Creates the Favorite playlist (for bootstrap).
@@ -115,6 +117,12 @@ class Playlist {
   /// Number of items in the playlist.
   final int itemCount;
 
+  /// Last known HTTP ETag for this playlist (DP-1 Feed single-resource GET).
+  final String? etag;
+
+  /// DP-1 playlist-level note text (for display and living-channel diff).
+  final String? playlistNoteText;
+
   /// Deep equality for `Map<String, dynamic>?` (defaults).
   static bool _mapEquals(Map<String, dynamic>? a, Map<String, dynamic>? b) {
     if (a == null && b == null) return true;
@@ -148,30 +156,38 @@ class Playlist {
           ownerAddress == other.ownerAddress &&
           ownerChain == other.ownerChain &&
           sortMode == other.sortMode &&
-          itemCount == other.itemCount;
+          itemCount == other.itemCount &&
+          etag == other.etag &&
+          playlistNoteText == other.playlistNoteText;
 
   @override
   int get hashCode => Object.hash(
-    id,
-    name,
-    type,
-    description,
-    channelId,
-    playlistRole,
-    playlistSource,
-    baseUrl,
-    dpVersion,
-    slug,
-    createdAt,
-    updatedAt,
-    legacySignature,
+    Object.hash(
+      id,
+      name,
+      type,
+      description,
+      channelId,
+      playlistRole,
+      playlistSource,
+      baseUrl,
+      dpVersion,
+      slug,
+      createdAt,
+      updatedAt,
+      legacySignature,
+    ),
     Object.hashAll(signatures ?? []),
     defaults != null ? _deepEquality.hash(defaults) : null,
     Object.hashAll(dynamicQueries ?? []),
-    ownerAddress,
-    ownerChain,
-    sortMode,
-    itemCount,
+    Object.hash(
+      ownerAddress,
+      ownerChain,
+      sortMode,
+      itemCount,
+      etag,
+      playlistNoteText,
+    ),
   );
 
   /// Creates a copy with updated values.
@@ -197,6 +213,8 @@ class Playlist {
     String? ownerName,
     PlaylistSortMode? sortMode,
     int? itemCount,
+    String? etag,
+    String? playlistNoteText,
   }) {
     return Playlist(
       id: id ?? this.id,
@@ -220,6 +238,8 @@ class Playlist {
       ownerName: ownerName ?? this.ownerName,
       sortMode: sortMode ?? this.sortMode,
       itemCount: itemCount ?? this.itemCount,
+      etag: etag ?? this.etag,
+      playlistNoteText: playlistNoteText ?? this.playlistNoteText,
     );
   }
 }

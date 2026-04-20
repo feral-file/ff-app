@@ -7,8 +7,8 @@ const test = require('node:test');
 const {execFileSync, spawn} = require('node:child_process');
 
 const {
+  extractChannelsFromChannelRegistry,
   extractChannelsFromPublishArtifact,
-  extractChannelsFromRegistry,
 } = require('../../scripts/build_feed_indexer_sqlite.js');
 
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -105,23 +105,44 @@ test('extractChannelsFromPublishArtifact keeps same explicit publisher ids disti
   );
 });
 
-test('extractChannelsFromRegistry keeps publisher linkage stable across input reorder', () => {
-  const registryA = [
-    {
-      id: 7,
-      name: 'Publisher B',
-      channel_urls: ['https://source-b.example/api/v1/channels/channel-b'],
-    },
-    {
-      id: 3,
-      name: 'Publisher A',
-      channel_urls: ['https://source-a.example/api/v1/channels/channel-a'],
-    },
-  ];
-  const registryB = [...registryA].reverse();
+test('extractChannelsFromChannelRegistry maps static vs living to channelKind', () => {
+  const channels = extractChannelsFromChannelRegistry({
+    publishers: [
+      {
+        name: 'Demo',
+        static: ['https://feed.example/api/v1/channels/ch-s'],
+        living: ['https://feed.example/api/v1/channels/ch-l'],
+      },
+    ],
+  });
+  const byId = new Map(channels.map((c) => [c.id, c]));
+  assert.equal(byId.get('ch-s').channelKind, 'static');
+  assert.equal(byId.get('ch-l').channelKind, 'living');
+});
 
-  const channelsA = extractChannelsFromRegistry(registryA);
-  const channelsB = extractChannelsFromRegistry(registryB);
+test('extractChannelsFromChannelRegistry keeps publisher linkage stable across input reorder', () => {
+  const registryA = {
+    publishers: [
+      {
+        id: 7,
+        name: 'Publisher B',
+        static: ['https://source-b.example/api/v1/channels/channel-b'],
+        living: [],
+      },
+      {
+        id: 3,
+        name: 'Publisher A',
+        static: ['https://source-a.example/api/v1/channels/channel-a'],
+        living: [],
+      },
+    ],
+  };
+  const registryB = {
+    publishers: [...registryA.publishers].reverse(),
+  };
+
+  const channelsA = extractChannelsFromChannelRegistry(registryA);
+  const channelsB = extractChannelsFromChannelRegistry(registryB);
 
   assert.deepEqual(
     summarizeChannelPublisherLinks(channelsA),
@@ -136,17 +157,20 @@ test('extractChannelsFromRegistry keeps publisher linkage stable across input re
   );
 });
 
-test('extractChannelsFromRegistry keeps one explicit publisher across multiple origins', () => {
-  const channels = extractChannelsFromRegistry([
-    {
-      id: 7,
-      name: 'Publisher A',
-      channel_urls: [
-        'https://source-a.example/api/v1/channels/channel-a',
-        'https://source-b.example/api/v1/channels/channel-b',
-      ],
-    },
-  ]);
+test('extractChannelsFromChannelRegistry keeps one explicit publisher across multiple origins', () => {
+  const channels = extractChannelsFromChannelRegistry({
+    publishers: [
+      {
+        id: 7,
+        name: 'Publisher A',
+        static: [
+          'https://source-a.example/api/v1/channels/channel-a',
+          'https://source-b.example/api/v1/channels/channel-b',
+        ],
+        living: [],
+      },
+    ],
+  });
 
   assert.deepEqual(
     summarizeChannelPublisherLinks(channels),
@@ -157,13 +181,16 @@ test('extractChannelsFromRegistry keeps one explicit publisher across multiple o
   );
 });
 
-test('extractChannelsFromRegistry synthesizes a title for explicit publisher ids without a name', () => {
-  const channels = extractChannelsFromRegistry([
-    {
-      id: 7,
-      channel_urls: ['https://source-a.example/api/v1/channels/channel-a'],
-    },
-  ]);
+test('extractChannelsFromChannelRegistry synthesizes a title for explicit publisher ids without a name', () => {
+  const channels = extractChannelsFromChannelRegistry({
+    publishers: [
+      {
+        id: 7,
+        static: ['https://source-a.example/api/v1/channels/channel-a'],
+        living: [],
+      },
+    ],
+  });
 
   assert.deepEqual(
     summarizeChannelPublisherLinks(channels),
@@ -173,17 +200,21 @@ test('extractChannelsFromRegistry synthesizes a title for explicit publisher ids
   );
 });
 
-test('extractChannelsFromRegistry keeps duplicate-name publishers distinct when no explicit id exists', () => {
-  const channels = extractChannelsFromRegistry([
-    {
-      name: 'Shared Publisher',
-      channel_urls: ['https://source-a.example/api/v1/channels/channel-a'],
-    },
-    {
-      name: 'Shared Publisher',
-      channel_urls: ['https://source-b.example/api/v1/channels/channel-b'],
-    },
-  ]);
+test('extractChannelsFromChannelRegistry keeps duplicate-name publishers distinct when no explicit id exists', () => {
+  const channels = extractChannelsFromChannelRegistry({
+    publishers: [
+      {
+        name: 'Shared Publisher',
+        static: ['https://source-a.example/api/v1/channels/channel-a'],
+        living: [],
+      },
+      {
+        name: 'Shared Publisher',
+        static: ['https://source-b.example/api/v1/channels/channel-b'],
+        living: [],
+      },
+    ],
+  });
 
   assert.deepEqual(
     summarizeChannelPublisherLinks(channels),
@@ -194,34 +225,41 @@ test('extractChannelsFromRegistry keeps duplicate-name publishers distinct when 
   );
 });
 
-test('extractChannelsFromRegistry keeps no-id publisher linkage stable across channel url reorder', () => {
-  const registryA = [
-    {
-      name: 'Shared Publisher',
-      channel_urls: [
-        'https://source-b.example/api/v1/channels/channel-b',
-        'https://source-a.example/api/v1/channels/channel-a',
-      ],
-    },
-    {
-      name: 'Shared Publisher',
-      channel_urls: ['https://source-c.example/api/v1/channels/channel-c'],
-    },
-  ];
-  const registryB = [
-    {
-      name: 'Shared Publisher',
-      channel_urls: [
-        'https://source-a.example/api/v1/channels/channel-a',
-        'https://source-b.example/api/v1/channels/channel-b',
-      ],
-    },
-    registryA[1],
-  ];
+test('extractChannelsFromChannelRegistry keeps no-id publisher linkage stable across channel url reorder', () => {
+  const registryA = {
+    publishers: [
+      {
+        name: 'Shared Publisher',
+        static: [
+          'https://source-b.example/api/v1/channels/channel-b',
+          'https://source-a.example/api/v1/channels/channel-a',
+        ],
+        living: [],
+      },
+      {
+        name: 'Shared Publisher',
+        static: ['https://source-c.example/api/v1/channels/channel-c'],
+        living: [],
+      },
+    ],
+  };
+  const registryB = {
+    publishers: [
+      {
+        name: 'Shared Publisher',
+        static: [
+          'https://source-a.example/api/v1/channels/channel-a',
+          'https://source-b.example/api/v1/channels/channel-b',
+        ],
+        living: [],
+      },
+      registryA.publishers[1],
+    ],
+  };
 
   assert.deepEqual(
-    summarizeChannelPublisherLinks(extractChannelsFromRegistry(registryA)),
-    summarizeChannelPublisherLinks(extractChannelsFromRegistry(registryB)),
+    summarizeChannelPublisherLinks(extractChannelsFromChannelRegistry(registryA)),
+    summarizeChannelPublisherLinks(extractChannelsFromChannelRegistry(registryB)),
   );
 });
 
@@ -382,7 +420,7 @@ test('dryrun feed-endpoint ingest preserves legacy and structured playlist signa
   }
 });
 
-test('dryrun feed-endpoint emits schema version 3', async () => {
+test('dryrun feed-endpoint emits schema version 5', async () => {
   const server = await startFeedServer({
     channels: [
       {
@@ -398,7 +436,41 @@ test('dryrun feed-endpoint emits schema version 3', async () => {
     await runBuilder(['--channels-feed-endpoint', server.origin, '--dryrun', '--threads', '1']);
 
     const userVersion = queryRows('PRAGMA user_version;');
-    assert.deepEqual(userVersion, ['3']);
+    assert.deepEqual(userVersion, ['5']);
+  } finally {
+    await server.close();
+    cleanupOutputDatabase();
+  }
+});
+
+test('dryrun feed-endpoint registry maps living list to channels.type=2', async () => {
+  const server = await startFeedServer({
+    channels: [
+      {
+        id: 'channel-static',
+        title: 'Static',
+        playlists: [{id: 'pl-s', title: 'P'}],
+      },
+      {
+        id: 'channel-living',
+        title: 'Living',
+        playlists: [{id: 'pl-l', title: 'P'}],
+      },
+    ],
+    livingChannelIds: ['channel-living'],
+  });
+
+  try {
+    cleanupOutputDatabase();
+    await runBuilder(['--channels-feed-endpoint', server.origin, '--dryrun', '--threads', '1']);
+
+    const types = queryRows(
+      'SELECT id || \'|\' || type FROM channels ORDER BY id;',
+    );
+    assert.deepEqual(types, [
+      'channel-living|2',
+      'channel-static|0',
+    ]);
   } finally {
     await server.close();
     cleanupOutputDatabase();
@@ -429,16 +501,19 @@ test('dryrun registry ingest keeps a multi-origin registry publisher unified', a
 
   fs.writeFileSync(
     registryPath,
-    JSON.stringify([
-      {
-        id: 7,
-        name: 'Registry Publisher',
-        channel_urls: [
-          `${serverA.origin}/api/v1/channels/channel-a`,
-          `${serverB.origin}/api/v1/channels/channel-b`,
-        ],
-      },
-    ]),
+    JSON.stringify({
+      publishers: [
+        {
+          id: 7,
+          name: 'Registry Publisher',
+          static: [
+            `${serverA.origin}/api/v1/channels/channel-a`,
+            `${serverB.origin}/api/v1/channels/channel-b`,
+          ],
+          living: [],
+        },
+      ],
+    }),
   );
 
   try {
@@ -495,16 +570,19 @@ test('dryrun registry ingest keeps registry identity when detail responses repea
 
   fs.writeFileSync(
     registryPath,
-    JSON.stringify([
-      {
-        id: 7,
-        name: 'Registry Publisher',
-        channel_urls: [
-          `${serverA.origin}/api/v1/channels/channel-a`,
-          `${serverB.origin}/api/v1/channels/channel-b`,
-        ],
-      },
-    ]),
+    JSON.stringify({
+      publishers: [
+        {
+          id: 7,
+          name: 'Registry Publisher',
+          static: [
+            `${serverA.origin}/api/v1/channels/channel-a`,
+            `${serverB.origin}/api/v1/channels/channel-b`,
+          ],
+          living: [],
+        },
+      ],
+    }),
   );
 
   try {
@@ -590,17 +668,40 @@ function summarizeChannelPublisherLinks(channels) {
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
-async function startFeedServer({channels}) {
+async function startFeedServer({channels, registryPublisherName, livingChannelIds}) {
   const channelById = new Map(channels.map((channel) => [channel.id, channel]));
   const sockets = new Set();
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     res.setHeader('Content-Type', 'application/json');
 
-    if (req.method === 'GET' && url.pathname === '/api/v1/channels') {
+    if (req.method === 'GET' && url.pathname === '/api/v1/registry/channels') {
+      const host = req.headers.host || '127.0.0.1';
+      const origin = `http://${host}`;
+      const publisherTitle = registryPublisherName
+        || channels[0]?.publisher?.name
+        || new URL(origin).host;
+      const livingSet = livingChannelIds instanceof Set
+        ? livingChannelIds
+        : new Set(livingChannelIds || []);
+      const staticUrls = [];
+      const livingUrls = [];
+      for (const ch of channels) {
+        const channelUrl = `${origin}/api/v1/channels/${encodeURIComponent(ch.id)}`;
+        if (livingSet.has(ch.id)) {
+          livingUrls.push(channelUrl);
+        } else {
+          staticUrls.push(channelUrl);
+        }
+      }
       res.end(JSON.stringify({
-        items: channels.map((channel) => ({id: channel.id})),
-        hasMore: false,
+        publishers: [
+          {
+            name: publisherTitle,
+            static: staticUrls,
+            living: livingUrls,
+          },
+        ],
       }));
       return;
     }
