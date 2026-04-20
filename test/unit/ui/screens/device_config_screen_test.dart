@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:riverpod/legacy.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 void main() {
   testWidgets(
@@ -553,6 +554,108 @@ void main() {
   );
 
   testWidgets(
+    'pairing QR toggle ignores stale success after switching active device',
+    (tester) async {
+      const deviceA = FF1Device(
+        name: 'FF1 A',
+        remoteId: 'remote-a',
+        deviceId: 'device-a',
+        topicId: 'topic-a',
+      );
+      const deviceB = FF1Device(
+        name: 'FF1 B',
+        remoteId: 'remote-b',
+        deviceId: 'device-b',
+        topicId: 'topic-b',
+      );
+      final activeDeviceProvider = StateProvider<FF1Device>((ref) => deviceA);
+
+      final currentStatusProvider = StateProvider<FF1DeviceStatus?>(
+        (ref) => const FF1DeviceStatus(
+          volume: 40,
+          isMuted: false,
+          displayUrl: 'https://example.com/?step=qrcode',
+        ),
+      );
+      final toggleCompleter = Completer<FF1CommandResponse>();
+
+      await tester.binding.setSurfaceSize(const Size(800, 2400));
+      addTearDown(() async {
+        await tester.binding.setSurfaceSize(null);
+      });
+
+      await tester.pumpWidget(
+        _wrapScreen(
+          isInSetupProcess: false,
+          activeDeviceOverride: deviceA,
+          dynamicActiveFf1DeviceProvider: activeDeviceProvider,
+          extraFfpPanelTopicIds: {deviceB.topicId},
+          deviceData: FF1DeviceData(
+            deviceStatus: const FF1DeviceStatus(
+              volume: 40,
+              isMuted: false,
+              displayUrl: 'https://example.com/?step=qrcode',
+            ),
+            playerStatus: FF1PlayerStatus(
+              playlistId: 'playlist-1',
+              sleepMode: false,
+            ),
+            isConnected: true,
+          ),
+          currentDeviceStatus: null,
+          currentPlayerStatus: FF1PlayerStatus(
+            playlistId: 'playlist-1',
+            sleepMode: false,
+          ),
+          panelStatus: const FfpDdcPanelStatus(
+            brightness: 25,
+            contrast: 60,
+            power: FfpDdcPanelPower.on,
+            monitor: 'Test Monitor',
+          ),
+          currentDeviceStatusStateProvider: currentStatusProvider,
+          wifiControl: _ControllableWifiControl(
+            onShowPairingQRCode: ({required topicId, required show}) =>
+                toggleCompleter.future,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.dragUntilVisible(
+        find.text('Device Information'),
+        find.byType(CustomScrollView),
+        const Offset(0, -300),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Hide QR Code'), findsOneWidget);
+
+      await tester.tap(find.text('Hide QR Code'));
+      await tester.pump();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DeviceConfigScreen)),
+      );
+      container.read(activeDeviceProvider.notifier).state = deviceB;
+      await tester.pump();
+
+      toggleCompleter.complete(FF1CommandResponse(status: 'ok'));
+      await tester.pumpAndSettle();
+      // Flush debounced listeners (e.g. FF1 UI helpers) before test end.
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(
+        find.text('Hide QR Code'),
+        findsOneWidget,
+        reason:
+            'Success for the previous device must not flip the shared toggle '
+            'label after the active device changes.',
+      );
+    },
+  );
+
+  testWidgets(
     'pairing QR button reconciles skipped status after failed in-flight toggle',
     (tester) async {
       final currentStatusProvider = StateProvider<FF1DeviceStatus?>(
@@ -762,6 +865,61 @@ void main() {
   );
 }
 
+List<Override> _deviceConfigScreenOverrides({
+  required FF1Device activeDevice,
+  required FF1DeviceData deviceData,
+  required FF1DeviceStatus? currentDeviceStatus,
+  required FF1PlayerStatus? currentPlayerStatus,
+  required FfpDdcPanelStatus? panelStatus,
+  StateProvider<FF1DeviceStatus?>? currentDeviceStatusStateProvider,
+  FF1WifiControl? wifiControl,
+  StateProvider<FF1Device>? dynamicActiveFf1DeviceProvider,
+  Set<String>? extraFfpPanelTopicIds,
+}) {
+  final ffpOverrides = <Override>[];
+  final topicIds = <String>{
+    activeDevice.topicId,
+    ...?extraFfpPanelTopicIds,
+  };
+  for (final topicId in topicIds) {
+    ffpOverrides.add(
+      panelStatus != null
+          ? ff1FfpDdcPanelStatusStreamProvider(
+              topicId,
+            ).overrideWithValue(AsyncData(panelStatus))
+          : ff1FfpDdcPanelStatusStreamProvider(
+              topicId,
+            ).overrideWithValue(const AsyncLoading<FfpDdcPanelStatus>()),
+    );
+  }
+
+  return [
+    ?dynamicActiveFf1DeviceProvider,
+    activeFF1BluetoothDeviceProvider.overrideWith((ref) {
+      final resolved = dynamicActiveFf1DeviceProvider != null
+          ? ref.watch(dynamicActiveFf1DeviceProvider)
+          : activeDevice;
+      return Stream<FF1Device?>.value(resolved);
+    }),
+    ff1WifiControlProvider.overrideWithValue(
+      wifiControl ?? _FakeWifiControl(),
+    ),
+    ff1DeviceDataProvider.overrideWithValue(deviceData),
+    if (currentDeviceStatusStateProvider != null)
+      ff1CurrentDeviceStatusProvider.overrideWith(
+        (ref) => ref.watch(currentDeviceStatusStateProvider),
+      )
+    else
+      ff1CurrentDeviceStatusProvider.overrideWithValue(currentDeviceStatus),
+    ff1CurrentPlayerStatusProvider.overrideWithValue(currentPlayerStatus),
+    ff1DeviceConnectedProvider.overrideWithValue(false),
+    ff1FirmwareUpdatePromptServiceProvider.overrideWith(
+      (ref) => Ff1FirmwareUpdatePromptService(_NoopPromptStateService()),
+    ),
+    ...ffpOverrides,
+  ];
+}
+
 Widget _wrapScreen({
   required bool isInSetupProcess,
   required FF1DeviceData deviceData,
@@ -770,36 +928,23 @@ Widget _wrapScreen({
   required FfpDdcPanelStatus? panelStatus,
   StateProvider<FF1DeviceStatus?>? currentDeviceStatusStateProvider,
   FF1WifiControl? wifiControl,
+  FF1Device? activeDeviceOverride,
+  StateProvider<FF1Device>? dynamicActiveFf1DeviceProvider,
+  Set<String>? extraFfpPanelTopicIds,
 }) {
+  final effectiveDevice = activeDeviceOverride ?? device;
   return ProviderScope(
-    overrides: [
-      activeFF1BluetoothDeviceProvider.overrideWithValue(
-        const AsyncData(device),
-      ),
-      ff1WifiControlProvider.overrideWithValue(
-        wifiControl ?? _FakeWifiControl(),
-      ),
-      ff1DeviceDataProvider.overrideWithValue(deviceData),
-      if (currentDeviceStatusStateProvider != null)
-        ff1CurrentDeviceStatusProvider.overrideWith(
-          (ref) => ref.watch(currentDeviceStatusStateProvider),
-        )
-      else
-        ff1CurrentDeviceStatusProvider.overrideWithValue(currentDeviceStatus),
-      ff1CurrentPlayerStatusProvider.overrideWithValue(currentPlayerStatus),
-      ff1DeviceConnectedProvider.overrideWithValue(false),
-      ff1FirmwareUpdatePromptServiceProvider.overrideWith(
-        (ref) => Ff1FirmwareUpdatePromptService(_NoopPromptStateService()),
-      ),
-      if (panelStatus != null)
-        ff1FfpDdcPanelStatusStreamProvider(
-          device.topicId,
-        ).overrideWithValue(AsyncData(panelStatus))
-      else
-        ff1FfpDdcPanelStatusStreamProvider(
-          device.topicId,
-        ).overrideWithValue(const AsyncLoading<FfpDdcPanelStatus>()),
-    ],
+    overrides: _deviceConfigScreenOverrides(
+      activeDevice: effectiveDevice,
+      deviceData: deviceData,
+      currentDeviceStatus: currentDeviceStatus,
+      currentPlayerStatus: currentPlayerStatus,
+      panelStatus: panelStatus,
+      currentDeviceStatusStateProvider: currentDeviceStatusStateProvider,
+      wifiControl: wifiControl,
+      dynamicActiveFf1DeviceProvider: dynamicActiveFf1DeviceProvider,
+      extraFfpPanelTopicIds: extraFfpPanelTopicIds,
+    ),
     child: MaterialApp(
       home: DeviceConfigScreen(
         payload: DeviceConfigPayload(isInSetupProcess: isInSetupProcess),

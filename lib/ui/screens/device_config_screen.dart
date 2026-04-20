@@ -859,6 +859,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             text: _isShowingQRCode ? 'Hide QR Code' : 'Show Pairing QR Code',
             color: AppColor.white,
             onTap: () async {
+              // Bind completion to this device so a slow response cannot flip
+              // the shared toggle state after the user switches active FF1.
+              final commandSessionTopicId = device.topicId;
               final nextShow = !_isShowingQRCode;
               var commandSucceeded = false;
               _isPairingQrCommandInFlight = true;
@@ -874,6 +877,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 if (!mounted) {
                   return;
                 }
+                final activeDevice = ref
+                    .read(activeFF1BluetoothDeviceProvider)
+                    .maybeWhen(
+                      data: (d) => d,
+                      orElse: () => null,
+                    );
+                if (activeDevice?.topicId != commandSessionTopicId) {
+                  return;
+                }
                 setState(() {
                   _isShowingQRCode = nextShow;
                 });
@@ -882,10 +894,18 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 // Reconcile skipped status updates only when the command fails.
                 // On success, keep the local optimistic state and wait for the
                 // next device-status push to avoid stale rollback flicker.
-                if (!commandSucceeded) {
-                  _maybeApplyDisplayUrlToPairingQr(
-                    ref.read(ff1CurrentDeviceStatusProvider),
-                  );
+                if (!commandSucceeded && mounted) {
+                  final activeDevice = ref
+                      .read(activeFF1BluetoothDeviceProvider)
+                      .maybeWhen(
+                        data: (d) => d,
+                        orElse: () => null,
+                      );
+                  if (activeDevice?.topicId == commandSessionTopicId) {
+                    _maybeApplyDisplayUrlToPairingQr(
+                      ref.read(ff1CurrentDeviceStatusProvider),
+                    );
+                  }
                 }
               }
             },
