@@ -116,20 +116,15 @@ Future<void> completeSeedDatabaseGateIfUsable(
   SeedDatabaseService seedDatabaseService,
 ) async {
   if (await seedDatabaseService.isResetCleanupInProgress()) {
-    // Crash/force-close can leave reset marker stale even when canonical DB is
-    // still valid. Clear stale marker so startup can open the seed gate again.
-    if (await seedDatabaseService.hasUsableLocalDatabase()) {
-      _log.warning(
-        'Detected stale reset cleanup marker with usable local seed DB; '
-        'clearing marker and continuing seed gate completion.',
-      );
-      await seedDatabaseService.clearResetCleanupInProgress();
-    } else {
-      _log.info(
-        'Skipping seed gate completion while reset cleanup is in progress.',
-      );
-      return;
-    }
+    // Never clear the marker here just because the DB still validates. A crash
+    // after [markResetCleanupInProgress] but before
+    // [deleteDatabaseFiles] leaves both marker and a usable DB; clearing would
+    // reopen pre-wipe data (privacy risk). Stale markers without swap residue
+    // are handled in [SeedDatabaseService.repairInterruptedSeedSwapIfNeeded].
+    _log.info(
+      'Skipping seed gate completion while reset cleanup is in progress.',
+    );
+    return;
   }
   if (await seedDatabaseService.hasUsableLocalDatabase()) {
     SeedDatabaseGate.complete();

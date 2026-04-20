@@ -244,7 +244,7 @@ void main() {
     );
 
     test(
-      'startup repair preserves reset marker when no swap marker exists',
+      'startup repair clears reset marker when no DB and no swap residue',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(
           'ff_seed_stale_reset_marker_',
@@ -265,7 +265,36 @@ void main() {
         );
 
         expect(await svc.repairInterruptedSeedSwapIfNeeded(), isFalse);
+        expect(marker.existsSync(), isFalse);
+      },
+    );
+
+    test(
+      'startup repair preserves reset marker when DB is usable but swap not '
+      'in progress (interrupted forget)',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_seed_reset_usable_no_swap_',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        createSeedArtifactDatabase(file: File(dbPath));
+        final marker = File('$dbPath.reset_in_progress');
+        await marker.writeAsString('1');
+
+        final svc = _ThrowingMaterializeSeedService(
+          dbPath: dbPath,
+          tempDirProvider: () async => tempDir,
+        );
+
+        expect(await svc.repairInterruptedSeedSwapIfNeeded(), isFalse);
         expect(marker.existsSync(), isTrue);
+        expect(File(dbPath).existsSync(), isTrue);
       },
     );
 

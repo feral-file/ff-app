@@ -104,8 +104,9 @@ void main() {
   );
 
   test(
-    'completeSeedDatabaseGateIfUsable clears stale reset marker and opens gate '
-    'when local database is usable',
+    'completeSeedDatabaseGateIfUsable does not clear reset marker or open gate '
+    'when cleanup is in progress but local DB is still usable (interrupted '
+    'forget before file deletion)',
     () async {
       final service = _ResetMarkerSeedDatabaseServiceFake(
         dbPath: '/tmp/seed_gate_stale_reset.sqlite',
@@ -115,8 +116,8 @@ void main() {
 
       await completeSeedDatabaseGateIfUsable(service);
 
-      expect(service.clearResetCalls, 1);
-      expect(SeedDatabaseGate.isCompleted, isTrue);
+      expect(service.clearResetCalls, 0);
+      expect(SeedDatabaseGate.isCompleted, isFalse);
     },
   );
 

@@ -227,6 +227,41 @@ void main() {
     });
 
     test(
+      'accepts user_version 2 without items enrichment_status when v3-shaped',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_sig_v2_no_enrich_',
+        );
+        final dbFile = File(p.join(tempDir.path, 'v2-no-enrichment.sqlite'));
+        try {
+          _createPlaylistSchemaDatabase(
+            file: dbFile,
+            userVersion: 2,
+            includePreparedColumns: true,
+            includeLegacySignaturesJson: false,
+            includeItemsEnrichmentStatus: false,
+            signatureValue: 'legacy-preexisting',
+            signaturesValue: '[{"sig":"keep"}]',
+            signaturesJsonValue: '[]',
+          );
+
+          final probeDb = sqlite3.sqlite3.open(dbFile.path);
+          try {
+            expect(isAppDatabaseSchemaCompatibleForReset(probeDb), isTrue);
+            expect(
+              shouldSkipDatabaseResetForSchemaConflict(2, probeDb),
+              isTrue,
+            );
+          } finally {
+            probeDb.dispose();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
       'accepts schema-compatible files with migratable user_version',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(

@@ -301,6 +301,53 @@ void main() {
     );
 
     test(
+      'first install: restores orphan canonical WAL from backup when promote '
+      'fails after WAL was moved aside',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        expect(File(dbPath).existsSync(), isFalse);
+
+        final canonicalWal = File('$dbPath-wal');
+        await canonicalWal.writeAsString('orphan-wal-payload');
+
+        final tempSeed = File(p.join(tempDir.path, 'incoming.sqlite'));
+        createSeedArtifactDatabase(file: tempSeed);
+
+        final service = _SeedDatabaseServiceForReplaceTest(
+          dbPath: dbPath,
+          throwOnPromote: true,
+        );
+
+        await expectLater(
+          () => service.replaceDatabaseFromTemporaryFile(tempSeed.path),
+          throwsException,
+        );
+
+        expect(await canonicalWal.readAsString(), 'orphan-wal-payload');
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded clears swap marker when canonical '
+      'validates and leaves no repair work',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final staged = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.5000'),
+        );
+        createSeedArtifactDatabase(file: File(dbPath));
+        createSeedArtifactDatabase(file: staged);
+        final swapMarker = File('$dbPath.swap_in_progress');
+        await swapMarker.writeAsString('5000');
+
+        final service = _SeedDatabaseServiceForReplaceTest(dbPath: dbPath);
+        expect(await service.repairInterruptedSeedSwapIfNeeded(), isFalse);
+        expect(swapMarker.existsSync(), isFalse);
+        expect(File(dbPath).existsSync(), isTrue);
+      },
+    );
+
+    test(
       'first install: when promote fails, staged artifact is cleaned up',
       () async {
         final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');

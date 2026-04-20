@@ -204,26 +204,28 @@ class SeedDatabaseService {
     final swapMarker = File(_swapInProgressMarkerPath(dbPath));
     if (resetMarker.existsSync()) {
       final usable = await hasUsableLocalDatabase();
-      if (usable) {
-        // Crash after markResetCleanupInProgress but DB still valid: repair
-        // must not stay blocked; gate completion also clears this in bootstrap.
-        _log.warning(
-          'Stale reset marker with usable canonical seed DB; clearing before '
-          'interrupted-swap repair.',
-        );
-        await clearResetCleanupInProgress();
-      } else if (swapMarker.existsSync()) {
-        // Crash with reset marker while swap residue remains: replace lock
-        // prevents live reset+replace overlap; leftover marker would skip
-        // repair.
-        _log.warning(
-          'Stale reset marker with interrupted swap residue; clearing reset '
-          'marker so startup repair can finish the swap.',
-        );
-        await clearResetCleanupInProgress();
-      } else {
+      final hasSwap = swapMarker.existsSync();
+      if (!hasSwap) {
+        // Interrupted forget before file deletion: keep marker + DB until the
+        // user completes teardown (do not treat "usable" as stale).
+        // Marker with no DB/swap: wipe likely finished but [finally] never ran;
+        // clear so a fresh bootstrap is not blocked forever.
+        if (!usable) {
+          _log.warning(
+            'Reset cleanup marker with no usable DB and no swap residue; '
+            'clearing stale marker.',
+          );
+          await clearResetCleanupInProgress();
+        }
         return false;
       }
+      // Swap residue exists: replace lock should serialize reset vs replace;
+      // drop the reset marker so interrupted-swap repair can run.
+      _log.warning(
+        'Reset marker with interrupted swap residue; clearing reset marker so '
+        'startup repair can finish the swap.',
+      );
+      await clearResetCleanupInProgress();
     }
     if (!swapMarker.existsSync()) {
       return false;
@@ -887,12 +889,16 @@ class SeedDatabaseService {
       _log.info('Seed database placed at $dbPath');
     } on Object catch (e, st) {
       _log.severe('Failed to replace seed database file', e, st);
-      if (mainDatabaseBackedUp && !promotedCanonical) {
-        await _deleteFileIfExists(dbPath);
-        await _restoreBackupIfNeeded(
-          backupPath: backupPath,
-          canonicalPath: dbPath,
-        );
+      if (!promotedCanonical) {
+        // Restore each path that was successfully moved to backup, even when
+        // the main file was already absent (orphan WAL/SHM on canonical path).
+        if (mainDatabaseBackedUp) {
+          await _deleteFileIfExists(dbPath);
+          await _restoreBackupIfNeeded(
+            backupPath: backupPath,
+            canonicalPath: dbPath,
+          );
+        }
         if (walBackedUp) {
           await _deleteFileIfExists(walPath);
           await _restoreBackupIfNeeded(
