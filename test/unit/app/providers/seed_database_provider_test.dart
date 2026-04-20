@@ -527,16 +527,26 @@ class _SpyDatabaseService extends DatabaseService {
 }
 
 class _FakeSeedDatabaseService extends SeedDatabaseService {
-  _FakeSeedDatabaseService({required this.hasLocal, this.hasUsable}) : super();
+  _FakeSeedDatabaseService({
+    required this.hasLocal,
+    this.hasUsable,
+    this.resetCleanupInProgress = false,
+  }) : super();
 
   final bool hasLocal;
   final bool? hasUsable;
+
+  /// When true, simulates interrupted forget/reset before file deletion.
+  final bool resetCleanupInProgress;
 
   @override
   Future<bool> hasLocalDatabase() async => hasLocal;
 
   @override
   Future<bool> hasUsableLocalDatabase() async => hasUsable ?? hasLocal;
+
+  @override
+  Future<bool> isResetCleanupInProgress() async => resetCleanupInProgress;
 }
 
 /// Simulates a slow Drift/native shutdown: if reconnect invalidation ran
@@ -563,9 +573,17 @@ class _SlowClosingAppDatabase extends AppDatabase {
 }
 
 /// Avoids real SeedDatabaseService.hasLocalDatabase (path_provider) in tests.
-Override _fakeSeedDbSvc({required bool hasLocal, bool? hasUsable}) {
+Override _fakeSeedDbSvc({
+  required bool hasLocal,
+  bool? hasUsable,
+  bool resetCleanupInProgress = false,
+}) {
   return seedDatabaseServiceProvider.overrideWithValue(
-    _FakeSeedDatabaseService(hasLocal: hasLocal, hasUsable: hasUsable),
+    _FakeSeedDatabaseService(
+      hasLocal: hasLocal,
+      hasUsable: hasUsable,
+      resetCleanupInProgress: resetCleanupInProgress,
+    ),
   );
 }
 
@@ -756,6 +774,46 @@ void main() {
     );
     expect(syncingStates, isEmpty);
   });
+
+  test(
+    'startup-style ETag skip does not open readiness/gate when reset cleanup '
+    'marker is set (matches bootstrap seed gate policy)',
+    () async {
+      final fakeSyncService = _FakeSeedDatabaseSyncService()
+        ..skipDownload = true;
+
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseSyncServiceProvider.overrideWithValue(fakeSyncService),
+          appStateServiceProvider.overrideWithValue(_FakeAppStateService()),
+          seedDatabaseReadyActionsProvider.overrideWithValue(_noOpActions),
+          _fakeSeedDbSvc(
+            hasLocal: true,
+            resetCleanupInProgress: true,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      // Default readiness is true; simulate bootstrap where gate never opened.
+      container.read(isSeedDatabaseReadyProvider.notifier).seedReadyDirect =
+          false;
+
+      await container.read(seedDownloadProvider.notifier).sync();
+
+      expect(SeedDatabaseGate.isCompleted, isFalse);
+      expect(
+        container.read(isSeedDatabaseReadyProvider),
+        isFalse,
+        reason:
+            'ETag skip must not reopen readiness while reset marker is set',
+      );
+      expect(
+        container.read(seedDownloadProvider).status,
+        SeedDownloadStatus.done,
+      );
+    },
+  );
 
   test(
     'does not complete SeedDatabaseGate when no local DB after sync',

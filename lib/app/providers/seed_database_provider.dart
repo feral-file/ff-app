@@ -348,20 +348,34 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
 
       final seedOnDisk = await hasUsableSeedOnDisk();
       if (seedOnDisk) {
+        // Match [completeSeedDatabaseGateIfUsable]: interrupted forget flow can
+        // leave reset_in_progress while the pre-wipe DB still validates. Do not
+        // reopen readiness/gate from the ETag-skip path in that state.
+        final resetCleanupBlocks = await ref
+            .read(seedDatabaseServiceProvider)
+            .isResetCleanupInProgress();
+        if (resetCleanupBlocks) {
+          _log.info(
+            'Seed on disk but reset cleanup marker present; skipping '
+            'readiness/gate (same policy as bootstrap seed gate).',
+          );
+        }
         // Restore when any prior session dropped readiness (e.g. overlap where
         // this session never reached beforeReplace so it has no local flag).
         // If another sync() is still in flight (replace or download), defer
         // until [finally] drains — same contract as failure recovery.
         final mustDeferReadinessAndGate = _syncInProgressCount > 1;
-        if (!ref.read(isSeedDatabaseReadyProvider)) {
-          if (mustDeferReadinessAndGate) {
-            restoreReadinessWhenDrained = true;
-          } else {
-            await seedReadyNotifier.setReady();
+        if (!resetCleanupBlocks) {
+          if (!ref.read(isSeedDatabaseReadyProvider)) {
+            if (mustDeferReadinessAndGate) {
+              restoreReadinessWhenDrained = true;
+            } else {
+              await seedReadyNotifier.setReady();
+            }
           }
         }
         notifyForceReplaceFinished();
-        if (completeSeedDatabaseGate) {
+        if (completeSeedDatabaseGate && !resetCleanupBlocks) {
           if (mustDeferReadinessAndGate) {
             completeGateWhenDrained = true;
           } else {
@@ -398,16 +412,26 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
       // while afterReplace still runs.
       final seedOnDisk = await hasUsableSeedOnDisk();
       if (seedOnDisk && !ref.read(isSeedDatabaseReadyProvider)) {
-        final mustDeferReadinessAndGate = _syncInProgressCount > 1;
-        if (mustDeferReadinessAndGate) {
-          restoreReadinessWhenDrained = true;
-          if (completeSeedDatabaseGate) {
-            completeGateWhenDrained = true;
-          }
+        final resetCleanupBlocks = await ref
+            .read(seedDatabaseServiceProvider)
+            .isResetCleanupInProgress();
+        if (resetCleanupBlocks) {
+          _log.info(
+            'Seed sync failed but usable DB exists; reset cleanup marker '
+            'present — skipping readiness/gate recovery.',
+          );
         } else {
-          await seedReadyNotifier.setReady();
-          if (completeSeedDatabaseGate) {
-            SeedDatabaseGate.complete();
+          final mustDeferReadinessAndGate = _syncInProgressCount > 1;
+          if (mustDeferReadinessAndGate) {
+            restoreReadinessWhenDrained = true;
+            if (completeSeedDatabaseGate) {
+              completeGateWhenDrained = true;
+            }
+          } else {
+            await seedReadyNotifier.setReady();
+            if (completeSeedDatabaseGate) {
+              SeedDatabaseGate.complete();
+            }
           }
         }
       }
@@ -430,12 +454,20 @@ class SeedDownloadNotifier extends Notifier<SeedDownloadState> {
         // (e.g. overlap: DB already marked ready but gate still pending).
         if (_aggregateDeferredRestoreReadinessWhenDrained) {
           final seedOnDisk = await hasUsableSeedOnDisk();
-          if (seedOnDisk && !ref.read(isSeedDatabaseReadyProvider)) {
+          final resetCleanupBlocks = await ref
+              .read(seedDatabaseServiceProvider)
+              .isResetCleanupInProgress();
+          if (seedOnDisk &&
+              !ref.read(isSeedDatabaseReadyProvider) &&
+              !resetCleanupBlocks) {
             await seedReadyNotifier.setReady();
           }
         }
         if (_aggregateDeferredCompleteGateWhenDrained &&
-            await hasUsableSeedOnDisk()) {
+            await hasUsableSeedOnDisk() &&
+            !await ref
+                .read(seedDatabaseServiceProvider)
+                .isResetCleanupInProgress()) {
           SeedDatabaseGate.complete();
         }
         _aggregateDeferredRestoreReadinessWhenDrained = false;
