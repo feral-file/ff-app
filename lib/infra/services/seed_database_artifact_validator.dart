@@ -36,6 +36,12 @@ class SeedArtifactValidationException implements Exception {
 
 /// Validates that a downloaded seed artifact is a readable SQLite file whose
 /// schema matches the current app reset gate.
+///
+/// [validate] runs synchronously on the caller isolate (open + PRAGMAs). Callers
+/// on the UI isolate should treat large files as a potential cold-start cost;
+/// offloading is a possible follow-up (see
+/// `SeedDatabaseService.hasUsableLocalDatabase` in
+/// `seed_database_service.dart`).
 class SeedDatabaseArtifactValidator {
   const SeedDatabaseArtifactValidator({
     this.minimumFileSizeBytes = 512,

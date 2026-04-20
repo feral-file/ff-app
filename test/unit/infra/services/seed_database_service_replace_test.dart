@@ -119,6 +119,20 @@ class _MaterializeBackupSidecarsDuringValidateService
   }
 }
 
+class _ThrowingSidecarCleanupAfterStagePromotionService
+    extends _SeedDatabaseServiceForReplaceTest {
+  _ThrowingSidecarCleanupAfterStagePromotionService({
+    required super.dbPath,
+  });
+
+  @override
+  Future<void> cleanupCanonicalSidecarsAfterStagedPromotion(
+    String dbPath,
+  ) async {
+    throw Exception('Simulated sidecar cleanup failure');
+  }
+}
+
 void main() {
   group('SeedDatabaseService.replaceDatabaseFromTemporaryFile', () {
     late Directory tempDir;
@@ -749,6 +763,52 @@ void main() {
         try {
           final rows = db.select('SELECT title FROM playlists LIMIT 1');
           expect(rows.first.columnAt(0), 'Stage wins');
+        } finally {
+          db.dispose();
+        }
+      },
+    );
+
+    test(
+      'repairInterruptedSeedSwapIfNeeded keeps promoted staged db when '
+      'sidecar cleanup fails',
+      () async {
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final marker = File('$dbPath.swap_in_progress');
+        final staged = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.stage.8110'),
+        );
+        final backup = File(
+          p.join(tempDir.path, 'dp1_library.sqlite.backup.8110'),
+        );
+
+        createSeedArtifactDatabase(file: staged);
+        createSeedArtifactDatabase(file: backup);
+        final stageDb = sqlite3.sqlite3.open(staged.path);
+        final backupDb = sqlite3.sqlite3.open(backup.path);
+        try {
+          stageDb.execute(
+            "UPDATE playlists SET title = 'Stage survives cleanup'",
+          );
+          backupDb.execute(
+            "UPDATE playlists SET title = 'Backup should not win'",
+          );
+        } finally {
+          stageDb.dispose();
+          backupDb.dispose();
+        }
+        await marker.writeAsString('8110');
+
+        final service = _ThrowingSidecarCleanupAfterStagePromotionService(
+          dbPath: dbPath,
+        );
+        final repaired = await service.repairInterruptedSeedSwapIfNeeded();
+
+        expect(repaired, isTrue);
+        final db = sqlite3.sqlite3.open(dbPath);
+        try {
+          final rows = db.select('SELECT title FROM playlists LIMIT 1');
+          expect(rows.first.columnAt(0), 'Stage survives cleanup');
         } finally {
           db.dispose();
         }

@@ -35,9 +35,15 @@ class _ResetMarkerSeedDatabaseServiceFake extends _GateSeedDatabaseServiceFake {
   });
 
   final bool resetCleanupInProgress;
+  int clearResetCalls = 0;
 
   @override
   Future<bool> isResetCleanupInProgress() async => resetCleanupInProgress;
+
+  @override
+  Future<void> clearResetCleanupInProgress() async {
+    clearResetCalls += 1;
+  }
 }
 
 class _BootstrapPathSeedDatabaseService extends SeedDatabaseService {
@@ -87,13 +93,30 @@ void main() {
     () async {
       final service = _ResetMarkerSeedDatabaseServiceFake(
         dbPath: '/tmp/seed_gate_reset.sqlite',
-        hasUsableDatabase: true,
+        hasUsableDatabase: false,
         resetCleanupInProgress: true,
       );
 
       await completeSeedDatabaseGateIfUsable(service);
 
       expect(SeedDatabaseGate.isCompleted, isFalse);
+    },
+  );
+
+  test(
+    'completeSeedDatabaseGateIfUsable clears stale reset marker and opens gate '
+    'when local database is usable',
+    () async {
+      final service = _ResetMarkerSeedDatabaseServiceFake(
+        dbPath: '/tmp/seed_gate_stale_reset.sqlite',
+        hasUsableDatabase: true,
+        resetCleanupInProgress: true,
+      );
+
+      await completeSeedDatabaseGateIfUsable(service);
+
+      expect(service.clearResetCalls, 1);
+      expect(SeedDatabaseGate.isCompleted, isTrue);
     },
   );
 

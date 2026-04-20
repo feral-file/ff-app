@@ -166,6 +166,12 @@ class SeedDatabaseService {
   /// same artifact validation used for downloaded seed files.
   ///
   /// Startup uses this to avoid opening the seed gate on a corrupt local file.
+  ///
+  /// **Performance note (out of scope for seed-swap PRs):** validation opens
+  /// SQLite and runs `PRAGMA quick_check` synchronously on the calling isolate.
+  /// Large seeds can add noticeable cold-start or resume latency; a follow-up
+  /// change could move this work off the UI isolate or defer it with measured
+  /// trade-offs.
   Future<bool> hasUsableLocalDatabase() async {
     final path = await databasePath();
     final canonical = File(path);
@@ -197,7 +203,27 @@ class SeedDatabaseService {
     final resetMarker = File(_resetInProgressMarkerPath(dbPath));
     final swapMarker = File(_swapInProgressMarkerPath(dbPath));
     if (resetMarker.existsSync()) {
-      return false;
+      final usable = await hasUsableLocalDatabase();
+      if (usable) {
+        // Crash after markResetCleanupInProgress but DB still valid: repair
+        // must not stay blocked; gate completion also clears this in bootstrap.
+        _log.warning(
+          'Stale reset marker with usable canonical seed DB; clearing before '
+          'interrupted-swap repair.',
+        );
+        await clearResetCleanupInProgress();
+      } else if (swapMarker.existsSync()) {
+        // Crash with reset marker while swap residue remains: replace lock
+        // prevents live reset+replace overlap; leftover marker would skip
+        // repair.
+        _log.warning(
+          'Stale reset marker with interrupted swap residue; clearing reset '
+          'marker so startup repair can finish the swap.',
+        );
+        await clearResetCleanupInProgress();
+      } else {
+        return false;
+      }
     }
     if (!swapMarker.existsSync()) {
       return false;
@@ -314,8 +340,15 @@ class SeedDatabaseService {
           if (rollbackMovedIntoPlace) {
             await _cleanupTemp(rollbackDbPath);
           }
-          await _deleteFileIfExists('$dbPath-wal');
-          await _deleteFileIfExists('$dbPath-shm');
+          try {
+            await cleanupCanonicalSidecarsAfterStagedPromotion(dbPath);
+          } on Object catch (e, st) {
+            _log.warning(
+              'Best-effort sidecar cleanup failed after staged promotion.',
+              e,
+              st,
+            );
+          }
           _log.warning(
             'Repaired interrupted seed swap: promoted staged artifact '
             '(nonce=${candidate.nonce}).',
@@ -1023,6 +1056,28 @@ class SeedDatabaseService {
     final file = File(path);
     if (!file.existsSync()) return;
     await file.delete();
+  }
+
+  /// Cleans canonical sidecars after staged promotion during startup repair.
+  ///
+  /// This path is best-effort: once the staged main DB is promoted, failing to
+  /// delete stale sidecars must not fall through to a backup candidate and
+  /// overwrite the newly promoted canonical artifact.
+  @visibleForTesting
+  Future<void> cleanupCanonicalSidecarsAfterStagedPromotion(
+    String dbPath,
+  ) async {
+    for (final path in ['$dbPath-wal', '$dbPath-shm']) {
+      try {
+        await _deleteFileIfExists(path);
+      } on Object catch (e, st) {
+        _log.warning(
+          'Best-effort sidecar cleanup failed after staged promotion: $path',
+          e,
+          st,
+        );
+      }
+    }
   }
 
   Future<void> _cleanupSwapArtifactsBestEffort({

@@ -213,8 +213,7 @@ void main() {
     );
 
     test(
-      'startup repair ignores interrupted-reset markers instead of restoring '
-      'swap artifacts',
+      'startup repair clears stale reset marker and completes interrupted swap',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(
           'ff_seed_reset_marker_',
@@ -237,9 +236,10 @@ void main() {
           tempDirProvider: () async => tempDir,
         );
 
-        expect(await svc.repairInterruptedSeedSwapIfNeeded(), isFalse);
-        expect(File(dbPath).existsSync(), isFalse);
-        expect(stage.existsSync(), isTrue);
+        expect(await svc.repairInterruptedSeedSwapIfNeeded(), isTrue);
+        expect(File(dbPath).existsSync(), isTrue);
+        expect(stage.existsSync(), isFalse);
+        expect(marker.existsSync(), isFalse);
       },
     );
 

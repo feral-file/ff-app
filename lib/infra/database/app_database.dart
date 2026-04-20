@@ -69,7 +69,10 @@ class AppDatabase extends _$AppDatabase {
       },
       onUpgrade: (m, from, to) async {
         if (from < 3) {
-          await m.addColumn(items, items.enrichmentStatus);
+          final itemColumns = await _itemTableColumnNames();
+          if (!itemColumns.contains('enrichment_status')) {
+            await m.addColumn(items, items.enrichmentStatus);
+          }
         }
         await _migratePlaylistsSignaturesJsonIfNeeded();
       },
@@ -90,6 +93,13 @@ class AppDatabase extends _$AppDatabase {
   Future<Set<String>> _playlistTableColumnNames() async {
     final rows = await customSelect(
       "SELECT name FROM pragma_table_info('playlists')",
+    ).get();
+    return rows.map((r) => r.read<String>('name')).toSet();
+  }
+
+  Future<Set<String>> _itemTableColumnNames() async {
+    final rows = await customSelect(
+      "SELECT name FROM pragma_table_info('items')",
     ).get();
     return rows.map((r) => r.read<String>('name')).toSet();
   }
@@ -1749,18 +1759,22 @@ bool isAppDatabaseSchemaCompatibleForReset(sqlite3.Database db) {
   return _isSchemaCompatibleV1(db);
 }
 
-/// Keeps the pre-open reset gate aligned with the current app schema version.
+/// Keeps the pre-open reset gate aligned with schema versions this app can
+/// migrate/open safely.
 ///
-/// We only skip reset when the file reports the exact schema version the app
-/// knows how to open and the on-disk layout matches the expected tables and
-/// columns. Legacy `signatures_json` remains a narrow exception because
-/// `beforeOpen` repairs it before the first query reads playlist rows.
+/// Versions lower than [_schemaVersionV1] are still accepted when the required
+/// table/column layout is present because Drift `onUpgrade` + `beforeOpen`
+/// handle the remaining migration steps (for example `from < 3`).
+/// Legacy `signatures_json` remains a narrow exception because `beforeOpen`
+/// repairs it before the first query reads playlist rows.
 @visibleForTesting
 bool shouldSkipDatabaseResetForSchemaConflict(
   int userVersion,
   sqlite3.Database db,
 ) {
-  return userVersion == _schemaVersionV1 && _isSchemaCompatibleV1(db);
+  return userVersion > 0 &&
+      userVersion <= _schemaVersionV1 &&
+      _isSchemaCompatibleV1(db);
 }
 
 bool _isSchemaCompatibleV1(sqlite3.Database db) {

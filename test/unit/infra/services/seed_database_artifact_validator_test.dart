@@ -69,20 +69,12 @@ void main() {
       );
     });
 
-    test('rejects schema-compatible files with wrong user_version', () {
+    test('accepts schema-compatible files with migratable user_version', () {
       final file = File(p.join(tempDir.path, 'wrong-version.sqlite'));
       createSeedArtifactDatabase(file: file, userVersion: 2);
 
-      expect(
-        () => validator.validate(file.path),
-        throwsA(
-          isA<SeedArtifactValidationException>().having(
-            (e) => e.reasonCode,
-            'reasonCode',
-            'schema_conflict',
-          ),
-        ),
-      );
+      final metadata = validator.validate(file.path);
+      expect(metadata.userVersion, 2);
     });
 
     test('accepts valid seed artifacts and returns metadata', () {
