@@ -279,6 +279,11 @@
 - notes / caveats:
   - setup mode hides advanced sections and suppresses the firmware auto-prompt
     during the initial setup visit
+  - pairing-QR toggle contract: Device Configuration decides whether to render
+    the Show/Hide Pairing QR action from FF1 status signals (for example parsed
+    `displayURL` pairing step when present), while setup orchestration may hide
+    this action before entering Device Configuration. This contract governs
+    control visibility, not the setup-path initial local toggle value.
   - FFP/DDC UI is gated on **device connected** (same `ff1DeviceData` connection flag as the rest of DeviceConfig): when not connected, the screen does not watch `ff1FfpDdcPanelStatusStreamProvider` or show the FFP/DDC section. While connected, controls are driven by relayer-pushed status updates and can stay available during setup and sleeping/off when the display exposes DDC; there is no in-app monitor volume or mute. Brightness/contrast icon taps use the shared zero-toggle helper: tap once to jump to `0`, tap again from `0` to restore the last non-zero value. The section hides when no relayer status has arrived.
   - **Monitor power (DDC):** Optimistic power is cleared when the relayer omits `power` on a status push, so the effective value becomes unknown. The UI then shows **Unknown** and **no** power mode actions (`availableFfpMonitorPowerModes` is empty for null) until a later push includes `power` again. **Why this is OK:** After FFP power-off, many monitors do not support reading power status over DDC, so the relayer often sends DDC notifications **without** `power`. The app must not guess On/Standby/Off in that case. **Reviewer note:** Unknown with no power buttons when `power` is absent is **specified, accepted behavior**—not a bug. Do not request wake/on controls or inferred power while `power` is null unless product requirements change. Code: `FF1FfpDdcControlNotifier` / `_resolvePendingPower`; widget tests: `test/unit/widgets/ffp_monitor_ddc_section_test.dart`.
   - manual **Update FF1** appears only after relayer connectivity plus both

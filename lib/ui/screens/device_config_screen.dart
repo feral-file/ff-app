@@ -15,6 +15,10 @@ import 'package:app/domain/models/ff1/art_framing.dart';
 import 'package:app/domain/models/ff1/screen_orientation.dart';
 import 'package:app/domain/models/models.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_control_verifier.dart';
+import 'package:app/infra/ff1/wifi_protocol/ff1_device_status_pairing_qr.dart';
+import 'package:app/infra/ff1/wifi_protocol/ff1_wifi_messages.dart'
+    show FF1DeviceStatus;
 import 'package:app/theme/app_color.dart';
 import 'package:app/ui/ui_helper.dart';
 import 'package:app/widgets/appbars/custom_app_bar.dart';
@@ -62,7 +66,16 @@ final _log = Logger('DeviceConfigScreen');
 
 class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     with RouteAware {
-  bool _isShowingQRCode = false;
+  /// Default: assume pairing QR is visible when relayer omits `displayURL`.
+  bool _isShowingQRCode = true;
+
+  /// While a show/hide command is in flight, ignore `displayUrl` sync to avoid
+  /// flicker from stale device_status notifications.
+  bool _isPairingQrCommandInFlight = false;
+
+  /// `ref.listen` does not fire for the initial provider value; we run one
+  /// post-frame sync when the screen opens and again after switching devices.
+  bool _queuedOneShotPairingQrDisplayUrlSync = true;
   bool _isRouteVisible = false;
   bool _isUpdatePromptPending = false;
   bool _isUpdatePromptDialogVisible = false;
@@ -122,6 +135,22 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     _isRouteVisible = false;
   }
 
+  void _maybeApplyDisplayUrlToPairingQr(FF1DeviceStatus? status) {
+    if (!mounted || _isPairingQrCommandInFlight) {
+      return;
+    }
+    final showing = status?.isPairingQrShowing;
+    if (showing == null) {
+      return;
+    }
+    if (_isShowingQRCode == showing) {
+      return;
+    }
+    setState(() {
+      _isShowingQRCode = showing;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // Prompt only on fresh relayer/connectivity updates. Active-device changes
@@ -131,7 +160,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     ref
       ..listen(
         ff1CurrentDeviceStatusProvider,
-        (_, _) => _checkUpdatePrompt(),
+        (_, next) {
+          _checkUpdatePrompt();
+          _maybeApplyDisplayUrlToPairingQr(next);
+        },
       )
       ..listen(
         activeFF1BluetoothDeviceProvider,
@@ -147,6 +179,13 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           if (previousDeviceId != nextDeviceId) {
             _updatePromptGeneration++;
             _isUpdatePromptPending = false;
+            _queuedOneShotPairingQrDisplayUrlSync = true;
+            if (mounted) {
+              setState(() {
+                _isShowingQRCode = true;
+                _isPairingQrCommandInFlight = false;
+              });
+            }
             if (_isUpdatePromptDialogVisible && mounted) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (!mounted || !_isUpdatePromptDialogVisible) {
@@ -161,6 +200,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           }
         },
       );
+
+    if (_queuedOneShotPairingQrDisplayUrlSync) {
+      _queuedOneShotPairingQrDisplayUrlSync = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _maybeApplyDisplayUrlToPairingQr(
+          ref.read(ff1CurrentDeviceStatusProvider),
+        );
+      });
+    }
 
     return ref
         .watch(activeFF1BluetoothDeviceProvider)
@@ -214,7 +262,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             left: LayoutConstants.pageHorizontalDefault,
             right: LayoutConstants.pageHorizontalDefault,
             child: PrimaryAsyncButton(
-
               onTap: () async {
                 context.go(Routes.home);
               },
@@ -806,19 +853,61 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           device: device,
           deviceData: deviceData,
         ),
-        if (isControllable) ...[
+        if (!widget.payload.isInSetupProcess && isControllable) ...[
           SizedBox(height: LayoutConstants.space4),
           PrimaryAsyncButton(
             text: _isShowingQRCode ? 'Hide QR Code' : 'Show Pairing QR Code',
             color: AppColor.white,
             onTap: () async {
-              await control.showPairingQRCode(
-                topicId: device.topicId,
-                show: !_isShowingQRCode,
-              );
-              setState(() {
-                _isShowingQRCode = !_isShowingQRCode;
-              });
+              // Bind completion to this device so a slow response cannot flip
+              // the shared toggle state after the user switches active FF1.
+              final commandSessionTopicId = device.topicId;
+              final nextShow = !_isShowingQRCode;
+              var commandSucceeded = false;
+              _isPairingQrCommandInFlight = true;
+              try {
+                final response = await control.showPairingQRCode(
+                  topicId: device.topicId,
+                  show: nextShow,
+                );
+                commandSucceeded = ff1CommandResponseSucceeded(response);
+                if (!commandSucceeded) {
+                  return;
+                }
+                if (!mounted) {
+                  return;
+                }
+                final activeDevice = ref
+                    .read(activeFF1BluetoothDeviceProvider)
+                    .maybeWhen(
+                      data: (d) => d,
+                      orElse: () => null,
+                    );
+                if (activeDevice?.topicId != commandSessionTopicId) {
+                  return;
+                }
+                setState(() {
+                  _isShowingQRCode = nextShow;
+                });
+              } finally {
+                _isPairingQrCommandInFlight = false;
+                // Reconcile skipped status updates only when the command fails.
+                // On success, keep the local optimistic state and wait for the
+                // next device-status push to avoid stale rollback flicker.
+                if (!commandSucceeded && mounted) {
+                  final activeDevice = ref
+                      .read(activeFF1BluetoothDeviceProvider)
+                      .maybeWhen(
+                        data: (d) => d,
+                        orElse: () => null,
+                      );
+                  if (activeDevice?.topicId == commandSessionTopicId) {
+                    _maybeApplyDisplayUrlToPairingQr(
+                      ref.read(ff1CurrentDeviceStatusProvider),
+                    );
+                  }
+                }
+              }
             },
           ),
         ],
