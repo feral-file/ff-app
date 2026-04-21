@@ -403,4 +403,19 @@ void main() {
       expect(response.data?['message'], isNotNull);
     });
   });
+
+  group('FF1WifiRefreshArtworkRequest', () {
+    test('uses refreshArtwork command with empty params', () {
+      const request = FF1WifiRefreshArtworkRequest();
+      expect(request.command, 'refreshArtwork');
+      expect(request.params, isEmpty);
+      expect(
+        request.toJson(),
+        <String, dynamic>{
+          'command': 'refreshArtwork',
+          'params': <String, dynamic>{},
+        },
+      );
+    });
+  });
 }

@@ -216,6 +216,23 @@ void main() {
     );
   });
 
+  group('FF1WifiControl.refreshArtwork', () {
+    test('sends refreshArtwork via REST client', () async {
+      final restClient = _RecordingRestClient();
+      final control = FF1WifiControl(
+        transport: _FakeWifiTransport(),
+        restClient: restClient,
+      );
+
+      addTearDown(control.dispose);
+
+      await control.refreshArtwork(topicId: 'topic_z');
+
+      expect(restClient.lastTopicId, 'topic_z');
+      expect(restClient.lastCommand, 'refreshArtwork');
+    });
+  });
+
   group('FF1WifiControl.getDeviceRealtimeMetrics', () {
     test(
       'uses default 6 second timeout for realtime metrics request',

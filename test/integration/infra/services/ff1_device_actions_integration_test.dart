@@ -188,6 +188,9 @@ void main() {
 
         final nextResponse = await control.nextArtwork(topicId: topicId);
         expect(ff1CommandResponseHasOkFlag(nextResponse), isTrue);
+
+        final refreshResponse = await control.refreshArtwork(topicId: topicId);
+        expect(ff1CommandResponseHasOkFlag(refreshResponse), isTrue);
       },
       timeout: const Timeout(Duration(minutes: 10)),
     );

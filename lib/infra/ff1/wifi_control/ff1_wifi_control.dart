@@ -1039,6 +1039,34 @@ transport reconnected — waiting for device connection notification''',
     }
   }
 
+  /// Ask FF1 to reload the currently displayed work from the same URL
+  /// (best-effort; no URL rewrite or cache-busting on the app side).
+  ///
+  /// [topicId] — device identifier on the relayer
+  Future<FF1CommandResponse> refreshArtwork({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+
+    try {
+      _log.info('Sending refreshArtwork command to device');
+
+      const request = FF1WifiRefreshArtworkRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send refreshArtwork command: $e');
+      rethrow;
+    }
+  }
+
   /// Move to artwork at [index] in the playlist (jump to item).
   ///
   /// [topicId] — device identifier on the relayer

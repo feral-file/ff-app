@@ -3,8 +3,11 @@
 import 'dart:async';
 
 import 'package:after_layout/after_layout.dart';
+import 'package:app/app/now_displaying/dp1_now_displaying_if_playing_this_work.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
+import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
@@ -630,6 +633,42 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
           }
         },
       ),
+      if (dp1NowDisplayingIfPlayingThisWork(
+            nowDisplaying: ref.read(nowDisplayingProvider),
+            workId: item.id,
+          ) !=
+          null)
+        OptionItem(
+          title: 'Refresh artwork on FF1',
+          icon: SvgPicture.asset(
+            'assets/images/ff1.svg',
+            width: 20,
+            height: 20,
+          ),
+          onTap: () async {
+            Navigator.of(context).pop();
+            final playing = dp1NowDisplayingIfPlayingThisWork(
+              nowDisplaying: ref.read(nowDisplayingProvider),
+              workId: item.id,
+            );
+            final topicId = playing?.connectedDevice.topicId ?? '';
+            if (topicId.isEmpty) return;
+            try {
+              await ref
+                  .read(ff1WifiControlProvider)
+                  .refreshArtwork(topicId: topicId);
+            } catch (e) {
+              if (context.mounted) {
+                await UIHelper.showInfoDialog(
+                  context,
+                  'Refresh failed',
+                  'Could not send the refresh request. Try again.',
+                  closeButton: 'OK',
+                );
+              }
+            }
+          },
+        ),
     ];
 
     unawaited(UIHelper.showCenterMenu(context, options: options));

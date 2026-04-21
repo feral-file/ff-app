@@ -497,6 +497,19 @@ class FF1WifiPreviousArtworkRequest extends FF1WifiCommandRequest {
   Map<String, dynamic> get params => {};
 }
 
+/// Reload the current work from its URL without changing the URL (relayer
+/// clears browser cache for that fetch; best-effort on FF1).
+class FF1WifiRefreshArtworkRequest extends FF1WifiCommandRequest {
+  /// Creates a refresh-artwork request.
+  const FF1WifiRefreshArtworkRequest();
+
+  @override
+  String get command => 'refreshArtwork';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
 /// Move to artwork at index (jump to item in playlist).
 class FF1WifiMoveToArtworkRequest extends FF1WifiCommandRequest {
   /// Creates a move to artwork request.
