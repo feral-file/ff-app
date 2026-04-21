@@ -455,6 +455,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                   },
                 ),
                 IconButton(
+                  key: const ValueKey('work_detail_overflow_menu'),
                   padding: EdgeInsets.zero,
                   onPressed: () => _showArtworkOptionsDialog(
                     context,
@@ -490,6 +491,16 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
   ) async {
     if (!context.mounted) return;
     _focusNode.unfocus();
+
+    // Same closure pattern as Rebuild metadata: values used in onTap are taken
+    // from the snapshot available when the menu is built (rebuild closes over
+    // `item`; here we close over topicId from the same now-displaying read).
+    final refreshFf1Playing = dp1NowDisplayingIfPlayingThisWork(
+      nowDisplaying: ref.read(nowDisplayingProvider),
+      workId: item.id,
+    );
+    final refreshFf1TopicId =
+        refreshFf1Playing?.connectedDevice.topicId ?? '';
 
     // Match old artwork_detail_page: same order, same icon sizes (pixel-exact).
     final options = <OptionItem>[
@@ -633,11 +644,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
           }
         },
       ),
-      if (dp1NowDisplayingIfPlayingThisWork(
-            nowDisplaying: ref.read(nowDisplayingProvider),
-            workId: item.id,
-          ) !=
-          null)
+      if (refreshFf1Playing != null && refreshFf1TopicId.isNotEmpty)
         OptionItem(
           title: 'Refresh artwork on FF1',
           icon: SvgPicture.asset(
@@ -647,16 +654,10 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
           ),
           onTap: () async {
             Navigator.of(context).pop();
-            final playing = dp1NowDisplayingIfPlayingThisWork(
-              nowDisplaying: ref.read(nowDisplayingProvider),
-              workId: item.id,
-            );
-            final topicId = playing?.connectedDevice.topicId ?? '';
-            if (topicId.isEmpty) return;
             try {
               await ref
                   .read(ff1WifiControlProvider)
-                  .refreshArtwork(topicId: topicId);
+                  .refreshArtwork(topicId: refreshFf1TopicId);
             } catch (e) {
               if (context.mounted) {
                 await UIHelper.showInfoDialog(
