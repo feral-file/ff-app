@@ -103,7 +103,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   }
 
   void _onScroll() {
-    if (!_shouldGroup) return;
+    if (_shouldGroup) return;
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
       unawaited(
@@ -112,7 +112,25 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     }
   }
 
+  Future<void> _refreshCuratedChannelGroups({List<PublisherData>? publishers}) async {
+    // Refresh must wait for the grouped stream sources to emit again; simply
+    // invalidating them would let RefreshIndicator finish before the visible
+    // data path has actually reloaded.
+    _retryCuratedChannelGroups(publishers: publishers);
+    await ref.refresh(publishersProvider.future);
+    for (final publisher in publishers ?? const <PublisherData>[]) {
+      await ref.refresh(channelsByPublisherProvider(publisher.id).future);
+    }
+    await ref.refresh(channelsByPublisherProvider(null).future);
+  }
+
   Future<void> _onRefresh() async {
+    if (_shouldGroup) {
+      await _refreshCuratedChannelGroups(
+        publishers: ref.read(publishersProvider).value,
+      );
+      return;
+    }
     await ref
         .read(channelsProvider(_filterToType(widget.filter)).notifier)
         .refresh();
@@ -184,10 +202,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     }
 
     final publishers = publishersAsync.value ?? const <PublisherData>[];
-    if (publishers.isEmpty) {
-      return _buildEmptyStateSlivers(context);
-    }
-
     final contentSlivers = <Widget>[];
 
     for (var i = 0; i < publishers.length; i++) {
@@ -251,6 +265,72 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
           },
         ),
       ]);
+    }
+
+    final nullPublisherChannelsAsync = ref.watch(
+      channelsByPublisherProvider(null),
+    );
+    if (nullPublisherChannelsAsync.isLoading) {
+      return _buildLoadingStateSlivers();
+    }
+    if (nullPublisherChannelsAsync.hasError) {
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: ErrorView(
+            error:
+                'We couldn’t load channels. Check your connection, then Retry.',
+            onRetry: () => _retryCuratedChannelGroups(publishers: publishers),
+          ),
+        ),
+      ];
+    }
+
+    final nullPublisherChannels =
+        nullPublisherChannelsAsync.value ?? const <Channel>[];
+    if (nullPublisherChannels.isNotEmpty) {
+      contentSlivers.addAll([
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: ContentRhythm.horizontalRail,
+              right: ContentRhythm.horizontalRail,
+              bottom: LayoutConstants.space3,
+              top: contentSlivers.isEmpty ? 0 : LayoutConstants.space4,
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Other',
+                style: AppTypography.h3(context).white,
+              ),
+            ),
+          ),
+        ),
+        SliverList.builder(
+          itemCount: nullPublisherChannels.length,
+          itemBuilder: (context, index) {
+            final channel = nullPublisherChannels[index];
+            return ChannelListRow(
+              channelData: ChannelRowData(
+                channelId: channel.id,
+                channelTitle: channel.name,
+                channelSummary: channel.description,
+                works: const [],
+              ),
+              onItemTap: (item) {
+                unawaited(
+                  context.pushWithPreviousTitle('${Routes.works}/${item.id}'),
+                );
+              },
+            );
+          },
+        ),
+      ]);
+    }
+
+    if (contentSlivers.isEmpty) {
+      return _buildEmptyStateSlivers(context);
     }
 
     return contentSlivers;

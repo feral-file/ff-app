@@ -8,7 +8,6 @@ import 'package:app/ui/screens/all_channels_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 
 class _SeedReadyNotifier extends SeedDatabaseReadyNotifier {
   @override
@@ -57,28 +56,15 @@ void main() {
     kind: PlaylistItemKind.dp1Item,
     title: 'Work Two',
   );
+  const orphanWork = PlaylistItem(
+    id: 'ch_orphan_work',
+    kind: PlaylistItemKind.dp1Item,
+    title: 'Orphan Work',
+  );
 
   testWidgets('groups curated channels by publisher', (
     tester,
   ) async {
-    final router = GoRouter(
-      initialLocation: '/channels/all',
-      routes: [
-        GoRoute(
-          path: '/channels/all',
-          builder: (context, state) => const Scaffold(
-            body: AllChannelsScreen(filter: AllChannelsFilter.curated),
-          ),
-        ),
-        GoRoute(
-          path: '/works/:workId',
-          builder: (context, state) => Scaffold(
-            body: Text('work ${state.pathParameters['workId']}'),
-          ),
-        ),
-      ],
-    );
-
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -127,16 +113,64 @@ void main() {
             ),
           ),
         ],
-        child: MaterialApp.router(routerConfig: router),
+        child: const MaterialApp(
+          home: Scaffold(
+            body: AllChannelsScreen(filter: AllChannelsFilter.curated),
+          ),
+        ),
       ),
     );
 
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
 
     expect(find.text('Publisher Ten'), findsOneWidget);
     expect(find.text('Publisher Twenty'), findsOneWidget);
     expect(find.text('Channel One'), findsOneWidget);
     expect(find.text('Channel Two'), findsOneWidget);
+  });
+
+  testWidgets('groups curated channels without a publisher under Other', (
+    tester,
+  ) async {
+    const orphanChannel = Channel(
+      id: 'ch_orphan',
+      name: 'Orphan Channel',
+      description: 'No publisher assigned',
+      type: ChannelType.dp1,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
+          publishersProvider.overrideWithValue(const AsyncData([])),
+          channelsByPublisherProvider(null).overrideWithValue(
+            const AsyncData([orphanChannel]),
+          ),
+          channelPreviewProvider('ch_orphan').overrideWith(
+            () => _StubChannelPreviewNotifier(
+              'ch_orphan',
+              ChannelPreviewState.loaded(
+                works: const [orphanWork],
+                hasMore: false,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: AllChannelsScreen(filter: AllChannelsFilter.curated),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(find.text('Other'), findsOneWidget);
+    expect(find.text('Orphan Channel'), findsOneWidget);
   });
 
   testWidgets('shows loading while the seed DB is not ready', (tester) async {
@@ -195,6 +229,7 @@ void main() {
     );
 
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
 
     expect(find.text('Retry'), findsOneWidget);
   });
@@ -241,6 +276,7 @@ void main() {
     );
 
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
 
     expect(find.text('Publisher Ten'), findsOneWidget);
     expect(find.text('Channel One'), findsOneWidget);

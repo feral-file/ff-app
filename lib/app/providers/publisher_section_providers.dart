@@ -24,25 +24,19 @@ final StreamProvider<List<PublisherData>> publishersProvider =
 /// Publisher id → display title for section headers.
 final StreamProvider<Map<int, String>> publisherTitlesMapProvider =
     StreamProvider.autoDispose<Map<int, String>>((ref) {
-      final publishersAsync = ref.watch(publishersProvider);
-      switch (publishersAsync) {
-        case AsyncData<List<PublisherData>>(value: final publishers):
-          return Stream.value({
-            for (final publisher in publishers) publisher.id: publisher.title,
-          });
-        case AsyncError<List<PublisherData>>(:final error, :final stackTrace):
-          return Stream<Map<int, String>>.error(error, stackTrace);
-        case AsyncLoading<List<PublisherData>>():
-          return Stream.value(const <int, String>{});
-      }
-    });
+  if (!ref.watch(isSeedDatabaseReadyProvider)) {
+    return Stream.value(const {});
+  }
+  final databaseService = ref.watch(databaseServiceProvider);
+  return databaseService.watchPublisherTitles();
+});
 
 /// Channels belonging to one publisher, preserving source order.
 ///
 /// [publisherId] is nullable so the curated screen can also render channels
 /// without a publisher bucket.
-final StreamProviderFamily<List<Channel>, int?> channelsByPublisherProvider = StreamProvider.autoDispose
-    .family<List<Channel>, int?>((ref, publisherId) {
+final StreamProviderFamily<List<Channel>, int?> channelsByPublisherProvider =
+    StreamProvider.autoDispose.family<List<Channel>, int?>((ref, publisherId) {
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
         return const Stream<List<Channel>>.empty();
       }
