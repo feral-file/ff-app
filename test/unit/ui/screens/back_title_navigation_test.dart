@@ -287,7 +287,9 @@ void main() {
               ),
             ),
             publisherTitlesMapProvider.overrideWith((ref) => Stream.value({})),
-            allChannelsByIdMapProvider.overrideWith((ref) => Stream.value({})),
+            allChannelsByIdMapProvider.overrideWithValue(
+              const <String, Channel>{},
+            ),
           ],
           child: MaterialApp.router(
             routerConfig: GoRouter(

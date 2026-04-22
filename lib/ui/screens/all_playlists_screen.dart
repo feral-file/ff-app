@@ -219,7 +219,7 @@ class _AllPlaylistsScreenState extends ConsumerState<AllPlaylistsScreen> {
 
     final seedReady = ref.watch(isSeedDatabaseReadyProvider);
     final publisherAsync = ref.watch(publisherTitlesMapProvider);
-    final channelAsync = ref.watch(allChannelsByIdMapProvider);
+    final channelAsync = AsyncValue.data(ref.watch(allChannelsByIdMapProvider));
     final layout = resolveAllPlaylistsPublisherLayout(
       isChannelScoped: false,
       seedDatabaseReady: seedReady,

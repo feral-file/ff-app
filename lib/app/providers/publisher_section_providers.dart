@@ -1,80 +1,69 @@
 import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/channel.dart';
+import 'package:app/infra/database/app_database.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Publisher id → display title for section headers.
+/// Publisher sections for the all-channels view.
 ///
-/// Auto-dispose so DB watch is not kept alive after leaving browse screens.
+/// This keeps the screen focused on rendering, while the grouping and section
+/// metadata stay in one place.
+final StreamProvider<List<PublisherData>> publishersProvider =
+    StreamProvider.autoDispose<List<PublisherData>>((ref) {
+      if (!ref.watch(isSeedDatabaseReadyProvider)) {
+        return Stream.value(const <PublisherData>[]);
+      }
+      final databaseService = ref.watch(databaseServiceProvider);
+      return databaseService.watchPublishers();
+    });
+
+/// Publisher id → display title for section headers.
 final StreamProvider<Map<int, String>> publisherTitlesMapProvider =
     StreamProvider.autoDispose<Map<int, String>>((ref) {
-  if (!ref.watch(isSeedDatabaseReadyProvider)) {
-    return Stream.value(const {});
-  }
-  final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService.watchPublisherTitles();
-});
+      final publishersAsync = ref.watch(publishersProvider);
+      return publishersAsync.when(
+        data: (publishers) => Stream.value({
+          for (final publisher in publishers) publisher.id: publisher.title,
+        }),
+        loading: () => Stream.value(const <int, String>{}),
+        error: (error, stackTrace) => Stream.error(error, stackTrace),
+      );
+    });
+
+/// Channels belonging to one publisher, preserving source order.
+final channelsByPublisherProvider = StreamProvider.autoDispose
+    .family<List<Channel>, int>((ref, publisherId) {
+      if (!ref.watch(isSeedDatabaseReadyProvider)) {
+        return Stream.value(const <Channel>[]);
+      }
+      final databaseService = ref.watch(databaseServiceProvider);
+      return databaseService.watchAllChannels().map(
+        (channels) => [
+          for (final channel in channels)
+            if (channel.publisherId == publisherId) channel,
+        ],
+      );
+    });
 
 /// All channels keyed by id (for resolving publisher-based sections).
 ///
-/// Auto-dispose so DB watch is not kept alive after leaving browse screens.
-final StreamProvider<Map<String, Channel>> allChannelsByIdMapProvider =
-    StreamProvider.autoDispose<Map<String, Channel>>((ref) {
-  if (!ref.watch(isSeedDatabaseReadyProvider)) {
-    return Stream.value(const {});
-  }
-  final databaseService = ref.watch(databaseServiceProvider);
-  return databaseService.watchAllChannels().map(
-        (list) => {for (final c in list) c.id: c},
-      );
-});
+/// Derived from publisher rows + per-publisher channel streams so the screen
+/// only needs one stable map view.
+final Provider<Map<String, Channel>> allChannelsByIdMapProvider =
+    Provider.autoDispose<Map<String, Channel>>(
+      (ref) {
+        final publishers = ref.watch(publishersProvider).value ?? const [];
+        final result = <String, Channel>{};
 
-/// Returns the stable publisher order from a channel map.
-List<int> orderedPublisherIdsFromChannels(Map<String, Channel> channels) {
-  final orderedPublisherIds = <int>[];
-  final seen = <int>{};
+        for (final publisher in publishers) {
+          final channelsAsync = ref.watch(
+            channelsByPublisherProvider(publisher.id),
+          );
+          for (final channel in channelsAsync.value ?? const <Channel>[]) {
+            result[channel.id] = channel;
+          }
+        }
 
-  for (final channel in channels.values) {
-    final publisherId = channel.publisherId;
-    if (publisherId == null || !seen.add(publisherId)) continue;
-    orderedPublisherIds.add(publisherId);
-  }
-
-  return orderedPublisherIds;
-}
-
-/// Returns the channels for one publisher, preserving source order.
-List<Channel> channelsForPublisherFromChannels(
-  Map<String, Channel> channels,
-  int publisherId,
-) {
-  return [
-    for (final channel in channels.values)
-      if (channel.publisherId == publisherId) channel,
-  ];
-}
-
-/// Publisher IDs in first-seen order from the loaded channel list.
-///
-/// This is the stable section order used by All Channels. It is derived from
-/// [allChannelsByIdMapProvider] so the UI does not need to own grouping policy.
-final allChannelsPublisherIdsProvider = Provider.autoDispose<List<int>>((ref) {
-  final channels = ref.watch(allChannelsByIdMapProvider).maybeWhen(
-        data: (value) => value,
-        orElse: () => const <String, Channel>{},
-      );
-  return orderedPublisherIdsFromChannels(channels);
-});
-
-/// Channels belonging to one publisher, preserving the source channel order.
-///
-/// The screen can `watch` one provider per section and render each bucket
-/// independently, while this provider keeps the grouping logic centralized.
-final channelsByPublisherProvider =
-    Provider.family.autoDispose<List<Channel>, int>((ref, publisherId) {
-  final channels = ref.watch(allChannelsByIdMapProvider).maybeWhen(
-        data: (value) => value,
-        orElse: () => const <String, Channel>{},
-      );
-  return channelsForPublisherFromChannels(channels, publisherId);
-});
+        return result;
+      },
+    );

@@ -60,9 +60,7 @@ void main() {
           publisherTitlesMapProvider.overrideWith(
             (ref) => Stream.value({1: 'Publisher One', 2: 'Publisher Two'}),
           ),
-          allChannelsByIdMapProvider.overrideWith(
-            (ref) => Stream.value(channelMap),
-          ),
+          allChannelsByIdMapProvider.overrideWithValue(channelMap),
         ],
         child: const MaterialApp(
           home: _LayoutLabel(
@@ -86,9 +84,7 @@ void main() {
           publisherTitlesMapProvider.overrideWith(
             (ref) => Stream.value({1: 'Publisher One', 2: 'Publisher Two'}),
           ),
-          allChannelsByIdMapProvider.overrideWith(
-            (ref) => Stream.value(channelMap),
-          ),
+          allChannelsByIdMapProvider.overrideWithValue(channelMap),
         ],
         child: const MaterialApp(
           home: _LayoutLabel(
@@ -110,9 +106,7 @@ void main() {
           publisherTitlesMapProvider.overrideWith(
             (ref) => Stream.value({1: 'Publisher One', 2: 'Publisher Two'}),
           ),
-          allChannelsByIdMapProvider.overrideWith(
-            (ref) => Stream.value(channelMap),
-          ),
+          allChannelsByIdMapProvider.overrideWithValue(channelMap),
         ],
         child: const MaterialApp(
           home: _LayoutLabel(
@@ -142,7 +136,7 @@ class _LayoutLabel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final seedReady = ref.watch(isSeedDatabaseReadyProvider);
     final publisherAsync = ref.watch(publisherTitlesMapProvider);
-    final channelAsync = ref.watch(allChannelsByIdMapProvider);
+    final channelAsync = AsyncValue.data(ref.watch(allChannelsByIdMapProvider));
     final layout = resolveAllPlaylistsPublisherLayout(
       isChannelScoped: channelScoped,
       seedDatabaseReady: seedReady,

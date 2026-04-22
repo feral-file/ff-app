@@ -87,6 +87,16 @@ class DatabaseService {
     );
   }
 
+  /// Watch publisher rows as domain-free data from the publishers table.
+  ///
+  /// Used by grouped browse screens that need the stable publisher list
+  /// directly from the database instead of reconstructing it from channels.
+  Stream<List<PublisherData>> watchPublishers() {
+    return _db.watchPublishers().debounceTime(
+      const Duration(milliseconds: 300),
+    );
+  }
+
   /// Watch playlists as domain models.
   ///
   /// Ordered by publisher_id ASC, created_at_us ASC (canonical order).
