@@ -5,7 +5,6 @@ import 'package:app/app/providers/publisher_section_providers.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/routing/routes.dart';
-import 'package:app/app/utils/channel_publisher_sections.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
@@ -168,17 +167,89 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
                   );
                 }
 
-                final publisherTitles =
-                    ref.watch(publisherTitlesMapProvider).value ??
-                    const <int, String>{};
-                final groupedSections =
-                    widget.filter == AllChannelsFilter.curated
-                        ? groupChannelsByPublisherSections(
-                            channels: channels,
-                            publisherIdToName: publisherTitles,
-                          )
-                        : <ChannelPublisherSection>[];
-                final shouldGroup = widget.filter == AllChannelsFilter.curated;
+                final shouldGroup =
+                    widget.filter == AllChannelsFilter.curated;
+                final publisherIds = shouldGroup
+                    ? ref.watch(allChannelsPublisherIdsProvider)
+                    : const <int>[];
+                final publisherTitles = shouldGroup
+                    ? ref.watch(publisherTitlesMapProvider).value ??
+                        const <int, String>{}
+                    : const <int, String>{};
+                final publisherSectionSlivers = <Widget>[];
+
+                if (shouldGroup && publisherIds.isNotEmpty) {
+                  for (var i = 0; i < publisherIds.length; i++) {
+                    final publisherId = publisherIds[i];
+                    final publisherChannels = ref.watch(
+                      channelsByPublisherProvider(publisherId),
+                    );
+
+                    publisherSectionSlivers.addAll([
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            left: ContentRhythm.horizontalRail,
+                            right: ContentRhythm.horizontalRail,
+                            bottom: LayoutConstants.space3,
+                            top: i == 0 ? 0 : LayoutConstants.space4,
+                          ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              publisherTitles[publisherId] ??
+                                  'Publisher $publisherId',
+                              style: AppTypography.h3(context).white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SliverList.builder(
+                        itemCount: publisherChannels.length,
+                        itemBuilder: (context, index) {
+                          final channel = publisherChannels[index];
+                          return ChannelListRow(
+                            channelData: ChannelRowData(
+                              channelId: channel.id,
+                              channelTitle: channel.name,
+                              channelSummary: channel.description,
+                              works: const [],
+                            ),
+                            onItemTap: (item) {
+                              unawaited(
+                                context.pushWithPreviousTitle(
+                                  '${Routes.works}/${item.id}',
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ]);
+                  }
+                }
+                final contentSlivers = shouldGroup
+                    ? publisherSectionSlivers
+                    : <Widget>[
+                        SliverList.builder(
+                          itemCount: channels.length,
+                          itemBuilder: (context, index) => ChannelListRow(
+                            channelData: ChannelRowData(
+                              channelId: channels[index].id,
+                              channelTitle: channels[index].name,
+                              channelSummary: channels[index].description,
+                              works: const [],
+                            ),
+                            onItemTap: (item) {
+                              unawaited(
+                                context.pushWithPreviousTitle(
+                                  '${Routes.works}/${item.id}',
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ];
 
                 return CustomScrollView(
                   controller: _scrollController,
@@ -201,69 +272,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
                     SliverToBoxAdapter(
                       child: SizedBox(height: LayoutConstants.space6),
                     ),
-                    if (shouldGroup)
-                      ...[
-                        for (var i = 0; i < groupedSections.length; i++) ...[
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                left: ContentRhythm.horizontalRail,
-                                right: ContentRhythm.horizontalRail,
-                                bottom: LayoutConstants.space3,
-                                top: i == 0 ? 0 : LayoutConstants.space4,
-                              ),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  groupedSections[i].title,
-                                  style: AppTypography.h3(context).white,
-                                ),
-                              ),
-                            ),
-                          ),
-                          SliverList.builder(
-                              itemCount: groupedSections[i].channels.length,
-                              itemBuilder: (context, index) => ChannelListRow(
-                                channelData: ChannelRowData(
-                                channelId:
-                                    groupedSections[i].channels[index].id,
-                                channelTitle:
-                                    groupedSections[i].channels[index].name,
-                                channelSummary: groupedSections[i]
-                                    .channels[index]
-                                    .description,
-                                works: const [],
-                              ),
-                              onItemTap: (item) {
-                                unawaited(
-                                  context.pushWithPreviousTitle(
-                                    '${Routes.works}/${item.id}',
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ]
-                    else
-                      SliverList.builder(
-                        itemCount: channels.length,
-                        itemBuilder: (context, index) => ChannelListRow(
-                          channelData: ChannelRowData(
-                            channelId: channels[index].id,
-                            channelTitle: channels[index].name,
-                            channelSummary: channels[index].description,
-                            works: const [],
-                          ),
-                          onItemTap: (item) {
-                            unawaited(
-                              context.pushWithPreviousTitle(
-                                '${Routes.works}/${item.id}',
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+                    ...contentSlivers,
                     if (hasMore || isLoadingMore)
                       SliverToBoxAdapter(
                         child: LoadMoreIndicator(isLoadingMore: isLoadingMore),
