@@ -14,6 +14,11 @@ class _ReadySeedNotifier extends SeedDatabaseReadyNotifier {
   bool build() => true;
 }
 
+class _NotReadySeedNotifier extends SeedDatabaseReadyNotifier {
+  @override
+  bool build() => false;
+}
+
 Future<void> _seedChannelsAndPublishers(AppDatabase db) async {
   await db.into(db.publishers).insert(
         PublishersCompanion.insert(
@@ -82,6 +87,28 @@ void main() {
     final result = await container.read(publishersProvider.future);
 
     expect(result.map((publisher) => publisher.id), [1, 2]);
+  });
+
+  test('publishersProvider stays pending until seed DB is ready', () async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+    await _seedChannelsAndPublishers(db);
+
+    final container = ProviderContainer.test(
+      overrides: [
+        isSeedDatabaseReadyProvider.overrideWith(_NotReadySeedNotifier.new),
+        databaseServiceProvider.overrideWithValue(DatabaseService(db)),
+      ],
+    );
+    addTearDown(container.dispose);
+    final subscription = container.listen(publishersProvider, (_, _) {});
+    addTearDown(subscription.close);
+
+    final state = container.read(publishersProvider);
+
+    expect(state.isLoading, isTrue);
+    expect(state.hasValue, isFalse);
+    expect(state.hasError, isFalse);
   });
 
   test('channelsByPublisherProvider preserves source order', () async {

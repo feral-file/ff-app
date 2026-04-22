@@ -1,5 +1,5 @@
-import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/channel_preview_provider.dart';
+import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/publisher_section_providers.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/channel.dart';
@@ -14,6 +14,11 @@ import 'package:go_router/go_router.dart';
 class _SeedReadyNotifier extends SeedDatabaseReadyNotifier {
   @override
   bool build() => true;
+}
+
+class _SeedNotReadyNotifier extends SeedDatabaseReadyNotifier {
+  @override
+  bool build() => false;
 }
 
 class _StubChannelsNotifier extends ChannelsNotifier {
@@ -122,10 +127,10 @@ void main() {
             ]),
           ),
           channelsByPublisherProvider(10).overrideWithValue(
-            AsyncData(const [channelOne]),
+            const AsyncData([channelOne]),
           ),
           channelsByPublisherProvider(20).overrideWithValue(
-            AsyncData(const [channelTwo]),
+            const AsyncData([channelTwo]),
           ),
           channelPreviewProvider('ch_one').overrideWith(
             () => _StubChannelPreviewNotifier(
@@ -156,5 +161,25 @@ void main() {
     expect(find.text('Publisher Twenty'), findsOneWidget);
     expect(find.text('Channel One'), findsOneWidget);
     expect(find.text('Channel Two'), findsOneWidget);
+  });
+
+  testWidgets('shows loading while the seed DB is not ready', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          isSeedDatabaseReadyProvider.overrideWith(_SeedNotReadyNotifier.new),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: AllChannelsScreen(filter: AllChannelsFilter.curated),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    expect(find.text('No channels found'), findsNothing);
+    expect(find.text('Loading...'), findsWidgets);
   });
 }

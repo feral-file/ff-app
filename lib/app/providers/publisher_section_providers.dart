@@ -12,7 +12,10 @@ import 'package:riverpod/src/providers/stream_provider.dart';
 final StreamProvider<List<PublisherData>> publishersProvider =
     StreamProvider.autoDispose<List<PublisherData>>((ref) {
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
-        return Stream.value(const <PublisherData>[]);
+        // Keep the provider pending until the seed DB is ready so browse
+        // screens stay in a retryable loading state instead of collapsing
+        // into a false empty result during first-install bootstrap.
+        return const Stream<List<PublisherData>>.empty();
       }
       final databaseService = ref.watch(databaseServiceProvider);
       return databaseService.watchPublishers();
@@ -38,7 +41,7 @@ final StreamProvider<Map<int, String>> publisherTitlesMapProvider =
 final StreamProviderFamily<List<Channel>, int> channelsByPublisherProvider =
     StreamProvider.autoDispose.family<List<Channel>, int>((ref, publisherId) {
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
-        return Stream.value(const <Channel>[]);
+        return const Stream<List<Channel>>.empty();
       }
       final databaseService = ref.watch(databaseServiceProvider);
       return databaseService.watchAllChannels().map(
@@ -55,7 +58,7 @@ final StreamProviderFamily<List<Channel>, int> channelsByPublisherProvider =
 final StreamProvider<Map<String, Channel>> allChannelsByIdMapProvider =
     StreamProvider.autoDispose<Map<String, Channel>>((ref) {
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
-        return Stream.value(const {});
+        return const Stream<Map<String, Channel>>.empty();
       }
       final databaseService = ref.watch(databaseServiceProvider);
       return databaseService.watchAllChannels().map(
