@@ -471,7 +471,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// Watch raw publisher rows ordered by id.
   Stream<List<PublisherData>> watchPublishers() {
-    return select(publishers).watch();
+    return (select(publishers)
+          ..orderBy([(publisher) => OrderingTerm.asc(publisher.id)]))
+        .watch();
   }
 
   /// Watch playlists ordered by publisher_id, created_at_us (canonical order).

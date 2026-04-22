@@ -166,6 +166,12 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
       final publisherChannelsAsync = ref.watch(
         channelsByPublisherProvider(publisher.id),
       );
+      if (publisherChannelsAsync.isLoading) {
+        return _buildLoadingStateSlivers();
+      }
+      if (publisherChannelsAsync.hasError) {
+        return _buildErrorStateSlivers(context);
+      }
       final publisherChannels =
           publisherChannelsAsync.value ?? const <Channel>[];
       contentSlivers.addAll([
