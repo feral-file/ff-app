@@ -14,7 +14,6 @@ import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/error_view.dart';
-import 'package:app/widgets/load_more_indicator.dart';
 import 'package:app/widgets/loading_view.dart';
 import 'package:app/widgets/playlist/section_details_header.dart';
 import 'package:flutter/material.dart';
@@ -63,7 +62,6 @@ class AllChannelsScreen extends ConsumerStatefulWidget {
 
 class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   final ScrollController _scrollController = ScrollController();
-
   bool get _shouldGroup => widget.filter == AllChannelsFilter.curated;
 
   void _retryCuratedChannelGroups({List<PublisherData>? publishers}) {
@@ -81,8 +79,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
-
     if (!_shouldGroup) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(
@@ -96,32 +92,22 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
 
   @override
   void dispose() {
-    _scrollController
-      ..removeListener(_onScroll)
-      ..dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (_shouldGroup) return;
-    if (_scrollController.position.pixels + 100 >=
-        _scrollController.position.maxScrollExtent) {
-      unawaited(
-        ref.read(channelsProvider(ChannelType.dp1).notifier).loadMore(),
-      );
-    }
-  }
-
-  Future<void> _refreshCuratedChannelGroups({List<PublisherData>? publishers}) async {
+  Future<void> _refreshCuratedChannelGroups({
+    List<PublisherData>? publishers,
+  }) async {
     // Refresh must wait for the grouped stream sources to emit again; simply
     // invalidating them would let RefreshIndicator finish before the visible
     // data path has actually reloaded.
     _retryCuratedChannelGroups(publishers: publishers);
-    await ref.refresh(publishersProvider.future);
+    unawaited(ref.refresh(publishersProvider.future));
     for (final publisher in publishers ?? const <PublisherData>[]) {
-      await ref.refresh(channelsByPublisherProvider(publisher.id).future);
+      unawaited(ref.refresh(channelsByPublisherProvider(publisher.id).future));
     }
-    await ref.refresh(channelsByPublisherProvider(null).future);
+    unawaited(ref.refresh(channelsByPublisherProvider(null).future));
   }
 
   Future<void> _onRefresh() async {
@@ -376,7 +362,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final channelType = _filterToType(widget.filter);
     final title = widget.filter == AllChannelsFilter.curated
         ? 'Curated'
         : 'Personal';
@@ -435,14 +420,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
                   child: SizedBox(height: LayoutConstants.space6),
                 ),
                 ...contentSlivers,
-                if (!shouldGroup)
-                  SliverToBoxAdapter(
-                    child: LoadMoreIndicator(
-                      isLoadingMore: ref
-                          .watch(channelsProvider(channelType))
-                          .isLoadingMore,
-                    ),
-                  ),
               ],
             ),
           ),
