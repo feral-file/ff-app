@@ -64,18 +64,33 @@ class AllChannelsScreen extends ConsumerStatefulWidget {
 class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   final ScrollController _scrollController = ScrollController();
 
+  bool get _shouldGroup => widget.filter == AllChannelsFilter.curated;
+
+  void _retryCuratedChannelGroups({List<PublisherData>? publishers}) {
+    // Curated channels now render entirely from grouped stream providers.
+    // Retry must rebuild the stream sources themselves; otherwise the screen
+    // only retries the removed notifier path and the visible error state never
+    // gets a new subscription.
+    ref.invalidate(publishersProvider);
+    for (final publisher in publishers ?? const <PublisherData>[]) {
+      ref.invalidate(channelsByPublisherProvider(publisher.id));
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(
-        ref
-            .read(channelsProvider(_filterToType(widget.filter)).notifier)
-            .loadChannels(),
-      );
-    });
+    if (!_shouldGroup) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(
+          ref
+              .read(channelsProvider(_filterToType(widget.filter)).notifier)
+              .loadChannels(),
+        );
+      });
+    }
   }
 
   @override
@@ -87,7 +102,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   }
 
   void _onScroll() {
-    if (widget.filter != AllChannelsFilter.curated) return;
+    if (!_shouldGroup) return;
     if (_scrollController.position.pixels + 100 >=
         _scrollController.position.maxScrollExtent) {
       unawaited(
@@ -118,11 +133,15 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
         child: ErrorView(
           error:
               'We couldn’t load channels. Check your connection, then Retry.',
-          onRetry: () => unawaited(
-            ref
-                .read(channelsProvider(_filterToType(widget.filter)).notifier)
-                .loadChannels(),
-          ),
+          onRetry: _shouldGroup
+              ? _retryCuratedChannelGroups
+              : () => unawaited(
+                  ref
+                      .read(
+                        channelsProvider(_filterToType(widget.filter)).notifier,
+                      )
+                      .loadChannels(),
+                ),
         ),
       ),
     ];
@@ -151,7 +170,16 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     }
 
     if (publishersAsync.hasError) {
-      return _buildErrorStateSlivers(context);
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: ErrorView(
+            error:
+                'We couldn’t load channels. Check your connection, then Retry.',
+            onRetry: _retryCuratedChannelGroups,
+          ),
+        ),
+      ];
     }
 
     final publishers = publishersAsync.value ?? const <PublisherData>[];
@@ -170,7 +198,16 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
         return _buildLoadingStateSlivers();
       }
       if (publisherChannelsAsync.hasError) {
-        return _buildErrorStateSlivers(context);
+        return [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: ErrorView(
+              error:
+                  'We couldn’t load channels. Check your connection, then Retry.',
+              onRetry: () => _retryCuratedChannelGroups(publishers: publishers),
+            ),
+          ),
+        ];
       }
       final publisherChannels =
           publisherChannelsAsync.value ?? const <Channel>[];
@@ -272,7 +309,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     final iconAsset = widget.filter == AllChannelsFilter.curated
         ? 'assets/images/D.svg'
         : 'assets/images/icon_account.svg';
-    final shouldGroup = widget.filter == AllChannelsFilter.curated;
+    final shouldGroup = _shouldGroup;
     late final List<Widget> contentSlivers;
 
     if (shouldGroup) {
