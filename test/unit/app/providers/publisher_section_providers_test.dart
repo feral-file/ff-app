@@ -20,7 +20,9 @@ class _NotReadySeedNotifier extends SeedDatabaseReadyNotifier {
 }
 
 Future<void> _seedChannelsAndPublishers(AppDatabase db) async {
-  await db.into(db.publishers).insert(
+  await db
+      .into(db.publishers)
+      .insert(
         PublishersCompanion.insert(
           id: const Value(2),
           title: 'Publisher Two',
@@ -28,7 +30,9 @@ Future<void> _seedChannelsAndPublishers(AppDatabase db) async {
           updatedAtUs: BigInt.from(2),
         ),
       );
-  await db.into(db.publishers).insert(
+  await db
+      .into(db.publishers)
+      .insert(
         PublishersCompanion.insert(
           id: const Value(1),
           title: 'Publisher One',
@@ -36,7 +40,9 @@ Future<void> _seedChannelsAndPublishers(AppDatabase db) async {
           updatedAtUs: BigInt.from(1),
         ),
       );
-  await db.into(db.channels).insert(
+  await db
+      .into(db.channels)
+      .insert(
         ChannelsCompanion.insert(
           id: 'ch_a',
           type: ChannelType.dp1.index,
@@ -46,7 +52,9 @@ Future<void> _seedChannelsAndPublishers(AppDatabase db) async {
           updatedAtUs: BigInt.from(1),
         ),
       );
-  await db.into(db.channels).insert(
+  await db
+      .into(db.channels)
+      .insert(
         ChannelsCompanion.insert(
           id: 'ch_b',
           type: ChannelType.dp1.index,
@@ -56,7 +64,9 @@ Future<void> _seedChannelsAndPublishers(AppDatabase db) async {
           updatedAtUs: BigInt.from(2),
         ),
       );
-  await db.into(db.channels).insert(
+  await db
+      .into(db.channels)
+      .insert(
         ChannelsCompanion.insert(
           id: 'ch_c',
           type: ChannelType.dp1.index,
@@ -123,8 +133,10 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
-    final subscription =
-        container.listen(channelsByPublisherProvider(2), (_, _) {});
+    final subscription = container.listen(
+      channelsByPublisherProvider(2),
+      (_, _) {},
+    );
     addTearDown(subscription.close);
 
     final result = await container.read(channelsByPublisherProvider(2).future);

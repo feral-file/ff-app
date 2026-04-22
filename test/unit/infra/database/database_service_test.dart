@@ -43,6 +43,57 @@ void main() {
         expect(retrieved.name, 'Test Channel');
       });
 
+      test(
+        'watchChannelsByPublisherId returns channels for one publisher',
+        () async {
+          final channels = [
+            Channel(
+              id: 'ch_1',
+              name: 'Channel 1',
+              type: ChannelType.dp1,
+              publisherId: 2,
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+            ),
+            Channel(
+              id: 'ch_2',
+              name: 'Channel 2',
+              type: ChannelType.dp1,
+              publisherId: 1,
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+            ),
+            Channel(
+              id: 'ch_3',
+              name: 'Channel 3',
+              type: ChannelType.dp1,
+              publisherId: 2,
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+            ),
+            Channel(
+              id: 'ch_4',
+              name: 'Channel 4',
+              type: ChannelType.dp1,
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+            ),
+          ];
+
+          await service.ingestChannels(channels);
+
+          final publisherTwo = await service
+              .watchChannelsByPublisherId(2, type: ChannelType.dp1)
+              .first;
+          final ungrouped = await service
+              .watchChannelsByPublisherId(null, type: ChannelType.dp1)
+              .first;
+
+          expect(publisherTwo.map((channel) => channel.id), ['ch_1', 'ch_3']);
+          expect(ungrouped.map((channel) => channel.id), ['ch_4']);
+        },
+      );
+
       test('ingestChannels batch inserts channels', () async {
         final channels = [
           Channel(
@@ -501,7 +552,8 @@ void main() {
       });
 
       test(
-        'getItems and getItemIds order works by publisher, channel createdAt, then playlist createdAt',
+        'getItems and getItemIds order works by publisher, '
+        'channel createdAt, then playlist createdAt',
         () async {
           final t2024 = DateTime.parse('2024-01-01T00:00:00Z');
           final t2025 = DateTime.parse('2025-01-01T00:00:00Z');
@@ -803,7 +855,8 @@ void main() {
 
     group('Enrichment priority queries', () {
       test(
-        'loadHighPriorityBareItems orders newest-playlist-first within each batch',
+        'loadHighPriorityBareItems orders newest-playlist-first '
+        'within each batch',
         () async {
           final older = DateTime.now().subtract(const Duration(hours: 1));
           final newer = DateTime.now();
@@ -835,9 +888,11 @@ void main() {
             final oldId = 'old_$i';
             final newId = 'new_$i';
             final oldProvenance =
-                '{"type":"onChain","contract":{"chain":"evm","standard":"erc721","address":"0xold","tokenId":"$i"}}';
+                '{"type":"onChain","contract":{"chain":"evm",'
+                '"standard":"erc721","address":"0xold","tokenId":"$i"}}';
             final newProvenance =
-                '{"type":"onChain","contract":{"chain":"evm","standard":"erc721","address":"0xnew","tokenId":"$i"}}';
+                '{"type":"onChain","contract":{"chain":"evm",'
+                '"standard":"erc721","address":"0xnew","tokenId":"$i"}}';
 
             itemCompanions.addAll([
               ItemsCompanion(
@@ -1035,7 +1090,8 @@ void main() {
                 kind: const Value(0),
                 title: Value(id),
                 provenanceJson: const Value(
-                  '{"type":"onChain","contract":{"chain":"evm","standard":"erc721","address":"0xprov","tokenId":"1"}}',
+                  '{"type":"onChain","contract":{"chain":"evm",'
+                  '"standard":"erc721","address":"0xprov","tokenId":"1"}}',
                 ),
                 updatedAtUs: Value(nowUs),
               ),

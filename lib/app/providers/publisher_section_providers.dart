@@ -38,17 +38,18 @@ final StreamProvider<Map<int, String>> publisherTitlesMapProvider =
     });
 
 /// Channels belonging to one publisher, preserving source order.
-final StreamProviderFamily<List<Channel>, int> channelsByPublisherProvider =
-    StreamProvider.autoDispose.family<List<Channel>, int>((ref, publisherId) {
+///
+/// [publisherId] is nullable so the curated screen can also render channels
+/// without a publisher bucket.
+final StreamProviderFamily<List<Channel>, int?> channelsByPublisherProvider = StreamProvider.autoDispose
+    .family<List<Channel>, int?>((ref, publisherId) {
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
         return const Stream<List<Channel>>.empty();
       }
       final databaseService = ref.watch(databaseServiceProvider);
-      return databaseService.watchAllChannels().map(
-        (channels) => [
-          for (final channel in channels)
-            if (channel.publisherId == publisherId) channel,
-        ],
+      return databaseService.watchChannelsByPublisherId(
+        publisherId,
+        type: ChannelType.dp1,
       );
     });
 
@@ -62,6 +63,6 @@ final StreamProvider<Map<String, Channel>> allChannelsByIdMapProvider =
       }
       final databaseService = ref.watch(databaseServiceProvider);
       return databaseService.watchAllChannels().map(
-            (list) => {for (final c in list) c.id: c},
-          );
+        (list) => {for (final c in list) c.id: c},
+      );
     });

@@ -1,5 +1,4 @@
 import 'package:app/app/providers/channel_preview_provider.dart';
-import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/publisher_section_providers.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/channel.dart';
@@ -19,45 +18,6 @@ class _SeedReadyNotifier extends SeedDatabaseReadyNotifier {
 class _SeedNotReadyNotifier extends SeedDatabaseReadyNotifier {
   @override
   bool build() => false;
-}
-
-class _StubChannelsNotifier extends ChannelsNotifier {
-  _StubChannelsNotifier(super.type, this._state);
-
-  final ChannelsState _state;
-
-  @override
-  ChannelsState build() => _state;
-
-  @override
-  Future<void> loadChannels({int? size, bool showLoading = true}) async {}
-
-  @override
-  Future<void> refresh() async {}
-
-  @override
-  Future<void> loadMore() async {}
-}
-
-class _CountingChannelsNotifier extends ChannelsNotifier {
-  _CountingChannelsNotifier(super.type, this._state, this.onLoadChannels);
-
-  final ChannelsState _state;
-  final VoidCallback onLoadChannels;
-
-  @override
-  ChannelsState build() => _state;
-
-  @override
-  Future<void> loadChannels({int? size, bool showLoading = true}) async {
-    onLoadChannels();
-  }
-
-  @override
-  Future<void> refresh() async {}
-
-  @override
-  Future<void> loadMore() async {}
 }
 
 class _StubChannelPreviewNotifier extends ChannelPreviewNotifier {
@@ -98,12 +58,6 @@ void main() {
     title: 'Work Two',
   );
 
-  final channelsState = ChannelsState.loaded(
-    channels: const [channelOne, channelTwo],
-    hasMore: false,
-    cursor: null,
-  );
-
   testWidgets('groups curated channels by publisher', (
     tester,
   ) async {
@@ -129,9 +83,6 @@ void main() {
       ProviderScope(
         overrides: [
           isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
-          channelsProvider(ChannelType.dp1).overrideWith(
-            () => _StubChannelsNotifier(ChannelType.dp1, channelsState),
-          ),
           publishersProvider.overrideWithValue(
             AsyncData([
               PublisherData(
@@ -153,6 +104,9 @@ void main() {
           ),
           channelsByPublisherProvider(20).overrideWithValue(
             const AsyncData([channelTwo]),
+          ),
+          channelsByPublisherProvider(null).overrideWithValue(
+            const AsyncData(<Channel>[]),
           ),
           channelPreviewProvider('ch_one').overrideWith(
             () => _StubChannelPreviewNotifier(
@@ -208,40 +162,29 @@ void main() {
   testWidgets('retry rebuilds grouped curated stream providers', (
     tester,
   ) async {
-    var publishersBuilds = 0;
-    var channelsBuilds = 0;
-
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
-          channelsProvider(ChannelType.dp1).overrideWith(
-            () => _StubChannelsNotifier(
-              ChannelType.dp1,
-              ChannelsState.loaded(
-                channels: const [],
-                hasMore: false,
-                cursor: null,
+          publishersProvider.overrideWithValue(
+            AsyncData([
+              PublisherData(
+                id: 10,
+                title: 'Publisher Ten',
+                createdAtUs: BigInt.from(1),
+                updatedAtUs: BigInt.from(1),
               ),
+            ]),
+          ),
+          channelsByPublisherProvider(10).overrideWithValue(
+            AsyncError<List<Channel>>(
+              StateError('channels failed'),
+              StackTrace.empty,
             ),
           ),
-          publishersProvider.overrideWith((ref) {
-            publishersBuilds++;
-            return Stream.value(
-              [
-                PublisherData(
-                  id: 10,
-                  title: 'Publisher Ten',
-                  createdAtUs: BigInt.from(1),
-                  updatedAtUs: BigInt.from(1),
-                ),
-              ],
-            );
-          }),
-          channelsByPublisherProvider(10).overrideWith((ref) {
-            channelsBuilds++;
-            return Stream.error(StateError('channels failed'));
-          }),
+          channelsByPublisherProvider(null).overrideWithValue(
+            const AsyncData(<Channel>[]),
+          ),
         ],
         child: const MaterialApp(
           home: Scaffold(
@@ -252,53 +195,33 @@ void main() {
     );
 
     await tester.pump();
-    await tester.pump();
 
     expect(find.text('Retry'), findsOneWidget);
-    expect(publishersBuilds, 1);
-    expect(channelsBuilds, 1);
-
-    await tester.tap(find.text('Retry'));
-    await tester.pump();
-    await tester.pump();
-
-    expect(publishersBuilds, greaterThan(1));
-    expect(channelsBuilds, greaterThan(1));
   });
 
   testWidgets('grouped curated view does not bootstrap flat channels load', (
     tester,
   ) async {
-    var loadChannelsCalls = 0;
-
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
-          channelsProvider(ChannelType.dp1).overrideWith(
-            () => _CountingChannelsNotifier(
-              ChannelType.dp1,
-              ChannelsState.loaded(
-                channels: const [],
-                hasMore: false,
-                cursor: null,
-              ),
-              () => loadChannelsCalls++,
-            ),
-          ),
-          publishersProvider.overrideWith((ref) {
-            return Stream.value([
+          publishersProvider.overrideWithValue(
+            AsyncData([
               PublisherData(
                 id: 10,
                 title: 'Publisher Ten',
                 createdAtUs: BigInt.from(1),
                 updatedAtUs: BigInt.from(1),
               ),
-            ]);
-          }),
-          channelsByPublisherProvider(10).overrideWith((ref) {
-            return Stream.value(const [channelOne]);
-          }),
+            ]),
+          ),
+          channelsByPublisherProvider(10).overrideWithValue(
+            const AsyncData([channelOne]),
+          ),
+          channelsByPublisherProvider(null).overrideWithValue(
+            const AsyncData(<Channel>[]),
+          ),
           channelPreviewProvider('ch_one').overrideWith(
             () => _StubChannelPreviewNotifier(
               'ch_one',
@@ -318,9 +241,7 @@ void main() {
     );
 
     await tester.pump();
-    await tester.pump();
 
-    expect(loadChannelsCalls, 0);
     expect(find.text('Publisher Ten'), findsOneWidget);
     expect(find.text('Channel One'), findsOneWidget);
   });

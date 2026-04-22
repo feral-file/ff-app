@@ -462,6 +462,33 @@ class AppDatabase extends _$AppDatabase {
     return query.watch();
   }
 
+  /// Watch channels filtered by publisher id and optionally by type.
+  ///
+  /// When [publisherId] is null, returns channels whose publisher id is null.
+  /// When [type] is null, no channel type filter is applied.
+  Stream<List<ChannelData>> watchChannelsByPublisherId(
+    int? publisherId, {
+    int? type,
+  }) {
+    final query = select(channels);
+    if (publisherId == null) {
+      query.where((t) => t.publisherId.isNull());
+    } else {
+      query.where((t) => t.publisherId.equals(publisherId));
+    }
+    if (type != null) {
+      query.where((t) => t.type.equals(type));
+    }
+    query.orderBy([
+      (t) => OrderingTerm(
+        expression: t.sortOrder,
+        nulls: NullsOrder.last,
+      ),
+      (t) => OrderingTerm.asc(t.id),
+    ]);
+    return query.watch();
+  }
+
   /// Emits publisher id → display title when the publishers table changes.
   Stream<Map<int, String>> watchPublisherTitles() {
     return select(publishers).watch().map(
@@ -471,9 +498,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// Watch raw publisher rows ordered by id.
   Stream<List<PublisherData>> watchPublishers() {
-    return (select(publishers)
-          ..orderBy([(publisher) => OrderingTerm.asc(publisher.id)]))
-        .watch();
+    return (select(
+      publishers,
+    )..orderBy([(publisher) => OrderingTerm.asc(publisher.id)])).watch();
   }
 
   /// Watch playlists ordered by publisher_id, created_at_us (canonical order).

@@ -67,6 +67,25 @@ class DatabaseService {
         );
   }
 
+  /// Watch channels by publisher id and optional channel type.
+  ///
+  /// When [publisherId] is null, returns channels whose publisher id is null.
+  /// When [type] is null, no channel type filter is applied.
+  Stream<List<Channel>> watchChannelsByPublisherId(
+    int? publisherId, {
+    ChannelType? type,
+  }) {
+    return _db
+        .watchChannelsByPublisherId(
+          publisherId,
+          type: type?.index,
+        )
+        .debounceTime(const Duration(milliseconds: 300))
+        .map(
+          (rows) => rows.map(DatabaseConverters.channelDataToDomain).toList(),
+        );
+  }
+
   /// All channels (for resolving playlist → publisher / section titles).
   ///
   /// Ordered like `watchChannels` on the database: publisher_id, sort_order,

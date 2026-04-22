@@ -75,6 +75,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     for (final publisher in publishers ?? const <PublisherData>[]) {
       ref.invalidate(channelsByPublisherProvider(publisher.id));
     }
+    ref.invalidate(channelsByPublisherProvider(null));
   }
 
   @override
@@ -203,7 +204,8 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
             hasScrollBody: false,
             child: ErrorView(
               error:
-                  'We couldn’t load channels. Check your connection, then Retry.',
+                  'We couldn’t load channels. '
+                  'Check your connection, then Retry.',
               onRetry: () => _retryCuratedChannelGroups(publishers: publishers),
             ),
           ),
