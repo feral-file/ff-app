@@ -1,5 +1,7 @@
-import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/channel_preview_provider.dart';
+import 'package:app/app/providers/channels_provider.dart';
+import 'package:app/app/providers/publisher_section_providers.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
@@ -10,7 +12,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 void main() {
-  testWidgets('tapping a channel work navigates to work detail', (tester) async {
+  testWidgets(
+    'tapping a channel work navigates to work detail',
+    (tester) async {
     const channelId = 'ch_test';
     const workId = 'work_test';
 
@@ -48,6 +52,10 @@ void main() {
               ),
             ),
           ),
+          publisherTitlesMapProvider.overrideWith(
+            (ref) => Stream.value({1: 'Publisher One'}),
+          ),
+          isSeedDatabaseReadyProvider.overrideWith(_StubSeedNotifier.new),
         ],
         child: MaterialApp.router(
           routerConfig: GoRouter(
@@ -61,13 +69,17 @@ void main() {
               GoRoute(
                 path: '/channels/:channelId',
                 builder: (context, state) => Scaffold(
-                  body: Text('Channel detail ${state.pathParameters['channelId']}'),
+                  body: Text(
+                    'Channel detail ${state.pathParameters['channelId']}',
+                  ),
                 ),
               ),
               GoRoute(
                 path: '/works/:workId',
                 builder: (context, state) => Scaffold(
-                  body: Text('Work detail ${state.pathParameters['workId']}'),
+                  body: Text(
+                    'Work detail ${state.pathParameters['workId']}',
+                  ),
                 ),
               ),
             ],
@@ -79,7 +91,9 @@ void main() {
     // Avoid pumpAndSettle: some widgets in the tree may schedule animations.
     await tester.pump();
 
-    final row = tester.widget<ChannelListRow>(find.byType(ChannelListRow).first);
+    final row = tester.widget<ChannelListRow>(
+      find.byType(ChannelListRow).first,
+    );
     row.onItemTap?.call(
       const PlaylistItem(
         id: workId,
@@ -94,10 +108,90 @@ void main() {
     expect(find.text('Work detail $workId'), findsOneWidget);
     expect(find.textContaining('Channel detail'), findsNothing);
   });
+
+  testWidgets(
+    'curated all-channels renders publisher sections',
+    (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          channelsProvider(ChannelType.dp1).overrideWith(
+            () => _StubChannelsNotifier(
+              ChannelType.dp1,
+              ChannelsState.loaded(
+                channels: const [
+                  Channel(
+                    id: 'ch_a',
+                    name: 'Channel A',
+                    type: ChannelType.dp1,
+                    publisherId: 1,
+                  ),
+                  Channel(
+                    id: 'ch_b',
+                    name: 'Channel B',
+                    type: ChannelType.dp1,
+                    publisherId: 2,
+                  ),
+                  Channel(
+                    id: 'ch_c',
+                    name: 'Channel C',
+                    type: ChannelType.dp1,
+                    publisherId: 1,
+                  ),
+                ],
+                hasMore: false,
+                cursor: null,
+              ),
+            ),
+          ),
+          publisherTitlesMapProvider.overrideWith(
+            (ref) => Stream.value({1: 'Publisher One', 2: 'Publisher Two'}),
+          ),
+          isSeedDatabaseReadyProvider.overrideWith(_StubSeedNotifier.new),
+        ],
+        child: MaterialApp.router(
+          routerConfig: GoRouter(
+            initialLocation: '/channels/all?filter=curated',
+            routes: [
+              GoRoute(
+                path: '/channels/all',
+                builder: (context, state) =>
+                    const AllChannelsScreen(filter: AllChannelsFilter.curated),
+              ),
+              GoRoute(
+                path: '/channels/:channelId',
+                builder: (context, state) => Scaffold(
+                  body: Text(
+                    'Channel detail ${state.pathParameters['channelId']}',
+                  ),
+                ),
+              ),
+              GoRoute(
+                path: '/works/:workId',
+                builder: (context, state) => Scaffold(
+                  body: Text(
+                    'Work detail ${state.pathParameters['workId']}',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    expect(find.text('Publisher One'), findsOneWidget);
+    expect(find.text('Publisher Two'), findsOneWidget);
+    expect(find.text('Channel A'), findsOneWidget);
+    expect(find.text('Channel B'), findsOneWidget);
+    expect(find.text('Channel C'), findsOneWidget);
+  });
 }
 
 class _StubChannelsNotifier extends ChannelsNotifier {
-  _StubChannelsNotifier(super.type, this._state);
+  _StubChannelsNotifier(super._type, this._state);
 
   final ChannelsState _state;
 
@@ -115,7 +209,7 @@ class _StubChannelsNotifier extends ChannelsNotifier {
 }
 
 class _StubChannelPreviewNotifier extends ChannelPreviewNotifier {
-  _StubChannelPreviewNotifier(super.channelId, this._state);
+  _StubChannelPreviewNotifier(super._channelId, this._state);
 
   final ChannelPreviewState _state;
 
@@ -129,3 +223,7 @@ class _StubChannelPreviewNotifier extends ChannelPreviewNotifier {
   Future<void> loadMore() async {}
 }
 
+class _StubSeedNotifier extends SeedDatabaseReadyNotifier {
+  @override
+  bool build() => false;
+}

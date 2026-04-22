@@ -164,6 +164,7 @@
   - What: home tab browsing, list/detail pages, local search.
   - Who: all app users.
   - Touches: `lib/ui/screens/*`, `channels_provider`, `playlists_provider`, `works_provider`, Drift DB.
+  - `/channels/all` groups curated channels by publisher using the DP-1 publisher metadata; the order within each publisher bucket remains the same as the loaded channel list.
 - Address-based personal collection
   - What: add/remove wallet/domain addresses, create address playlists, index/sync tokens.
   - Who: collectors/stewards.
