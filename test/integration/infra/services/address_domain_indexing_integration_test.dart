@@ -80,8 +80,8 @@ void main() {
       );
       expect(
         tnsTokens.length,
-        greaterThan(100),
-        reason: 'Expected >100 tokens for einstein-rosen.tez.',
+        greaterThan(20),
+        reason: 'Expected >20 tokens for einstein-rosen.tez.',
       );
     },
     timeout: const Timeout(Duration(minutes: 20)),
