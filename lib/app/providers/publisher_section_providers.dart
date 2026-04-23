@@ -10,7 +10,7 @@ import 'package:riverpod/riverpod.dart';
 /// This keeps the screen focused on rendering, while the grouping and section
 /// metadata stay in one place.
 final StreamProvider<List<DP1Publisher>> publishersProvider =
-    StreamProvider.autoDispose<List<DP1Publisher>>((ref) {
+    StreamProvider<List<DP1Publisher>>((ref) {
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
         // Keep the provider pending until the seed DB is ready so browse
         // screens stay in a retryable loading state instead of collapsing

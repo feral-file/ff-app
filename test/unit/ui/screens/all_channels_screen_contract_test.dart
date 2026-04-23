@@ -71,6 +71,67 @@ const curatedPlayableChannel = Channel(
   publisherId: 10,
 );
 
+class _PublishersErrorAfterSuccessHarness extends StatefulWidget {
+  const _PublishersErrorAfterSuccessHarness();
+
+  @override
+  State<_PublishersErrorAfterSuccessHarness> createState() =>
+      _PublishersErrorAfterSuccessHarnessState();
+}
+
+class _PublishersErrorAfterSuccessHarnessState
+    extends State<_PublishersErrorAfterSuccessHarness> {
+  AsyncValue<List<DP1Publisher>> _publishers = AsyncData([
+    DP1Publisher(
+      id: 10,
+      title: 'Stable Pub',
+      createdAt: DateTime.fromMicrosecondsSinceEpoch(1),
+      updatedAt: DateTime.fromMicrosecondsSinceEpoch(1),
+    ),
+  ]);
+
+  @override
+  Widget build(BuildContext context) {
+    return ProviderScope(
+      overrides: [
+        isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
+        publishersProvider.overrideWithValue(_publishers),
+        channelsByPublisherProvider(10).overrideWithValue(
+          const AsyncData([curatedPlayableChannel]),
+        ),
+        channelsByPublisherProvider(null).overrideWithValue(
+          const AsyncData(<Channel>[]),
+        ),
+        channelPreviewProvider('ch_playable').overrideWith(
+          () => _StubChannelPreviewNotifier(
+            'ch_playable',
+            ChannelPreviewState.loaded(works: const [], hasMore: false),
+          ),
+        ),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              const Expanded(
+                child: AllChannelsScreen(filter: AllChannelsFilter.curated),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _publishers = AsyncError(Exception('x'), StackTrace.current);
+                  });
+                },
+                child: const Text('trigger_pub_error'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 void main() {
   testWidgets(
     'curated: pull-to-refresh completes when seed database is not ready',
@@ -294,6 +355,33 @@ void main() {
       expect(find.text('Ready Publisher'), findsOneWidget);
       expect(find.text('Playable Channel'), findsOneWidget);
       expect(find.text('Pending Publisher'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'curated grouped: publisher list error after success keeps last sections '
+    'and shows stale banner',
+    (tester) async {
+      await tester.pumpWidget(
+        const _PublishersErrorAfterSuccessHarness(),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      expect(find.text('Stable Pub'), findsOneWidget);
+      expect(find.text('Playable Channel'), findsOneWidget);
+      expect(
+        find.textContaining('last loaded sections'),
+        findsNothing,
+      );
+
+      await tester.tap(find.text('trigger_pub_error'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      expect(find.text('Stable Pub'), findsOneWidget);
+      expect(find.text('Playable Channel'), findsOneWidget);
+      expect(find.textContaining('last loaded sections'), findsOneWidget);
     },
   );
 }

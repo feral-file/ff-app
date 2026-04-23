@@ -211,7 +211,9 @@
 
 - Purpose: browse full channel lists and inspect one channel's playlists.
 - Entry points: curated/personal "View all", `/channels/:channelId`.
-- Key actions: refresh/load more/open playlist or work.
+- Key actions: refresh; load more on the **personal** flat list only (curated
+  “View all” uses publisher-grouped local streams, not list pagination); open
+  playlist or work.
 - Important data: channel list, channel metadata, playlists in channel.
 - Related modules: `channels_provider`, `channel_detail_provider`, DB service.
 

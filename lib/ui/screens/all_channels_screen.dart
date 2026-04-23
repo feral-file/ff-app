@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/publisher_section_providers.dart';
+import 'package:app/app/utils/await_parallel_futures.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/previous_page_title_scope.dart';
@@ -63,6 +64,11 @@ class AllChannelsScreen extends ConsumerStatefulWidget {
 
 class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   final ScrollController _scrollController = ScrollController();
+
+  /// Last successful [publishersProvider] list so grouped layout can stay on
+  /// screen when publisher metadata fails transiently.
+  List<DP1Publisher>? _cachedPublishersForCuratedLayout;
+
   bool get _shouldGroup => widget.filter == AllChannelsFilter.curated;
 
   void _retryCuratedChannelGroups({List<DP1Publisher>? publishers}) {
@@ -119,7 +125,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
         ref.refresh(channelsByPublisherProvider(publisher.id).future),
       );
     }
-    await Future.wait(refreshFutures);
+    await awaitParallelFuturesIgnoringErrors(refreshFutures);
   }
 
   Future<void> _onRefresh() async {
@@ -180,6 +186,41 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
 
   static const _sectionErrorMessage =
       "We couldn’t load this section. Check your connection, then Retry.";
+
+  static const _publisherListStaleMessage =
+      "We couldn’t refresh the publisher list. Showing the last loaded "
+      'sections.';
+
+  List<Widget> _publisherListStaleBannerSlivers(BuildContext context) {
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: ContentRhythm.horizontalRail,
+            right: ContentRhythm.horizontalRail,
+            bottom: LayoutConstants.space3,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  _publisherListStaleMessage,
+                  style: AppTypography.body(context).grey,
+                ),
+              ),
+              TextButton(
+                onPressed: () => _retryCuratedChannelGroups(
+                  publishers: _cachedPublishersForCuratedLayout,
+                ),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ];
+  }
 
   /// One publisher (or the “Other” bucket) while its stream is still pending.
   List<Widget> _publisherGroupLoadingSlivers(
@@ -270,24 +311,35 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     BuildContext context,
   ) {
     final publishersAsync = ref.watch(publishersProvider);
+    if (publishersAsync.hasValue) {
+      _cachedPublishersForCuratedLayout =
+          List<DP1Publisher>.from(publishersAsync.value ?? const []);
+    }
+
     if (publishersAsync.isLoading && !publishersAsync.hasValue) {
       return _buildLoadingStateSlivers();
     }
 
     if (publishersAsync.hasError) {
-      return [
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: ErrorView(
-            error:
-                'We couldn’t load channels. Check your connection, then Retry.',
-            onRetry: _retryCuratedChannelGroups,
+      final cached = _cachedPublishersForCuratedLayout;
+      if (cached == null) {
+        return [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: ErrorView(
+              error:
+                  'We couldn’t load channels. Check your connection, then Retry.',
+              onRetry: _retryCuratedChannelGroups,
+            ),
           ),
-        ),
-      ];
+        ];
+      }
     }
 
-    final publishers = publishersAsync.value ?? const <DP1Publisher>[];
+    final publishers = publishersAsync.hasError
+        ? _cachedPublishersForCuratedLayout!
+        : (publishersAsync.value ?? const <DP1Publisher>[]);
+    final showStalePublisherBanner = publishersAsync.hasError;
     final perPublisherChannelAsyncs = <AsyncValue<List<Channel>>>[
       for (final publisher in publishers)
         ref.watch(channelsByPublisherProvider(publisher.id)),
@@ -446,6 +498,13 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
 
     if (contentSlivers.isEmpty) {
       return _buildEmptyStateSlivers(context);
+    }
+
+    if (showStalePublisherBanner) {
+      return [
+        ..._publisherListStaleBannerSlivers(context),
+        ...contentSlivers,
+      ];
     }
 
     return contentSlivers;
