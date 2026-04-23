@@ -1,8 +1,12 @@
 import 'package:app/app/providers/local_data_cleanup_provider.dart';
+import 'package:app/app/providers/seed_database_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_provider.dart';
+import 'package:app/infra/database/seed_database_gate.dart';
 import 'package:app/infra/services/local_data_cleanup_service.dart';
+import 'package:app/infra/services/seed_database_service.dart';
+import 'package:app/infra/services/seed_database_sync_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,8 +28,38 @@ class _SlowClosingAppDatabase extends AppDatabase {
   }
 }
 
+class _BlockingReplaceLockSeedSyncService extends SeedDatabaseSyncService {
+  _BlockingReplaceLockSeedSyncService()
+    : super(
+        seedDatabaseService: _NoOpSeedDatabaseService(),
+        loadLocalEtag: () => '',
+        saveLocalEtag: (_) {},
+      );
+
+  int lockInvocations = 0;
+
+  @override
+  Future<T> runWithReplaceLock<T>(Future<T> Function() action) async {
+    lockInvocations += 1;
+    return action();
+  }
+}
+
+class _NoOpSeedDatabaseService extends SeedDatabaseService {
+  int deleteCalls = 0;
+
+  @override
+  Future<String> databasePath() async => '/tmp/dp1_library.sqlite';
+
+  @override
+  Future<void> deleteDatabaseFiles() async {
+    deleteCalls += 1;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(SeedDatabaseGate.resetForTesting);
 
   test(
     'restoreReadinessAfterResetRetryFailed: close and invalidations '
@@ -66,9 +100,8 @@ void main() {
       // Warm up so appDatabaseProvider exists (matches production).
       expect(container.read(appDatabaseProvider), same(db));
 
-      container
-          .read(isSeedDatabaseReadyProvider.notifier)
-          .setStateDirectly(false);
+      container.read(isSeedDatabaseReadyProvider.notifier).seedReadyDirect =
+          false;
       expect(container.read(isSeedDatabaseReadyProvider), isFalse);
 
       final restoreFuture = restoreReadinessAfterResetRetryFailedForTesting(
@@ -84,6 +117,31 @@ void main() {
       expect(db.isCloseFullyDone, isTrue);
       expect(container.read(isSeedDatabaseReadyProvider), isTrue);
       expect(events, ['rebind', 'reconnect']);
+    },
+  );
+
+  test(
+    'closeAndDeleteDatabaseWithSeedLock waits for the replace lock before '
+    'deleting seed files',
+    () async {
+      final seedService = _NoOpSeedDatabaseService();
+      final syncService = _BlockingReplaceLockSeedSyncService();
+
+      SeedDatabaseGate.complete();
+      final container = ProviderContainer.test(
+        overrides: [
+          seedDatabaseServiceProvider.overrideWithValue(seedService),
+          seedDatabaseSyncServiceProvider.overrideWithValue(syncService),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final ref = container.read(Provider<Ref>((r) => r));
+
+      await deleteSeedFilesUnderReplaceLockForTesting(ref);
+
+      expect(syncService.lockInvocations, 1);
+      expect(seedService.deleteCalls, 1);
     },
   );
 }

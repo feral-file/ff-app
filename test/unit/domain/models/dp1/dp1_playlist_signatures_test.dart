@@ -227,7 +227,42 @@ void main() {
     });
 
     test(
-      'rejects schema-compatible files with the wrong user_version',
+      'accepts user_version 2 without items enrichment_status when v3-shaped',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_sig_v2_no_enrich_',
+        );
+        final dbFile = File(p.join(tempDir.path, 'v2-no-enrichment.sqlite'));
+        try {
+          _createPlaylistSchemaDatabase(
+            file: dbFile,
+            userVersion: 2,
+            includePreparedColumns: true,
+            includeLegacySignaturesJson: false,
+            includeItemsEnrichmentStatus: false,
+            signatureValue: 'legacy-preexisting',
+            signaturesValue: '[{"sig":"keep"}]',
+            signaturesJsonValue: '[]',
+          );
+
+          final probeDb = sqlite3.sqlite3.open(dbFile.path);
+          try {
+            expect(isAppDatabaseSchemaCompatibleForReset(probeDb), isTrue);
+            expect(
+              shouldSkipDatabaseResetForSchemaConflict(2, probeDb),
+              isTrue,
+            );
+          } finally {
+            probeDb.dispose();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'accepts schema-compatible files with migratable user_version',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(
           'ff_playlist_sig_',
@@ -250,10 +285,59 @@ void main() {
             expect(isAppDatabaseSchemaCompatibleForReset(probeDb), isTrue);
             expect(
               shouldSkipDatabaseResetForSchemaConflict(2, probeDb),
-              isFalse,
+              isTrue,
             );
           } finally {
             probeDb.dispose();
+          }
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'opens database when user_version is migratable and enrichment column '
+      'already exists',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_playlist_sig_',
+        );
+        final dbFile = File(p.join(tempDir.path, 'migratable-v2.sqlite'));
+        try {
+          _createPlaylistSchemaDatabase(
+            file: dbFile,
+            userVersion: 2,
+            includePreparedColumns: true,
+            includeLegacySignaturesJson: false,
+            includeItemsEnrichmentStatus: true,
+            signatureValue: 'legacy-preexisting',
+            signaturesValue: '[{"sig":"keep"}]',
+            signaturesJsonValue: '[]',
+          );
+
+          final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+          try {
+            final playlistRow = await db
+                .customSelect(
+                  "SELECT signature, signatures FROM playlists WHERE id = 'pl'",
+                )
+                .getSingle();
+            expect(
+              playlistRow.read<String?>('signature'),
+              'legacy-preexisting',
+            );
+            expect(playlistRow.read<String>('signatures'), '[{"sig":"keep"}]');
+
+            final itemColumns = await db
+                .customSelect("SELECT name FROM pragma_table_info('items')")
+                .get();
+            final itemColumnNames = itemColumns
+                .map((row) => row.read<String>('name'))
+                .toSet();
+            expect(itemColumnNames.contains('enrichment_status'), isTrue);
+          } finally {
+            await db.close();
           }
         } finally {
           await tempDir.delete(recursive: true);

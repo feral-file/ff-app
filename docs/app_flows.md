@@ -29,6 +29,10 @@
     `pendingDp1BootstrapAfterSeed` completion).
   - **Existing seed file:** failed sync typically keeps using the on-disk library;
     app still unblocks when the local DB remains valid.
+  - **Downloaded artifact fails validation:** startup discards the bad temp
+    file before `beforeReplace`; existing installs keep serving the current DB,
+    while first install stays in lightweight bootstrap until a later valid seed
+    download succeeds.
   - legacy migration errors are logged and do not block startup
 - startup UX contract:
   - when onboarding is incomplete, seed-sync UI is background-only (no startup

@@ -1,3 +1,4 @@
+import 'package:app/infra/services/seed_database_artifact_validator.dart';
 import 'package:app/infra/services/seed_database_service.dart';
 import 'package:app/infra/services/seed_database_sync_service.dart';
 import 'package:dio/dio.dart';
@@ -7,20 +8,30 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
   _FakeSeedDatabaseService({
     required this.hasLocal,
     required this.remoteEtag,
+    bool? hasUsable,
     this.throwOnHead = false,
     this.throwOnReplace = false,
-  });
+    this.throwOnValidate = false,
+  }) : hasUsable = hasUsable ?? hasLocal;
 
   bool hasLocal;
+  bool hasUsable;
   String remoteEtag;
   bool throwOnHead;
   bool throwOnReplace;
+  bool throwOnValidate;
 
   int downloadCalls = 0;
+  int validateCalls = 0;
   int replaceCalls = 0;
+  int cleanupCalls = 0;
+  SeedDatabaseArtifactMetadata? replacePrevalidatedArtifact;
 
   @override
   Future<bool> hasLocalDatabase() async => hasLocal;
+
+  @override
+  Future<bool> hasUsableLocalDatabase() async => hasUsable;
 
   @override
   Future<String> headRemoteEtag() async {
@@ -46,11 +57,32 @@ class _FakeSeedDatabaseService extends SeedDatabaseService {
   }
 
   @override
-  Future<void> replaceDatabaseFromTemporaryFile(String tempPath) async {
+  SeedDatabaseArtifactMetadata validateSeedArtifact(String path) {
+    validateCalls += 1;
+    if (throwOnValidate) {
+      throw const SeedArtifactValidationException(
+        reasonCode: 'magic_mismatch',
+        message: 'Invalid seed artifact',
+      );
+    }
+    return const SeedDatabaseArtifactMetadata(fileSize: 1024, userVersion: 3);
+  }
+
+  @override
+  Future<void> replaceDatabaseFromTemporaryFile(
+    String tempPath, {
+    SeedDatabaseArtifactMetadata? prevalidatedArtifact,
+  }) async {
     replaceCalls += 1;
+    replacePrevalidatedArtifact = prevalidatedArtifact;
     if (throwOnReplace) {
       throw Exception('Simulated replace failure');
     }
+  }
+
+  @override
+  Future<void> cleanupTemporarySeedArtifact(String tempPath) async {
+    cleanupCalls += 1;
   }
 }
 
@@ -77,7 +109,10 @@ void main() {
 
       expect(changed, isTrue);
       expect(fakeSeedService.downloadCalls, 1);
+      expect(fakeSeedService.validateCalls, 1);
       expect(fakeSeedService.replaceCalls, 1);
+      expect(fakeSeedService.replacePrevalidatedArtifact, isNotNull);
+      expect(fakeSeedService.cleanupCalls, 1);
       expect(events, ['before', 'after']);
       expect(localEtag, 'remote-v2');
     });
@@ -103,10 +138,41 @@ void main() {
 
       expect(changed, isFalse);
       expect(fakeSeedService.downloadCalls, 0);
+      expect(fakeSeedService.validateCalls, 0);
       expect(fakeSeedService.replaceCalls, 0);
       expect(events, isEmpty);
       expect(localEtag, 'same-etag');
     });
+
+    test(
+      'downloads when local DB exists but is unusable even if ETag unchanged',
+      () async {
+        final fakeSeedService = _FakeSeedDatabaseService(
+          hasLocal: true,
+          hasUsable: false,
+          remoteEtag: 'same-etag',
+        );
+        var localEtag = 'same-etag';
+        final events = <String>[];
+
+        final service = SeedDatabaseSyncService(
+          seedDatabaseService: fakeSeedService,
+          loadLocalEtag: () => localEtag,
+          saveLocalEtag: (etag) => localEtag = etag,
+        );
+
+        final changed = await service.sync(
+          beforeReplace: () async => events.add('before'),
+          afterReplace: () async => events.add('after'),
+        );
+
+        expect(changed, isTrue);
+        expect(fakeSeedService.downloadCalls, 1);
+        expect(fakeSeedService.validateCalls, 1);
+        expect(fakeSeedService.replaceCalls, 1);
+        expect(events, ['before', 'after']);
+      },
+    );
 
     test('fails silently on network error when requested', () async {
       final fakeSeedService = _FakeSeedDatabaseService(
@@ -131,10 +197,45 @@ void main() {
 
       expect(changed, isFalse);
       expect(fakeSeedService.downloadCalls, 0);
+      expect(fakeSeedService.validateCalls, 0);
       expect(fakeSeedService.replaceCalls, 0);
       expect(events, isEmpty);
       expect(localEtag, 'local-v1');
     });
+
+    test(
+      'when ETag HEAD fails and local DB is unusable, still downloads and '
+      'replaces',
+      () async {
+        final fakeSeedService = _FakeSeedDatabaseService(
+          hasLocal: true,
+          hasUsable: false,
+          remoteEtag: '',
+          throwOnHead: true,
+        );
+        var localEtag = 'local-v1';
+        final events = <String>[];
+
+        final service = SeedDatabaseSyncService(
+          seedDatabaseService: fakeSeedService,
+          loadLocalEtag: () => localEtag,
+          saveLocalEtag: (etag) => localEtag = etag,
+        );
+
+        final changed = await service.sync(
+          beforeReplace: () async => events.add('before'),
+          afterReplace: () async => events.add('after'),
+          failSilently: true,
+        );
+
+        expect(changed, isTrue);
+        expect(fakeSeedService.downloadCalls, 1);
+        expect(fakeSeedService.validateCalls, 1);
+        expect(fakeSeedService.replaceCalls, 1);
+        expect(events, ['before', 'after']);
+        expect(localEtag, 'local-v1');
+      },
+    );
 
     test(
       'forceReplace always downloads and replaces, skipping ETag check',
@@ -160,7 +261,10 @@ void main() {
 
         expect(changed, isTrue);
         expect(fakeSeedService.downloadCalls, 1);
+        expect(fakeSeedService.validateCalls, 1);
         expect(fakeSeedService.replaceCalls, 1);
+        expect(fakeSeedService.replacePrevalidatedArtifact, isNotNull);
+        expect(fakeSeedService.cleanupCalls, 1);
         expect(events, ['before', 'after']);
         expect(localEtag, 'same-etag'); // ETag saved after replace (from HEAD)
       },
@@ -168,7 +272,8 @@ void main() {
 
     test(
       'when replace fails after beforeReplace, sync returns false and '
-      'afterReplace is not called; old DB remains (project_spec fallback invariant)',
+      'afterReplace is not called; old DB remains '
+      '(project_spec fallback invariant)',
       () async {
         final fakeSeedService = _FakeSeedDatabaseService(
           hasLocal: true,
@@ -191,7 +296,9 @@ void main() {
         );
 
         expect(changed, isFalse);
+        expect(fakeSeedService.validateCalls, 1);
         expect(fakeSeedService.replaceCalls, 1);
+        expect(fakeSeedService.cleanupCalls, 1);
         expect(events, ['before']);
         expect(localEtag, 'local-v1');
       },
@@ -221,7 +328,9 @@ void main() {
         );
 
         expect(changed, isFalse);
+        expect(fakeSeedService.validateCalls, 1);
         expect(fakeSeedService.replaceCalls, 0);
+        expect(fakeSeedService.cleanupCalls, 1);
         expect(events, isEmpty);
       },
     );
@@ -256,9 +365,43 @@ void main() {
         );
 
         expect(changed, isTrue);
+        expect(fakeSeedService.validateCalls, 1);
         expect(fakeSeedService.replaceCalls, 1);
         expect(events, ['before', 'after']);
         expect(localEtag, 'remote-v2');
+      },
+    );
+
+    test(
+      'validation failure returns false before beforeReplace or replace',
+      () async {
+        final fakeSeedService = _FakeSeedDatabaseService(
+          hasLocal: false,
+          remoteEtag: 'remote-v2',
+          throwOnValidate: true,
+        );
+        var localEtag = '';
+        final events = <String>[];
+
+        final service = SeedDatabaseSyncService(
+          seedDatabaseService: fakeSeedService,
+          loadLocalEtag: () => localEtag,
+          saveLocalEtag: (etag) => localEtag = etag,
+        );
+
+        final changed = await service.sync(
+          beforeReplace: () async => events.add('before'),
+          afterReplace: () async => events.add('after'),
+          failSilently: true,
+        );
+
+        expect(changed, isFalse);
+        expect(fakeSeedService.downloadCalls, 1);
+        expect(fakeSeedService.validateCalls, 1);
+        expect(fakeSeedService.replaceCalls, 0);
+        expect(fakeSeedService.cleanupCalls, 1);
+        expect(events, isEmpty);
+        expect(localEtag, isEmpty);
       },
     );
   });

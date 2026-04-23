@@ -44,13 +44,93 @@ Future<void> _restoreReadinessAfterResetRetryFailed(Ref ref) async {
   final cleanup = ref.read(localDataCleanupServiceProvider);
   cleanup.invalidateProvidersForRebind?.call();
   cleanup.invalidateReconnectInfraProviders?.call();
-  ref.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(true);
+  ref
+          .read(
+            isSeedDatabaseReadyProvider.notifier,
+          )
+          .seedReadyDirect =
+      true;
 }
 
 /// Test hook for [_restoreReadinessAfterResetRetryFailed].
 @visibleForTesting
 Future<void> restoreReadinessAfterResetRetryFailedForTesting(Ref ref) =>
     _restoreReadinessAfterResetRetryFailed(ref);
+
+/// Delete-only helper for the gate-completed path.
+///
+/// The cleanup flow intentionally shares the same lock as seed replacement so
+/// "Forget I Exist" cannot delete the only recoverable `.stage` / `.backup`
+/// artifacts while a background replace is still in progress.
+Future<void> _deleteSeedFilesUnderReplaceLock(Ref ref) async {
+  final seedDatabaseSyncService = ref.read(seedDatabaseSyncServiceProvider);
+  await seedDatabaseSyncService.runWithReplaceLock(() async {
+    final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+    await seedDatabaseService.deleteDatabaseFiles();
+  });
+}
+
+/// Runs the full reset teardown under the same lock as seed replacement.
+///
+/// The lock must cover readiness drop, provider draining, close, and file
+/// deletion so a concurrent replace cannot lose its staged/backup artifacts
+/// halfway through a reset.
+Future<void> _closeAndDeleteDatabaseUnderReplaceLock(
+  Ref ref,
+  void Function() invalidateDatabaseConsumerProviders,
+) async {
+  final seedDatabaseSyncService = ref.read(seedDatabaseSyncServiceProvider);
+  var teardownSucceeded = false;
+  try {
+    await seedDatabaseSyncService.runWithReplaceLock(() async {
+      final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+      await seedDatabaseService.markResetCleanupInProgress();
+      final readyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
+      await readyNotifier.setNotReady();
+      if (SeedDatabaseGate.isCompleted) {
+        await seedDatabaseService.deleteDatabaseFiles();
+        return;
+      }
+      await ref
+          .read(tokensSyncCoordinatorProvider.notifier)
+          .stopAndDrainForReset();
+      await ref
+          .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+          .stopAndDrainForReset();
+      ref.invalidate(tokensSyncCoordinatorProvider);
+      ref.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
+      readyNotifier.seedReadyDirect = false;
+      invalidateDatabaseConsumerProviders();
+      await SchedulerBinding.instance.endOfFrame;
+      await ref.read(appDatabaseProvider).close();
+      await seedDatabaseService.deleteDatabaseFiles();
+      await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
+    });
+    teardownSucceeded = true;
+  } finally {
+    // Only clear the marker after a full, successful teardown. If reset work
+    // throws, leaving the marker in place preserves the privacy boundary and
+    // lets startup retry deletion before ever reopening the seed gate.
+    if (teardownSucceeded) {
+      await ref.read(seedDatabaseServiceProvider).clearResetCleanupInProgress();
+    }
+  }
+}
+
+/// Test hook for [_deleteSeedFilesUnderReplaceLock].
+@visibleForTesting
+Future<void> deleteSeedFilesUnderReplaceLockForTesting(Ref ref) =>
+    _deleteSeedFilesUnderReplaceLock(ref);
+
+/// Test hook for [_closeAndDeleteDatabaseUnderReplaceLock].
+@visibleForTesting
+Future<void> closeAndDeleteDatabaseUnderReplaceLockForTesting(
+  Ref ref,
+  void Function() invalidateDatabaseConsumerProviders,
+) => _closeAndDeleteDatabaseUnderReplaceLock(
+  ref,
+  invalidateDatabaseConsumerProviders,
+);
 
 /// Wires [LocalDataCleanupService] for two flows:
 ///
@@ -167,7 +247,12 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
   return LocalDataCleanupService(
     /// Set immediately at start of forgetIExist so no new DB work starts.
     prepareForReset: () {
-      ref.read(isSeedDatabaseReadyProvider.notifier).setStateDirectly(false);
+      ref
+              .read(
+                isSeedDatabaseReadyProvider.notifier,
+              )
+              .seedReadyDirect =
+          false;
     },
 
     /// Called when forgetIExist/rebuildMetadata background seed replace fails.
@@ -194,28 +279,10 @@ final localDataCleanupServiceProvider = Provider<LocalDataCleanupService>((
     /// seed sync). If SeedDatabaseGate is not completed, setNotReady is a
     /// no-op; we mirror drain + close so Forget stays safe on edge boots.
     closeAndDeleteDatabase: () async {
-      final readyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
-      await readyNotifier.setNotReady();
-      if (SeedDatabaseGate.isCompleted) {
-        final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
-        await seedDatabaseService.deleteDatabaseFiles();
-      } else {
-        await ref
-            .read(tokensSyncCoordinatorProvider.notifier)
-            .stopAndDrainForReset();
-        await ref
-            .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
-            .stopAndDrainForReset();
-        r.invalidate(tokensSyncCoordinatorProvider);
-        r.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
-        readyNotifier.setStateDirectly(false);
-        invalidateDatabaseConsumerProviders();
-        await SchedulerBinding.instance.endOfFrame;
-        await ref.read(appDatabaseProvider).close();
-        final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
-        await seedDatabaseService.deleteDatabaseFiles();
-        await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
-      }
+      await _closeAndDeleteDatabaseUnderReplaceLock(
+        ref,
+        invalidateDatabaseConsumerProviders,
+      );
     },
 
     /// Clears FF1 devices, app state, tracked addresses, etc.
