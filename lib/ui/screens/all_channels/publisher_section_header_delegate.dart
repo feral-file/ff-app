@@ -61,6 +61,8 @@ class PublisherSectionHeaderDelegate extends SliverPersistentHeaderDelegate {
       child: Text(
         title,
         style: AppTypography.h3(context).white,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }

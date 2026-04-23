@@ -116,6 +116,10 @@ void main() {
       final expectedStyle = AppTypography.h3(context).white;
       expect(textWidget.style?.fontSize, expectedStyle.fontSize);
       expect(textWidget.style?.color, expectedStyle.color);
+
+      // Verify text constraints to prevent clipping
+      expect(textWidget.maxLines, 1);
+      expect(textWidget.overflow, TextOverflow.ellipsis);
     });
 
     testWidgets('build renders with correct background color', (tester) async {
@@ -213,6 +217,42 @@ void main() {
         ),
       );
       expect(container.alignment, Alignment.bottomLeft);
+    });
+
+    testWidgets('build handles long publisher names with ellipsis',
+        (tester) async {
+      final delegate = PublisherSectionHeaderDelegate(
+        title: 'Very Long Publisher Name That Exceeds Maximum Width',
+        topPadding: 0,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CustomScrollView(
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: delegate,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      // Verify long title renders (may be ellipsized visually).
+      expect(
+        find.text('Very Long Publisher Name That Exceeds Maximum Width'),
+        findsOneWidget,
+      );
+
+      // Verify text widget has overflow protection
+      final textWidget = tester.widget<Text>(
+        find.text('Very Long Publisher Name That Exceeds Maximum Width'),
+      );
+      expect(textWidget.maxLines, 1);
+      expect(textWidget.overflow, TextOverflow.ellipsis);
     });
   });
 }
