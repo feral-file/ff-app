@@ -12,9 +12,12 @@ typedef AllPlaylistsPublisherLayout = ({
 /// Resolves whether All Playlists should show publisher sections and the
 /// grouped section list.
 ///
-/// Once lookup streams have emitted at least once (first load), the UI stays
-/// grouped even if the streams reload or refresh (subsequent `isLoading`).
-/// This prevents layout flicker during dependency invalidation.
+/// Once both `publisherAsync` and `channelAsync` have cached data (first
+/// load, `hasValue` true), the UI stays grouped even if the streams reload or
+/// refresh (subsequent `isLoading`). This prevents layout flicker during
+/// dependency invalidation. During seed bootstrap, the channel map stream may
+/// not emit until the seed DB is ready, so `channelAsync` stays loading—not a
+/// completed empty map.
 ///
 /// Callers that are already **channel-scoped** should not subscribe to lookup
 /// providers and should pass [playlists] only after their own early return;
@@ -31,8 +34,10 @@ AllPlaylistsPublisherLayout resolveAllPlaylistsPublisherLayout({
     return (useSectionHeaders: false, sections: const []);
   }
 
-  /// Both streams must have emitted at least once (have cached data) to group.
-  /// `isLoading` is not checked: reload/refresh is invisible to the UI.
+  // Both `hasValue` flags must be true. The channel map does not emit before
+  // the seed DB is ready, so `lookupsReady` stays false during that phase.
+  // After first load, we do not use `isLoading` to block grouping: reload does
+  // not drop sections.
   final lookupsReady = publisherAsync.hasValue && channelAsync.hasValue;
 
   final channelMap = channelAsync.value ?? const <String, Channel>{};

@@ -1,5 +1,6 @@
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_manifest.dart';
+import 'package:app/domain/models/dp1/dp1_publisher.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/app_database.dart';
@@ -61,6 +62,28 @@ void main() {
         expect(channel.slug, 'test-channel');
         expect(channel.curator, 'Test Curator');
         expect(channel.sortOrder, 1);
+      });
+    });
+
+    group('Publisher conversions', () {
+      test('publisherDataToDp1Publisher converts correctly', () {
+        const us = 1700000000000000;
+        final data = PublisherData(
+          id: 42,
+          title: 'Test Publisher',
+          createdAtUs: BigInt.from(us),
+          updatedAtUs: BigInt.from(us + 1),
+        );
+        final publisher = DatabaseConverters.publisherDataToDp1Publisher(data);
+        expect(
+          publisher,
+          DP1Publisher(
+            id: 42,
+            title: 'Test Publisher',
+            createdAt: DateTime.fromMicrosecondsSinceEpoch(us),
+            updatedAt: DateTime.fromMicrosecondsSinceEpoch(us + 1),
+          ),
+        );
       });
     });
 

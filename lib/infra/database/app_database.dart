@@ -462,11 +462,70 @@ class AppDatabase extends _$AppDatabase {
     return query.watch();
   }
 
+  /// Watch channels for one publisher bucket with the same visibility and
+  /// invalidation as `watchChannelsByType`: for dp1 (`type` 0), only channels
+  /// that have at least one `playlist_entries` row; for localVirtual, the
+  /// same `EXISTS` / address-playlist rules apply. Emits when `channels`,
+  /// `playlists`, or `playlist_entries` change.
+  Stream<List<ChannelData>> watchPlayableChannelsByPublisherId(
+    int? publisherId, {
+    required int type,
+  }) {
+    const addressBasedType = 1;
+    final existsClause = type == addressBasedType
+        ? '''
+        AND (
+          EXISTS (
+            SELECT 1 FROM playlists p
+            INNER JOIN playlist_entries pe ON p.id = pe.playlist_id
+            WHERE p.channel_id = c.id
+          )
+          OR EXISTS (
+            SELECT 1 FROM playlists p
+            WHERE p.channel_id = c.id AND p.type = $addressBasedType
+          )
+        )
+        '''
+        : '''
+        AND EXISTS (
+          SELECT 1 FROM playlists p
+          INNER JOIN playlist_entries pe ON p.id = pe.playlist_id
+          WHERE p.channel_id = c.id
+        )
+        ''';
+    final publisherClause = publisherId == null
+        ? 'AND c.publisher_id IS NULL'
+        : 'AND c.publisher_id = ?';
+    final variables = <Variable>[Variable.withInt(type)];
+    if (publisherId != null) {
+      variables.add(Variable.withInt(publisherId));
+    }
+    return customSelect(
+      '''
+      SELECT c.* FROM channels c
+      WHERE c.type = ? $publisherClause$existsClause
+      ORDER BY c.sort_order ASC NULLS LAST,
+        c.id ASC
+      ''',
+      variables: variables,
+      readsFrom: {channels, playlists, playlistEntries},
+    ).watch().map(
+      (rows) => rows.map((row) => channels.map(row.data)).toList(),
+    );
+  }
+
   /// Emits publisher id → display title when the publishers table changes.
   Stream<Map<int, String>> watchPublisherTitles() {
     return select(publishers).watch().map(
       (rows) => {for (final r in rows) r.id: r.title},
     );
+  }
+
+  /// Watch raw publisher rows ordered by id.
+  Stream<List<PublisherData>> watchPublishers() {
+    return (select(
+      publishers,
+    )..orderBy([(publisher) => OrderingTerm.asc(publisher.id)])).watch();
   }
 
   /// Watch playlists ordered by publisher_id, created_at_us (canonical order).

@@ -79,9 +79,12 @@ List<PlaylistPublisherSection> groupPlaylistsByPublisherSections({
 /// [groupPlaylistsByPublisherSections]; otherwise missing channel rows produce
 /// incorrect "Other" buckets while maps are still loading.
 ///
-/// [seedDatabaseReady] must be true: providers emit empty maps before the seed
-/// DB is ready; those still report [AsyncValue.hasValue] and must not be used
-/// for grouping.
+/// [seedDatabaseReady] must be true. Publisher/title lookup may still complete
+/// with an empty map before the seed is fully usable; the channel id → channel
+/// lookup typically **does not emit** until the seed DB is ready, so it stays
+/// loading rather than a false `hasValue` with `{}`. Rely on
+/// [channelAndPublisherLookupsReady] and [seedDatabaseReady] together so
+/// grouping never runs on partial bootstrap data.
 bool shouldUsePublisherGroupedLayout({
   required bool isChannelScoped,
   required bool seedDatabaseReady,

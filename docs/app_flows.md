@@ -121,6 +121,9 @@
   - empty states shown for missing content
 - key screens involved: Home, All Channels, All Playlists, Channel Detail, Playlist Detail, Work Detail
 - key modules/services involved: `channels_provider`, `playlists_provider`, `works_provider`, DB service
+- notes (All Channels):
+  - `/channels/all` groups curated channels by publisher with publisher names as section headers; the order within each publisher section stays the same as the loaded list
+  - personal channels remain flat
 - notes (All Playlists):
   - non–channel-scoped “View all” / All Playlists lists **group by publisher**
     (section headers from publisher titles) when the seed DB is ready, publisher

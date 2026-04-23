@@ -43,6 +43,230 @@ void main() {
         expect(retrieved.name, 'Test Channel');
       });
 
+      test(
+        'watchPlayableChannelsByPublisherId lists only dp1 channels with '
+        'playlist entries',
+        () async {
+          final now = DateTime.now();
+          final channels = [
+            Channel(
+              id: 'ch_with',
+              name: 'With',
+              type: ChannelType.dp1,
+              publisherId: 1,
+              createdAt: now,
+              updatedAt: now,
+            ),
+            Channel(
+              id: 'ch_without',
+              name: 'Without',
+              type: ChannelType.dp1,
+              publisherId: 1,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          ];
+          await service.ingestChannels(channels);
+
+          await service.ingestPlaylist(
+            Playlist(
+              id: 'pl_1',
+              name: 'P',
+              type: PlaylistType.dp1,
+              channelId: 'ch_with',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+          await service.ingestPlaylistItem(
+            PlaylistItem(
+              id: 'it_1',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'I',
+              updatedAt: now,
+            ),
+          );
+          final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+          await db.upsertPlaylistEntries(
+            [
+              PlaylistEntriesCompanion.insert(
+                playlistId: 'pl_1',
+                itemId: 'it_1',
+                position: const Value(0),
+                sortKeyUs: BigInt.zero,
+                updatedAtUs: nowUs,
+              ),
+            ],
+          );
+
+          final list = await service
+              .watchPlayableChannelsByPublisherId(1, type: ChannelType.dp1)
+              .first;
+
+          expect(list.map((channel) => channel.id), ['ch_with']);
+        },
+      );
+
+      test(
+        'AppDatabase.watchPlayableChannelsByPublisherId customSelect runs for '
+        'keyed and null publisher buckets (SQL parameter boundaries)',
+        () async {
+          final now = DateTime.now();
+          await service.ingestChannels([
+            Channel(
+              id: 'ch_keyed',
+              name: 'Keyed',
+              type: ChannelType.dp1,
+              publisherId: 2,
+              createdAt: now,
+              updatedAt: now,
+            ),
+            Channel(
+              id: 'ch_unassigned',
+              name: 'Unassigned',
+              type: ChannelType.dp1,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          ]);
+          await service.ingestPlaylist(
+            Playlist(
+              id: 'pl_keyed',
+              name: 'K',
+              type: PlaylistType.dp1,
+              channelId: 'ch_keyed',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+          await service.ingestPlaylist(
+            Playlist(
+              id: 'pl_unassigned',
+              name: 'U',
+              type: PlaylistType.dp1,
+              channelId: 'ch_unassigned',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+          await service.ingestPlaylistItem(
+            PlaylistItem(
+              id: 'it_keyed',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'A',
+              updatedAt: now,
+            ),
+          );
+          await service.ingestPlaylistItem(
+            PlaylistItem(
+              id: 'it_unassigned',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'B',
+              updatedAt: now,
+            ),
+          );
+          final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+          await db.upsertPlaylistEntries(
+            [
+              PlaylistEntriesCompanion.insert(
+                playlistId: 'pl_keyed',
+                itemId: 'it_keyed',
+                position: const Value(0),
+                sortKeyUs: BigInt.zero,
+                updatedAtUs: nowUs,
+              ),
+              PlaylistEntriesCompanion.insert(
+                playlistId: 'pl_unassigned',
+                itemId: 'it_unassigned',
+                position: const Value(0),
+                sortKeyUs: BigInt.zero,
+                updatedAtUs: nowUs,
+              ),
+            ],
+          );
+
+          final keyedRows = await db
+              .watchPlayableChannelsByPublisherId(
+                2,
+                type: ChannelType.dp1.index,
+              )
+              .first;
+          expect(keyedRows.map((r) => r.id), ['ch_keyed']);
+
+          final nullRows = await db
+              .watchPlayableChannelsByPublisherId(
+                null,
+                type: ChannelType.dp1.index,
+              )
+              .first;
+          expect(nullRows.map((r) => r.id), ['ch_unassigned']);
+        },
+      );
+
+      test(
+        'watchPlayableChannelsByPublisherId re-emits empty when last '
+        'playlist entry is removed',
+        () async {
+          final now = DateTime.now();
+          await service.ingestChannels([
+            Channel(
+              id: 'ch_react',
+              name: 'React',
+              type: ChannelType.dp1,
+              publisherId: 1,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          ]);
+          await service.ingestPlaylist(
+            Playlist(
+              id: 'pl_react',
+              name: 'P',
+              type: PlaylistType.dp1,
+              channelId: 'ch_react',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+          await service.ingestPlaylistItem(
+            PlaylistItem(
+              id: 'it_react',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'I',
+              updatedAt: now,
+            ),
+          );
+          final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+          await db.upsertPlaylistEntries(
+            [
+              PlaylistEntriesCompanion.insert(
+                playlistId: 'pl_react',
+                itemId: 'it_react',
+                position: const Value(0),
+                sortKeyUs: BigInt.zero,
+                updatedAtUs: nowUs,
+              ),
+            ],
+          );
+
+          final emissions = <List<Channel>>[];
+          final subscription = service
+              .watchPlayableChannelsByPublisherId(1, type: ChannelType.dp1)
+              .listen(emissions.add);
+          addTearDown(subscription.cancel);
+
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          expect(emissions.last.map((channel) => channel.id), ['ch_react']);
+
+          await service.removePlaylistEntry(
+            playlistId: 'pl_react',
+            itemId: 'it_react',
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          expect(emissions.last, isEmpty);
+        },
+      );
+
       test('ingestChannels batch inserts channels', () async {
         final channels = [
           Channel(
@@ -501,7 +725,8 @@ void main() {
       });
 
       test(
-        'getItems and getItemIds order works by publisher, channel createdAt, then playlist createdAt',
+        'getItems and getItemIds order works by publisher, '
+        'channel createdAt, then playlist createdAt',
         () async {
           final t2024 = DateTime.parse('2024-01-01T00:00:00Z');
           final t2025 = DateTime.parse('2025-01-01T00:00:00Z');
@@ -803,7 +1028,8 @@ void main() {
 
     group('Enrichment priority queries', () {
       test(
-        'loadHighPriorityBareItems orders newest-playlist-first within each batch',
+        'loadHighPriorityBareItems orders newest-playlist-first '
+        'within each batch',
         () async {
           final older = DateTime.now().subtract(const Duration(hours: 1));
           final newer = DateTime.now();
@@ -835,9 +1061,11 @@ void main() {
             final oldId = 'old_$i';
             final newId = 'new_$i';
             final oldProvenance =
-                '{"type":"onChain","contract":{"chain":"evm","standard":"erc721","address":"0xold","tokenId":"$i"}}';
+                '{"type":"onChain","contract":{"chain":"evm",'
+                '"standard":"erc721","address":"0xold","tokenId":"$i"}}';
             final newProvenance =
-                '{"type":"onChain","contract":{"chain":"evm","standard":"erc721","address":"0xnew","tokenId":"$i"}}';
+                '{"type":"onChain","contract":{"chain":"evm",'
+                '"standard":"erc721","address":"0xnew","tokenId":"$i"}}';
 
             itemCompanions.addAll([
               ItemsCompanion(
@@ -1035,7 +1263,8 @@ void main() {
                 kind: const Value(0),
                 title: Value(id),
                 provenanceJson: const Value(
-                  '{"type":"onChain","contract":{"chain":"evm","standard":"erc721","address":"0xprov","tokenId":"1"}}',
+                  '{"type":"onChain","contract":{"chain":"evm",'
+                  '"standard":"erc721","address":"0xprov","tokenId":"1"}}',
                 ),
                 updatedAtUs: Value(nowUs),
               ),

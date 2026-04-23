@@ -164,6 +164,7 @@
   - What: home tab browsing, list/detail pages, local search.
   - Who: all app users.
   - Touches: `lib/ui/screens/*`, `channels_provider`, `playlists_provider`, `works_provider`, Drift DB.
+  - `/channels/all` groups curated channels by publisher using the DP-1 publisher metadata; the order within each publisher bucket remains the same as the loaded channel list.
 - Address-based personal collection
   - What: add/remove wallet/domain addresses, create address playlists, index/sync tokens.
   - Who: collectors/stewards.
@@ -210,7 +211,9 @@
 
 - Purpose: browse full channel lists and inspect one channel's playlists.
 - Entry points: curated/personal "View all", `/channels/:channelId`.
-- Key actions: refresh/load more/open playlist or work.
+- Key actions: refresh; load more on the **personal** flat list only (curated
+  “View all” uses publisher-grouped local streams, not list pagination); open
+  playlist or work.
 - Important data: channel list, channel metadata, playlists in channel.
 - Related modules: `channels_provider`, `channel_detail_provider`, DB service.
 
