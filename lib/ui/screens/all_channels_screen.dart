@@ -171,6 +171,94 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     ];
   }
 
+  static const _sectionErrorMessage =
+      "We couldn’t load this section. Check your connection, then Retry.";
+
+  /// One publisher (or the “Other” bucket) while its stream is still pending.
+  List<Widget> _publisherGroupLoadingSlivers(
+    BuildContext context, {
+    required String title,
+    required double topPadding,
+  }) {
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: ContentRhythm.horizontalRail,
+            right: ContentRhythm.horizontalRail,
+            bottom: LayoutConstants.space3,
+            top: topPadding,
+          ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              title,
+              style: AppTypography.h3(context).white,
+            ),
+          ),
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: ContentRhythm.horizontalRail,
+          ),
+          child: const SizedBox(
+            height: 120,
+            child: Center(
+              child: LoadingWidget(
+                showText: false,
+                backgroundColor: AppColor.auGreyBackground,
+              ),
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  /// One publisher (or the “Other” bucket) when its stream failed.
+  List<Widget> _publisherGroupErrorSlivers(
+    BuildContext context, {
+    required String title,
+    required double topPadding,
+    required VoidCallback onRetry,
+  }) {
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: ContentRhythm.horizontalRail,
+            right: ContentRhythm.horizontalRail,
+            bottom: LayoutConstants.space3,
+            top: topPadding,
+          ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              title,
+              style: AppTypography.h3(context).white,
+            ),
+          ),
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: ContentRhythm.horizontalRail,
+          ),
+          child: SizedBox(
+            height: 120,
+            child: ErrorView(
+              error: _sectionErrorMessage,
+              onRetry: onRetry,
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
   List<Widget> _buildGroupedContentSlivers(
     BuildContext context,
   ) {
@@ -193,136 +281,160 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     }
 
     final publishers = publishersAsync.value ?? const <DP1Publisher>[];
-    final contentSlivers = <Widget>[];
+    final perPublisherChannelAsyncs = <AsyncValue<List<Channel>>>[
+      for (final publisher in publishers)
+        ref.watch(channelsByPublisherProvider(publisher.id)),
+      ref.watch(channelsByPublisherProvider(null)),
+    ];
 
-    for (var i = 0; i < publishers.length; i++) {
-      final publisher = publishers[i];
-      final publisherChannelsAsync = ref.watch(
-        channelsByPublisherProvider(publisher.id),
-      );
-      if (publisherChannelsAsync.isLoading &&
-          !publisherChannelsAsync.hasValue) {
-        return _buildLoadingStateSlivers();
-      }
-      if (publisherChannelsAsync.hasError) {
-        return [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: ErrorView(
-              error:
-                  'We couldn’t load channels. '
-                  'Check your connection, then Retry.',
-              onRetry: () => _retryCuratedChannelGroups(publishers: publishers),
-            ),
-          ),
-        ];
-      }
-      final publisherChannels =
-          publisherChannelsAsync.value ?? const <Channel>[];
-      if (publisherChannels.isEmpty) {
-        continue;
-      }
-      contentSlivers.addAll([
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: ContentRhythm.horizontalRail,
-              right: ContentRhythm.horizontalRail,
-              bottom: LayoutConstants.space3,
-              top: i == 0 ? 0 : LayoutConstants.space4,
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                publisher.title,
-                style: AppTypography.h3(context).white,
-              ),
-            ),
-          ),
-        ),
-        SliverList.builder(
-          itemCount: publisherChannels.length,
-          itemBuilder: (context, index) {
-            final channel = publisherChannels[index];
-            return ChannelListRow(
-              channelData: ChannelRowData(
-                channelId: channel.id,
-                channelTitle: channel.name,
-                channelSummary: channel.description,
-                works: const [],
-              ),
-              onItemTap: (item) {
-                unawaited(
-                  context.pushWithPreviousTitle('${Routes.works}/${item.id}'),
-                );
-              },
-            );
-          },
-        ),
-      ]);
-    }
-
-    final nullPublisherChannelsAsync = ref.watch(
-      channelsByPublisherProvider(null),
+    // Full-page loading only until at least one bucket has finished (data or
+    // error). After that, remaining buckets get their own loading/error rows.
+    final anyChannelSectionResolved = perPublisherChannelAsyncs.any(
+      (a) => a.hasValue || a.hasError,
     );
-    if (nullPublisherChannelsAsync.isLoading &&
-        !nullPublisherChannelsAsync.hasValue) {
+    if (!anyChannelSectionResolved) {
       return _buildLoadingStateSlivers();
     }
-    if (nullPublisherChannelsAsync.hasError) {
-      return [
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: ErrorView(
-            error:
-                'We couldn’t load channels. Check your connection, then Retry.',
-            onRetry: () => _retryCuratedChannelGroups(publishers: publishers),
+
+    final contentSlivers = <Widget>[];
+    for (var i = 0; i < publishers.length; i++) {
+      final publisher = publishers[i];
+      final publisherChannelsAsync = perPublisherChannelAsyncs[i];
+      final topPadding = i == 0 ? 0.0 : LayoutConstants.space4;
+
+      if (publisherChannelsAsync.hasValue) {
+        final publisherChannels = publisherChannelsAsync.requireValue;
+        if (publisherChannels.isEmpty) {
+          continue;
+        }
+        contentSlivers.addAll([
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: ContentRhythm.horizontalRail,
+                right: ContentRhythm.horizontalRail,
+                bottom: LayoutConstants.space3,
+                top: topPadding,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  publisher.title,
+                  style: AppTypography.h3(context).white,
+                ),
+              ),
+            ),
           ),
-        ),
-      ];
+          SliverList.builder(
+            itemCount: publisherChannels.length,
+            itemBuilder: (context, index) {
+              final channel = publisherChannels[index];
+              return ChannelListRow(
+                channelData: ChannelRowData(
+                  channelId: channel.id,
+                  channelTitle: channel.name,
+                  channelSummary: channel.description,
+                  works: const [],
+                ),
+                onItemTap: (item) {
+                  unawaited(
+                    context
+                        .pushWithPreviousTitle('${Routes.works}/${item.id}'),
+                  );
+                },
+              );
+            },
+          ),
+        ]);
+      } else if (publisherChannelsAsync.hasError) {
+        contentSlivers.addAll(
+          _publisherGroupErrorSlivers(
+            context,
+            title: publisher.title,
+            topPadding: topPadding,
+            onRetry: () {
+              ref.invalidate(channelsByPublisherProvider(publisher.id));
+            },
+          ),
+        );
+      } else {
+        contentSlivers.addAll(
+          _publisherGroupLoadingSlivers(
+            context,
+            title: publisher.title,
+            topPadding: topPadding,
+          ),
+        );
+      }
     }
 
-    final nullPublisherChannels =
-        nullPublisherChannelsAsync.value ?? const <Channel>[];
-    if (nullPublisherChannels.isNotEmpty) {
-      contentSlivers.addAll([
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: ContentRhythm.horizontalRail,
-              right: ContentRhythm.horizontalRail,
-              bottom: LayoutConstants.space3,
-              top: contentSlivers.isEmpty ? 0 : LayoutConstants.space4,
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Other',
-                style: AppTypography.h3(context).white,
+    final nullPublisherChannelsAsync =
+        perPublisherChannelAsyncs[publishers.length];
+    final otherTopPadding = contentSlivers.isEmpty
+        ? 0.0
+        : LayoutConstants.space4;
+    if (nullPublisherChannelsAsync.hasValue) {
+      final nullPublisherChannels = nullPublisherChannelsAsync.requireValue;
+      if (nullPublisherChannels.isNotEmpty) {
+        contentSlivers.addAll([
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: ContentRhythm.horizontalRail,
+                right: ContentRhythm.horizontalRail,
+                bottom: LayoutConstants.space3,
+                top: otherTopPadding,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Other',
+                  style: AppTypography.h3(context).white,
+                ),
               ),
             ),
           ),
-        ),
-        SliverList.builder(
-          itemCount: nullPublisherChannels.length,
-          itemBuilder: (context, index) {
-            final channel = nullPublisherChannels[index];
-            return ChannelListRow(
-              channelData: ChannelRowData(
-                channelId: channel.id,
-                channelTitle: channel.name,
-                channelSummary: channel.description,
-                works: const [],
-              ),
-              onItemTap: (item) {
-                unawaited(
-                  context.pushWithPreviousTitle('${Routes.works}/${item.id}'),
-                );
-              },
-            );
+          SliverList.builder(
+            itemCount: nullPublisherChannels.length,
+            itemBuilder: (context, index) {
+              final channel = nullPublisherChannels[index];
+              return ChannelListRow(
+                channelData: ChannelRowData(
+                  channelId: channel.id,
+                  channelTitle: channel.name,
+                  channelSummary: channel.description,
+                  works: const [],
+                ),
+                onItemTap: (item) {
+                  unawaited(
+                    context
+                        .pushWithPreviousTitle('${Routes.works}/${item.id}'),
+                  );
+                },
+              );
+            },
+          ),
+        ]);
+      }
+    } else if (nullPublisherChannelsAsync.hasError) {
+      contentSlivers.addAll(
+        _publisherGroupErrorSlivers(
+          context,
+          title: 'Other',
+          topPadding: otherTopPadding,
+          onRetry: () {
+            ref.invalidate(channelsByPublisherProvider(null));
           },
         ),
-      ]);
+      );
+    } else {
+      contentSlivers.addAll(
+        _publisherGroupLoadingSlivers(
+          context,
+          title: 'Other',
+          topPadding: otherTopPadding,
+        ),
+      );
     }
 
     if (contentSlivers.isEmpty) {

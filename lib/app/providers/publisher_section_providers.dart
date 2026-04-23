@@ -45,7 +45,7 @@ final StreamProvider<Map<int, String>> publisherTitlesMapProvider =
 /// The family argument `publisherId` is nullable so the curated screen can
 /// also render channels without a publisher bucket.
 final StreamProviderFamily<List<Channel>, int?> channelsByPublisherProvider =
-    StreamProvider.autoDispose.family<List<Channel>, int?>((ref, publisherId) {
+    StreamProvider.family<List<Channel>, int?>((ref, publisherId) {
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
         return const Stream<List<Channel>>.empty();
       }

@@ -206,4 +206,60 @@ void main() {
       expect(find.text('No channels found'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'curated grouped: a still-loading bucket does not block content from a '
+    'bucket that has already loaded',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
+            publishersProvider.overrideWithValue(
+              AsyncData([
+                DP1Publisher(
+                  id: 10,
+                  title: 'Ready Publisher',
+                  createdAt: DateTime.fromMicrosecondsSinceEpoch(1),
+                  updatedAt: DateTime.fromMicrosecondsSinceEpoch(1),
+                ),
+                DP1Publisher(
+                  id: 20,
+                  title: 'Pending Publisher',
+                  createdAt: DateTime.fromMicrosecondsSinceEpoch(2),
+                  updatedAt: DateTime.fromMicrosecondsSinceEpoch(2),
+                ),
+              ]),
+            ),
+            channelsByPublisherProvider(10).overrideWithValue(
+              const AsyncData([curatedPlayableChannel]),
+            ),
+            channelsByPublisherProvider(20).overrideWithValue(
+              const AsyncLoading<List<Channel>>(),
+            ),
+            channelsByPublisherProvider(null).overrideWithValue(
+              const AsyncData(<Channel>[]),
+            ),
+            channelPreviewProvider('ch_playable').overrideWith(
+              () => _StubChannelPreviewNotifier(
+                'ch_playable',
+                ChannelPreviewState.loaded(works: const [], hasMore: false),
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: AllChannelsScreen(filter: AllChannelsFilter.curated),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      expect(find.text('Ready Publisher'), findsOneWidget);
+      expect(find.text('Playable Channel'), findsOneWidget);
+      expect(find.text('Pending Publisher'), findsOneWidget);
+    },
+  );
 }
