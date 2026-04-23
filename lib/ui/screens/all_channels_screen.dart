@@ -313,8 +313,9 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   ) {
     final publishersAsync = ref.watch(publishersProvider);
     if (publishersAsync.hasValue) {
-      _cachedPublishersForCuratedLayout =
-          List<DP1Publisher>.from(publishersAsync.value ?? const []);
+      _cachedPublishersForCuratedLayout = List<DP1Publisher>.from(
+        publishersAsync.value ?? const [],
+      );
     }
 
     if (publishersAsync.isLoading && !publishersAsync.hasValue) {
