@@ -44,53 +44,66 @@ void main() {
       });
 
       test(
-        'watchChannelsByPublisherId returns channels for one publisher',
+        'watchPlayableChannelsByPublisherId lists only dp1 channels with '
+        'playlist entries',
         () async {
+          final now = DateTime.now();
           final channels = [
             Channel(
-              id: 'ch_1',
-              name: 'Channel 1',
-              type: ChannelType.dp1,
-              publisherId: 2,
-              createdAt: DateTime.now(),
-              updatedAt: DateTime.now(),
-            ),
-            Channel(
-              id: 'ch_2',
-              name: 'Channel 2',
+              id: 'ch_with',
+              name: 'With',
               type: ChannelType.dp1,
               publisherId: 1,
-              createdAt: DateTime.now(),
-              updatedAt: DateTime.now(),
+              createdAt: now,
+              updatedAt: now,
             ),
             Channel(
-              id: 'ch_3',
-              name: 'Channel 3',
+              id: 'ch_without',
+              name: 'Without',
               type: ChannelType.dp1,
-              publisherId: 2,
-              createdAt: DateTime.now(),
-              updatedAt: DateTime.now(),
-            ),
-            Channel(
-              id: 'ch_4',
-              name: 'Channel 4',
-              type: ChannelType.dp1,
-              createdAt: DateTime.now(),
-              updatedAt: DateTime.now(),
+              publisherId: 1,
+              createdAt: now,
+              updatedAt: now,
             ),
           ];
-
           await service.ingestChannels(channels);
 
-          final publisherTwo = await service
-              .watchChannelsByPublisherId(2, type: ChannelType.dp1)
-              .first;
-          final ungrouped = await service
-              .watchChannelsByPublisherId(null, type: ChannelType.dp1)
+          await service.ingestPlaylist(
+            Playlist(
+              id: 'pl_1',
+              name: 'P',
+              type: PlaylistType.dp1,
+              channelId: 'ch_with',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+          await service.ingestPlaylistItem(
+            PlaylistItem(
+              id: 'it_1',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'I',
+              updatedAt: now,
+            ),
+          );
+          final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+          await db.upsertPlaylistEntries(
+            [
+              PlaylistEntriesCompanion.insert(
+                playlistId: 'pl_1',
+                itemId: 'it_1',
+                position: const Value(0),
+                sortKeyUs: BigInt.zero,
+                updatedAtUs: nowUs,
+              ),
+            ],
+          );
+
+          final list = await service
+              .watchPlayableChannelsByPublisherId(1, type: ChannelType.dp1)
               .first;
 
-          expect(publisherTwo.map((channel) => channel.id), ['ch_1', 'ch_3']);
-          expect(ungrouped.map((channel) => channel.id), ['ch_4']);
+          expect(list.map((channel) => channel.id), ['ch_with']);
         },
       );
 

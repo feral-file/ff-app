@@ -68,18 +68,17 @@ class DatabaseService {
         );
   }
 
-  /// Watch channels by publisher id and optional channel type.
-  ///
-  /// When [publisherId] is null, returns channels whose publisher id is null.
-  /// When [type] is null, no channel type filter is applied.
-  Stream<List<Channel>> watchChannelsByPublisherId(
+  /// All Channels grouped sections: same visibility and reactivity as
+  /// [watchChannelsByType] (at least one playlist entry for dp1) but scoped
+  /// to one [publisherId] bucket (or unassigned when [publisherId] is null).
+  Stream<List<Channel>> watchPlayableChannelsByPublisherId(
     int? publisherId, {
-    ChannelType? type,
+    required ChannelType type,
   }) {
     return _db
-        .watchChannelsByPublisherId(
+        .watchPlayableChannelsByPublisherId(
           publisherId,
-          type: type?.index,
+          type: type.index,
         )
         .debounceTime(const Duration(milliseconds: 300))
         .map(

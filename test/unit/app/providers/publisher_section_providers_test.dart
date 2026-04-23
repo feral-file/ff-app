@@ -2,6 +2,8 @@ import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/publisher_section_providers.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/playlist.dart';
+import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/infra/database/app_database.dart';
 import 'package:app/infra/database/database_service.dart';
 import 'package:drift/drift.dart';
@@ -78,6 +80,48 @@ Future<void> _seedChannelsAndPublishers(AppDatabase db) async {
       );
 }
 
+/// One dp1 playlist with a single item/entry so [channelsByPublisherProvider]
+/// includes the channel (playable filter).
+Future<void> _addMinimalPlayablePlaylist(
+  AppDatabase db,
+  DatabaseService service, {
+  required String channelId,
+  required String playlistId,
+  required String itemId,
+}) async {
+  final now = DateTime.now();
+  await service.ingestPlaylist(
+    Playlist(
+      id: playlistId,
+      name: 'P',
+      type: PlaylistType.dp1,
+      channelId: channelId,
+      createdAt: now,
+      updatedAt: now,
+    ),
+  );
+  await service.ingestPlaylistItem(
+    PlaylistItem(
+      id: itemId,
+      kind: PlaylistItemKind.indexerToken,
+      title: 'W',
+      updatedAt: now,
+    ),
+  );
+  final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+  await db.upsertPlaylistEntries(
+    [
+      PlaylistEntriesCompanion.insert(
+        playlistId: playlistId,
+        itemId: itemId,
+        position: const Value(0),
+        sortKeyUs: BigInt.zero,
+        updatedAtUs: nowUs,
+      ),
+    ],
+  );
+}
+
 void main() {
   test('publishersProvider returns publishers in id order', () async {
     final db = AppDatabase.forTesting(NativeDatabase.memory());
@@ -125,6 +169,21 @@ void main() {
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     addTearDown(db.close);
     await _seedChannelsAndPublishers(db);
+    final service = DatabaseService(db);
+    await _addMinimalPlayablePlaylist(
+      db,
+      service,
+      channelId: 'ch_a',
+      playlistId: 'pl_a',
+      itemId: 'it_a',
+    );
+    await _addMinimalPlayablePlaylist(
+      db,
+      service,
+      channelId: 'ch_c',
+      playlistId: 'pl_c',
+      itemId: 'it_c',
+    );
 
     final container = ProviderContainer.test(
       overrides: [

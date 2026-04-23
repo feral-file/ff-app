@@ -462,31 +462,56 @@ class AppDatabase extends _$AppDatabase {
     return query.watch();
   }
 
-  /// Watch channels filtered by publisher id and optionally by type.
-  ///
-  /// When [publisherId] is null, returns channels whose publisher id is null.
-  /// When [type] is null, no channel type filter is applied.
-  Stream<List<ChannelData>> watchChannelsByPublisherId(
+  /// Watch channels for one publisher bucket with the same visibility and
+  /// invalidation as `watchChannelsByType`: for dp1 (`type` 0), only channels
+  /// that have at least one `playlist_entries` row; for localVirtual, the
+  /// same `EXISTS` / address-playlist rules apply. Emits when `channels`,
+  /// `playlists`, or `playlist_entries` change.
+  Stream<List<ChannelData>> watchPlayableChannelsByPublisherId(
     int? publisherId, {
-    int? type,
+    required int type,
   }) {
-    final query = select(channels);
-    if (publisherId == null) {
-      query.where((t) => t.publisherId.isNull());
-    } else {
-      query.where((t) => t.publisherId.equals(publisherId));
+    const addressBasedType = 1;
+    final existsClause = type == addressBasedType
+        ? '''
+        AND (
+          EXISTS (
+            SELECT 1 FROM playlists p
+            INNER JOIN playlist_entries pe ON p.id = pe.playlist_id
+            WHERE p.channel_id = c.id
+          )
+          OR EXISTS (
+            SELECT 1 FROM playlists p
+            WHERE p.channel_id = c.id AND p.type = $addressBasedType
+          )
+        )
+        '''
+        : '''
+        AND EXISTS (
+          SELECT 1 FROM playlists p
+          INNER JOIN playlist_entries pe ON p.id = pe.playlist_id
+          WHERE p.channel_id = c.id
+        )
+        ''';
+    final publisherClause = publisherId == null
+        ? 'AND c.publisher_id IS NULL'
+        : 'AND c.publisher_id = ?';
+    final variables = <Variable>[Variable.withInt(type)];
+    if (publisherId != null) {
+      variables.add(Variable.withInt(publisherId));
     }
-    if (type != null) {
-      query.where((t) => t.type.equals(type));
-    }
-    query.orderBy([
-      (t) => OrderingTerm(
-        expression: t.sortOrder,
-        nulls: NullsOrder.last,
-      ),
-      (t) => OrderingTerm.asc(t.id),
-    ]);
-    return query.watch();
+    return customSelect(
+      '''
+      SELECT c.* FROM channels c
+      WHERE c.type = ?$publisherClause$existsClause
+      ORDER BY c.sort_order ASC NULLS LAST,
+        c.id ASC
+      ''',
+      variables: variables,
+      readsFrom: {channels, playlists, playlistEntries},
+    ).watch().map(
+      (rows) => rows.map((row) => channels.map(row.data)).toList(),
+    );
   }
 
   /// Emits publisher id → display title when the publishers table changes.

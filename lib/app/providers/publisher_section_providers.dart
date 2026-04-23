@@ -38,6 +38,10 @@ final StreamProvider<Map<int, String>> publisherTitlesMapProvider =
 
 /// Channels belonging to one publisher, preserving source order.
 ///
+/// Same dp1 "playable channel" rules and playlist-entry reactivity as
+/// `DatabaseService.watchChannelsByType` so All Channels does not list empty
+/// channels and updates when entries are added or removed.
+///
 /// The family argument `publisherId` is nullable so the curated screen can
 /// also render channels without a publisher bucket.
 final StreamProviderFamily<List<Channel>, int?> channelsByPublisherProvider =
@@ -46,7 +50,7 @@ final StreamProviderFamily<List<Channel>, int?> channelsByPublisherProvider =
         return const Stream<List<Channel>>.empty();
       }
       final databaseService = ref.watch(databaseServiceProvider);
-      return databaseService.watchChannelsByPublisherId(
+      return databaseService.watchPlayableChannelsByPublisherId(
         publisherId,
         type: ChannelType.dp1,
       );
