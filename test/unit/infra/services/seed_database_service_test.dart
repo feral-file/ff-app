@@ -29,6 +29,33 @@ class _ThrowingMaterializeSeedService extends SeedDatabaseService {
   }
 }
 
+class _MarkerRetrySeedService extends SeedDatabaseService {
+  _MarkerRetrySeedService({
+    required this.dbPath,
+  });
+
+  final String dbPath;
+  int deleteCalls = 0;
+  int clearCalls = 0;
+
+  @override
+  Future<String> databasePath() async => dbPath;
+
+  @override
+  Future<void> deleteDatabaseFiles() async {
+    deleteCalls += 1;
+  }
+
+  @override
+  Future<void> clearResetCleanupInProgress() async {
+    clearCalls += 1;
+    final marker = File('$dbPath.reset_in_progress');
+    if (marker.existsSync()) {
+      await marker.delete();
+    }
+  }
+}
+
 void main() {
   group('SeedDatabaseService object URI parsing', () {
     test('builds object URI from bucket URL and object key', () {
@@ -270,7 +297,7 @@ void main() {
     );
 
     test(
-      'startup repair preserves reset marker when DB is usable but swap not '
+      'startup repair clears reset marker when DB is usable but swap not '
       'in progress (interrupted forget)',
       () async {
         final tempDir = await Directory.systemTemp.createTemp(
@@ -293,8 +320,35 @@ void main() {
         );
 
         expect(await svc.repairInterruptedSeedSwapIfNeeded(), isFalse);
-        expect(marker.existsSync(), isTrue);
-        expect(File(dbPath).existsSync(), isTrue);
+        expect(marker.existsSync(), isFalse);
+        expect(File(dbPath).existsSync(), isFalse);
+      },
+    );
+
+    test(
+      'startup repair retries delete before clearing reset marker when DB is '
+      'usable and swap is not in progress',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_seed_reset_retry_delete_',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        createSeedArtifactDatabase(file: File(dbPath));
+        final marker = File('$dbPath.reset_in_progress');
+        await marker.writeAsString('1');
+
+        final svc = _MarkerRetrySeedService(dbPath: dbPath);
+
+        expect(await svc.repairInterruptedSeedSwapIfNeeded(), isFalse);
+        expect(svc.deleteCalls, 1);
+        expect(svc.clearCalls, 1);
+        expect(marker.existsSync(), isFalse);
       },
     );
 

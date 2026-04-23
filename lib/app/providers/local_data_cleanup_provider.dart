@@ -80,34 +80,41 @@ Future<void> _closeAndDeleteDatabaseUnderReplaceLock(
   void Function() invalidateDatabaseConsumerProviders,
 ) async {
   final seedDatabaseSyncService = ref.read(seedDatabaseSyncServiceProvider);
-  await seedDatabaseSyncService.runWithReplaceLock(() async {
-    final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
-    await seedDatabaseService.markResetCleanupInProgress();
-    final readyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
-    await readyNotifier.setNotReady();
-    if (SeedDatabaseGate.isCompleted) {
+  var teardownSucceeded = false;
+  try {
+    await seedDatabaseSyncService.runWithReplaceLock(() async {
+      final seedDatabaseService = ref.read(seedDatabaseServiceProvider);
+      await seedDatabaseService.markResetCleanupInProgress();
+      final readyNotifier = ref.read(isSeedDatabaseReadyProvider.notifier);
+      await readyNotifier.setNotReady();
+      if (SeedDatabaseGate.isCompleted) {
+        await seedDatabaseService.deleteDatabaseFiles();
+        return;
+      }
+      await ref
+          .read(tokensSyncCoordinatorProvider.notifier)
+          .stopAndDrainForReset();
+      await ref
+          .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
+          .stopAndDrainForReset();
+      ref.invalidate(tokensSyncCoordinatorProvider);
+      ref.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
+      readyNotifier.seedReadyDirect = false;
+      invalidateDatabaseConsumerProviders();
+      await SchedulerBinding.instance.endOfFrame;
+      await ref.read(appDatabaseProvider).close();
       await seedDatabaseService.deleteDatabaseFiles();
-      return;
+      await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
+    });
+    teardownSucceeded = true;
+  } finally {
+    // Only clear the marker after a full, successful teardown. If reset work
+    // throws, leaving the marker in place preserves the privacy boundary and
+    // lets startup retry deletion before ever reopening the seed gate.
+    if (teardownSucceeded) {
+      await ref.read(seedDatabaseServiceProvider).clearResetCleanupInProgress();
     }
-    await ref
-        .read(tokensSyncCoordinatorProvider.notifier)
-        .stopAndDrainForReset();
-    await ref
-        .read(ensureTrackedAddressesSyncCoordinatorProvider.notifier)
-        .stopAndDrainForReset();
-    ref.invalidate(tokensSyncCoordinatorProvider);
-    ref.invalidate(ensureTrackedAddressesSyncCoordinatorProvider);
-    readyNotifier.seedReadyDirect = false;
-    invalidateDatabaseConsumerProviders();
-    await SchedulerBinding.instance.endOfFrame;
-    await ref.read(appDatabaseProvider).close();
-    await seedDatabaseService.deleteDatabaseFiles();
-    await ref.read(objectBoxLocalDataCleanerProvider).lightClear();
-  });
-  // Clear the marker only after the replace lock has fully unwound. That keeps
-  // any queued seed sync from observing a "reset finished" state while the
-  // destructive reset path is still releasing its last critical-section work.
-  await ref.read(seedDatabaseServiceProvider).clearResetCleanupInProgress();
+  }
 }
 
 /// Test hook for [_deleteSeedFilesUnderReplaceLock].
@@ -120,11 +127,10 @@ Future<void> deleteSeedFilesUnderReplaceLockForTesting(Ref ref) =>
 Future<void> closeAndDeleteDatabaseUnderReplaceLockForTesting(
   Ref ref,
   void Function() invalidateDatabaseConsumerProviders,
-) =>
-    _closeAndDeleteDatabaseUnderReplaceLock(
-      ref,
-      invalidateDatabaseConsumerProviders,
-    );
+) => _closeAndDeleteDatabaseUnderReplaceLock(
+  ref,
+  invalidateDatabaseConsumerProviders,
+);
 
 /// Wires [LocalDataCleanupService] for two flows:
 ///

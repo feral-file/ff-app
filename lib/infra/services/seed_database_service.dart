@@ -206,17 +206,22 @@ class SeedDatabaseService {
       final usable = await hasUsableLocalDatabase();
       final hasSwap = swapMarker.existsSync();
       if (!hasSwap) {
-        // Interrupted forget before file deletion: keep marker + DB until the
-        // user completes teardown (do not treat "usable" as stale).
-        // Marker with no DB/swap: wipe likely finished but [finally] never ran;
-        // clear so a fresh bootstrap is not blocked forever.
-        if (!usable) {
+        if (usable) {
+          // Interrupted forget before file deletion is still a privacy state,
+          // not a restart-safe "open the gate" state. Retry deletion on boot
+          // so we do not expose pre-wipe data just because the process died
+          // before cleanup finished.
           _log.warning(
-            'Reset cleanup marker with no usable DB and no swap residue; '
-            'clearing stale marker.',
+            'Reset cleanup marker with usable DB and no swap residue; '
+            'retrying deletion before clearing marker.',
           );
-          await clearResetCleanupInProgress();
+          await deleteDatabaseFiles();
         }
+        _log.warning(
+          'Reset cleanup marker with no swap residue; clearing marker after '
+          'cleanup retry.',
+        );
+        await clearResetCleanupInProgress();
         return false;
       }
       // Swap residue exists: replace lock should serialize reset vs replace;
