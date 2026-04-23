@@ -11,7 +11,6 @@ void main() {
     test('maxExtent returns correct height including top padding', () {
       final delegate = PublisherSectionHeaderDelegate(
         title: 'Test Publisher',
-        topPadding: LayoutConstants.space4,
       );
 
       // maxExtent = base header height (40) + top padding (16)
@@ -21,53 +20,18 @@ void main() {
     test('minExtent equals maxExtent for non-shrinking header', () {
       final delegate = PublisherSectionHeaderDelegate(
         title: 'Test Publisher',
-        topPadding: LayoutConstants.space4,
       );
 
       // Sticky headers do not shrink
       expect(delegate.minExtent, delegate.maxExtent);
     });
 
-    test('maxExtent adjusts with different top padding values', () {
-      const baseHeight = 40.0;
-
-      final delegateWithZeroPadding = PublisherSectionHeaderDelegate(
-        title: 'Test Publisher',
-        topPadding: 0,
-      );
-      expect(delegateWithZeroPadding.maxExtent, baseHeight);
-
-      final delegateWithSpace4 = PublisherSectionHeaderDelegate(
-        title: 'Test Publisher',
-        topPadding: LayoutConstants.space4,
-      );
-      expect(
-        delegateWithSpace4.maxExtent,
-        baseHeight + LayoutConstants.space4,
-      );
-    });
-
     test('shouldRebuild returns true when title changes', () {
       final oldDelegate = PublisherSectionHeaderDelegate(
         title: 'Old Publisher',
-        topPadding: LayoutConstants.space4,
       );
       final newDelegate = PublisherSectionHeaderDelegate(
         title: 'New Publisher',
-        topPadding: LayoutConstants.space4,
-      );
-
-      expect(newDelegate.shouldRebuild(oldDelegate), isTrue);
-    });
-
-    test('shouldRebuild returns true when topPadding changes', () {
-      final oldDelegate = PublisherSectionHeaderDelegate(
-        title: 'Test Publisher',
-        topPadding: 0,
-      );
-      final newDelegate = PublisherSectionHeaderDelegate(
-        title: 'Test Publisher',
-        topPadding: LayoutConstants.space4,
       );
 
       expect(newDelegate.shouldRebuild(oldDelegate), isTrue);
@@ -76,11 +40,9 @@ void main() {
     test('shouldRebuild returns false when nothing changes', () {
       final oldDelegate = PublisherSectionHeaderDelegate(
         title: 'Test Publisher',
-        topPadding: LayoutConstants.space4,
       );
       final newDelegate = PublisherSectionHeaderDelegate(
         title: 'Test Publisher',
-        topPadding: LayoutConstants.space4,
       );
 
       expect(newDelegate.shouldRebuild(oldDelegate), isFalse);
@@ -89,7 +51,6 @@ void main() {
     testWidgets('build renders title with correct styling', (tester) async {
       final delegate = PublisherSectionHeaderDelegate(
         title: 'Test Publisher',
-        topPadding: LayoutConstants.space4,
       );
 
       await tester.pumpWidget(
@@ -125,7 +86,6 @@ void main() {
     testWidgets('build renders with correct background color', (tester) async {
       final delegate = PublisherSectionHeaderDelegate(
         title: 'Test Publisher',
-        topPadding: 0,
       );
 
       await tester.pumpWidget(
@@ -156,7 +116,6 @@ void main() {
     testWidgets('build applies correct padding', (tester) async {
       final delegate = PublisherSectionHeaderDelegate(
         title: 'Test Publisher',
-        topPadding: LayoutConstants.space4,
       );
 
       await tester.pumpWidget(
@@ -191,7 +150,6 @@ void main() {
     testWidgets('build aligns text to bottom left', (tester) async {
       final delegate = PublisherSectionHeaderDelegate(
         title: 'Test Publisher',
-        topPadding: 0,
       );
 
       await tester.pumpWidget(
@@ -223,7 +181,6 @@ void main() {
         (tester) async {
       final delegate = PublisherSectionHeaderDelegate(
         title: 'Very Long Publisher Name That Exceeds Maximum Width',
-        topPadding: 0,
       );
 
       await tester.pumpWidget(

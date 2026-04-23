@@ -227,7 +227,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   List<Widget> _publisherGroupLoadingSlivers(
     BuildContext context, {
     required String title,
-    required double topPadding,
   }) {
     return [
       SliverToBoxAdapter(
@@ -236,7 +235,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
             left: ContentRhythm.horizontalRail,
             right: ContentRhythm.horizontalRail,
             bottom: LayoutConstants.space3,
-            top: topPadding,
+            top: LayoutConstants.space4,
           ),
           child: Align(
             alignment: Alignment.centerLeft,
@@ -270,7 +269,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   List<Widget> _publisherGroupErrorSlivers(
     BuildContext context, {
     required String title,
-    required double topPadding,
     required VoidCallback onRetry,
   }) {
     return [
@@ -280,7 +278,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
             left: ContentRhythm.horizontalRail,
             right: ContentRhythm.horizontalRail,
             bottom: LayoutConstants.space3,
-            top: topPadding,
+            top: LayoutConstants.space4,
           ),
           child: Align(
             alignment: Alignment.centerLeft,
@@ -365,7 +363,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     for (var i = 0; i < publishers.length; i++) {
       final publisher = publishers[i];
       final publisherChannelsAsync = perPublisherChannelAsyncs[i];
-      final topPadding = i == 0 ? 0.0 : LayoutConstants.space4;
 
       if (publisherChannelsAsync.hasValue) {
         final publisherChannels = publisherChannelsAsync.requireValue;
@@ -383,7 +380,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
                 pinned: true,
                 delegate: PublisherSectionHeaderDelegate(
                   title: publisher.title,
-                  topPadding: topPadding,
                 ),
               ),
               SliverList.builder(
@@ -415,7 +411,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
           _publisherGroupErrorSlivers(
             context,
             title: publisher.title,
-            topPadding: topPadding,
             onRetry: () {
               ref.invalidate(channelsByPublisherProvider(publisher.id));
             },
@@ -426,7 +421,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
           _publisherGroupLoadingSlivers(
             context,
             title: publisher.title,
-            topPadding: topPadding,
           ),
         );
       }
@@ -434,9 +428,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
 
     final nullPublisherChannelsAsync =
         perPublisherChannelAsyncs[publishers.length];
-    final otherTopPadding = contentSlivers.isEmpty
-        ? 0.0
-        : LayoutConstants.space4;
     if (nullPublisherChannelsAsync.hasValue) {
       final nullPublisherChannels = nullPublisherChannelsAsync.requireValue;
       if (nullPublisherChannels.isNotEmpty) {
@@ -447,7 +438,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
                 pinned: true,
                 delegate: PublisherSectionHeaderDelegate(
                   title: 'Other',
-                  topPadding: otherTopPadding,
                 ),
               ),
               SliverList.builder(
@@ -480,7 +470,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
         _publisherGroupErrorSlivers(
           context,
           title: 'Other',
-          topPadding: otherTopPadding,
           onRetry: () {
             ref.invalidate(channelsByPublisherProvider(null));
           },
@@ -491,7 +480,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
         _publisherGroupLoadingSlivers(
           context,
           title: 'Other',
-          topPadding: otherTopPadding,
         ),
       );
     }

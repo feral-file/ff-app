@@ -18,24 +18,21 @@ class PublisherSectionHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// Creates a [PublisherSectionHeaderDelegate].
   ///
   /// [title] is the publisher name displayed in the header.
-  /// [topPadding] is additional spacing above the header for visual separation
-  /// between sections (typically 0 for first section, space4 for subsequent).
   PublisherSectionHeaderDelegate({
     required this.title,
-    required this.topPadding,
   });
 
   /// Publisher title displayed in the header.
   final String title;
 
   /// Top padding for visual section separation.
-  final double topPadding;
+  static final double _topPadding = LayoutConstants.space4;
 
   @override
-  double get maxExtent => _headerHeight + topPadding;
+  double get maxExtent => _headerHeight + _topPadding;
 
   @override
-  double get minExtent => _headerHeight + topPadding;
+  double get minExtent => _headerHeight + _topPadding;
 
   /// Base header height: text line height + bottom padding.
   ///
@@ -55,7 +52,7 @@ class PublisherSectionHeaderDelegate extends SliverPersistentHeaderDelegate {
         left: ContentRhythm.horizontalRail,
         right: ContentRhythm.horizontalRail,
         bottom: LayoutConstants.space3,
-        top: topPadding,
+        top: _topPadding,
       ),
       alignment: Alignment.bottomLeft,
       child: Text(
@@ -69,7 +66,7 @@ class PublisherSectionHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(covariant PublisherSectionHeaderDelegate oldDelegate) {
-    // Rebuild if title or top padding changes (e.g., dynamic publisher data).
-    return oldDelegate.title != title || oldDelegate.topPadding != topPadding;
+    // Rebuild if title changes (e.g., dynamic publisher data).
+    return oldDelegate.title != title;
   }
 }
