@@ -224,13 +224,14 @@ class SeedDatabaseService {
         await clearResetCleanupInProgress();
         return false;
       }
-      // Swap residue exists: replace lock should serialize reset vs replace;
-      // drop the reset marker so interrupted-swap repair can run.
+      // Swap residue exists: keep the reset marker until the interrupted swap
+      // repair has actually succeeded. If recovery fails, the next boot should
+      // still treat this as an in-progress privacy-sensitive reset rather than
+      // reopening the gate on possibly pre-wipe data.
       _log.warning(
-        'Reset marker with interrupted swap residue; clearing reset marker so '
-        'startup repair can finish the swap.',
+        'Reset marker with interrupted swap residue; will clear after startup '
+        'repair succeeds.',
       );
-      await clearResetCleanupInProgress();
     }
     if (!swapMarker.existsSync()) {
       return false;
@@ -370,12 +371,14 @@ class SeedDatabaseService {
           if (ok) {
             await _cleanupTemp(swapMarker.path);
             await _deleteOrphanSeedSwapArtifactFiles(dbDir);
+            await clearResetCleanupInProgress();
             return true;
           }
           continue;
         }
         await _cleanupTemp(swapMarker.path);
         await _deleteOrphanSeedSwapArtifactFiles(dbDir);
+        await clearResetCleanupInProgress();
         return true;
       } on Object catch (e, st) {
         _log.severe(

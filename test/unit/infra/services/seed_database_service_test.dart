@@ -353,6 +353,33 @@ void main() {
     );
 
     test(
+      'startup repair keeps reset marker when swap residue cannot be repaired',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_seed_reset_failed_repair_',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        final dbPath = p.join(tempDir.path, 'dp1_library.sqlite');
+        final marker = File('$dbPath.reset_in_progress');
+        await marker.writeAsString('1');
+        await File('$dbPath.swap_in_progress').writeAsString('1');
+
+        final svc = _ThrowingMaterializeSeedService(
+          dbPath: dbPath,
+          tempDirProvider: () async => tempDir,
+        );
+
+        expect(await svc.repairInterruptedSeedSwapIfNeeded(), isFalse);
+        expect(marker.existsSync(), isTrue);
+      },
+    );
+
+    test(
       'startup repair prefers the newest artifact even when backup is newer '
       'than stage',
       () async {
