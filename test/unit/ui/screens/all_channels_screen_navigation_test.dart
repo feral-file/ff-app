@@ -20,7 +20,7 @@ class _SeedNotReadyNotifier extends SeedDatabaseReadyNotifier {
 }
 
 class _StubChannelPreviewNotifier extends ChannelPreviewNotifier {
-  _StubChannelPreviewNotifier(super.channelId, this._state);
+  _StubChannelPreviewNotifier(super._channelId, this._state);
 
   final ChannelPreviewState _state;
 

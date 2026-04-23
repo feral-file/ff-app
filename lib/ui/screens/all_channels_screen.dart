@@ -103,11 +103,16 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     // invalidating them would let RefreshIndicator finish before the visible
     // data path has actually reloaded.
     _retryCuratedChannelGroups(publishers: publishers);
-    unawaited(ref.refresh(publishersProvider.future));
+    final refreshFutures = <Future<void>>[
+      ref.refresh(publishersProvider.future),
+      ref.refresh(channelsByPublisherProvider(null).future),
+    ];
     for (final publisher in publishers ?? const <PublisherData>[]) {
-      unawaited(ref.refresh(channelsByPublisherProvider(publisher.id).future));
+      refreshFutures.add(
+        ref.refresh(channelsByPublisherProvider(publisher.id).future),
+      );
     }
-    unawaited(ref.refresh(channelsByPublisherProvider(null).future));
+    await Future.wait(refreshFutures);
   }
 
   Future<void> _onRefresh() async {
@@ -170,7 +175,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     BuildContext context,
   ) {
     final publishersAsync = ref.watch(publishersProvider);
-    if (publishersAsync.isLoading) {
+    if (publishersAsync.isLoading && !publishersAsync.hasValue) {
       return _buildLoadingStateSlivers();
     }
 
@@ -195,7 +200,8 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
       final publisherChannelsAsync = ref.watch(
         channelsByPublisherProvider(publisher.id),
       );
-      if (publisherChannelsAsync.isLoading) {
+      if (publisherChannelsAsync.isLoading &&
+          !publisherChannelsAsync.hasValue) {
         return _buildLoadingStateSlivers();
       }
       if (publisherChannelsAsync.hasError) {
@@ -256,7 +262,8 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     final nullPublisherChannelsAsync = ref.watch(
       channelsByPublisherProvider(null),
     );
-    if (nullPublisherChannelsAsync.isLoading) {
+    if (nullPublisherChannelsAsync.isLoading &&
+        !nullPublisherChannelsAsync.hasValue) {
       return _buildLoadingStateSlivers();
     }
     if (nullPublisherChannelsAsync.hasError) {
