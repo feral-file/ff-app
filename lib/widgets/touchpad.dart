@@ -37,7 +37,6 @@ class TouchPad extends ConsumerStatefulWidget {
 class _TouchPadState extends ConsumerState<TouchPad> {
   final List<Offset> _moveDragOffsets = [];
   final List<Offset> _clickAndDragOffsets = [];
-  bool _didSendDoubleTapForClickAndDrag = false;
 
   void _queueMoveDelta(Offset delta) {
     _moveDragOffsets.add(delta);
@@ -82,7 +81,6 @@ class _TouchPadState extends ConsumerState<TouchPad> {
   }
 
   void _onPointerGestureEnd(FF1WifiControl wifiControl) {
-    _didSendDoubleTapForClickAndDrag = false;
     _flushMoveDeltas(wifiControl);
     _flushClickAndDragDeltas(wifiControl);
   }
@@ -122,21 +120,10 @@ class _TouchPadState extends ConsumerState<TouchPad> {
                   '[Touchpad] onMove topicId=${widget.topicId} '
                   'delta=$delta',
                 );
-                _didSendDoubleTapForClickAndDrag = false;
                 _queueMoveDelta(delta);
                 _flushMoveDeltasIfNeeded(wifiControl);
               },
               onClickAndDrag: (delta) {
-                if (!_didSendDoubleTapForClickAndDrag) {
-                  _didSendDoubleTapForClickAndDrag = true;
-                  _log.info(
-                    '[Touchpad] onClickAndDrag arm doubleTapGesture '
-                    'topicId=${widget.topicId}',
-                  );
-                  unawaited(
-                    wifiControl.doubleTap(topicId: widget.topicId),
-                  );
-                }
                 _log.fine(
                   '[Touchpad] onClickAndDrag topicId=${widget.topicId} '
                   'delta=$delta',
@@ -149,7 +136,6 @@ class _TouchPadState extends ConsumerState<TouchPad> {
                   '[Touchpad] onLongPress topicId=${widget.topicId} '
                   '(longPressGesture)',
                 );
-                _didSendDoubleTapForClickAndDrag = false;
                 await wifiControl.longPress(topicId: widget.topicId);
               },
               child: const SizedBox.expand(),

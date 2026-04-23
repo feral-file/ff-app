@@ -6,18 +6,41 @@ Each call uses HTTP body `{ "command": "<name>", "request": { ... } }` (`FF1Wifi
 
 **Pointer position:** Do **not** send absolute coordinates (`x`, `y`) in these commands. The **player** applies pointer gestures at the **current synthetic mouse position** (it maintains cursor state). `dragGesture` updates that position with `dx` / `dy`; discrete pointer commands use the cursor as-is.
 
-**`dragGesture` vs click-and-drag (player semantics):**
+---
 
-| Client pattern | Player meaning |
-| -------------- | -------------- |
-| Only `dragGesture` (pan / move without a prior `doubleTapGesture` in this interaction) | **Mouse move only** — update cursor with `dx` / `dy`; primary button **not** pressed. |
-| `doubleTapGesture` then `dragGesture` while the user performs a press-and-drag | **Primary-button drag** (“kéo thả”) — movement with the button **held** (click-and-drag). |
+## 1. Client recognition (`FfMouseGestureDetector`)
 
-The client sends `doubleTapGesture` to **arm** drag mode; the **following** `dragGesture` stream for that touch (until release) is interpreted as dragging. A new touch that only pans should send **only** `dragGesture` so the player keeps move-only behavior.
+The mobile touchpad uses Flutter’s **`TapAndPanGestureRecognizer`** (touch only). It exposes:
+
+| Callback        | When it runs |
+| --------------- | ------------ |
+| `onTap`         | **Single tap** — first tap in a series; `onTap` is deferred until Flutter’s `kDoubleTapTimeout` so a second tap in time can become a double-tap instead of two singles. |
+| `onDoubleTap`   | **Double-click (discrete)** — user completes **two tap-ups in place** in the double-tap window (second `TapDragUp` has `consecutiveTapCount == 2`). The user **lifts the finger** after the second tap; no drag. |
+| `onMove`        | **Move-only pan** — a drag where **`onDragStart` has `consecutiveTapCount == 1`**: one finger down, then movement past pan slop (like moving the cursor without a prior “second tap hold”). |
+| `onClickAndDrag` | **Double-tap-hold then drag (click-and-drag)** — a drag where **`onDragStart` has `consecutiveTapCount == 2`**: user has already done a first tap, **second contact** is part of the same consecutive-tap series, and the user **holds and drags** (does not release for a second quick tap). Same pattern as *double-tap to drag* on many laptop trackpads. |
+| `onLongPress`   | **`LongPressGestureRecognizer`** won the arena; drag/tap for that contact is cancelled. |
+
+**Important:** `onDoubleTap` and `onClickAndDrag` are **mutually exclusive** for the same second tap: if the user drags, the second tap does **not** complete as a double-tap *up* → `onDoubleTap` is not called; the gesture is classified as `onClickAndDrag` after drag starts.
 
 ---
 
-## 1. `MouseButton`
+## 2. FF1 / relayer mapping (example: `TouchPad`)
+
+Discrete clicks map 1:1 to gesture commands. Drags are batched with `dx` / `dy` in `cursorOffsets` (2 decimal places in wire form).
+
+| UI callback / path | Relayer pattern |
+| ------------------ | --------------- |
+| `onTap` | `tapGesture` |
+| `onDoubleTap` | `doubleTapGesture` (double-click only) |
+| `onLongPress` | `longPressGesture` |
+| `onMove` | Batched `dragGesture` with `cursorOffsets` (move-only / pan) via the app’s `drag` control call. |
+| `onClickAndDrag` | Batched `dragGesture` with the same `request` shape via the app’s `clickAndDrag` control call. **This client does not** send a preceding `doubleTapGesture` in this path. |
+
+**Player effect (FF1) / note:** The relayer `command` and `request` for batches from `onMove` and `onClickAndDrag` are both **`dragGesture`**. The app only separates them in its own API for clarity and logging. How the **player** distinguishes **double-tap-hold drag** (primary button held) from **move-only** when no separate `doubleTapGesture` is sent in the `onClickAndDrag` path is **player-defined** (or may require a future `request` extension).
+
+---
+
+## 3. `MouseButton`
 
 Used in `tapGesture`, `longPressGesture`, and `doubleTapGesture` `request` objects (and may be reused for future pointer fields).
 
@@ -31,9 +54,9 @@ Wire format: **string** — one of `left`, `right`, `middle` (lowercase).
 
 ---
 
-## 2. Single gestures
+## 4. Single gestures (wire)
 
-### 2.1 `tapGesture`
+### 4.1 `tapGesture`
 
 **`request`:**
 
@@ -43,13 +66,13 @@ Wire format: **string** — one of `left`, `right`, `middle` (lowercase).
 }
 ```
 
-- `button`: **string**, `MouseButton`. **Default:** `left` if the key is omitted (`{}` is still valid and means `left`).
+- `button`: **string**, `MouseButton`. **Default:** `left` if omitted (`{}` means `left`).
 
 **Player effect:** **Single click** at the current cursor for `button`.
 
 ---
 
-### 2.2 `longPressGesture`
+### 4.2 `longPressGesture`
 
 **`request`:**
 
@@ -65,7 +88,7 @@ Wire format: **string** — one of `left`, `right`, `middle` (lowercase).
 
 ---
 
-### 2.3 `doubleTapGesture`
+### 4.3 `doubleTapGesture`
 
 **`request`:**
 
@@ -77,11 +100,11 @@ Wire format: **string** — one of `left`, `right`, `middle` (lowercase).
 
 - `button`: **string**, `MouseButton`. **Default:** `left` if omitted (`{}` means `left`).
 
-**Player effect:** **Double-click** at the current cursor for `button`, and (when followed by `dragGesture` on the same interaction) **arms** click-and-drag per the table at the top of this document.
+**Player effect:** **Double-click** at the current cursor for `button` (discrete; maps to `onDoubleTap` in **§1**).
 
 ---
 
-### 2.4 `dragGesture` (move-only or drag deltas)
+### 4.4 `dragGesture` (move-only or primary-button drag)
 
 **`request`:**
 
@@ -92,11 +115,11 @@ Wire format: **string** — one of `left`, `right`, `middle` (lowercase).
 ```
 
 - `cursorOffsets`: array of steps; each `dx` / `dy` is a **number** rounded to **2** decimal places.
-- Player interpretation: **move-only** vs **click-and-drag** is defined by the table at the top of this document.
+- **Semantic:** **move-only** vs **primary-button drag** is decided by the **player**; this client’s `TouchPad` uses separate app APIs for `onMove` vs `onClickAndDrag` but the same `dragGesture` wire, per **§2**.
 
 ---
 
-### 2.5 `sendKeyboardEvent`
+### 4.5 `sendKeyboardEvent`
 
 **`request`:**
 
@@ -109,14 +132,3 @@ Wire format: **string** — one of `left`, `right`, `middle` (lowercase).
 - `code`: **int** — character code (e.g. `String.codeUnitAt(0)` from the typed character).
 
 **Player effect:** Delivers a **keyboard** input to the focused target.
-
----
-
-## 3. Click-and-drag (`doubleTapGesture` + `dragGesture`)
-
-| Step | Command | Role |
-| ---- | ------- | ---- |
-| 3.1 | `doubleTapGesture` | **Double-click** at the current cursor **and** **arms** click-and-drag for the ongoing touch. |
-| 3.2 | `dragGesture` (one or more messages) | Same `request` shape as move-only (`cursorOffsets`); player applies deltas as **primary-button drag** when armed by **3.1**. |
-
-**Client rule:** For press-and-drag, send **3.1** then **3.2** until finger up. For pan-only, send **only** `dragGesture` (no **3.1** in that interaction) so the player uses move-only behavior.
