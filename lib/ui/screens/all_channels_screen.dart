@@ -340,6 +340,10 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
         ? _cachedPublishersForCuratedLayout!
         : (publishersAsync.value ?? const <DP1Publisher>[]);
     final showStalePublisherBanner = publishersAsync.hasError;
+    // Grouped curated layout iterates [publishers] from the DB publisher
+    // table only. Channels with a non-null publisherId that has no matching
+    // publisher row are omitted here (product accepts; see
+    // [publishersProvider] dartdoc).
     final perPublisherChannelAsyncs = <AsyncValue<List<Channel>>>[
       for (final publisher in publishers)
         ref.watch(channelsByPublisherProvider(publisher.id)),

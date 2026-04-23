@@ -9,8 +9,14 @@ import 'package:riverpod/riverpod.dart';
 ///
 /// This keeps the screen focused on rendering, while the grouping and section
 /// metadata stay in one place.
+///
+/// **Curated grouping contract:** sections are driven by publisher rows. A
+/// playable DP1 channel whose [Channel.publisherId] points at an id that has
+/// no row in the publishers table is **not shown** in All Channels (it is
+/// not folded into the "Other" bucket). Product accepts this until publisher
+/// metadata exists locally.
 final StreamProvider<List<DP1Publisher>> publishersProvider =
-    StreamProvider<List<DP1Publisher>>((ref) {
+    StreamProvider.autoDispose<List<DP1Publisher>>((ref) {
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
         // Keep the provider pending until the seed DB is ready so browse
         // screens stay in a retryable loading state instead of collapsing
@@ -43,9 +49,11 @@ final StreamProvider<Map<int, String>> publisherTitlesMapProvider =
 /// channels and updates when entries are added or removed.
 ///
 /// The family argument `publisherId` is nullable so the curated screen can
-/// also render channels without a publisher bucket.
+/// also render channels without a publisher bucket (`null` → SQL
+/// `publisher_id IS NULL`). See [publishersProvider] for the accepted rule
+/// when [publisherId] is non-null but no publisher row exists.
 final StreamProviderFamily<List<Channel>, int?> channelsByPublisherProvider =
-    StreamProvider.family<List<Channel>, int?>((ref, publisherId) {
+    StreamProvider.autoDispose.family<List<Channel>, int?>((ref, publisherId) {
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
         return const Stream<List<Channel>>.empty();
       }
