@@ -15,8 +15,16 @@ import 'package:riverpod/riverpod.dart';
 /// no row in the publishers table is **not shown** in All Channels (it is
 /// not folded into the "Other" bucket). Product accepts this until publisher
 /// metadata exists locally.
+///
+/// **Caching:** Provider kept alive after first load to prevent reload on
+/// navigation. DB watch stream ensures data stays fresh. Explicit refresh via
+/// pull-to-refresh invalidates the provider.
 final StreamProvider<List<DP1Publisher>> publishersProvider =
     StreamProvider.autoDispose<List<DP1Publisher>>((ref) {
+      // Keep provider alive to prevent reload on navigation. Data stays fresh
+      // via DB watch stream. User can explicitly refresh via pull-to-refresh.
+      ref.keepAlive();
+
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
         // Keep the provider pending until the seed DB is ready so browse
         // screens stay in a retryable loading state instead of collapsing
@@ -52,8 +60,14 @@ final StreamProvider<Map<int, String>> publisherTitlesMapProvider =
 /// also render channels without a publisher bucket (`null` → SQL
 /// `publisher_id IS NULL`). See [publishersProvider] for the accepted rule
 /// when [publisherId] is non-null but no publisher row exists.
+///
+/// **Caching:** Each family instance kept alive to prevent reload on
+/// navigation. DB watch stream ensures data stays fresh.
 final StreamProviderFamily<List<Channel>, int?> channelsByPublisherProvider =
     StreamProvider.autoDispose.family<List<Channel>, int?>((ref, publisherId) {
+      // Keep provider alive to prevent reload on navigation.
+      ref.keepAlive();
+
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
         return const Stream<List<Channel>>.empty();
       }

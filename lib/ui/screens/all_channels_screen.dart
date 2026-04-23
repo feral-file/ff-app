@@ -2,17 +2,18 @@ import 'dart:async';
 
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/publisher_section_providers.dart';
-import 'package:app/app/utils/await_parallel_futures.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/routing/routes.dart';
+import 'package:app/app/utils/await_parallel_futures.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_publisher.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/ui/screens/all_channels/publisher_section_header_delegate.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:app/widgets/error_view.dart';
@@ -185,10 +186,10 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   }
 
   static const _sectionErrorMessage =
-      "We couldn’t load this section. Check your connection, then Retry.";
+      'We couldn’t load this section. Check your connection, then Retry.';
 
   static const _publisherListStaleMessage =
-      "We couldn’t refresh the publisher list. Showing the last loaded "
+      'We couldn’t refresh the publisher list. Showing the last loaded '
       'sections.';
 
   List<Widget> _publisherListStaleBannerSlivers(BuildContext context) {
@@ -226,7 +227,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   List<Widget> _publisherGroupLoadingSlivers(
     BuildContext context, {
     required String title,
-    required double topPadding,
   }) {
     return [
       SliverToBoxAdapter(
@@ -235,7 +235,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
             left: ContentRhythm.horizontalRail,
             right: ContentRhythm.horizontalRail,
             bottom: LayoutConstants.space3,
-            top: topPadding,
+            top: LayoutConstants.space4,
           ),
           child: Align(
             alignment: Alignment.centerLeft,
@@ -269,7 +269,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   List<Widget> _publisherGroupErrorSlivers(
     BuildContext context, {
     required String title,
-    required double topPadding,
     required VoidCallback onRetry,
   }) {
     return [
@@ -279,7 +278,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
             left: ContentRhythm.horizontalRail,
             right: ContentRhythm.horizontalRail,
             bottom: LayoutConstants.space3,
-            top: topPadding,
+            top: LayoutConstants.space4,
           ),
           child: Align(
             alignment: Alignment.centerLeft,
@@ -312,8 +311,9 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   ) {
     final publishersAsync = ref.watch(publishersProvider);
     if (publishersAsync.hasValue) {
-      _cachedPublishersForCuratedLayout =
-          List<DP1Publisher>.from(publishersAsync.value ?? const []);
+      _cachedPublishersForCuratedLayout = List<DP1Publisher>.from(
+        publishersAsync.value ?? const [],
+      );
     }
 
     if (publishersAsync.isLoading && !publishersAsync.hasValue) {
@@ -363,58 +363,54 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
     for (var i = 0; i < publishers.length; i++) {
       final publisher = publishers[i];
       final publisherChannelsAsync = perPublisherChannelAsyncs[i];
-      final topPadding = i == 0 ? 0.0 : LayoutConstants.space4;
 
       if (publisherChannelsAsync.hasValue) {
         final publisherChannels = publisherChannelsAsync.requireValue;
         if (publisherChannels.isEmpty) {
           continue;
         }
-        contentSlivers.addAll([
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: ContentRhythm.horizontalRail,
-                right: ContentRhythm.horizontalRail,
-                bottom: LayoutConstants.space3,
-                top: topPadding,
-              ),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  publisher.title,
-                  style: AppTypography.h3(context).white,
+        // SliverMainAxisGroup groups header + content together so only the
+        // header of the currently visible section sticks. When scrolling to
+        // the next section, its header pushes the previous one off-screen,
+        // preventing header stacking (unlike bare pinned headers).
+        contentSlivers.add(
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: PublisherSectionHeaderDelegate(
+                  title: publisher.title,
                 ),
               ),
-            ),
-          ),
-          SliverList.builder(
-            itemCount: publisherChannels.length,
-            itemBuilder: (context, index) {
-              final channel = publisherChannels[index];
-              return ChannelListRow(
-                channelData: ChannelRowData(
-                  channelId: channel.id,
-                  channelTitle: channel.name,
-                  channelSummary: channel.description,
-                  works: const [],
-                ),
-                onItemTap: (item) {
-                  unawaited(
-                    context
-                        .pushWithPreviousTitle('${Routes.works}/${item.id}'),
+              SliverList.builder(
+                itemCount: publisherChannels.length,
+                itemBuilder: (context, index) {
+                  final channel = publisherChannels[index];
+                  return ChannelListRow(
+                    channelData: ChannelRowData(
+                      channelId: channel.id,
+                      channelTitle: channel.name,
+                      channelSummary: channel.description,
+                      works: const [],
+                    ),
+                    onItemTap: (item) {
+                      unawaited(
+                        context.pushWithPreviousTitle(
+                          '${Routes.works}/${item.id}',
+                        ),
+                      );
+                    },
                   );
                 },
-              );
-            },
+              ),
+            ],
           ),
-        ]);
+        );
       } else if (publisherChannelsAsync.hasError) {
         contentSlivers.addAll(
           _publisherGroupErrorSlivers(
             context,
             title: publisher.title,
-            topPadding: topPadding,
             onRetry: () {
               ref.invalidate(channelsByPublisherProvider(publisher.id));
             },
@@ -425,7 +421,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
           _publisherGroupLoadingSlivers(
             context,
             title: publisher.title,
-            topPadding: topPadding,
           ),
         );
       }
@@ -433,58 +428,48 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
 
     final nullPublisherChannelsAsync =
         perPublisherChannelAsyncs[publishers.length];
-    final otherTopPadding = contentSlivers.isEmpty
-        ? 0.0
-        : LayoutConstants.space4;
     if (nullPublisherChannelsAsync.hasValue) {
       final nullPublisherChannels = nullPublisherChannelsAsync.requireValue;
       if (nullPublisherChannels.isNotEmpty) {
-        contentSlivers.addAll([
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: ContentRhythm.horizontalRail,
-                right: ContentRhythm.horizontalRail,
-                bottom: LayoutConstants.space3,
-                top: otherTopPadding,
-              ),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Other',
-                  style: AppTypography.h3(context).white,
+        contentSlivers.add(
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: PublisherSectionHeaderDelegate(
+                  title: 'Other',
                 ),
               ),
-            ),
-          ),
-          SliverList.builder(
-            itemCount: nullPublisherChannels.length,
-            itemBuilder: (context, index) {
-              final channel = nullPublisherChannels[index];
-              return ChannelListRow(
-                channelData: ChannelRowData(
-                  channelId: channel.id,
-                  channelTitle: channel.name,
-                  channelSummary: channel.description,
-                  works: const [],
-                ),
-                onItemTap: (item) {
-                  unawaited(
-                    context
-                        .pushWithPreviousTitle('${Routes.works}/${item.id}'),
+              SliverList.builder(
+                itemCount: nullPublisherChannels.length,
+                itemBuilder: (context, index) {
+                  final channel = nullPublisherChannels[index];
+                  return ChannelListRow(
+                    channelData: ChannelRowData(
+                      channelId: channel.id,
+                      channelTitle: channel.name,
+                      channelSummary: channel.description,
+                      works: const [],
+                    ),
+                    onItemTap: (item) {
+                      unawaited(
+                        context.pushWithPreviousTitle(
+                          '${Routes.works}/${item.id}',
+                        ),
+                      );
+                    },
                   );
                 },
-              );
-            },
+              ),
+            ],
           ),
-        ]);
+        );
       }
     } else if (nullPublisherChannelsAsync.hasError) {
       contentSlivers.addAll(
         _publisherGroupErrorSlivers(
           context,
           title: 'Other',
-          topPadding: otherTopPadding,
           onRetry: () {
             ref.invalidate(channelsByPublisherProvider(null));
           },
@@ -495,7 +480,6 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
         _publisherGroupLoadingSlivers(
           context,
           title: 'Other',
-          topPadding: otherTopPadding,
         ),
       );
     }
