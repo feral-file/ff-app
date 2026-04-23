@@ -300,10 +300,9 @@ class FF1DeviceStatus {
 
     final rawDisplayUrl = json['displayURL'] as String?;
     final trimmedDisplay = rawDisplayUrl?.trim();
-    final displayUrl =
-        trimmedDisplay != null && trimmedDisplay.isNotEmpty
-            ? trimmedDisplay
-            : null;
+    final displayUrl = trimmedDisplay != null && trimmedDisplay.isNotEmpty
+        ? trimmedDisplay
+        : null;
 
     return FF1DeviceStatus(
       connectedWifi: json['connectedWifi'] as String?,
@@ -650,6 +649,34 @@ class FF1WifiTapRequest extends FF1WifiCommandRequest {
 
   @override
   String get command => 'tapGesture';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
+/// Double-tap gesture command.
+///
+/// Command name must match old repo: doubleTapGesture.
+class FF1WifiDoubleTapRequest extends FF1WifiCommandRequest {
+  /// Creates a double-tap request.
+  const FF1WifiDoubleTapRequest();
+
+  @override
+  String get command => 'doubleTapGesture';
+
+  @override
+  Map<String, dynamic> get params => {};
+}
+
+/// Long-press gesture command.
+///
+/// Command name must match old repo: longPressGesture.
+class FF1WifiLongPressRequest extends FF1WifiCommandRequest {
+  /// Creates a long-press request.
+  const FF1WifiLongPressRequest();
+
+  @override
+  String get command => 'longPressGesture';
 
   @override
   Map<String, dynamic> get params => {};

@@ -251,6 +251,100 @@ void main() {
     });
   });
 
+  group('FF1WifiControl gesture commands', () {
+    test('tap sends tapGesture command', () async {
+      final restClient = _RecordingRestClient();
+      final control = FF1WifiControl(
+        transport: _FakeWifiTransport(),
+        restClient: restClient,
+      );
+      addTearDown(control.dispose);
+
+      await control.tap(topicId: 'topic_1');
+
+      expect(restClient.lastTopicId, 'topic_1');
+      expect(restClient.lastCommand, 'tapGesture');
+      expect(restClient.lastParams, <String, dynamic>{});
+    });
+
+    test('doubleTap sends doubleTapGesture command', () async {
+      final restClient = _RecordingRestClient();
+      final control = FF1WifiControl(
+        transport: _FakeWifiTransport(),
+        restClient: restClient,
+      );
+      addTearDown(control.dispose);
+
+      await control.doubleTap(topicId: 'topic_1');
+
+      expect(restClient.lastTopicId, 'topic_1');
+      expect(restClient.lastCommand, 'doubleTapGesture');
+      expect(restClient.lastParams, <String, dynamic>{});
+    });
+
+    test('longPress sends longPressGesture command', () async {
+      final restClient = _RecordingRestClient();
+      final control = FF1WifiControl(
+        transport: _FakeWifiTransport(),
+        restClient: restClient,
+      );
+      addTearDown(control.dispose);
+
+      await control.longPress(topicId: 'topic_1');
+
+      expect(restClient.lastTopicId, 'topic_1');
+      expect(restClient.lastCommand, 'longPressGesture');
+      expect(restClient.lastParams, <String, dynamic>{});
+    });
+
+    test('drag sends dragGesture command with cursorOffsets', () async {
+      final restClient = _RecordingRestClient();
+      final control = FF1WifiControl(
+        transport: _FakeWifiTransport(),
+        restClient: restClient,
+      );
+      addTearDown(control.dispose);
+
+      await control.drag(
+        topicId: 'topic_1',
+        cursorOffsets: const [Offset(1.234, -0.456)],
+      );
+
+      expect(restClient.lastTopicId, 'topic_1');
+      expect(restClient.lastCommand, 'dragGesture');
+      expect(restClient.lastParams, <String, dynamic>{
+        'cursorOffsets': <Map<String, double>>[
+          <String, double>{'dx': 1.23, 'dy': -0.46},
+        ],
+      });
+    });
+
+    test(
+      'clickAndDrag sends dragGesture command with cursorOffsets',
+      () async {
+        final restClient = _RecordingRestClient();
+        final control = FF1WifiControl(
+          transport: _FakeWifiTransport(),
+          restClient: restClient,
+        );
+        addTearDown(control.dispose);
+
+        await control.clickAndDrag(
+          topicId: 'topic_1',
+          cursorOffsets: const [Offset(2, -1)],
+        );
+
+        expect(restClient.lastTopicId, 'topic_1');
+        expect(restClient.lastCommand, 'dragGesture');
+        expect(restClient.lastParams, <String, dynamic>{
+          'cursorOffsets': <Map<String, double>>[
+            <String, double>{'dx': 2.0, 'dy': -1.0},
+          ],
+        });
+      },
+    );
+  });
+
   group('FF1WifiControl.dispose', () {
     test(
       'await subscription cancel before closing subjects (delayed transport '
@@ -928,6 +1022,7 @@ class _SuppressedDispatchTransport implements FF1WifiTransport {
 class _RecordingRestClient {
   String? lastTopicId;
   String? lastCommand;
+  Map<String, dynamic>? lastParams;
   Duration? lastTimeout;
 
   Future<Map<String, dynamic>> sendCommand({
@@ -938,6 +1033,7 @@ class _RecordingRestClient {
   }) async {
     lastTopicId = topicId;
     lastCommand = command;
+    lastParams = params;
     lastTimeout = timeout;
 
     return <String, dynamic>{

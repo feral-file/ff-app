@@ -34,6 +34,8 @@ import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
+enum _DragInteraction { moveOnly, clickAndDrag }
+
 // ============================================================================
 // WiFi Control (orchestration)
 // ============================================================================
@@ -1182,17 +1184,92 @@ transport reconnected — waiting for device connection notification''',
     }
   }
 
-  /// Send drag gesture (cursor offsets) to the device.
+  /// Send double-tap gesture to the device.
+  Future<FF1CommandResponse> doubleTap({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+    try {
+      _log.info('Sending doubleTap to device');
+      const request = FF1WifiDoubleTapRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send doubleTap command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send long-press gesture to the device.
+  Future<FF1CommandResponse> longPress({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+    try {
+      _log.info('Sending longPress to device');
+      const request = FF1WifiLongPressRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send longPress command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send move-only drag (`dragGesture`) — cursor moves without primary button
+  /// held (pan on the touchpad).
   Future<FF1CommandResponse> drag({
     required String topicId,
     required List<Offset> cursorOffsets,
+  }) async {
+    return _sendDragGesture(
+      topicId: topicId,
+      cursorOffsets: cursorOffsets,
+      interaction: _DragInteraction.moveOnly,
+    );
+  }
+
+  /// Send click-and-drag deltas (`dragGesture`) after the player has been
+  /// armed with [doubleTap] for this interaction (primary button held).
+  Future<FF1CommandResponse> clickAndDrag({
+    required String topicId,
+    required List<Offset> cursorOffsets,
+  }) async {
+    return _sendDragGesture(
+      topicId: topicId,
+      cursorOffsets: cursorOffsets,
+      interaction: _DragInteraction.clickAndDrag,
+    );
+  }
+
+  Future<FF1CommandResponse> _sendDragGesture({
+    required String topicId,
+    required List<Offset> cursorOffsets,
+    required _DragInteraction interaction,
   }) async {
     if (_restClient == null) {
       throw StateError('REST client not available');
     }
     if (cursorOffsets.isEmpty) return FF1CommandResponse();
+    final label = interaction == _DragInteraction.moveOnly
+        ? 'move-only'
+        : 'click-and-drag';
     try {
-      _log.info('Sending drag(${cursorOffsets.length} offsets) to device');
+      _log.info(
+        'Sending dragGesture ($label, ${cursorOffsets.length} offsets) to device',
+      );
       final request = FF1WifiDragRequest(
         cursorOffsets: cursorOffsets
             .map((o) => <String, double>{'dx': o.dx, 'dy': o.dy})
@@ -1207,7 +1284,7 @@ transport reconnected — waiting for device connection notification''',
               as Map<String, dynamic>;
       return FF1CommandResponse.fromJson(response);
     } catch (e) {
-      _log.severe('Failed to send drag command: $e');
+      _log.severe('Failed to send dragGesture ($label): $e');
       rethrow;
     }
   }
