@@ -5,9 +5,11 @@ import 'package:app/domain/models/channel.dart';
 import 'package:app/domain/models/dp1/dp1_publisher.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
+import 'package:app/widgets/channels/channel_list_row.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 class _SeedReadyNotifier extends SeedDatabaseReadyNotifier {
   @override
@@ -129,6 +131,87 @@ void main() {
     expect(find.text('Channel One'), findsOneWidget);
     expect(find.text('Channel Two'), findsOneWidget);
   });
+
+  testWidgets(
+    'tapping a channel work in grouped curated view navigates to work detail',
+    (tester) async {
+      const workId = 'ch_one_work';
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
+            publishersProvider.overrideWithValue(
+              AsyncData([
+                DP1Publisher(
+                  id: 10,
+                  title: 'Publisher Ten',
+                  createdAt: DateTime.fromMicrosecondsSinceEpoch(1),
+                  updatedAt: DateTime.fromMicrosecondsSinceEpoch(1),
+                ),
+              ]),
+            ),
+            channelsByPublisherProvider(10).overrideWithValue(
+              const AsyncData([channelOne]),
+            ),
+            channelsByPublisherProvider(null).overrideWithValue(
+              const AsyncData(<Channel>[]),
+            ),
+            channelPreviewProvider('ch_one').overrideWith(
+              () => _StubChannelPreviewNotifier(
+                'ch_one',
+                ChannelPreviewState.loaded(
+                  works: const [workOne],
+                  hasMore: false,
+                ),
+              ),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: GoRouter(
+              initialLocation: '/channels/all?filter=curated',
+              routes: [
+                GoRoute(
+                  path: '/channels/all',
+                  builder: (context, state) => const AllChannelsScreen(
+                    filter: AllChannelsFilter.curated,
+                  ),
+                ),
+                GoRoute(
+                  path: '/channels/:channelId',
+                  builder: (context, state) => const Scaffold(
+                    body: Text('Channel detail'),
+                  ),
+                ),
+                GoRoute(
+                  path: '/works/:workId',
+                  builder: (context, state) => Scaffold(
+                    body: Text(
+                      'Work detail ${state.pathParameters['workId']}',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      final row = tester.widget<ChannelListRow>(
+        find.byType(ChannelListRow).first,
+      );
+      row.onItemTap?.call(workOne);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.text('Work detail $workId'), findsOneWidget);
+      expect(find.textContaining('Channel detail'), findsNothing);
+    },
+  );
 
   testWidgets('skips empty publisher buckets', (tester) async {
     await tester.pumpWidget(

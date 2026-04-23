@@ -22,6 +22,11 @@ final StreamProvider<List<DP1Publisher>> publishersProvider =
     });
 
 /// Publisher id → display title for section headers.
+///
+/// When the seed DB is not ready, emits [Stream.value] with an empty map (the
+/// async state completes with `hasValue`). For layout gating, pair with
+/// [allChannelsByIdMapProvider], which does **not** emit until ready—so
+/// combined lookup readiness stays false during bootstrap.
 final StreamProvider<Map<int, String>> publisherTitlesMapProvider =
     StreamProvider.autoDispose<Map<int, String>>((ref) {
   if (!ref.watch(isSeedDatabaseReadyProvider)) {
@@ -48,6 +53,12 @@ final StreamProviderFamily<List<Channel>, int?> channelsByPublisherProvider =
     });
 
 /// All channels keyed by id (for resolving publisher-based sections).
+///
+/// When the seed DB is not ready, returns a non-emitting stream so the async
+/// value stays **loading** (contrast: [publisherTitlesMapProvider] completes
+/// with an empty map). All Playlists uses this with
+/// [isSeedDatabaseReadyProvider] so grouped layout does not run on a false
+/// empty channel map.
 ///
 /// Auto-dispose so DB watch is not kept alive after leaving browse screens.
 final StreamProvider<Map<String, Channel>> allChannelsByIdMapProvider =
