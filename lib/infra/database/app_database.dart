@@ -503,7 +503,7 @@ class AppDatabase extends _$AppDatabase {
     return customSelect(
       '''
       SELECT c.* FROM channels c
-      WHERE c.type = ?$publisherClause$existsClause
+      WHERE c.type = ? $publisherClause$existsClause
       ORDER BY c.sort_order ASC NULLS LAST,
         c.id ASC
       ''',

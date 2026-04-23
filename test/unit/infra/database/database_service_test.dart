@@ -108,6 +108,102 @@ void main() {
       );
 
       test(
+        'AppDatabase.watchPlayableChannelsByPublisherId customSelect runs for '
+        'keyed and null publisher buckets (SQL parameter boundaries)',
+        () async {
+          final now = DateTime.now();
+          await service.ingestChannels([
+            Channel(
+              id: 'ch_keyed',
+              name: 'Keyed',
+              type: ChannelType.dp1,
+              publisherId: 2,
+              createdAt: now,
+              updatedAt: now,
+            ),
+            Channel(
+              id: 'ch_unassigned',
+              name: 'Unassigned',
+              type: ChannelType.dp1,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          ]);
+          await service.ingestPlaylist(
+            Playlist(
+              id: 'pl_keyed',
+              name: 'K',
+              type: PlaylistType.dp1,
+              channelId: 'ch_keyed',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+          await service.ingestPlaylist(
+            Playlist(
+              id: 'pl_unassigned',
+              name: 'U',
+              type: PlaylistType.dp1,
+              channelId: 'ch_unassigned',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+          await service.ingestPlaylistItem(
+            PlaylistItem(
+              id: 'it_keyed',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'A',
+              updatedAt: now,
+            ),
+          );
+          await service.ingestPlaylistItem(
+            PlaylistItem(
+              id: 'it_unassigned',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'B',
+              updatedAt: now,
+            ),
+          );
+          final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+          await db.upsertPlaylistEntries(
+            [
+              PlaylistEntriesCompanion.insert(
+                playlistId: 'pl_keyed',
+                itemId: 'it_keyed',
+                position: const Value(0),
+                sortKeyUs: BigInt.zero,
+                updatedAtUs: nowUs,
+              ),
+              PlaylistEntriesCompanion.insert(
+                playlistId: 'pl_unassigned',
+                itemId: 'it_unassigned',
+                position: const Value(0),
+                sortKeyUs: BigInt.zero,
+                updatedAtUs: nowUs,
+              ),
+            ],
+          );
+
+          final keyedRows = await db
+              .watchPlayableChannelsByPublisherId(
+                2,
+                type: ChannelType.dp1.index,
+              )
+              .first;
+          expect(keyedRows.map((r) => r.id), ['ch_keyed']);
+
+          final nullRows = await db
+              .watchPlayableChannelsByPublisherId(
+                null,
+                type: ChannelType.dp1.index,
+              )
+              .first;
+          expect(nullRows.map((r) => r.id), ['ch_unassigned']);
+        },
+      );
+
+      test(
         'watchPlayableChannelsByPublisherId re-emits empty when last '
         'playlist entry is removed',
         () async {

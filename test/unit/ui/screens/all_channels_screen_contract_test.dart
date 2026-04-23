@@ -16,6 +16,11 @@ class _SeedReadyNotifier extends SeedDatabaseReadyNotifier {
   bool build() => true;
 }
 
+class _SeedNotReadyNotifier extends SeedDatabaseReadyNotifier {
+  @override
+  bool build() => false;
+}
+
 class _StubChannelPreviewNotifier extends ChannelPreviewNotifier {
   _StubChannelPreviewNotifier(super._channelId, this._state);
 
@@ -67,6 +72,35 @@ const curatedPlayableChannel = Channel(
 );
 
 void main() {
+  testWidgets(
+    'curated: pull-to-refresh completes when seed database is not ready',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSeedDatabaseReadyProvider.overrideWith(_SeedNotReadyNotifier.new),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: AllChannelsScreen(filter: AllChannelsFilter.curated),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final refreshFinder = find.byType(RefreshIndicator);
+      expect(refreshFinder, findsOneWidget);
+      // Overscroll triggers onRefresh; must complete (no await hang).
+      await tester.fling(
+        find.byType(CustomScrollView),
+        const Offset(0, 300),
+        3000,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+    },
+  );
+
   testWidgets(
     'AllChannelsFilter.personal uses flat list from channelsProvider '
     '(not grouped by publisher)',

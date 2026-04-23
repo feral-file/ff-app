@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app/app/providers/channels_provider.dart';
 import 'package:app/app/providers/publisher_section_providers.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/previous_page_title_scope.dart';
 import 'package:app/app/routing/routes.dart';
@@ -99,6 +100,12 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   Future<void> _refreshCuratedChannelGroups({
     List<DP1Publisher>? publishers,
   }) async {
+    // [publishersProvider] / [channelsByPublisherProvider] return non-emitting
+    // streams when the seed file is not ready, so their StreamProvider futures
+    // do not complete; avoid awaiting that path during bootstrap.
+    if (!ref.read(isSeedDatabaseReadyProvider)) {
+      return;
+    }
     // Refresh must wait for the grouped stream sources to emit again; simply
     // invalidating them would let RefreshIndicator finish before the visible
     // data path has actually reloaded.
