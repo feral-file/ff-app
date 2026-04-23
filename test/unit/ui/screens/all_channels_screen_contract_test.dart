@@ -1,0 +1,209 @@
+import 'dart:async';
+
+import 'package:app/app/providers/channel_preview_provider.dart';
+import 'package:app/app/providers/channels_provider.dart';
+import 'package:app/app/providers/publisher_section_providers.dart';
+import 'package:app/app/providers/seed_database_ready_provider.dart';
+import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/dp1/dp1_publisher.dart';
+import 'package:app/ui/screens/all_channels_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+class _SeedReadyNotifier extends SeedDatabaseReadyNotifier {
+  @override
+  bool build() => true;
+}
+
+class _StubChannelPreviewNotifier extends ChannelPreviewNotifier {
+  _StubChannelPreviewNotifier(super._channelId, this._state);
+
+  final ChannelPreviewState _state;
+
+  @override
+  ChannelPreviewState build() => _state;
+
+  @override
+  Future<void> load({int? limit, int? offset, bool showLoading = true}) async {}
+}
+
+/// Locks the non-grouped [AllChannelsFilter.personal] path: [channelsProvider]
+/// for [ChannelType.localVirtual] drives a flat sliver list (no publisher
+/// sections).
+class _FixedPersonalChannelsNotifier extends ChannelsNotifier {
+  _FixedPersonalChannelsNotifier() : super(ChannelType.localVirtual);
+
+  @override
+  ChannelsState build() {
+    // Do not run [ChannelsNotifier] DB watch — widget test is UI-path only.
+    return ChannelsState.loaded(
+      channels: const [personalLocalChannel],
+      hasMore: false,
+      cursor: null,
+      total: 1,
+    );
+  }
+
+  @override
+  Future<void> loadChannels({int? size, bool showLoading = true}) async {}
+
+  @override
+  Future<void> refresh() async {}
+}
+
+const personalLocalChannel = Channel(
+  id: 'lv_flat_test',
+  name: 'Test Personal Channel',
+  description: 'Flat path',
+  type: ChannelType.localVirtual,
+);
+
+const curatedPlayableChannel = Channel(
+  id: 'ch_playable',
+  name: 'Playable Channel',
+  type: ChannelType.dp1,
+  publisherId: 10,
+);
+
+void main() {
+  testWidgets(
+    'AllChannelsFilter.personal uses flat list from channelsProvider '
+    '(not grouped by publisher)',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            channelsProvider(
+              ChannelType.localVirtual,
+            ).overrideWith(_FixedPersonalChannelsNotifier.new),
+            // Avoid loading previews from the real DB; empty list is a stable
+            // loaded state for the row.
+            channelPreviewProvider('lv_flat_test').overrideWith(
+              () => _StubChannelPreviewNotifier(
+                'lv_flat_test',
+                ChannelPreviewState.loaded(works: const [], hasMore: false),
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: AllChannelsScreen(filter: AllChannelsFilter.personal),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.text('Personal'), findsOneWidget);
+      expect(
+        find.textContaining(
+          'Public Channels gathered from across the ecosystem',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Test Personal Channel'), findsOneWidget);
+      // Grouped-curated-only titles must not appear on the personal path.
+      expect(find.text('Publisher Ten'), findsNothing);
+      expect(find.text('Other'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'curated grouped: when every publisher bucket has no playable '
+    'channels, no channel title appears',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
+            publishersProvider.overrideWithValue(
+              AsyncData([
+                DP1Publisher(
+                  id: 10,
+                  title: 'Has No Playable',
+                  createdAt: DateTime.fromMicrosecondsSinceEpoch(1),
+                  updatedAt: DateTime.fromMicrosecondsSinceEpoch(1),
+                ),
+              ]),
+            ),
+            channelsByPublisherProvider(10).overrideWithValue(
+              const AsyncData(<Channel>[]),
+            ),
+            channelsByPublisherProvider(null).overrideWithValue(
+              const AsyncData(<Channel>[]),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: AllChannelsScreen(filter: AllChannelsFilter.curated),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      expect(find.text('No channels found'), findsOneWidget);
+      expect(find.text('Has No Playable'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'curated grouped: when publisher stream loses last channel, list '
+    'updates to empty',
+    (tester) async {
+      final playStream = StreamController<List<Channel>>.broadcast();
+      addTearDown(playStream.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
+            publishersProvider.overrideWithValue(
+              AsyncData([
+                DP1Publisher(
+                  id: 10,
+                  title: 'Solo Publisher',
+                  createdAt: DateTime.fromMicrosecondsSinceEpoch(1),
+                  updatedAt: DateTime.fromMicrosecondsSinceEpoch(1),
+                ),
+              ]),
+            ),
+            channelsByPublisherProvider(10).overrideWith(
+              (ref) => playStream.stream,
+            ),
+            channelsByPublisherProvider(null).overrideWithValue(
+              const AsyncData(<Channel>[]),
+            ),
+            channelPreviewProvider('ch_playable').overrideWith(
+              () => _StubChannelPreviewNotifier(
+                'ch_playable',
+                ChannelPreviewState.loaded(works: const [], hasMore: false),
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: AllChannelsScreen(filter: AllChannelsFilter.curated),
+            ),
+          ),
+        ),
+      );
+      playStream.add([curatedPlayableChannel]);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      expect(find.text('Solo Publisher'), findsOneWidget);
+      expect(find.text('Playable Channel'), findsOneWidget);
+
+      playStream.add(const <Channel>[]);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      expect(find.text('Playable Channel'), findsNothing);
+      expect(find.text('No channels found'), findsOneWidget);
+    },
+  );
+}

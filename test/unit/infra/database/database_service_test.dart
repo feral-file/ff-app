@@ -107,6 +107,70 @@ void main() {
         },
       );
 
+      test(
+        'watchPlayableChannelsByPublisherId re-emits empty when last '
+        'playlist entry is removed',
+        () async {
+          final now = DateTime.now();
+          await service.ingestChannels([
+            Channel(
+              id: 'ch_react',
+              name: 'React',
+              type: ChannelType.dp1,
+              publisherId: 1,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          ]);
+          await service.ingestPlaylist(
+            Playlist(
+              id: 'pl_react',
+              name: 'P',
+              type: PlaylistType.dp1,
+              channelId: 'ch_react',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+          await service.ingestPlaylistItem(
+            PlaylistItem(
+              id: 'it_react',
+              kind: PlaylistItemKind.indexerToken,
+              title: 'I',
+              updatedAt: now,
+            ),
+          );
+          final nowUs = BigInt.from(DateTime.now().microsecondsSinceEpoch);
+          await db.upsertPlaylistEntries(
+            [
+              PlaylistEntriesCompanion.insert(
+                playlistId: 'pl_react',
+                itemId: 'it_react',
+                position: const Value(0),
+                sortKeyUs: BigInt.zero,
+                updatedAtUs: nowUs,
+              ),
+            ],
+          );
+
+          final emissions = <List<Channel>>[];
+          final subscription = service
+              .watchPlayableChannelsByPublisherId(1, type: ChannelType.dp1)
+              .listen(emissions.add);
+          addTearDown(subscription.cancel);
+
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          expect(emissions.last.map((channel) => channel.id), ['ch_react']);
+
+          await service.removePlaylistEntry(
+            playlistId: 'pl_react',
+            itemId: 'it_react',
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          expect(emissions.last, isEmpty);
+        },
+      );
+
       test('ingestChannels batch inserts channels', () async {
         final channels = [
           Channel(
