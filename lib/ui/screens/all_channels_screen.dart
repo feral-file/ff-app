@@ -219,6 +219,9 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
       }
       final publisherChannels =
           publisherChannelsAsync.value ?? const <Channel>[];
+      if (publisherChannels.isEmpty) {
+        continue;
+      }
       contentSlivers.addAll([
         SliverToBoxAdapter(
           child: Padding(

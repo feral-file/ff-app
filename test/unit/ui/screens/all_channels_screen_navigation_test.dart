@@ -130,6 +130,62 @@ void main() {
     expect(find.text('Channel Two'), findsOneWidget);
   });
 
+  testWidgets('skips empty publisher buckets', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
+          publishersProvider.overrideWithValue(
+            AsyncData([
+              DP1Publisher(
+                id: 10,
+                title: 'Empty Publisher',
+                createdAt: DateTime.fromMicrosecondsSinceEpoch(1),
+                updatedAt: DateTime.fromMicrosecondsSinceEpoch(1),
+              ),
+              DP1Publisher(
+                id: 20,
+                title: 'Filled Publisher',
+                createdAt: DateTime.fromMicrosecondsSinceEpoch(2),
+                updatedAt: DateTime.fromMicrosecondsSinceEpoch(2),
+              ),
+            ]),
+          ),
+          channelsByPublisherProvider(10).overrideWithValue(
+            const AsyncData(<Channel>[]),
+          ),
+          channelsByPublisherProvider(20).overrideWithValue(
+            const AsyncData([channelTwo]),
+          ),
+          channelsByPublisherProvider(null).overrideWithValue(
+            const AsyncData(<Channel>[]),
+          ),
+          channelPreviewProvider('ch_two').overrideWith(
+            () => _StubChannelPreviewNotifier(
+              'ch_two',
+              ChannelPreviewState.loaded(
+                works: const [workTwo],
+                hasMore: false,
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: AllChannelsScreen(filter: AllChannelsFilter.curated),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(find.text('Empty Publisher'), findsNothing);
+    expect(find.text('Filled Publisher'), findsOneWidget);
+    expect(find.text('Channel Two'), findsOneWidget);
+  });
+
   testWidgets('groups curated channels without a publisher under Other', (
     tester,
   ) async {
