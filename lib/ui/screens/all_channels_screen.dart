@@ -9,7 +9,7 @@ import 'package:app/design/app_typography.dart';
 import 'package:app/design/content_rhythm.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/models/channel.dart';
-import 'package:app/infra/database/app_database.dart';
+import 'package:app/domain/models/dp1/dp1_publisher.dart';
 import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/appbars/main_app_bar.dart';
 import 'package:app/widgets/channels/channel_list_row.dart';
@@ -64,13 +64,13 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   final ScrollController _scrollController = ScrollController();
   bool get _shouldGroup => widget.filter == AllChannelsFilter.curated;
 
-  void _retryCuratedChannelGroups({List<PublisherData>? publishers}) {
+  void _retryCuratedChannelGroups({List<DP1Publisher>? publishers}) {
     // Curated channels now render entirely from grouped stream providers.
     // Retry must rebuild the stream sources themselves; otherwise the screen
     // only retries the removed notifier path and the visible error state never
     // gets a new subscription.
     ref.invalidate(publishersProvider);
-    for (final publisher in publishers ?? const <PublisherData>[]) {
+    for (final publisher in publishers ?? const <DP1Publisher>[]) {
       ref.invalidate(channelsByPublisherProvider(publisher.id));
     }
     ref.invalidate(channelsByPublisherProvider(null));
@@ -97,7 +97,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
   }
 
   Future<void> _refreshCuratedChannelGroups({
-    List<PublisherData>? publishers,
+    List<DP1Publisher>? publishers,
   }) async {
     // Refresh must wait for the grouped stream sources to emit again; simply
     // invalidating them would let RefreshIndicator finish before the visible
@@ -107,7 +107,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
       ref.refresh(publishersProvider.future),
       ref.refresh(channelsByPublisherProvider(null).future),
     ];
-    for (final publisher in publishers ?? const <PublisherData>[]) {
+    for (final publisher in publishers ?? const <DP1Publisher>[]) {
       refreshFutures.add(
         ref.refresh(channelsByPublisherProvider(publisher.id).future),
       );
@@ -192,7 +192,7 @@ class _AllChannelsScreenState extends ConsumerState<AllChannelsScreen> {
       ];
     }
 
-    final publishers = publishersAsync.value ?? const <PublisherData>[];
+    final publishers = publishersAsync.value ?? const <DP1Publisher>[];
     final contentSlivers = <Widget>[];
 
     for (var i = 0; i < publishers.length; i++) {

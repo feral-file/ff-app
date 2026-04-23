@@ -7,6 +7,7 @@ import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_signature.dart';
 import 'package:app/domain/models/dp1/dp1_provenance.dart';
+import 'package:app/domain/models/dp1/dp1_publisher.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -35,6 +36,20 @@ class DatabaseConverters {
       createdAt: DateTime.fromMicrosecondsSinceEpoch(data.createdAtUs.toInt()),
       updatedAt: DateTime.fromMicrosecondsSinceEpoch(data.updatedAtUs.toInt()),
       sortOrder: data.sortOrder,
+    );
+  }
+
+  /// Convert [PublisherData] row to [DP1Publisher] for app/UI consumers.
+  static DP1Publisher publisherDataToDp1Publisher(PublisherData data) {
+    return DP1Publisher(
+      id: data.id,
+      title: data.title,
+      createdAt: DateTime.fromMicrosecondsSinceEpoch(
+        data.createdAtUs.toInt(),
+      ),
+      updatedAt: DateTime.fromMicrosecondsSinceEpoch(
+        data.updatedAtUs.toInt(),
+      ),
     );
   }
 
@@ -92,7 +107,7 @@ class DatabaseConverters {
     if (data.defaultsJson != null && data.defaultsJson!.isNotEmpty) {
       try {
         defaults = jsonDecode(data.defaultsJson!) as Map<String, dynamic>;
-      } catch (_) {
+      } on Object catch (_) {
         // Ignore parsing errors
       }
     }
@@ -104,7 +119,7 @@ class DatabaseConverters {
         dynamicQueries = (jsonDecode(data.dynamicQueriesJson!) as List)
             .map((e) => DynamicQuery.fromJson(e as Map<String, dynamic>))
             .toList();
-      } catch (_) {
+      } on Object catch (_) {
         // Ignore parsing errors
       }
     }
@@ -133,7 +148,8 @@ class DatabaseConverters {
   /// Convert PlaylistData to Playlist (light projection for list UI).
   ///
   /// Skips JSON deserialization of signatures, defaults, and dynamicQueries.
-  /// Use for list queries where only basic fields (id, name, itemCount) are needed.
+  /// Use for list queries where only basic fields (id, name, itemCount) are
+  /// needed.
   static Playlist playlistDataToDomainPreview(PlaylistData data) {
     return Playlist(
       id: data.id,
@@ -196,15 +212,16 @@ class DatabaseConverters {
 
   /// Convert ItemData to PlaylistItem domain model (full deserialization).
   ///
-  /// Performs JSON parsing for provenance, reproduction, override, display, and artists.
-  /// Use [itemDataToDomainPreview] for list UI to skip expensive JSON work.
+  /// Performs JSON parsing for provenance, reproduction, override, display, and
+  /// artists. Use [itemDataToDomainPreview] for list UI to skip expensive JSON
+  /// work.
   static PlaylistItem itemDataToDomain(ItemData data) {
     DP1Provenance? provenance;
     if (data.provenanceJson != null && data.provenanceJson!.isNotEmpty) {
       try {
         final map = jsonDecode(data.provenanceJson!) as Map<String, dynamic>;
         provenance = DP1Provenance.fromJson(map);
-      } catch (_) {
+      } on Object catch (_) {
         // Ignore parsing errors
       }
     }
@@ -214,7 +231,7 @@ class DatabaseConverters {
       try {
         final map = jsonDecode(data.reproJson!) as Map<String, dynamic>;
         reproduction = ReproBlock.fromJson(map);
-      } catch (_) {
+      } on Object catch (_) {
         // Ignore parsing errors
       }
     }
@@ -223,7 +240,7 @@ class DatabaseConverters {
     if (data.overrideJson != null && data.overrideJson!.isNotEmpty) {
       try {
         override = jsonDecode(data.overrideJson!) as Map<String, dynamic>;
-      } catch (_) {
+      } on Object catch (_) {
         // Ignore parsing errors
       }
     }
@@ -233,7 +250,7 @@ class DatabaseConverters {
       try {
         final map = jsonDecode(data.displayJson!) as Map<String, dynamic>;
         display = DP1PlaylistDisplay.fromJson(map);
-      } catch (_) {
+      } on Object catch (_) {
         // Ignore parsing errors
       }
     }
@@ -245,7 +262,7 @@ class DatabaseConverters {
         artists = list
             .map((e) => DP1Artist.fromJson(e as Map<String, dynamic>))
             .toList();
-      } catch (_) {
+      } on Object catch (_) {
         // Ignore parsing errors
       }
     }
@@ -272,9 +289,10 @@ class DatabaseConverters {
 
   /// Convert ItemData to PlaylistItem (light projection for list UI).
   ///
-  /// Skips JSON deserialization of provenance, reproduction, override, and display.
-  /// Keeps artists and basic fields for display, avoiding heavy JSON parsing.
-  /// Use for list queries where only title, thumbnail, and basic metadata are needed.
+  /// Skips JSON deserialization of provenance, reproduction, override, and
+  /// display. Keeps artists and basic fields for display, avoiding heavy JSON
+  /// parsing. Use for list queries where only title, thumbnail, and basic
+  /// metadata are needed.
   static PlaylistItem itemDataToDomainPreview(ItemData data) {
     List<DP1Artist>? artists;
     if (data.listArtistJson != null && data.listArtistJson!.isNotEmpty) {
@@ -283,7 +301,7 @@ class DatabaseConverters {
         artists = list
             .map((e) => DP1Artist.fromJson(e as Map<String, dynamic>))
             .toList();
-      } catch (_) {
+      } on Object catch (_) {
         // Ignore parsing errors
       }
     }

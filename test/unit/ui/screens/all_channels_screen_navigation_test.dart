@@ -2,8 +2,8 @@ import 'package:app/app/providers/channel_preview_provider.dart';
 import 'package:app/app/providers/publisher_section_providers.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/channel.dart';
+import 'package:app/domain/models/dp1/dp1_publisher.dart';
 import 'package:app/domain/models/playlist_item.dart';
-import 'package:app/infra/database/app_database.dart';
 import 'package:app/ui/screens/all_channels_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -71,17 +71,17 @@ void main() {
           isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
           publishersProvider.overrideWithValue(
             AsyncData([
-              PublisherData(
+              DP1Publisher(
                 id: 10,
                 title: 'Publisher Ten',
-                createdAtUs: BigInt.from(1),
-                updatedAtUs: BigInt.from(1),
+                createdAt: DateTime.fromMicrosecondsSinceEpoch(1),
+                updatedAt: DateTime.fromMicrosecondsSinceEpoch(1),
               ),
-              PublisherData(
+              DP1Publisher(
                 id: 20,
                 title: 'Publisher Twenty',
-                createdAtUs: BigInt.from(2),
-                updatedAtUs: BigInt.from(2),
+                createdAt: DateTime.fromMicrosecondsSinceEpoch(2),
+                updatedAt: DateTime.fromMicrosecondsSinceEpoch(2),
               ),
             ]),
           ),
@@ -202,11 +202,11 @@ void main() {
           isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
           publishersProvider.overrideWithValue(
             AsyncData([
-              PublisherData(
+              DP1Publisher(
                 id: 10,
                 title: 'Publisher Ten',
-                createdAtUs: BigInt.from(1),
-                updatedAtUs: BigInt.from(1),
+                createdAt: DateTime.fromMicrosecondsSinceEpoch(1),
+                updatedAt: DateTime.fromMicrosecondsSinceEpoch(1),
               ),
             ]),
           ),
@@ -243,11 +243,11 @@ void main() {
           isSeedDatabaseReadyProvider.overrideWith(_SeedReadyNotifier.new),
           publishersProvider.overrideWithValue(
             AsyncData([
-              PublisherData(
+              DP1Publisher(
                 id: 10,
                 title: 'Publisher Ten',
-                createdAtUs: BigInt.from(1),
-                updatedAtUs: BigInt.from(1),
+                createdAt: DateTime.fromMicrosecondsSinceEpoch(1),
+                updatedAt: DateTime.fromMicrosecondsSinceEpoch(1),
               ),
             ]),
           ),

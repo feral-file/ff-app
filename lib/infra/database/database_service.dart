@@ -7,6 +7,7 @@ import 'package:app/domain/models/dp1/dp1_channel.dart';
 import 'package:app/domain/models/dp1/dp1_playlist.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_item.dart';
 import 'package:app/domain/models/dp1/dp1_playlist_signature.dart';
+import 'package:app/domain/models/dp1/dp1_publisher.dart';
 import 'package:app/domain/models/indexer/asset_token.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
@@ -106,14 +107,21 @@ class DatabaseService {
     );
   }
 
-  /// Watch publisher rows as domain-free data from the publishers table.
+  /// Watch publisher rows as [DP1Publisher] from the local publishers table.
   ///
   /// Used by grouped browse screens that need the stable publisher list
   /// directly from the database instead of reconstructing it from channels.
-  Stream<List<PublisherData>> watchPublishers() {
-    return _db.watchPublishers().debounceTime(
-      const Duration(milliseconds: 300),
-    );
+  Stream<List<DP1Publisher>> watchPublishers() {
+    return _db
+        .watchPublishers()
+        .debounceTime(
+          const Duration(milliseconds: 300),
+        )
+        .map(
+          (rows) => rows
+              .map(DatabaseConverters.publisherDataToDp1Publisher)
+              .toList(),
+        );
   }
 
   /// Watch playlists as domain models.

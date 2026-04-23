@@ -1,21 +1,21 @@
 import 'package:app/app/providers/database_service_provider.dart';
 import 'package:app/app/providers/seed_database_ready_provider.dart';
 import 'package:app/domain/models/channel.dart';
-import 'package:app/infra/database/app_database.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:riverpod/src/providers/stream_provider.dart';
+import 'package:app/domain/models/dp1/dp1_publisher.dart';
+import 'package:riverpod/misc.dart';
+import 'package:riverpod/riverpod.dart';
 
 /// Publisher sections for the all-channels view.
 ///
 /// This keeps the screen focused on rendering, while the grouping and section
 /// metadata stay in one place.
-final StreamProvider<List<PublisherData>> publishersProvider =
-    StreamProvider.autoDispose<List<PublisherData>>((ref) {
+final StreamProvider<List<DP1Publisher>> publishersProvider =
+    StreamProvider.autoDispose<List<DP1Publisher>>((ref) {
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
         // Keep the provider pending until the seed DB is ready so browse
         // screens stay in a retryable loading state instead of collapsing
         // into a false empty result during first-install bootstrap.
-        return const Stream<List<PublisherData>>.empty();
+        return const Stream<List<DP1Publisher>>.empty();
       }
       final databaseService = ref.watch(databaseServiceProvider);
       return databaseService.watchPublishers();
@@ -33,8 +33,8 @@ final StreamProvider<Map<int, String>> publisherTitlesMapProvider =
 
 /// Channels belonging to one publisher, preserving source order.
 ///
-/// [publisherId] is nullable so the curated screen can also render channels
-/// without a publisher bucket.
+/// The family argument `publisherId` is nullable so the curated screen can
+/// also render channels without a publisher bucket.
 final StreamProviderFamily<List<Channel>, int?> channelsByPublisherProvider =
     StreamProvider.autoDispose.family<List<Channel>, int?>((ref, publisherId) {
       if (!ref.watch(isSeedDatabaseReadyProvider)) {
