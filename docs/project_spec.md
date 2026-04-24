@@ -229,9 +229,9 @@
 
 - Purpose: detailed work view with back-layer media preview and metadata/provenance sections.
 - Entry points: `/works/:workId` from tabs/search/details.
-- Key actions: play on FF1, open external links, rebuild metadata for work, expand info panel.
+- Key actions: play on FF1, open external links, rebuild metadata for work, expand info panel; when this work is the one currently playing on FF1 (same condition as back-layer controls vs preview), the artwork overflow menu can send the relayer `refreshArtwork` command so FF1 reloads the displayed work (mitigates stale Chromium cache after metadata or asset updates).
 - Important data: playlist item core data plus optional indexer token enrichment.
-- Related modules: `workDetailStateProvider`, `IndexerService`, DB converters, FF display button.
+- Related modules: `workDetailStateProvider`, `IndexerService`, DB converters, FF display button, `FF1WifiControl.refreshArtwork`.
 
 ### Screen group: Onboarding (Introduce, OnboardingAddAddress, OnboardingSetupFf1)
 

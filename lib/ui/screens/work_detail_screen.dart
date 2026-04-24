@@ -3,8 +3,11 @@
 import 'dart:async';
 
 import 'package:after_layout/after_layout.dart';
+import 'package:app/app/now_displaying/dp1_now_displaying_if_playing_this_work.dart';
 import 'package:app/app/providers/app_overlay_provider.dart';
+import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
+import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/providers/now_displaying_visibility_provider.dart';
 import 'package:app/app/providers/services_provider.dart';
 import 'package:app/app/providers/works_provider.dart';
@@ -452,6 +455,7 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
                   },
                 ),
                 IconButton(
+                  key: const ValueKey('work_detail_overflow_menu'),
                   padding: EdgeInsets.zero,
                   onPressed: () => _showArtworkOptionsDialog(
                     context,
@@ -487,6 +491,16 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
   ) async {
     if (!context.mounted) return;
     _focusNode.unfocus();
+
+    // Same closure pattern as Rebuild metadata: values used in onTap are taken
+    // from the snapshot available when the menu is built (rebuild closes over
+    // `item`; here we close over topicId from the same now-displaying read).
+    final refreshFf1Playing = dp1NowDisplayingIfPlayingThisWork(
+      nowDisplaying: ref.read(nowDisplayingProvider),
+      workId: item.id,
+    );
+    final refreshFf1TopicId =
+        refreshFf1Playing?.connectedDevice.topicId ?? '';
 
     // Match old artwork_detail_page: same order, same icon sizes (pixel-exact).
     final options = <OptionItem>[
@@ -630,6 +644,32 @@ class _WorkDetailScreenState extends ConsumerState<WorkDetailScreen>
           }
         },
       ),
+      if (refreshFf1Playing != null && refreshFf1TopicId.isNotEmpty)
+        OptionItem(
+          title: 'Refresh artwork on FF1',
+          icon: SvgPicture.asset(
+            'assets/images/ff1.svg',
+            width: 20,
+            height: 20,
+          ),
+          onTap: () async {
+            Navigator.of(context).pop();
+            try {
+              await ref
+                  .read(ff1WifiControlProvider)
+                  .refreshArtwork(topicId: refreshFf1TopicId);
+            } catch (e) {
+              if (context.mounted) {
+                await UIHelper.showInfoDialog(
+                  context,
+                  'Refresh failed',
+                  'Could not send the refresh request. Try again.',
+                  closeButton: 'OK',
+                );
+              }
+            }
+          },
+        ),
     ];
 
     unawaited(UIHelper.showCenterMenu(context, options: options));

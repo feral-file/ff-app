@@ -180,6 +180,7 @@
   - collapsed now-playing row: shuffle and repeat are shown only when the live `player_status` includes the corresponding capability—shuffle when the `shuffle` key is present, repeat when `loopMode` parses to a known value (`none`, `playlist`, `one`); the two gates are independent so a future unknown `loopMode` string does not drop the whole status parse and does not suppress shuffle
   - when the playing list has only one work (length from `player_status.items` when present, else the visible now-displaying item window), shuffle and repeat controls are not shown
   - optional: user opens Interact screen for keyboard/touchpad control
+  - from Work Detail, when the open work matches current FF1 playback, the overflow menu can send the relayer `refreshArtwork` command so the device reloads the current display URL (same visibility rule as the back-layer playing controls)
 - success state: active playback visible and controllable from app
 - failure/edge states:
   - no paired device -> bar hidden (invisible, no guidance shown)
@@ -242,8 +243,8 @@
 
 - role in the flow: work-level media preview and metadata/provenance view
 - route / entry point: `/works/:workId`
-- important actions: cast single work, open external market links, rebuild work metadata
-- dependencies: `workDetailStateProvider`, indexer/DB enrichment, canvas client
+- important actions: cast single work, open external market links, rebuild work metadata; refresh the work on FF1 via overflow (`refreshArtwork` over the relayer) when this work is currently playing on the device
+- dependencies: `workDetailStateProvider`, indexer/DB enrichment, canvas client, `nowDisplayingProvider`, `FF1WifiControl`
 - notes / caveats: token enrichment is optional; UI supports item-only fallback
 
 ## Screen: FF1DeviceScanPage

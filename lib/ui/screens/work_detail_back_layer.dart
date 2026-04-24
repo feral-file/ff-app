@@ -6,13 +6,13 @@
 
 import 'dart:math';
 
+import 'package:app/app/now_displaying/dp1_now_displaying_if_playing_this_work.dart';
 import 'package:app/app/providers/me_section_playlists_provider.dart';
 import 'package:app/app/providers/now_displaying_provider.dart';
 import 'package:app/app/routing/navigation_extensions.dart';
 import 'package:app/app/routing/routes.dart';
 import 'package:app/design/layout_constants.dart';
 import 'package:app/domain/extensions/playlist_item_ext.dart';
-import 'package:app/domain/models/now_displaying_object.dart';
 import 'package:app/domain/models/playlist.dart';
 import 'package:app/domain/models/playlist_item.dart';
 import 'package:app/domain/utils/work_detail_favorite_playlist_row.dart';
@@ -63,17 +63,10 @@ class WorkDetailBackLayer extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final nowDisplaying = ref.watch(nowDisplayingProvider);
 
-    // Determine if this specific work is currently playing on FF1.
-    DP1NowDisplayingObject? playingObject;
-    if (nowDisplaying is NowDisplayingSuccess) {
-      final obj = nowDisplaying.object;
-      if (obj is DP1NowDisplayingObject &&
-          !obj.isSleeping &&
-          obj.currentItem.id == item.id) {
-        playingObject = obj;
-      }
-    }
-
+    final playingObject = dp1NowDisplayingIfPlayingThisWork(
+      nowDisplaying: nowDisplaying,
+      workId: item.id,
+    );
     final isPlayingOnFF1 = playingObject != null;
 
     final isWorkFavoriteAsync = ref.watch(
