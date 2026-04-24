@@ -50,10 +50,11 @@ void main() {
       for (var i = 0; i < 6; i++) {
         detector.onMove?.call(const Offset(4, 0));
       }
+      await tester.pump();
+      expect(control.dragCalls, 1);
       await moveGesture.up();
       await tester.pump();
 
-      expect(control.dragCalls, 1);
       expect(control.dragOffsets.single.length, 6);
       expect(control.clickAndDragCalls, 0);
 
@@ -62,10 +63,11 @@ void main() {
       for (var i = 0; i < 6; i++) {
         detector.onClickAndDrag?.call(const Offset(3, 1));
       }
+      await tester.pump();
+      expect(control.clickAndDragCalls, 1);
       await clickAndDragGesture.up();
       await tester.pump();
 
-      expect(control.clickAndDragCalls, 1);
       expect(control.clickAndDragOffsets.single.length, 6);
     });
 

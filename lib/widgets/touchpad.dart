@@ -65,6 +65,16 @@ class _TouchPadState extends ConsumerState<TouchPad> {
     }
   }
 
+  void _flushMoveDeltasIfNeeded(FF1WifiControl wifiControl) {
+    if (_moveDragOffsets.length <= 5) return;
+    _flushMoveDeltas(wifiControl);
+  }
+
+  void _flushClickAndDragDeltasIfNeeded(FF1WifiControl wifiControl) {
+    if (_clickAndDragOffsets.length <= 5) return;
+    _flushClickAndDragDeltas(wifiControl);
+  }
+
   void _flushZoomStepsIfNeeded(FF1WifiControl wifiControl) {
     if (_zoomScaleSteps.length <= 5) return;
     _flushZoomSteps(wifiControl);
@@ -164,6 +174,7 @@ class _TouchPadState extends ConsumerState<TouchPad> {
                   return;
                 }
                 _queueMoveDelta(delta);
+                _flushMoveDeltasIfNeeded(wifiControl);
               },
               onClickAndDrag: (delta) {
                 if (!_isGestureActive) {
@@ -173,6 +184,7 @@ class _TouchPadState extends ConsumerState<TouchPad> {
                   return;
                 }
                 _queueClickAndDragDelta(delta);
+                _flushClickAndDragDeltasIfNeeded(wifiControl);
               },
               onLongPress: () async {
                 await wifiControl.longPress(topicId: widget.topicId);
