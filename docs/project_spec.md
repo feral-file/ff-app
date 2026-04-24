@@ -135,7 +135,9 @@
   - consume live player/device status via Wi-Fi control streams
   - now-displaying bar shows current item and allows navigation to work detail
   - collapsed bar can send shuffle and repeat (`setShuffle`, `setLoop`) when the device reports the corresponding fields in `player_status`; repeat uses a three-state loop contract aligned with FF1 wire values `none` | `playlist` | `one` (repeat off, repeat all, repeat one)
-  - optional: use keyboard/touchpad interactions for remote control
+  - optional: use keyboard/touchpad interactions for remote control; the touchpad
+    supports tap, double tap, long-press, move-only drag, click-and-drag, and
+    pinch zoom gestures for FF1 Wi-Fi control
 - Outcome: art is playing on FF1 with live status visible in app overlays/screens.
 - Important edge cases:
   - no active device: now-displaying bar shows pair/connect guidance (invisible when not pairing)
@@ -174,7 +176,7 @@
   - Who: FF1 owners.
   - Touches: `ff1_providers`, `connect_ff1_providers`, `connect_wifi_provider`, ObjectBox device service.
 - FF1 playback and remote control
-  - What: cast DP-1 payloads, live device/player status, now-displaying + keyboard/touch controls; FF1 loop modes (`none` / `playlist` / `one`) and shuffle via Wi-Fi control; collapsed now-playing shuffle/repeat gated independently and hidden for single-work playback.
+  - What: cast DP-1 payloads, live device/player status, now-displaying + keyboard/touch controls; the touchpad maps tap, double tap, long-press, move-only drag, click-and-drag, and pinch zoom into FF1 Wi-Fi commands; FF1 loop modes (`none` / `playlist` / `one`) and shuffle via Wi-Fi control; collapsed now-playing shuffle/repeat gated independently and hidden for single-work playback.
   - Who: paired-device users.
   - Touches: canvas client, `ff1_wifi_*` providers/control/transport, now-displaying providers/UI, `LoopMode` / `FF1PlayerStatus` in domain + `ff1_wifi_protocol`.
 - Offline-first seed database lifecycle
@@ -256,9 +258,9 @@
 
 - Purpose: monitor current playback and send interaction commands.
 - Entry points: global now-displaying bar (navigates to work detail), `/keyboard-control`.
-- Key actions: view current work/device state; when firmware reports shuffle/loop fields and the playlist has more than one work, toggle shuffle and cycle repeat off → repeat all → repeat one (`setShuffle`, `setLoop` with wire `none` | `playlist` | `one`); open interact mode; send keyboard/touchpad commands.
+- Key actions: view current work/device state; when firmware reports shuffle/loop fields and the playlist has more than one work, toggle shuffle and cycle repeat off → repeat all → repeat one (`setShuffle`, `setLoop` with wire `none` | `playlist` | `one`); open interact mode; send keyboard input and touchpad gestures. The touchpad routes single tap, double tap, long press, move-only drag, click-and-drag, and pinch zoom into the FF1 Wi-Fi command surface, and batches deltas before flushing to reduce command chatter.
 - Important data: active device, connection state, current item list/index, `player_status.shuffle` / parsed `loopMode`, and enough metadata to keep playback UI usable when enrichment is incomplete.
-- Related modules: `now_displaying_provider`, `ff1_wifi_providers` (`ff1SupportsShuffleProvider`, `ff1SupportsLoopProvider`), `loop_button.dart`, `shuffle_button.dart`, `collapsed_now_playing_bar.dart`, touchpad/keyboard events.
+- Related modules: `now_displaying_provider`, `ff1_wifi_providers` (`ff1SupportsShuffleProvider`, `ff1SupportsLoopProvider`), `loop_button.dart`, `shuffle_button.dart`, `collapsed_now_playing_bar.dart`, touchpad/keyboard events, `TouchPad`, `FfMouseGestureDetector`.
 
 ### Screen group: Settings / Release Notes / Document Viewer
 

@@ -35,11 +35,12 @@ class _TouchPadState extends ConsumerState<TouchPad> {
   final List<Offset> _moveDragOffsets = [];
   final List<Offset> _clickAndDragOffsets = [];
   final List<double> _zoomScaleSteps = [];
+  final Set<int> _activePointers = <int>{};
   // Guards against drag updates arriving after the pointer has already ended.
   // Gesture recognizers can finish slightly out of order relative to pointer
-  // up/cancel delivery, so the touchpad treats pointer state as the source of
-  // truth before buffering deltas.
-  bool _isPointerDown = false;
+  // up/cancel delivery, so the touchpad treats the active pointer set as the
+  // source of truth before buffering deltas.
+  bool get _isGestureActive => _activePointers.isNotEmpty;
 
   void _queueMoveDelta(Offset delta) {
     _moveDragOffsets.add(delta);
@@ -53,8 +54,8 @@ class _TouchPadState extends ConsumerState<TouchPad> {
     _zoomScaleSteps.add(ratio);
   }
 
-  void _beginPointerGesture() {
-    _isPointerDown = true;
+  void _beginPointerGesture(PointerEvent event) {
+    _activePointers.add(event.pointer);
   }
 
   void _flushMoveDeltasIfNeeded(FF1WifiControl wifiControl) {
@@ -108,8 +109,11 @@ class _TouchPadState extends ConsumerState<TouchPad> {
     );
   }
 
-  void _onPointerGestureEnd(FF1WifiControl wifiControl) {
-    _isPointerDown = false;
+  void _endPointerGesture(FF1WifiControl wifiControl, PointerEvent event) {
+    _activePointers.remove(event.pointer);
+    if (_isGestureActive) {
+      return;
+    }
     _flushMoveDeltas(wifiControl);
     _flushClickAndDragDeltas(wifiControl);
     _flushZoomSteps(wifiControl);
@@ -129,13 +133,13 @@ class _TouchPadState extends ConsumerState<TouchPad> {
           Listener(
             behavior: HitTestBehavior.opaque,
             onPointerDown: (event) {
-              _beginPointerGesture();
+              _beginPointerGesture(event);
             },
             onPointerUp: (event) {
-              _onPointerGestureEnd(wifiControl);
+              _endPointerGesture(wifiControl, event);
             },
             onPointerCancel: (event) {
-              _onPointerGestureEnd(wifiControl);
+              _endPointerGesture(wifiControl, event);
             },
             child: FfMouseGestureDetector(
               onTap: () async {
@@ -145,14 +149,14 @@ class _TouchPadState extends ConsumerState<TouchPad> {
                 await wifiControl.doubleTap(topicId: widget.topicId);
               },
               onMove: (delta) {
-                if (!_isPointerDown) {
+                if (!_isGestureActive) {
                   return;
                 }
                 _queueMoveDelta(delta);
                 _flushMoveDeltasIfNeeded(wifiControl);
               },
               onClickAndDrag: (delta) {
-                if (!_isPointerDown) {
+                if (!_isGestureActive) {
                   return;
                 }
                 _queueClickAndDragDelta(delta);
