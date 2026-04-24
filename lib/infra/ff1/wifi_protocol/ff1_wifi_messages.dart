@@ -711,8 +711,8 @@ class FF1WifiDragRequest extends FF1WifiCommandRequest {
 }
 
 /// Click-and-drag gesture (double-tap-hold then drag) — same `request` shape
-/// as [FF1WifiDragRequest], distinct [command] so the player can treat primary-
-/// button drag as separate from move-only [dragGesture].
+/// as [FF1WifiDragRequest], distinct wire `command` so the player can treat
+/// primary-button drag as separate from move-only `dragGesture`.
 class FF1WifiClickAndDragRequest extends FF1WifiCommandRequest {
   /// Creates a click-and-drag request.
   const FF1WifiClickAndDragRequest({required this.cursorOffsets});
@@ -736,7 +736,32 @@ class FF1WifiClickAndDragRequest extends FF1WifiCommandRequest {
   };
 }
 
+/// Pinch-zoom steps — multiplicative scale ratios for one or more updates.
+///
+/// Command name: `zoomGesture`. Each [scaleSteps] entry is a per-update ratio
+/// (`> 1` zoom in, `< 1` zoom out), matching touchpad pinch `onZoomGesture`
+/// ratios from the UI layer.
+class FF1WifiZoomGestureRequest extends FF1WifiCommandRequest {
+  /// Creates a zoom gesture request.
+  ///
+  /// [scaleSteps] — batch of multiplicative scale steps from the touchpad.
+  const FF1WifiZoomGestureRequest({required this.scaleSteps});
+
+  /// Multiplicative scale steps (rounded for wire).
+  final List<double> scaleSteps;
+
+  @override
+  String get command => 'zoomGesture';
+
+  @override
+  Map<String, dynamic> get params => {
+    'scaleSteps': scaleSteps.map(_roundScaleStep).toList(),
+  };
+}
+
 double _round2(double v) => double.parse(v.toStringAsFixed(2));
+
+double _roundScaleStep(double v) => double.parse(v.toStringAsFixed(4));
 
 /// Set device volume command.
 ///

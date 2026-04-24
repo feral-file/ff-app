@@ -5,20 +5,96 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('FfMouseGestureDetector', () {
-    testWidgets('single tap triggers onTap (deferred until double-tap timeout)', (tester) async {
-      var tapCount = 0;
-      var doubleTapCount = 0;
+    testWidgets(
+      'single tap triggers onTap (deferred until double-tap timeout)',
+      (tester) async {
+        var tapCount = 0;
+        var doubleTapCount = 0;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 200,
+                height: 200,
+                child: FfMouseGestureDetector(
+                  onTap: () => tapCount++,
+                  onDoubleTap: () => doubleTapCount++,
+                  child: const ColoredBox(color: Colors.black),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final center = tester.getCenter(find.byType(FfMouseGestureDetector));
+        await tester.tapAt(center);
+        await tester.pump();
+
+        // Not yet fired: still waiting to see if this becomes a double tap.
+        expect(tapCount, 0);
+        expect(doubleTapCount, 0);
+
+        await tester.pump(kDoubleTapTimeout);
+        expect(tapCount, 1);
+        expect(doubleTapCount, 0);
+      },
+    );
+
+    testWidgets(
+      'double tap triggers onDoubleTap and does not trigger onTap',
+      (tester) async {
+        var tapCount = 0;
+        var doubleTapCount = 0;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 200,
+                height: 200,
+                child: FfMouseGestureDetector(
+                  onTap: () => tapCount++,
+                  onDoubleTap: () => doubleTapCount++,
+                  child: const ColoredBox(color: Colors.black),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final center = tester.getCenter(find.byType(FfMouseGestureDetector));
+        await tester.tapAt(center);
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.tapAt(center);
+        await tester.pump();
+
+        expect(doubleTapCount, 1);
+
+        // If a single tap was pending, cancel it when double tap wins.
+        await tester.pump(kDoubleTapTimeout);
+        expect(tapCount, 0);
+      },
+    );
+
+    testWidgets('does not forward zero drag delta to onMove', (tester) async {
+      final moveDeltas = <Offset>[];
 
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: SizedBox(
-              width: 200,
-              height: 200,
-              child: FfMouseGestureDetector(
-                onTap: () => tapCount++,
-                onDoubleTap: () => doubleTapCount++,
-                child: const ColoredBox(color: Colors.black),
+            body: Center(
+              child: SizedBox(
+                width: 200,
+                height: 200,
+                child: FfMouseGestureDetector(
+                  onTap: () {},
+                  onDoubleTap: () {},
+                  onMove: moveDeltas.add,
+                  onClickAndDrag: (_) {},
+                  onLongPress: () {},
+                  child: const ColoredBox(color: Colors.black),
+                ),
               ),
             ),
           ),
@@ -26,49 +102,16 @@ void main() {
       );
 
       final center = tester.getCenter(find.byType(FfMouseGestureDetector));
-      await tester.tapAt(center);
+      final gesture = await tester.startGesture(center);
+      await tester.pump();
+      await gesture.moveBy(const Offset(20, 0));
+      await tester.pump();
+      await gesture.moveBy(Offset.zero);
+      await tester.pump();
+      await gesture.up();
       await tester.pump();
 
-      // Not yet fired: still waiting to see if this becomes a double tap.
-      expect(tapCount, 0);
-      expect(doubleTapCount, 0);
-
-      await tester.pump(kDoubleTapTimeout);
-      expect(tapCount, 1);
-      expect(doubleTapCount, 0);
-    });
-
-    testWidgets('double tap triggers onDoubleTap and does not trigger onTap', (tester) async {
-      var tapCount = 0;
-      var doubleTapCount = 0;
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 200,
-              height: 200,
-              child: FfMouseGestureDetector(
-                onTap: () => tapCount++,
-                onDoubleTap: () => doubleTapCount++,
-                child: const ColoredBox(color: Colors.black),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      final center = tester.getCenter(find.byType(FfMouseGestureDetector));
-      await tester.tapAt(center);
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.tapAt(center);
-      await tester.pump();
-
-      expect(doubleTapCount, 1);
-
-      // If a single tap was pending, it should be cancelled by the double tap.
-      await tester.pump(kDoubleTapTimeout);
-      expect(tapCount, 0);
+      expect(moveDeltas.where((d) => d == Offset.zero), isEmpty);
     });
 
     testWidgets('routes single drag to onMove', (tester) async {
@@ -112,9 +155,97 @@ void main() {
       expect(longPressCount, 0);
     });
 
-    testWidgets('routes double-tap-hold then drag to onClickAndDrag', (tester) async {
-      final moveDeltas = <Offset>[];
-      final clickAndDragDeltas = <Offset>[];
+    testWidgets(
+      'routes double-tap-hold then drag to onClickAndDrag',
+      (tester) async {
+        final moveDeltas = <Offset>[];
+        final clickAndDragDeltas = <Offset>[];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: 200,
+                  height: 200,
+                  child: FfMouseGestureDetector(
+                    onTap: () {},
+                    onDoubleTap: () {},
+                    onMove: moveDeltas.add,
+                    onClickAndDrag: clickAndDragDeltas.add,
+                    onLongPress: () {},
+                    child: const ColoredBox(color: Colors.black),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final center = tester.getCenter(find.byType(FfMouseGestureDetector));
+
+        // Tap #1 (down+up).
+        await tester.tapAt(center);
+        await tester.pump();
+
+        // Tap #2 down, hold, then drag.
+        await tester.pump(const Duration(milliseconds: 50));
+        final gesture = await tester.startGesture(center);
+        await tester.pump();
+        await gesture.moveBy(const Offset(40, 0)); // exceed pan slop
+        await tester.pump();
+        await gesture.moveBy(const Offset(0, 10));
+        await tester.pump();
+        await gesture.up();
+        await tester.pump();
+
+        expect(clickAndDragDeltas, isNotEmpty);
+        expect(moveDeltas, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'long press triggers onLongPress and does not emit move/clickAndDrag',
+      (tester) async {
+        final moveDeltas = <Offset>[];
+        final clickAndDragDeltas = <Offset>[];
+        var longPressCount = 0;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: 200,
+                  height: 200,
+                  child: FfMouseGestureDetector(
+                    onTap: () {},
+                    onDoubleTap: () {},
+                    onMove: moveDeltas.add,
+                    onClickAndDrag: clickAndDragDeltas.add,
+                    onLongPress: () => longPressCount++,
+                    child: const ColoredBox(color: Colors.black),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final center = tester.getCenter(find.byType(FfMouseGestureDetector));
+        await tester.longPressAt(center);
+        await tester.pump();
+
+        expect(longPressCount, 1);
+        expect(moveDeltas, isEmpty);
+        expect(clickAndDragDeltas, isEmpty);
+      },
+    );
+
+    testWidgets('two-finger spread triggers onZoomGesture with ratio > 1', (
+      tester,
+    ) async {
+      final zoomRatios = <double>[];
 
       await tester.pumpWidget(
         MaterialApp(
@@ -126,9 +257,10 @@ void main() {
                 child: FfMouseGestureDetector(
                   onTap: () {},
                   onDoubleTap: () {},
-                  onMove: moveDeltas.add,
-                  onClickAndDrag: clickAndDragDeltas.add,
+                  onMove: (_) {},
+                  onClickAndDrag: (_) {},
                   onLongPress: () {},
+                  onZoomGesture: zoomRatios.add,
                   child: const ColoredBox(color: Colors.black),
                 ),
               ),
@@ -138,60 +270,18 @@ void main() {
       );
 
       final center = tester.getCenter(find.byType(FfMouseGestureDetector));
-
-      // Tap #1 (down+up).
-      await tester.tapAt(center);
+      final g1 = await tester.startGesture(center - const Offset(10, 0));
+      final g2 = await tester.startGesture(center + const Offset(10, 0));
+      await tester.pump();
+      await g1.moveBy(const Offset(-40, 0));
+      await g2.moveBy(const Offset(40, 0));
+      await tester.pump();
+      await g1.up();
+      await g2.up();
       await tester.pump();
 
-      // Tap #2 down, hold, then drag.
-      await tester.pump(const Duration(milliseconds: 50));
-      final gesture = await tester.startGesture(center);
-      await tester.pump();
-      await gesture.moveBy(const Offset(40, 0)); // exceed pan slop
-      await tester.pump();
-      await gesture.moveBy(const Offset(0, 10));
-      await tester.pump();
-      await gesture.up();
-      await tester.pump();
-
-      expect(clickAndDragDeltas, isNotEmpty);
-      expect(moveDeltas, isEmpty);
-    });
-
-    testWidgets('long press triggers onLongPress and does not emit move/clickAndDrag', (tester) async {
-      final moveDeltas = <Offset>[];
-      final clickAndDragDeltas = <Offset>[];
-      var longPressCount = 0;
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: SizedBox(
-                width: 200,
-                height: 200,
-                child: FfMouseGestureDetector(
-                  onTap: () {},
-                  onDoubleTap: () {},
-                  onMove: moveDeltas.add,
-                  onClickAndDrag: clickAndDragDeltas.add,
-                  onLongPress: () => longPressCount++,
-                  child: const ColoredBox(color: Colors.black),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      final center = tester.getCenter(find.byType(FfMouseGestureDetector));
-      await tester.longPressAt(center);
-      await tester.pump();
-
-      expect(longPressCount, 1);
-      expect(moveDeltas, isEmpty);
-      expect(clickAndDragDeltas, isEmpty);
+      expect(zoomRatios, isNotEmpty);
+      expect(zoomRatios.every((r) => r > 1), isTrue);
     });
   });
 }
-

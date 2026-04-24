@@ -343,6 +343,26 @@ void main() {
         });
       },
     );
+
+    test('zoomGesture sends zoomGesture command with scaleSteps', () async {
+      final restClient = _RecordingRestClient();
+      final control = FF1WifiControl(
+        transport: _FakeWifiTransport(),
+        restClient: restClient,
+      );
+      addTearDown(control.dispose);
+
+      await control.zoomGesture(
+        topicId: 'topic_1',
+        scaleSteps: const [1.05, 1.02],
+      );
+
+      expect(restClient.lastTopicId, 'topic_1');
+      expect(restClient.lastCommand, 'zoomGesture');
+      expect(restClient.lastParams, <String, dynamic>{
+        'scaleSteps': <double>[1.05, 1.02],
+      });
+    });
   });
 
   group('FF1WifiControl.dispose', () {

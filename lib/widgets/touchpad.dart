@@ -37,6 +37,12 @@ class TouchPad extends ConsumerStatefulWidget {
 class _TouchPadState extends ConsumerState<TouchPad> {
   final List<Offset> _moveDragOffsets = [];
   final List<Offset> _clickAndDragOffsets = [];
+  final List<double> _zoomScaleSteps = [];
+  // Guards against drag updates arriving after the pointer has already ended.
+  // Gesture recognizers can finish slightly out of order relative to pointer
+  // up/cancel delivery, so the touchpad treats pointer state as the source of
+  // truth before logging or buffering deltas.
+  bool _isPointerDown = false;
 
   void _queueMoveDelta(Offset delta) {
     _moveDragOffsets.add(delta);
@@ -44,6 +50,14 @@ class _TouchPadState extends ConsumerState<TouchPad> {
 
   void _queueClickAndDragDelta(Offset delta) {
     _clickAndDragOffsets.add(delta);
+  }
+
+  void _queueZoomStep(double ratio) {
+    _zoomScaleSteps.add(ratio);
+  }
+
+  void _beginPointerGesture() {
+    _isPointerDown = true;
   }
 
   void _flushMoveDeltasIfNeeded(FF1WifiControl wifiControl) {
@@ -54,6 +68,11 @@ class _TouchPadState extends ConsumerState<TouchPad> {
   void _flushClickAndDragDeltasIfNeeded(FF1WifiControl wifiControl) {
     if (_clickAndDragOffsets.length <= 5) return;
     _flushClickAndDragDeltas(wifiControl);
+  }
+
+  void _flushZoomStepsIfNeeded(FF1WifiControl wifiControl) {
+    if (_zoomScaleSteps.length <= 5) return;
+    _flushZoomSteps(wifiControl);
   }
 
   void _flushMoveDeltas(FF1WifiControl wifiControl) {
@@ -80,9 +99,23 @@ class _TouchPadState extends ConsumerState<TouchPad> {
     );
   }
 
+  void _flushZoomSteps(FF1WifiControl wifiControl) {
+    if (_zoomScaleSteps.isEmpty) return;
+    final steps = List<double>.from(_zoomScaleSteps);
+    _zoomScaleSteps.clear();
+    unawaited(
+      wifiControl.zoomGesture(
+        topicId: widget.topicId,
+        scaleSteps: steps,
+      ),
+    );
+  }
+
   void _onPointerGestureEnd(FF1WifiControl wifiControl) {
+    _isPointerDown = false;
     _flushMoveDeltas(wifiControl);
     _flushClickAndDragDeltas(wifiControl);
+    _flushZoomSteps(wifiControl);
   }
 
   @override
@@ -98,8 +131,18 @@ class _TouchPadState extends ConsumerState<TouchPad> {
         children: [
           Listener(
             behavior: HitTestBehavior.opaque,
-            onPointerUp: (_) => _onPointerGestureEnd(wifiControl),
-            onPointerCancel: (_) => _onPointerGestureEnd(wifiControl),
+            onPointerDown: (event) {
+              _log.fine('[Touchpad] onPointerDown pointer=${event.pointer}');
+              _beginPointerGesture();
+            },
+            onPointerUp: (event) {
+              _log.fine('[Touchpad] onPointerUp pointer=${event.pointer}');
+              _onPointerGestureEnd(wifiControl);
+            },
+            onPointerCancel: (event) {
+              _log.fine('[Touchpad] onPointerCancel pointer=${event.pointer}');
+              _onPointerGestureEnd(wifiControl);
+            },
             child: FfMouseGestureDetector(
               onTap: () async {
                 _log.info(
@@ -116,6 +159,9 @@ class _TouchPadState extends ConsumerState<TouchPad> {
                 await wifiControl.doubleTap(topicId: widget.topicId);
               },
               onMove: (delta) {
+                if (!_isPointerDown) {
+                  return;
+                }
                 _log.fine(
                   '[Touchpad] onMove topicId=${widget.topicId} '
                   'delta=$delta',
@@ -124,6 +170,9 @@ class _TouchPadState extends ConsumerState<TouchPad> {
                 _flushMoveDeltasIfNeeded(wifiControl);
               },
               onClickAndDrag: (delta) {
+                if (!_isPointerDown) {
+                  return;
+                }
                 _log.fine(
                   '[Touchpad] onClickAndDrag topicId=${widget.topicId} '
                   'delta=$delta',
@@ -137,6 +186,14 @@ class _TouchPadState extends ConsumerState<TouchPad> {
                   '(longPressGesture)',
                 );
                 await wifiControl.longPress(topicId: widget.topicId);
+              },
+              onZoomGesture: (ratio) {
+                _log.fine(
+                  '[Touchpad] onZoomGesture topicId=${widget.topicId} '
+                  'ratio=$ratio',
+                );
+                _queueZoomStep(ratio);
+                _flushZoomStepsIfNeeded(wifiControl);
               },
               child: const SizedBox.expand(),
             ),

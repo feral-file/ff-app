@@ -1295,6 +1295,35 @@ transport reconnected — waiting for device connection notification''',
     }
   }
 
+  /// Send pinch-zoom scale steps. Relayer command: `zoomGesture`
+  /// ([FF1WifiZoomGestureRequest]).
+  Future<FF1CommandResponse> zoomGesture({
+    required String topicId,
+    required List<double> scaleSteps,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+    if (scaleSteps.isEmpty) return FF1CommandResponse();
+    try {
+      _log.info(
+        'Sending zoomGesture (${scaleSteps.length} scaleSteps) to device',
+      );
+      final request = FF1WifiZoomGestureRequest(scaleSteps: scaleSteps);
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send zoomGesture: $e');
+      rethrow;
+    }
+  }
+
   /// Shutdown device.
   ///
   /// [topicId] — device topic ID

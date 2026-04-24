@@ -428,5 +428,18 @@ void main() {
         expect(clickAndDrag.params, drag.params);
       },
     );
+
+    test(
+      'FF1WifiZoomGestureRequest uses zoomGesture and rounds scaleSteps',
+      () {
+        const request = FF1WifiZoomGestureRequest(
+          scaleSteps: <double>[1.23456, 0.987654],
+        );
+        expect(request.command, 'zoomGesture');
+        expect(request.params, <String, dynamic>{
+          'scaleSteps': <double>[1.2346, 0.9877],
+        });
+      },
+    );
   });
 }
