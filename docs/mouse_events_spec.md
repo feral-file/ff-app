@@ -4,7 +4,7 @@ Each call uses HTTP body `{ "command": "<name>", "request": { ... } }` (`FF1Wifi
 
 **Extensions (new FF1, optional):** keep the same `command` strings; add keys only inside `request`. Old FF1 should ignore unknown keys.
 
-**Pointer position:** Do **not** send absolute coordinates (`x`, `y`) in these commands. The **player** applies pointer gestures at the **current synthetic mouse position** (it maintains cursor state). `dragGesture` and `clickAndDragGesture` update that position with `dx` / `dy`; discrete pointer commands use the cursor as-is.
+**Pointer position:** Do **not** send absolute coordinates (`x`, `y`) in these commands. The **player** applies pointer gestures at the **current synthetic mouse position** (it maintains cursor state). `dragGesture` and `clickAndDragGesture` update that position with `dx` / `dy`; discrete pointer commands use the cursor as-is. `zoomGesture` does not send cursor deltas; it carries multiplicative `scaleSteps` only (**§4.6**).
 
 ---
 
@@ -19,6 +19,7 @@ The mobile touchpad uses Flutter’s **`TapAndPanGestureRecognizer`** (touch onl
 | `onMove`        | **Move-only pan** — a drag where **`onDragStart` has `consecutiveTapCount == 1`**: one finger down, then movement past pan slop (like moving the cursor without a prior “second tap hold”). |
 | `onClickAndDrag` | **Double-tap-hold then drag (click-and-drag)** — a drag where **`onDragStart` has `consecutiveTapCount == 2`**: user has already done a first tap, **second contact** is part of the same consecutive-tap series, and the user **holds and drags** (does not release for a second quick tap). Same pattern as *double-tap to drag* on many laptop trackpads. |
 | `onLongPress`   | **`LongPressGestureRecognizer`** won the arena; drag/tap for that contact is cancelled. |
+| `onZoomGesture` | **Two-finger pinch** — when this callback is non-null, a **`Listener`** tracks global positions of active pointers (touch only). With **exactly two** contacts, each move reports a **multiplicative scale step** from the change in distance between the two touches (`> 1` spread / zoom in, `< 1` pinch / zoom out). This avoids registering **`ScaleGestureRecognizer`** alongside **`TapAndPanGestureRecognizer`**, which broke single-finger taps (arena / `eagerVictoryOnDrag` interaction). |
 
 **Important:** `onDoubleTap` and `onClickAndDrag` are **mutually exclusive** for the same second tap: if the user drags, the second tap does **not** complete as a double-tap *up* → `onDoubleTap` is not called; the gesture is classified as `onClickAndDrag` after drag starts.
 
@@ -26,7 +27,7 @@ The mobile touchpad uses Flutter’s **`TapAndPanGestureRecognizer`** (touch onl
 
 ## 2. FF1 / relayer mapping (example: `TouchPad`)
 
-Discrete clicks map 1:1 to gesture commands. Drags are batched with `dx` / `dy` in `cursorOffsets` (2 decimal places in wire form).
+Discrete clicks map 1:1 to gesture commands. Drags are batched with `dx` / `dy` in `cursorOffsets` (2 decimal places in wire form). Pinch steps are batched as `scaleSteps` (4 decimal places in wire form).
 
 | UI callback / path | Relayer pattern |
 | ------------------ | --------------- |
@@ -35,6 +36,7 @@ Discrete clicks map 1:1 to gesture commands. Drags are batched with `dx` / `dy` 
 | `onLongPress` | `longPressGesture` |
 | `onMove` | Batched `dragGesture` with `cursorOffsets` (move-only / pan) via the app’s `drag` control call. |
 | `onClickAndDrag` | Batched `clickAndDragGesture` with the same `request` shape (`cursorOffsets`) via the app’s `clickAndDrag` control call. **This client does not** send a preceding `doubleTapGesture` in this path. |
+| `onZoomGesture` | Batched `zoomGesture` with `scaleSteps` via the app’s `zoomGesture` control call. Does **not** move the synthetic cursor; the player applies zoom at the current pointer / view semantics. |
 
 ---
 
@@ -125,7 +127,22 @@ Same **`request`** shape and rounding rules as **`dragGesture`** (4.4); distinct
 
 ---
 
-### 4.6 `sendKeyboardEvent`
+### 4.6 `zoomGesture` (pinch)
+
+**`request`:**
+
+```json
+{
+  "scaleSteps": [1.0523, 1.0102]
+}
+```
+
+- `scaleSteps`: array of **multiplicative** per-update ratios from the client (`onZoomGesture` in **§1**), each step derived from successive **inter-touch distance** on the screen (not from Flutter `ScaleUpdateDetails`). Each value is a **number** rounded to **4** decimal places on the wire. The player composes them in order for the pinch session (product of steps, or equivalent).
+- **Semantic:** Two-finger pinch on the touchpad (`onZoomGesture` in **§2**). Not used for absolute coordinates.
+
+---
+
+### 4.7 `sendKeyboardEvent`
 
 **`request`:**
 

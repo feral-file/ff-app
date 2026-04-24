@@ -283,5 +283,49 @@ void main() {
       expect(zoomRatios, isNotEmpty);
       expect(zoomRatios.every((r) => r > 1), isTrue);
     });
+
+    testWidgets('pinch zoom does not emit move deltas', (tester) async {
+      final moveDeltas = <Offset>[];
+      final zoomRatios = <double>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 200,
+                height: 200,
+                child: FfMouseGestureDetector(
+                  onTap: () {},
+                  onDoubleTap: () {},
+                  onMove: moveDeltas.add,
+                  onClickAndDrag: (_) {},
+                  onLongPress: () {},
+                  onZoomGesture: zoomRatios.add,
+                  child: const ColoredBox(color: Colors.black),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final center = tester.getCenter(find.byType(FfMouseGestureDetector));
+      final g1 = await tester.startGesture(center - const Offset(10, 0));
+      final g2 = await tester.startGesture(center + const Offset(10, 0));
+      await tester.pump();
+      await g1.moveBy(const Offset(-40, 0));
+      await g2.moveBy(const Offset(40, 0));
+      await tester.pump();
+      await g1.moveBy(const Offset(-5, 0));
+      await g2.moveBy(const Offset(5, 0));
+      await tester.pump();
+      await g1.up();
+      await g2.up();
+      await tester.pump();
+
+      expect(zoomRatios, isNotEmpty);
+      expect(moveDeltas, isEmpty);
+    });
   });
 }

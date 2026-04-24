@@ -15,7 +15,9 @@ final _log = Logger('FfMouseGestureDetector');
 /// - `onClickAndDrag`: click-and-drag (double-tap-hold then drag).
 /// - `onLongPress`: long press.
 /// - `onZoomGesture`: two-finger pinch; each update reports a multiplicative
-///   scale step since the last update (see [ScaleUpdateDetails.scale]).
+///   scale step from the change in distance between the two touches (global
+///   coordinates). Implemented with a [Listener] so taps and drags are not
+///   competing in the gesture arena against [ScaleGestureRecognizer].
 ///
 /// Drag callbacks receive a per-update `Offset delta` so callers can batch
 /// into `dragGesture` or `clickAndDragGesture` `cursorOffsets` as needed.
@@ -55,8 +57,8 @@ class FfMouseGestureDetector extends StatefulWidget {
   /// Pinch-to-zoom steps for forwarding as `zoomGesture` on the player.
   ///
   /// Values are **multiplicative** per update: `> 1` spreads fingers (zoom in),
-  /// `< 1` pinches inward (zoom out). Derived from successive
-  /// [ScaleUpdateDetails.scale] samples during the same pinch.
+  /// `< 1` pinches inward (zoom out). Ratios come from successive distances
+  /// between the two active touches.
   final ValueChanged<double>? onZoomGesture;
 
   /// Hit-test behavior; defaults to opaque when null.
@@ -68,8 +70,15 @@ class FfMouseGestureDetector extends StatefulWidget {
 
 class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
   bool _isClickAndDrag = false;
+  bool _isPinching = false;
   Timer? _singleTapTimer;
-  double _pinchLastCumulativeScale = 1;
+
+  /// Active touch positions for pinch (global); only used when
+  /// [FfMouseGestureDetector.onZoomGesture] is non-null.
+  final Map<int, Offset> _pinchPointerPositions = <int, Offset>{};
+
+  /// Previous inter-touch distance during an active two-finger pinch.
+  double? _pinchLastSpan;
 
   void _resetDragMode() {
     _isClickAndDrag = false;
@@ -95,33 +104,56 @@ class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
 
   void _resetAllModes() {
     _resetDragMode();
+    _isPinching = false;
     _cancelPendingTap();
   }
 
-  void _resetPinchScaleTracking() {
-    _pinchLastCumulativeScale = 1;
+  double? _pinchSpanForTwoTouches() {
+    if (_pinchPointerPositions.length != 2) return null;
+    final positions = _pinchPointerPositions.values.toList();
+    return (positions[0] - positions[1]).distance;
   }
 
-  void _handleZoomStart(ScaleStartDetails details) {
-    _log.fine('onZoomStart');
-    _resetPinchScaleTracking();
+  void _handlePinchPointerDown(PointerDownEvent event) {
+    if (widget.onZoomGesture == null) return;
+    _pinchPointerPositions[event.pointer] = event.position;
+    if (_pinchPointerPositions.length == 2) {
+      // Once two pointers are active, treat the interaction as pinch-only so
+      // one-finger pan updates do not leak through while the user is zooming.
+      _isPinching = true;
+      _pinchLastSpan = _pinchSpanForTwoTouches();
+      _log.fine('pinch start span=$_pinchLastSpan');
+    }
   }
 
-  void _handleZoomUpdate(ScaleUpdateDetails details) {
-    final onZoom = widget.onZoomGesture;
-    if (onZoom == null) return;
-    final cumulative = details.scale;
-    if (cumulative == 0) return;
-    final ratio = cumulative / _pinchLastCumulativeScale;
-    _pinchLastCumulativeScale = cumulative;
+  void _handlePinchPointerMove(PointerMoveEvent event) {
+    if (widget.onZoomGesture == null) return;
+    if (!_pinchPointerPositions.containsKey(event.pointer)) return;
+    _pinchPointerPositions[event.pointer] = event.position;
+    if (_pinchPointerPositions.length != 2) return;
+    final span = _pinchSpanForTwoTouches();
+    if (span == null || span == 0) return;
+    final last = _pinchLastSpan;
+    if (last == null || last <= 0) {
+      _pinchLastSpan = span;
+      return;
+    }
+    final ratio = span / last;
+    _pinchLastSpan = span;
     if ((ratio - 1).abs() < 0.0001) return;
-    _log.fine('onZoomUpdate ratio=$ratio cumulative=$cumulative');
-    onZoom(ratio);
+    _log.fine('pinch ratio=$ratio span=$span');
+    widget.onZoomGesture!.call(ratio);
   }
 
-  void _handleZoomEnd(ScaleEndDetails details) {
-    _log.fine('onZoomEnd');
-    _resetPinchScaleTracking();
+  void _handlePinchPointerEnd(PointerEvent event) {
+    if (widget.onZoomGesture == null) return;
+    _pinchPointerPositions.remove(event.pointer);
+    if (_pinchPointerPositions.length < 2) {
+      _pinchLastSpan = null;
+      _isPinching = false;
+    } else if (_pinchPointerPositions.length == 2) {
+      _pinchLastSpan = _pinchSpanForTwoTouches();
+    }
   }
 
   @override
@@ -133,10 +165,7 @@ class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
               supportedDevices: const {PointerDeviceKind.touch},
             ),
             (instance) {
-              // Defer tap-and-pan drag victory when pinch-zoom is enabled so
-              // scale can compete after a second pointer lands.
               instance
-                ..eagerVictoryOnDrag = widget.onZoomGesture == null
                 ..onTapDown = (details) {
                   _log.fine(
                     'onTapDown '
@@ -168,6 +197,7 @@ class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
                 ..onDragUpdate = (details) {
                   final delta = details.delta;
                   if (delta == Offset.zero) return;
+                  if (_isPinching) return;
                   _log.fine(
                     'onDragUpdate delta=$delta '
                     'isClickAndDrag=$_isClickAndDrag',
@@ -204,25 +234,22 @@ class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
           ),
     };
 
-    if (widget.onZoomGesture != null) {
-      gestures[ScaleGestureRecognizer] =
-          GestureRecognizerFactoryWithHandlers<ScaleGestureRecognizer>(
-            () => ScaleGestureRecognizer(
-              supportedDevices: const {PointerDeviceKind.touch},
-            ),
-            (instance) {
-              instance
-                ..onStart = _handleZoomStart
-                ..onUpdate = _handleZoomUpdate
-                ..onEnd = _handleZoomEnd;
-            },
-          );
-    }
-
-    return RawGestureDetector(
+    final core = RawGestureDetector(
       behavior: widget.behavior ?? HitTestBehavior.opaque,
       gestures: gestures,
       child: widget.child,
+    );
+
+    if (widget.onZoomGesture == null) {
+      return core;
+    }
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _handlePinchPointerDown,
+      onPointerMove: _handlePinchPointerMove,
+      onPointerUp: _handlePinchPointerEnd,
+      onPointerCancel: _handlePinchPointerEnd,
+      child: core,
     );
   }
 
