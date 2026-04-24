@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/domain/models/ff1_device.dart';
 import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
@@ -68,7 +70,8 @@ void main() {
     });
 
     testWidgets(
-      'routes pinch zoom and keeps the session active until the last pointer lifts',
+      'routes pinch zoom and keeps the session active '
+      'until the last pointer lifts',
       (tester) async {
         final control = _RecordingWifiControl();
 
@@ -99,6 +102,38 @@ void main() {
         await tester.pump();
         expect(control.zoomGestureCalls, 1);
         expect(control.zoomGestureScaleSteps.single, isNotEmpty);
+      },
+    );
+
+    testWidgets(
+      'mixed pinch sequence drops pending move/click batches',
+      (tester) async {
+        final control = _RecordingWifiControl();
+
+        await tester.pumpWidget(_buildTestApp(control));
+        final center = tester.getCenter(find.byType(TouchPad));
+        final detector = tester.widget<FfMouseGestureDetector>(
+          find.byType(FfMouseGestureDetector),
+        );
+
+        final firstFinger = await tester.startGesture(center);
+        await tester.pump();
+        detector.onMove?.call(const Offset(8, 0));
+        detector.onMove?.call(const Offset(8, 0));
+
+        final secondFinger = await tester.startGesture(
+          center + const Offset(16, 0),
+        );
+        await tester.pump();
+        detector.onZoomGesture?.call(1.05);
+
+        await firstFinger.up();
+        await secondFinger.up();
+        await tester.pump();
+
+        expect(control.dragCalls, 0);
+        expect(control.clickAndDragCalls, 0);
+        expect(control.zoomGestureCalls, 1);
       },
     );
   });
@@ -194,7 +229,8 @@ class _NoopWifiTransport implements FF1WifiTransport {
   final _errors = BehaviorSubject<FF1WifiTransportError>();
 
   @override
-  Stream<FF1NotificationMessage> get notificationStream => _notifications.stream;
+  Stream<FF1NotificationMessage> get notificationStream =>
+      _notifications.stream;
 
   @override
   Stream<bool> get connectionStateStream => _connections.stream;
@@ -229,9 +265,9 @@ class _NoopWifiTransport implements FF1WifiTransport {
 
   @override
   void dispose() {
-    _notifications.close();
-    _connections.close();
-    _errors.close();
+    unawaited(_notifications.close());
+    unawaited(_connections.close());
+    unawaited(_errors.close());
   }
 
   @override

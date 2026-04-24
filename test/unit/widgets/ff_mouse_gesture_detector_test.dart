@@ -327,5 +327,55 @@ void main() {
       expect(zoomRatios, isNotEmpty);
       expect(moveDeltas, isEmpty);
     });
+
+    testWidgets(
+      'pinch start cancels pending single tap',
+      (tester) async {
+        var tapCount = 0;
+        var doubleTapCount = 0;
+        final zoomRatios = <double>[];
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: 200,
+                  height: 200,
+                  child: FfMouseGestureDetector(
+                    onTap: () => tapCount++,
+                    onDoubleTap: () => doubleTapCount++,
+                    onMove: (_) {},
+                    onClickAndDrag: (_) {},
+                    onLongPress: () {},
+                    onZoomGesture: zoomRatios.add,
+                    child: const ColoredBox(color: Colors.black),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final center = tester.getCenter(find.byType(FfMouseGestureDetector));
+        await tester.tapAt(center);
+        await tester.pump(const Duration(milliseconds: 20));
+
+        final g1 = await tester.startGesture(center - const Offset(10, 0));
+        final g2 = await tester.startGesture(center + const Offset(10, 0));
+        await tester.pump();
+        await g1.moveBy(const Offset(-15, 0));
+        await g2.moveBy(const Offset(15, 0));
+        await tester.pump();
+        await g1.up();
+        await g2.up();
+        await tester.pump();
+
+        await tester.pump(kDoubleTapTimeout);
+        expect(tapCount, 0);
+        expect(doubleTapCount, 0);
+        expect(zoomRatios, isNotEmpty);
+      },
+    );
   });
 }

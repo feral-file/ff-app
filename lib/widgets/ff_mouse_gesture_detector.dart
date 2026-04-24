@@ -71,6 +71,7 @@ class FfMouseGestureDetector extends StatefulWidget {
 class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
   bool _isClickAndDrag = false;
   bool _isPinching = false;
+  bool _suppressTap = false;
   Timer? _singleTapTimer;
 
   /// Active touch positions for pinch (global); only used when
@@ -105,7 +106,17 @@ class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
   void _resetAllModes() {
     _resetDragMode();
     _isPinching = false;
+    _suppressTap = false;
     _cancelPendingTap();
+  }
+
+  void _startPinch() {
+    _resetDragMode();
+    _cancelPendingTap();
+    _isPinching = true;
+    _suppressTap = true;
+    _pinchLastSpan = _pinchSpanForTwoTouches();
+    _log.fine('pinch start span=$_pinchLastSpan');
   }
 
   double? _pinchSpanForTwoTouches() {
@@ -117,12 +128,13 @@ class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
   void _handlePinchPointerDown(PointerDownEvent event) {
     if (widget.onZoomGesture == null) return;
     _pinchPointerPositions[event.pointer] = event.position;
+    if (_singleTapTimer != null) {
+      _cancelPendingTap();
+    }
     if (_pinchPointerPositions.length == 2) {
       // Once two pointers are active, treat the interaction as pinch-only so
       // one-finger pan updates do not leak through while the user is zooming.
-      _isPinching = true;
-      _pinchLastSpan = _pinchSpanForTwoTouches();
-      _log.fine('pinch start span=$_pinchLastSpan');
+      _startPinch();
     }
   }
 
@@ -154,6 +166,9 @@ class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
     } else if (_pinchPointerPositions.length == 2) {
       _pinchLastSpan = _pinchSpanForTwoTouches();
     }
+    if (_pinchPointerPositions.isEmpty) {
+      _suppressTap = false;
+    }
   }
 
   @override
@@ -167,6 +182,7 @@ class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
             (instance) {
               instance
                 ..onTapDown = (details) {
+                  if (_suppressTap) return;
                   _log.fine(
                     'onTapDown '
                     'count=${details.consecutiveTapCount}',
@@ -178,6 +194,7 @@ class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
                   }
                 }
                 ..onTapUp = (details) {
+                  if (_suppressTap) return;
                   _log.fine(
                     'onTapUp count=${details.consecutiveTapCount}',
                   );

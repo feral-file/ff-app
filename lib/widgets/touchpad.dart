@@ -36,6 +36,7 @@ class _TouchPadState extends ConsumerState<TouchPad> {
   final List<Offset> _clickAndDragOffsets = [];
   final List<double> _zoomScaleSteps = [];
   final Set<int> _activePointers = <int>{};
+  bool _didPinchDuringGesture = false;
   // Guards against drag updates arriving after the pointer has already ended.
   // Gesture recognizers can finish slightly out of order relative to pointer
   // up/cancel delivery, so the touchpad treats the active pointer set as the
@@ -55,17 +56,13 @@ class _TouchPadState extends ConsumerState<TouchPad> {
   }
 
   void _beginPointerGesture(PointerEvent event) {
+    if (!_isGestureActive) {
+      _didPinchDuringGesture = false;
+    }
     _activePointers.add(event.pointer);
-  }
-
-  void _flushMoveDeltasIfNeeded(FF1WifiControl wifiControl) {
-    if (_moveDragOffsets.length <= 5) return;
-    _flushMoveDeltas(wifiControl);
-  }
-
-  void _flushClickAndDragDeltasIfNeeded(FF1WifiControl wifiControl) {
-    if (_clickAndDragOffsets.length <= 5) return;
-    _flushClickAndDragDeltas(wifiControl);
+    if (_activePointers.length >= 2) {
+      _markPinchStarted();
+    }
   }
 
   void _flushZoomStepsIfNeeded(FF1WifiControl wifiControl) {
@@ -109,14 +106,27 @@ class _TouchPadState extends ConsumerState<TouchPad> {
     );
   }
 
+  void _markPinchStarted() {
+    if (_didPinchDuringGesture) return;
+    _didPinchDuringGesture = true;
+    _moveDragOffsets.clear();
+    _clickAndDragOffsets.clear();
+  }
+
   void _endPointerGesture(FF1WifiControl wifiControl, PointerEvent event) {
     _activePointers.remove(event.pointer);
     if (_isGestureActive) {
       return;
     }
-    _flushMoveDeltas(wifiControl);
-    _flushClickAndDragDeltas(wifiControl);
+    if (_didPinchDuringGesture) {
+      _moveDragOffsets.clear();
+      _clickAndDragOffsets.clear();
+    } else {
+      _flushMoveDeltas(wifiControl);
+      _flushClickAndDragDeltas(wifiControl);
+    }
     _flushZoomSteps(wifiControl);
+    _didPinchDuringGesture = false;
   }
 
   @override
@@ -132,9 +142,7 @@ class _TouchPadState extends ConsumerState<TouchPad> {
         children: [
           Listener(
             behavior: HitTestBehavior.opaque,
-            onPointerDown: (event) {
-              _beginPointerGesture(event);
-            },
+            onPointerDown: _beginPointerGesture,
             onPointerUp: (event) {
               _endPointerGesture(wifiControl, event);
             },
@@ -152,15 +160,19 @@ class _TouchPadState extends ConsumerState<TouchPad> {
                 if (!_isGestureActive) {
                   return;
                 }
+                if (_didPinchDuringGesture || _activePointers.length != 1) {
+                  return;
+                }
                 _queueMoveDelta(delta);
-                _flushMoveDeltasIfNeeded(wifiControl);
               },
               onClickAndDrag: (delta) {
                 if (!_isGestureActive) {
                   return;
                 }
+                if (_didPinchDuringGesture || _activePointers.length != 1) {
+                  return;
+                }
                 _queueClickAndDragDelta(delta);
-                _flushClickAndDragDeltasIfNeeded(wifiControl);
               },
               onLongPress: () async {
                 await wifiControl.longPress(topicId: widget.topicId);
