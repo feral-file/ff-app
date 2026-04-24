@@ -682,9 +682,9 @@ class FF1WifiLongPressRequest extends FF1WifiCommandRequest {
   Map<String, dynamic> get params => {};
 }
 
-/// Drag gesture command (cursor offsets).
-/// Command name must match old repo: dragGesture.
-/// dx/dy rounded to 2 decimals like old CursorOffset.toJson().
+/// Drag gesture command (cursor offsets) — **move-only** / pan; cursor moves
+/// without the primary button held. Command name must match old repo:
+/// `dragGesture`. dx/dy rounded to 2 decimals like old CursorOffset.toJson().
 class FF1WifiDragRequest extends FF1WifiCommandRequest {
   /// Creates a drag request.
   ///
@@ -696,6 +696,32 @@ class FF1WifiDragRequest extends FF1WifiCommandRequest {
 
   @override
   String get command => 'dragGesture';
+
+  @override
+  Map<String, dynamic> get params => {
+    'cursorOffsets': cursorOffsets
+        .map(
+          (o) => {
+            'dx': _round2(o['dx']!),
+            'dy': _round2(o['dy']!),
+          },
+        )
+        .toList(),
+  };
+}
+
+/// Click-and-drag gesture (double-tap-hold then drag) — same `request` shape
+/// as [FF1WifiDragRequest], distinct [command] so the player can treat primary-
+/// button drag as separate from move-only [dragGesture].
+class FF1WifiClickAndDragRequest extends FF1WifiCommandRequest {
+  /// Creates a click-and-drag request.
+  const FF1WifiClickAndDragRequest({required this.cursorOffsets});
+
+  /// Cursor offsets (same structure as [FF1WifiDragRequest]).
+  final List<Map<String, double>> cursorOffsets;
+
+  @override
+  String get command => 'clickAndDragGesture';
 
   @override
   Map<String, dynamic> get params => {

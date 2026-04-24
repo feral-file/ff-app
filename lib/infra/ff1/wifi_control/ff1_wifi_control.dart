@@ -34,8 +34,6 @@ import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
-enum _DragInteraction { moveOnly, clickAndDrag }
-
 // ============================================================================
 // WiFi Control (orchestration)
 // ============================================================================
@@ -1228,47 +1226,20 @@ transport reconnected — waiting for device connection notification''',
     }
   }
 
-  /// Send move-only drag (`dragGesture`) — cursor moves without primary button
-  /// held (pan on the touchpad).
+  /// Send move-only drag — pan on the touchpad; cursor moves without the
+  /// primary button held. Relayer command: `dragGesture`.
   Future<FF1CommandResponse> drag({
     required String topicId,
     required List<Offset> cursorOffsets,
-  }) async {
-    return _sendDragGesture(
-      topicId: topicId,
-      cursorOffsets: cursorOffsets,
-      interaction: _DragInteraction.moveOnly,
-    );
-  }
-
-  /// Send click-and-drag deltas (`dragGesture`) after the player has been
-  /// armed with [doubleTap] for this interaction (primary button held).
-  Future<FF1CommandResponse> clickAndDrag({
-    required String topicId,
-    required List<Offset> cursorOffsets,
-  }) async {
-    return _sendDragGesture(
-      topicId: topicId,
-      cursorOffsets: cursorOffsets,
-      interaction: _DragInteraction.clickAndDrag,
-    );
-  }
-
-  Future<FF1CommandResponse> _sendDragGesture({
-    required String topicId,
-    required List<Offset> cursorOffsets,
-    required _DragInteraction interaction,
   }) async {
     if (_restClient == null) {
       throw StateError('REST client not available');
     }
     if (cursorOffsets.isEmpty) return FF1CommandResponse();
-    final label = interaction == _DragInteraction.moveOnly
-        ? 'move-only'
-        : 'click-and-drag';
     try {
       _log.info(
-        'Sending dragGesture ($label, ${cursorOffsets.length} offsets) to device',
+        'Sending move-only dragGesture (${cursorOffsets.length} offsets) '
+        'to device',
       );
       final request = FF1WifiDragRequest(
         cursorOffsets: cursorOffsets
@@ -1284,7 +1255,42 @@ transport reconnected — waiting for device connection notification''',
               as Map<String, dynamic>;
       return FF1CommandResponse.fromJson(response);
     } catch (e) {
-      _log.severe('Failed to send dragGesture ($label): $e');
+      _log.severe('Failed to send move-only dragGesture: $e');
+      rethrow;
+    }
+  }
+
+  /// Send click-and-drag (double-tap-hold then drag) deltas — primary button
+  /// held. Relayer command: `clickAndDragGesture` ([FF1WifiClickAndDragRequest]);
+  /// `request` shape matches [FF1WifiDragRequest] (cursor offset batches).
+  Future<FF1CommandResponse> clickAndDrag({
+    required String topicId,
+    required List<Offset> cursorOffsets,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+    if (cursorOffsets.isEmpty) return FF1CommandResponse();
+    try {
+      _log.info(
+        'Sending clickAndDragGesture (${cursorOffsets.length} offsets) '
+        'to device',
+      );
+      final request = FF1WifiClickAndDragRequest(
+        cursorOffsets: cursorOffsets
+            .map((o) => <String, double>{'dx': o.dx, 'dy': o.dy})
+            .toList(),
+      );
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send clickAndDragGesture: $e');
       rethrow;
     }
   }

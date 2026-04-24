@@ -320,7 +320,7 @@ void main() {
     });
 
     test(
-      'clickAndDrag sends dragGesture command with cursorOffsets',
+      'clickAndDrag sends clickAndDragGesture command with cursorOffsets',
       () async {
         final restClient = _RecordingRestClient();
         final control = FF1WifiControl(
@@ -335,7 +335,7 @@ void main() {
         );
 
         expect(restClient.lastTopicId, 'topic_1');
-        expect(restClient.lastCommand, 'dragGesture');
+        expect(restClient.lastCommand, 'clickAndDragGesture');
         expect(restClient.lastParams, <String, dynamic>{
           'cursorOffsets': <Map<String, double>>[
             <String, double>{'dx': 2.0, 'dy': -1.0},

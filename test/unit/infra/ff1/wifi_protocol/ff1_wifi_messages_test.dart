@@ -403,4 +403,30 @@ void main() {
       expect(response.data?['message'], isNotNull);
     });
   });
+
+  group('pointer drag requests', () {
+    const offsets = <Map<String, double>>[
+      <String, double>{'dx': 1.234, 'dy': -0.456},
+    ];
+
+    test('FF1WifiDragRequest uses dragGesture and rounds params', () {
+      const request = FF1WifiDragRequest(cursorOffsets: offsets);
+      expect(request.command, 'dragGesture');
+      expect(request.params, <String, dynamic>{
+        'cursorOffsets': <Map<String, double>>[
+          <String, double>{'dx': 1.23, 'dy': -0.46},
+        ],
+      });
+    });
+
+    test(
+      'FF1WifiClickAndDragRequest uses clickAndDragGesture; params match drag',
+      () {
+        const drag = FF1WifiDragRequest(cursorOffsets: offsets);
+        const clickAndDrag = FF1WifiClickAndDragRequest(cursorOffsets: offsets);
+        expect(clickAndDrag.command, 'clickAndDragGesture');
+        expect(clickAndDrag.params, drag.params);
+      },
+    );
+  });
 }

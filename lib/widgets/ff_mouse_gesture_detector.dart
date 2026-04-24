@@ -13,7 +13,7 @@ import 'package:flutter/material.dart';
 /// - `onLongPress`: long press.
 ///
 /// Drag callbacks receive a per-update `Offset delta` so callers can batch
-/// into FF1 `dragGesture.cursorOffsets` as needed.
+/// into `dragGesture` or `clickAndDragGesture` `cursorOffsets` as needed.
 class FfMouseGestureDetector extends StatefulWidget {
   const FfMouseGestureDetector({
     required this.child,

@@ -4,7 +4,7 @@ Each call uses HTTP body `{ "command": "<name>", "request": { ... } }` (`FF1Wifi
 
 **Extensions (new FF1, optional):** keep the same `command` strings; add keys only inside `request`. Old FF1 should ignore unknown keys.
 
-**Pointer position:** Do **not** send absolute coordinates (`x`, `y`) in these commands. The **player** applies pointer gestures at the **current synthetic mouse position** (it maintains cursor state). `dragGesture` updates that position with `dx` / `dy`; discrete pointer commands use the cursor as-is.
+**Pointer position:** Do **not** send absolute coordinates (`x`, `y`) in these commands. The **player** applies pointer gestures at the **current synthetic mouse position** (it maintains cursor state). `dragGesture` and `clickAndDragGesture` update that position with `dx` / `dy`; discrete pointer commands use the cursor as-is.
 
 ---
 
@@ -34,9 +34,7 @@ Discrete clicks map 1:1 to gesture commands. Drags are batched with `dx` / `dy` 
 | `onDoubleTap` | `doubleTapGesture` (double-click only) |
 | `onLongPress` | `longPressGesture` |
 | `onMove` | Batched `dragGesture` with `cursorOffsets` (move-only / pan) via the app’s `drag` control call. |
-| `onClickAndDrag` | Batched `dragGesture` with the same `request` shape via the app’s `clickAndDrag` control call. **This client does not** send a preceding `doubleTapGesture` in this path. |
-
-**Player effect (FF1) / note:** The relayer `command` and `request` for batches from `onMove` and `onClickAndDrag` are both **`dragGesture`**. The app only separates them in its own API for clarity and logging. How the **player** distinguishes **double-tap-hold drag** (primary button held) from **move-only** when no separate `doubleTapGesture` is sent in the `onClickAndDrag` path is **player-defined** (or may require a future `request` extension).
+| `onClickAndDrag` | Batched `clickAndDragGesture` with the same `request` shape (`cursorOffsets`) via the app’s `clickAndDrag` control call. **This client does not** send a preceding `doubleTapGesture` in this path. |
 
 ---
 
@@ -104,7 +102,7 @@ Wire format: **string** — one of `left`, `right`, `middle` (lowercase).
 
 ---
 
-### 4.4 `dragGesture` (move-only or primary-button drag)
+### 4.4 `dragGesture` (move-only / pan)
 
 **`request`:**
 
@@ -115,11 +113,19 @@ Wire format: **string** — one of `left`, `right`, `middle` (lowercase).
 ```
 
 - `cursorOffsets`: array of steps; each `dx` / `dy` is a **number** rounded to **2** decimal places.
-- **Semantic:** **move-only** vs **primary-button drag** is decided by the **player**; this client’s `TouchPad` uses separate app APIs for `onMove` vs `onClickAndDrag` but the same `dragGesture` wire, per **§2**.
+- **Semantic:** Move-only pan (`onMove` in **§1** / **§2**). Primary-button drag uses **`clickAndDragGesture`** (4.5).
 
 ---
 
-### 4.5 `sendKeyboardEvent`
+### 4.5 `clickAndDragGesture` (double-tap-hold then drag)
+
+Same **`request`** shape and rounding rules as **`dragGesture`** (4.4); distinct **`command`** so the player can apply primary-button drag without inferring it from the same `dragGesture` name.
+
+**`request`:** same as **§4.4** (`cursorOffsets` only).
+
+---
+
+### 4.6 `sendKeyboardEvent`
 
 **`request`:**
 
