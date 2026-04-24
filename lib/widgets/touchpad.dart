@@ -4,23 +4,27 @@ import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/design/app_typography.dart';
 import 'package:app/design/build/primitives.dart';
 import 'package:app/design/layout_constants.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart';
 import 'package:app/theme/app_color.dart';
+import 'package:app/widgets/ff_mouse_gesture_detector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:logging/logging.dart';
-
-final _log = Logger('TouchPad');
 
 /// Touchpad for keyboard control screen. Tap and drag send to FF1 via
-/// [ff1WifiControlProvider]. [topicId] from now displaying provider.
+/// [ff1WifiControlProvider].
 class TouchPad extends ConsumerStatefulWidget {
+  /// Creates a touchpad surface that forwards gestures to the active FF1
+  /// device.
   const TouchPad({
     required this.topicId,
     this.onExpand,
     super.key,
   });
 
+  /// Relayer topic id of the target FF1 device.
   final String topicId;
+
+  /// Optional action to expand the touchpad UI.
   final VoidCallback? onExpand;
 
   @override
@@ -28,8 +32,112 @@ class TouchPad extends ConsumerStatefulWidget {
 }
 
 class _TouchPadState extends ConsumerState<TouchPad> {
-  Offset? _lastPosition;
-  final List<Offset> _dragOffsets = [];
+  final List<Offset> _moveDragOffsets = [];
+  final List<Offset> _clickAndDragOffsets = [];
+  final List<double> _zoomScaleSteps = [];
+  final Set<int> _activePointers = <int>{};
+  bool _didPinchDuringGesture = false;
+  // Guards against drag updates arriving after the pointer has already ended.
+  // Gesture recognizers can finish slightly out of order relative to pointer
+  // up/cancel delivery, so the touchpad treats the active pointer set as the
+  // source of truth before buffering deltas.
+  bool get _isGestureActive => _activePointers.isNotEmpty;
+
+  void _queueMoveDelta(Offset delta) {
+    _moveDragOffsets.add(delta);
+  }
+
+  void _queueClickAndDragDelta(Offset delta) {
+    _clickAndDragOffsets.add(delta);
+  }
+
+  void _queueZoomStep(double ratio) {
+    _zoomScaleSteps.add(ratio);
+  }
+
+  void _beginPointerGesture(PointerEvent event) {
+    if (!_isGestureActive) {
+      _didPinchDuringGesture = false;
+    }
+    _activePointers.add(event.pointer);
+    if (_activePointers.length >= 2) {
+      _markPinchStarted();
+    }
+  }
+
+  void _flushMoveDeltasIfNeeded(FF1WifiControl wifiControl) {
+    if (_moveDragOffsets.length <= 5) return;
+    _flushMoveDeltas(wifiControl);
+  }
+
+  void _flushClickAndDragDeltasIfNeeded(FF1WifiControl wifiControl) {
+    if (_clickAndDragOffsets.length <= 5) return;
+    _flushClickAndDragDeltas(wifiControl);
+  }
+
+  void _flushZoomStepsIfNeeded(FF1WifiControl wifiControl) {
+    if (_zoomScaleSteps.length <= 5) return;
+    _flushZoomSteps(wifiControl);
+  }
+
+  void _flushMoveDeltas(FF1WifiControl wifiControl) {
+    if (_moveDragOffsets.isEmpty) return;
+    final offsets = List<Offset>.from(_moveDragOffsets);
+    _moveDragOffsets.clear();
+    unawaited(
+      wifiControl.drag(
+        topicId: widget.topicId,
+        cursorOffsets: offsets,
+      ),
+    );
+  }
+
+  void _flushClickAndDragDeltas(FF1WifiControl wifiControl) {
+    if (_clickAndDragOffsets.isEmpty) return;
+    final offsets = List<Offset>.from(_clickAndDragOffsets);
+    _clickAndDragOffsets.clear();
+    unawaited(
+      wifiControl.clickAndDrag(
+        topicId: widget.topicId,
+        cursorOffsets: offsets,
+      ),
+    );
+  }
+
+  void _flushZoomSteps(FF1WifiControl wifiControl) {
+    if (_zoomScaleSteps.isEmpty) return;
+    final steps = List<double>.from(_zoomScaleSteps);
+    _zoomScaleSteps.clear();
+    unawaited(
+      wifiControl.zoomGesture(
+        topicId: widget.topicId,
+        scaleSteps: steps,
+      ),
+    );
+  }
+
+  void _markPinchStarted() {
+    if (_didPinchDuringGesture) return;
+    _didPinchDuringGesture = true;
+    _moveDragOffsets.clear();
+    _clickAndDragOffsets.clear();
+  }
+
+  void _endPointerGesture(FF1WifiControl wifiControl, PointerEvent event) {
+    _activePointers.remove(event.pointer);
+    if (_isGestureActive) {
+      return;
+    }
+    if (_didPinchDuringGesture) {
+      _moveDragOffsets.clear();
+      _clickAndDragOffsets.clear();
+    } else {
+      _flushMoveDeltas(wifiControl);
+      _flushClickAndDragDeltas(wifiControl);
+    }
+    _flushZoomSteps(wifiControl);
+    _didPinchDuringGesture = false;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,32 +150,51 @@ class _TouchPadState extends ConsumerState<TouchPad> {
       ),
       child: Stack(
         children: [
-          GestureDetector(
-            onTap: () async {
-              _log.info('[Touchpad] onTap');
-              await wifiControl.tap(topicId: widget.topicId);
+          Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: _beginPointerGesture,
+            onPointerUp: (event) {
+              _endPointerGesture(wifiControl, event);
             },
-            onPanStart: (panDetails) {
-              _log.info('[Touchpad] onPanStart: ${panDetails.localPosition}');
-              _lastPosition = panDetails.localPosition;
+            onPointerCancel: (event) {
+              _endPointerGesture(wifiControl, event);
             },
-            onPanUpdate: (panDetails) {
-              final delta =
-                  panDetails.localPosition -
-                  (_lastPosition ?? panDetails.localPosition);
-              _lastPosition = panDetails.localPosition;
-              _dragOffsets.add(delta);
-              if (_dragOffsets.length > 5) {
-                final offsets = List<Offset>.from(_dragOffsets);
-                _dragOffsets.clear();
-                unawaited(
-                  wifiControl.drag(
-                    topicId: widget.topicId,
-                    cursorOffsets: offsets,
-                  ),
-                );
-              }
-            },
+            child: FfMouseGestureDetector(
+              onTap: () async {
+                await wifiControl.tap(topicId: widget.topicId);
+              },
+              onDoubleTap: () async {
+                await wifiControl.doubleTap(topicId: widget.topicId);
+              },
+              onMove: (delta) {
+                if (!_isGestureActive) {
+                  return;
+                }
+                if (_didPinchDuringGesture || _activePointers.length != 1) {
+                  return;
+                }
+                _queueMoveDelta(delta);
+                _flushMoveDeltasIfNeeded(wifiControl);
+              },
+              onClickAndDrag: (delta) {
+                if (!_isGestureActive) {
+                  return;
+                }
+                if (_didPinchDuringGesture || _activePointers.length != 1) {
+                  return;
+                }
+                _queueClickAndDragDelta(delta);
+                _flushClickAndDragDeltasIfNeeded(wifiControl);
+              },
+              onLongPress: () async {
+                await wifiControl.longPress(topicId: widget.topicId);
+              },
+              onZoomGesture: (ratio) {
+                _queueZoomStep(ratio);
+                _flushZoomStepsIfNeeded(wifiControl);
+              },
+              child: const SizedBox.expand(),
+            ),
           ),
           Positioned(
             bottom: 0,

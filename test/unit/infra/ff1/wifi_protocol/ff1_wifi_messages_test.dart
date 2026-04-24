@@ -403,4 +403,43 @@ void main() {
       expect(response.data?['message'], isNotNull);
     });
   });
+
+  group('pointer drag requests', () {
+    const offsets = <Map<String, double>>[
+      <String, double>{'dx': 1.234, 'dy': -0.456},
+    ];
+
+    test('FF1WifiDragRequest uses dragGesture and rounds params', () {
+      const request = FF1WifiDragRequest(cursorOffsets: offsets);
+      expect(request.command, 'dragGesture');
+      expect(request.params, <String, dynamic>{
+        'cursorOffsets': <Map<String, double>>[
+          <String, double>{'dx': 1.23, 'dy': -0.46},
+        ],
+      });
+    });
+
+    test(
+      'FF1WifiClickAndDragRequest uses clickAndDragGesture; params match drag',
+      () {
+        const drag = FF1WifiDragRequest(cursorOffsets: offsets);
+        const clickAndDrag = FF1WifiClickAndDragRequest(cursorOffsets: offsets);
+        expect(clickAndDrag.command, 'clickAndDragGesture');
+        expect(clickAndDrag.params, drag.params);
+      },
+    );
+
+    test(
+      'FF1WifiZoomGestureRequest uses zoomGesture and rounds scaleSteps',
+      () {
+        const request = FF1WifiZoomGestureRequest(
+          scaleSteps: <double>[1.23456, 0.987654],
+        );
+        expect(request.command, 'zoomGesture');
+        expect(request.params, <String, dynamic>{
+          'scaleSteps': <double>[1.2346, 0.9877],
+        });
+      },
+    );
+  });
 }

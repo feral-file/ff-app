@@ -179,7 +179,8 @@
   - user taps bar to navigate to current work detail (or already there)
   - collapsed now-playing row: shuffle and repeat are shown only when the live `player_status` includes the corresponding capability—shuffle when the `shuffle` key is present, repeat when `loopMode` parses to a known value (`none`, `playlist`, `one`); the two gates are independent so a future unknown `loopMode` string does not drop the whole status parse and does not suppress shuffle
   - when the playing list has only one work (length from `player_status.items` when present, else the visible now-displaying item window), shuffle and repeat controls are not shown
-  - optional: user opens Interact screen for keyboard/touchpad control
+  - optional: user opens Interact screen for keyboard input and touchpad
+    gesture control
 - success state: active playback visible and controllable from app
 - failure/edge states:
   - no paired device -> bar hidden (invisible, no guidance shown)
@@ -309,11 +310,15 @@
 
 ## Screen: KeyboardControlScreen
 
-- role in the flow: send keyboard/touchpad events to currently connected FF1
+- role in the flow: send keyboard input and touchpad gesture events to the
+  currently connected FF1
 - route / entry point: `/keyboard-control`
-- important actions: type keys, use touchpad
+- important actions: type keys, use touchpad gestures
 - dependencies: now-displaying success state, `ff1WifiControlProvider`
-- notes / caveats: exits when keyboard closes and screen is not expanded
+- notes / caveats: exits when keyboard closes and screen is not expanded; the
+  touchpad forwards single tap, double tap, long press, move-only drag,
+  click-and-drag, and pinch zoom gestures through `TouchPad` /
+  `FfMouseGestureDetector`, batching deltas before they are sent to FF1
 
 ## Screen: SettingsPage
 

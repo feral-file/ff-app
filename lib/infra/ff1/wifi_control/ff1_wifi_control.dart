@@ -1182,7 +1182,52 @@ transport reconnected — waiting for device connection notification''',
     }
   }
 
-  /// Send drag gesture (cursor offsets) to the device.
+  /// Send double-tap gesture to the device.
+  Future<FF1CommandResponse> doubleTap({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+    try {
+      _log.info('Sending doubleTap to device');
+      const request = FF1WifiDoubleTapRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send doubleTap command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send long-press gesture to the device.
+  Future<FF1CommandResponse> longPress({required String topicId}) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+    try {
+      _log.info('Sending longPress to device');
+      const request = FF1WifiLongPressRequest();
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send longPress command: $e');
+      rethrow;
+    }
+  }
+
+  /// Send move-only drag — pan on the touchpad; cursor moves without the
+  /// primary button held. Relayer command: `dragGesture`.
   Future<FF1CommandResponse> drag({
     required String topicId,
     required List<Offset> cursorOffsets,
@@ -1192,7 +1237,10 @@ transport reconnected — waiting for device connection notification''',
     }
     if (cursorOffsets.isEmpty) return FF1CommandResponse();
     try {
-      _log.info('Sending drag(${cursorOffsets.length} offsets) to device');
+      _log.info(
+        'Sending move-only dragGesture (${cursorOffsets.length} offsets) '
+        'to device',
+      );
       final request = FF1WifiDragRequest(
         cursorOffsets: cursorOffsets
             .map((o) => <String, double>{'dx': o.dx, 'dy': o.dy})
@@ -1207,7 +1255,71 @@ transport reconnected — waiting for device connection notification''',
               as Map<String, dynamic>;
       return FF1CommandResponse.fromJson(response);
     } catch (e) {
-      _log.severe('Failed to send drag command: $e');
+      _log.severe('Failed to send move-only dragGesture: $e');
+      rethrow;
+    }
+  }
+
+  /// Send click-and-drag (double-tap-hold then drag) deltas — primary button
+  /// held. Relayer command: `clickAndDragGesture` ([FF1WifiClickAndDragRequest]);
+  /// `request` shape matches [FF1WifiDragRequest] (cursor offset batches).
+  Future<FF1CommandResponse> clickAndDrag({
+    required String topicId,
+    required List<Offset> cursorOffsets,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+    if (cursorOffsets.isEmpty) return FF1CommandResponse();
+    try {
+      _log.info(
+        'Sending clickAndDragGesture (${cursorOffsets.length} offsets) '
+        'to device',
+      );
+      final request = FF1WifiClickAndDragRequest(
+        cursorOffsets: cursorOffsets
+            .map((o) => <String, double>{'dx': o.dx, 'dy': o.dy})
+            .toList(),
+      );
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send clickAndDragGesture: $e');
+      rethrow;
+    }
+  }
+
+  /// Send pinch-zoom scale steps. Relayer command: `zoomGesture`
+  /// ([FF1WifiZoomGestureRequest]).
+  Future<FF1CommandResponse> zoomGesture({
+    required String topicId,
+    required List<double> scaleSteps,
+  }) async {
+    if (_restClient == null) {
+      throw StateError('REST client not available');
+    }
+    if (scaleSteps.isEmpty) return FF1CommandResponse();
+    try {
+      _log.info(
+        'Sending zoomGesture (${scaleSteps.length} scaleSteps) to device',
+      );
+      final request = FF1WifiZoomGestureRequest(scaleSteps: scaleSteps);
+      final response =
+          await _restClient.sendCommand(
+                topicId: topicId,
+                command: request.command,
+                params: request.params,
+              )
+              as Map<String, dynamic>;
+      return FF1CommandResponse.fromJson(response);
+    } catch (e) {
+      _log.severe('Failed to send zoomGesture: $e');
       rethrow;
     }
   }
