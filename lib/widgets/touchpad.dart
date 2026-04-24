@@ -9,9 +9,6 @@ import 'package:app/theme/app_color.dart';
 import 'package:app/widgets/ff_mouse_gesture_detector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:logging/logging.dart';
-
-final _log = Logger('TouchPad');
 
 /// Touchpad for keyboard control screen. Tap and drag send to FF1 via
 /// [ff1WifiControlProvider].
@@ -41,7 +38,7 @@ class _TouchPadState extends ConsumerState<TouchPad> {
   // Guards against drag updates arriving after the pointer has already ended.
   // Gesture recognizers can finish slightly out of order relative to pointer
   // up/cancel delivery, so the touchpad treats pointer state as the source of
-  // truth before logging or buffering deltas.
+  // truth before buffering deltas.
   bool _isPointerDown = false;
 
   void _queueMoveDelta(Offset delta) {
@@ -132,40 +129,25 @@ class _TouchPadState extends ConsumerState<TouchPad> {
           Listener(
             behavior: HitTestBehavior.opaque,
             onPointerDown: (event) {
-              _log.fine('[Touchpad] onPointerDown pointer=${event.pointer}');
               _beginPointerGesture();
             },
             onPointerUp: (event) {
-              _log.fine('[Touchpad] onPointerUp pointer=${event.pointer}');
               _onPointerGestureEnd(wifiControl);
             },
             onPointerCancel: (event) {
-              _log.fine('[Touchpad] onPointerCancel pointer=${event.pointer}');
               _onPointerGestureEnd(wifiControl);
             },
             child: FfMouseGestureDetector(
               onTap: () async {
-                _log.info(
-                  '[Touchpad] onTap topicId=${widget.topicId} '
-                  '(tapGesture)',
-                );
                 await wifiControl.tap(topicId: widget.topicId);
               },
               onDoubleTap: () async {
-                _log.info(
-                  '[Touchpad] onDoubleTap topicId=${widget.topicId} '
-                  '(doubleTapGesture)',
-                );
                 await wifiControl.doubleTap(topicId: widget.topicId);
               },
               onMove: (delta) {
                 if (!_isPointerDown) {
                   return;
                 }
-                _log.fine(
-                  '[Touchpad] onMove topicId=${widget.topicId} '
-                  'delta=$delta',
-                );
                 _queueMoveDelta(delta);
                 _flushMoveDeltasIfNeeded(wifiControl);
               },
@@ -173,25 +155,13 @@ class _TouchPadState extends ConsumerState<TouchPad> {
                 if (!_isPointerDown) {
                   return;
                 }
-                _log.fine(
-                  '[Touchpad] onClickAndDrag topicId=${widget.topicId} '
-                  'delta=$delta',
-                );
                 _queueClickAndDragDelta(delta);
                 _flushClickAndDragDeltasIfNeeded(wifiControl);
               },
               onLongPress: () async {
-                _log.info(
-                  '[Touchpad] onLongPress topicId=${widget.topicId} '
-                  '(longPressGesture)',
-                );
                 await wifiControl.longPress(topicId: widget.topicId);
               },
               onZoomGesture: (ratio) {
-                _log.fine(
-                  '[Touchpad] onZoomGesture topicId=${widget.topicId} '
-                  'ratio=$ratio',
-                );
                 _queueZoomStep(ratio);
                 _flushZoomStepsIfNeeded(wifiControl);
               },
