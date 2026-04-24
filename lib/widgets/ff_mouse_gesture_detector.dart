@@ -6,6 +6,16 @@ import 'package:logging/logging.dart';
 
 final _log = Logger('FfMouseGestureDetector');
 
+class _CancelableLongPressGestureRecognizer extends LongPressGestureRecognizer {
+  _CancelableLongPressGestureRecognizer({
+    super.supportedDevices,
+  });
+
+  void cancel() {
+    resolve(GestureDisposition.rejected);
+  }
+}
+
 /// A small gesture detector that maps touch gestures to FF1-like mouse
 /// interactions.
 ///
@@ -73,6 +83,7 @@ class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
   bool _isPinching = false;
   bool _suppressTap = false;
   Timer? _singleTapTimer;
+  _CancelableLongPressGestureRecognizer? _longPressRecognizer;
 
   /// Active touch positions for pinch (global); only used when
   /// [FfMouseGestureDetector.onZoomGesture] is non-null.
@@ -113,6 +124,7 @@ class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
   void _startPinch() {
     _resetDragMode();
     _cancelPendingTap();
+    _longPressRecognizer?.cancel();
     _isPinching = true;
     _suppressTap = true;
     _pinchLastSpan = _pinchSpanForTwoTouches();
@@ -235,11 +247,14 @@ class _FfMouseGestureDetectorState extends State<FfMouseGestureDetector> {
                 };
             },
           ),
-      LongPressGestureRecognizer:
-          GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
-            () => LongPressGestureRecognizer(
-              supportedDevices: const {PointerDeviceKind.touch},
-            ),
+      _CancelableLongPressGestureRecognizer:
+          GestureRecognizerFactoryWithHandlers<_CancelableLongPressGestureRecognizer>(
+            () {
+              _longPressRecognizer = _CancelableLongPressGestureRecognizer(
+                supportedDevices: const {PointerDeviceKind.touch},
+              );
+              return _longPressRecognizer!;
+            },
             (instance) {
               instance.onLongPress = () {
                 _log.fine('onLongPress');

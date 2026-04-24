@@ -329,6 +329,52 @@ void main() {
     });
 
     testWidgets(
+      'pinch cancels pending long press',
+      (tester) async {
+        final zoomRatios = <double>[];
+        var longPressCount = 0;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: 200,
+                  height: 200,
+                  child: FfMouseGestureDetector(
+                    onTap: () {},
+                    onDoubleTap: () {},
+                    onMove: (_) {},
+                    onClickAndDrag: (_) {},
+                    onLongPress: () => longPressCount++,
+                    onZoomGesture: zoomRatios.add,
+                    child: const ColoredBox(color: Colors.black),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final center = tester.getCenter(find.byType(FfMouseGestureDetector));
+        final g1 = await tester.startGesture(center - const Offset(10, 0));
+        await tester.pump();
+        final g2 = await tester.startGesture(center + const Offset(10, 0));
+        await tester.pump();
+        await g1.moveBy(const Offset(-25, 0));
+        await g2.moveBy(const Offset(25, 0));
+        await tester.pump();
+        await tester.pump(kLongPressTimeout);
+        await g1.up();
+        await g2.up();
+        await tester.pump();
+
+        expect(longPressCount, 0);
+        expect(zoomRatios, isNotEmpty);
+      },
+    );
+
+    testWidgets(
       'pinch start cancels pending single tap',
       (tester) async {
         var tapCount = 0;
