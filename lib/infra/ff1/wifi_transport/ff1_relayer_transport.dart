@@ -286,7 +286,10 @@ class FF1RelayerTransport implements FF1WifiTransport {
 
     try {
       _isConnecting = true;
-      final dispatched = await _connectInternal(flowId: flowId);
+      final dispatched = await _connectInternal(
+        flowId: flowId,
+        throwIfSuppressedBeforeConnectControl: true,
+      );
       if (!dispatched) {
         return false;
       }
@@ -302,8 +305,9 @@ class FF1RelayerTransport implements FF1WifiTransport {
         },
       );
       return true;
+    } on FF1WifiConnectionCancelledError {
+      rethrow;
     } catch (e) {
-      _isConnecting = false;
       _lastError = e.toString();
       final error = FF1WifiConnectionError(
         'Failed to connect to relayer',
@@ -316,7 +320,18 @@ class FF1RelayerTransport implements FF1WifiTransport {
     }
   }
 
-  Future<bool> _connectInternal({String? flowId}) async {
+  Future<bool> _connectInternal({
+    String? flowId,
+    bool throwIfSuppressedBeforeConnectControl = false,
+  }) async {
+    // `pauseConnection` bumps [_relayerPauseGeneration]; plain [disconnect]
+    // does not. When two [connect] calls overlap, one may run [disconnect]
+    // while the other is awaiting isolate prep — that sets
+    // [_reconnectSuppressed] without a pause bump; return false (PR #361
+    // teardown-wait test). Only treat as lifecycle cancellation when the
+    // pause generation changed during prep.
+    final pauseGenAtConnectInternalStart = _relayerPauseGeneration;
+
     // Build WebSocket URL
     final wsUrl =
         '$_relayerUrl/api/notification?'
@@ -381,6 +396,13 @@ class FF1RelayerTransport implements FF1WifiTransport {
         message: 'connect control skipped because transport is suppressed',
         payload: {'flowId': flowId, 'deviceId': _device?.deviceId},
       );
+      final pausedDuringPrep =
+          _relayerPauseGeneration != pauseGenAtConnectInternalStart;
+      if (pausedDuringPrep && throwIfSuppressedBeforeConnectControl) {
+        throw const FF1WifiConnectionCancelledError(
+          'Relayer connect cancelled before connect control was sent',
+        );
+      }
       return false;
     }
 
@@ -1138,74 +1160,99 @@ void _relayerIsolateEntry(SendPort mainSendPort) {
     }
   }
 
-  controlPort.listen((dynamic rawMessage) async {
-    if (rawMessage is! Map) {
-      _relayerIsolateLog(
-        'control_ignored_non_map',
-        'ignored non-map control: ${rawMessage.runtimeType}',
-      );
-      return;
-    }
-
-    final control = _RelayerControlMessage.fromJson(
-      Map<String, dynamic>.from(rawMessage),
-    );
-
-    switch (control.type) {
-      case _RelayerControlType.connect:
-        _relayerIsolateLog(
-          'control_connect',
-          'connect control received',
-        );
-        wsUrl = control.data?['wsUrl'] as String?;
-        final wireGen = control.data!['connectGen'] as int;
-        // Keep isolate generation aligned with main so disconnect/pause can
-        // invalidate this attempt (see [connectGeneration]).
-        connectGeneration = wireGen;
-        await closeChannel();
-        if (wireGen != connectGeneration) {
+  // Process control messages strictly in order. Async `listen` callbacks can
+  // otherwise overlap; for example disconnect could run while a prior connect
+  // is still opening the WebSocket, then emit connected after disconnect.
+  var controlChain = Future<void>.value();
+  controlPort.listen((dynamic rawMessage) {
+    controlChain = controlChain.then((_) async {
+      try {
+        if (rawMessage is! Map) {
           _relayerIsolateLog(
-            'control_connect_aborted_superseded_during_close',
-            'connect aborted: disconnect/pause during closeChannel',
+            'control_ignored_non_map',
+            'ignored non-map control: ${rawMessage.runtimeType}',
           );
-          break;
+          return;
         }
-        // Do not await inner [connect]: the ReceivePort listener would stay
-        // blocked until WebSocket setup finishes, so a pause/disconnect control
-        // queued after this connect would be processed too late (PR #361 review
-        // 4096354225: cancel at isolate boundary).
-        unawaited(
-          () async {
-            await Future<void>.delayed(Duration.zero);
+
+        final control = _RelayerControlMessage.fromJson(
+          Map<String, dynamic>.from(rawMessage),
+        );
+
+        switch (control.type) {
+          case _RelayerControlType.connect:
+            _relayerIsolateLog(
+              'control_connect',
+              'connect control received',
+            );
+            wsUrl = control.data?['wsUrl'] as String?;
+            final wireGen = control.data!['connectGen'] as int;
+            // Keep isolate generation aligned with main so disconnect/pause can
+            // invalidate this attempt (see [connectGeneration]).
+            connectGeneration = wireGen;
+            await closeChannel();
             if (wireGen != connectGeneration) {
-              return;
+              _relayerIsolateLog(
+                'control_connect_aborted_superseded_during_close',
+                'connect aborted: disconnect/pause during closeChannel',
+              );
+              break;
             }
-            await connect(wireGen);
-          }(),
-        );
+            // Do not await inner [connect]: the ReceivePort listener would stay
+            // blocked until WebSocket setup finishes, so a pause/disconnect
+            // control queued after this connect would be processed too late
+            // (PR #361 review 4096354225: cancel at isolate boundary).
+            unawaited(
+              () async {
+                await Future<void>.delayed(Duration.zero);
+                if (wireGen != connectGeneration) {
+                  return;
+                }
+                await connect(wireGen);
+              }(),
+            );
 
-      case _RelayerControlType.disconnect:
-        final closedGen = connectGeneration;
-        connectGeneration++;
-        _relayerIsolateLog('control_disconnect', 'disconnect control received');
-        unawaited(closeChannel());
-        final event = _RelayerEventMessage(
-          type: _RelayerEventType.disconnected,
-          data: {'connectGen': closedGen},
-        );
-        mainSendPort.send(event.toJson());
+          case _RelayerControlType.disconnect:
+            final closedGen = connectGeneration;
+            connectGeneration++;
+            _relayerIsolateLog(
+              'control_disconnect',
+              'disconnect control received',
+            );
+            unawaited(closeChannel());
+            final event = _RelayerEventMessage(
+              type: _RelayerEventType.disconnected,
+              data: {'connectGen': closedGen},
+            );
+            mainSendPort.send(event.toJson());
+            _relayerIsolateLog(
+              'disconnect_event_sent',
+              'sent disconnected to main after disconnect control',
+            );
+
+          case _RelayerControlType.dispose:
+            connectGeneration++;
+            _relayerIsolateLog('control_dispose', 'dispose control received');
+            unawaited(closeChannel());
+            controlPort.close();
+            _relayerIsolateLog(
+              'control_port_closed',
+              'control ReceivePort closed',
+            );
+        }
+      } on Object catch (e, stackTrace) {
         _relayerIsolateLog(
-          'disconnect_event_sent',
-          'sent disconnected to main after disconnect control',
+          'control_message_error',
+          'control message failed: $e',
         );
-
-      case _RelayerControlType.dispose:
-        connectGeneration++;
-        _relayerIsolateLog('control_dispose', 'dispose control received');
-        unawaited(closeChannel());
-        controlPort.close();
-        _relayerIsolateLog('control_port_closed', 'control ReceivePort closed');
-    }
+        developer.log(
+          'control message failed',
+          name: 'FF1RelayerTransport',
+          error: e,
+          stackTrace: stackTrace,
+        );
+      }
+    });
   });
 }
 

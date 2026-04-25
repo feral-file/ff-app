@@ -237,6 +237,83 @@ void main() {
   );
 
   test(
+    'FF1WifiConnectionNotifier.connect does not mark connected when control '
+    'returns without transport (pause during prep)',
+    () async {
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+      final wifiControl = FakeWifiControl()
+        ..connectEndsWithoutTransportSocket = true;
+
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(ff1WifiConnectionProvider.notifier).connect(
+            device: device,
+            userId: 'u',
+            apiKey: 'k',
+          );
+
+      final s = container.read(ff1WifiConnectionProvider);
+      expect(s.isConnected, isFalse);
+      expect(s.isConnecting, isFalse);
+      expect(s.device?.deviceId, device.deviceId);
+    },
+  );
+
+  test(
+    'FF1WifiConnectionNotifier.reconnect does not mark connected when control '
+    'returns without transport',
+    () async {
+      const device = FF1Device(
+        name: 'FF1',
+        remoteId: 'remote-1',
+        deviceId: 'device-1',
+        topicId: 'topic-1',
+      );
+      final wifiControl = FakeWifiControl();
+
+      final container = ProviderContainer.test(
+        overrides: [
+          ff1WifiControlProvider.overrideWithValue(wifiControl),
+          ff1WifiConnectionProvider.overrideWith(
+            FF1WifiConnectionNotifier.new,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(ff1WifiConnectionProvider.notifier).connect(
+            device: device,
+            userId: 'u',
+            apiKey: 'k',
+          );
+      expect(container.read(ff1WifiConnectionProvider).isConnected, isTrue);
+
+      container.read(ff1WifiConnectionProvider.notifier).pauseConnection();
+      expect(container.read(ff1WifiConnectionProvider).isConnected, isFalse);
+
+      wifiControl.reconnectEndsWithoutTransportSocket = true;
+      await container.read(ff1WifiConnectionProvider.notifier).reconnect();
+
+      final s = container.read(ff1WifiConnectionProvider);
+      expect(s.isConnected, isFalse);
+      expect(s.device?.deviceId, device.deviceId);
+    },
+  );
+
+  test(
     'ff1AutoConnectWatcherProvider connects when active device is set',
     () async {
       // Unit test: verifies auto-connect watcher triggers connection

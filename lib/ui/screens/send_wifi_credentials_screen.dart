@@ -100,9 +100,13 @@ class _EnterWiFiPasswordScreenState
           _log.info(
             '[effect] received: id=$effectId, type=${effect.runtimeType}',
           );
+          final sessionIdAtEmission = effect.sessionId;
           final orchestrator = ref.read(ff1SetupOrchestratorProvider.notifier);
           unawaited(() async {
-            final didHandle = await _handleOrchestratorEffect(effect);
+            final didHandle = await _handleOrchestratorEffect(
+              effect,
+              sessionIdAtEmission: sessionIdAtEmission,
+            );
             _log.info(
               '[effect] handled=$didHandle for id=$effectId, '
               'type=${effect.runtimeType}',
@@ -182,9 +186,50 @@ class _EnterWiFiPasswordScreenState
         );
   }
 
-  Future<bool> _handleOrchestratorEffect(FF1SetupEffect effect) async {
+  Future<bool> _handleOrchestratorEffect(
+    FF1SetupEffect effect, {
+    required String? sessionIdAtEmission,
+  }) async {
     switch (effect) {
       case FF1SetupNavigate(:final route, :final extra, :final method):
+        if (!mounted) return false;
+        if (route == Routes.deviceConfiguration) {
+          final activeSessionId = ref
+              .read(ff1SetupOrchestratorProvider)
+              .activeSession
+              ?.id;
+          if (sessionIdAtEmission != null &&
+              sessionIdAtEmission != activeSessionId) {
+            return true;
+          }
+          try {
+            await ref
+                .read(ff1SetupOrchestratorProvider.notifier)
+                .completeInternetReadySetup(
+                  widget.payload.device,
+                  shouldNavigate: false,
+                );
+          } on Object catch (e, st) {
+            _log.warning(
+              '[EnterWiFiPasswordScreen] Device-config navigation failed',
+              e,
+              st,
+            );
+            if (mounted) {
+              setState(() {
+                _isProcessing = false;
+              });
+            }
+            if (!mounted) return false;
+            await UIHelper.showInfoDialog(
+              context,
+              'Setup could not finish',
+              'We couldn’t finish saving your FF1 setup. Please try again.',
+              closeButton: 'Close',
+            );
+            return true;
+          }
+        }
         if (!mounted) return false;
         switch (method) {
           case FF1SetupNavigationMethod.push:
@@ -224,7 +269,8 @@ class _EnterWiFiPasswordScreenState
                 }
               : null,
         );
-        if ((widget.payload.wifiAccessPoint.isOpenNetwork ?? false) && mounted) {
+        if ((widget.payload.wifiAccessPoint.isOpenNetwork ?? false) &&
+            mounted) {
           context.pop();
         }
         setState(() {

@@ -13,6 +13,8 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'provider_test_helpers.dart';
+
 void main() {
   test('connect emits internet-ready state only after persisting device', () async {
     final blDevice = BluetoothDevice.fromId('00:11:22:33:44:55');
@@ -60,9 +62,43 @@ void main() {
 
     final state = container.read(connectFF1Provider).value;
     expect(state, isA<ConnectFF1Connected>());
-    final connected = state as ConnectFF1Connected;
+    final connected = state! as ConnectFF1Connected;
     expect(connected.isConnectedToInternet, isTrue);
     expect(actions.addDeviceCalled, isTrue);
+  });
+
+  test('addDevice does not re-promote an already active device', () async {
+    final service = _CountingMockFF1BluetoothDeviceService()
+      ..devices = const [
+        FF1Device(
+          name: 'FF1',
+          remoteId: '00:11:22:33:44:55',
+          deviceId: 'FF1-1',
+          topicId: 'topic-1',
+        ),
+      ]
+      ..activeId = 'FF1-1'
+      ..activeDeviceId = 'FF1-1';
+
+    final container = ProviderContainer.test(
+      overrides: [
+        ff1BluetoothDeviceServiceProvider.overrideWithValue(service),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(ff1BluetoothDeviceActionsProvider.notifier).addDevice(
+          const FF1Device(
+            name: 'FF1',
+            remoteId: '00:11:22:33:44:55',
+            deviceId: 'FF1-1',
+            topicId: 'topic-1',
+          ),
+        );
+
+    expect(service.activeId, 'FF1-1');
+    expect(service.activeDeviceId, 'FF1-1');
+    expect(service.setActiveDeviceCalls, 0);
   });
 }
 
@@ -83,6 +119,17 @@ class _BlockingActions extends FF1BluetoothDeviceActionsNotifier {
   Future<void> addDevice(FF1Device device) async {
     addDeviceCalled = true;
     await _completer.future;
+  }
+}
+
+class _CountingMockFF1BluetoothDeviceService
+    extends MockFF1BluetoothDeviceService {
+  int setActiveDeviceCalls = 0;
+
+  @override
+  Future<void> setActiveDevice(String deviceId) async {
+    setActiveDeviceCalls += 1;
+    await super.setActiveDevice(deviceId);
   }
 }
 
@@ -138,4 +185,3 @@ class _NoopBleTransport implements FF1BleTransport {
     Duration timeout = const Duration(seconds: 20),
   }) async {}
 }
-

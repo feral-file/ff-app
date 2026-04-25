@@ -2,9 +2,10 @@ import 'package:app/app/providers/app_lifecycle_provider.dart';
 import 'package:app/app/providers/ff1_wifi_providers.dart';
 import 'package:app/app/providers/indexer_tokens_provider.dart';
 import 'package:app/domain/models/ff1_device.dart';
+import 'package:app/infra/ff1/wifi_control/ff1_wifi_control.dart' show FF1WifiControl;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/widgets.dart';
 
 import '../../../unit/app/providers/provider_test_helpers.dart';
 
